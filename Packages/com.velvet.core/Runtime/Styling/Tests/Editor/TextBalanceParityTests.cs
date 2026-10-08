@@ -138,14 +138,16 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { V.Div(className: "text-balance", V.Label(text: "hello")) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            var attached = GetManipulatorCount(scope.Reconciler);
+            var leaf = scope.Root.Q<Label>();
+            var attached = scope.Reconciler.Context.TextBalanceManipulators.ContainsKey(leaf);
 
             // Act
             var tree2 = new VNode[] { V.Div(className: "", V.Label(text: "hello")) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
             // Assert — the attachment rides along: a reconciler that attached nothing removes nothing.
-            Assert.That((attached, GetManipulatorCount(scope.Reconciler)), Is.EqualTo((1, 0)));
+            Assert.That((attached, scope.Reconciler.Context.TextBalanceManipulators.ContainsKey(leaf)),
+                Is.EqualTo((true, false)));
         }
 
         [Test]

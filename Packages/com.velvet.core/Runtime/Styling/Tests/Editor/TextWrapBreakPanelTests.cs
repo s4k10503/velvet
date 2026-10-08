@@ -284,7 +284,8 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (arranged, LastLine(pretty.text).Contains(' '), pretty.layout.height == plain.layout.height),
+                (arranged, pretty.text.Contains('\n') && LastLine(pretty.text).Contains(' '),
+                    pretty.layout.height == plain.layout.height),
                 Is.EqualTo((true, true, true)), measured);
         }
 
@@ -310,6 +311,7 @@ namespace Velvet.Tests
             Assert.That((arranged, pretty.text.Contains('\n')), Is.EqualTo((true, false)), measured);
         }
 
+        // GREEN_ON_BASE(characterization): the base never broke a leaf against its own last width either; the case pins that the new breaking does not.
         [Test]
         public void Given_ABalancedLeafSizedByItsText_When_ItsTextGrows_Then_ItIsWiderThanItWasWithTheShortText()
         {
@@ -366,12 +368,12 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
             Settle();
 
-            // Assert
+            // Assert — read defensively, so a tree without the field fails the comparison instead of throwing.
             var key = typeof(StyleTextBalanceManipulator)
-                .GetField("_measureKey", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(manipulator)!;
-            var style = (FontStyle)key.GetType().GetField("_fontStyle", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(key)!;
-            Assert.That((arranged, style), Is.EqualTo((true, FontStyle.Bold)), measured);
+                .GetField("_measureKey", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(manipulator);
+            var style = (FontStyle?)key?.GetType().GetField("_fontStyle", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(key);
+            Assert.That((arranged, style), Is.EqualTo((true, (FontStyle?)FontStyle.Bold)), measured);
         }
 
         [Test]

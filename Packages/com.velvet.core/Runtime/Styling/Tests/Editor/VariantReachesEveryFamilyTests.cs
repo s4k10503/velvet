@@ -138,7 +138,7 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-        // GREEN_ON_BASE(construction): the test-side family reader is carried onto the base with this fixture;
+        // GREEN_ON_BASE(construction): this branch only removes two text-balance families from the matrix, so the test-side family reader is carried onto the base with this fixture;
         // removing the `excluded` filter makes negated predicates count as accepted families.
         [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
         [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
@@ -184,6 +184,7 @@ namespace Velvet.Tests
                 + "drifted apart, so the matrix below poses a different question than the code answers");
         }
 
+        // GREEN_ON_BASE(characterization): this branch only removes two text-balance families from the matrix, and the families left reach what the bare form reaches as on the base.
         [Test]
         public void Given_EveryPayloadFamily_When_WrittenBehindEachVariantCategory_Then_ItReachesWhatTheBareFormReaches()
         {

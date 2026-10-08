@@ -216,7 +216,7 @@ namespace Velvet.Tests
             return string.Join(" ", names);
         }
 
-        // GREEN_ON_BASE(construction): both sides here are the repository's own content — the runtime
+        // GREEN_ON_BASE(construction): this branch only removes the text-balance width reader from the roster, so both sides here are the repository's own content — the runtime
         // assembly's IL and the verdicts this fixture's own cases declare. The two therefore agree on a
         // base run, which cannot separate them. Add an `element.GetClasses()` call to a production method
         // that holds none and this case reddens.
@@ -244,7 +244,7 @@ namespace Velvet.Tests
                 + "verdict for a method that no longer reads it and the declaration has to go");
         }
 
-        // GREEN_ON_BASE(construction): both sides here are this assembly's own content.
+        // GREEN_ON_BASE(construction): this branch only removes the text-balance width reader from the roster, so both sides here are this assembly's own content.
         // The verdict attributes and the IL of the bodies carrying them therefore agree on a base run,
         // which cannot separate them. Move a `[ReaderVerdict]` line onto a case that calls no reader of its
         // own — the roster case itself, an empty one, or one whose only call into production arranges an
@@ -280,7 +280,7 @@ namespace Velvet.Tests
                 + "signs that reader off is a line rather than a body that gets to it");
         }
 
-        // GREEN_ON_BASE(construction): both sides here are the runtime assembly's own IL.
+        // GREEN_ON_BASE(construction): this branch only removes the text-balance width reader from the roster, so both sides here are the runtime assembly's own IL.
         // The two therefore agree on a base run, which cannot separate them. Add a write to
         // `state.PaintTail` in a body that records no class array and this is what reddens.
         [Test]
@@ -315,7 +315,7 @@ namespace Velvet.Tests
                 + "live-class-list stand-in stops being confined to the layout gates");
         }
 
-        // GREEN_ON_BASE(characterization): the base already hands the array to these four and no others.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already hands the array to these four and no others.
         // What shows the case can fail is a fifth applier beside them — measured with an
         // `ApplyRingManipulator` driving `StyleRingClass.TryExtract`, whose last-wins `ring-*` reading then
         // rides on the stand-in array with every other case in this fixture still green.
@@ -347,6 +347,7 @@ namespace Velvet.Tests
                 + "a case here and the reading belongs in this list; one leaving it takes its line with it");
         }
 
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, and this reader's verdict is as the base had it.
         [Test]
         [ReaderVerdict(MotionRestingReader)]
         public void Given_AnImportantRestingOpacityBesidePlainWidths_When_TheirClassOrderIsReversed_Then_BothPlansRetainTheImportantOpacity()
@@ -375,7 +376,7 @@ namespace Velvet.Tests
                 Is.EqualTo(((float?)320f, (float?)320f, (float?)0.5f, (float?)0.5f)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last clip token on the list.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already resolves the last clip token on the list.
         // What shows the case can fail is a `break` after the first match in TryExtractLive: measured,
         // each arrangement then resolves the shape it was handed first and the pair inverts.
         [Test]
@@ -398,7 +399,7 @@ namespace Velvet.Tests
                 "this reading resolves whichever clip token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last gap token on the list, through
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already resolves the last gap token on the list, through
         // the scan the gap manipulator now reads its gaps from too. What shows the case can fail is a `break`
         // after the first match in StyleGridClass.ExtractGaps: each arrangement then takes the gap it was
         // handed first and the pair inverts.
@@ -421,7 +422,7 @@ namespace Velvet.Tests
                 + "hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last grid-cols token on the list.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already resolves the last grid-cols token on the list.
         // What shows the case can fail is a `break` after the first match in StyleGridClass.TryExtract:
         // measured, each arrangement then takes the column count it was handed first and the pair inverts.
         [Test]
@@ -443,7 +444,7 @@ namespace Velvet.Tests
                 + "class list hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already prefers a parsed count to the bare marker.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already prefers a parsed count to the bare marker.
         // What shows the case can fail is assigning `columns = 1` where the marker is seen rather than in
         // the tail of the scan: measured, the arrangement ending on the marker then resolves one column.
         [Test]
@@ -468,7 +469,7 @@ namespace Velvet.Tests
                 + "so where one did the marker cannot decide the count from either end of the list");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last gap-x token on the list.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already resolves the last gap-x token on the list.
         // What shows the case can fail is a first-wins guard on the horizontal arm of the scan in
         // StyleGridClass.ExtractGaps: measured, each arrangement then takes the gap it was handed first.
         [Test]
@@ -490,7 +491,7 @@ namespace Velvet.Tests
                 + "hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last gap-y token on the list.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already resolves the last gap-y token on the list.
         // What shows the case can fail is a first-wins guard on the vertical arm of the same scan:
         // measured, each arrangement then takes the gap it was handed first and the pair inverts.
         [Test]
@@ -512,7 +513,7 @@ namespace Velvet.Tests
                 + "hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last divide axis token on the list.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already resolves the last divide axis token on the list.
         // What shows the case can fail is a `break` after the first match in StyleDivideClass.TryExtract:
         // measured, each arrangement then takes the width it was handed first and the pair inverts.
         [Test]
@@ -534,7 +535,7 @@ namespace Velvet.Tests
                 + "token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last divide style token.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already resolves the last divide style token.
         // What shows the case can fail is a first-wins guard on the style arm of the same scan: measured,
         // each arrangement then takes the style it was handed first and the pair inverts.
         [Test]
@@ -558,7 +559,7 @@ namespace Velvet.Tests
                 + "token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last divide colour token.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already resolves the last divide colour token.
         // What shows the case can fail is a first-wins guard on the colour arm of the same scan: measured,
         // each arrangement then takes the colour it was handed first and the pair inverts.
         [Test]
@@ -585,6 +586,7 @@ namespace Velvet.Tests
                 + "token the class list hands over last");
         }
 
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, and this reader's verdict is as the base had it.
         [Test]
         [ReaderVerdict(ClipWrapperMirrorReader)]
         public void Given_TwoClassesOnAClippedElement_When_TheOrderTheyWereAddedInIsReversed_Then_ItsWrapperCarriesTheSameClassesBothWays()
@@ -611,6 +613,7 @@ namespace Velvet.Tests
 
         // What shows the case can fail is trading the `return true` in DeclaresOwn for an answer each class
         // overwrites: the arrangement ending on w-32 then answers false.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, and this reader's verdict is as the base had it.
         [Test]
         [ReaderVerdict(OwnSlotReader)]
         public void Given_AMarginTokenBesideAWidthToken_When_TheOrderTheyWereAddedInIsReversed_Then_TheOwnSlotVerdictIsTheSameBothWays()
@@ -629,6 +632,7 @@ namespace Velvet.Tests
                 "a space margin or a divider gives way to the child's own class wherever it sits in the list");
         }
 
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, and this reader's verdict is as the base had it.
         [Test]
         [ReaderVerdict(UniformScaleReader)]
         public void Given_TwoUniformScalePresets_When_TheirOrderAndTheAxisPriorityChange_Then_TheFallbackFollowsTheVisibleCascadeBothWays()
@@ -685,6 +689,7 @@ namespace Velvet.Tests
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f }).Within(0.0001f));
         }
 
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, and this reader's verdict is as the base had it.
         [Test]
         [ReaderVerdict(HostClassesReader)]
         public void Given_TwoClassesOnADocumentRoot_When_TheOrderTheyWereAddedInIsReversed_Then_APortalHostTakesTheSameClasses()
@@ -702,6 +707,7 @@ namespace Velvet.Tests
                 "a portal host takes the set of the document root's classes, whatever order they arrived in");
         }
 
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, and this reader's verdict is as the base had it.
         [Test]
         [ReaderVerdict(HostStampReader)]
         public void Given_TwoClassesOnADocumentRoot_When_TheOrderTheyWereAddedInIsReversed_Then_TheFollowsStampMoves()
@@ -721,7 +727,7 @@ namespace Velvet.Tests
                 "the follow re-syncs a portal host when the document root's classes change order");
         }
 
-        // GREEN_ON_BASE(characterization): the base already picks this winner by cascade position.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already picks this winner by cascade position.
         // What shows the case can fail is widening `position > winningPosition` to take every match:
         // measured, the two arrangements then declare different slots.
         [Test]
@@ -746,7 +752,7 @@ namespace Velvet.Tests
                 "the later cascade position wins this reading, not the later place in the class list");
         }
 
-        // GREEN_ON_BASE(characterization): the base already ranks a base class against the bands above.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already ranks a base class against the bands above.
         // What shows the case can fail is `JudgeBand` claiming each entry's properties as it goes:
         // measured, the second padding token is then judged dead against the first and leaves the list.
         [Test]
@@ -772,7 +778,7 @@ namespace Velvet.Tests
                 + "beside it, so the seed order cannot decide which of them survives");
         }
 
-        // GREEN_ON_BASE(characterization): the base already routes a resolver-owned token to inline style.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already routes a resolver-owned token to inline style.
         // What shows the case can fail is either routing sending every token to StyleClassProjection.Add:
         // measured on each of the two, all five then reach that path's class list.
         [Test]
@@ -796,7 +802,7 @@ namespace Velvet.Tests
                 + "value re-applied from the live list, in whatever order that list holds it");
         }
 
-        // GREEN_ON_BASE(characterization): the base already composes the pair in live-class-list order.
+        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already composes the pair in live-class-list order.
         // What shows the case can fail is collecting the classes with `Insert(0, cls)` rather than
         // `Add(cls)` in the settle re-apply: measured, each arrangement then composes the two the other
         // way round and the pair inverts.
@@ -827,7 +833,7 @@ namespace Velvet.Tests
                 + "filter applied there for the first time that list's order is the compose order");
         }
 
-        // GREEN_ON_BASE(construction): the base reads its own generated table; adding a `divide-dashed`
+        // GREEN_ON_BASE(construction): this branch only removes the text-balance width reader from the roster, so the base reads its own generated table; adding a `divide-dashed`
         // entry with a nonempty property set would make this guard fail.
         [Test]
         public void Given_TheGeneratedStyleTable_When_ItIsFilteredToTheFamiliesAnOrderDecidedReadingResolvesFrom_Then_OnlyTheBareGridMarkerDeclaresAProperty()
