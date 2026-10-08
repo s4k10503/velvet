@@ -2105,9 +2105,9 @@ namespace Velvet
         /// <summary>
         /// TanStack Query's <c>useQuery</c>. Reads the entry <paramref name="options"/>' key names in a
         /// <see cref="QueryClient"/>, fetches it with the options' query function when it has no data or its
-        /// data is stale, and re-renders the component as the entry changes. Components reading one key share
-        /// one entry and one request in flight, and the entry keeps its result after they unmount, so a
-        /// component mounting over it later renders that result at once.
+        /// data is stale, and re-renders the component when a property of the result it reads changes.
+        /// Components reading one key share one entry and one request in flight, and the entry keeps its
+        /// result after they unmount, so a component mounting over it later renders that result at once.
         /// </summary>
         /// <remarks>
         /// Not a Suspense hook: a query with no data yet returns <see cref="QueryStatus.Pending"/> rather than
@@ -2117,9 +2117,14 @@ namespace Velvet
         /// The component subscribes in a passive effect, as <c>useQuery</c> does, and a fetch that mounting
         /// starts begins there. A change of key moves the subscription to the new key's entry: the result
         /// shows that entry's data, or none, and nothing the old key's request delivers afterwards.
+        /// <para/>
+        /// A failed request runs again up to <see cref="QueryOptions{T}.Retry"/> times before the failure is
+        /// the entry's error, and a request that lands is shared structurally with the data the entry held
+        /// (<see cref="QueryOptions{T}.StructuralSharing"/>), as <c>useQuery</c> does.
         /// </remarks>
         /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
-        /// <param name="options">The key, the query function, and optional stale and garbage-collection times.</param>
+        /// <param name="options">The key, the query function, and optionally the stale and garbage-collection
+        /// times, the retry policy, the structural sharing and the result properties that re-render.</param>
         /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
         /// provides, and throws when no Provider supplies one.</param>
         /// <returns>The entry's state as this render reads it.</returns>
@@ -2141,17 +2146,15 @@ namespace Velvet
                 options.StaleTime ?? queryClient.DefaultStaleTime, nameof(QueryOptions<T>.StaleTime));
             var gcTime = QueryClient.RequireNonNegative(
                 options.GcTime ?? queryClient.DefaultGcTime, nameof(QueryOptions<T>.GcTime));
-            var key = options.QueryKey;
-            var queryFn = options.QueryFn;
 
             UseEffect(observer.UnmountEffect, Array.Empty<object?>());
             UseEffect((Func<Action?>)(() =>
             {
-                observer.Sync(queryClient, key, queryFn, staleTime, gcTime);
+                observer.Sync(queryClient, options, staleTime, gcTime);
                 return null;
             }));
 
-            return observer.Read(queryClient.Peek<T>(key), staleTime);
+            return observer.Read(queryClient.Peek<T>(options.QueryKey), staleTime);
         }
 
         #endregion

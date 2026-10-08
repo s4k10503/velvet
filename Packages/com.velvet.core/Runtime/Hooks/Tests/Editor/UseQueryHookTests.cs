@@ -20,7 +20,8 @@ namespace Velvet.Tests
     /// the request running for the other, and a component mounting while a refetch is in flight joins it.</item>
     /// <item>What a render reports: pending and fetching before any data, the data and the outcome flags once
     /// it lands, a refetch in flight beside the data, a failure beside the data an earlier request produced,
-    /// and the outcome of a query function that completes or throws before returning.</item>
+    /// which it leaves stale, and the outcome of a query function that completes or throws before returning,
+    /// which arrives a frame later so that readers mounting in one commit share the request.</item>
     /// <item>An entry keeps its result after its last reader unmounts, so a reader mounting again renders it
     /// on its first render, and refetches only once the result is as old as the stale time or the entry was
     /// invalidated. A result landing between a reader's render and its subscription re-renders it.</item>
@@ -49,7 +50,9 @@ namespace Velvet.Tests
     /// The query function records the key it was asked for and the token it was handed, and by default hands
     /// back a completion source the case settles itself, so a case reads which requests ran off
     /// <see cref="s_fetched"/>. The client's clock is <see cref="s_now"/>, advanced by hand. EditMode runs neither
-    /// passive effects nor scheduled re-renders on its own, so each case flushes them.
+    /// passive effects nor scheduled re-renders on its own, so each case flushes them. A query here retries
+    /// nothing and re-renders at every change, which <c>UseQueryRetryTests</c> and
+    /// <c>UseQueryTrackedPropsTests</c> specify.
     /// </remarks>
     [TestFixture]
     internal sealed class UseQueryHookTests
@@ -246,6 +249,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFreshResolvedQuery_When_ItsRefetchFails_Then_TheDataIsStale()
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            using var mounted = MountResolvedSolo(1);
+            Last(s_rendersA).Refetch();
+
+            // Act
+            s_sources[1].TrySetException(new InvalidOperationException("refetch-failed"));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).IsStale, Is.True,
+                "A failure flags the data it leaves in place as stale, so the next reader asks again");
+        }
+
+        [Test]
         public void Given_AFirstRequest_When_ItFails_Then_TheQueryRendersTheError()
         {
             // Arrange
@@ -262,54 +282,94 @@ namespace Velvet.Tests
                 "A subscribed query with no data reports its failure rather than a pending fetch");
         }
 
-        [Test]
-        public void Given_AQueryFunctionReturningACompletedResult_When_TheQueryMounts_Then_ItRendersTheResult()
+        [UnityTest]
+        public IEnumerator Given_AQueryFunctionReturningACompletedResult_When_AFrameAdvances_Then_ItRendersTheResult()
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_mode = FetchMode.CompletedResult;
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
 
             // Act
-            mounted.FlushEffectsForTest();
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
             mounted.FlushStateForTest();
 
             // Assert
             Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Data), Is.EqualTo((QueryStatus.Success, 5)),
-                "A result the query function hands back already completed settles the entry at once");
-        }
+                "A result the query function hands back already completed settles the entry a frame later");
+        });
 
-        [Test]
-        public void Given_AQueryFunctionThatThrowsBeforeReturning_When_TheQueryMounts_Then_ItRendersTheError()
+        [UnityTest]
+        public IEnumerator Given_AQueryFunctionThatThrowsBeforeReturning_When_AFrameAdvances_Then_ItRendersTheError()
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_mode = FetchMode.ThrowsSynchronously;
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
 
             // Act
-            mounted.FlushEffectsForTest();
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
             mounted.FlushStateForTest();
 
             // Assert
             Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Error?.Message),
                 Is.EqualTo((QueryStatus.Error, "threw-synchronously")),
                 "A query function that throws is a failed request, not a crash");
-        }
+        });
 
-        [Test]
-        public void Given_AQueryFunctionReturningACompletedFault_When_TheQueryMounts_Then_ItRendersTheError()
+        [UnityTest]
+        public IEnumerator Given_AQueryFunctionReturningACompletedFault_When_AFrameAdvances_Then_ItRendersTheError()
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_mode = FetchMode.CompletedFault;
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
 
             // Act
-            mounted.FlushEffectsForTest();
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
             mounted.FlushStateForTest();
 
             // Assert
             Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Error?.Message),
                 Is.EqualTo((QueryStatus.Error, "completed-fault")),
-                "A fault the query function hands back already completed settles the entry at once");
+                "A fault the query function hands back already completed settles the entry a frame later");
+        });
+
+        [Test]
+        public void Given_TwoComponentsReadingOneKeyWhoseFunctionReturnsACompletedResult_When_BothMount_Then_OneRequestRuns()
+        {
+            // Arrange
+            s_mode = FetchMode.CompletedResult;
+            using var mounted = V.Mount(_root, V.Component(Pair, key: "pair"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("[todos]"),
+                "The result arrives after every subscription of the commit, so the second reader joins the request "
+                + "rather than finding a stale result and asking again, as v5's does");
+        }
+
+        [Test]
+        public void Given_TwoComponentsReadingOneKeyWhoseFunctionThrowsBeforeReturning_When_BothMount_Then_OneRequestRuns()
+        {
+            // Arrange
+            s_mode = FetchMode.ThrowsSynchronously;
+            using var mounted = V.Mount(_root, V.Component(Pair, key: "pair"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("[todos]"),
+                "A failure arrives after the commit's subscriptions as a result does, so the second reader joins the request");
         }
 
         #endregion
@@ -1106,7 +1166,12 @@ namespace Velvet.Tests
         private static QueryOptions<int> Options(params object[] parts)
         {
             var key = new QueryKey(parts);
-            return new QueryOptions<int>(key, token => Fetch(key, token)) { StaleTime = s_staleTime };
+            return new QueryOptions<int>(key, token => Fetch(key, token))
+            {
+                StaleTime = s_staleTime,
+                Retry = 0,
+                NotifyOnChangeProps = QueryProperties.All,
+            };
         }
 
         private static VelvetTask<int> Fetch(QueryKey key, CancellationToken token)

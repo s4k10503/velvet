@@ -146,19 +146,25 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `useQuery({ queryKey: ['todos', id], queryFn })` | `Hooks.UseQuery(new QueryOptions<T>(new QueryKey("todos", id), ct => ...))` |
 | `useQuery(options, queryClient)` | `Hooks.UseQuery(options, client)` |
 | `staleTime` / `gcTime` on one query | `new QueryOptions<T>(...) { StaleTime = ..., GcTime = ... }` |
-| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` |
+| `retry` / `retryDelay` as a number and a function | `new QueryOptions<T>(...) { Retry = ..., RetryDelay = ... }`, or `QueryClientOptions.Retry` / `RetryDelay` for every query |
+| `structuralSharing` as a function | `new QueryOptions<T>(...) { StructuralSharing = (held, arrived) => ... }` |
+| `notifyOnChangeProps: ['data']` / `'all'` | `new QueryOptions<T>(...) { NotifyOnChangeProps = QueryProperties.Data }` / `QueryProperties.All` |
+| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` / `failureCount` / `failureReason` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` / `FailureCount` / `FailureReason` |
 | `refetch()` | `result.Refetch()` |
 | `queryClient.invalidateQueries({ queryKey })` | `client.InvalidateQueries(new QueryKey(...))` |
 | `queryClient.clear()` | `client.Clear()` |
 
 **One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
 under `object.Equals`, so a key rebuilt every render names the same entry, and a string, a boxed number,
-or a record or tuple of such values compares by content. A part that is a sequence whose type keeps
-`object`'s own `Equals` — an array, a list, a set, a dictionary — compares element by element, in order,
-as v5's structural hash compares an array; a sequence type that defines its own equality keeps it. A record
-or a tuple compares by its members' own `Equals`, so a collection held inside one compares by reference
-and names a new entry every time it is rebuilt — a fetch on every render. Give the collection a key part of
-its own. The Editor warns when a query's key changes on two commits running while printing the same.
+or a record or tuple of such values compares by content. A part that is a collection whose type keeps
+`object`'s own `Equals` compares by what it holds: an array or a list element by element, in order, as
+v5's structural hash compares an array; a dictionary by key and value whatever order its entries were
+added in, as v5 sorts an object's keys before hashing it; a set by element, in any order. A collection
+type that defines its own equality keeps it. A record or a tuple compares by its members' own `Equals`, so
+a collection held inside one compares by reference and names a new entry every time it is rebuilt — a
+fetch on every render. Give the collection a key part of its own. A collection part is enumerated on
+every comparison, so pass a materialised collection. The Editor warns when a query's key changes on two
+commits running while printing the same.
 Components reading one key share one entry and one request: the first to mount starts it and
 the rest join it. A component unmounting takes nothing from the others — the request belongs to the
 entry and runs on for them. The entry keeps its result after its last reader unmounts, so navigating
@@ -168,17 +174,48 @@ back renders that result on the first render instead of the pending state.
 renders it and fetches again in the background, with `IsFetching` true and `Status` still `Success`. A
 result is stale once its age reaches `StaleTime`, and `TimeSpan.MaxValue` keeps it fresh until it is
 invalidated. `Data` is the last successful result and stays through a later failure and through a
-refetch. `QueryClientOptions.Clock` replaces the client's stopwatch, for game time that pauses or a
+refetch; a failed request marks it stale, so the next component to mount over it fetches again. `QueryClientOptions.Clock` replaces the client's stopwatch, for game time that pauses or a
 test that advances time by hand.
+
+**Retries.** A request that fails runs again up to `Retry` times before the failure becomes the entry's
+error: three by default, as in v5, set for every query on `QueryClientOptions` or for one on its
+`QueryOptions`, where zero or less retries nothing. The wait before each retry is `RetryDelay`, which is
+handed the number of failures before this one and the exception; by default one second, doubled at each
+failure and capped at thirty seconds, as in v5. The wait is measured on the client's `Clock`, is checked
+once a frame, and lasts at least one frame. While a retry waits, the request is still in flight:
+`IsFetching` stays true, `Status` and `Error` stay what they were, which is `Pending` and none for an entry
+with no data, and `FailureCount` and `FailureReason` report the failures so far; a request that lands
+resets both. A query function that throws before it returns a task fails the request as one returning a
+faulted task does. With its last reader gone a request in flight finishes but is not retried, and a
+reader that mounts and joins it lets its retries go on, as in v5.
+
+**Re-rendering.** A component re-renders when a property of the result that it has read changes, as
+`useQuery` tracks them: one that reads only `Data` does not re-render when a request goes into flight or
+lands the value it already held. Until the component has read any property, every change to the result
+re-renders it. `NotifyOnChangeProps` replaces what was read with a list — `QueryProperties.All` re-renders
+at every change to the result, `QueryProperties.None` never. A property changes when its value does; `Data` is compared by
+instance where it is a class and by value where it is a struct. Clearing the client re-renders every
+component reading it, whatever it has read.
+
+**Sharing data between results.** When a request lands, `Data` keeps the instance the entry already held
+if the new result is deeply equal to it, and keeps the equal parts of it if it is not, which is
+`replaceEqualDeep`, v5's default `structuralSharing`. An array, a `List<T>` and a `Dictionary<TKey, TValue>`
+are compared element by element and entry by entry, and a dictionary keeps its comparer; a string, a
+number, a struct and a record are equal when `Equals` says so; any other class is kept only as the very
+instance held. A record compares a collection it holds by reference, so one holding a collection equals
+another only if they hold the same instance of it, and its members are not shared when the record differs. `StructuralSharing` replaces all
+of that with a function of the data held, default when there is none, and the data that arrived; one that
+throws fails the request.
 
 **Changing the key** moves the component to that key's entry: it renders that entry's data, or none,
 and a result the old key's request delivers afterwards is never shown as the new key's. There is no
 `placeholderData` yet, so a key with nothing cached renders `Pending`.
 
-**Invalidating after a mutation.** `InvalidateQueries` takes the leading parts of a key, as v5's
-non-exact filter does with an array key: `new QueryKey("todos")` matches `["todos", 1]` and `["todos"]`
-alike. Each part must equal its counterpart whole; v5 also matches an object part partially, on the
-properties the filter names, which this does not. A matching entry a
+**Invalidating after a mutation.** `InvalidateQueries` takes a filter, as v5's non-exact
+`partialMatchKey` does: `new QueryKey("todos")` matches `["todos", 1]` and `["todos"]` alike. A filter part
+that is an array or a list matches a part that starts with it, one that is a dictionary matches a part
+holding at least the entries it names, each value matched the same way, and any other part, a set
+included, must equal its counterpart whole. A matching entry a
 mounted component reads is fetched again; a request already in flight for it is cancelled and started
 over when the entry holds data, so a result fetched before the write does not land as current. An entry
 nothing reads is only marked stale, and is fetched by the next component that mounts over it.
@@ -195,17 +232,12 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 - Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
   absent from then on, and is removed the next time a query subscribes to the client or
   `InvalidateQueries` runs; removing it cancels the request it still has in flight.
-- A dictionary or set part compares in its enumeration order, where v5 sorts an object's keys before
-  hashing. A sequence part is enumerated on every comparison, so pass a materialised collection.
-- No structural sharing: each successful request replaces `Data` with the instance it returned, where v5
-  keeps the previous instance, or the unchanged parts of it, when the new result is deeply equal.
-- A request going into flight and a request landing each re-render every component reading the entry,
-  one landing a result equal to the last included; v5 re-renders only for the result properties a
-  component read.
-- A query function returning a task that has already completed settles the entry before the next
-  reader in the same commit subscribes, so with the default `StaleTime` of zero that reader finds the
-  result stale and requests it again. v5's result arrives a microtask later, after every subscription
-  of the commit, so the readers share one request there.
+- A query function that returns a task that has already completed, or throws before returning one,
+  settles the entry a frame later, after every subscription of the commit, so readers mounting together
+  share one request; v5's result arrives a microtask later.
+- Structural sharing does not enter the members of a record that differs, where v5 shares the equal
+  properties of a changed object: a record is kept or replaced whole, because Velvet does not rebuild
+  one.
 - The `CancellationToken` a query function receives is cancelled when a refetch starts that request
   over, when the entry is removed, and by `Clear`. v5 also aborts a request whose function read its
   signal once the last observer unsubscribes; here it runs on, so a component mounting again finds its
@@ -214,9 +246,9 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
   whose function read its signal.
 - `UseQuery` never suspends: with no data yet it returns `Pending`. There is no `useSuspenseQuery`.
 - A key holds one data type. A query reading it as another throws `InvalidOperationException`.
-- Not yet available: retries (v5 retries a failure three times by default; here a failure is an error at
-  once), `enabled`, `select`, `placeholderData`, `refetchInterval`, `refetchOnWindowFocus` and
-  `refetchOnReconnect`, and `getQueryData` / `setQueryData`.
+- Not yet available: `retry` as a function or `true`, retries that pause while the application is
+  unfocused or offline (`networkMode`), `enabled`, `select`, `placeholderData`, `refetchInterval`,
+  `refetchOnWindowFocus` and `refetchOnReconnect`, and `getQueryData` / `setQueryData`.
 
 ### 1-3. State Management (React + Zustand)
 

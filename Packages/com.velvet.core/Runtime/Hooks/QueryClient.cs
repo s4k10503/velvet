@@ -28,6 +28,20 @@ namespace Velvet
         public TimeSpan GcTime { get; init; } = TimeSpan.FromMinutes(5);
 
         /// <summary>
+        /// How many times a failed request runs again before the failure is the entry's error: TanStack
+        /// Query's <c>retry</c> given as a number, whose default is three. Zero or less retries nothing.
+        /// </summary>
+        public int Retry { get; init; } = 3;
+
+        /// <summary>
+        /// The wait before the next request, from the number of failures before this one and this failure's
+        /// exception: TanStack Query's <c>retryDelay</c>. When null, one second doubled at each failure and
+        /// capped at thirty seconds, TanStack Query's default. The wait is measured on <see cref="Clock"/>
+        /// and checked once a frame, and lasts at least one frame.
+        /// </summary>
+        public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
+
+        /// <summary>
         /// A monotonic clock the client reads instead of its own stopwatch, for a host that measures time
         /// differently — game time that pauses, or a clock a test advances by hand.
         /// </summary>
@@ -66,6 +80,9 @@ namespace Velvet
     {
         private readonly Dictionary<QueryKey, QueryEntry> _entries = new();
         private readonly List<QueryEntry> _inactive = new();
+        private static readonly Func<int, Exception, TimeSpan> s_exponentialBackoff
+            = (failureCount, _) => TimeSpan.FromMilliseconds(Math.Min(1000d * Math.Pow(2d, failureCount), 30000d));
+
         private readonly Func<TimeSpan> _clock;
         // Advanced by every render that reads this client, so an entry whose last reader left under the current
         // value left after the render whose effects are subscribing now.
@@ -78,6 +95,8 @@ namespace Velvet
             options ??= new QueryClientOptions();
             DefaultStaleTime = RequireNonNegative(options.StaleTime, nameof(QueryClientOptions.StaleTime));
             DefaultGcTime = RequireNonNegative(options.GcTime, nameof(QueryClientOptions.GcTime));
+            DefaultRetry = options.Retry;
+            DefaultRetryDelay = options.RetryDelay ?? s_exponentialBackoff;
             if (options.Clock != null)
             {
                 _clock = options.Clock;
@@ -95,21 +114,28 @@ namespace Velvet
         /// <summary>The garbage-collection time a query that sets none of its own uses.</summary>
         public TimeSpan DefaultGcTime { get; }
 
+        /// <summary>The number of retries a query that sets none of its own uses.</summary>
+        public int DefaultRetry { get; }
+
+        /// <summary>The retry delay a query that sets none of its own uses.</summary>
+        public Func<int, Exception, TimeSpan> DefaultRetryDelay { get; }
+
         /// <summary>
-        /// Marks every entry whose key starts with <paramref name="queryKey"/> stale, and fetches again each
-        /// one a mounted query is reading — TanStack Query's <c>invalidateQueries({ queryKey })</c>. For such
+        /// Marks every entry whose key <paramref name="queryKey"/> matches stale, and fetches again each
+        /// one a mounted query is reading — TanStack Query's <c>invalidateQueries({ queryKey })</c>, with the
+        /// partial match of its filter that <see cref="QueryKey"/> describes. For such
         /// an entry, a request already in flight is cancelled and started over when the entry holds data, so
         /// a result fetched before the change that invalidated it does not land as current, and joined when
         /// the entry is still waiting on its first result. An entry nothing reads is not fetched: a query
         /// mounting over it later fetches it, and a request it already had in flight is left to land.
         /// </summary>
-        /// <param name="queryKey">The leading parts to match; null matches every entry.</param>
+        /// <param name="queryKey">The filter; null matches every entry.</param>
         public void InvalidateQueries(QueryKey? queryKey = null)
         {
             CollectGarbage();
             foreach (var entry in SnapshotEntries())
             {
-                if (queryKey == null || entry.Key.StartsWith(queryKey))
+                if (queryKey == null || entry.Key.Matches(queryKey))
                 {
                     entry.Invalidate();
                 }
@@ -245,6 +271,7 @@ namespace Velvet
     {
         private readonly List<QueryObserver<T>> _observers = new();
         private CancellationTokenSource? _inFlight;
+        private bool _retriesStopped;
         private TimeSpan _dataUpdatedAt;
 
         internal QueryEntry(QueryClient client, QueryKey key, TimeSpan gcTime) : base(client, key, gcTime)
@@ -256,13 +283,11 @@ namespace Velvet
         internal bool HasData { get; private set; }
         internal T Data { get; private set; } = default!;
         internal Exception? Error { get; private set; }
+        internal int FailureCount { get; private set; }
+        internal Exception? FailureReason { get; private set; }
         internal bool IsInvalidated { get; private set; }
         internal bool IsRemoved { get; private set; }
         internal bool IsFetching => _inFlight != null;
-
-        // Advanced each time a request is left in flight or settles, so an observer subscribing after its
-        // render can tell whether that render saw the current state.
-        internal int Version { get; private set; }
 
         internal bool IsStaleFor(TimeSpan staleTime)
             => !HasData || IsInvalidated || Client.Now - _dataUpdatedAt >= staleTime;
@@ -273,127 +298,202 @@ namespace Velvet
             if (_observers.Count == 1) Client.MarkActive(this);
             if (IsStaleFor(observer.StaleTime))
             {
-                Fetch(observer.QueryFn, cancelRefetch: false);
+                Fetch(observer, cancelRefetch: false);
             }
         }
 
+        // With the last observer gone, a request in flight finishes but is not retried: TanStack's
+        // removeObserver calls cancelRetry where it leaves the request running.
         internal void Unsubscribe(QueryObserver<T> observer)
         {
             if (!_observers.Remove(observer) || _observers.Count > 0 || IsRemoved) return;
+            _retriesStopped = true;
             Client.MarkInactive(this);
         }
 
         // cancelRefetch is TanStack's fetch option of the same name: an explicit refetch over an entry that
-        // holds data starts over, and every other request joins the one in flight.
-        internal void Fetch(Func<CancellationToken, VelvetTask<T>> queryFn, bool cancelRefetch)
+        // holds data starts over, and every other request joins the one in flight, which retries again if
+        // its retries had been stopped.
+        internal void Fetch(QueryObserver<T> observer, bool cancelRefetch)
         {
             if (IsRemoved) return;
             if (_inFlight != null)
             {
-                if (!cancelRefetch || !HasData) return;
+                if (!cancelRefetch || !HasData)
+                {
+                    _retriesStopped = false;
+                    return;
+                }
                 CancelInFlight();
             }
 
-            var cts = new CancellationTokenSource();
-            _inFlight = cts;
+            var request = new CancellationTokenSource();
+            _inFlight = request;
+            _retriesStopped = false;
+            FailureCount = 0;
+            FailureReason = null;
             if (!HasData)
             {
                 Status = QueryStatus.Pending;
                 Error = null;
             }
 
-            VelvetTask<T> task;
-            try
-            {
-                task = queryFn(cts.Token);
-            }
-            catch (Exception ex)
-            {
-                Settle(cts, default!, ex);
-                return;
-            }
+            Notify();
+            RunAsync(observer, request).Forget();
+        }
 
-            if (task.Status.IsCompleted())
+        private async VelvetTask RunAsync(QueryObserver<T> observer, CancellationTokenSource request)
+        {
+            var queryFn = observer.QueryFn;
+            var maxRetries = observer.MaxRetries;
+            var retryDelay = observer.RetryDelay;
+            for (var failures = 0; ; failures++)
             {
-                T result;
+                T data = default!;
+                Exception? failure = null;
+                var token = request.Token;
+                var task = Start(queryFn, token);
                 try
                 {
-                    result = task.GetAwaiter().GetResult();
+                    // A task that has already completed is held back one frame, so that readers subscribing in
+                    // the commit that started this request join it rather than finding its result, as v5's
+                    // result arrives a microtask later. UseQueryHookTests pins it with two readers mounting
+                    // together.
+                    if (task.Status.IsCompleted()) await VelvetTask.Yield();
+                    data = await task.AttachExternalCancellation(token);
+                }
+                // Same gate as FiberAsyncResource.AwaitAsync: a cancellation this entry asked for records
+                // nothing, and one raised by a token the query function owns is an error.
+                catch (OperationCanceledException) when (request.IsCancellationRequested)
+                {
+                    return;
                 }
                 catch (Exception ex)
                 {
-                    Settle(cts, default!, ex);
+                    failure = ex;
+                }
+
+                if (request.IsCancellationRequested) return;
+                if (failure == null)
+                {
+                    Succeed(request, data, observer.StructuralSharing, failures);
                     return;
                 }
-                Settle(cts, result, null);
-                return;
-            }
 
-            Version++;
-            Notify();
-            AwaitAsync(task, cts).Forget();
+                if (failures >= maxRetries || _retriesStopped)
+                {
+                    Fail(request, failure, failures);
+                    return;
+                }
+
+                RecordFailure(request, failures + 1, failure);
+                await WaitFor(retryDelay(failures, failure), request);
+                if (request.IsCancellationRequested) return;
+                if (_retriesStopped)
+                {
+                    Fail(request, failure, failures);
+                    return;
+                }
+            }
         }
 
-        private async VelvetTask AwaitAsync(VelvetTask<T> task, CancellationTokenSource cts)
+        // A query function that throws before returning a task fails the request as one returning a faulted
+        // task does.
+        private static VelvetTask<T> Start(Func<CancellationToken, VelvetTask<T>> queryFn, CancellationToken token)
         {
-            T result;
             try
             {
-                result = await task.AttachExternalCancellation(cts.Token);
-            }
-            // Same gate as FiberAsyncResource.AwaitAsync: a cancellation this entry asked for records
-            // nothing, and one raised by a token the query function owns is an error.
-            catch (OperationCanceledException) when (cts.IsCancellationRequested)
-            {
-                return;
+                return queryFn(token);
             }
             catch (Exception ex)
             {
-                Settle(cts, default!, ex);
-                return;
+                return VelvetTask.FromException<T>(ex);
             }
-            Settle(cts, result, null);
         }
 
-        private void Settle(CancellationTokenSource request, T data, Exception? error)
+        // At least one frame, as v5 sleeps through a timer even for a zero delay.
+        private async VelvetTask WaitFor(TimeSpan delay, CancellationTokenSource request)
         {
-            // A request stops being the one in flight when something cancels it or removes the entry.
-            // Cancelling it ends AwaitAsync in its cancellation catch, except where the request completed on
-            // another thread first: that completion is already posted to the main thread and arrives here.
+            var start = Client.Now;
+            do
+            {
+                await VelvetTask.Yield();
+            }
+            while (!request.IsCancellationRequested && Client.Now - start < delay);
+        }
+
+        private void Succeed(CancellationTokenSource request, T data, Func<T?, T, T>? sharing, int failures)
+        {
+            // A request stops being the one in flight when something cancels it or removes the entry, and a
+            // completion already posted to the main thread by then still arrives here.
             if (!ReferenceEquals(_inFlight, request)) return;
+            T shared;
+            try
+            {
+                var held = HasData ? Data : default;
+                shared = sharing != null ? sharing(held, data) : QueryStructuralSharing.Replace(held, data);
+            }
+            catch (Exception ex)
+            {
+                Fail(request, ex, failures);
+                return;
+            }
+
+            End(request);
+            Data = shared;
+            HasData = true;
+            Error = null;
+            Status = QueryStatus.Success;
+            IsInvalidated = false;
+            FailureCount = 0;
+            FailureReason = null;
+            _dataUpdatedAt = Client.Now;
+            Notify();
+        }
+
+        private void Fail(CancellationTokenSource request, Exception error, int failures)
+        {
+            if (!ReferenceEquals(_inFlight, request)) return;
+            End(request);
+            // The last good data stays beside the error, as TanStack keeps it, and stale: TanStack flags it
+            // invalidated so that the next reader fetches again.
+            Error = error;
+            Status = QueryStatus.Error;
+            IsInvalidated = true;
+            FailureCount = failures + 1;
+            FailureReason = error;
+            Notify();
+        }
+
+        private void RecordFailure(CancellationTokenSource request, int failureCount, Exception error)
+        {
+            if (!ReferenceEquals(_inFlight, request)) return;
+            FailureCount = failureCount;
+            FailureReason = error;
+            Notify();
+        }
+
+        private void End(CancellationTokenSource request)
+        {
             _inFlight = null;
             // MUTANT_SURVIVES(equivalent, line removed): nothing cancels a settled request again, so its source only waits for collection.
             request.Dispose();
-            if (error == null)
-            {
-                Data = data;
-                HasData = true;
-                Error = null;
-                Status = QueryStatus.Success;
-                IsInvalidated = false;
-                _dataUpdatedAt = Client.Now;
-            }
-            else
-            {
-                // The last good data stays beside the error, as TanStack keeps it.
-                Error = error;
-                Status = QueryStatus.Error;
-            }
-            Version++;
-            Notify();
         }
 
         internal override void Invalidate()
         {
             IsInvalidated = true;
-            if (_observers.Count > 0) Fetch(_observers[0].QueryFn, cancelRefetch: true);
+            if (_observers.Count > 0) Fetch(_observers[0], cancelRefetch: true);
         }
 
         internal override void Remove()
         {
             IsRemoved = true;
             CancelInFlight();
-            Notify();
+            foreach (var observer in _observers.ToArray())
+            {
+                observer.OnChange();
+            }
         }
 
         private void CancelInFlight()
@@ -411,7 +511,7 @@ namespace Velvet
             {
                 FiberLogger.LogException(nameof(QueryClient), cancellationFailure);
             }
-            // MUTANT_SURVIVES(equivalent, line removed): the source is cancelled already, and AwaitAsync's catch reads only IsCancellationRequested, which disposal leaves alone.
+            // MUTANT_SURVIVES(equivalent, line removed): the source is cancelled already, and RunAsync's catch reads only IsCancellationRequested, which disposal leaves alone.
             cts.Dispose();
         }
 
@@ -419,7 +519,7 @@ namespace Velvet
         {
             foreach (var observer in _observers.ToArray())
             {
-                observer.OnChange();
+                observer.Update();
             }
         }
     }
