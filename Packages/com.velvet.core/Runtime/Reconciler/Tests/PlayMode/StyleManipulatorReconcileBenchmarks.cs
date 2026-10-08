@@ -49,6 +49,7 @@ namespace Velvet.Tests.Performance
         }
 
         // Element creation runs the create branch of every family.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
         [Test, Performance]
         public void Mount_100StyledRows()
         {
@@ -70,6 +71,7 @@ namespace Velvet.Tests.Performance
         // class diff runs its full content comparison — which reports no change, leaving the four
         // variant families unvisited. What remains is the every-patch cost of child-variant / gap /
         // divide / grid / pointer-events.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
         [Test, Performance]
         public void Reconcile_UnchangedClassList_100StyledRows()
         {
@@ -93,6 +95,7 @@ namespace Velvet.Tests.Performance
         // the USS class list, so the class diff itself does almost nothing while all four variant
         // families take their update branch on every row: the warm path a consolidation of the
         // configure shape has to leave untouched.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
         [Test, Performance]
         public void Reconcile_ChangedClassList_100StyledRows()
         {
@@ -113,6 +116,7 @@ namespace Velvet.Tests.Performance
         // FiberElementCleaner and never reaches the configure step at all.
         // Measured as a round trip because a single strip only tears down on its first iteration;
         // re-decorating first puts every iteration back on the teardown branch.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
         [Test, Performance]
         public void Reconcile_StripAndRestoreClassList_100StyledRows()
         {
@@ -231,9 +235,11 @@ namespace Velvet.Tests.Performance
             VelvetTheme.IsDark = _darkBefore;
         }
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this case is untouched and is selected only because the first fixture in this file changed its row-class constants.
         [Test, Performance]
         public void Reconcile_UnchangedClassList_100LiteralPaintRows() => Run(k_PlainRowClass, dark: false);
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this case is untouched and is selected only because the first fixture in this file changed its row-class constants.
         [Test, Performance]
         public void Reconcile_UnchangedClassList_100VariantGatedPaintRows() => Run(k_VariantRowClass, dark: true);
 
@@ -311,9 +317,11 @@ namespace Velvet.Tests.Performance
         [TearDown]
         public void TearDown() => _reconciler.Dispose();
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this case is untouched and is selected only because the first fixture in this file changed its row-class constants.
         [Test, Performance]
         public void Reconcile_ToggleVisible_200Rows() => Run(k_PlainRowClass);
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this case is untouched and is selected only because the first fixture in this file changed its row-class constants.
         [Test, Performance]
         public void Reconcile_ToggleVisible_200RowsWithASuppressedClass() => Run(k_SuppressingRowClass);
 
