@@ -1229,7 +1229,8 @@ namespace Velvet
         /// where <paramref name="deps"/> restarts the sequence, so a later <c>controls.Pause()</c> is not fought
         /// by a re-render that keeps passing <c>autoplay: true</c>.</param>
         /// <param name="loop">When true, the cursor wraps to step 0 after the last step's hold elapses and
-        /// <see cref="AnimationSequenceState.IsComplete"/> never latches.</param>
+        /// <see cref="AnimationSequenceState.IsComplete"/> latches only for an empty <paramref name="steps"/>
+        /// list.</param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay = true, bool loop = false)
             => PlayAnimationSequence(steps, deps, autoplay, loop ? (int?)null : 1);
@@ -1245,9 +1246,9 @@ namespace Velvet
         /// <param name="deps">As on the overload taking <c>loop</c>. A restart, from a changed entry here or
         /// from <c>controls.Restart()</c>, plays every pass again.</param>
         /// <param name="iterations">The number of passes, counting the first: Framer Motion's <c>repeat: n</c>
-        /// is <c>n + 1</c> here. Zero plays no pass, so no step commits and the sequence is complete from the
-        /// start. A count a re-render changes reaches a sequence still playing at the end of its current pass;
-        /// a completed one stays complete until a restart. Throws
+        /// is <c>n + 1</c> here. Zero plays no pass, so no step commits and the sequence reads complete from its
+        /// mount render on. A count a re-render changes reaches a sequence still playing at the end of its
+        /// current pass; a completed one stays complete until a restart. Throws
         /// <see cref="ArgumentOutOfRangeException"/> when negative.</param>
         /// <param name="autoplay">As on the overload taking <c>loop</c>.</param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
@@ -1313,7 +1314,12 @@ namespace Velvet
                     bumpRenderVersion.Invoke(v => v + 1);
                 });
 
-            return (walker.Current.ToState(), controls);
+            // Before the mount effect's first reseed the walker has seen no steps, so it would read a sequence
+            // that plays nothing as not yet complete for the whole mount render.
+            var state = !walker.Current.HasReseeded && (iterations == 0 || steps.Count == 0)
+                ? new AnimationSequenceState(null, null, 0, true)
+                : walker.Current.ToState();
+            return (state, controls);
         }
 
         #endregion

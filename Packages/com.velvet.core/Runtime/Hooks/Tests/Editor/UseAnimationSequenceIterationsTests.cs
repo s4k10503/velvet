@@ -19,6 +19,8 @@ namespace Velvet.Tests
         private static AnimationSequenceState s_state;
         private static AnimationSequenceControls s_controls;
         private static int s_callCount;
+        private static int s_renderCount;
+        private static AnimationSequenceState s_firstRenderState;
 
         [SetUp]
         public void SetUp()
@@ -26,6 +28,7 @@ namespace Velvet.Tests
             _host = new HeadlessEditorPanelHost();
             UseFrameFakeClockHost.Reset();
             s_callCount = 0;
+            s_renderCount = 0;
         }
 
         [TearDown]
@@ -41,6 +44,10 @@ namespace Velvet.Tests
         private static VNode IteratingSequenceHost()
         {
             var (state, controls) = Hooks.UseAnimationSequence(s_steps, Array.Empty<object>(), iterations: s_iterations);
+            if (s_renderCount++ == 0)
+            {
+                s_firstRenderState = state;
+            }
             s_state = state;
             s_controls = controls;
             return V.Div(className: "w-[10px] h-[10px]");
@@ -162,6 +169,65 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((s_callCount, s_state.CurrentLabel, s_state.IsComplete), Is.EqualTo((0, (string)null, true)));
+        }
+
+        [Test]
+        public void Given_ZeroIterations_When_TheMountRenderRuns_Then_ItAlreadyReadsComplete()
+        {
+            // Arrange
+            s_steps = TwoLabels();
+            s_iterations = 0;
+
+            // Act
+            Mount();
+
+            // Assert
+            Assert.That(s_firstRenderState.IsComplete, Is.True);
+        }
+
+        [Test]
+        public void Given_TwoIterations_When_TheMountRenderRuns_Then_ItReadsNotComplete()
+        {
+            // Arrange
+            s_steps = TwoLabels();
+            s_iterations = 2;
+
+            // Act
+            Mount();
+
+            // Assert
+            Assert.That(s_firstRenderState.IsComplete, Is.False);
+        }
+
+        [Test]
+        public void Given_AnEmptyStepList_When_TheMountRenderRuns_Then_ItAlreadyReadsComplete()
+        {
+            // Arrange
+            s_steps = Array.Empty<AnimationSequenceStep>();
+            s_iterations = 2;
+
+            // Act
+            Mount();
+
+            // Assert
+            Assert.That(s_firstRenderState.IsComplete, Is.True);
+        }
+
+        [Test]
+        public void Given_ThreeIterationsLoweredToZeroDuringTheFirstPass_When_TheFirstPassEnds_Then_TheSequenceIsCompleteOnTheLastStep()
+        {
+            // Arrange — 0.144s of ticks lands on "b", and that step change's re-render reads the lowered count.
+            s_steps = TwoLabels();
+            s_iterations = 3;
+            Mount();
+            s_iterations = 0;
+            AdvancePast(0.12f);
+
+            // Act — 0.32s in all, inside the second pass were it still playing.
+            AdvancePast(0.15f);
+
+            // Assert
+            Assert.That((s_state.StepIndex, s_state.CurrentLabel, s_state.IsComplete), Is.EqualTo((1, "b", true)));
         }
 
         [Test]

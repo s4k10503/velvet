@@ -103,8 +103,8 @@ namespace Velvet
         public int StepIndex { get; }
 
         /// <summary>
-        /// True once the cursor has advanced past the last step of the last pass, and from the start for zero
-        /// <c>iterations</c> or an empty <c>steps</c> list. Under <c>loop</c>, latches only for an empty list.
+        /// True once the cursor has advanced past the last step of the last pass, and from the mount render on
+        /// for zero <c>iterations</c> or an empty <c>steps</c> list. Under <c>loop</c>, latches only for an empty list.
         /// </summary>
         public bool IsComplete { get; }
 

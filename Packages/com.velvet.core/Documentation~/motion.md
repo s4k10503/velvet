@@ -516,9 +516,15 @@ API's `iterations` and CSS's `animation-iteration-count`, so the count includes 
 Motion's `repeat: 2` is `iterations: 3`. Each pass after the first starts again at step 0, re-committing
 its effect as `loop` does, and `IsComplete` latches once the last pass's last hold elapses, leaving the
 cursor on the last step. `iterations: 0` plays no pass: no step commits, no `Call` fires, and the sequence
-is complete from the start. A negative count throws `ArgumentOutOfRangeException`. A restart plays every
-pass again. A count changed by a re-render reaches a sequence still playing at the end of its current
-pass; a completed one stays complete until it restarts.
+reads complete from its mount render on. A negative count throws `ArgumentOutOfRangeException`. A restart
+plays every pass again. A count changed by a re-render reaches a sequence still playing at the end of its
+current pass; a completed one stays complete until it restarts.
+
+Where this differs from the Web Animations API and CSS: a count lowered below the pass in progress
+finishes the sequence at the end of that pass, where the Web Animations API finishes it at once; the
+count is a whole number, where both accept a fraction such as `2.5`; and a finished sequence keeps its
+last step current, as `animation-fill-mode: forwards` would, while `iterations: 0` commits nothing, as
+the default `animation-fill-mode: none` would.
 
 An alternate direction (CSS's `animation-direction: alternate`, Framer Motion's `repeatType: "reverse"`)
 is not offered: playing a `Call` step backwards has no settled answer to whether its callback fires

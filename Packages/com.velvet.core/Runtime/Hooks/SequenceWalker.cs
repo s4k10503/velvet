@@ -50,6 +50,8 @@ namespace Velvet
         // commits no step, and at each pass's end.
         public int? Iterations { get; set; } = 1;
 
+        public bool HasReseeded { get; private set; }
+
         // Re-seeds the walker at step 0 and immediately commits its effect. Called once per mount (or deps
         // change) from Hooks.UseAnimationSequence's effect, and again from controls.Restart(). Reentrant-safe:
         // a Call step's own callback invoking this (directly, or via controls.Restart()) while an arrival is
@@ -67,8 +69,8 @@ namespace Velvet
         // Advances the cursor by dt seconds, committing every step whose hold elapses along the way (a
         // zero-hold Wait/Call chain can cross several steps within one call). Returns the committed step
         // index so the caller can diff it against its own re-render trigger. The iteration count is bounded to
-        // _steps.Count + 1 so an all-zero-hold loop (with loop: true) cannot spin forever inside one call — it
-        // still keeps progressing on every subsequent frame instead.
+        // _steps.Count + 1 so an all-zero-hold sequence playing more than one pass — without end, or a count
+        // above one — cannot spin forever inside one call; it carries on over the frames after.
         public int Advance(float dt)
         {
             if (_isComplete || _steps.Count == 0)
@@ -117,6 +119,7 @@ namespace Velvet
             _steps = steps;
             _stepIndex = 0;
             _passesCompleted = 0;
+            HasReseeded = true;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
             _currentLabel = null;
