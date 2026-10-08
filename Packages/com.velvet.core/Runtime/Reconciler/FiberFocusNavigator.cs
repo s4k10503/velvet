@@ -281,10 +281,11 @@ namespace Velvet
 
         private static void OnNavigationMove(NavigationMoveEvent evt, VisualElement panelRoot, ReconcilerContext ctx)
         {
-            // Spatial moves always fall through to the engine's own 2D navigation.
+            // Spatial moves fall through to the engine's own 2D navigation, but for an excluded axis.
             var forward = evt.direction == NavigationMoveEvent.Direction.Next;
             if (!forward && evt.direction != NavigationMoveEvent.Direction.Previous)
             {
+                IgnoreExcludedAxisMove(evt, panelRoot, ctx);
                 return;
             }
             var panel = panelRoot.panel;
@@ -695,7 +696,7 @@ namespace Velvet
             // Ahead of the placeholder forwarding below, which would carry a landing on a placeholder
             // outside the group on to whatever that placeholder stands for.
             if (IsSpatialMove(evt.direction)
-                && TryHoldInSingleTabStopGroup(target, evt.relatedTarget as VisualElement, evt.direction, ctx))
+                && TryHoldInSingleTabStopGroup(target, evt.relatedTarget as VisualElement, ctx))
             {
                 return;
             }
@@ -798,18 +799,14 @@ namespace Velvet
         }
 
         // Arrow/d-pad moves never leave a SingleTabStop group, the composite-widget contract whose Tab half
-        // TryHandleSingleTabStopGroupExit owns, and a group with an orientation keeps a move on the other axis
-        // on its member too. The engine's 2D search is not public, so the move is corrected after it lands
-        // rather than predicted: a landing the group does not allow returns to the member the move started from.
+        // TryHandleSingleTabStopGroupExit owns. The engine's 2D search is not public, so the move is corrected
+        // after it lands rather than predicted: a landing outside the group returns to the member the
+        // move started from.
         private static bool TryHoldInSingleTabStopGroup(
-            VisualElement target, VisualElement? relatedTarget, FocusChangeDirection direction, ReconcilerContext ctx)
+            VisualElement target, VisualElement? relatedTarget, ReconcilerContext ctx)
         {
-            var groupRoot = FindOutermostSingleTabStopRoot(relatedTarget, ctx, out var binding);
-            if (groupRoot == null)
-            {
-                return false;
-            }
-            if (groupRoot.Contains(target) && !IsExcludedAxis(binding!.Settings.Orientation, direction))
+            var groupRoot = FindOutermostSingleTabStopRoot(relatedTarget, ctx, out _);
+            if (groupRoot == null || groupRoot.Contains(target))
             {
                 return false;
             }
@@ -818,14 +815,32 @@ namespace Velvet
             return true;
         }
 
-        // The engine hands a spatial move to FocusIn as Left 1, Right 2, Up 3, Down 4;
-        // FocusScopeOrientationPlaybackTests holds each axis to that.
-        private static bool IsExcludedAxis(FocusScopeOrientation orientation, FocusChangeDirection direction)
+        // A move on the axis a group's orientation excludes is ignored before the focus controller acts on it,
+        // so no member receives focus events for it. The event still propagates, which leaves a slider or a
+        // text field inside the group its own use of the arrow.
+        private static void IgnoreExcludedAxisMove(NavigationMoveEvent evt, VisualElement panelRoot, ReconcilerContext ctx)
         {
-            int value = direction;
-            var horizontal = value is 1 or 2;
-            return orientation == (horizontal ? FocusScopeOrientation.Vertical : FocusScopeOrientation.Horizontal);
+            var controller = panelRoot.panel?.focusController;
+            if (controller?.focusedElement is not VisualElement focused)
+            {
+                return;
+            }
+            var groupRoot = FindOutermostSingleTabStopRoot(focused, ctx, out var binding);
+            if (groupRoot != null && ExcludesAxis(binding!.Settings.Orientation, evt.direction))
+            {
+                controller.IgnoreEvent(evt);
+            }
         }
+
+        private static bool ExcludesAxis(FocusScopeOrientation orientation, NavigationMoveEvent.Direction direction)
+            => direction switch
+            {
+                NavigationMoveEvent.Direction.Left or NavigationMoveEvent.Direction.Right
+                    => orientation == FocusScopeOrientation.Vertical,
+                NavigationMoveEvent.Direction.Up or NavigationMoveEvent.Direction.Down
+                    => orientation == FocusScopeOrientation.Horizontal,
+                _ => false,
+            };
 
         // A spatial move reaches FocusIn under a direction that is neither sequential nor the unspecified
         // one a pointer press and a programmatic Focus() carry. FocusScopeSingleTabStopPlaybackTests holds

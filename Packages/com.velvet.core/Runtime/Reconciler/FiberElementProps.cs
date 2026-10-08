@@ -242,7 +242,8 @@ namespace Velvet
     /// remaining members (wrapping within the nearest containing scope, if any); Tab entering from outside
     /// — in either direction — lands on the last-focused member, else the scope's first. Members keep
     /// tabIndex 0, so engine 2D arrow/dpad navigation moves between them; a 2D move that lands outside the
-    /// subtree returns to the member it started from.</param>
+    /// subtree returns to the member it started from, and <see cref="Orientation"/> ignores one axis's
+    /// moves.</param>
     public sealed record FocusScopeSettings(
         bool Contain = false,
         bool RestoreFocus = false,
@@ -250,9 +251,10 @@ namespace Velvet
         bool SingleTabStop = false)
     {
         /// <summary>
-        /// The axis arrow/d-pad moves travel inside a <see cref="SingleTabStop"/> group. A move on the other
-        /// axis keeps focus on the member it started from, as a horizontal toolbar ignores the vertical
-        /// arrows in React Aria's <c>useToolbar</c>. Of nested groups, the outermost one's value decides.
+        /// The axis arrow/d-pad moves travel inside a <see cref="SingleTabStop"/> group, as React Aria's
+        /// <c>useToolbar</c> takes an <c>orientation</c>. A move on the other axis is ignored before it moves
+        /// focus. Of nested groups, the outermost one's value decides; without <see cref="SingleTabStop"/>
+        /// it is not read.
         /// </summary>
         public FocusScopeOrientation Orientation { get; init; }
     }

@@ -19,17 +19,36 @@ namespace Velvet.Tests
         private PanelSettings _settings;
         private MountedTree _mounted;
 
-        [Component]
-        private static VNode OrientedGroupsHost() => V.Div(className: "flex-col", children: new VNode[]
-        {
-            Group("colH", FocusScopeOrientation.Horizontal, "flex-col w-[100px]"),
-            Group("colV", FocusScopeOrientation.Vertical, "flex-col w-[100px]"),
-            Group("rowV", FocusScopeOrientation.Vertical, "flex-row w-[200px]"),
-            Group("rowH", FocusScopeOrientation.Horizontal, "flex-row w-[200px]"),
-        });
+        private static StateUpdater<FocusScopeOrientation> s_setLiveOrientation;
 
-        private static VNode Group(string name, FocusScopeOrientation orientation, string className)
-            => V.FocusScope(singleTabStop: true, orientation: orientation, className: className, children: new VNode[]
+        [Component]
+        private static VNode OrientedGroupsHost()
+        {
+            var (live, setLive) = Hooks.UseState(FocusScopeOrientation.Both);
+            s_setLiveOrientation = setLive;
+            return V.Div(className: "flex-col", children: new VNode[]
+            {
+                Group("colH", FocusScopeOrientation.Horizontal, "flex-col w-[100px]"),
+                Group("colV", FocusScopeOrientation.Vertical, "flex-col w-[100px]"),
+                Group("rowV", FocusScopeOrientation.Vertical, "flex-row w-[200px]"),
+                Group("rowH", FocusScopeOrientation.Horizontal, "flex-row w-[200px]"),
+                Group("live", live, "flex-col w-[100px]"),
+                Group("plain", FocusScopeOrientation.Horizontal, "flex-col w-[100px]", singleTabStop: false),
+                V.FocusScope(singleTabStop: true, className: "flex-row w-[200px]", children: new VNode[]
+                {
+                    Group("nestVB", FocusScopeOrientation.Vertical, "flex-row w-[200px]"),
+                }),
+                V.FocusScope(singleTabStop: true, orientation: FocusScopeOrientation.Vertical,
+                    className: "flex-row w-[200px]", children: new VNode[]
+                    {
+                        Group("nestBV", FocusScopeOrientation.Both, "flex-row w-[200px]"),
+                    }),
+            });
+        }
+
+        private static VNode Group(
+            string name, FocusScopeOrientation orientation, string className, bool singleTabStop = true)
+            => V.FocusScope(singleTabStop: singleTabStop, orientation: orientation, className: className, children: new VNode[]
             {
                 V.Button(name: name + "A", className: "w-[100px] h-[40px]"),
                 V.Button(name: name + "B", className: "w-[100px] h-[40px]"),
@@ -161,6 +180,81 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(outcome, Is.EqualTo((true, (Focusable)Element("rowHB"))));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AHorizontalGroup_When_ADownMoveIsIgnored_Then_TheMemberBelowReceivesNoFocusEvent()
+        {
+            // Arrange
+            var start = Element("colHA");
+            var focusIns = 0;
+            Element("colHB").RegisterCallback<FocusInEvent>(_ => focusIns++);
+            (bool, Focusable) outcome = default;
+
+            // Act
+            yield return MoveFrom(start, NavigationMoveEvent.Direction.Down, r => outcome = r);
+
+            // Assert
+            Assert.That((outcome.Item1, focusIns), Is.EqualTo((true, 0)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AVerticalGroupNestedInABothGroup_When_ARightMoveReachesTheNextMember_Then_FocusMovesThere()
+        {
+            // Arrange
+            var start = Element("nestVBA");
+            (bool, Focusable) outcome = default;
+
+            // Act
+            yield return MoveFrom(start, NavigationMoveEvent.Direction.Right, r => outcome = r);
+
+            // Assert
+            Assert.That(outcome, Is.EqualTo((true, (Focusable)Element("nestVBB"))));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ABothGroupNestedInAVerticalGroup_When_ARightMoveReachesTheNextMember_Then_FocusStaysOnTheMember()
+        {
+            // Arrange
+            var start = Element("nestBVA");
+            (bool, Focusable) outcome = default;
+
+            // Act
+            yield return MoveFrom(start, NavigationMoveEvent.Direction.Right, r => outcome = r);
+
+            // Assert
+            Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AGroupWhoseOrientationBecomesHorizontal_When_ADownMoveReachesTheMemberBelow_Then_FocusStaysOnTheMember()
+        {
+            // Arrange
+            s_setLiveOrientation.Invoke(FocusScopeOrientation.Horizontal);
+            _mounted.FlushStateForTest();
+            yield return null;
+            var start = Element("liveA");
+            (bool, Focusable) outcome = default;
+
+            // Act
+            yield return MoveFrom(start, NavigationMoveEvent.Direction.Down, r => outcome = r);
+
+            // Assert
+            Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AScopeThatIsNotASingleTabStop_When_ItNamesAnOrientation_Then_ADownMoveStillTravels()
+        {
+            // Arrange
+            var start = Element("plainA");
+            (bool, Focusable) outcome = default;
+
+            // Act
+            yield return MoveFrom(start, NavigationMoveEvent.Direction.Down, r => outcome = r);
+
+            // Assert
+            Assert.That(outcome, Is.EqualTo((true, (Focusable)Element("plainB"))));
         }
     }
 }

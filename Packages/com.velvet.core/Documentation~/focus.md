@@ -43,7 +43,7 @@ existing container. Four independent knobs, mirroring React Aria's props:
   wraps within the nearest containing scope when the group is nested in one, and a group covering
   every reachable focusable holds position (in a `Chained` host panel it exits across the panel
   boundary instead — see below). Members keep their `tabIndex`, so spatial navigation INSIDE the
-  group is untouched. Of groups nested in each other, the outermost one below the nearest contain
+  group is untouched, except on an axis its `orientation:` excludes (below). Of groups nested in each other, the outermost one below the nearest contain
   scope decides, as the outermost of nested toolbars does in React Aria's `useToolbar`: Tab leaves all
   of them, arrows move across the nested ones, and entry lands on the member last used at any depth.
   A plain scope nested in a group is part of the group.
@@ -54,9 +54,11 @@ group that lies between two members is where a move toward the members beyond it
 move is reverted and those members are not reached by arrows from that side.
 
 `orientation:` (`FocusScopeOrientation`, `Both` by default) names the axis a group's arrows travel, as
-React Aria's `useToolbar` takes an orientation: with `Horizontal` an up or down move, and with `Vertical`
-a left or right move, keeps focus on the member it started from, even where a member lies in that
-direction. Of nested groups, the outermost one's value decides.
+React Aria's `useToolbar` takes an `orientation`: with `Horizontal` an up or down move, and with `Vertical`
+a left or right move, is ignored before it moves focus, even where a member lies in that direction, so no
+member receives focus events for it. The move still reaches the focused element, so a slider or text
+field in the group keeps its own use of the arrow. Of nested groups, the outermost one's value decides.
+`orientation:` is read only on a `singleTabStop` scope.
 
 `TabIndex` -1 takes an element out of the Tab ring while `Focus()` and a pointer press still focus
 it, as the web's `tabindex="-1"` does. On a runtime panel it also takes the element out of

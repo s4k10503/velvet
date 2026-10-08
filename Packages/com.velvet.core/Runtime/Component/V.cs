@@ -1866,7 +1866,7 @@ namespace Velvet
         /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
         /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
         /// <param name="orientation">With <paramref name="singleTabStop"/>, the axis arrow/dpad moves travel;
-        /// a move on the other axis keeps focus on the member it started from.</param>
+        /// a move on the other axis is ignored. Not read without <paramref name="singleTabStop"/>.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode FocusScope(
             string? className = null,
