@@ -112,6 +112,7 @@ namespace Velvet
             if (element is TextField textField)
             {
                 s_textFieldDefaults.Remove(textField);
+                ForgetShownText(textField);
             }
         }
 
@@ -330,8 +331,8 @@ namespace Velvet
         // text differing from the value does not mean anyone typed. Every Velvet write that can change the
         // shown text records it — ApplyFieldValue, WriteMaxLength and the baseline ApplyTextField takes —
         // and a commit records it through the callback below, since an edit that was committed and then
-        // changed again is an edit against the committed text. The pool reset forgets the record and its
-        // callback so a recycled field carries neither.
+        // changed again is an edit against the committed text. ForgetRecordedDefaults forgets the record and
+        // its callback on every removal, so a recycled field carries neither.
         internal static bool HasUncommittedEdit(TextField field)
             => field.isDelayed
                && s_shownText.TryGetValue(field, out var left)
@@ -366,8 +367,8 @@ namespace Velvet
 
             public ShownText(TextField field) => _field = field;
 
-            // The inner text element's own change events bubble to the field; only the field's own is a
-            // commit of the value.
+            // Only the field's own event is a commit of the value; TextFieldInputPropTests pins that an
+            // event from the inner element does not move the record.
             public void OnChange(ChangeEvent<string> evt)
             {
                 if (evt.target == _field)

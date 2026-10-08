@@ -202,7 +202,6 @@ namespace Velvet
                 TextField.ussClassName);
 
             textField.SetValueWithoutNotify(string.Empty);
-            FiberPropApplier.ForgetShownText(textField);
             textField.textEdition.isPassword = false;
             textField.maxLength = DefaultMaxLength;
             textField.textSelection.SelectNone();

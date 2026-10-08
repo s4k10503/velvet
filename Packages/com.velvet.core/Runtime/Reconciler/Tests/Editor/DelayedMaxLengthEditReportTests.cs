@@ -60,5 +60,26 @@ namespace Velvet.Tests
             // happened produces.
             Assert.That((whileHeld, string.Join("|", reported), element.text), Is.EqualTo((0, string.Empty, "abc")));
         }
+
+        // Zero is a bound: the cut leaves nothing, and a cut skipped for it would leave the engine's own
+        // cull to report the edit.
+        [Test]
+        public void Given_AnEditADelayedFieldIsHolding_When_ALaterRenderSetsMaxLengthToZero_Then_OnValueChangedHearsNothing()
+        {
+            // Arrange
+            var reported = new List<string>();
+            var oldTree = new VNode[] { V.TextField(onValueChanged: reported.Add, isDelayed: true, maxLength: 10) };
+            var newTree = new VNode[] { V.TextField(onValueChanged: reported.Add, isDelayed: true, maxLength: 0) };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)_root.ElementAt(0);
+            ((INotifyValueChanged<string>)(TextElement)element.textEdition).SetValueWithoutNotify("ab");
+            var whileHeld = reported.Count;
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, newTree);
+
+            // Assert
+            Assert.That((whileHeld, string.Join("|", reported), element.text), Is.EqualTo((0, string.Empty, string.Empty)));
+        }
     }
 }

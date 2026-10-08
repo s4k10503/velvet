@@ -328,6 +328,121 @@ namespace Velvet.Tests
             Assert.That((element.text, element.value), Is.EqualTo((string.Empty, "abc")));
         }
 
+        // The pool hands the same instance to the next tenant, so a record the first tenant left stands
+        // unless removal forgets it. The second tenant declares no limit at mount, so no limit write
+        // refreshes the record before the typing.
+        [Test]
+        public void Given_ARecycledDelayedField_When_TheNextTenantTypesAndALaterRenderChangesMaxLength_Then_TheEditSurvives()
+        {
+            // Arrange
+            var first = new VNode[] { V.TextField(isDelayed: true) };
+            var second = new VNode[] { V.TextField(isDelayed: true) };
+            var narrowed = new VNode[] { V.TextField(isDelayed: true, maxLength: 8) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), first);
+            var firstElement = (TextField)Root!.ElementAt(0);
+            firstElement.SimulateChange("abc");
+            Reconciler.Reconcile(Root, first, Array.Empty<VNode>());
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), second);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "abc";
+
+            // Act
+            Reconciler.Reconcile(Root, second, narrowed);
+
+            // Assert — the instance is folded in: a fresh one passes without the pool being involved.
+            Assert.That(
+                (ReferenceEquals(element, firstElement), element.text, element.value),
+                Is.EqualTo((true, "abc", string.Empty)));
+        }
+
+        // The record follows a controlled value written on a patch, not only the mount's.
+        [Test]
+        public void Given_AControlledDelayedFieldWhoseValueChanged_When_TheUserTypesTheOldValueAndMaxLengthChanges_Then_TheEditSurvives()
+        {
+            // Arrange
+            var mounted = new VNode[] { V.TextField(value: "a", isDelayed: true, maxLength: 10) };
+            var changed = new VNode[] { V.TextField(value: "b", isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: "b", isDelayed: true, maxLength: 8) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            Reconciler.Reconcile(Root, mounted, changed);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "a";
+
+            // Act
+            Reconciler.Reconcile(Root, changed, narrowed);
+
+            // Assert
+            Assert.That((element.text, element.value), Is.EqualTo(("a", "b")));
+        }
+
+        // The limit narrows and widens with no edit pending, so what the field shows after the first change
+        // is what the next one is judged against; a stale record reads it as typed text and holds it over the
+        // wider limit. The control is the engine driven through the same two changes.
+        [Test]
+        public void Given_ADelayedValueWithLineBreaksAndNoEdit_When_MaxLengthNarrowsThenWidens_Then_TheFieldShowsWhatTheEngineAloneWould()
+        {
+            // Arrange
+            const string value = "a\nbcdef";
+            var mounted = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 5) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            var control = new TextField { isDelayed = true, maxLength = 10 };
+            control.SetValueWithoutNotify(value);
+            control.maxLength = 3;
+            control.maxLength = 5;
+
+            // Act
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            Reconciler.Reconcile(Root, narrowed, widened);
+
+            // Assert
+            Assert.That(element.text, Is.EqualTo(control.text));
+        }
+
+        // Dropping the prop restores -1, which means no limit and must not be read as a length to cut to.
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderDropsMaxLength_Then_TheEditIsStillShownUncommitted()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 3) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "abc";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the edit stays uncommitted.
+            Assert.That((element.text, element.value, element.maxLength), Is.EqualTo(("abc", string.Empty, -1)));
+        }
+
+        // An event from the inner text element is not a commit of the field's value, so it leaves the
+        // record where Velvet put it.
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_TheInnerElementRaisesAChangeEventAndMaxLengthChanges_Then_TheEditSurvives()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 10) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 8) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var inner = (TextElement)element.textEdition;
+            inner.text = "abc";
+            using (var evt = ChangeEvent<string>.GetPooled(string.Empty, "abc"))
+            {
+                element.SimulateBubbledEvent(evt, inner);
+            }
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That((element.text, element.value), Is.EqualTo(("abc", string.Empty)));
+        }
+
         // A single-line field shows its value with the line breaks stripped, so nothing was typed here
         // although the shown text differs from the value. The control is a field the engine alone drove
         // through the same limit change; an edit invented from the difference would be restored over what
