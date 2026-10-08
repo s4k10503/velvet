@@ -355,9 +355,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_NullSnapshot_When_StoreMutatesBetweenDrains_Then_DelayedReaderObservesThePinnedNull()
+        public void Given_NullSnapshot_When_StoreMutatesPartwayThroughADrainPass_Then_ALaterReaderObservesThePinnedNull()
         {
-            // Arrange
+            // Arrange — the ancestor pins null, then changes the store while it renders
             using var store = new TestTextStore(null);
             s_textStore = store;
             using var mounted = V.Mount(_root, V.Div(name: "host", children: new VNode[]
@@ -366,17 +366,15 @@ namespace Velvet.Tests
                 V.Component(TextDescendantRender, key: "descendant"),
             }));
             s_textAncestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
-            s_textDescendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_textDescendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_textDescendantReads.Clear();
+            s_textMutateOnRender = true;
 
             // Act
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            store.SetText("changed");
-            var rendersBefore = s_textDescendantRenders;
-            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
-            // Assert — the pinned null, read by a render the delayed drain made
-            Assert.AreEqual("<null>, rendered in the delayed drain: True",
-                $"{s_textDescendantValue ?? "<null>"}, rendered in the delayed drain: {s_textDescendantRenders > rendersBefore}");
+            // Assert — the descendant's first read after the change, still inside the pass that pinned null
+            Assert.AreEqual("<null>", s_textDescendantReads[0] ?? "<null>");
         }
 
         private sealed record PairState(int Number, string Text);
@@ -642,7 +640,8 @@ namespace Velvet.Tests
 
         private static Store<string> s_textStore;
         private static string s_textDescendantValue;
-        private static int s_textDescendantRenders;
+        private static readonly List<string> s_textDescendantReads = new();
+        private static bool s_textMutateOnRender;
         private static ComponentFiber s_textAncestorFiber;
         private static ComponentFiber s_textDescendantFiber;
 
@@ -650,7 +649,8 @@ namespace Velvet.Tests
         {
             s_textStore = null;
             s_textDescendantValue = null;
-            s_textDescendantRenders = 0;
+            s_textDescendantReads.Clear();
+            s_textMutateOnRender = false;
             s_textAncestorFiber = null;
             s_textDescendantFiber = null;
         }
@@ -660,6 +660,11 @@ namespace Velvet.Tests
         {
             s_textAncestorFiber = FiberAmbientStack.Current;
             var text = Hooks.UseStore(s_textStore, s => s);
+            if (s_textMutateOnRender)
+            {
+                s_textMutateOnRender = false;
+                ((TestTextStore)s_textStore).SetText("changed");
+            }
             return V.Label(text: text ?? "");
         }
 
@@ -667,8 +672,8 @@ namespace Velvet.Tests
         private static VNode TextDescendantRender()
         {
             s_textDescendantFiber = FiberAmbientStack.Current;
-            s_textDescendantRenders++;
             s_textDescendantValue = Hooks.UseStore(s_textStore, s => s);
+            s_textDescendantReads.Add(s_textDescendantValue);
             return V.Label(text: s_textDescendantValue ?? "");
         }
 
