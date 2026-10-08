@@ -127,9 +127,10 @@ namespace Velvet
         // Null unless the child container is a separate element — see ObserveChildContainer.
         private VisualElement? _observed;
 
-        // Whether the last verdict came from a class — a flex-wrap / flex-nowrap / flex-wrap-reverse marker for
-        // the wrap, one of the five direction/display classes for the direction — and whether such a class has
-        // left since the last GeometryChangedEvent. See DirectionOf and IsWrap.
+        // Whether the last read found a class — a flex-wrap / flex-nowrap / flex-wrap-reverse marker for the
+        // wrap, one of the five direction/display classes for the direction — and whether such a class has
+        // left since the last GeometryChangedEvent. They record class presence, not which source answered.
+        // See DirectionOf and IsWrap.
         private bool _wrapFromMarker;
         private bool _directionFromClass;
         private bool _directionClassLeft;
@@ -520,7 +521,7 @@ namespace Velvet
         // / flex-col(-reverse) set flex-direction only, and since nearly every real container carries one,
         // treating them as evidence would take the resolvedStyle fallback away from almost all of them and
         // misread a genuinely wrapping inline-styled container as non-wrapping. That fallback is the
-        // catch-all for wrap set some other way (a custom stylesheet rule, an inline style).
+        // catch-all for wrap set by a custom stylesheet rule.
         // Once a marker leaves the class list the fallback is not taken until the next GeometryChangedEvent:
         // until a layout pass has run, resolvedStyle can still hold the style pass that saw the marker, and
         // a container that keeps its size would fire no event to correct a stale "wrap". Until then an unset

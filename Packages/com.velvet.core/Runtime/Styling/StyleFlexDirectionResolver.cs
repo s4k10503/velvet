@@ -15,11 +15,12 @@ namespace Velvet
     // two are the same element.
     //
     // A class string only reaches the element it is written on, so none of the five direction classes can
-    // land on an inner box: its verdict always comes from the resolvedStyle fallback (off-panel, the
-    // widgetOwned default) below, and what lays it out is the widget's own built-in USS.
+    // land on an inner box: unless an inline value is set on that box, its verdict comes from the
+    // resolvedStyle fallback (off-panel, the widgetOwned default) below, and what lays it out is the widget's
+    // own built-in USS.
     //
-    // After an inline flex-direction, the five direction/display classes are consulted — before resolvedStyle,
-    // even on a panel — in the SAME precedence USS
+    // After an inline flex-direction, the five direction/display classes are consulted — before
+    // resolvedStyle, even on a panel — in the SAME precedence USS
     // itself uses when more than one matches the element (equal specificity, so the LAST declared RULE wins):
     // _layout.uss declares .grid, .flex, .flex-col, .flex-col-reverse, .flex-row, .flex-row-reverse in that
     // source order, so flex-row-reverse beats flex-row beats flex-col-reverse beats flex-col beats the bare

@@ -42,7 +42,7 @@ namespace Velvet.Tests
     /// The manipulator writes INLINE margins (resolved to pixels from the same scale as <c>_tokens.uss</c>), so
     /// the produced spacing is observable via <c>element.style.margin*</c> without attaching to a panel or
     /// ticking layout — off-panel, both direction and wrap fall back from the class markers (the only source
-    /// available) to the same defaults their on-panel <c>resolvedStyle</c> fallback would produce. That
+    /// besides an inline value) to the same defaults their on-panel <c>resolvedStyle</c> fallback would produce. That
     /// agreement extends to a composite widget's inner box, whose off-panel direction default is the
     /// engine's column rather than <c>.flex</c>'s row so that the two answers match. It does NOT extend to a
     /// widget whose built-in USS lays that box out as a row — a horizontally scrolling <c>ScrollView</c>, a
@@ -1102,6 +1102,63 @@ namespace Velvet.Tests
 
             // Assert — the non-wrap path leaves the first child's margins unset, where the half-margin path writes four.
             Assert.That(container[0].style.marginRight.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ANoWrapGapContainer_When_AnInlineWrapIsSet_Then_TheHalfMarginsAreWritten()
+        {
+            // Arrange — the flex-nowrap class alone would select the leading-margin path.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-nowrap gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexWrap = Wrap.Wrap;
+
+            // Act — reconciling the container again applies the spacing after its children.
+            var tree2 = new VNode[] { Row("flex flex-nowrap gap-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the half-margin path writes the first child's right half.
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Half4));
+        }
+
+        [Test]
+        public void Given_ANoWrapGapContainer_When_AnInlineWrapReverseIsSet_Then_TheHalfMarginsAreWritten()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-nowrap gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexWrap = Wrap.WrapReverse;
+
+            // Act
+            var tree2 = new VNode[] { Row("flex flex-nowrap gap-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Half4));
+        }
+
+        [Test]
+        public void Given_AWrappingGapContainerWithAnInlineNoWrap_When_TheInlineWrapIsCleared_Then_TheClassWrapReturns()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-wrap gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexWrap = Wrap.NoWrap;
+            var tree2 = new VNode[] { Row("flex flex-wrap gap-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+            container.style.flexWrap = StyleKeyword.Null;
+
+            // Act
+            var tree3 = new VNode[] { Row("flex flex-wrap gap-4", 5) };
+            scope.Reconciler.Reconcile(scope.Root, tree2, tree3);
+
+            // Assert
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Half4));
         }
 
         [Test]
@@ -2314,7 +2371,7 @@ namespace Velvet.Tests
         private static VNode InlineWrapRow()
         {
             // "flex flex-row" is present (the realistic, idiomatic shape — nearly every real container
-            // carries a direction class) and NO flex-wrap class at all: IsWrap's resolvedStyle fallback is
+            // carries a direction class) and NO flex-wrap class at all: the inline flex-wrap set below is
             // the only source that can possibly answer, exactly the "wrap set some other way" case a
             // direction class must NOT paper over.
             var children = new VNode[3];
