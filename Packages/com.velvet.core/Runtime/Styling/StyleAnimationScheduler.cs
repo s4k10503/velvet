@@ -54,6 +54,9 @@ namespace Velvet
         // of corrupting a pool every other scheduler instance also draws from (see TimeValueListPool).
         private readonly TimeValueListPool _listPool = new();
 
+        // Set once by the mount before its first render, which is what lets a mount enter take it.
+        internal MotionClock Clock { get; set; } = MotionClock.Realtime;
+
         // The next-frame class swap (EnterFromClass -> EnterToClass) is what fires the CSS transition.
         // additionalDelaySec: extra delay (seconds) added on top of the StyleTransitionConfig delay, used by
         // AnimatePresenceNode.StaggerSec to sequentially delay child elements. 0 (default) means no extra delay.
@@ -677,7 +680,6 @@ namespace Velvet
                     StartSpringTick(element, pending, -totalDelaySec);
                     return;
                 }
-                var totalDelayMs = (long)(totalDelaySec * 1000);
 
                 // A delayed start is parked on the panel-root host, not element.schedule: ScheduleStart only
                 // ever runs once attached (called directly below, or from DeferUntilAttached's onAttach), but
@@ -691,7 +693,7 @@ namespace Velvet
                 {
                     return;
                 }
-                var scheduled = host.schedule.Execute(() =>
+                pending.ScheduledItem = ScheduleDelayedStart(host, totalDelaySec, () =>
                 {
                     // Re-check on fire, not just on schedule: the host outlives a transient detach, so this
                     // closure can still run after a later cancel/supersede replaced this exact pending.
@@ -700,8 +702,6 @@ namespace Velvet
                         StartSpringTick(element, pending);
                     }
                 });
-                scheduled.ExecuteLater(totalDelayMs);
-                pending.ScheduledItem = scheduled;
             }
 
             if (element.panel != null)
@@ -785,7 +785,6 @@ namespace Velvet
                     StartBezierTick(element, pending, -totalDelaySec);
                     return;
                 }
-                var totalDelayMs = (long)(totalDelaySec * 1000);
 
                 // See StartSpringVariant for why a delayed start parks on the panel-root host (survives a
                 // transient reorder detach) rather than element.schedule.
@@ -794,15 +793,13 @@ namespace Velvet
                 {
                     return;
                 }
-                var scheduled = host.schedule.Execute(() =>
+                pending.ScheduledItem = ScheduleDelayedStart(host, totalDelaySec, () =>
                 {
                     if (map.TryGetValue(element, out var stillCurrent) && ReferenceEquals(stillCurrent, pending))
                     {
                         StartBezierTick(element, pending);
                     }
                 });
-                scheduled.ExecuteLater(totalDelayMs);
-                pending.ScheduledItem = scheduled;
             }
 
             if (element.panel != null)
@@ -819,9 +816,9 @@ namespace Velvet
         // tick's own rationale: a recurring item survives a keyed reorder's detach/re-attach of the animating
         // element on its own (UI Toolkit pauses and reschedules it automatically), but the panel root is
         // already where the co-fade sampling and the rest of this pending animation's bookkeeping run, so this
-        // tick shares that same stable host rather than tracking a second one. Each tick reads the elapsed time
-        // from the SAME clock the scheduler itself used to decide when to fire this callback
-        // (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
+        // tick shares that same stable host rather than tracking a second one. Under MotionClock.Realtime each
+        // tick reads the elapsed time from the SAME clock the scheduler itself used to decide when to fire this
+        // callback (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
         // own time source, which a test's simulated panel overrides) rather than sampling a different clock
         // (e.g. Time.realtimeSinceStartupAsDouble) that could disagree with it: a hitch is still absorbed by
         // SpringIntegrator's own dt clamp, but the elapsed time now always matches what actually elapsed on the
@@ -855,12 +852,11 @@ namespace Velvet
                 }
             }
 
+            var clock = Clock;
+            var lastSec = clock.NowSec;
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
-                // TimerState.start is the previous callback's time for a repeating item (or the schedule time
-                // for the first firing), so deltaTime is already exactly the elapsed interval this tick needs
-                // — no separate "last tick" bookkeeping to maintain.
-                var dt = ts.deltaTime / 1000f;
+                var dt = ElapsedSinceLastTick(clock, ref lastSec, ts);
                 if (dt <= 0f)
                 {
                     return;
@@ -874,6 +870,45 @@ namespace Velvet
         }
 
         private const float PreRollStepSec = StyleAnimateDriver.TickMs / 1000f;
+
+        private static float ElapsedSinceLastTick(MotionClock clock, ref double lastSec, TimerState ts)
+        {
+            if (clock.StepsOnPanelTime)
+            {
+                // TimerState.start is the previous callback's time for a repeating item (or the schedule time
+                // for the first firing), so deltaTime is already exactly the elapsed interval this tick needs.
+                return ts.deltaTime / 1000f;
+            }
+            var now = clock.NowSec;
+            var dt = (float)(now - lastSec);
+            lastSec = now;
+            return dt;
+        }
+
+        // A clock other than the panel's counts the delay itself, polled at the tick cadence, so a clock that
+        // holds still holds the delay too rather than letting it run out on the panel's time.
+        private IVisualElementScheduledItem ScheduleDelayedStart(VisualElement host, float delaySec, Action start)
+        {
+            var clock = Clock;
+            if (clock.StepsOnPanelTime)
+            {
+                var scheduled = host.schedule.Execute(start);
+                scheduled.ExecuteLater((long)(delaySec * 1000));
+                return scheduled;
+            }
+            var startSec = clock.NowSec;
+            IVisualElementScheduledItem? polling = null;
+            polling = host.schedule.Execute(() =>
+            {
+                if (clock.NowSec - startSec < delaySec)
+                {
+                    return;
+                }
+                polling!.Pause();
+                start();
+            }).Every(StyleAnimateDriver.TickMs);
+            return polling;
+        }
 
         private void FinishSpring(VisualElement element, PendingAnimation pending, MotionSpringState state)
         {
@@ -920,9 +955,11 @@ namespace Velvet
                 return;
             }
 
+            var clock = Clock;
+            var lastSec = clock.NowSec;
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
-                var dt = ts.deltaTime / 1000f;
+                var dt = ElapsedSinceLastTick(clock, ref lastSec, ts);
                 if (dt <= 0f)
                 {
                     return;

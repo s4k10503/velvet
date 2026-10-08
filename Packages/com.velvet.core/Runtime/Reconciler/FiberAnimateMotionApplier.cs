@@ -31,7 +31,8 @@ namespace Velvet
                 // A pan utility with no gradient to pan is a no-op (parity with a lone gradient stop).
                 return;
             }
-            _ctx.AnimationBindings[element] = StyleAnimateDriver.Attach(element, spec, ResolvePanVertical(element, spec));
+            _ctx.AnimationBindings[element] = StyleAnimateDriver.Attach(element, spec, ResolvePanVertical(element, spec),
+                _ctx.StyleAnimationScheduler.Clock);
         }
 
         // Patch-time reconciliation of an element's animate-* motion against its new class list. Mirrors the
@@ -63,7 +64,8 @@ namespace Velvet
                         StyleAnimateDriver.Detach(element, binding);
                         RestoreSharedInlineSlot(element, detachedMode, classNames);
                     }
-                    _ctx.AnimationBindings[element] = StyleAnimateDriver.Attach(element, spec, ResolvePanVertical(element, spec));
+                    _ctx.AnimationBindings[element] = StyleAnimateDriver.Attach(element, spec, ResolvePanVertical(element, spec),
+                        _ctx.StyleAnimationScheduler.Clock);
                 }
                 else
                 {

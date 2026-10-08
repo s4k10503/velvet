@@ -4559,6 +4559,30 @@ namespace Velvet.Tests
             Assert.That(element.ClassListContains("opacity-0"), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): a delayed bezier play on the default clock waits on the panel's time.
+        [Test]
+        public void Given_ADelayedBezierPlayOnTheDefaultClock_When_LessThanTheDelayHasPassed_Then_ItHasNotMoved()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.5f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — held at the from-pose the play wrote inline, rather than carrying no inline opacity.
+            var opacity = element.style.opacity;
+            scheduler.CancelAll();
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
         [Component]
         private static VNode LateMountHost()
         {

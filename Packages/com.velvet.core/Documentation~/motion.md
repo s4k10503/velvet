@@ -466,6 +466,32 @@ swap driving the same slot as the mode is shadowed too. While such a swap is run
 inline `transition-property` is the swap's: the suspension is neither taken nor handed back for the
 swap's length, and the swap's own completion puts back whichever of the two the element still needs.
 
+## Clocks (holding motion with game time)
+
+A mount chooses the clock its driven motion advances on, through `MountOptions.MotionClock`:
+
+```csharp
+V.Mount(root, tree, new MountOptions { MotionClock = MotionClock.GameTime });
+```
+
+A play steps by the distance `MotionClock.NowSec` moved since the frame before, so a clock that holds
+still holds every play on it where it is, and one that moves a frame's worth moves them a frame's worth.
+
+- `MotionClock.Realtime`, the default: spring and bezier plays step by the panel scheduler's own
+  interval, and the `animate-*` loops by `Time.realtimeSinceStartupAsDouble`.
+- `MotionClock.GameTime` reads `Time.timeAsDouble`, Unity's scaled game time.
+- A class deriving from `MotionClock` and overriding `NowSec` is a clock the application drives itself,
+  such as one a frame-step capture advances by a fixed step.
+
+The clock governs a `Spring` or `Bezier` variant play, enter or exit, including the wait for its
+`DelaySec` and stagger slot, and the `animate-*` loops. It does not reach a `Tween`, the default `Type`,
+which hands its interpolation to UI Toolkit's own transitions on the panel's time — a play that has to
+hold with the clock is a `Spring` or a `Bezier`. A `layoutId` move, a `filter-*` transition and
+`Hooks.UseFrame` keep their own time sources too, and so does `Hooks.UseAnimationSequence`'s walk from
+step to step, which `UseFrame` drives, while the label swap a step makes is a variant play governed as above.
+
+This is a Velvet addition: Framer Motion offers no clock choice.
+
 ## Timelines (`Hooks.UseAnimationSequence`)
 
 Framer Motion's `useAnimate` parity target: `UseAnimationSequence` owns the clock (it is itself built

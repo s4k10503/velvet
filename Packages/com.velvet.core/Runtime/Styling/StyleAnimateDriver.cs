@@ -10,9 +10,10 @@ namespace Velvet
     internal sealed class StyleAnimateBinding
     {
         public AnimateSpec Spec;
-        // Wall-clock start of the loop (Time.realtimeSinceStartupAsDouble). The phase is derived from elapsed
-        // time, so a dropped frame never accumulates drift (unlike a per-tick increment).
+        // Start of the loop on Clock. The phase is derived from elapsed time, so a dropped frame never
+        // accumulates drift (unlike a per-tick increment).
         public double StartTime;
+        public MotionClock Clock = MotionClock.Realtime;
         // The recurring tick. Scheduled on the PANEL ROOT (not the element) so a keyed reorder — which
         // briefly detaches the element and would make UI Toolkit silently drop a per-element scheduled item —
         // does not stall the animation. Paused on teardown.
@@ -111,7 +112,7 @@ namespace Velvet
                     }
                 }
             }
-            var elapsed = Time.realtimeSinceStartupAsDouble - binding.StartTime;
+            var elapsed = binding.Clock.NowSec - binding.StartTime;
             ApplyFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec));
         }
 
@@ -119,12 +120,15 @@ namespace Velvet
         // once-per-attach background sizing for pan modes, takes the transition suspension, then schedules the
         // recurring tick on the panel root (deferred to attach when the element is off-panel). Returns the
         // binding to store.
-        public static StyleAnimateBinding Attach(VisualElement element, AnimateSpec spec, bool panVertical)
+        public static StyleAnimateBinding Attach(VisualElement element, AnimateSpec spec, bool panVertical,
+            MotionClock? clock = null)
         {
+            clock ??= MotionClock.Realtime;
             var binding = new StyleAnimateBinding
             {
                 Spec = spec,
-                StartTime = Time.realtimeSinceStartupAsDouble,
+                StartTime = clock.NowSec,
+                Clock = clock,
                 PanVertical = panVertical,
             };
 
@@ -368,7 +372,7 @@ namespace Velvet
                 binding.PendingAttach = null;
                 // Only start if this binding is still the live one (a cancel-before-attach clears Scheduled
                 // and unregisters this; but guard the StartTime baseline against a long off-panel delay).
-                binding.StartTime = Time.realtimeSinceStartupAsDouble;
+                binding.StartTime = binding.Clock.NowSec;
                 StartTick(element, binding);
             };
             element.RegisterCallback(onAttach);
