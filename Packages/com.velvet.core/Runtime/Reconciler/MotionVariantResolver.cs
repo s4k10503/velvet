@@ -26,13 +26,18 @@ namespace Velvet
         // one that applies nothing still being the pose swapped into.
         public static string[] ResolveApplied(MotionNode node, string ambientLabel, out string[] variantClasses,
             out StyleTransitionConfig? poseTransition)
+            // A Motion controlling an initial label and no animate one rests at that initial pose, as Framer
+            // leaves it at the values its initial names.
+            => ResolveAppliedAt(node, LabelForChildren(node, ambientLabel) ?? node.Initial, out variantClasses,
+                out poseTransition);
+
+        // ResolveApplied for a given label: a Motion mounted already leaving rests at its initial label's pose.
+        public static string[] ResolveAppliedAt(MotionNode node, string? label, out string[] variantClasses,
+            out StyleTransitionConfig? poseTransition)
         {
             var baseClasses = node.ClassNames ?? Array.Empty<string>();
             poseTransition = node.Transition;
 
-            // A Motion controlling an initial label and no animate one rests at that initial pose, as Framer
-            // leaves it at the values its initial names.
-            var label = LabelForChildren(node, ambientLabel) ?? node.Initial;
             if (label == null || node.Variants == null)
             {
                 variantClasses = Array.Empty<string>();

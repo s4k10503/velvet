@@ -197,6 +197,127 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 - A throwing **`onMutate`** fails the call with its exception before `MutationFn` runs; `onError` and `onSettled` receive it with a default context.
 - A throwing **`onSettled`** follows the path it ran on. On success it fails the call as a throwing `onSuccess` does, so `onError` runs with its exception and `onSettled` runs a second time, with it — v5's order, since both handlers sit in the block its failure path catches. On failure it is logged as a throwing `onError` is, and the outcome stays the mutation's own.
 
+### 1-2b. Cached queries — `Hooks.UseQuery`
+
+TanStack Query's `useQuery` over a `QueryClient`: a keyed cache shared by every component that reaches
+the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's cache-less `use()`
+([§2-5](#2-5-suspense--error-boundary)).
+
+| TanStack Query | Velvet |
+|----------------|--------|
+| `new QueryClient({ defaultOptions: { queries: { staleTime, gcTime } } })` | `new QueryClient(new QueryClientOptions { StaleTime = ..., GcTime = ... })` |
+| `<QueryClientProvider client={client}>` | `V.Provider(QueryClientContext.Ref, client, children: ...)` |
+| `useQueryClient()` | `Hooks.UseContext(QueryClientContext.Ref)` |
+| `useQuery({ queryKey: ['todos', id], queryFn })` | `Hooks.UseQuery(new QueryOptions<T>(new QueryKey("todos", id), ct => ...))` |
+| `useQuery(options, queryClient)` | `Hooks.UseQuery(options, client)` |
+| `staleTime` / `gcTime` on one query | `new QueryOptions<T>(...) { StaleTime = ..., GcTime = ... }` |
+| `retry` / `retryDelay` as a number and a function | `new QueryOptions<T>(...) { Retry = ..., RetryDelay = ... }`, or `QueryClientOptions.Retry` / `RetryDelay` for every query |
+| `structuralSharing` as a function | `new QueryOptions<T>(...) { StructuralSharing = (held, arrived) => ... }` |
+| `notifyOnChangeProps: ['data']` / `'all'` | `new QueryOptions<T>(...) { NotifyOnChangeProps = QueryProperties.Data }` / `QueryProperties.All` |
+| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` / `failureCount` / `failureReason` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` / `FailureCount` / `FailureReason` |
+| `refetch()` | `result.Refetch()` |
+| `queryClient.invalidateQueries({ queryKey })` | `client.InvalidateQueries(new QueryKey(...))` |
+| `queryClient.clear()` | `client.Clear()` |
+
+**One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
+under `object.Equals`, so a key rebuilt every render names the same entry, and a string, a boxed number,
+or a record or tuple of such values compares by content. A part that is a collection whose type keeps
+`object`'s own `Equals` compares by what it holds: an array or a list element by element, in order, as
+v5's structural hash compares an array; a dictionary by key and value whatever order its entries were
+added in, as v5 sorts an object's keys before hashing it; a set by element, in any order. A collection
+type that defines its own equality keeps it. A record or a tuple compares by its members' own `Equals`, so
+a collection held inside one compares by reference and names a new entry every time it is rebuilt — a
+fetch on every render. Give the collection a key part of its own. A collection part is enumerated on
+every comparison, so pass a materialised collection. The Editor warns when a query's key changes on two
+commits running while printing the same.
+Components reading one key share one entry and one request: the first to mount starts it and
+the rest join it. A component unmounting takes nothing from the others — the request belongs to the
+entry and runs on for them. The entry keeps its result after its last reader unmounts, so navigating
+back renders that result on the first render instead of the pending state.
+
+**Freshness.** `StaleTime` defaults to zero, as in v5: a component mounting over a cached result
+renders it and fetches again in the background, with `IsFetching` true and `Status` still `Success`. A
+result is stale once its age reaches `StaleTime`, and `TimeSpan.MaxValue` keeps it fresh until it is
+invalidated. `Data` is the last successful result and stays through a later failure and through a
+refetch; a failed request marks it stale, so the next component to mount over it fetches again. Data
+that turns stale by age re-renders a component that reads `IsStale`, when its age reaches `StaleTime`:
+the wait is polled once a frame on the client's `Clock`, as a retry's is, and ends when the component
+unmounts, the data is replaced or the client is cleared. `QueryClientOptions.Clock` replaces the client's stopwatch, for game time that pauses or a
+test that advances time by hand.
+
+**Retries.** A request that fails runs again up to `Retry` times before the failure becomes the entry's
+error: three by default, as in v5, set for every query on `QueryClientOptions` or for one on its
+`QueryOptions`, where zero or less retries nothing. The wait before each retry is `RetryDelay`, which is
+handed the number of failures before this one and the exception; by default one second, doubled at each
+failure and capped at thirty seconds, as in v5. The wait is measured on the client's `Clock`, is checked
+once a frame, and lasts at least one frame. While a retry waits, the request is still in flight:
+`IsFetching` stays true, `Status` and `Error` stay what they were, which is `Pending` and none for an entry
+with no data, and `FailureCount` and `FailureReason` report the failures so far; a request that lands
+resets both. A query function that throws before it returns a task, or a `RetryDelay` that throws,
+fails the request as one returning a faulted task does. With its last reader gone a request in flight finishes but is not retried, and a
+reader that mounts and joins it lets its retries go on, as in v5.
+
+**Re-rendering.** A component re-renders when a property of the result that it has read changes, as
+`useQuery` tracks them: one that reads only `Data` does not re-render when a request goes into flight or
+lands the value it already held. Until the component has read any property, every change to the result
+re-renders it. `NotifyOnChangeProps` replaces what was read with a list — `QueryProperties.All` re-renders
+at every change to the result, `QueryProperties.None` never. A property changes when its value does; `Data` is compared by
+value where it is a struct or a string and by instance where it is any other class. Clearing the client re-renders every
+component reading it, whatever it has read.
+
+**Sharing data between results.** When a request lands, `Data` keeps the instance the entry already held
+if the new result is deeply equal to it, and keeps the equal parts of it if it is not, which is
+`replaceEqualDeep`, v5's default `structuralSharing`. An array, a `List<T>` and a `Dictionary<TKey, TValue>`
+are compared element by element and entry by entry, and a dictionary keeps its comparer; a string, a
+number and a struct are equal when `Equals` says so; any other class, a record included, is kept only as
+the very instance held, as v5 keeps anything but a plain array or object, so a refetch landing an equal
+record as a new instance makes that instance the data. `StructuralSharing` replaces all
+of that with a function of the data held, default when there is none, and the data that arrived; one that
+throws fails the request.
+
+**Changing the key** moves the component to that key's entry: it renders that entry's data, or none,
+and a result the old key's request delivers afterwards is never shown as the new key's. There is no
+`placeholderData` yet, so a key with nothing cached renders `Pending`.
+
+**Invalidating after a mutation.** `InvalidateQueries` takes a filter, as v5's non-exact
+`partialMatchKey` does: `new QueryKey("todos")` matches `["todos", 1]` and `["todos"]` alike. A filter part
+that is an array or a list matches a part that starts with it, one that is a dictionary matches a part
+holding at least the entries it names, each value matched the same way, and any other part, a set
+included, must equal its counterpart whole. A matching entry a
+mounted component reads is fetched again; a request already in flight for it is cancelled and started
+over when the entry holds data, so a result fetched before the write does not land as current. An entry
+nothing reads is only marked stale, and is fetched by the next component that mounts over it.
+
+```csharp
+var client = Hooks.UseContext(QueryClientContext.Ref)!;
+var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
+    MutationFn: (todo, ct) => api.SaveAsync(todo, ct),
+    OnSuccess: (_, _) => client.InvalidateQueries(new QueryKey("todos"))));
+```
+
+**Deviations from v5:**
+
+- Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
+  absent from then on, and is removed the next time a query subscribes to the client or
+  `InvalidateQueries` runs; removing it cancels the request it still has in flight.
+- A query function that returns a task that has already completed, or throws before returning one,
+  settles the entry a frame later, after every subscription of the commit, so readers mounting together
+  share one request; v5's result arrives a microtask later.
+- Structural sharing does not enter the members of a class instance, a record included, where v5 shares
+  the equal properties of a changed plain object: such an instance is kept or replaced whole, because
+  Velvet does not rebuild one.
+- The `CancellationToken` a query function receives is cancelled when a refetch starts that request
+  over, when the entry is removed, and by `Clear`. v5 also aborts a request whose function read its
+  signal once the last observer unsubscribes; here it runs on, so a component mounting again finds its
+  result. The same holds for the extra cleanup and setup StrictMode runs on a mounting component's
+  effects: the second subscription joins the first one's request, where v5 cancels and refetches a request
+  whose function read its signal.
+- `UseQuery` never suspends: with no data yet it returns `Pending`. There is no `useSuspenseQuery`.
+- A key holds one data type. A query reading it as another throws `InvalidOperationException`.
+- Not yet available: `retry` as a function or `true`, retries that pause while the application is
+  unfocused or offline (`networkMode`), `enabled`, `select`, `placeholderData`, `refetchInterval`,
+  `refetchOnWindowFocus` and `refetchOnReconnect`, and `getQueryData` / `setQueryData`.
+
 ### 1-3. State Management (React + Zustand)
 
 Velvet state is organized into two layers — **"component-local state" and "shared Store"** — each modeled on React and Zustand respectively.
@@ -329,6 +450,10 @@ the field hands focus from its input back to itself (Enter, Shift+Enter in multi
 declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
 field; one written from `refCallback:` is not.
 
+A field's `className` background, border, radius, padding, shadow and ring utilities paint the box the value
+is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
+is listed with the `[&>*]:` composite notes.
+
 ### 2-2. Conditionals and Lists
 
 | React | Velvet | Notes |
@@ -393,7 +518,7 @@ A container of direct plain elements warns once for each repeated sibling key, o
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<Suspense fallback={<Spinner/>}>` | `V.Suspense(fallback, children)` | Equivalent |
-| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked |
+| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked. Like `use()`, it caches nothing beyond its own component: a cache shared across components is `Hooks.UseQuery` ([§1-2b](#1-2b-cached-queries--hooksusequery)) |
 | Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. Once a boundary catches, it keeps showing its fallback until it remounts, as React's does: a re-render — its parent's, or its own — renders the fallback again with the error it caught and does not bring its children back. Give the boundary a new `key` to render its children again. The helper suits a use directly under Mount; the functional pattern suits a fallback that reads the boundary's own props or state |
 | Class Component + `componentDidCatch` | `Hooks.UseEffect` + try-catch, or logging via an error-notification Store | When you want to log side effects from a functional component, do it inside an effect. What every caught error goes to is the root's `OnCaughtError`, in the next row |
 | `createRoot(container, { onCaughtError })` | `V.Mount(target, tree, new MountOptions(OnCaughtError: (ex, info) => ...))` | Called when a boundary in the tree catches an error, in the commit that shows its fallback: after the fallback's layout effects and before those of the boundary's ancestors, where React calls it. A boundary that an ancestor boundary replaces before that commit reports nothing, as in React. A boundary that a time-sliced transition mounted or re-rendered, catching before the transition completes, reports in the commit that completes it, after its own layout effects. `info` carries the `ComponentStack` and `ErrorBoundary`, the name of the boundary that caught it. Without a handler, the error is logged with `Debug.LogException`: the entry reads as the caught exception itself, and its stack trace goes on to name the boundary and the component stack. An exception the handler throws is logged |
@@ -453,6 +578,7 @@ It excludes hand-written UXML/USS from its design and expresses all styles with 
 | cva's slot support | `StyleSlotRecipe` | Variant management for multiple slots |
 | `theme.extend` in `tailwind.config.ts` | `:root` variables in `_tokens.uss` | Design token extension |
 | Tailwind JIT's `w-[120px]` | Same syntax + `StyleArbitraryValueResolver` | Arbitrary values can be used as-is |
+| Fractions (`w-1/2`, `left-1/2`, `-translate-x-1/2`) | Same syntax | Resolved as an inline percent. Sizing (`w-`, `h-`, `size-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `basis-`), position (`top-`, `right-`, `bottom-`, `left-`, `inset-`, `inset-x-`, `inset-y-`) and per-axis translate (`translate-x-`, `translate-y-`) take any `a/b` of whole numbers with a non-zero denominator, as Tailwind does (`left-3/2` is 150%). Position and translate also take the negated form (`-left-1/2`); position also takes `full` / `-full` (`left-full` is 100%, `-left-full` is -100%) and `auto` (`top-auto`, written inline, so it overrides a `top-4` the stylesheet supplies and leaves the element where one with no offset sits; it is not a `V.Motion` length channel). `auto` resets the offset to the engine's unset value, UI Toolkit's initial value for these properties; where the engine places an element whose offsets are all unset is its own layout's rule, and is not claimed to match CSS's static position. Not supported: the logical `inset-s-`, `inset-e-`, `inset-bs-`, `inset-be-` and `1/0` |
 | `hover:` / `focus:` / `active:` / `checked:` state variants | Same prefixes | Driven by the element's own pointer / focus state (the payload is an ordinary utility) |
 | `dark:` theme variant | Same prefix | Driven by `VelvetTheme.IsDark` |
 | `sm:` / `md:` / `lg:` / `xl:` / `2xl:` responsive variants | Same prefixes | Min-width breakpoints; evaluated against the panel root by default (or a `@container` scope) |
