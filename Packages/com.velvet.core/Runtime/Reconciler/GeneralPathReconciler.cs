@@ -80,6 +80,9 @@ namespace Velvet
             // has placed what the walk emitted: React disconnects and reconnects them in its commit, and a walk
             // that rolls back or stops leaves on screen what was there.
             public List<(ComponentFiber Fiber, bool Hidden)>? OffscreenChanges;
+            // A list whose order holds resolves its old leaves in ascending slots, so each lookup walks on from
+            // the last one rather than from slot zero.
+            public LogicalSlotCursor OldSlots;
         }
 
         internal readonly record struct CommittedLeaf(int OldIndex, bool Linear, ChildKey Key);
@@ -301,18 +304,19 @@ namespace Velvet
             }
             var ordinal = commit.NewElements.Count;
             var linear = ordinal == 0 || commit.Committed[ordinal - 1].Linear;
-            var oldIndex = MatchOldLeaf(commit, key, ordinal, linear);
+            var oldIndex = MatchOldLeaf(commit, key, ordinal, linear, out var oldPhysical);
             if (oldIndex >= 0)
             {
                 var oldNode = oldNodes[oldIndex];
-                var existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oldIndex));
+                var existingDom = parent.ElementAt(oldPhysical);
                 if (ReconcileKeying.CanPatch(oldNode, node))
                 {
                     var actual = _patcher.ResolveWrapped(existingDom);
                     _patcher.PatchNode(actual, oldNode, node);
                     if (_ctx.IsAborted) return;
                     // Re-fetch: a WrapElement wrapper swap may change the element reference at this index.
-                    existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oldIndex));
+                    commit.OldSlots.TryGetPhysical(parent, slotStart + oldIndex, out oldPhysical);
+                    existingDom = parent.ElementAt(oldPhysical);
                     commit.NewElements.Add((existingDom, true));
                 }
                 else
@@ -339,8 +343,10 @@ namespace Velvet
         // walk). The slot check degrades a stale oldNodes/DOM mismatch (e.g. after a prior aborted/suspended
         // commit) to a fresh create instead of throwing IndexOutOfRange — the time-sliced keyed path asserts
         // this invariant; the general path can be re-entered mid-suspend so it guards defensively.
-        private static int MatchOldLeaf(GeneralCommitState commit, ChildKey key, int ordinal, bool linear)
+        private static int MatchOldLeaf(
+            GeneralCommitState commit, ChildKey key, int ordinal, bool linear, out int physical)
         {
+            physical = -1;
             int oldIndex;
             if (linear && ordinal < commit.OldKeys.Count && commit.OldKeys[ordinal].Equals(key)
                 && !commit.UsedOldIndices.Contains(ordinal))
@@ -355,7 +361,7 @@ namespace Velvet
             {
                 return -1;
             }
-            return LogicalChildSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out _) ? oldIndex : -1;
+            return commit.OldSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out physical) ? oldIndex : -1;
         }
 
         // Emits one expanded leaf under the key its position gives it: commits it in place under live context

@@ -27,11 +27,12 @@ namespace Velvet
     /// scans the whole child list, so it must not sit inside a per-child loop — the per-child sites ask
     /// <see cref="TryGetPhysical"/> instead, which answers "is the slot occupied" and "where" in one walk,
     /// and <c>AssertDomIndexInvariant</c> computes its count inside the <c>Debug.Assert</c> arguments so a
-    /// player build compiles it out with the call. What remains is one bounded walk per DOM touch on paths
-    /// that are already mutating the DOM. A container with no invisible child still pays it: the walk is
-    /// proportional to the slot index, not to the whole list, so a full pass stays quadratic in the child
-    /// count. If that shows up in a profile, the fix is a cursor advancing alongside the caller's own loop,
-    /// not a cached count (which every insert and remove would have to invalidate).
+    /// player build compiles it out with the call. What remains is one bounded walk per DOM touch. A
+    /// container with no invisible child still pays it: the walk is proportional to the slot index, not to
+    /// the whole list, so a loop calling these once per child is quadratic in the child count. A loop that
+    /// resolves its slots in ascending order holds a <see cref="LogicalSlotCursor"/> instead, which walks
+    /// on from the last slot it resolved; a cached count is not the fix, since every insert and remove
+    /// would have to invalidate it.
     /// </para>
     /// </remarks>
     internal static class LogicalChildSlots
@@ -149,5 +150,79 @@ namespace Velvet
             return rendered;
         }
 
+    }
+
+    /// <summary>
+    /// <see cref="LogicalChildSlots.TryGetPhysical"/> for one container, resolved from the last slot this
+    /// cursor found occupied rather than from the start of the child list, so a caller asking for slots in
+    /// ascending order pays the distance between consecutive slots rather than each slot's index. A slot
+    /// below the remembered one is resolved from the start.
+    /// </summary>
+    /// <remarks>
+    /// The remembered slot is trusted only while its element still sits at the remembered physical index;
+    /// otherwise the call walks from the start. A single insert or removal before that element moves it,
+    /// which the check sees, and one after it is counted by the walk on. The check misses an insert and a
+    /// removal before it that cancel out where one of them is a rendered child, so hold a cursor only across
+    /// a loop in which the container's rendered children keep their slots.
+    /// </remarks>
+    internal struct LogicalSlotCursor
+    {
+        private VisualElement _container;
+        private VisualElement _occupant;
+        private int _logical;
+        private int _physical;
+
+        /// <summary>
+        /// Same answer as <see cref="LogicalChildSlots.TryGetPhysical"/>, including its append position on
+        /// the false branch.
+        /// </summary>
+        internal bool TryGetPhysical(VisualElement container, int logical, out int physical)
+        {
+            // MUTANT_SURVIVES(equivalent, clause removed): walking on never finds a slot below the remembered
+            // one, so the walk from the start below answers it either way; the clause spares the walk to the end.
+            if (IsCurrentFor(container) && logical >= _logical)
+            {
+                if (WalkForward(container, logical, out physical)) return true;
+            }
+            if (!LogicalChildSlots.TryGetPhysical(container, logical, out physical))
+            {
+                return false;
+            }
+            Remember(container, logical, physical);
+            return true;
+        }
+
+        private bool IsCurrentFor(VisualElement container)
+            => ReferenceEquals(_container, container)
+                && _physical < container.childCount
+                && ReferenceEquals(container[_physical], _occupant);
+
+        private bool WalkForward(VisualElement container, int logical, out int physical)
+        {
+            var rendered = _logical;
+            var physicalCount = container.childCount;
+            for (physical = _physical; physical < physicalCount; physical++)
+            {
+                if (SilhouetteBoundsSpacer.IsSpacer(container[physical]))
+                {
+                    continue;
+                }
+                if (rendered == logical)
+                {
+                    Remember(container, logical, physical);
+                    return true;
+                }
+                rendered++;
+            }
+            return false;
+        }
+
+        private void Remember(VisualElement container, int logical, int physical)
+        {
+            _container = container;
+            _occupant = container[physical];
+            _logical = logical;
+            _physical = physical;
+        }
     }
 }
