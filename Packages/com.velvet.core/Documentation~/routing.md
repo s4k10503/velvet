@@ -188,10 +188,11 @@ in front of the query string, and any other route takes a bare one out, as React
 does. A pathless layout, whose path is empty too, is not an index route.
 
 - The method defaults to `get`, which runs no action: it navigates to the action's path with the form
-  data, an `ISearchParams`, as the query string. Velvet declines any form data that is not an `ISearchParams`, a string included,
-  which React Router encodes with `URLSearchParams`: the navigation commits "Unable to encode submission body" as the error of
-  the leaf route and runs no action. The target is the one a submission without that body would have,
-  with the form data not encoded as a query string.
+  data as the query string. Null, an `ISearchParams`, a string (parsed as `new URLSearchParams(string)`
+  does: one leading `?` dropped, `&`-separated, `+` and percent escapes decoded) and name/value pairs such
+  as a dictionary are encoded. Any other form data is a body React Router cannot encode either: the
+  navigation commits "Unable to encode submission body" as the error of the leaf route and runs no action,
+  to the target a submission with no body would have.
 - `post`, `put`, `patch` and `delete` call the action of the route the path matches: the deepest route
   with a path, or the index route when the query string holds a bare `index`. The action receives a
   `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the `FormData` as it

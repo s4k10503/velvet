@@ -367,13 +367,40 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AGetSubmissionOfSomethingOtherThanSearchParams_When_Submitted_Then_ItCommitsTheEncodingErrorAtTheLeafAndRunsNoAction()
+        public void Given_AGetSubmissionOfAString_When_Submitted_Then_ItIsParsedAsAQueryStringTheWayUrlSearchParamsDoes()
         {
             // Arrange
             var router = ItemsRouter("/other", Created);
 
             // Act
-            Submit(router, "lamp", new SubmitOptions { Action = "/items" });
+            Submit(router, "?a=b+c&d=%26&e", new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=b%20c&d=%26&e="));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfNameValuePairs_When_Submitted_Then_TheyAreTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var pairs = new Dictionary<string, string> { ["q"] = "lamp" };
+
+            // Act
+            Submit(router, pairs, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfABodyNoQueryStringEncodes_When_Submitted_Then_ItCommitsTheEncodingErrorAtTheLeafAndRunsNoAction()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new object(), new SubmitOptions { Action = "/items" });
 
             // Assert
             Assert.That(
@@ -388,7 +415,7 @@ namespace Velvet.Tests
             var router = ItemsRouter("/items?q=1", Created);
 
             // Act
-            Submit(router, "lamp", new SubmitOptions());
+            Submit(router, new object(), new SubmitOptions());
 
             // Assert
             Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=1"));

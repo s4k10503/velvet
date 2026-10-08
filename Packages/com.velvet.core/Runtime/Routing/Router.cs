@@ -226,9 +226,9 @@ namespace Velvet
         /// for <c>UseActionData</c> or its failure as that route's error. A method no form takes commits React
         /// Router's 405 error.
         /// </summary>
-        /// <param name="formData">What the submission sends. A <c>get</c> submission takes an
-        /// <see cref="ISearchParams"/> or null; anything else commits an error in the navigation instead of
-        /// throwing, as <c>routing.md</c> describes.</param>
+        /// <param name="formData">What the submission sends. A <c>get</c> submission encodes null, an
+        /// <see cref="ISearchParams"/>, a query string or name/value pairs as its query string; any other form data
+        /// commits an error in the navigation, as <c>routing.md</c> describes.</param>
         /// <param name="options">How to submit; null takes every default. A null
         /// <see cref="SubmitOptions.Action"/> submits to the current location.</param>
         /// <param name="cancellationToken">Token forwarded to the action and the loaders.</param>
@@ -248,15 +248,14 @@ namespace Velvet
         {
             options ??= DefaultSubmitOptions;
             var action = SubmissionPath(string.IsNullOrEmpty(options.Action) ? null : options.Action, baseRouteIndex);
+            var encodable = RouteQuery.TryEncodeBody(formData, out var query);
             var submission = new Submission(
-                string.IsNullOrEmpty(options.Method) ? "get" : options.Method, action, formData, options.Replace);
+                string.IsNullOrEmpty(options.Method) ? "get" : options.Method, action, formData, options.Replace,
+                encodable);
             var path = action;
-            if (submission.Method == "GET")
+            if (submission.Method == "GET" && submission.Refusal == null)
             {
-                if (submission.Refusal == null)
-                {
-                    path = RouteQuery.StripQuery(action) + RouteQuery.BuildQuery((ISearchParams)formData!);
-                }
+                path = RouteQuery.StripQuery(action) + RouteQuery.BuildQuery(query);
             }
             // React Router replaces on a mutation submitted to the location it is on, so the entry the form was
             // on is not left under the one it produced.
@@ -1080,11 +1079,11 @@ namespace Velvet
             internal readonly string Action;
             internal readonly object? FormData;
             internal readonly bool? Replace;
-            // The error for a method no form takes or a get body that is not an ISearchParams, committed in place
+            // The error for a method no form takes or a get body that cannot be encoded as a query string, committed in place
             // of an action's result. It carries no status.
             internal readonly Exception? Refusal;
 
-            internal Submission(string method, string action, object? formData, bool? replace)
+            internal Submission(string method, string action, object? formData, bool? replace, bool encodable)
             {
                 Method = method.ToUpperInvariant();
                 FormMethod = method.ToLowerInvariant();
@@ -1095,7 +1094,7 @@ namespace Velvet
                 {
                     Refusal = new InvalidOperationException($"Invalid request method \"{Method}\"");
                 }
-                else if (Method == "GET" && formData is not (null or ISearchParams))
+                else if (Method == "GET" && !encodable)
                 {
                     Refusal = new InvalidOperationException("Unable to encode submission body");
                 }
