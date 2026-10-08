@@ -101,7 +101,15 @@ namespace Velvet
                         // not left permanently active.
                         try
                         {
-                            FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
+                            // Ahead of the layout effects, which read the tree the drain committed.
+                            try
+                            {
+                                PointerEventsScope.OnDrainEnd(_ctx);
+                            }
+                            finally
+                            {
+                                FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
+                            }
                         }
                         finally
                         {
@@ -188,7 +196,7 @@ namespace Velvet
                     {
                         try
                         {
-                            FinishTopLevelPass();
+                            FinishTopLevelPass(parent ?? _ctx.MainPanelRoot);
                         }
                         finally
                         {
@@ -249,7 +257,7 @@ namespace Velvet
         // pass's genuine top-level boundary just as much as a fresh Reconcile call. Any new per-pass
         // reset belongs here, or it leaks on the shared context until some unrelated fiber's next
         // top-level Reconcile happens to run.
-        private void FinishTopLevelPass()
+        private void FinishTopLevelPass(VisualElement? reconciledInto)
         {
             LastTopLevelWasAborted = _ctx.IsAborted;
             // The abort flag stops sibling work inside the pass that just ended; the deferred
@@ -290,7 +298,7 @@ namespace Velvet
                 // After the portal drain, whose reconciles insert elements of their own.
                 StyleRelationalVariantManipulator.RetargetAll(_ctx);
                 // After the portal drain for the same reason: a Portal's target can sit inside a scope.
-                PointerEventsScope.SyncAll(_ctx);
+                PointerEventsScope.OnPassEnd(_ctx, reconciledInto);
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
@@ -400,7 +408,9 @@ namespace Velvet
                 {
                     if (isTopLevel)
                     {
-                        FinishTopLevelPass();
+                        // A resume keeps no record of the element its pass reconciles into; the tree's own
+                        // mount target is above every element the resume can insert outside a Portal.
+                        FinishTopLevelPass(_ctx.MainPanelRoot);
                     }
                 }
                 finally
@@ -819,8 +829,9 @@ namespace Velvet
             _ctx.TextBalanceManipulators.Clear();
             foreach (var scope in _ctx.PointerEventsScopes.Values)
             {
-                // MUTANT_SURVIVES(unreachable): the unmount reconcile ahead of Dispose released each scope whose
-                // element it tore down, so one is left here only for an element that reconcile skipped.
+                // MUTANT_SURVIVES(unreachable): no case leaves a scope in the table by now, since the unmount
+                // reconcile ahead of Dispose releases the scope of each element it tears down; this loop is for an
+                // element that reconcile skipped, a shape no fixture builds.
                 scope.Release();
             }
 

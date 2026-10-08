@@ -6,3 +6,7 @@
   on a descendant takes that descendant back. Elements mounted into the subtree later join it, every element
   gets back its own picking mode when the utility goes away, and both utilities work behind the `dark:`,
   responsive and `group-` variants. See `Documentation~/styling-pointer-events.md`.
+
+  Markup that already carries either class — Tailwind markup ported as written, such as
+  `disabled:pointer-events-none` on a button — now changes hit testing: until this release both classes
+  were accepted and did nothing.

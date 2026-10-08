@@ -305,27 +305,97 @@ namespace Velvet.Tests
             return show ? V.Button(name: "button", className: "pointer-events-none", text: "go") : null;
         }
 
-        [Test]
-        public void Given_APointerEventsNoneButtonThatUnmounted_When_AnotherTreeRentsIt_Then_ItTakesPointers()
+        [Component]
+        private static VNode RentedButtonScope()
         {
-            // Arrange — the button is the scope's own element, and the pool hands it back out.
+            var on = Hooks.UseStore(s_flag, s => s.On);
+            return V.Div(className: on ? "pointer-events-none" : null,
+                children: new VNode[] { V.Button(name: "again", text: "again") });
+        }
+
+        [Test]
+        public void Given_APointerEventsNoneButtonThatUnmounted_When_AnotherTreeRentsItIntoAScopeThatThenEnds_Then_ItTakesPointers()
+        {
+            // Arrange — the button is the scope's own element, and the pool hands it back out. The pool return
+            // writes Position over the button whatever holds are left on it, so the second tree puts it under a
+            // scope of its own and ends that scope: a hold the teardown left behind keeps it Ignore past that end.
             using var show = new PointerEventsFlagStore(true);
+            using var flag = new PointerEventsFlagStore(true);
             s_show = show;
+            s_flag = flag;
             using var mounted = V.Mount(_root, V.Component(ShownButton, key: "button"));
             var button = _root.Q<Button>("button");
             var held = button.pickingMode;
             show.Set(false);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var elsewhere = new VisualElement();
+            using var other = V.Mount(elsewhere, V.Component(RentedButtonScope, key: "rented"));
+            var again = elsewhere.Q<Button>("again");
 
             // Act
-            var elsewhere = new VisualElement();
-            using var other = V.Mount(elsewhere, V.Button(name: "again", text: "again"));
-            var again = elsewhere.Q<Button>("again");
+            flag.Set(false);
+            other.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert — that the rented button is the same instance rides along, since a freshly built one would
             // take pointers whatever the teardown did.
             Assert.That((held, ReferenceEquals(again, button), again.pickingMode),
                 Is.EqualTo((PickingMode.Ignore, true, PickingMode.Position)));
+        }
+
+        [Component]
+        private static VNode SwappedButton()
+        {
+            var on = Hooks.UseStore(s_flag, s => s.On);
+            return V.Div(className: "pointer-events-none", children: new VNode[]
+            {
+                on ? V.Button(key: "second", name: "second", text: "b") : V.Button(key: "first", name: "first", text: "a"),
+            });
+        }
+
+        [Test]
+        public void Given_AHeldButtonInsideANoneScope_When_ARenderReplacesItInItsSlot_Then_TheButtonThePoolHandsBackIgnoresPicking()
+        {
+            // Arrange — a different key in the same slot is removed before its replacement is created, so the
+            // replacement is rented from the pool the removal just returned the first button to.
+            using var flag = new PointerEventsFlagStore(false);
+            s_flag = flag;
+            using var mounted = V.Mount(_root, V.Component(SwappedButton, key: "swap"));
+            var first = _root.Q<Button>("first");
+
+            // Act
+            flag.Set(true);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var second = _root.Q<Button>("second");
+
+            // Assert — that the pool handed back the same instance rides along, since a freshly built button is
+            // taken by the scope whatever the removal left on the first one.
+            Assert.That((ReferenceEquals(second, first), second?.pickingMode),
+                Is.EqualTo((true, (PickingMode?)PickingMode.Ignore)));
+        }
+
+        [Test]
+        public void Given_ATreeMountedIntoAnotherTreesNoneScope_When_ItMountsAndLaterAddsAChild_Then_BothIgnorePickingWithoutTheOuterTreeRendering()
+        {
+            // Arrange — the outer tree never renders after its own mount, so only the inner tree's passes can
+            // reach the outer scope.
+            using var show = new PointerEventsFlagStore(false);
+            s_show = show;
+            using var outer = V.Mount(_root, V.Div(name: "scope", className: "pointer-events-none",
+                children: new VNode[] { V.Div(name: "host") }));
+
+            // Act — one element arrives with the inner tree's mount, the other with a render inside a drain.
+            using var inner = V.Mount(_root.Q<VisualElement>("host"), V.Div(children: new VNode[]
+            {
+                V.Div(name: "mounted"),
+                V.Component(ShownToggle, key: "toggle"),
+            }));
+            var mounted = _root.Q<VisualElement>("mounted").pickingMode;
+            show.Set(true);
+            inner.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((mounted, _root.Q<Toggle>("toggle")?.pickingMode),
+                Is.EqualTo((PickingMode.Ignore, (PickingMode?)PickingMode.Ignore)));
         }
 
         [Test]
@@ -354,18 +424,20 @@ namespace Velvet.Tests
         public void Given_AToggleAnotherTreesScopeHolds_When_ItsOwnTreeUnmountsIt_Then_TheToggleItRentsOutAgainTakesItsOwnModes()
         {
             // Arrange — the toggle is mounted by an inner tree under an element of the outer tree's scope, so the
-            // outer tree, which never renders again, is not where the toggle is torn down.
-            using var flag = new PointerEventsFlagStore(false);
+            // outer tree, which never renders again, is not where the toggle is torn down. The modes it should get
+            // back are read off a toggle mounted outside any scope first.
+            string before;
+            var probeHost = new VisualElement();
+            using (V.Mount(probeHost, V.Toggle(name: "probe")))
+            {
+                before = PickingModes.Of(probeHost.Q<Toggle>("probe"));
+            }
             using var show = new PointerEventsFlagStore(true);
-            s_flag = flag;
             s_show = show;
             using var outer = V.Mount(_root, V.Div(name: "scope", className: "pointer-events-none",
-                children: new VNode[] { V.Div(name: "host"), V.Component(Ticker, key: "ticker") }));
+                children: new VNode[] { V.Div(name: "host") }));
             using var inner = V.Mount(_root.Q<VisualElement>("host"), V.Component(ShownToggle, key: "toggle"));
             var toggle = _root.Q<Toggle>("toggle");
-            var before = PickingModes.Of(toggle);
-            flag.Set(true);
-            outer.GetSchedulerForTest().DrainImmediateForTest();
             var held = PickingModes.DistinctOf(toggle);
             show.Set(false);
             inner.GetSchedulerForTest().DrainImmediateForTest();
@@ -452,6 +524,22 @@ namespace Velvet.Tests
             // Arrange — the theme flip re-derives the element outside any reconcile pass.
             _mounted = V.Mount(_window.rootVisualElement,
                 V.Div(name: "switch", className: "pointer-events-none dark:pointer-events-auto"));
+            var element = _window.rootVisualElement.Q<VisualElement>("switch");
+            var light = element.pickingMode;
+
+            // Act
+            VelvetTheme.IsDark = true;
+
+            // Assert
+            Assert.That((light, element.pickingMode), Is.EqualTo((PickingMode.Ignore, PickingMode.Position)));
+        }
+
+        [Test]
+        public void Given_AnImportantNoneBesideADarkVariantImportantAuto_When_TheThemeTurnsDark_Then_TheVariantsImportantAutoWins()
+        {
+            // Arrange — the variant's payload has to keep its bang to outrank the element's own important token.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "switch", className: "!pointer-events-none dark:!pointer-events-auto"));
             var element = _window.rootVisualElement.Q<VisualElement>("switch");
             var light = element.pickingMode;
 

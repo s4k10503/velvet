@@ -29,7 +29,8 @@ the subtree itself, the way CSS inheritance would carry the property down.
 - **`pointer-events-none`** sets `PickingMode.Ignore` on the element and on the elements below it in the
   element tree, down to any `pointer-events-auto`, a control's own internal parts included (a
   `ScrollView`'s scrollers, a `Toggle`'s checkmark). No hit test lands on any of them, so none lights its
-  own `hover:` or `active:` payload from the pointer.
+  own `hover:` or `active:` payload while the pointer is over the element itself (an ancestor of a
+  `pointer-events-auto` descendant still does while the pointer is over that descendant, below).
 - **`pointer-events-auto`** stops the walk of an enclosing `pointer-events-none`: the element and its subtree
   keep the modes they had, until a `pointer-events-none` further down starts a scope of its own. The
   element is a target again, and what it receives bubbles up through the ignored ancestors as usual — a
@@ -55,11 +56,13 @@ The walk follows the element tree as it is mounted, so:
 - a `V.Portal`'s content is covered when the Portal's target is inside the subtree, and not otherwise,
   wherever the `V.Portal` call itself sits.
 
-An element that joins the subtree later takes the mode at the end of the tree's next reconcile pass, which
-for a child a component inside the subtree renders is the pass that mounts it, and for a part a control
-creates on its own between renders is whichever pass comes next. An element moved out of the subtree by app
-code (a `refCallback` reparenting it) gets its own mode back at the tree's next reconcile pass; an element
-that unmounts gets it back as it is torn down.
+An element that joins the subtree later takes the mode at the end of the reconcile pass that mounts it —
+or, for a render inside a batched update, at the end of that batch, before its layout effects run. That
+holds for a tree mounted with `V.Mount`, or reached through a `V.Portal`, into an element of another
+tree's subtree: the inserting tree's pass takes care of it, and the tree that owns the utility does not
+have to render again. A part a control creates on its own between renders joins at whichever pass comes
+next. An element moved out of the subtree by app code (a `refCallback` reparenting it) gets its own mode
+back at the tree's next reconcile pass; an element that unmounts gets it back as it is torn down.
 
 ## Variants
 

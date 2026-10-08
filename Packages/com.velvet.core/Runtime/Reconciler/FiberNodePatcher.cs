@@ -3057,9 +3057,8 @@ namespace Velvet
         // present: gap, divide, grid, text-balance; and the pointer-events scope, which rides the same sequence
         // (ApplyResolvedLayoutManipulators) because the variant re-sync runs it too. The four are configured as
         // a unit because gap and grid share one ownership rule — a grid owns its children's margins, so the gap
-        // manipulator must be suppressed
-        // for exactly the class lists that produce a grid manipulator. Call AFTER the container's children
-        // have been reconciled so each sees the final child list.
+        // manipulator must be suppressed for exactly the class lists that produce a grid manipulator. Call AFTER
+        // the container's children have been reconciled so each sees the final child list.
         // Resolves its own class source rather than taking the one the paint passes use: those resolve after
         // the structural / has- passes (see ApplyPostChildrenClassPasses), and gap has to run before them.
         internal void ApplyLayoutManipulators(VisualElement element, string[] classNames)
