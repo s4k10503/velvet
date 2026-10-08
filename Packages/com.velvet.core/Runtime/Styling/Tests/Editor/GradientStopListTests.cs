@@ -865,6 +865,62 @@ namespace Velvet.Tests
             Assert.That(position, Is.EqualTo(0.6f).Within(1e-4f));
         }
 
+        [Test]
+        public void Given_ABracketedPixelFromPosition_When_Extracted_Then_TheStopSitsAtThatLength()
+        {
+            // Arrange — Tailwind's -position utilities take a length as well as a percentage.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-[20px]", "to-[#0000ff]" }, out var spec);
+
+            // Act
+            var px = spec.Stops[0].PositionPx;
+
+            // Assert
+            Assert.That(px, Is.EqualTo(20f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ABracketedPixelViaPosition_When_Extracted_Then_TheStopSitsAtThatLength()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "via-[#00ff00]", "via-[30px]", "to-[#0000ff]" }, out var spec);
+
+            // Act
+            var px = spec.Stops[1].PositionPx;
+
+            // Assert
+            Assert.That(px, Is.EqualTo(30f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ABracketedPixelToPosition_When_Extracted_Then_TheStopSitsAtThatLength()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "to-[#0000ff]", "to-[40px]" }, out var spec);
+
+            // Act
+            var px = spec.Stops[1].PositionPx;
+
+            // Assert
+            Assert.That(px, Is.EqualTo(40f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_APercentageAfterABracketedPixelPosition_When_Extracted_Then_ThePixelLengthIsDropped()
+        {
+            // Arrange — the later utility wins, so the stop is positioned by the percentage alone.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-[20px]", "from-60%", "to-[#0000ff]" }, out var spec);
+
+            // Act
+            var px = spec.Stops[0].PositionPx;
+
+            // Assert
+            Assert.That(float.IsNaN(px), Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base already reads a bracketed position of any sign or fraction.
         [Test]
         public void Given_ABracketedFractionalPosition_When_Extracted_Then_ItIsTheStopsPosition()

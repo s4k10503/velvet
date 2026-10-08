@@ -43,7 +43,8 @@ The last shape utility in the class list wins, and a stop utility with no shape 
 (`from-[#0f172a]`); `from-{n}%`, `via-{n}%` and `to-{n}%` move that stop from its default of 0%, 50% or
 100%, and a position behind an earlier stop is raised to it, as in CSS. A position may lie outside
 0%–100%: the gradient line runs on past the box. As in Tailwind, a bare position is a whole, unsigned
-percentage; a negative or fractional one is written in brackets (`from-[-50%]`, `via-[12.5%]`). With only one of `from-` and `to-` given, the other end
+percentage; a negative or fractional one is written in brackets (`from-[-50%]`, `via-[12.5%]`). A stop may
+also sit at a length in pixels, written in brackets (`from-[20px]`); other length units are not read. With only one of `from-` and `to-` given, the other end
 is that colour made transparent, and `via-` alone fades in from and out to its own transparent colour.
 
 ## Stop lists in the shape's brackets

@@ -295,6 +295,7 @@ namespace Velvet
             public bool HasColor;
             public Color Color;
             public float Position;
+            public float PositionPx;
         }
 
         // A from-/via-/to- suffix's reading: a position, a colour, or neither.
@@ -302,6 +303,7 @@ namespace Velvet
         {
             public bool IsPosition;
             public float Position;
+            public float PositionPx;
             public bool IsColor;
             public Color Color;
         }
@@ -414,9 +416,9 @@ namespace Velvet
 
             var hasShape = false;
             var shape = default(Shape);
-            var fromStop = new UtilityStop { Position = 0f };
-            var viaStop = new UtilityStop { Position = 0.5f };
-            var toStop = new UtilityStop { Position = 1f };
+            var fromStop = new UtilityStop { Position = 0f, PositionPx = float.NaN };
+            var viaStop = new UtilityStop { Position = 0.5f, PositionPx = float.NaN };
+            var toStop = new UtilityStop { Position = 1f, PositionPx = float.NaN };
 
             foreach (var cls in classNames)
             {
@@ -481,18 +483,19 @@ namespace Velvet
             {
                 return null;
             }
-            var key = (shape.Raw, ((fromStop.HasColor, fromStop.Color, fromStop.Position), (viaStop.HasColor,
-                viaStop.Color, viaStop.Position), (toStop.HasColor, toStop.Color, toStop.Position)));
+            var key = (shape.Raw, ((fromStop.HasColor, fromStop.Color, fromStop.Position, fromStop.PositionPx),
+                (viaStop.HasColor, viaStop.Color, viaStop.Position, viaStop.PositionPx),
+                (toStop.HasColor, toStop.Color, toStop.Position, toStop.PositionPx)));
             if (s_utilityStops.TryGet(key, out var cached))
             {
                 return cached;
             }
             var first = new GradientStop(fromStop.HasColor ? fromStop.Color : Transparent(Neighbour(toStop, viaStop)),
-                fromStop.Position);
+                fromStop.Position, fromStop.PositionPx);
             var last = new GradientStop(toStop.HasColor ? toStop.Color : Transparent(Neighbour(fromStop, viaStop)),
-                toStop.Position);
+                toStop.Position, toStop.PositionPx);
             var utilities = viaStop.HasColor
-                ? new[] { first, new GradientStop(viaStop.Color, viaStop.Position), last }
+                ? new[] { first, new GradientStop(viaStop.Color, viaStop.Position, viaStop.PositionPx), last }
                 : new[] { first, last };
             var raw = shape.Raw == null ? utilities : shape.Raw.Concat(utilities).ToArray();
             var stops = Place(raw);
@@ -523,7 +526,7 @@ namespace Velvet
             return reading.Ok;
         }
 
-        // A from-/via-/to- remainder is EITHER a stop position (a percentage) or a colour — independent
+        // A from-/via-/to- remainder is EITHER a stop position (a percentage, or a bracketed pixel length) or a colour — independent
         // utilities. A percentage sets only the position; a recognized colour sets the colour (and marks
         // the stop present); anything else is ignored (leaves the accumulated values untouched).
         private static void ReadStop(string cls, int prefixLength, ref UtilityStop stop)
@@ -536,6 +539,7 @@ namespace Velvet
             if (token.IsPosition)
             {
                 stop.Position = token.Position;
+                stop.PositionPx = token.PositionPx;
             }
             else if (token.IsColor)
             {
@@ -603,11 +607,25 @@ namespace Velvet
             return true;
         }
 
+        // A bracketed pixel length, as list-bracket positions read one; a bare 0 is no length to Tailwind's
+        // length test, so it is declined here.
+        private static bool TryParseBracketedPixels(string suffix, out float px)
+        {
+            px = 0f;
+            return suffix.Length > 4 && suffix[0] == '[' && suffix[suffix.Length - 1] == ']'
+                && TryParsePixelLength(suffix.Substring(1, suffix.Length - 2), out px)
+                && suffix.EndsWith("px]", StringComparison.Ordinal);
+        }
+
         private static StopToken ParseStopToken(string suffix)
         {
             if ((suffix.Length > 0 && suffix[0] == '[' || IsBarePercent(suffix)) && TryParsePercent(suffix, out var p))
             {
-                return new StopToken { IsPosition = true, Position = p };
+                return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
+            }
+            if (TryParseBracketedPixels(suffix, out var px))
+            {
+                return new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px };
             }
             return VelvetPalette.TryResolveColorToken(suffix, out var c)
                 ? new StopToken { IsColor = true, Color = c }
