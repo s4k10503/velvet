@@ -9,7 +9,7 @@
 
 - `MutationOptions`, `MutationOptions<TVariables>` and `MutationOptions<TVariables, TData>` take an
   `OnSettled`, an init-only property set in an object initializer, so each record's constructor and
-  `Deconstruct` are unchanged. It runs after `OnSuccess` or `OnError` on either path and before the outcome
+  deconstruction are unchanged. It runs after `OnSuccess` or `OnError` on either path and before the outcome
   is committed. A throwing `OnSettled` on the success path fails the call, which then runs `OnError` and
   `OnSettled` with that exception, as v5 does; on the failure path it is logged and the outcome stays the
   mutation's own, as it does after a throwing `OnError`, which does not cost the call its `OnSettled`.
