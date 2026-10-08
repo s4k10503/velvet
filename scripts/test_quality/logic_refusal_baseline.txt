@@ -38,7 +38,7 @@ Packages/com.velvet.core/Runtime/Styling/MotionSlotContext.cs	6
 Packages/com.velvet.core/Runtime/Styling/MotionSpringClassParser.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs	1
-Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	14
+Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs	11
 Packages/com.velvet.core/Runtime/Styling/StyleClassProjection.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleFilterEngineWrite.cs	2

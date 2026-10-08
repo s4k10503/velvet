@@ -369,8 +369,8 @@ namespace Velvet.Tests
             // Assert
             var key = typeof(StyleTextBalanceManipulator)
                 .GetField("_measureKey", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(manipulator)!;
-            var style = key.GetType().GetField("_fontStyle", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(key);
+            var style = (FontStyle)key.GetType().GetField("_fontStyle", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(key)!;
             Assert.That((arranged, style), Is.EqualTo((true, FontStyle.Bold)), measured);
         }
 

@@ -1338,14 +1338,6 @@ namespace Velvet
             return found;
         }
 
-        // Whether any layer is registered for property. Uncontaminated for a caller asking about a slot it
-        // writes directly rather than through Apply — no manipulator registers a layer.
-        internal static bool HasLayer(VisualElement element, ArbitraryProperty property)
-            => element != null
-                && s_layers.TryGetValue(element, out var map)
-                && map.TryGetValue(property, out var layers)
-                && layers.Count > 0;
-
         // Drops all arbitrary-value layers tracked for element. Called when the element is
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
