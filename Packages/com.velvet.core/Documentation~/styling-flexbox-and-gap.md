@@ -348,7 +348,8 @@ that axis, then by its maximum size. Velvet writes that value inline, as `min-wi
 - a row's min-content width is the widest run of text with no break opportunity in it: spaces
   separate runs (a no-break space does not), a hyphen between letters ends one, and each ideograph,
   kana or Hangul syllable is its own, bar closing punctuation sticking to the character before it. Under
-  `whitespace-nowrap` and `whitespace-pre` it is the whole text;
+  `whitespace-nowrap` and `whitespace-pre` it is the whole text, and the label's white-space is the one
+  its cascade resolves, so a theme that gives labels `nowrap` needs `whitespace-normal` for the widest run;
 - a column's min-content height is the height the text takes at the width the item was given;
 - the item's own padding and border on that axis is added to either.
 
@@ -359,7 +360,7 @@ still wraps at its widest run instead of refusing to shrink, and one in a column
 text.
 
 The item keeps whatever its cascade gives it when it is clipped (`overflow-hidden`, `truncate`), declares
-its own `min-w-*` / `min-h-*` on that axis, has `shrink-0`, sits in a `grid` column, has children, or is
+its own `min-w-*` / `min-h-*` on that axis, sits in a `grid` column, has children, or is
 absolutely positioned or hidden. A clipped item and a grid item have an automatic minimum of zero in CSS.
 
 Not covered: a minimum the theme or a stylesheet of your own declares on a label is not seen, and the

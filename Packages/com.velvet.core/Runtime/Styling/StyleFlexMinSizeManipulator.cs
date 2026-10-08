@@ -147,7 +147,7 @@ namespace Velvet
                 return;
             }
 
-            if (StandsDown(textElement, parent, horizontal, resolved.flexShrink))
+            if (StandsDown(textElement, parent, horizontal))
             {
                 Release(textElement);
                 _lastSignature = signature;
@@ -217,9 +217,9 @@ namespace Velvet
             => element.resolvedStyle.position != Position.Absolute
                 && element.resolvedStyle.display != DisplayStyle.None;
 
-        private bool StandsDown(TextElement textElement, VisualElement parent, bool horizontal, float flexShrink)
+        private bool StandsDown(TextElement textElement, VisualElement parent, bool horizontal)
         {
-            if (flexShrink <= 0f || _clipped || (horizontal ? _declaresMinWidth : _declaresMinHeight))
+            if (_clipped || (horizontal ? _declaresMinWidth : _declaresMinHeight))
             {
                 return true;
             }
@@ -481,7 +481,6 @@ namespace Velvet
                 hash = hash * 31 + (int)resolved.whiteSpace;
                 hash = hash * 31 + Mathf.RoundToInt(FrameInsets(resolved, horizontal));
                 hash = hash * 31 + Mathf.RoundToInt(crossContent);
-                hash = hash * 31 + (resolved.flexShrink > 0f ? 1 : 0);
                 hash = hash * 31 + (specified.HasValue ? Mathf.RoundToInt(specified.Value) + 1 : 0);
                 hash = hash * 31 + (maximum.HasValue ? Mathf.RoundToInt(maximum.Value) + 1 : 0);
                 return hash;

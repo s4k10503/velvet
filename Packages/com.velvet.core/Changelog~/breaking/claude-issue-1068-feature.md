@@ -15,4 +15,4 @@
   the text takes at the width it was given, so a label in a box shorter than its text overflows instead of
   being squeezed. A declared `w-*` / `h-*` caps the minimum at that size and a `max-w-*` / `max-h-*` at the
   maximum. An item that is clipped (`overflow-hidden`, `truncate`), declares its own `min-w-*` / `min-h-*`
-  on the axis, has `shrink-0`, sits in a `grid-cols-*` column or has children keeps its cascade's value.
+  on the axis, sits in a `grid-cols-*` column or has children keeps its cascade's value.

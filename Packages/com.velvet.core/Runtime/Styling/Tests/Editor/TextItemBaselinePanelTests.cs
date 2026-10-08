@@ -37,8 +37,13 @@ namespace Velvet.Tests
             return element;
         }
 
+        // A Label starts under whatever white-space the panel's theme gives it, so a case that is not about
+        // white-space says whitespace-normal itself.
         private Label MountLabel(string containerClass, string labelClass, string text)
-            => Mount<Label>(containerClass, V.Label(className: labelClass, text: text));
+            => Mount<Label>(containerClass, V.Label(className: WrapByDefault(labelClass), text: text));
+
+        private static string WrapByDefault(string labelClass)
+            => labelClass.Contains("whitespace-") ? labelClass : ("whitespace-normal " + labelClass).Trim();
 
         private static void Settle(VisualElement element)
         {
@@ -188,7 +193,7 @@ namespace Velvet.Tests
         public void Given_AButtonInARow_When_Resolved_Then_ItsMinWidthIsItsWidestWordPlusItsOwnFrame()
         {
             // Arrange / Act
-            var button = Mount<Button>("flex flex-row w-[20px]", V.Button(text: Sentence));
+            var button = Mount<Button>("flex flex-row w-[20px]", V.Button(className: "whitespace-normal", text: Sentence));
 
             // Assert
             Assert.That(button.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(button, LongWord)));
@@ -389,16 +394,14 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
-        // GREEN_ON_BASE(characterization): the base writes no minimum at all; what reddens it is the manipulator
-        // writing for an item that cannot shrink.
         [Test]
-        public void Given_ALabelThatCannotShrink_When_Resolved_Then_NoMinWidthIsWritten()
+        public void Given_ALabelThatCannotShrink_When_Resolved_Then_ItsMinWidthIsItsWidestWord()
         {
             // Arrange / Act
             var label = MountLabel("flex flex-row w-[20px]", "shrink-0", Sentence);
 
             // Assert
-            Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
         }
 
         [Test]
@@ -409,7 +412,7 @@ namespace Velvet.Tests
             _window.rootVisualElement.Add(scope.Root);
             VNode[] Tree(string labelClass) => new VNode[]
             {
-                V.Div("flex flex-row w-[20px]", V.Label(className: labelClass, text: Sentence)),
+                V.Div("flex flex-row w-[20px]", V.Label(className: WrapByDefault(labelClass), text: Sentence)),
             };
             var before = Tree("min-w-0");
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
@@ -431,7 +434,7 @@ namespace Velvet.Tests
             _window.rootVisualElement.Add(scope.Root);
             VNode[] Tree(string labelClass) => new VNode[]
             {
-                V.Div("flex flex-row w-[20px]", V.Label(className: labelClass, text: Sentence)),
+                V.Div("flex flex-row w-[20px]", V.Label(className: WrapByDefault(labelClass), text: Sentence)),
             };
             var before = Tree("");
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
@@ -457,7 +460,7 @@ namespace Velvet.Tests
             _window.rootVisualElement.Add(scope.Root);
             VNode[] Tree(string text) => new VNode[]
             {
-                V.Div("flex flex-row w-[20px]", V.Label(className: "transition-all duration-500", text: text)),
+                V.Div("flex flex-row w-[20px]", V.Label(className: "whitespace-normal transition-all duration-500", text: text)),
             };
             var before = Tree(Sentence);
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
