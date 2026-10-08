@@ -629,10 +629,12 @@ namespace Velvet.Tests
         [Test]
         public void Given_HalfOffsetsAndNegativeHalfTranslates_When_Resolved_Then_TheChildIsCentredInItsParent()
         {
-            // Arrange
+            // Arrange — the in-flow sibling moves a relatively positioned leaf down, so only `absolute`
+            // centres it.
             _mounted = V.Mount(_window.rootVisualElement,
                 V.Div(className: "w-[200px] h-[200px]", name: "parent", children: new VNode?[]
                 {
+                    V.Div(className: "h-[50px]"),
                     V.Div(name: "leaf",
                         className: "absolute left-1/2 top-1/2 w-[40px] h-[20px] -translate-x-1/2 -translate-y-1/2"),
                 }));

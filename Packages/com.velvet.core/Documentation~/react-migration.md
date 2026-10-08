@@ -364,7 +364,7 @@ It excludes hand-written UXML/USS from its design and expresses all styles with 
 | cva's slot support | `StyleSlotRecipe` | Variant management for multiple slots |
 | `theme.extend` in `tailwind.config.ts` | `:root` variables in `_tokens.uss` | Design token extension |
 | Tailwind JIT's `w-[120px]` | Same syntax + `StyleArbitraryValueResolver` | Arbitrary values can be used as-is |
-| Fractions (`w-1/2`, `left-1/2`, `-translate-x-1/2`) | Same syntax | A percent written as inline style, since no USS selector can spell `/`. Sizing (`w-`, `h-`, `size-`) and position (`top-`, `right-`, `bottom-`, `left-`, `inset-`, `inset-x-`, `inset-y-`) take the denominators 2, 3, 4, 5, 6 and 12, with a numerator from 1 to one less than the denominator; position also takes the negated form (`-left-1/2`). Translate takes halves, thirds and quarters |
+| Fractions (`w-1/2`, `left-1/2`, `-translate-x-1/2`) | Same syntax | Resolved as an inline percent. Sizing (`w-`, `h-`, `size-`) and position (`top-`, `right-`, `bottom-`, `left-`, `inset-`, `inset-x-`, `inset-y-`) take the denominators 2, 3, 4, 5, 6 and 12, with a numerator from 1 to one less than the denominator; position also takes the negated form (`-left-1/2`). Translate takes halves, thirds and quarters |
 | `hover:` / `focus:` / `active:` / `checked:` state variants | Same prefixes | Driven by the element's own pointer / focus state (the payload is an ordinary utility) |
 | `dark:` theme variant | Same prefix | Driven by `VelvetTheme.IsDark` |
 | `sm:` / `md:` / `lg:` / `xl:` / `2xl:` responsive variants | Same prefixes | Min-width breakpoints; evaluated against the panel root by default (or a `@container` scope) |

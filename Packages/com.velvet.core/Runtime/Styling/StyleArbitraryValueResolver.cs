@@ -538,8 +538,8 @@ namespace Velvet
             return true;
         }
 
-        // The fraction families (w-1/2, h-2/3, size-3/4, left-1/2, inset-x-1/4) resolve to an inline percent,
-        // since no USS selector can spell '/'. Only a position offset takes a sign (-left-1/2), as in Tailwind.
+        // The fraction families (w-1/2, h-2/3, size-3/4, left-1/2, inset-x-1/4) resolve to an inline percent.
+        // Only a position offset takes a sign (-left-1/2), as in Tailwind.
         // The inset-x-/inset-y- rows precede inset-, because the first row whose prefix matches decides.
         private static readonly (string Prefix, ArbitraryProperty Property, bool Signed)[] s_fractionFamilies =
         {
@@ -570,8 +570,8 @@ namespace Velvet
             return -1;
         }
 
-        // MUTANT_SURVIVES(equivalent): FractionFamilyOf declines a token that opens with '/'.
-        // The boundary moves only that token, since every family prefix opens with a letter.
+        // MUTANT_SURVIVES(equivalent): the boundary moves only a token opening with '/'.
+        // FractionFamilyOf declines that token either way, since every family prefix opens with a letter.
         private static bool IsFractionToken(string cls) => cls.IndexOf('/') >= 0 && FractionFamilyOf(cls) >= 0;
 
         // Only the denominators 2/3/4/5/6/12 with a numerator in 1..d-1 are accepted; anything else does not
