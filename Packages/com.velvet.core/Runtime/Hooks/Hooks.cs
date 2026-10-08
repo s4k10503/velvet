@@ -2010,6 +2010,7 @@ namespace Velvet
                 OnError: options.OnError)
             {
                 OnSettled = options.OnSettled is { } onSettled ? (_, ex, v) => onSettled(ex, v) : null,
+                Retry = options.Retry,
             });
         }
 
@@ -2031,6 +2032,7 @@ namespace Velvet
                 OnError: options.OnError is { } onError ? (ex, _) => onError(ex) : null)
             {
                 OnSettled = options.OnSettled is { } onSettled ? (_, ex, _) => onSettled(ex) : null,
+                Retry = options.Retry,
             });
         }
 
@@ -2090,8 +2092,16 @@ namespace Velvet
             {
                 // After MarkPending and inside the try, which is TanStack's order: OnMutate reads the handle
                 // as this call's pending one, and a throw from it fails the call before MutationFn is reached.
+                // It stays outside the retry, so it runs once per call however many attempts follow.
                 context = slot.InvokeOnMutate(variables);
-                var data = await slot.InvokeMutationFn(variables, cts.Token);
+                // Each attempt reads the slot's MutationFn, the latest render's, as v5's retryer reads
+                // options.mutationFn on every run.
+                var data = await (slot.Retry is { } retry
+                    ? retry.RunWithStateAsync(
+                        static (call, token) => call.Slot.InvokeMutationFn(call.Variables, token),
+                        (Slot: slot, Variables: variables),
+                        cts.Token)
+                    : slot.InvokeMutationFn(variables, cts.Token));
                 // The handlers run before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess and OnSettled read is the handle as it stands rather than
                 // their own result. Either one throwing leaves the call a failure with nothing of its own

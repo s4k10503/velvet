@@ -35,6 +35,14 @@ namespace Velvet
         /// success and default data and the exception on failure.
         /// </summary>
         public Action<TData?, Exception?, TVariables>? OnSettled { get; init; }
+
+        /// <summary>
+        /// Retries a failed <see cref="MutationFn"/> within the same call: nothing is committed between
+        /// attempts, and <see cref="OnSuccess"/> / <see cref="OnError"/> / <see cref="OnSettled"/> run once, for
+        /// the last attempt's outcome. When null, the default, a failure is not retried, as TanStack Query's
+        /// mutations default to <c>retry: 0</c>.
+        /// </summary>
+        public RetryPolicy? Retry { get; init; }
     }
 
     /// <summary>
@@ -50,7 +58,15 @@ namespace Velvet
         Func<TVariables, TContext>? OnMutate = null,
         Action<TData, TVariables, TContext?>? OnSuccess = null,
         Action<Exception, TVariables, TContext?>? OnError = null,
-        Action<TData?, Exception?, TVariables, TContext?>? OnSettled = null);
+        Action<TData?, Exception?, TVariables, TContext?>? OnSettled = null)
+    {
+        /// <summary>
+        /// As <see cref="MutationOptions{TVariables, TData}.Retry"/>, and only <see cref="MutationFn"/> is
+        /// retried: <see cref="OnMutate"/> runs once per call, before the first attempt, so every later callback
+        /// of that call receives the one context it returned.
+        /// </summary>
+        public RetryPolicy? Retry { get; init; }
+    }
 
     /// <summary>
     /// Options for a void mutation that takes <typeparamref name="TVariables"/> input but returns no data.
@@ -66,6 +82,9 @@ namespace Velvet
         /// success.
         /// </summary>
         public Action<Exception?, TVariables>? OnSettled { get; init; }
+
+        /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
+        public RetryPolicy? Retry { get; init; }
     }
 
     /// <summary>
@@ -82,6 +101,9 @@ namespace Velvet
         /// success.
         /// </summary>
         public Action<Exception?>? OnSettled { get; init; }
+
+        /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
+        public RetryPolicy? Retry { get; init; }
     }
 
     /// <summary>

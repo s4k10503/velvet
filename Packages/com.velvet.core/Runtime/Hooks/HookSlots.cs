@@ -207,6 +207,8 @@ namespace Velvet
         public abstract void InvokeOnError(Exception error, TVariables variables, TContext context);
         public abstract void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context);
 
+        public abstract RetryPolicy? Retry { get; }
+
         public override void Dispose()
         {
             // Snapshot and clear before cancelling: a registration-based cancellation runs its
@@ -250,6 +252,8 @@ namespace Velvet
 
         public override void InvokeOnSettled(TData data, Exception? error, TVariables variables, Unit context) =>
             Options.OnSettled?.Invoke(data, error, variables);
+
+        public override RetryPolicy? Retry => Options.Retry;
     }
 
     internal sealed class HookContextMutationSlot<TVariables, TData, TContext>
@@ -271,6 +275,8 @@ namespace Velvet
 
         public override void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context) =>
             Options.OnSettled?.Invoke(data, error, variables, context);
+
+        public override RetryPolicy? Retry => Options.Retry;
     }
 
     internal sealed class HookRefSlot
