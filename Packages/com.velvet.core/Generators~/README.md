@@ -110,25 +110,39 @@ it writes. A plain `=` is refused where removing it could leave a later read wit
 anywhere inside a struct constructor; where its target is a name the file declares as a local without a
 value, an `out` parameter, an `out` argument or a pattern variable; and where its target is a member
 path rooted at a local without a value or an `out` parameter, since a struct can be assigned field by
-field. An element write is not refused for its root, because indexing reads the root. An `out` read
-outside a member body's braces is taken for a parameter and one inside for an argument. The names are
-read over the whole file rather than the method holding the write, so a local declared without a value
-in one method refuses a plain write to a field of the same name in another, an element write aside. At `106ce04d`, over the
-corpus a campaign mutates, this refuses 1058 lines in the write shape: 560 writes to an `out`
-parameter, 279 inside a struct constructor, 100 to a local without a value, 76 through a member path on
-an `out` parameter, 41 to a pattern variable or an `out` argument, and 2 through a member path on a
-local. Like the refusals above it reads the text rather than deciding definite assignment, so a write it
-lets through can still compile nowhere. `AssignmentRemovalTests` in `test_mutation_check.py` is the
-fixture for them.
+field. An element write is not refused for its root, because indexing reads the root. An `out` is
+taken for a parameter only inside the parameter list of a signature whose brace opens a body, and a
+local declaration only on a line that starts a statement. The names are read over the whole file
+rather than the method holding the write, so a local declared without a value in one method refuses a
+plain write to a field of the same name in another, an element write aside. At `106ce04d`, over the
+corpus a campaign mutates, this refuses 1004 lines in the write shape, grouped by the reading that
+fired, with what a C# parser finds the target's root to be in the method holding the write:
+
+| reading | lines | what the root is there |
+|---|---|---|
+| a name the file declares as an `out` parameter | 553 | 534 `out` parameters, 15 locals with a value, 2 without one, 1 parameter, 1 pattern variable or `out` argument |
+| inside a struct constructor | 279 | — |
+| a name the file declares as a local without a value | 102 | 102 locals without a value |
+| a name the file declares as a pattern variable or an `out` argument | 46 | 37 of those, 9 locals with a value |
+| a member path rooted at a name the file declares as an `out` parameter | 22 | 18 parameters, 2 locals with a value, 2 pattern variables or `out` arguments |
+| a member path rooted at a name the file declares as a local without a value | 2 | 2 fields |
+
+Like the refusals above it reads the text rather than deciding definite assignment. What was checked
+instead is a parse: over the 3154 mutants the write arm adds there, tree-sitter's C# grammar finds
+none that adds a parse error, and none that removes a plain write whose root, in the method holding
+it, is an `out` parameter, a local declared without a value or a pattern variable or `out` argument,
+or that sits in a struct constructor; 69 write through a member of a pattern variable or `out`
+argument, which is left to the compile. `AssignmentRemovalTests` in `test_mutation_check.py` is the
+fixture for the readings.
 
 The generator carries an explicit mutation-model version in every scope digest. The digest also
 covers the merge base, platform and digestible content of each mutable target. Changing the operator
 model bumps the version, which makes cached killed verdicts from the older model
 ineligible even when every other input is unchanged.
 
-**Most of a diff is in none of those shapes, so a survivor count is a statement about the lines an operator reached rather than about the change.** Measured over the forty first-parent commits ending at `106ce04d`: 6403 changed production code lines, which 1916 mutants reached 1296 of — 20% — before the line removal read writes, and 2206 mutants reach 1528 of — 24% — with it. Two things move this number, so re-take it against both rather than quoting it bare: the window slides as main moves, and a change to what the operators generate moves it without the window moving at all. So every verdict is printed against that denominator and the unreached lines are named, and a change whose code lines are reached by nothing at all refuses a local run rather than reporting a clean run over no line. Under it the run prints a second share, over the changed code lines that start inside a member body's braces and hold more than brackets and separators — 5180 of the window's lines, 1215 of them reached before the write arm and 1447 with it. It sits beside the first rather than replacing it, because what it leaves out — a declaration, a signature, an expression-bodied member — can carry behaviour too.
+**Most of a diff is in none of those shapes, so a survivor count is a statement about the lines an operator reached rather than about the change.** Measured over the forty first-parent commits ending at `106ce04d`: 6403 changed production code lines, which 1916 mutants reached 1296 of — 20% — before the line removal read writes, and 2217 mutants reach 1532 of — 24% — with it. Two things move this number, so re-take it against both rather than quoting it bare: the window slides as main moves, and a change to what the operators generate moves it without the window moving at all. So every verdict is printed against that denominator and the unreached lines are named, and a change whose code lines are reached by nothing at all refuses a local run rather than reporting a clean run over no line. Under it the run prints a second share, over the changed code lines that start inside a member body's braces and hold more than brackets and separators — 2865 of the window's lines, 1195 of them reached before the write arm and 1430 with it. A member body's brace is one behind a signature's or a control head's closing parenthesis, a lambda's arrow, a case label or an accessor or block keyword; an initializer's, a switch expression's and a property's accessor list are not, so a generated table's entries are not counted. It sits beside the first rather than replacing it, because what it leaves out — a declaration, a signature, an expression-bodied member — can carry behaviour too.
 
-Widening the operator set is the obvious answer and is not free: a statement-deletion operator adds a mutant for every statement line it reaches — the write arm took the corpus a campaign mutates from 15456 mutants to 18556. It also has to emit compilable C#, which deleting a declaration the rest of the method reads does not — the constraint the refusal above already meets, at the three operators that delete.
+Widening the operator set is the obvious answer and is not free: a statement-deletion operator adds a mutant for every statement line it reaches — the write arm took the corpus a campaign mutates from 15456 mutants to 18610, and four of the window's forty commits past the 160 EditMode mutants ten shards of 16 take, where none of them was before. It also has to emit compilable C#, which deleting a declaration the rest of the method reads does not — the constraint the refusal above already meets, at the three operators that delete.
 
 Twelve verdicts:
 

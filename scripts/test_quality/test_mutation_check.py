@@ -1282,6 +1282,120 @@ class AssignmentRemovalTests(unittest.TestCase):
         # Assert
         self.assertEqual(deletions, [12, 13])
 
+    def test_Given_ALocalOfAGenericTypeOverATuple_When_MutantsAreGenerated_Then_ItsWriteIsNotRemoved(self):
+        # Arrange — the shape a task source settles with: line 6 is the only write before line 9
+        # reads `waiting`, and the declaration's type argument is a tuple holding a generic.
+        text = textwrap.dedent("""\
+            void Settle()
+            {
+                List<(Action<object?> Continuation, object? State)> waiting;
+                lock (_gate)
+                {
+                    waiting = _waiting;
+                    _waiting = null;
+                }
+                Run(waiting);
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [7, 9])
+
+    def test_Given_AnArgumentContinuingOntoALine_When_MutantsAreGenerated_Then_ItIsNotReadAsADeclaration(self):
+        # Arrange — line 4 reads as `ref` declaring `BorderColor` when taken on its own, and it is the
+        # tail of the call line 3 opens.
+        text = textwrap.dedent("""\
+            void Capture(Element element)
+            {
+                CaptureFace(element.Color,
+                    ref BorderColor, ref BorderFromInline);
+                BorderColor = default;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [5])
+
+    def test_Given_AnArgumentContinuingOverSeveralLines_When_MutantsAreGenerated_Then_ItsMiddleIsNotADeclaration(self):
+        # Arrange — line 4 closes what it opens, so only the line above it says it is no statement.
+        text = textwrap.dedent("""\
+            void Capture(Element element)
+            {
+                CaptureFace(element.Color,
+                    ref BorderColor, ref BorderFromInline,
+                    element.Width);
+                BorderColor = default;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [6])
+
+    def test_Given_AnOutParameterAssignedFieldByField_When_MutantsAreGenerated_Then_ItsFieldWritesAreNotRemoved(self):
+        # Arrange — together lines 3 and 4 are what assigns `size` before the method returns.
+        text = textwrap.dedent("""\
+            static void Measure(out Size size)
+            {
+                size.Width = 1;
+                size.Height = 2;
+                _count = 0;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [5])
+
+    def test_Given_AnOutArgumentInACallWhoseLambdaOpensTheBrace_When_MutantsAreGenerated_Then_ItIsNoParameter(self):
+        # Arrange — line 3's first argument list closes before the header ends, so it is a call's.
+        text = textwrap.dedent("""\
+            void Run(int key)
+            {
+                Find(key, out var node).Then(() =>
+                {
+                    Use(node);
+                });
+                node.Value = 1;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [5, 7])
+
+    def test_Given_AnOutArgumentInAnExpressionBodiedMember_When_MutantsAreGenerated_Then_ItIsNoParameter(self):
+        # Arrange — `fiber` on line 3 is an argument's declaration, which leaves a write to one of its
+        # members free; read as a parameter, it refused line 6, which writes through another `fiber`.
+        text = textwrap.dedent("""\
+            internal sealed class Probe
+            {
+                internal bool Has(int key) => _map.TryGetValue(key, out var fiber) && fiber != null;
+                internal void Apply(Fiber fiber)
+                {
+                    fiber.Props = _props;
+                }
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [6])
+
     def test_Given_AnOutParameter_When_MutantsAreGenerated_Then_ItsWriteIsNotRemoved(self):
         # Arrange — removing line 3 leaves the method returning with `value` unassigned.
         text = textwrap.dedent("""\
@@ -2729,6 +2843,48 @@ class ReachTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(found, [9, 10])
+
+    def test_Given_AFieldInitializersBraces_When_TheBodyLinesAreRead_Then_TheirEntriesAreNotThem(self):
+        # Arrange — the shape of a generated table: a collection initializer whose header ends with a
+        # parenthesis, as a method's does, and holds the field's `=`.
+        text = textwrap.dedent("""\
+            internal static class Table
+            {
+                private static readonly Dictionary<string, int> s_map = new Dictionary<string, int>(4)
+                {
+                    { "a", 1 },
+                    { "b", 2 },
+                };
+                private static int Read()
+                {
+                    return s_map.Count;
+                }
+            }
+            """)
+
+        # Act
+        found = mutation_check.body_line_numbers(text, set(range(1, len(text.splitlines()) + 1)))
+
+        # Assert
+        self.assertEqual(found, [10])
+
+    def test_Given_ALambdaAFieldInitializerHolds_When_TheBodyLinesAreRead_Then_ItsStatementsAreThem(self):
+        # Arrange — the header holds the field's `=` and ends with the lambda's arrow.
+        text = textwrap.dedent("""\
+            internal static class Table
+            {
+                private static readonly Action s_log = () =>
+                {
+                    Write(1);
+                };
+            }
+            """)
+
+        # Act
+        found = mutation_check.body_line_numbers(text, set(range(1, len(text.splitlines()) + 1)))
+
+        # Assert
+        self.assertEqual(found, [5])
 
     def test_Given_ABodyLineOfBracketsAlone_When_TheBodyLinesAreRead_Then_ItIsNotOneOfThem(self):
         # Arrange — line 5 closes the call line 3 opened, and `code_line_numbers` counts it.

@@ -1321,27 +1321,78 @@ def line_spans(text):
     return tuple(spans)
 
 
-# What a brace opens, read off the words in front of it. A type's braces hold declarations and a
-# member's hold statements. A struct constructor is kept apart because a write removed there can leave
-# a field unassigned at its return, which C# before version 11 refuses.
+# What a brace opens, read off the code in front of it. A type's braces hold declarations and a
+# member's hold statements; an initializer's, a switch expression's and a property's accessor list hold
+# neither. A struct constructor is kept apart because a write removed there can leave a field
+# unassigned at its return, which C# before version 11 refuses.
 NAMESPACE_BLOCK = "namespace"
 TYPE_BLOCK = "type"
 STRUCT_BLOCK = "struct"
 BODY_BLOCK = "body"
 STRUCT_CONSTRUCTOR_BLOCK = "struct constructor"
+OTHER_BLOCK = "other"
 
 # Attributes in front of a header, stripped before its words are read, since `[StructLayout(...)]`
 # would otherwise end the words at its parenthesis.
 LEADING_ATTRIBUTES = re.compile(r"^\s*(?:\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\]\s*)+")
+# The last word of a header whose brace opens statements without a parenthesised head in front.
+BODY_KEYWORDS = frozenset((
+    "get", "set", "init", "add", "remove", "else", "try", "finally", "do", "unsafe", "checked",
+    "unchecked", "delegate", "catch"))
+# `new Thing(...)`, `new()` or `new int[n]` closing a header: the brace is an object or collection
+# initializer. A `new` modifier is followed by two words before its parenthesis, so it is not one.
+OBJECT_CREATION_TAIL = re.compile(
+    r"\bnew\s*(?:[A-Za-z_][\w.]*\s*(?:<[^;{}]*>)?\s*\??)?\s*(?:\([^;{}]*\)|\[[^;{}]*\])?\s*$")
+# The words a parenthesised head follows where it is no parameter list.
+CONTROL_WORDS = frozenset((
+    "if", "while", "for", "foreach", "switch", "catch", "using", "lock", "fixed", "when", "delegate"))
+# A member or local function signature: a name, optional type arguments, then the parameter list.
+SIGNATURE = re.compile(r"^[^()=]*?\b(?P<name>[A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*\(")
+
+
+def assigns_at_depth_zero(header):
+    """Whether the header holds a `=` outside its parentheses and brackets that is not `==`, `=>` or
+    a comparison."""
+    depth = 0
+    for index, character in enumerate(header):
+        if character in "([":
+            depth += 1
+        elif character in ")]":
+            depth -= 1
+        elif character == "=" and depth == 0:
+            before = header[index - 1] if index else ""
+            if header[index + 1:index + 2] not in ("=", ">") and before not in ("=", "!", "<", ">"):
+                return True
+    return False
+
+
+def opens_a_body(header, enclosing_kind):
+    """Whether a brace behind `header` opens statements: behind a signature's or a control head's
+    closing parenthesis, a lambda's arrow, a case label, or one of `BODY_KEYWORDS` -- and, with no
+    header at all, wherever the enclosing block holds statements already.
+
+    A header holding a top-level `=` is an initializer's, whatever it ends with, unless it ends with
+    the arrow of a lambda the initializer holds.
+    """
+    if header.endswith("=>"):
+        return True
+    last = re.search(r"\w+$", header)
+    if last and last.group(0) in BODY_KEYWORDS:
+        return True
+    if not header:
+        return enclosing_kind in (BODY_BLOCK, STRUCT_CONSTRUCTOR_BLOCK)
+    if assigns_at_depth_zero(header) or OBJECT_CREATION_TAIL.search(header):
+        return False
+    return header.endswith((")", ":")) or bool(re.search(r"\)\s*where\b", header))
 
 
 def block_kind(header, enclosing):
     """(what a brace opens, the type's name where it opens a struct), from the code since the
     statement or block before it, inside the block `enclosing` describes the same way.
 
-    Read off the words before the first punctuation, and a constructor off the parenthesis after them:
-    a method's `where T : struct` constraint comes after its parameter list, and a type's keyword comes
-    before anything but modifiers.
+    A type is read off the words before the first punctuation, since a method's `where T : struct`
+    constraint comes after its parameter list and a type's keyword comes before anything but
+    modifiers; a struct constructor off those words and the parenthesis after them.
     """
     header = LEADING_ATTRIBUTES.sub("", header).strip()
     leading = re.match(r"[\w\s]*", header).group(0)
@@ -1357,16 +1408,41 @@ def block_kind(header, enclosing):
     if (kind == STRUCT_BLOCK and words and words[-1] == name
             and header[len(leading):].startswith("(")):
         return STRUCT_CONSTRUCTOR_BLOCK, ""
-    return BODY_BLOCK, ""
+    return (BODY_BLOCK if opens_a_body(header, kind) else OTHER_BLOCK), ""
+
+
+def parameter_list(header):
+    """The parameter list of the signature a body's header ends with, or "" for a control head."""
+    header = LEADING_ATTRIBUTES.sub("", header).strip()
+    signature = SIGNATURE.match(header)
+    if not signature or signature.group("name") in CONTROL_WORDS:
+        return ""
+    opened = signature.end() - 1
+    depth = 0
+    for index in range(opened, len(header)):
+        if header[index] == "(":
+            depth += 1
+        elif header[index] == ")":
+            depth -= 1
+            if depth == 0:
+                # A parameter list ends the header or leads into a constraint or a constructor
+                # initializer; a call's argument list with a lambda opening the brace does neither.
+                rest = header[index + 1:].strip()
+                if rest and not rest.startswith(("where", ":")):
+                    return ""
+                return header[opened:index + 1]
+    return ""
 
 
 @functools.lru_cache(maxsize=16)
-def block_scopes(text):
-    """For each line, the kinds of the blocks open where it starts, outermost first."""
+def block_reading(text):
+    """(for each line the kinds of the blocks open where it starts, outermost first; the names the
+    file's body-opening signatures declare as `out` parameters)."""
     mask = code_mask(text)
     stack = []
     pending = []
     scopes = []
+    out_parameters = set()
     for start, end in line_spans(text):
         scopes.append(tuple(kind for kind, _ in stack))
         for offset in range(start, end):
@@ -1374,7 +1450,11 @@ def block_scopes(text):
                 continue
             character = text[offset]
             if character == "{":
-                stack.append(block_kind("".join(pending), stack[-1] if stack else ("", "")))
+                header = "".join(pending)
+                kind = block_kind(header, stack[-1] if stack else ("", ""))
+                if kind[0] in (BODY_BLOCK, STRUCT_CONSTRUCTOR_BLOCK):
+                    out_parameters.update(OUT_DECLARATION.findall(parameter_list(header)))
+                stack.append(kind)
                 pending = []
             elif character == "}":
                 if stack:
@@ -1384,18 +1464,27 @@ def block_scopes(text):
                 pending = []
             else:
                 pending.append(character)
-    return tuple(scopes)
+    return tuple(scopes), frozenset(out_parameters)
+
+
+def block_scopes(text):
+    """For each line, the kinds of the blocks open where it starts, outermost first."""
+    return block_reading(text)[0]
 
 
 def in_member_body(scope):
     return bool(scope) and scope[-1] in (BODY_BLOCK, STRUCT_CONSTRUCTOR_BLOCK)
 
 
+# A type argument list two levels deep, where a tuple element can stand at either level:
+# `List<(Action<object?> Continuation, object? State)>`.
+TYPE_ARGUMENTS = (r"<(?:[^<>(){};=]|\([^(){};=]*\)"
+                  r"|<(?:[^<>(){};=]|\([^(){};=]*\)|<[^<>(){};=]*>)*>)*>")
 # A local declaration: modifiers, a type, then the declarators. The type is one token -- a dotted name
 # with type arguments, a tuple, an array or nullable suffix -- so a call or an assignment is not one.
 LOCAL_DECLARATION = re.compile(
     r"^(?:(?:const|scoped|ref|readonly|unsafe|static)\s+)*"
-    r"(?P<type>\([^;=]*?\)|[A-Za-z_][\w.]*(?:\s*<[^;=(){}]*>)?)"
+    r"(?P<type>\([^;=]*?\)|[A-Za-z_][\w.]*(?:\s*" + TYPE_ARGUMENTS + r")?)"
     r"(?:\s*\?)?(?:\s*\[[,\s]*\])*(?:\s*\?)?"
     r"\s+(?P<rest>[A-Za-z_]\w*\s*[=,;].*)$")
 # The words that can stand where the declaration's type stands and begin a statement instead.
@@ -1405,7 +1494,8 @@ STATEMENT_KEYWORDS = frozenset((
     "unsafe", "using", "while", "yield"))
 # An `out` parameter, or an `out` argument declaring a variable.
 OUT_DECLARATION = re.compile(
-    r"\bout\s+[A-Za-z_][\w.]*(?:\s*<[^()]*?>)?(?:\s*\?)?(?:\s*\[[,\s]*\])*(?:\s*\?)?\s+([A-Za-z_]\w*)")
+    r"\bout\s+(?:\([^;=]*?\)|[A-Za-z_][\w.]*(?:\s*" + TYPE_ARGUMENTS + r")?)"
+    r"(?:\s*\?)?(?:\s*\[[,\s]*\])*(?:\s*\?)?\s+([A-Za-z_]\w*)")
 DESIGNATION_NAME = re.compile(PATTERN_DESIGNATION.pattern + r"\w*")
 
 
@@ -1440,23 +1530,26 @@ def unassigned_names(text):
     """(names a write to the whole variable can be the first to assign, names a write to one of its
     fields can be), over the whole file.
 
-    The first holds a pattern variable, which a failed match leaves unassigned, and an `out` argument,
-    which a call that never ran leaves so. The second holds what a struct can be assigned field by
-    field into: a local declared without a value, and an `out` parameter -- read as an `out` declared
-    outside a member body, which is where a parameter list sits. Read over the whole file rather than
-    the method holding the write, so a write in one method is refused for a name another declares.
+    The first holds a pattern variable, which a failed match leaves unassigned, and every `out`
+    declaration, since an argument's is left so by a call that never ran. The second holds what a
+    struct can be assigned field by field into: a local declared without a value, read only on a line
+    that starts a statement, and an `out` parameter, read only in the
+    parameter list of a signature whose brace opens a body. Read over the whole file rather than the
+    method holding the write, so a write in one method is refused for a name another declares.
     """
     mask = code_mask(text)
     spans = line_spans(text)
-    scopes = block_scopes(text)
-    whole, fieldwise = set(), set()
+    scopes, out_parameters = block_reading(text)
+    whole, fieldwise = set(), set(out_parameters)
     for number, (start, end) in enumerate(spans, start=1):
         code = code_only(text, mask, start, end).strip()
         whole.update(match.group(0).split()[-1] for match in DESIGNATION_NAME.finditer(code))
-        if not in_member_body(scopes[number - 1]):
-            fieldwise.update(OUT_DECLARATION.findall(code))
-            continue
         whole.update(OUT_DECLARATION.findall(code))
+        if not in_member_body(scopes[number - 1]):
+            continue
+        above = code_above(text, mask, spans, number)
+        if above and not above.endswith(STATEMENT_BOUNDARY):
+            continue
         declared = LOCAL_DECLARATION.match(code)
         if declared and declared.group("type") not in STATEMENT_KEYWORDS:
             fieldwise.update(declarators_without_value(declared.group("rest")))
