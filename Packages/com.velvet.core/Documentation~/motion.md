@@ -490,6 +490,21 @@ A step is exactly one of:
   its own.
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances
   immediately (never holds the cursor).
+- **`AnimationSequenceStep.Await(taskFactory)`** -- calls `taskFactory` on arrival and holds the cursor
+  until the `VelvetTask` it returns settles: the `await` a `useAnimate` caller writes between two
+  `animate()` calls, for a wait no clock produces -- a server response, a tap, a dialogue advance. A task
+  that settles while the sequence is paused is read once it resumes, so no step after the await commits
+  in between. A task that has already settled when the factory returns is crossed in the same frame, as a
+  `Call` step is; otherwise the step after it commits on the first frame after the settle, and its hold
+  counts that frame's time and none from before it, the wait's included. A task that faults, or cancels on its
+  own, throws out of that frame as a throwing `Call` callback does, reaching the nearest error boundary,
+  and the cursor moves on from the next frame. The factory receives a `CancellationToken`, which a
+  restart, a `deps` change or unmount cancels when it leaves the step with the task still pending; a
+  restart or `deps` change cancels it only after reseeding the sequence, so a token callback that throws
+  does so out of the restart with the sequence already reseeded. A task the sequence has left
+  advances nothing, and a fault it ends in is logged, as `Forget()` logs one. Under the Editor's StrictMode
+  mount double-invoke an `Await` at step 0 calls its factory twice, the first call's token cancelled when
+  its task is still pending.
 
 **"One at a time" needs no separate multi-target API.** Descendant Motions naming no label of their own inherit
 the coordinator's label exactly as they already do for any hand-toggled label change (see "Label
@@ -505,6 +520,22 @@ decides when the sequence restarts from step 0, read as
 restarts it on every render, so a sequence that plays once per mount passes `Array.Empty<object>()`, as
 `useEffect(fn, [])` would. `controls.Restart()` returns to step 0 and re-commits its effect (including
 firing a `Call` step 0's callback again) without implicitly resuming a paused sequence.
+
+`controls` drive the sequence's own timeline -- its step cursor and its clock -- and not a Motion play a
+step's label has already started: `controls.Pause()` freezes the cursor, and the transition the current
+step handed out runs on to its end. The handle also carries `controls.TimeSec`, the Web Animations API's
+`currentTime` and Framer Motion's `time`, read-only: seconds into the timeline, counting each hold at its
+authored length. As `currentTime` does, it keeps growing across a loop's passes rather than starting from 0
+on each; a completed sequence reads its full length, and a reseed reads 0. It is read live from the handle,
+where `state` is a per-render snapshot.
+
+A cancel, a playback rate (`playbackRate`, Framer Motion's `speed`), seek (a settable `time`) and reverse
+(`reverse()`, a negative `playbackRate`) are not offered. Each acts on the animation already running, and the
+sequence only hands a label's Motion its transition: it holds no handle on the play that starts, so none of
+them could reach it, as `Pause` cannot. A timeline of labels also cannot sample the interpolated motion
+between two of them, and running it backwards across a `Call` step has no settled answer to whether the
+callback fires again. To reverse a transition a label started, flip that Motion's `animate` label back: see
+"Springs" for what an interrupted spring keeps.
 
 Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
 outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`

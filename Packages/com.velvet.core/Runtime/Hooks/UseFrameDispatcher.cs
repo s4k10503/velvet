@@ -85,7 +85,20 @@ namespace Velvet
             // per-update cadence Hooks.UseFrame documents. One shared item drives every subscriber's own
             // Tick pass, but each still measures its OWN elapsed time via Subscription.LastTimeMs, not
             // this item's.
-            _tick ??= _panel.visualTree.schedule.Execute((TimerState ts) => Tick(ts)).Every(0);
+            _tick ??= _panel.visualTree.schedule.Execute((TimerState ts) =>
+            {
+                // Bracketed inline rather than through PanelSchedulerCallback.Run, which would allocate a
+                // delegate on every tick.
+                var outer = PanelSchedulerCallback.Enter(_panel);
+                try
+                {
+                    Tick(ts);
+                }
+                finally
+                {
+                    PanelSchedulerCallback.Exit(outer);
+                }
+            }).Every(0);
             return subscription;
         }
 

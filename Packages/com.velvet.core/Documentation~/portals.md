@@ -25,8 +25,9 @@ from the `refCallback`, or the effect that follows the pass, asks for.
 
 `V.Portal("modal-root", …)` is Velvet's own addition, with no `createPortal` counterpart: it resolves a
 name through `FiberPortalRegistry`, one table for the whole process, so an id reaches a container across
-unrelated call sites and mounted trees. Registering a registered name again warns and points it at the
-element given, which moves the portals on it as described below.
+unrelated call sites and mounted trees. Registering a registered name again to a different element warns and points it at the
+element given, which moves the portals on it as described below; restating the same element is silent
+and moves nothing.
 
 **A different target moves the children**, in either form — the reconciler cannot patch one
 container's portal into another's, so the old unmounts and the new mounts, which is what
