@@ -737,8 +737,9 @@ namespace Velvet
             }
 
             // Before the Status write, which raises OnStatusChanged: UseNavigation reads the destination
-            // alongside the status, and a navigation issued from a subscriber reaches ReportUnclaimedOutcome,
-            // which reads this field to decide whether an attempt holds the claim.
+            // alongside the status, and a navigation issued from a subscriber that ends before taking a claim
+            // reports through ReportUnclaimedOutcome, which reads this field to decide whether an attempt
+            // holds the claim.
             PendingLocation = null;
             Status = status;
         }
@@ -947,8 +948,8 @@ namespace Velvet
 
         /// <summary>
         /// Re-emits <see cref="OnLocationChanged"/> with a fresh <see cref="RouterLocation"/> instance
-        /// carrying the same content, so loader or action data published within the current location forces a
-        /// re-render. <c>V.RouterProvider</c> stores the location in a <c>UseState</c> whose setter bails on a
+        /// carrying the same content, so loader data, a loader error or action data published within the current
+        /// location forces a re-render. <c>V.RouterProvider</c> stores the location in a <c>UseState</c> whose setter bails on a
         /// referentially-equal value (Object.is), so reusing the instance would drop the re-render and leave
         /// the routing hooks on the data they last read.
         /// <para/>
