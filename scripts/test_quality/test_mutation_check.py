@@ -2527,6 +2527,115 @@ class ReachTests(unittest.TestCase):
             (["literal"], "1,3,5"))
 
 
+class DeclinedLineTests(unittest.TestCase):
+    """A statement in the line removal's shape beside a brace or another statement, which the removal
+    does not read because it reads a line only whole.
+
+    The reach is one bit per line, so nothing it printed over `try { _state.Dispose(); }` said a
+    statement there was skipped for its formatting.
+    """
+
+    def declined(self, line):
+        return mutation_check.declined_line_numbers(line + "\n", {1})
+
+    def test_Given_ACallInsideBracesOnOneLine_When_TheLinesAreRead_Then_ItIsDeclined(self):
+        # Arrange
+        line = "try { _state.Dispose(); }"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [1])
+
+    def test_Given_TwoCallsOnOneLine_When_TheLinesAreRead_Then_ItIsDeclined(self):
+        # Arrange — no brace on the line, so only the cut at the first semicolon separates the calls.
+        line = "Reset(); Notify();"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [1])
+
+    def test_Given_ACallAloneOnItsLine_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the line the removal does read, which matches the pattern as a piece and whole.
+        line = "Reset();"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AForHeaderOfCalls_When_TheLinesAreRead_Then_ItsClausesAreNotDeclined(self):
+        # Arrange — `More();` would match the removal pattern if the header's semicolons cut the line.
+        line = "for (Init(); More(); Advance()) Step();"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AReturnOfATupleBehindAnotherStatement_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — `return (value, true);` matches the removal pattern and is not a call. No brace,
+        # because with the braces left uncut `if (done) { return (value, true);` matches it too.
+        line = "_count++; return (value, true);"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ADeconstructionInsideBraces_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the removal refuses a declaration wherever it stands, so naming it would say the
+        # formatting cost a mutant it never could have had.
+        line = "if (ready) { var (a, b) = Split(); }"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_TheShapeInsideAStringLiteral_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the line's own code is an assignment.
+        line = 'text = "try { Reset(); }";'
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AOneLineTryAndCatch_When_Listed_Then_TheReachNamesBothLinesDeclined(self):
+        # Arrange — the containment the issue measured, beside a line that does carry a mutant so the
+        # run reaches the listing rather than the refusal of a change no operator reaches.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Probe
+                {
+                    internal static bool Ready(int a, int b) => a <= b;
+                    internal void Dispose()
+                    {
+                        try { _state.Dispose(); }
+                        catch (Exception ex) { Logger.LogError(ex.Message); }
+                    }
+                }
+            }
+            """))
+
+        # Act
+        campaign.run("--list")
+
+        # Assert
+        self.assertEqual(re.findall(r"^  declined .*$", campaign.printed, re.MULTILINE),
+                         ["  declined   Packages/com.velvet.core/Runtime/Probe.cs:8,9"])
+
+
 class UnreachableChangeTests(unittest.TestCase):
     def test_Given_ADiffOfCodeNoOperatorReaches_When_TheCampaignStarts_Then_ItRefusesToVerdict(self):
         # Arrange — a verdict here would be about no line at all, and the run returned 0 for it.

@@ -1404,6 +1404,52 @@ def code_line_numbers(text, numbers):
     return found
 
 
+def statements_on(code):
+    """A line's code cut at every brace, and at each semicolon whose innermost open group on the line
+    is a brace or none -- so a `for` header's two stay inside its piece."""
+    pieces, current, groups = [], [], []
+    for char in code:
+        if char in "{}":
+            pieces.append("".join(current))
+            current = []
+            if char == "{":
+                groups.append(char)
+            elif groups:
+                groups.pop()
+            continue
+        current.append(char)
+        if char in "([":
+            groups.append(char)
+        elif char in ")]":
+            if groups:
+                groups.pop()
+        elif char == ";" and (not groups or groups[-1] == "{"):
+            pieces.append("".join(current))
+            current = []
+    pieces.append("".join(current))
+    return [piece.strip() for piece in pieces if piece.strip()]
+
+
+def declined_line_numbers(text, numbers):
+    """The changed lines holding a statement in the removal pattern's shape beside a brace or another
+    statement.
+
+    The line removal reads a line's code whole, so the call in `try { _state.Dispose(); }` and both
+    in `A(); B();` stay, though each matches the pattern on its own.
+    Generators~/README.md ▸ The Unity assemblies says why they are named apart from the unreached
+    lines.
+    """
+    spans = line_spans(text)
+    mask = code_mask(text)
+    found = []
+    for number in code_line_numbers(text, numbers):
+        code = code_only(text, mask, *spans[number - 1]).strip()
+        if any(piece != code and REMOVABLE_LINE.match(piece) and not CONTROL_KEYWORD.match(piece)
+               and not DECLARES_A_NAME.search(piece) for piece in statements_on(code)):
+            found.append(number)
+    return found
+
+
 def apply_mutation(text, mutant):
     spans = line_spans(text)
     start, end = spans[mutant.line - 1]
@@ -3123,20 +3169,34 @@ def sharded(chosen, shard):
     return [index for position, index in enumerate(chosen, start=1) if in_shard(position, shard)]
 
 
-def reach(mutants, unreached, project):
+def listed(label, lines_by_path, project):
+    report = []
+    for path, lines in sorted(lines_by_path.items(), key=lambda item: str(item[0])):
+        where = relative_to(path, project)
+        shown = ",".join(str(number) for number in lines[:LINES_LISTED])
+        rest = "" if len(lines) <= LINES_LISTED else " and {} more".format(len(lines) - LINES_LISTED)
+        report.append("  {}  {}:{}{}".format(label, where, shown, rest))
+    return report
+
+
+def reach(mutants, unreached, project, declined=None):
     """What the campaign was able to ask about, printed beside whatever it then answers.
 
     The lines are named rather than counted, because the count alone is a number nobody has to act on.
+    `declined` is `declined_line_numbers`' reading, and may name a line `unreached` names too.
     """
     reached = {(mutant.path, mutant.line) for mutant in mutants}
     left = sum(len(lines) for lines in unreached.values())
     report = ["{} mutant(s) over {} changed code line(s); {} line(s) no operator reaches".format(
         len(mutants), len(reached) + left, left)]
-    for path, lines in sorted(unreached.items(), key=lambda item: str(item[0])):
-        where = relative_to(path, project)
-        shown = ",".join(str(number) for number in lines[:LINES_LISTED])
-        rest = "" if len(lines) <= LINES_LISTED else " and {} more".format(len(lines) - LINES_LISTED)
-        report.append("  unreached  {}:{}{}".format(where, shown, rest))
+    report.extend(listed("unreached", unreached, project))
+    declined = declined or {}
+    shared = sum(len(lines) for lines in declined.values())
+    if shared:
+        report.append("{} line(s) hold a statement in the line removal's shape beside a brace or "
+                      "another\nstatement, and the removal reads a line only whole, so it removes "
+                      "none of them".format(shared))
+        report.extend(listed("declined ", declined, project))
     return "\n".join(report)
 
 
@@ -3710,6 +3770,7 @@ def main():
 
     mutants = []
     unreached = {}
+    declined = {}
     for path, lines in sorted(targets.items()):
         text = path.read_text()
         found = mutations_for(path, text, lines)
@@ -3718,7 +3779,10 @@ def main():
         left = [number for number in code_line_numbers(text, lines) if number not in covered]
         if left:
             unreached[path] = left
-    coverage = reach(mutants, unreached, project)
+        shared = declined_line_numbers(text, lines)
+        if shared:
+            declined[path] = shared
+    coverage = reach(mutants, unreached, project, declined)
 
     if args.plan and args.survivors_of is None:
         if len(mutants) > MAX_SHARDS * SHARD_CEILING[args.platform]:
