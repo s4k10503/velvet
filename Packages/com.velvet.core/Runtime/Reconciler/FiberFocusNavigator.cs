@@ -55,8 +55,9 @@ namespace Velvet
     /// Sequential (Next/Previous) <see cref="NavigationMoveEvent"/>s are intercepted on the verified engine
     /// contract pinned by <c>FocusNavigationInterceptionTests</c>: the default focus move runs post-dispatch,
     /// after every listener, and its only suppression is <see cref="FocusController.IgnoreEvent"/> — so a
-    /// TrickleDown listener deterministically preempts it. Spatial moves (Left/Right/Up/Down) are NEVER
-    /// intercepted: 2D arrow/dpad/stick navigation is the engine's own <c>GetNextFocusable2D</c>, which this
+    /// TrickleDown listener deterministically preempts it. Spatial moves (Left/Right/Up/Down) are not
+    /// intercepted, except an arrow on an axis a <c>singleTabStop</c> group's orientation excludes, which is
+    /// ignored before the engine moves focus: 2D arrow/dpad/stick navigation is the engine's own <c>GetNextFocusable2D</c>, which this
     /// layer composes with rather than reimplements. Sequential prediction and redirection use the public
     /// <see cref="VisualElementFocusRing"/> — the exact class the runtime ring delegates Next/Previous to
     /// (<c>NavigateFocusRing.m_Ring</c>), so predictions cannot drift from what the engine would have done.
@@ -281,7 +282,6 @@ namespace Velvet
 
         private static void OnNavigationMove(NavigationMoveEvent evt, VisualElement panelRoot, ReconcilerContext ctx)
         {
-            // Spatial moves fall through to the engine's own 2D navigation, but for an excluded axis.
             var forward = evt.direction == NavigationMoveEvent.Direction.Next;
             if (!forward && evt.direction != NavigationMoveEvent.Direction.Previous)
             {

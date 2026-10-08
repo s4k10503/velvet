@@ -213,6 +213,22 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_AHorizontalGroup_When_ADownMoveIsIgnored_Then_TheFocusedMembersOwnHandlerStillSeesIt()
+        {
+            // Arrange
+            var start = Element("colHA");
+            var seen = 0;
+            start.RegisterCallback<NavigationMoveEvent>(_ => seen++);
+            (bool, Focusable) outcome = default;
+
+            // Act
+            yield return MoveFrom(start, NavigationMoveEvent.Direction.Down, r => outcome = r);
+
+            // Assert
+            Assert.That((outcome.Item1, seen), Is.EqualTo((true, 1)));
+        }
+
+        [UnityTest]
         public IEnumerator Given_ABothGroupNestedInAVerticalGroup_When_ARightMoveReachesTheNextMember_Then_FocusStaysOnTheMember()
         {
             // Arrange
