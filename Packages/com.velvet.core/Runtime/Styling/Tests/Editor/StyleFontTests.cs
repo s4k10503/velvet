@@ -502,6 +502,58 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ItalicFacesOnlyAtLightAndBlackWeights_When_BoldUprightResolved_Then_TheBlackItalicIsSelected()
+        {
+            // Arrange — style narrows first, then CSS's weight order picks the lightest at or above 700.
+            var lightItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var blackItalic = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Light, italic = lightItalic },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Black, italic = blackItalic }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Bold, italic: false);
+
+                // Assert
+                Assert.That(resolved.Asset == blackItalic, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(lightItalic);
+                Object.DestroyImmediate(blackItalic);
+            }
+        }
+
+        [Test]
+        public void Given_AnEntryWithBothFaces_When_RegularUprightResolved_Then_TheUprightFaceIsSelected()
+        {
+            // Arrange — an upright face exists, so the italic-only fallback has no claim on the request.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var regularUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry
+                    {
+                        weight = VelvetFontWeight.Normal, upright = regularUpright, italic = regularItalic,
+                    }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false);
+
+                // Assert
+                Assert.That(resolved.Asset == regularUpright, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(regularUpright);
+            }
+        }
+
+        [Test]
         public void Given_AnItalicFaceOnlyByAddressAtALighterWeight_When_BoldItalicResolved_Then_TheItalicFaceIsFauxBolded()
         {
             // Arrange — an Addressables key is a face too. The cache is seeded so nothing is loaded.
