@@ -99,7 +99,7 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceManipulator.cs",
-          "anchor": "internal string Break(string text, bool preserves)",
+          "anchor": "internal string Break(string text)",
           "neuter": "return text;"
         }
       ]
@@ -111,7 +111,7 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/TextBreakOpportunities.cs",
-          "anchor": "public static bool BreakAllowedBetween(int before, int previous, int next)",
+          "anchor": "public static bool BreakAllowedBetween(int before, int previous, int next, bool softHyphens = false)",
           "neuter": "return false;"
         }
       ]

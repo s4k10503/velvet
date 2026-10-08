@@ -2,29 +2,33 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    // Finds where a paragraph may break across lines, for TextLineBreaker. An item is the text between two
-    // opportunities; the gap between neighbouring items is the white space that separates them, or empty
+    // Finds where a paragraph may break across lines, for every consumer that needs line breaking: the
+    // balance and pretty breaker (Find) and a min-content width (CollectRuns). An item is the text between
+    // two opportunities; the gap between neighbouring items is the white space that separates them, or empty
     // where the break falls between two characters.
     //
-    // This is a subset of UAX #14, the line breaking ICU gives Chromium. It covers white space (the space,
-    // tab and every other white space but a no-break one), the places a break is allowed beside a CJK
-    // character, with the basic kinsoku rule (no break before a closing mark or an iteration or
-    // prolonged-sound mark, none after an opening mark), after a hyphen between two letters, and after a
-    // zero width space. The rest of the standard is not read: quotation marks, the numeric and symbol
-    // rules, emoji and Indic sequences, the CJK symbols outside the marks named above, and the combining
-    // behaviour of the CJK classes. A break one of those rules would allow beyond the classes above is not
-    // reported, and one it would prohibit can be. A rich-text tag, from a `<` that opens one to its `>`, is never broken inside.
+    // This is a subset of UAX #14, the line breaking ICU gives Chromium. It covers white space (a tab and
+    // every white space but a no-break one), breaks beside a CJK character with the basic kinsoku rule (no
+    // break before a closing mark, a stop or comma, a percent sign, an ellipsis, the prolonged sound mark or
+    // an iteration mark; none after an opening mark), after a hyphen-minus that follows a letter or digit and
+    // does not precede a digit, after the hyphens and dashes of class BA (U+2010, U+2012, U+2013), after a
+    // soft hyphen where the caller asks for it, and after a zero width space, which is a break opportunity
+    // and not a space: it stays in its item. The rest of the standard is not read: quotation marks, the
+    // numeric and symbol rules, the em dash, emoji and Indic sequences, halfwidth katakana, CJK symbols
+    // outside the marks named above and the combining behaviour of the CJK classes. A break one of those
+    // rules would allow beyond the classes above is not reported, and one it would prohibit can be. A
+    // rich-text tag, from a `<` that opens one to its `>`, is never broken inside.
     internal static class TextBreakOpportunities
     {
         private const char NewLine = '\n';
-        private const char ZeroWidthSpace = '​';
-        private const char Hyphen = '-';
-        private const char TrueHyphen = '‐';
+        private const char ZeroWidthSpace = '\u200B';
+        private const char SoftHyphen = '\u00AD';
+        private const char HyphenMinus = '-';
 
         // Fills starts and ends with the character range of every item. Returns false for a paragraph with
         // nothing but white space. The first item starts at 0, so white space leading the paragraph stays
         // on its first line; white space trailing it belongs to no item.
-        public static bool Find(string paragraph, List<int> starts, List<int> ends)
+        public static bool Find(string paragraph, List<int> starts, List<int> ends, bool softHyphens = false)
         {
             starts.Clear();
             ends.Clear();
@@ -57,7 +61,7 @@ namespace Velvet
                 }
                 var length = char.IsSurrogatePair(paragraph, index) ? 2 : 1;
                 var current = length == 2 ? char.ConvertToUtf32(paragraph, index) : paragraph[index];
-                if (previous >= 0 && BreakAllowedBetween(before, previous, current))
+                if (previous >= 0 && BreakAllowedBetween(before, previous, current, softHyphens))
                 {
                     ends.Add(index);
                     starts.Add(index);
@@ -93,7 +97,7 @@ namespace Velvet
         // White space a line may break at: every white space but a line feed, which splits paragraphs
         // before this runs, and the no-break spaces.
         public static bool IsBreakSpace(char ch) =>
-            char.IsWhiteSpace(ch) && ch != NewLine && ch != ' ' && ch != ' ' && ch != ' ';
+            char.IsWhiteSpace(ch) && ch != NewLine && ch != '\u00A0' && ch != '\u2007' && ch != '\u202F';
 
         // Where a rich-text tag opening at index ends, or index when none does. A tag opens with `<` and a
         // letter or a slash, so `a < b` is not one, and holds no second `<`.
@@ -120,15 +124,27 @@ namespace Velvet
 
         // Whether a line may break between two adjacent characters that are not white space. before is the
         // character ahead of previous, or -1.
-        public static bool BreakAllowedBetween(int before, int previous, int next)
+        public static bool BreakAllowedBetween(int before, int previous, int next, bool softHyphens = false)
         {
+            if (next == ZeroWidthSpace)
+            {
+                return false;
+            }
             if (previous == ZeroWidthSpace)
             {
                 return true;
             }
-            if (previous == Hyphen || previous == TrueHyphen)
+            if (previous == SoftHyphen)
             {
-                return before >= 0 && IsLetter(before) && IsLetter(next);
+                return softHyphens;
+            }
+            if (previous == HyphenMinus)
+            {
+                return before >= 0 && IsLetterOrDigit(before) && !IsDigit(next) && !IsNoBreakBefore(next);
+            }
+            if (IsHyphenOfClassBa(previous))
+            {
+                return !IsNoBreakBefore(next);
             }
             if (IsOpening(previous) || IsNoBreakBefore(next))
             {
@@ -137,6 +153,29 @@ namespace Velvet
             return IsIdeographic(previous) || IsCjkClosing(previous) || IsIdeographic(next) || IsCjkOpening(next);
         }
 
+        // The runs of text a line may not be broken inside, in order, for a min-content width: each item
+        // Find reports, with the soft hyphens it honours.
+        public static void CollectRuns(string text, List<string> runs)
+        {
+            var starts = new List<int>();
+            var ends = new List<int>();
+            if (!Find(text, starts, ends, softHyphens: true))
+            {
+                return;
+            }
+            for (var i = 0; i < starts.Count; i++)
+            {
+                runs.Add(text.Substring(starts[i], ends[i] - starts[i]));
+            }
+        }
+
+        private static bool IsHyphenOfClassBa(int cp) => cp == 0x2010 || cp == 0x2012 || cp == 0x2013;
+
+        private static bool IsDigit(int cp) => cp < 0x10000 && char.IsDigit((char)cp);
+
+        private static bool IsLetterOrDigit(int cp) =>
+            cp < 0x10000 ? char.IsLetterOrDigit((char)cp) : char.IsLetterOrDigit(char.ConvertFromUtf32(cp), 0);
+
         private static bool IsLetter(int codePoint) =>
             codePoint < 0x10000 ? char.IsLetter((char)codePoint) : char.IsLetter(char.ConvertFromUtf32(codePoint), 0);
 
@@ -144,9 +183,9 @@ namespace Velvet
         // The kana block holds marks a line may not begin with, which IsNoBreakBefore takes out.
         private static readonly (int First, int Last)[] IdeographicRanges =
         {
-            (0x2E80, 0x2FDF), (0x3040, 0x30FF), (0x3100, 0x318F), (0x31A0, 0x33FF), (0x3400, 0x4DBF),
-            (0x4E00, 0x9FFF), (0xA000, 0xA4CF), (0xAC00, 0xD7AF), (0xF900, 0xFAFF), (0x1B000, 0x1B16F),
-            (0x20000, 0x3FFFD),
+            (0x2E80, 0x303F), (0x3041, 0x33FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xA000, 0xA4CF),
+            (0xAC00, 0xD7A3), (0xF900, 0xFAFF), (0xFE30, 0xFE4F), (0xFF01, 0xFF60), (0xFFE0, 0xFFE6),
+            (0x1B000, 0x1B16F), (0x20000, 0x3FFFD),
         };
 
         private static bool IsIdeographic(int cp)
@@ -168,7 +207,7 @@ namespace Velvet
             if (cp < 0x80)
             {
                 return cp == ')' || cp == ']' || cp == '}' || cp == ',' || cp == '.' || cp == '!' || cp == '?'
-                    || cp == ';' || cp == ':';
+                    || cp == ';' || cp == ':' || cp == '%';
             }
             return IsCjkClosing(cp);
         }
@@ -178,7 +217,8 @@ namespace Velvet
         {
             0x3001, 0x3002, 0x3005, 0x3009, 0x300B, 0x300D, 0x300F, 0x3011, 0x3015, 0x3017, 0x3019, 0x301B,
             0x303B, 0x309D, 0x309E, 0x30A0, 0x30FB, 0x30FC, 0x30FD, 0x30FE, 0x203C, 0x2047, 0x2048, 0x2049,
-            0xFF01, 0xFF09, 0xFF0C, 0xFF0E, 0xFF1A, 0xFF1B, 0xFF1F, 0xFF3D, 0xFF5D, 0xFF60, 0xFF63, 0xFF65,
+            0xFF01, 0xFF05, 0xFF09, 0xFF0C, 0xFF0E, 0xFF1A, 0xFF1B, 0xFF1F, 0xFF3D, 0xFF5D, 0xFF60, 0xFF63, 0xFF65,
+            0x2025, 0x2026, 0x301C, 0x301E, 0x301F,
         };
 
         private static readonly HashSet<int> CjkOpening = new()

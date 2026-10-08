@@ -12,11 +12,11 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class TextBreakOpportunitiesTests
     {
-        private static string Items(string paragraph)
+        private static string Items(string paragraph, bool softHyphens = false)
         {
             var starts = new List<int>();
             var ends = new List<int>();
-            if (!TextBreakOpportunities.Find(paragraph, starts, ends))
+            if (!TextBreakOpportunities.Find(paragraph, starts, ends, softHyphens))
             {
                 return "none";
             }
@@ -192,6 +192,89 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(items, Is.EqualTo("none"));
+        }
+
+        [Test]
+        public void Given_AHyphenBeforeABracket_When_Found_Then_ABreakFollowsIt()
+        {
+            // Arrange / Act
+            var items = Items("foo-(bar)");
+
+            // Assert
+            Assert.That(items, Is.EqualTo("foo-|(bar)"));
+        }
+
+        [Test]
+        public void Given_ASoftHyphen_When_FoundWithoutSoftHyphens_Then_NoBreakFollowsIt()
+        {
+            // Arrange / Act
+            var items = Items("a\u00ADb");
+
+            // Assert
+            Assert.That(items, Is.EqualTo("a\u00ADb"));
+        }
+
+        [Test]
+        public void Given_ASoftHyphen_When_FoundWithSoftHyphens_Then_ABreakFollowsIt()
+        {
+            // Arrange / Act
+            var items = Items("a\u00ADb", softHyphens: true);
+
+            // Assert
+            Assert.That(items, Is.EqualTo("a\u00AD|b"));
+        }
+
+        [Test]
+        public void Given_AnEnDashBeforeADigit_When_Found_Then_ABreakFollowsIt()
+        {
+            // Arrange / Act
+            var items = Items("1\u20132");
+
+            // Assert
+            Assert.That(items, Is.EqualTo("1\u2013|2"));
+        }
+
+        [Test]
+        public void Given_APercentSignAfterAnIdeograph_When_Found_Then_NoLineBeginsWithIt()
+        {
+            // Arrange / Act
+            var items = Items("\u65E5%");
+
+            // Assert
+            Assert.That(items, Is.EqualTo("\u65E5%"));
+        }
+
+        [Test]
+        public void Given_AnEllipsisAfterAnIdeograph_When_Found_Then_NoLineBeginsWithIt()
+        {
+            // Arrange / Act
+            var items = Items("\u65E5\u2026");
+
+            // Assert
+            Assert.That(items, Is.EqualTo("\u65E5\u2026"));
+        }
+
+        [Test]
+        public void Given_AZeroWidthSpaceBesideAnIdeograph_When_Found_Then_ItStaysWithTheCharacterBeforeIt()
+        {
+            // Arrange / Act
+            var items = Items("\u65E5\u200B\u672C");
+
+            // Assert — a break follows the space and none precedes it.
+            Assert.That(items, Is.EqualTo("\u65E5\u200B|\u672C"));
+        }
+
+        [Test]
+        public void Given_Text_When_RunsAreCollected_Then_TheyAreTheItemsWithSoftHyphensHonoured()
+        {
+            // Arrange
+            var runs = new List<string>();
+
+            // Act
+            TextBreakOpportunities.CollectRuns("a b\u00ADc", runs);
+
+            // Assert
+            Assert.That(string.Join("|", runs), Is.EqualTo("a|b\u00AD|c"));
         }
     }
 }

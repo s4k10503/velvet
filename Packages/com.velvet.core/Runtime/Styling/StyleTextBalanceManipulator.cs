@@ -18,12 +18,12 @@ namespace Velvet
     // the element that carries the class. It is tracked in ReconcilerContext.TextBalanceManipulators and
     // removed on cleanup. Its events re-derive the leaf (StyleTextEffectResolver.ReapplyElement) when the
     // width the text is laid out in, or the font it is measured in, changes; Break answers from the last
-    // result while neither the text nor those have.
+    // result while neither the text nor those have, and keeps what it measured of a text across widths.
     //
-    // The width broken against is the leaf's own. A leaf whose box UI Toolkit sizes from its text takes the
-    // width of its longest displayed line, so widening an ancestor moves nothing on it; Derive reads the
-    // widening off the parent and breaks once against the room the leaf would get unbroken (see
-    // _widthOverride), then returns to the leaf's own width at its next derive.
+    // The width broken against is the leaf's own, except for a leaf whose box UI Toolkit sizes from its
+    // text: its own width is only the longest line it last displayed, so it is broken against the room its
+    // parent offers it instead (LeafWidth). A parent offering more room by more than the hysteresis
+    // re-derives such a leaf, the baseline moving only when the room has moved that far.
     internal sealed class StyleTextBalanceManipulator : StyleTextItemManipulator
     {
         // Content room below this leaves nothing to redistribute, and keeps a division by it away.
@@ -38,34 +38,50 @@ namespace Velvet
         // the lines leave unused.
         private const int SpareLines = 1;
 
-        // A parent has to widen by more than this for the leaf to be re-broken against the room it gained,
-        // so the pixel-grid rounding of a layout pass is not a widening.
-        private const float ParentGrowthHysteresisPx = 2f;
+        // A paragraph of more items than this is left to the engine, which bounds the measurements one
+        // text costs. Seven lines of CJK text at a wide width fit well inside it.
+        private const int MaxItems = 400;
+
+        // A parent has to offer more room than this, from where it last was, for the leaf to be re-broken
+        // against it, so the pixel-grid rounding of a layout pass is not a widening.
+        private const float RoomHysteresisPx = 2f;
 
         // How far a leaf's box may differ from the width of the lines it displays and still be read as
-        // sized by them. Measured text is rounded up to the pixel grid.
+        // sized by them, and how much room beyond the box makes the difference matter. Measured text is
+        // rounded up to the pixel grid.
         private const float SizedByTextTolerancePx = 1.5f;
 
         private readonly ReconcilerContext _ctx;
 
         private TextWrapStyle _style;
 
-        // The room the parent last offered the leaf's content box, and the width Break uses in place of the
-        // leaf's own for the one derive that follows the parent widening; 0 when it uses the leaf's own.
-        private float _lastParentAvailable = float.NaN;
-        private float _widthOverride;
+        // False until the leaf has been laid out since it was attached, so a recycled element's contentRect
+        // from its previous tenant is not read as its width.
+        private bool _laidOut;
+
+        private float _roomBaseline = float.NaN;
+        private int _roomEpoch;
+
+        // What was measured of one text under one font, kept across widths. A paragraph's measurements
+        // depend on neither the width nor the style.
+        private string? _measuredFor;
+        private MeasureKey _measureKey;
+        private readonly Dictionary<string, MeasuredParagraph> _measured = new(StringComparer.Ordinal);
 
         private bool _hasResult;
-        private string _resultFor = string.Empty;
-        private string _result = string.Empty;
         private TextWrapStyle _resultStyle;
-        private bool _resultPreserves;
         private float _resultWidth;
-        private float _resultFontSize;
-        private FontDefinition _resultFont;
-        private float _resultSpacing;
+        private string _result = string.Empty;
+
+        private bool _hasDecision;
+        private float _decisionOwn;
+        private float _decisionRoom;
+        private string _decisionDisplayed = string.Empty;
+        private string _decisionFor = string.Empty;
+        private float _decisionWidth;
 
         internal StyleTextBalanceManipulator(ReconcilerContext ctx, TextWrapStyle style)
+            : base(ctx)
         {
             _ctx = ctx;
             _style = style;
@@ -78,25 +94,59 @@ namespace Velvet
             _style = style;
         }
 
-        // Whether the leaf has a width to break in. False before its first layout, when the resolver leaves
-        // the text as it is.
+        // Whether the leaf has a width of its own to break in: laid out since it was attached, and wide
+        // enough to hold anything. False before that, when the resolver leaves the text as it is.
         internal bool CanBreak =>
-            target is TextElement textElement && textElement.contentRect.width >= MinBalanceableWidthPx;
+            _laidOut && target is TextElement textElement && textElement.contentRect.width >= MinBalanceableWidthPx;
 
-        private bool DisplaysBreaks => _hasResult && !string.Equals(_result, _resultFor, StringComparison.Ordinal);
+        // Whether the text Break was last given since BeginBreak came back with newlines in it.
+        internal bool Broke { get; private set; }
+
+        internal void BeginBreak()
+        {
+            Broke = false;
+        }
+
+        protected override void RegisterCallbacksOnTarget()
+        {
+            // Ahead of the base's, so the flag is set when the same event derives.
+            target.RegisterCallback<AttachToPanelEvent>(OnAttachedHere);
+            target.RegisterCallback<GeometryChangedEvent>(OnLaidOutHere);
+            target.schedule.Execute(MarkLaidOut);
+            base.RegisterCallbacksOnTarget();
+        }
+
+        protected override void UnregisterCallbacksFromTarget()
+        {
+            target.UnregisterCallback<AttachToPanelEvent>(OnAttachedHere);
+            target.UnregisterCallback<GeometryChangedEvent>(OnLaidOutHere);
+            base.UnregisterCallbacksFromTarget();
+        }
+
+        private void OnAttachedHere(AttachToPanelEvent evt)
+        {
+            _laidOut = false;
+            target.schedule.Execute(MarkLaidOut);
+        }
+
+        private void OnLaidOutHere(GeometryChangedEvent evt)
+        {
+            _laidOut = true;
+        }
+
+        // Runs on a scheduler tick, after the layout pass of the frame the manipulator was attached in, so
+        // a leaf attached to a settled layout with nothing to move it still gets broken.
+        private void MarkLaidOut()
+        {
+            _laidOut = true;
+            _hasSignature = false;
+            Apply();
+        }
 
         protected override void Derive(TextElement textElement, VisualElement parent)
         {
-            _widthOverride = 0f;
-            var available = ParentContentRoom(textElement, parent);
-            if (available > _lastParentAvailable + ParentGrowthHysteresisPx
-                && DisplaysBreaks && IsSizedByItsText(textElement))
-            {
-                _widthOverride = NaturalWidth(textElement, available);
-            }
-            _lastParentAvailable = available;
-
-            var signature = ComputeSignature(textElement, _widthOverride);
+            TrackRoom(ParentContentRoom(textElement, parent));
+            var signature = ComputeSignature(textElement);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
@@ -110,8 +160,34 @@ namespace Velvet
         protected override void Clear()
         {
             _hasResult = false;
-            _widthOverride = 0f;
-            _lastParentAvailable = float.NaN;
+            _hasDecision = false;
+            _measuredFor = null;
+            _measured.Clear();
+            _roomBaseline = float.NaN;
+            _laidOut = false;
+        }
+
+        // The room moves the baseline only when it has moved by more than the hysteresis, so a widening in
+        // steps smaller than it adds up to one; a widening also bumps the epoch, which re-derives the leaf.
+        private void TrackRoom(float room)
+        {
+            if (float.IsNaN(room))
+            {
+                return;
+            }
+            if (float.IsNaN(_roomBaseline))
+            {
+                _roomBaseline = room;
+            }
+            else if (room > _roomBaseline + RoomHysteresisPx)
+            {
+                _roomBaseline = room;
+                _roomEpoch++;
+            }
+            else if (room < _roomBaseline - RoomHysteresisPx)
+            {
+                _roomBaseline = room;
+            }
         }
 
         // The room the parent's content box gives the leaf's own content box.
@@ -122,79 +198,116 @@ namespace Velvet
                 - style.paddingRight - style.borderLeftWidth - style.borderRightWidth;
         }
 
-        // Whether the leaf's box is as wide as the longest line it displays, which is what a box sized from
-        // its text is.
-        private static bool IsSizedByItsText(TextElement textElement)
-        {
-            var lines = Measure(textElement, textElement.text ?? string.Empty);
-            return Math.Abs(lines - textElement.contentRect.width) <= SizedByTextTolerancePx;
-        }
-
-        // The width the leaf's text takes unbroken in the room: its longest line there.
-        private float NaturalWidth(TextElement textElement, float available)
-        {
-            if (!(available >= MinBalanceableWidthPx))
-            {
-                return 0f;
-            }
-            var width = textElement.MeasureTextSize(
-                _resultFor, available, VisualElement.MeasureMode.AtMost,
-                float.NaN, VisualElement.MeasureMode.Undefined).x;
-            return width >= MinBalanceableWidthPx ? width : 0f;
-        }
-
         // The terms are what Break keys its result on besides the text, which reaches the resolver on its
         // own path, and the white-space, since a variant can switch the wrap mode without moving the box.
-        private static int ComputeSignature(TextElement textElement, float widthOverride)
+        private int ComputeSignature(TextElement textElement)
         {
             var style = textElement.resolvedStyle;
             unchecked
             {
                 var hash = 17;
                 hash = hash * 31 + Mathf.RoundToInt(textElement.contentRect.width * 4f);
-                hash = hash * 31 + Mathf.RoundToInt(widthOverride * 4f);
-                hash = hash * 31 + style.fontSize.GetHashCode();
-                hash = hash * 31 + (style.letterSpacing + style.wordSpacing).GetHashCode();
-                hash = hash * 31 + style.unityFontDefinition.GetHashCode();
-                hash = hash * 31 + (int)style.unityFontStyleAndWeight;
+                hash = hash * 31 + _roomEpoch;
+                hash = hash * 31 + new MeasureKey(style).GetHashCode();
                 hash = hash * 31 + (int)style.whiteSpace;
+                hash = hash * 31 + (_laidOut ? 1 : 0);
                 return hash;
             }
         }
 
+        // The width the leaf's text breaks against. Its own, unless its box is sized by the lines it
+        // displays and its parent offers more room than that: then the room, as the text takes it
+        // unbroken, so a leaf does not stay as narrow as its last text and font left it.
+        private float LeafWidth(TextElement textElement, string text)
+        {
+            var own = textElement.contentRect.width;
+            var parent = textElement.parent;
+            if (parent == null)
+            {
+                return own;
+            }
+            var room = ParentContentRoom(textElement, parent);
+            var displayed = textElement.text ?? string.Empty;
+            if (_hasDecision && _decisionOwn == own && _decisionRoom == room
+                && string.Equals(_decisionDisplayed, displayed, StringComparison.Ordinal)
+                && string.Equals(_decisionFor, text, StringComparison.Ordinal))
+            {
+                return _decisionWidth;
+            }
+            var width = own;
+            if (room > own + SizedByTextTolerancePx && IsSizedByItsLines(textElement, displayed, own))
+            {
+                var natural = textElement.MeasureTextSize(
+                    text, room, VisualElement.MeasureMode.AtMost,
+                    float.NaN, VisualElement.MeasureMode.Undefined).x;
+                width = natural >= MinBalanceableWidthPx ? Math.Min(natural, CeilingContentWidth(textElement)) : own;
+            }
+            _hasDecision = true;
+            _decisionOwn = own;
+            _decisionRoom = room;
+            _decisionDisplayed = displayed;
+            _decisionFor = text;
+            _decisionWidth = width;
+            return width;
+        }
+
+        // The widest the leaf's content box may be under a max-width of its cascade, or infinity.
+        private static float CeilingContentWidth(TextElement textElement)
+        {
+            var style = textElement.resolvedStyle;
+            var declared = style.maxWidth;
+            if (declared.keyword == StyleKeyword.None)
+            {
+                return float.PositiveInfinity;
+            }
+            return declared.value - style.paddingLeft - style.paddingRight - style.borderLeftWidth
+                - style.borderRightWidth;
+        }
+
+        // Whether the leaf's box is as wide as the longest line it displays, which is what a box sized from
+        // its text is.
+        private static bool IsSizedByItsLines(TextElement textElement, string displayed, float own)
+        {
+            var lines = Measure(textElement, displayed);
+            return Math.Abs(lines - own) <= SizedByTextTolerancePx;
+        }
+
         // The text with a newline at every break the style asks for. text is what the leaf displays before
-        // decoration and line height wrap it; preserves says whether its white space is kept as written.
-        internal string Break(string text, bool preserves)
+        // decoration and line height wrap it. A white space at a break is dropped.
+        internal string Break(string text)
         {
             var textElement = (TextElement)target;
-            var width = _widthOverride > 0f ? _widthOverride : textElement.contentRect.width;
-            var resolved = textElement.resolvedStyle;
-            var fontSize = resolved.fontSize;
-            var font = resolved.unityFontDefinition;
-            var spacing = resolved.letterSpacing + resolved.wordSpacing;
-            if (_hasResult && _resultStyle == _style && _resultPreserves == preserves && _resultWidth == width
-                && _resultFontSize == fontSize && _resultSpacing == spacing && _resultFont.Equals(font)
-                && _resultFor == text)
+            var key = new MeasureKey(textElement.resolvedStyle);
+            if (_measuredFor == null || !key.Matches(_measureKey)
+                || !string.Equals(_measuredFor, text, StringComparison.Ordinal))
             {
+                _measured.Clear();
+                _hasResult = false;
+                _hasDecision = false;
+                _measureKey = key;
+                _measuredFor = text;
+            }
+
+            var width = LeafWidth(textElement, text);
+            if (_hasResult && _resultStyle == _style && _resultWidth == width)
+            {
+                Broke = !string.Equals(_result, text, StringComparison.Ordinal);
                 return _result;
             }
 
-            var broken = new ParagraphBreaker(textElement, _style, width, fontSize, preserves).Break(text);
+            var broken = new ParagraphBreaker(this, textElement, width).Break(text);
             if (broken == null)
             {
                 // The font has not resolved, so nothing was measured. Not recorded: the same inputs are a
                 // different question once it has.
+                _measuredFor = null;
                 return text;
             }
             _hasResult = true;
             _resultStyle = _style;
-            _resultPreserves = preserves;
             _resultWidth = width;
-            _resultFontSize = fontSize;
-            _resultSpacing = spacing;
-            _resultFont = font;
-            _resultFor = text;
             _result = broken;
+            Broke = !string.Equals(broken, text, StringComparison.Ordinal);
             return broken;
         }
 
@@ -203,26 +316,67 @@ namespace Velvet
                 text, float.NaN, VisualElement.MeasureMode.Undefined,
                 float.NaN, VisualElement.MeasureMode.Undefined).x;
 
-        // One pass over a text: measures its items and applies TextLineBreaker's answer to each paragraph.
+        // What a measurement of text depends on besides the text.
+        private readonly struct MeasureKey
+        {
+            private readonly float _fontSize;
+            private readonly float _letterSpacing;
+            private readonly float _wordSpacing;
+            private readonly FontDefinition _font;
+            private readonly FontStyle _fontStyle;
+
+            public MeasureKey(IResolvedStyle style)
+            {
+                _fontSize = style.fontSize;
+                _letterSpacing = style.letterSpacing;
+                _wordSpacing = style.wordSpacing;
+                _font = style.unityFontDefinition;
+                _fontStyle = style.unityFontStyleAndWeight;
+            }
+
+            public bool Matches(in MeasureKey other) =>
+                _fontSize == other._fontSize && _letterSpacing == other._letterSpacing
+                && _wordSpacing == other._wordSpacing && _fontStyle == other._fontStyle && _font.Equals(other._font);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = _fontSize.GetHashCode();
+                    hash = hash * 31 + _letterSpacing.GetHashCode();
+                    hash = hash * 31 + _wordSpacing.GetHashCode();
+                    hash = hash * 31 + _font.GetHashCode();
+                    return hash * 31 + (int)_fontStyle;
+                }
+            }
+        }
+
+        // A paragraph's items and where each ends, measured once per text and font. Skip is set for a
+        // paragraph the breaker leaves to the engine whatever the width.
+        private sealed class MeasuredParagraph
+        {
+            public bool Skip;
+            public readonly List<int> Starts = new();
+            public readonly List<int> Ends = new();
+            public float[] LineStart = Array.Empty<float>();
+            public float[] WordEnd = Array.Empty<float>();
+            public float Whole;
+        }
+
+        // One pass over a text at a width: applies TextLineBreaker's answer to each paragraph.
         private sealed class ParagraphBreaker
         {
+            private readonly StyleTextBalanceManipulator _owner;
             private readonly TextElement _element;
-            private readonly TextWrapStyle _style;
             private readonly float _width;
-            private readonly float _fontSize;
-            private readonly bool _preserves;
-            private readonly List<int> _starts = new();
-            private readonly List<int> _ends = new();
             private readonly Dictionary<string, float> _gaps = new(StringComparer.Ordinal);
             private bool _unmeasurable;
 
-            public ParagraphBreaker(TextElement element, TextWrapStyle style, float width, float fontSize, bool preserves)
+            public ParagraphBreaker(StyleTextBalanceManipulator owner, TextElement element, float width)
             {
+                _owner = owner;
                 _element = element;
-                _style = style;
                 _width = width;
-                _fontSize = fontSize;
-                _preserves = preserves;
             }
 
             // Null when a measurement came back without a number.
@@ -249,50 +403,78 @@ namespace Velvet
 
             private string BreakParagraph(string paragraph)
             {
-                if (_unmeasurable || !TextBreakOpportunities.Find(paragraph, _starts, _ends))
+                var measured = Measured(paragraph);
+                if (measured == null || measured.Skip)
                 {
                     return paragraph;
                 }
-                var whole = Measure(_element, paragraph);
-                if (float.IsNaN(whole))
-                {
-                    _unmeasurable = true;
-                    return paragraph;
-                }
-                if (_starts.Count < 4 || whole > (TextLineBreaker.MaxLines(_style) + SpareLines) * _width)
-                {
-                    return paragraph;
-                }
-                if (!TryMeasureItems(paragraph, out var lineStart, out var wordEnd))
+                var style = _owner._style;
+                if (measured.Whole > (TextLineBreaker.MaxLines(style) + SpareLines) * _width)
                 {
                     return paragraph;
                 }
 
                 var breaks = TextLineBreaker.Plan(
-                    lineStart, wordEnd, _width, _style, 4f * _width * _fontSize,
-                    (first, end) => FitsOneLine(LineText(paragraph, first, end)));
-                if (breaks == null || breaks.Length + 1 > EngineLines(paragraph))
+                    measured.LineStart, measured.WordEnd, _width, style, 4f * _width * _element.resolvedStyle.fontSize,
+                    (first, end) => FitsOneLine(LineText(paragraph, measured, first, end)));
+                if (breaks == null || breaks.Length + 1 > EngineLines(paragraph)
+                    || !AllLinesFit(paragraph, measured, breaks))
                 {
                     return paragraph;
                 }
-                var broken = InsertBreaks(paragraph, breaks);
-                return AllLinesFit(paragraph, breaks) ? broken : paragraph;
+                return InsertBreaks(paragraph, measured, breaks);
+            }
+
+            // Null when a measurement came back without a number.
+            private MeasuredParagraph? Measured(string paragraph)
+            {
+                if (_unmeasurable)
+                {
+                    return null;
+                }
+                if (_owner._measured.TryGetValue(paragraph, out var known))
+                {
+                    return known;
+                }
+                var measured = new MeasuredParagraph();
+                if (!TextBreakOpportunities.Find(paragraph, measured.Starts, measured.Ends))
+                {
+                    measured.Skip = true;
+                }
+                else
+                {
+                    measured.Whole = Measure(_element, paragraph);
+                    measured.Skip = float.IsNaN(measured.Whole) || measured.Starts.Count < 4
+                        || measured.Starts.Count > MaxItems;
+                    _unmeasurable = float.IsNaN(measured.Whole);
+                }
+                if (!measured.Skip && !TryMeasureItems(paragraph, measured))
+                {
+                    _unmeasurable = true;
+                    return null;
+                }
+                if (!_unmeasurable)
+                {
+                    _owner._measured[paragraph] = measured;
+                }
+                return _unmeasurable ? null : measured;
             }
 
             // The position every item ends at, and the one a line starting with it starts at, from the start
             // of the paragraph. A gap's width is the advance of the white space in it.
-            private bool TryMeasureItems(string paragraph, out float[] lineStart, out float[] wordEnd)
+            private bool TryMeasureItems(string paragraph, MeasuredParagraph measured)
             {
-                lineStart = new float[_starts.Count];
-                wordEnd = new float[_starts.Count];
-                for (var i = 0; i < _starts.Count; i++)
+                var count = measured.Starts.Count;
+                measured.LineStart = new float[count];
+                measured.WordEnd = new float[count];
+                for (var i = 0; i < count; i++)
                 {
-                    wordEnd[i] = Measure(_element, paragraph.Substring(0, _ends[i]));
-                    var gap = i == 0 ? 0f : GapAdvance(paragraph.Substring(_ends[i - 1], _starts[i] - _ends[i - 1]));
-                    lineStart[i] = i == 0 ? 0f : wordEnd[i - 1] + gap;
-                    if (float.IsNaN(wordEnd[i]) || float.IsNaN(gap))
+                    measured.WordEnd[i] = Measure(_element, paragraph.Substring(0, measured.Ends[i]));
+                    var gap = i == 0 ? 0f : GapAdvance(
+                        paragraph.Substring(measured.Ends[i - 1], measured.Starts[i] - measured.Ends[i - 1]));
+                    measured.LineStart[i] = i == 0 ? 0f : measured.WordEnd[i - 1] + gap;
+                    if (float.IsNaN(measured.WordEnd[i]) || float.IsNaN(gap))
                     {
-                        _unmeasurable = true;
                         return false;
                     }
                 }
@@ -321,26 +503,23 @@ namespace Velvet
             }
 
             // Items first..end-1 as one line; the first line keeps the white space before its first item.
-            private string LineText(string paragraph, int first, int end)
+            private static string LineText(string paragraph, MeasuredParagraph measured, int first, int end)
             {
-                var from = first == 0 ? 0 : _starts[first];
-                return paragraph.Substring(from, _ends[end - 1] - from);
+                var from = first == 0 ? 0 : measured.Starts[first];
+                return paragraph.Substring(from, measured.Ends[end - 1] - from);
             }
 
-            // A gap is replaced by the newline when the white space collapses, and kept ahead of it when it
-            // is preserved.
-            private string InsertBreaks(string paragraph, int[] breaks)
+            // The gap before each item that begins a line becomes the newline.
+            private static string InsertBreaks(string paragraph, MeasuredParagraph measured, int[] breaks)
             {
                 var builder = new StringBuilder(paragraph.Length + breaks.Length);
                 var copied = 0;
                 foreach (var item in breaks)
                 {
-                    var gapStart = _ends[item - 1];
-                    var gapEnd = _starts[item];
-                    var keep = _preserves || gapStart == gapEnd ? gapEnd : gapStart;
-                    builder.Append(paragraph, copied, keep - copied);
+                    var gapStart = measured.Ends[item - 1];
+                    builder.Append(paragraph, copied, gapStart - copied);
                     builder.Append('\n');
-                    copied = gapEnd;
+                    copied = measured.Starts[item];
                 }
                 builder.Append(paragraph, copied, paragraph.Length - copied);
                 return builder.ToString();
@@ -348,18 +527,18 @@ namespace Velvet
 
             // Whether the engine lays out every line the breaks make in one line's height, which the
             // arithmetic over rounded measurements cannot promise.
-            private bool AllLinesFit(string paragraph, int[] breaks)
+            private bool AllLinesFit(string paragraph, MeasuredParagraph measured, int[] breaks)
             {
                 var first = 0;
                 foreach (var item in breaks)
                 {
-                    if (!FitsOneLine(LineText(paragraph, first, item)))
+                    if (!FitsOneLine(LineText(paragraph, measured, first, item)))
                     {
                         return false;
                     }
                     first = item;
                 }
-                return FitsOneLine(LineText(paragraph, first, _starts.Count));
+                return FitsOneLine(LineText(paragraph, measured, first, measured.Starts.Count));
             }
 
             // How many lines the engine breaks the paragraph into at this width, 0 when it cannot say. A

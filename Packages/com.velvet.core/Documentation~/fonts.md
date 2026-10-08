@@ -236,9 +236,9 @@ axes: Tailwind defines no `leading-auto` below `leading-none`, and every preset 
 multiplier of 1 included — is already a real value, so there is nothing to reset back to.
 
 **`text-balance` and `text-pretty`** realise CSS `text-wrap: balance` and `text-wrap: pretty` by writing
-line breaks into the text a leaf *displays*, the way text-transform rewrites it. The box keeps the
-width its classes and its parent give it, so `w-full text-balance` balances, as do a `max-w-*`, padding
-and a border. Velvet keeps the text it was given and rebuilds the displayed string from it, so a state value, a
+line breaks into the text a leaf *displays*, the way text-transform rewrites it. A box the cascade
+sizes keeps the width its classes and its parent give it, so `w-full text-balance` balances, as do a
+`max-w-*`, padding and a border. Velvet keeps the text it was given and rebuilds the displayed string from it, so a state value, a
 prop or an `onChange` payload carries no newline Velvet added; the text read off the element itself is
 the displayed string, as it is under `uppercase`.
 
@@ -254,27 +254,34 @@ words, a division with another number of lines than the greedy one is dropped, `
 paragraphs of up to six lines and `text-pretty` on up to four, and `text-pretty` acts when the
 last line is one word narrower than a third of the line (Chromium's other trigger, consecutive
 hyphenated lines, has no counterpart here). Text between newlines is a paragraph. A line may break at
-white space (a tab or any white space but a no-break space, kept in the displayed text where the
-white-space preserves it), between CJK characters (ideographs, kana, hangul) with the basic kinsoku rule
-that no line begins with a closing mark, a stop or comma, `ー` or an iteration mark and none ends with an
-opening bracket, after a hyphen between two letters, and after a zero width space.
+white space (a tab or any white space but a no-break space; the white space at a break is dropped), between
+CJK characters (ideographs, kana, hangul) with the basic kinsoku rule that no line begins with a closing
+mark, a stop or comma, a percent sign, an ellipsis, the prolonged sound mark or an iteration mark and none
+ends with an opening bracket, after a hyphen-minus that follows a letter or digit and does not precede a
+digit, after the hyphens U+2010, U+2012 and U+2013, and after a zero width space, which is a break
+opportunity and not a space. `TextBreakOpportunities` holds the table for every consumer of line
+breaking.
 
 A leaf is broken once it has a width, and again whenever the width its text is laid out in, its font
-or its text changes. Before its first layout it shows the text unbroken.
+(family, size, style or weight, spacing) or its text changes. Before its first layout, and until a layout
+pass has run since it was attached, it shows the text unbroken. What was measured of a text is kept
+across widths, so resizing re-runs only the choice of breaks.
 
-A leaf under the style is written `white-space: pre-wrap` over a string whose white space Velvet has
+A leaf that gets breaks is written `white-space: pre-wrap` over a string whose white space Velvet has
 collapsed itself, as `white-space: normal` would, because the breaks it writes are newlines; text that
-inherits a preserving white-space keeps its spaces and newlines, and `text-balance` then balances each
-newline-separated paragraph.
+inherits a preserving white-space keeps its spaces and newlines, and the style then balances each
+newline-separated paragraph. A leaf that gets no break, a text that fits one line included, keeps its
+white-space and its text as written.
 
 Deviations from CSS:
 
 - **A box UI Toolkit sizes from its text can be narrower.** A leaf with auto width in a row is measured
-  from the lines it displays, so it can end up narrower than the unbalanced text would make it. When
-  the parent's room for it widens by more than two pixels, the leaf is broken once against the width its
-  text takes unbroken in that room, then against its own width again at the next derive. Only the
-  leaf's direct parent is watched: a widening that reaches the leaf through a parent sized by the leaf
-  itself is not seen.
+  from the lines it displays, so it can end up narrower than the unbalanced text would make it. Such a
+  leaf is broken against the room its parent offers, as its text takes that room unbroken, rather than
+  against its own width, which is only its last longest line; a `max-width` bounds that width. The leaf
+  is re-broken when its parent's room has moved by more than two pixels from where it last was, so a
+  widening in smaller steps adds up. Only the leaf's direct parent is watched: a widening that reaches
+  the leaf through a parent sized by the leaf itself is not seen.
 - **Only part of UAX #14 is read**, where Chromium reads all of it through ICU. Quotation marks, the
   numeric and symbol rules, emoji and Indic sequences, CJK symbols other than the marks named above and
   the combining behaviour of the CJK classes are not, so a break one of those rules would allow beyond

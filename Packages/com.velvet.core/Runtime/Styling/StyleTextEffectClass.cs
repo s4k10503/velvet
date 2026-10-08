@@ -45,18 +45,6 @@ namespace Velvet
         PreLine, // whitespace-pre-line
     }
 
-    // Which unit a resolved Leading value carries, following CSS line-height's two kinds of value. Em is a
-    // number (every named leading-* preset and a unitless bracket value): CSS inherits the number itself,
-    // so it multiplies whatever font-size is in effect where the rich-text tag is generated. EmLength is an
-    // em or percentage bracket value: CSS computes it to a length on the element that declares it, and
-    // StyleTextEffectResolver.ResolveEmLength turns it into Pixel where it can. Pixel is an absolute
-    // length (a bracket px or rem value). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind,
-    // this axis has deliberately no explicit-reset member: the leading-* utility scale defines no reset value below
-    // leading-none, and every named preset — including leading-none's own multiplier of 1 — is already a
-    // real, meaningful value rather than a sentinel standing in for "reset to nothing" the way normal-case /
-    // no-underline / an explicit whitespace-* class are. A None member here would have no Parse case that
-    // ever produces it and no caller that would ever need it, so it is left out rather than added purely
-    // for symmetry with the other three axes.
     // The line-breaking of CSS's text-wrap-style that Velvet realises. None is auto, the engine's own greedy
     // breaking, and also what text-wrap and text-nowrap reset to.
     internal enum TextWrapStyle
@@ -93,6 +81,18 @@ namespace Velvet
         }
     }
 
+    // Which unit a resolved Leading value carries, following CSS line-height's two kinds of value. Em is a
+    // number (every named leading-* preset and a unitless bracket value): CSS inherits the number itself,
+    // so it multiplies whatever font-size is in effect where the rich-text tag is generated. EmLength is an
+    // em or percentage bracket value: CSS computes it to a length on the element that declares it, and
+    // StyleTextEffectResolver.ResolveEmLength turns it into Pixel where it can. Pixel is an absolute
+    // length (a bracket px or rem value). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind,
+    // this axis has deliberately no explicit-reset member: the leading-* utility scale defines no reset value below
+    // leading-none, and every named preset — including leading-none's own multiplier of 1 — is already a
+    // real, meaningful value rather than a sentinel standing in for "reset to nothing" the way normal-case /
+    // no-underline / an explicit whitespace-* class are. A None member here would have no Parse case that
+    // ever produces it and no caller that would ever need it, so it is left out rather than added purely
+    // for symmetry with the other three axes.
     internal enum LeadingUnit
     {
         Em,
@@ -466,14 +466,15 @@ namespace Velvet
             text = ApplyTransform(text, transform);
             if (breaks != null)
             {
-                text = breaks.Value.Breaker.Break(text, breaks.Value.Preserves);
+                text = breaks.Value.Breaker.Break(text);
             }
             text = ApplyDecoration(text, decoration);
             return ApplyLeading(text, leading);
         }
 
         // A line break request collapses a default white-space here: the breaks it writes are newlines, and
-        // the resolver writes the leaf pre-wrap, which collapses nothing itself.
+        // the resolver writes the leaf pre-wrap, which collapses nothing itself. A request whose breaker
+        // writes none is applied again without the request, so the leaf keeps the white-space as authored.
         private static string CollapseWhitespace(string raw, WhitespaceCollapseKind? whitespace, TextBreakRequest? breaks)
         {
             if (whitespace == WhitespaceCollapseKind.PreLine)

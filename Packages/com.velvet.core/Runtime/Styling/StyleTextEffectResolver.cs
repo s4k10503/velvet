@@ -171,8 +171,16 @@ namespace Velvet
                 TextBreakRequest? breaks = breaker != null && breaker.CanBreak
                     ? new TextBreakRequest(breaker, effect.Preserves)
                     : null;
-                te.text = StyleTextEffectClass.Apply(
+                breaker?.BeginBreak();
+                var display = StyleTextEffectClass.Apply(
                     raw, effect.Transform, effect.Decoration, effect.Whitespace, effect.Leading, breaks);
+                if (breaks != null && !breaker!.Broke)
+                {
+                    breaks = null;
+                    display = StyleTextEffectClass.Apply(
+                        raw, effect.Transform, effect.Decoration, effect.Whitespace, effect.Leading, null);
+                }
+                te.text = display;
                 var decoration = effect.Decoration;
                 // The leaf is written pre-wrap over a string StyleTextEffectClass.Apply already collapsed.
                 var write = breaks != null ? WhiteSpace.PreWrap : effect.Write;
