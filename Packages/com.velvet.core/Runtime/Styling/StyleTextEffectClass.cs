@@ -50,7 +50,7 @@ namespace Velvet
     // so it multiplies whatever font-size is in effect where the rich-text tag is generated. EmLength is an
     // em or percentage bracket value: CSS computes it to a length on the element that declares it, and
     // StyleTextEffectResolver.ResolveEmLength turns it into Pixel where it can. Pixel is an absolute
-    // length (a bracket px or rem value). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind,
+    // length (a bracket px or rem value, or a leading-<n> spacing step). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind,
     // this axis has deliberately no explicit-reset member: the leading-* utility scale defines no reset value below
     // leading-none, and every named preset — including leading-none's own multiplier of 1 — is already a
     // real, meaningful value rather than a sentinel standing in for "reset to nothing" the way normal-case /
@@ -361,7 +361,6 @@ namespace Velvet
         }
 
         // leading-<n> reads the --space-* scale, as Tailwind's bare-number line height is n spacing units.
-        // leading-px is excluded: Tailwind has no such line height, though the scale has a px step.
         private static bool TryParseLeadingSpacing(string cls, out float px)
         {
             px = 0f;
@@ -370,8 +369,7 @@ namespace Velvet
             {
                 return false;
             }
-            var suffix = cls.Substring(prefix.Length);
-            return suffix != "px" && StyleArbitraryValueResolver.TryGetSpacingPx(suffix, out px);
+            return StyleArbitraryValueResolver.TryGetSpacingPx(cls.Substring(prefix.Length), out px);
         }
 
         private static bool TryParseLineHeight(ReadOnlySpan<char> value, out float amount, out LeadingUnit unit)

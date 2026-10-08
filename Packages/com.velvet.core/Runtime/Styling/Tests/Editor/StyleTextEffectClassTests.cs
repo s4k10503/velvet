@@ -431,6 +431,7 @@ namespace Velvet.Tests
         [TestCase("leading-6", "<line-height=24px>hi</line-height>")]
         [TestCase("leading-3-5", "<line-height=14px>hi</line-height>")]
         [TestCase("leading-0", "<line-height=0px>hi</line-height>")]
+        [TestCase("leading-px", "<line-height=1px>hi</line-height>")]
         public void Given_LeadingOnTheSpacingScale_When_ParsedAndApplied_Then_ProducesThePxTag(
             string cls, string expected)
         {
@@ -465,14 +466,13 @@ namespace Velvet.Tests
             Assert.That(recognised, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base recognises no bare-number leading; these pin what the
-        // spacing-scale form still rejects — px, which Tailwind has no line height for, and a non-numeric suffix.
-        [TestCase("leading-px")]
-        [TestCase("leading-abc")]
-        public void Given_ANonSpacingLeadingSuffix_When_Parsed_Then_LeadingIsUnsetNull(string cls)
+        // GREEN_ON_BASE(characterization): a suffix the spacing scale lacks leaves Leading unset.
+        // The base recognises no bare-number leading at all.
+        [Test]
+        public void Given_ANonSpacingLeadingSuffix_When_Parsed_Then_LeadingIsUnsetNull()
         {
             // Arrange
-            var classNames = new[] { cls };
+            var classNames = new[] { "leading-abc" };
 
             // Act
             var effect = StyleTextEffectClass.Parse(classNames);
