@@ -66,7 +66,7 @@ VelvetFonts.Register(new VelvetFontFamily("sans",
     new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = interRegular, italic = interItalic },
     new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold,   uprightAddress = "Fonts/Inter-Bold" }));
 
-VelvetFonts.DefaultFamily = "sans"; // applied to elements that set a weight/style but no family
+VelvetFonts.DefaultFamily = "sans"; // see What DefaultFamily reaches, below
 ```
 
 **From CSV / MasterMemory / a ScriptableObject / any other source** — map your rows to
@@ -83,6 +83,42 @@ VelvetFonts.Register(families, defaultFamily: "sans");
 With the `Bold` entry registered, `font-bold` renders a **true** bold asset rather than faux bold;
 `font-medium` with no `Medium` entry picks the registered weight CSS's search order reaches first
 (see [How resolution works](#how-resolution-works)).
+
+### What `DefaultFamily` reaches
+
+`DefaultFamily` supplies the family to an element that has a weight or italic class (`font-normal`,
+`font-bold`, `italic`, …), no `font-<name>`, and no ancestor naming a family (below), and Velvet writes the resolved asset inline on that
+element. Its descendants inherit that asset like any other. **A label with no font class, and no
+ancestor carrying one, gets no font from Velvet**: it keeps whatever font its stylesheets, ancestors
+and the panel's text settings give it.
+
+To have every label under the mounted root start from the registered family, put a font class on that
+root. Either kind works:
+
+```csharp
+VelvetFonts.Register(families, defaultFamily: "sans");
+V.Mount(root, V.Div("font-sans", app));    // names the family
+V.Mount(root, V.Div("font-normal", app));  // follows DefaultFamily
+```
+
+A label under that root inherits the root's asset unless the label, or an element between them, is
+assigned another one, or a stylesheet sets a font on the label itself. Content a portal renders
+(`V.Portal`, `V.WorldSpace`, see [portals.md](portals.md)) attaches under its target rather than
+under this root, so the target, layer root or world-space panel root needs the class too.
+`DefaultFamilyScopePanelTests` pins the scope and both kinds of root on a panel with no theme
+stylesheet.
+
+A weight or italic class on an element with no `font-<name>` of its own keeps the family it inherits,
+as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
+The family is the one named by the nearest ancestor carrying a `font-<name>` class that Velvet rendered;
+an ancestor that has only a weight class names none. `DefaultFamily` applies when no such ancestor
+exists. A root whose `font-<name>` class Velvet did not render (a portal target, layer root or
+world-space panel root, or the root of another `V.Mount`) is not seen, so under one register the same
+family as the default as well, or `font-bold` below it selects the default family's `Bold` entry.
+`InheritedFontFamilyPanelTests` pins the inheritance.
+
+Glyphs the assigned asset lacks still go through TextCore's fallback chain, which
+[Multilingual / CJK fallback](#multilingual--cjk-fallback) covers.
 
 ## Multilingual / CJK fallback
 

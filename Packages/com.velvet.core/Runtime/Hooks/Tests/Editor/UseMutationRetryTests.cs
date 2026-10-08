@@ -16,7 +16,8 @@ namespace Velvet.Tests
     /// Specifies <see cref="MutationOptions{TVariables, TData}.Retry"/> on a mounted
     /// <see cref="Hooks.UseMutation{TVariables, TData}"/>: retries stay inside one call, so the call commits
     /// and delivers one outcome; a retry waits on the token unmount cancels; a call still retrying does not
-    /// publish over a newer one; and the latest render's <c>Retry</c> and <c>MutationFn</c> are the ones used.
+    /// publish over a newer one; the latest render's <c>Retry</c> and <c>MutationFn</c> are the ones used; and a
+    /// context call's <c>OnMutate</c> and <c>OnSettled</c> run once around its attempts.
     /// <see cref="RetryPolicyTests"/> owns the policy's own schedule.
     /// </summary>
     [TestFixture]
@@ -29,6 +30,8 @@ namespace Velvet.Tests
         private static RetryPolicy? s_retry;
         private static Func<int, CancellationToken, VelvetTask<int>> s_mutationFn = (v, _) => VelvetTask.FromResult(v);
         private static int s_onErrorCount;
+        private static int s_onMutateCount;
+        private static int s_onSettledCount;
         private static readonly List<int> s_delivered = new();
 
         // Both signals supplied, so no case reads the Application's own focus or connectivity.
@@ -46,6 +49,8 @@ namespace Velvet.Tests
             s_retry = null;
             s_mutationFn = (v, _) => VelvetTask.FromResult(v);
             s_onErrorCount = 0;
+            s_onMutateCount = 0;
+            s_onSettledCount = 0;
             s_delivered.Clear();
         }
 
@@ -268,6 +273,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_voidCaptured.Status, Is.EqualTo(MutationStatus.Success),
                 "The void overload hands its Retry to the call it adapts to");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutationWithRetry_When_MutationFnFailsOnce_Then_OnMutateAndOnSettledRunOnce() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var attempts = 0;
+            s_retry = s_noDelay;
+            s_mutationFn = (v, _) =>
+                ++attempts == 1 ? throw new InvalidOperationException("transient") : VelvetTask.FromResult(v);
+            using var mounted = V.Mount(_root, V.Component(CaptureContextMutationRender, key: "retry-context"));
+
+            // Act
+            await s_captured!.MutateAsync(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the attempt count is the retry having happened, without which one of each holds anyway.
+            Assert.That((s_captured.Status, attempts, s_onMutateCount, s_onSettledCount),
+                Is.EqualTo((MutationStatus.Success, 2, 1, 1)),
+                "A retried context call runs OnMutate before its attempts and OnSettled after them, once each");
         });
 
         [UnityTest]
@@ -587,6 +612,16 @@ namespace Velvet.Tests
         {
             s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(
                 MutationFn: async (v, ct) => await s_mutationFn(v, ct)) { Retry = s_retry });
+            return V.Label(text: "ok");
+        }
+
+        [Component]
+        public static VNode CaptureContextMutationRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int, int>(
+                MutationFn: s_mutationFn,
+                OnMutate: _ => ++s_onMutateCount,
+                OnSettled: (_, _, _, _) => s_onSettledCount++) { Retry = s_retry });
             return V.Label(text: "ok");
         }
 

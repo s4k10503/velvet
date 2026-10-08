@@ -5,8 +5,8 @@
   boolean or a function (a function replaces the count and `true` retries without end). `RetryDelay` takes a
   constant or a function and defaults to one second doubled per retry and capped at thirty. A retry waits for
   focus and, per `NetworkMode`, for a connection, and the wait is replaceable. `MutationOptions.Retry` opts a
-  `Hooks.UseMutation` call into it — the call stays pending across attempts, its `OnSuccess` / `OnError` run
-  once, and `MutationResult` reports `FailureCount`, `FailureReason` and `IsPaused` — and
+  `Hooks.UseMutation` call into it — the call stays pending across attempts, its `OnMutate` runs once
+  before them and its `OnSuccess` / `OnError` / `OnSettled` once after, and `MutationResult` reports `FailureCount`, `FailureReason` and `IsPaused` — and
   `RetryPolicy.RunAsync` wraps a `Hooks.Use` loader so the resource stays pending until the last attempt
   settles. Mutations still do not retry unless a policy is given, as TanStack's mutations default to
   `retry: 0`.
