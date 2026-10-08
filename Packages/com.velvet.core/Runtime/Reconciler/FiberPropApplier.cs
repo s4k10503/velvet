@@ -279,7 +279,9 @@ namespace Velvet
         // uncommitted edit replaces the typed text with the value it has not received yet, so the edit is
         // written back silently — the silent setter because the carried text is not a new edit, and the
         // record is left alone so it still reads as one. Turning it off rewrites the display the same
-        // way, and an edit there stays an edit because the record is not moved either. With no edit, the
+        // way and the record is not moved either, so the edit stays one in its rewritten form — except
+        // that an edit which strips down to exactly the recorded text then reads as none, which loses
+        // nothing visible. With no edit, the
         // display the write leaves is what Velvet left on screen and becomes the record, whatever form the
         // engine gave it. TextFieldMultilineEngineTests pins the engine's writes, and
         // TextFieldMultilineKeyboardPropTests the carry, the restore and the toggles.

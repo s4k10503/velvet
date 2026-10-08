@@ -391,10 +391,33 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMultilineEditTheDelayedFieldHasNotCommitted_When_MultilineComesOffAndBackOn_Then_TheEditStaysUncommittedWithoutItsBreak()
+        {
+            // Arrange
+            var multilineTree = new VNode[] { V.TextField(value: "x", isDelayed: true, multiline: true) };
+            var offTree = new VNode[] { V.TextField(value: "x", isDelayed: true, multiline: false) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), multilineTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "a\nb";
+            Reconciler.Reconcile(Root, multilineTree, offTree);
+            var whileOff = ((TextElement)element.textEdition).text;
+
+            // Act
+            Reconciler.Reconcile(Root, offTree, multilineTree);
+
+            // Assert — the value stays "x" throughout, and the edit coming back rather than the value is
+            // what shows it was still read as an edit.
+            Assert.That(
+                (whileOff, element.value, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("ab", "x", "ab")));
+        }
+
+        [Test]
         public void Given_ADelayedFieldWithNoEdit_When_TheLimitIsRaisedWhileMultilineIsOffAndMultilineComesBackOn_Then_TheFieldShowsTheValueUpToTheNewLimit()
         {
-            // Arrange — the single-line display at the old limit is not what the raised limit shows, so the
-            // text left on screen while multiline is off is not told from an edit by its form.
+            // Arrange — a guard for the record: the limit write while multiline is off leaves a display that
+            // is recorded as the baseline, so the render turning multiline back on finds no edit. The
+            // case also passes on a comparison against computed forms.
             Func<int, bool, VNode[]> tree = (limit, multiline) => new VNode[]
             {
                 V.TextField(value: "a\nbcdef", maxLength: limit, isDelayed: true, multiline: multiline),
