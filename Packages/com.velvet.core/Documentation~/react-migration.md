@@ -209,7 +209,9 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 - The `CancellationToken` a query function receives is cancelled when a refetch starts that request
   over, when the entry is removed, and by `Clear`. v5 also aborts a request whose function read its
   signal once the last observer unsubscribes; here it runs on, so a component mounting again finds its
-  result.
+  result. The same holds for the extra cleanup and setup StrictMode runs on a mounting component's
+  effects: the second subscription joins the first one's request, where v5 cancels and refetches a request
+  whose function read its signal.
 - `UseQuery` never suspends: with no data yet it returns `Pending`. There is no `useSuspenseQuery`.
 - A key holds one data type. A query reading it as another throws `InvalidOperationException`.
 - Not yet available: retries (v5 retries a failure three times by default; here a failure is an error at

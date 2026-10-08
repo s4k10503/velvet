@@ -29,7 +29,8 @@ namespace Velvet.Tests
     /// request. An entry something reads again, or still reads, is not removed, and a new entry for a key
     /// whose old entry was removed is not swept with it. An expired entry reads as absent before the sweep,
     /// and a reader mounting over it subscribes to a new entry, while one left by a reader in the commit that
-    /// brings the next reader is handed over, whatever its gcTime.</item>
+    /// brings the next reader is handed over, whatever its gcTime — a keyed remount, and StrictMode's extra
+    /// cleanup and setup of a mounting reader's effects, which joins the request the first setup started.</item>
     /// <item>A key change requests the new key and releases the old key's entry, and the old key's request
     /// landing is never shown as the new key's data. Until the commit's effect moves the subscription, the
     /// old entry keeps the old key's query function. A change of client moves the query to the new one.</item>
@@ -107,6 +108,12 @@ namespace Velvet.Tests
             s_setClient = default;
             s_setGeneration = default;
             s_setTick = default;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            FiberStrictMode.Enabled = false;
         }
 
         #region Sharing one entry
@@ -508,6 +515,44 @@ namespace Velvet.Tests
             Assert.That((s_fetched.Count, Last(s_rendersA).Status, Last(s_rendersA).Data),
                 Is.EqualTo((1, QueryStatus.Success, 7)),
                 "An entry left in the commit that brings its next reader is kept, as v5's addObserver clears the gc timeout");
+        }
+
+        [Test]
+        public void Given_StrictModeAndAZeroGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest()
+        {
+            // Arrange — StrictMode runs a mounting component's effects, cleans them up and runs them again,
+            // so the reader subscribes, leaves the entry with nobody reading it, and subscribes again.
+            s_client = NewClient(TimeSpan.Zero);
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_fetched.Count, s_tokens[0].IsCancellationRequested, Last(s_rendersA).Data),
+                Is.EqualTo((1, false, 7)),
+                "The resubscription takes the entry back, however short its gcTime, and joins its request");
+        }
+
+        [Test]
+        public void Given_StrictModeAndTheDefaultGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_fetched.Count, s_tokens[0].IsCancellationRequested, Last(s_rendersA).Data),
+                Is.EqualTo((1, false, 7)),
+                "The last reader leaving does not cancel the request, so the resubscription joins it");
         }
 
         [Test]
