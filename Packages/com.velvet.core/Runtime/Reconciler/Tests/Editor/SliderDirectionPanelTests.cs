@@ -8,16 +8,13 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins that <c>V.Slider</c>'s <c>direction:</c> and <c>inverted:</c> change what keyboard input does
-    /// to the slider on a real panel, not only the properties <c>SliderDirectionPropTests</c> reads, and
-    /// that a render changing them alongside a controlled value reports nothing through
-    /// <c>onValueChanged:</c>.
+    /// Pins that <c>V.Slider</c> sends Home to its low value and End to its high value on a real panel
+    /// whatever <c>direction:</c> and <c>inverted:</c> declare, and that a render changing them alongside a
+    /// controlled value reports nothing through <c>onValueChanged:</c>.
     /// </summary>
     /// <remarks>
-    /// Home is the key read, because the end it sends a slider to is the reading that separates the cases:
-    /// <c>lowValue</c> for a slider that is horizontal and not inverted, <c>highValue</c> for one carrying
-    /// either declaration alone. The panel, and the count each assertion takes before the act, are
-    /// <c>DelayedFlagCommitReportTests</c>' and for its reasons.
+    /// The panel, and the count each assertion takes before the act, are <c>DelayedFlagCommitReportTests</c>'
+    /// and for its reasons.
     /// </remarks>
     [TestFixture]
     internal sealed class SliderDirectionPanelTests : PanelTestBase
@@ -53,17 +50,17 @@ namespace Velvet.Tests
             return (Slider)_root.ElementAt(0);
         }
 
-        private static void PressHome(Slider slider)
+        private static void PressKey(VisualElement element, KeyCode key)
         {
-            using (var evt = KeyDownEvent.GetPooled('\0', KeyCode.Home, EventModifiers.None))
+            using (var evt = KeyDownEvent.GetPooled('\0', key, EventModifiers.None))
             {
-                evt.target = slider;
-                slider.SendEvent(evt);
+                evt.target = element;
+                element.SendEvent(evt);
             }
         }
 
         [Test]
-        public void Given_AVerticalSlider_When_HomeIsPressed_Then_OnValueChangedReceivesTheHighValue()
+        public void Given_AVerticalSlider_When_HomeIsPressed_Then_OnValueChangedReceivesTheLowValue()
         {
             // Arrange
             var reported = new List<float>();
@@ -72,14 +69,30 @@ namespace Velvet.Tests
             var whileMounted = reported.Count;
 
             // Act
-            PressHome(slider);
+            PressKey(slider, KeyCode.Home);
+
+            // Assert
+            Assert.That((whileMounted, string.Join("|", reported)), Is.EqualTo((0, Low.ToString())));
+        }
+
+        [Test]
+        public void Given_AVerticalSlider_When_EndIsPressed_Then_OnValueChangedReceivesTheHighValue()
+        {
+            // Arrange
+            var reported = new List<float>();
+            var slider = Mount(V.Slider(value: Start, lowValue: Low, highValue: High,
+                onValueChanged: reported.Add, direction: SliderDirection.Vertical));
+            var whileMounted = reported.Count;
+
+            // Act
+            PressKey(slider, KeyCode.End);
 
             // Assert
             Assert.That((whileMounted, string.Join("|", reported)), Is.EqualTo((0, High.ToString())));
         }
 
         [Test]
-        public void Given_AnInvertedHorizontalSlider_When_HomeIsPressed_Then_OnValueChangedReceivesTheHighValue()
+        public void Given_AnInvertedHorizontalSlider_When_HomeIsPressed_Then_OnValueChangedReceivesTheLowValue()
         {
             // Arrange
             var reported = new List<float>();
@@ -88,36 +101,43 @@ namespace Velvet.Tests
             var whileMounted = reported.Count;
 
             // Act
-            PressHome(slider);
+            PressKey(slider, KeyCode.Home);
+
+            // Assert
+            Assert.That((whileMounted, string.Join("|", reported)), Is.EqualTo((0, Low.ToString())));
+        }
+
+        [Test]
+        public void Given_AnInvertedHorizontalSlider_When_EndIsPressed_Then_OnValueChangedReceivesTheHighValue()
+        {
+            // Arrange
+            var reported = new List<float>();
+            var slider = Mount(V.Slider(value: Start, lowValue: Low, highValue: High,
+                onValueChanged: reported.Add, inverted: true));
+            var whileMounted = reported.Count;
+
+            // Act
+            PressKey(slider, KeyCode.End);
 
             // Assert
             Assert.That((whileMounted, string.Join("|", reported)), Is.EqualTo((0, High.ToString())));
         }
 
         [Test]
-        public void Given_AVerticalSliderALaterRenderStopsDeclaringVertical_When_HomeIsPressed_Then_OnValueChangedReceivesTheLowValue()
+        public void Given_ASliderShowingItsInputField_When_HomeIsPressedInTheField_Then_TheFieldReceivesTheKey()
         {
             // Arrange
-            var reported = new List<float>();
-            var oldTree = new VNode[]
-            {
-                V.Slider(value: Start, lowValue: Low, highValue: High, onValueChanged: reported.Add,
-                    direction: SliderDirection.Vertical),
-            };
-            var newTree = new VNode[]
-            {
-                V.Slider(value: Start, lowValue: Low, highValue: High, onValueChanged: reported.Add),
-            };
-            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
-            _reconciler.Reconcile(_root, oldTree, newTree);
-            var slider = (Slider)_root.ElementAt(0);
-            var whileRendered = reported.Count;
+            var slider = Mount(V.Slider(value: Start, lowValue: Low, highValue: High,
+                onCreated: element => ((Slider)element).showInputField = true));
+            var field = slider.Q(className: Slider.textFieldClassName);
+            var received = new List<KeyCode>();
+            field.RegisterCallback<KeyDownEvent>(evt => received.Add(evt.keyCode));
 
             // Act
-            PressHome(slider);
+            PressKey(field, KeyCode.Home);
 
             // Assert
-            Assert.That((whileRendered, string.Join("|", reported)), Is.EqualTo((0, Low.ToString())));
+            Assert.That(string.Join("|", received), Is.EqualTo(KeyCode.Home.ToString()));
         }
 
         [Test]

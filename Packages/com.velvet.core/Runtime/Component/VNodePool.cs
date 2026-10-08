@@ -393,7 +393,7 @@ namespace Velvet
 
         // Pooled sliders have been reset via FiberSliderPoolHelper.ResetSliderForReuse.
         private static readonly ElementPool<Slider> s_sliderPool =
-            new(() => new Slider(), FiberSliderPoolHelper.ResetSliderForReuse, MaxSliderPoolSize);
+            new(FiberSliderKeyboard.Create, FiberSliderPoolHelper.ResetSliderForReuse, MaxSliderPoolSize);
 
         public static Slider RentSlider() => s_sliderPool.Rent();
 
