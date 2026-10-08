@@ -156,10 +156,10 @@ namespace Velvet
                 return;
             }
 
-            if (IsStaticFontAsset(resolved))
+            if (IsUndrawableFontAsset(resolved))
             {
                 // Not measured: VariantGatedTypographyPassTests fails on the error the engine logs for text set
-                // in a static font asset.
+                // in a static font asset under the advanced text generator, which does not draw such text.
                 Release(textElement);
                 _hasSignature = false;
                 return;
@@ -178,10 +178,11 @@ namespace Velvet
             _hasSignature = true;
         }
 
-        private static bool IsStaticFontAsset(IResolvedStyle resolved)
+        private static bool IsUndrawableFontAsset(IResolvedStyle resolved)
         {
             var asset = resolved.unityFontDefinition.fontAsset;
-            return asset != null && asset.atlasPopulationMode == AtlasPopulationMode.Static;
+            return asset != null && asset.atlasPopulationMode == AtlasPopulationMode.Static
+                && resolved.unityTextGenerator == TextGeneratorType.Advanced;
         }
 
         private static float FrameInsets(IResolvedStyle resolved, bool horizontal)
