@@ -652,7 +652,7 @@ namespace Velvet
             // (the cached textures themselves are shared and outlive the reconciler).
             foreach (var (element, binding) in _ctx.GradientBackgrounds)
             {
-                GradientBackground.Unwatch(element, binding);
+                GradientBackground.Detach(element, binding);
                 GradientBackground.Clear(element);
             }
             _ctx.GradientBackgrounds.Clear();

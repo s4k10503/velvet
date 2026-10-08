@@ -7,8 +7,8 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The gradient shape. Linear runs along an angled axis; Radial runs out from a centre to the farthest
-    // box corner; Conic sweeps the hue around a centre.
+    // The gradient shape. Linear runs along an angled axis; Radial runs out from a centre to its radii
+    // (by default the farthest box corner); Conic sweeps around a centre.
     internal enum GradientType
     {
         Linear,
@@ -86,7 +86,7 @@ namespace Velvet
         // The skew silhouette shader declares its stop arrays at this length, so the parser rejects a longer
         // list rather than let the skewed paint drop stops the straight paint draws. GradientStopCapacityTests
         // holds the shader's length to this one.
-        public const int MaxStops = 16;
+        public const int MaxStops = 64;
 
         public GradientType Type { get; init; }
         public float AngleDeg { get; init; }
@@ -527,11 +527,7 @@ namespace Velvet
 
             // Split off a trailing /interp modifier (the gradient interpolation modifier).
             var baseTok = cls;
-            var slash = cls.LastIndexOf('/');
-            if (slash < cls.LastIndexOf(']'))
-            {
-                slash = -1; // a '/' inside the brackets belongs to the bracket's body
-            }
+            var slash = ModifierSlash(cls);
             if (slash >= 0)
             {
                 if (!TryParseInterp(cls.Substring(slash + 1), out shape.Interp))
@@ -551,35 +547,18 @@ namespace Velvet
                     shape = listShape;
                     return slash < 0;
                 }
-                if (listType != GradientType.Radial)
-                {
-                    return false;
-                }
-                // A radial body that is no stop list keeps the reading it had before stop lists existed —
-                // a position, its unknown tokens ignored — so the from-/via-/to- gradient it drew still draws.
-                ParseRadialPosition(listBody, ref shape.CenterX, ref shape.CenterY);
-                return true;
+                return false;
             }
             if (baseTok == RadialActivator)
             {
                 shape.Type = GradientType.Radial;
                 return true;
             }
-            // Deliberately NOT StyleArbitraryValueResolver.TryStripBrackets: unlike every other bracket
-            // grammar in this file, an empty or unrecognized bg-radial-[...] body is not an error here — it
-            // is exactly as meaningful as a plain `bg-radial` (ParseRadialPosition no-ops on any token it
-            // does not recognize, leaving the centre at its 0.5,0.5 default) — so rejecting an empty body
-            // would make bg-radial-[] behave differently from bg-radial-[bogus], which is not the boundary
-            // this class draws anywhere else.
             if (baseTok.StartsWith(RadialArbitraryActivator, StringComparison.Ordinal) && baseTok[baseTok.Length - 1] == ']')
             {
                 shape.Type = GradientType.Radial;
-                var body = baseTok.Substring(RadialActivator.Length + 2, baseTok.Length - RadialActivator.Length - 3);
-                if (!TryParseRadialLine(body, ref shape))
-                {
-                    ParseRadialPosition(body, ref shape.CenterX, ref shape.CenterY);
-                }
-                return true;
+                return TryParseRadialLine(
+                    baseTok.Substring(RadialActivator.Length + 2, baseTok.Length - RadialActivator.Length - 3), ref shape);
             }
             if (baseTok == ConicActivator)
             {
@@ -592,6 +571,14 @@ namespace Velvet
                 return TryParseConicStart(baseTok.Substring(ConicActivator.Length + 1), out shape.Angle);
             }
             return TryParseAngle(baseTok, out shape.Angle, out shape.ToCorner);
+        }
+
+        // The index of the modifier's '/', or -1: only one after the closing bracket is a modifier, and one
+        // inside the brackets belongs to the bracket's body.
+        internal static int ModifierSlash(string cls)
+        {
+            var slash = cls.LastIndexOf('/');
+            return slash < cls.LastIndexOf(']') ? -1 : slash;
         }
 
         // A bracket body holding a comma is a CSS gradient argument list, which this file reads as a stop
@@ -965,7 +952,7 @@ namespace Velvet
         }
 
         private static bool IsPositionToken(string token)
-            => token is "left" or "right" or "top" or "bottom" or "center" || TryParsePercent(token, out _);
+            => token is "left" or "right" or "top" or "bottom" or "center" || TryParseCentrePercent(token, out _);
 
         // CSS Images 3 colour-stop fix-up, over positions where NaN means unpositioned: an unpositioned first
         // or last stop sits at 0% or 100%; a position behind an earlier one is raised to the largest before
@@ -1035,11 +1022,11 @@ namespace Velvet
             return TryParseAngleValue(s, out deg);
         }
 
-        // Parses a bg-radial-[at_...] position into a UV centre. Keywords (top/bottom/left/right/center)
-        // pin their own axis; a {N}% value fills the next axis not already pinned by a keyword (CSS position
-        // order: x then y). Tracking which axes are set with explicit flags (not a value sentinel on
-        // centerX) is what lets `at_50%_75%` and `at_left_50%` resolve correctly. center / unknown tokens
-        // are no-ops (the centre defaults to 0.5,0.5).
+        // Reads the position tokens of an at_ position into a UV centre, which may lie outside the box.
+        // Keywords (top/bottom/left/right/center) pin their own axis; a {N}% value fills the next axis not
+        // already pinned by a keyword (CSS position order: x then y). Tracking which axes are set with
+        // explicit flags (not a value sentinel on centerX) is what lets `at_50%_75%` and `at_left_50%`
+        // resolve correctly. Callers have already checked every token with IsPositionToken.
         private static void ParseRadialPosition(string content, ref float centerX, ref float centerY)
         {
             bool xSet = false, ySet = false;
@@ -1054,17 +1041,27 @@ namespace Velvet
                     case "top": centerY = 0f; ySet = true; break;
                     case "bottom": centerY = 1f; ySet = true; break;
                     default:
-                        if (tok.Length >= 2 && tok[tok.Length - 1] == '%'
-                            && float.TryParse(tok.Substring(0, tok.Length - 1), NumberStyles.Float,
-                                CultureInfo.InvariantCulture, out var pct))
+                        if (TryParseCentrePercent(tok, out var frac))
                         {
-                            var frac = Mathf.Clamp01(pct / 100f);
                             if (!xSet) { centerX = frac; xSet = true; }
                             else if (!ySet) { centerY = frac; ySet = true; }
                         }
                         break;
                 }
             }
+        }
+
+        private static bool TryParseCentrePercent(string token, out float frac)
+        {
+            frac = 0f;
+            if (token.Length < 2 || token[token.Length - 1] != '%'
+                || !float.TryParse(token.Substring(0, token.Length - 1), NumberStyles.Float, CultureInfo.InvariantCulture, out var pct)
+                || float.IsNaN(pct) || float.IsInfinity(pct))
+            {
+                return false;
+            }
+            frac = pct / 100f;
+            return true;
         }
 
         // "10%" or "[12.5%]" → 0.10 / 0.125, beyond 0..1 as written. False when not a percentage. Delegates to

@@ -216,10 +216,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AListAndUtilitiesTotallingSixteenStops_When_Extracted_Then_TheGradientResolves()
+        public void Given_AListAndUtilitiesTotallingTheCap_When_Extracted_Then_TheGradientResolves()
         {
-            // Arrange — fourteen listed stops, a from- and a to-.
-            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 14));
+            // Arrange — sixty-one listed stops, a from- and a to-.
+            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 61));
 
             // Act
             var ok = StyleGradientClass.TryExtract(
@@ -231,10 +231,10 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
         [Test]
-        public void Given_AListAndUtilitiesTotallingSeventeenStops_When_Extracted_Then_TheClassIsInert()
+        public void Given_AListAndUtilitiesPastTheCap_When_Extracted_Then_TheClassIsInert()
         {
-            // Arrange — fifteen listed stops, a from- and a to-: more than the skew shader holds.
-            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 15));
+            // Arrange — sixty-two listed stops, a from- and a to-: more than the skew shader holds.
+            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 62));
 
             // Act
             var ok = StyleGradientClass.TryExtract(
@@ -514,15 +514,14 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARadialPositionNamingAnUnknownToken_When_Extracted_Then_TheListIsNotRead()
+        public void Given_ARadialPositionNamingAnUnknownToken_When_Extracted_Then_TheClassIsInert()
         {
-            // Act — bogus makes the bracket no stop list, so it keeps its position reading and the utilities'
-            // green is the first stop, not the list's red.
-            StyleGradientClass.TryExtract(
-                new[] { "bg-radial-[at_top_bogus,#ff0000,#0000ff]", "from-[#00ff00]", "to-[#ffffff]" }, out var spec);
+            // Act — bogus is no position token, which makes the whole gradient invalid in CSS.
+            var ok = StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[circle_at_bogus,#ff0000,#0000ff]", "from-[#00ff00]", "to-[#ffffff]" }, out _);
 
             // Assert
-            Assert.That(ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color), Is.EqualTo("00FF00FF"));
+            Assert.That(ok, Is.False);
         }
 
         [Test]
@@ -668,26 +667,25 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnEllipseWithOneLength_When_Extracted_Then_TheListIsNotRead()
+        public void Given_AnEllipseWithOneLength_When_Extracted_Then_TheClassIsInert()
         {
-            // Act — an ellipse takes two radii, so the bracket keeps its position reading and the utilities'
-            // green is the first stop.
-            StyleGradientClass.TryExtract(
-                new[] { "bg-radial-[ellipse_40px,#ff0000,#0000ff]", "from-[#00ff00]", "to-[#ffffff]" }, out var spec);
+            // Act — an ellipse takes two radii.
+            var ok = StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[ellipse_40px,#ff0000,#0000ff]", "from-[#00ff00]", "to-[#ffffff]" }, out _);
 
             // Assert
-            Assert.That(ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color), Is.EqualTo("00FF00FF"));
+            Assert.That(ok, Is.False);
         }
 
         [Test]
-        public void Given_ACircleWithAPercentage_When_Extracted_Then_TheListIsNotRead()
+        public void Given_ACircleWithAPercentage_When_Extracted_Then_TheClassIsInert()
         {
             // Act — a circle's radius is a length, not a percentage.
-            StyleGradientClass.TryExtract(
-                new[] { "bg-radial-[circle_50%,#ff0000,#0000ff]", "from-[#00ff00]", "to-[#ffffff]" }, out var spec);
+            var ok = StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[circle_50%,#ff0000,#0000ff]", "from-[#00ff00]", "to-[#ffffff]" }, out _);
 
             // Assert
-            Assert.That(ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color), Is.EqualTo("00FF00FF"));
+            Assert.That(ok, Is.False);
         }
 
         [Test]
@@ -702,15 +700,63 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASlashInsideARadialBracket_When_Extracted_Then_ItIsNotTheModifier()
+        public void Given_ASlashInsideTheBrackets_When_TheModifierIsFound_Then_ThereIsNone()
         {
-            // Act — a modifier follows the closing bracket; this slash is part of the bracket's body, whose
-            // unreadable token the position reading ignores.
-            var ok = StyleGradientClass.TryExtract(
-                new[] { "bg-radial-[at_top_left_a/b]", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+            // Act
+            var slash = StyleGradientClass.ModifierSlash("bg-radial-[at_top_a/b]");
 
             // Assert
-            Assert.That((ok, spec.CenterX, spec.CenterY), Is.EqualTo((true, 0f, 0f)));
+            Assert.That(slash, Is.EqualTo(-1));
+        }
+
+        [Test]
+        public void Given_ASlashAfterTheBrackets_When_TheModifierIsFound_Then_ItIsThatSlash()
+        {
+            // Act
+            var slash = StyleGradientClass.ModifierSlash("bg-linear-[to_right,red,blue]/oklch");
+
+            // Assert
+            Assert.That(slash, Is.EqualTo(29));
+        }
+
+        [Test]
+        public void Given_ASlashAfterABarePlainActivator_When_TheModifierIsFound_Then_ItIsThatSlash()
+        {
+            // Act
+            var slash = StyleGradientClass.ModifierSlash("bg-radial/oklab");
+
+            // Assert
+            Assert.That(slash, Is.EqualTo(9));
+        }
+
+        [Test]
+        public void Given_ARadialCentreOutsideTheBox_When_Extracted_Then_ItIsKept()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[at_150%_-20%]", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.CenterX, spec.CenterY), Is.EqualTo((1.5f, -0.2f)));
+        }
+
+        [Test]
+        public void Given_AConicCentreOutsideTheBox_When_Extracted_Then_ItIsKept()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-conic-[at_-20%_50%,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.CenterX, Is.EqualTo(-0.2f));
+        }
+
+        [Test]
+        public void Given_ABracketedPercentageInAPosition_When_Extracted_Then_TheListIsRejected()
+        {
+            // Act — only a bare percentage is a position token, so the centre never silently stays at the middle.
+            var ok = StyleGradientClass.TryExtract(new[] { "bg-conic-[at_[25%],#ff0000,#0000ff]" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
         }
 
         [Test]
@@ -721,6 +767,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((ok, spec.Stops?.Length ?? 0), Is.EqualTo((true, 3)));
+        }
+
+        [Test]
+        public void Given_AViaColourAlone_When_Extracted_Then_BothEndsAreTransparent()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-gradient-to-r", "via-[#00ff00]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Stops[0].Color.a, spec.Stops[spec.Stops.Length - 1].Color.a), Is.EqualTo((0f, 0f)));
+        }
+
+        [Test]
+        public void Given_AListOfSixteenStopsBesideFromViaAndTo_When_Extracted_Then_AllNineteenStopsResolve()
+        {
+            // Arrange
+            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 16));
+
+            // Act
+            StyleGradientClass.TryExtract(new[]
+            {
+                "bg-linear-[to_right," + stops + "]", "from-[#00ff00]", "via-[#0000ff]", "to-[#ffffff]",
+            }, out var spec);
+
+            // Assert
+            Assert.That(spec.Stops?.Length ?? 0, Is.EqualTo(19));
+        }
+
+        [Test]
+        public void Given_AViaColourAloneBesideAList_When_Extracted_Then_ItsStopsFollowTheList()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#ff0000,#0000ff]", "via-[#00ff00]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Stops?.Length ?? 0, Is.EqualTo(5));
         }
 
         [Test]
@@ -769,17 +851,25 @@ namespace Velvet.Tests
             Assert.That(equal, Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the base reads a centre from a radial bracket its stop list rejects.
         [Test]
-        public void Given_ARadialBracketThatIsNoStopList_When_Extracted_Then_ItsPositionTokensStillPlaceTheCentre()
+        public void Given_ARadialListWithAnUnreadableStop_When_Extracted_Then_TheClassIsInert()
         {
-            // Act — notacolor makes this no stop list. Read as a position, top places the centre's y, and
-            // the token "left,#ff0000,notacolor" is ignored, as it always was.
+            // Act — notacolor makes the list invalid, and CSS drops an invalid gradient whole.
             var ok = StyleGradientClass.TryExtract(
-                new[] { "bg-radial-[at_top_left,#ff0000,notacolor]", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+                new[] { "bg-radial-[at_top_left,#ff0000,notacolor]", "from-[#ff0000]", "to-[#0000ff]" }, out _);
 
             // Assert
-            Assert.That((ok, spec.CenterX, spec.CenterY), Is.EqualTo((true, 0.5f, 0f)));
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_ARadialBracketThatReadsAsNothing_When_Extracted_Then_TheClassIsInert()
+        {
+            // Act
+            var ok = StyleGradientClass.TryExtract(new[] { "bg-radial-[bogus]", "from-[#ff0000]", "to-[#0000ff]" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
         }
 
         [Test]
@@ -865,10 +955,10 @@ namespace Velvet.Tests
         #region Stop count and malformed lists
 
         [Test]
-        public void Given_SixteenStops_When_Extracted_Then_TheGradientResolves()
+        public void Given_SixtyFourStops_When_Extracted_Then_TheGradientResolves()
         {
             // Arrange
-            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 16));
+            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 64));
 
             // Act
             var ok = StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right," + stops + "]" }, out _);
@@ -879,10 +969,10 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
         [Test]
-        public void Given_SeventeenStopsAfterAPlainActivator_When_Extracted_Then_ThePlainActivatorStillWins()
+        public void Given_SixtyFiveStopsAfterAPlainActivator_When_Extracted_Then_ThePlainActivatorStillWins()
         {
             // Arrange
-            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 17));
+            var stops = string.Join(",", Enumerable.Repeat("#ff0000", 65));
 
             // Act
             StyleGradientClass.TryExtract(

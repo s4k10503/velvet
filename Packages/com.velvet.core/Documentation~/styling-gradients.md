@@ -22,7 +22,7 @@ twice-as-large background the pan slides across.
 | `bg-radial-[{shape} {size} at_{position}]` | `circle` or `ellipse`; `closest-side`, `closest-corner`, `farthest-side`, `farthest-corner`, or radii: a circle's length, an ellipse's two lengths or percentages (`circle_40px`, `ellipse_50%_20px`) |
 | `bg-conic` / `bg-conic-{n}` / `bg-conic-[from_{n}deg]` | conic, sweeping clockwise from a start angle |
 
-A position is keywords (`top`, `left`, `center`, …) or percentages, x before y: `at_top_left`,
+A position is keywords (`top`, `left`, `center`, …) or percentages, which may lie outside the box, x before y: `at_top_left`,
 `at_25%_75%`. A trailing `/srgb` (the default), `/oklab` or `/oklch` on the shape picks the space the
 colours are interpolated in; `/oklch` interpolates in OKLab rather than along the OKLCH hue arc.
 
@@ -59,7 +59,7 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
   (`slate-900`), a bracketed value, or anything the arbitrary `bg-[…]` value takes: `#0f172a`,
   `rgb(15,23,42)`, or a basic colour name such as `red`. Two percentages make the colour hold between
   them (`red_0%_40%`) and count as two stops.
-- **Between 2 and 16 stops**, counting the `from-` / `via-` / `to-` stops that follow the list.
+- **Between 2 and 64 stops**, counting the `from-` / `via-` / `to-` stops that follow the list.
 - **`from-` / `via-` / `to-` follow the list.** When a `from-` or `to-` colour is given, its stops are
   placed after the list's, as Tailwind places them: `bg-linear-[to_right,red,blue] from-green to-white`
   is `red, blue, green 0%, white 100%`.
@@ -77,14 +77,13 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
   utility before it in the class list still applies. Malformed covers an argument that is neither a stop
   nor the shape's first argument, an unreadable colour or position, an angle that is a bare number other
   than `0`, an `at_` position with a token that is not `left`, `right`, `top`, `bottom`, `center` or a
-  percentage (or with more than two), more than two positions on one stop, fewer than 2 or more than 16
+  percentage (or with more than two), more than two positions on one stop, fewer than 2 or more than 64
   stops, and a `-` in front of `bg-linear-[…]`.
 - **A `/` modifier after a stop list leaves the class inert** on every shape, since Tailwind takes none
   after a bracketed shape. Name the space inside the bracket instead (`in_oklab`).
-- **A radial bracket that is no stop list keeps its position reading**: when its body is not a shape,
-  size and position CSS reads, its `top` / `left` / … and percentage tokens place the centre, every other
-  token is ignored, and `from-` / `via-` / `to-` give the stops. So `bg-radial-[at_top_bogus,red,blue]` with
-  `from-` / `to-` draws those utilities.
+- **A radial bracket is read as CSS reads it**, with or without stops: `bg-radial-[circle_at_top]` takes its stops from
+  `from-` / `via-` / `to-`, and a body that is not a shape, size and position CSS reads (an unknown token, an
+  ellipse with one radius) leaves the class inert.
 - **A `/` inside the brackets belongs to the bracket**; only one after the closing `]` is a modifier.
 
 A list does not change what `animate-gradient` and `animate-shimmer` do; [motion.md](motion.md) covers

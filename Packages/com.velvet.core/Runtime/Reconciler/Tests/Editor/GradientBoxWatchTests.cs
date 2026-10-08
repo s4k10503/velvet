@@ -440,5 +440,78 @@ namespace Velvet.Tests
             // Assert
             Assert.That(BackgroundOf(scope.Root[0]), Is.Not.SameAs(BackgroundOf(scope.Root[1])));
         }
+
+        [Test]
+        public void Given_ALaidOutGradient_When_APanIsAdded_Then_ItIsBakedForTheOversizedBox()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: "bg-linear-60" + Stops) };
+            Mount(scope, oldTree);
+            LayOut(scope.Root[0], 200f, 100f);
+            var plain = BackgroundOf(scope.Root[0]);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, oldTree,
+                new VNode[] { V.Div(className: "bg-linear-60" + Stops + " animate-gradient") });
+
+            // Assert
+            Assert.That(BackgroundOf(scope.Root[0]), Is.Not.SameAs(plain));
+        }
+
+        [Test]
+        public void Given_ALaidOutPannedGradient_When_ThePanIsRemoved_Then_ItIsBakedForTheElementsBoxAgain()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: "bg-linear-60" + Stops) };
+            Mount(scope, oldTree);
+            LayOut(scope.Root[0], 200f, 100f);
+            var plain = BackgroundOf(scope.Root[0]);
+            var panned = new VNode[] { V.Div(className: "bg-linear-60" + Stops + " animate-gradient") };
+            scope.Reconciler.Reconcile(scope.Root, oldTree, panned);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, panned, oldTree);
+
+            // Assert
+            Assert.That(BackgroundOf(scope.Root[0]), Is.SameAs(plain));
+        }
+
+        [Test]
+        public void Given_ARadialCircleOfFixedRadius_When_TheWidthChangesAtTheSameAspect_Then_ItIsBakedAgain()
+        {
+            // Arrange — a radius in pixels covers a different share of a box twice as wide.
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "bg-radial-[circle_100px]" + Stops) });
+            LayOut(scope.Root[0], 200f, 100f);
+            var narrow = BackgroundOf(scope.Root[0]);
+
+            // Act
+            LayOut(scope.Root[0], 400f, 200f);
+
+            // Assert
+            Assert.That(BackgroundOf(scope.Root[0]), Is.Not.SameAs(narrow));
+        }
+
+        [Test]
+        public void Given_ABoxKeyedBakeNobodyShowsAnymore_When_ManyOthersAreBaked_Then_ItIsDestroyedAndTheElementStillPaints()
+        {
+            // Arrange — a texture held by a mounted element is never evicted; one let go of is.
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: Diagonal) });
+            LayOut(scope.Root[0], 200f, 100f);
+            var wide = BackgroundOf(scope.Root[0]);
+            for (var i = 1; i <= 40; i++)
+            {
+                LayOut(scope.Root[0], 100f + (i * 40f), 100f);
+            }
+
+            // Act
+            LayOut(scope.Root[0], 200f, 100f);
+
+            // Assert
+            Assert.That(wide == null && BackgroundOf(scope.Root[0]) != null, Is.True);
+        }
     }
 }

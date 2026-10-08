@@ -118,8 +118,8 @@ namespace Velvet
             m.SetFloat(TypeId, (float)(int)spec.Type);
             m.SetVector(CenterId, new Vector4(spec.CenterX, spec.CenterY, 0f, 0f));
             m.SetFloat(ConicStartId, spec.AngleDeg); // used only for conic
-            var radii = GradientBackground.RadialRadii(spec, w, h);
-            m.SetVector(RadialRadiiId, new Vector4(radii.x, radii.y, 0f, 0f)); // used only for radial
+            var radialRadii = GradientBackground.RadialRadii(spec, w, h);
+            m.SetVector(RadialRadiiId, new Vector4(radialRadii.x, radialRadii.y, 0f, 0f)); // used only for radial
             m.SetFloat(InterpId, spec.Interp == GradientInterp.Oklab ? 1f : 0f);
             // The line's direction, then the box proportions it is laid out over: those of the element, or a
             // square for a corner direction (see GradientBackground.Bake).

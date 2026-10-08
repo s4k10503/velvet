@@ -7,14 +7,18 @@ namespace Velvet
     // A gradient element's bound spec, with the box its texture was baked for and the geometry watch that
     // re-bakes it when the box changes. OnGeometryChanged is set only while the spec's geometry depends on
     // the box (GradientBackground.DependsOnAspect). BoxScale is how many times the element's box the
-    // texture is painted over, which a pan mode that oversizes the background sets.
+    // texture is painted over, which a pan mode that oversizes the background sets. BoxKeyA and BoxKeyB are
+    // the box as the cache keys it (GradientBackground.KeysFor), and Held is the cache entry this binding
+    // keeps alive.
     internal sealed class GradientBinding
     {
         public GradientSpec Spec;
-        public int AspectKey;
-        public int WidthKey;
+        public int BoxKeyA;
+        public int BoxKeyB;
         public Vector2 BoxScale = Vector2.one;
+        public Vector2 BoxSize;
         public Texture2D? Texture;
+        public (GradientSpec, int, int)? Held;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
     }
 
@@ -31,16 +35,16 @@ namespace Velvet
     // shader asset to author, and the result is unit-testable off-GPU (sample the baked pixels directly).
     //
     // Cache: keyed by spec (value-equal) and the box, and shared across every element that resolves to the
-    // same key. Only a gradient whose geometry depends on the box carries it: a diagonal angle, a conic and
-    // a radial circle key on the box's aspect, quantized to AspectStepsPerOctave steps per doubling and held
-    // within +-MaxAspectSteps, and a radial sized in pixels keys on the width too, so those add at most
-    // (2 * MaxAspectSteps + 1) * (MaxWidthSteps + 1) textures per distinct spec. Every other gradient is
-    // SIZE-INDEPENDENT (stretched to fit) and keys on its spec alone, so unlike DropShadowBaker's silhouette
-    // cache — whose key includes the element size AND skew, so it needs an LRU + eviction — the key space
-    // is the set of distinct gradients a UI declares, bounded by the className authoring and not by data.
-    // So the cache is a plain memo with no eviction — which also sidesteps the use-after-evict hazard of
-    // destroying a texture still referenced by a mounted element. The editor reset hook drops the cache
-    // each play session (textures are HideAndDontSave and would otherwise persist with Reload-Domain off).
+    // same key. A gradient that does not depend on the box keys on its spec alone and stays for the session:
+    // it is bounded by the className authoring and not by data. One that does — a diagonal angle, a conic,
+    // a radial circle — keys on the box's aspect, quantized to AspectStepsPerOctave steps per doubling and
+    // held within +-MaxAspectSteps, and a radial sized in pixels keys on the box's whole-pixel width and
+    // height. Those can take as many keys as an element has sizes, so an entry is reference-counted by the
+    // bindings that show it, and once none does it joins an LRU of at most MaxIdleBoxed entries whose
+    // eldest is destroyed — an entry a mounted element still shows is never evicted, so unlike
+    // DropShadowBaker's silhouette cache there is no use-after-evict hazard to accept. The editor reset
+    // hook drops the cache each play session (textures are HideAndDontSave and would otherwise persist
+    // with Reload-Domain off).
     internal static class GradientBackground
     {
         // Resolution of the baked gradient, stretched to any element size with bilinear filtering: a stop
@@ -52,13 +56,25 @@ namespace Velvet
         // +-MaxAspectSteps (aspects from 1:16 to 16:1).
         private const int AspectStepsPerOctave = 32;
         private const int MaxAspectSteps = 4 * AspectStepsPerOctave;
-        private const int MaxWidthSteps = 14 * AspectStepsPerOctave;
 
-        // The largest parameter a colour is read at. A stop at 100% lies above it, so a hard stop there
-        // paints its earlier colour across the box and its later one never, as CSS does.
+        // The largest parameter a colour is read at on a linear or conic gradient, whose line ends at the
+        // box's edge. A stop at 100% lies above it, so a hard stop there paints its earlier colour across the
+        // box and its later one never, as CSS does. A radial runs free past 100%: its rings go on beyond the
+        // radius where the box does not end.
         private const float MaxParameter = 1f - 1e-6f;
 
-        private static readonly Dictionary<(GradientSpec, int, int), Texture2D> s_cache = new();
+        // Idle boxed entries kept for reuse, eldest at the head.
+        private const int MaxIdleBoxed = 32;
+
+        private sealed class CacheEntry
+        {
+            public Texture2D Texture = null!;
+            public int Holders;
+            public LinkedListNode<(GradientSpec, int, int)>? Idle;
+        }
+
+        private static readonly Dictionary<(GradientSpec, int, int), CacheEntry> s_cache = new();
+        private static readonly LinkedList<(GradientSpec, int, int)> s_idle = new();
 
 #if UNITY_EDITOR
         // Baked textures are HideAndDontSave and persist across play-mode cycles without a Domain
@@ -67,14 +83,15 @@ namespace Velvet
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticCaches()
         {
-            foreach (var tex in s_cache.Values)
+            foreach (var entry in s_cache.Values)
             {
-                if (tex != null)
+                if (entry.Texture != null)
                 {
-                    Object.DestroyImmediate(tex);
+                    Object.DestroyImmediate(entry.Texture);
                 }
             }
             s_cache.Clear();
+            s_idle.Clear();
         }
 #endif
 
@@ -101,26 +118,21 @@ namespace Velvet
             => spec.Type == GradientType.Radial && spec.Radial.Extent == RadialExtent.Explicit
                 && (spec.Radial.Circle || !spec.Radial.XPercent || !spec.Radial.YPercent);
 
-        // The quantized width of a box, in the same steps per doubling as the aspect; 0 (1px) for a box with
-        // no size yet.
-        internal static int WidthKey(float width)
-        {
-            if (!(width > 1f))
-            {
-                return 0;
-            }
-            return Mathf.Clamp(Mathf.RoundToInt(Mathf.Log(width, 2f) * AspectStepsPerOctave), 0, MaxWidthSteps);
-        }
-
-        private static float WidthOf(int widthKey) => Mathf.Pow(2f, widthKey / (float)AspectStepsPerOctave);
-
-        // The keys a spec is baked for in a box of the given size, painted over scale times that box.
-        private static void KeysFor(in GradientSpec spec, Vector2 size, Vector2 scale, out int aspectKey, out int widthKey)
+        // The box a spec is baked for, as the cache keys it, in a box of the given size painted over scale times
+        // that box: the quantized aspect (and 0) for a gradient that depends on proportions, the whole-pixel
+        // width and height for one sized in pixels, (0, 0) otherwise.
+        private static void KeysFor(in GradientSpec spec, Vector2 size, Vector2 scale, out int keyA, out int keyB)
         {
             var w = size.x * scale.x;
             var h = size.y * scale.y;
-            aspectKey = DependsOnAspect(spec) ? AspectKey(w, h) : 0;
-            widthKey = NeedsAbsoluteSize(spec) ? WidthKey(w) : 0;
+            if (NeedsAbsoluteSize(spec))
+            {
+                keyA = Mathf.RoundToInt(Mathf.Max(w, 0f));
+                keyB = Mathf.RoundToInt(Mathf.Max(h, 0f));
+                return;
+            }
+            keyA = DependsOnAspect(spec) ? AspectKey(w, h) : 0;
+            keyB = 0;
         }
 
         // The quantized aspect of a box; 0 (a square) for a box with no size yet.
@@ -148,9 +160,22 @@ namespace Velvet
         public static void Rebind(VisualElement element, GradientBinding binding, GradientSpec spec)
         {
             binding.Spec = spec;
-            KeysFor(spec, element.layout.size, binding.BoxScale, out binding.AspectKey, out binding.WidthKey);
-            binding.Texture = Apply(element, spec, binding.AspectKey, binding.WidthKey);
+            KeysFor(spec, SizeOf(element, binding), binding.BoxScale, out binding.BoxKeyA, out binding.BoxKeyB);
+            binding.Texture = Hold(binding);
+            // Through the SceneView ownership gate: a live camera feed keeps the slot and defers
+            // the gradient for its release; everywhere else this is a plain style write.
+            SceneViewElement.WriteBackground(element, new StyleBackground(binding.Texture));
+            // Stretch the baked texture to the full element box (no 9-slice); border-radius clips it.
+            element.style.backgroundSize = new StyleBackgroundSize(
+                new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
             SyncGeometryWatch(element, binding);
+        }
+
+        // The element's box: its layout once it has one, else the size its last geometry event reported.
+        private static Vector2 SizeOf(VisualElement element, GradientBinding binding)
+        {
+            var size = element.layout.size;
+            return size.x > 0f && size.y > 0f ? size : binding.BoxSize;
         }
 
         // Paints the gradient over scale times the element's box from now on, as a pan mode that oversizes
@@ -162,19 +187,19 @@ namespace Velvet
                 return;
             }
             binding.BoxScale = scale;
-            KeysFor(binding.Spec, element.layout.size, scale, out var aspectKey, out var widthKey);
-            Rebake(element, binding, aspectKey, widthKey);
+            KeysFor(binding.Spec, SizeOf(element, binding), scale, out var keyA, out var keyB);
+            Rebake(element, binding, keyA, keyB);
         }
 
-        // Writes the texture for new keys, unless they are the ones already written.
-        private static void Rebake(VisualElement element, GradientBinding binding, int aspectKey, int widthKey)
+        // Writes the texture for a new box, unless it is the one already written.
+        private static void Rebake(VisualElement element, GradientBinding binding, int keyA, int keyB)
         {
-            if (aspectKey == binding.AspectKey && widthKey == binding.WidthKey)
+            if (keyA == binding.BoxKeyA && keyB == binding.BoxKeyB)
             {
                 return;
             }
-            binding.AspectKey = aspectKey;
-            binding.WidthKey = widthKey;
+            binding.BoxKeyA = keyA;
+            binding.BoxKeyB = keyB;
             // Only while the image is still the one this binding wrote: a className-driven image written
             // since (bg-[addr:…]) owns the slot, and the patch that wrote it did not touch this binding.
             // A SceneViewElement's slot may be held by its camera, so it is always written.
@@ -182,14 +207,96 @@ namespace Velvet
             {
                 return;
             }
-            // The image alone: backgroundSize is whatever Apply or a pan mode last set.
-            binding.Texture = GetOrBake(binding.Spec, aspectKey, widthKey);
+            // The image alone: backgroundSize is whatever Rebind or a pan mode last set.
+            binding.Texture = Hold(binding);
             SceneViewElement.WriteBackground(element, new StyleBackground(binding.Texture));
         }
 
-        // Stops watching the element's geometry. Pairs with Clear, which the caller runs when it also
-        // wants the background gone.
-        public static void Unwatch(VisualElement element, GradientBinding binding)
+        // Makes the binding hold the cache entry for its spec and box, baking it if absent, and lets go of
+        // the entry it held before.
+        private static Texture2D Hold(GradientBinding binding)
+        {
+            var spec = binding.Spec;
+            var key = (spec, DependsOnAspect(spec) ? binding.BoxKeyA : 0, NeedsAbsoluteSize(spec) ? binding.BoxKeyB : 0);
+            if (binding.Held is { } held && held.Equals(key) && s_cache.TryGetValue(key, out var kept) && kept.Texture != null)
+            {
+                return kept.Texture;
+            }
+            Release(binding);
+            if (!s_cache.TryGetValue(key, out var entry) || entry.Texture == null)
+            {
+                var absolute = NeedsAbsoluteSize(spec);
+                var aspect = absolute ? (key.Item2 > 0 && key.Item3 > 0 ? key.Item2 / (float)key.Item3 : 1f) : AspectOf(key.Item2);
+                entry = new CacheEntry { Texture = Bake(spec, aspect, absolute ? Mathf.Max(key.Item2, 1) : 0f) };
+                s_cache[key] = entry;
+            }
+            entry.Holders++;
+            if (entry.Idle != null)
+            {
+                s_idle.Remove(entry.Idle);
+                entry.Idle = null;
+            }
+            binding.Held = key;
+            return entry.Texture;
+        }
+
+        // Lets go of the entry the binding holds. A boxed entry nobody holds waits in the LRU for reuse and is
+        // destroyed when it is the eldest past the cap.
+        private static void Release(GradientBinding binding)
+        {
+            if (binding.Held is not { } key)
+            {
+                return;
+            }
+            binding.Held = null;
+            if (!s_cache.TryGetValue(key, out var entry))
+            {
+                return;
+            }
+            entry.Holders--;
+            if (entry.Holders > 0)
+            {
+                return;
+            }
+            if (entry.Texture == null)
+            {
+                // Destroyed under the cache (an editor reset): nothing left to keep.
+                if (entry.Idle != null)
+                {
+                    s_idle.Remove(entry.Idle);
+                }
+                s_cache.Remove(key);
+                return;
+            }
+            if (!DependsOnAspect(key.Item1))
+            {
+                return;
+            }
+            entry.Idle = s_idle.AddLast(key);
+            while (s_idle.Count > MaxIdleBoxed && s_idle.First != null)
+            {
+                var eldest = s_idle.First.Value;
+                s_idle.RemoveFirst();
+                if (s_cache.TryGetValue(eldest, out var evicted))
+                {
+                    s_cache.Remove(eldest);
+                    if (evicted.Texture != null)
+                    {
+                        Object.DestroyImmediate(evicted.Texture);
+                    }
+                }
+            }
+        }
+
+        // Drops the binding: stops watching the element's geometry and lets go of its texture. Pairs with
+        // Clear, which the caller runs when it also wants the background gone.
+        public static void Detach(VisualElement element, GradientBinding binding)
+        {
+            Unwatch(element, binding);
+            Release(binding);
+        }
+
+        private static void Unwatch(VisualElement element, GradientBinding binding)
         {
             if (binding.OnGeometryChanged != null)
             {
@@ -211,22 +318,11 @@ namespace Velvet
             }
             binding.OnGeometryChanged = evt =>
             {
-                KeysFor(binding.Spec, evt.newRect.size, binding.BoxScale, out var aspectKey, out var widthKey);
-                Rebake(element, binding, aspectKey, widthKey);
+                binding.BoxSize = evt.newRect.size;
+                KeysFor(binding.Spec, binding.BoxSize, binding.BoxScale, out var keyA, out var keyB);
+                Rebake(element, binding, keyA, keyB);
             };
             element.RegisterCallback(binding.OnGeometryChanged);
-        }
-
-        public static Texture2D Apply(VisualElement element, GradientSpec spec, int aspectKey = 0, int widthKey = 0)
-        {
-            var tex = GetOrBake(spec, aspectKey, widthKey);
-            // Through the SceneView ownership gate: a live camera feed keeps the slot and defers
-            // the gradient for its release; everywhere else this is a plain style write.
-            SceneViewElement.WriteBackground(element, new StyleBackground(tex));
-            // Stretch the baked texture to the full element box (no 9-slice); border-radius clips it.
-            element.style.backgroundSize = new StyleBackgroundSize(
-                new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
-            return tex;
         }
 
         // Full reset: clears the gradient's background-image AND the backgroundSize it set.
@@ -241,18 +337,6 @@ namespace Velvet
         public static void ClearSizeOnly(VisualElement element)
         {
             element.style.backgroundSize = new StyleBackgroundSize(StyleKeyword.Null);
-        }
-
-        private static Texture2D GetOrBake(GradientSpec spec, int aspectKey, int widthKey)
-        {
-            var key = (spec, DependsOnAspect(spec) ? aspectKey : 0, NeedsAbsoluteSize(spec) ? widthKey : 0);
-            if (s_cache.TryGetValue(key, out var tex) && tex != null)
-            {
-                return tex;
-            }
-            tex = Bake(spec, AspectOf(key.Item2), NeedsAbsoluteSize(spec) ? WidthOf(key.Item3) : 0f);
-            s_cache[key] = tex;
-            return tex;
         }
 
         // Bakes the spec into an RGBA32 texture for a box of the given width over height. Pixel coordinates
@@ -275,7 +359,7 @@ namespace Velvet
             // already keeps in any box, so it is laid out over a square.
             var lineAspect = spec.ToCorner ? 1f : aspect;
             var box = widthPx > 0f ? new Vector2(widthPx, widthPx / aspect) : new Vector2(aspect, 1f);
-            var radii = RadialRadii(spec, box.x, box.y);
+            var frame = new BakeFrame(box, lineAspect, direction, RadialRadii(spec, box.x, box.y));
             for (var row = 0; row < Resolution; row++)
             {
                 // Texture2D.SetPixels is bottom-up (row 0 = bottom); flip so row 0 is the TOP of the box.
@@ -283,7 +367,7 @@ namespace Velvet
                 for (var col = 0; col < Resolution; col++)
                 {
                     var u = col / (float)(Resolution - 1);
-                    var t = ComputeT(spec, u, v, new BakeFrame(box, lineAspect, direction, radii));
+                    var t = ComputeT(spec, u, v, in frame);
                     pixels[row * Resolution + col] = ColorAt(spec, t);
                 }
             }
@@ -390,13 +474,13 @@ namespace Velvet
 
         // Colour at axis parameter t, honoring the stop POSITIONS: the first colour before the first stop,
         // otherwise a linear interpolation from the last stop at or before t to the next one, and the last
-        // colour once none follows. t is held inside [0, MaxParameter], which settles a stop at the very
-        // start or end of the line the way CSS does: where stops share a position the later one starts there,
-        // and a hard stop at 100% never shows its later colour. The skew silhouette shader evaluates the
-        // same walk.
+        // colour once none follows. t is held inside [0, MaxParameter] (a radial's has no upper bound), which
+        // settles a stop at the very start or end of the line the way CSS does: where stops share a position
+        // the later one starts there, and a hard stop at 100% of a box-long line never shows its later
+        // colour. The skew silhouette shader evaluates the same walk.
         private static Color ColorAt(GradientSpec spec, float t)
         {
-            t = Mathf.Clamp(t, 0f, MaxParameter);
+            t = spec.Type == GradientType.Radial ? Mathf.Max(t, 0f) : Mathf.Clamp(t, 0f, MaxParameter);
             var stops = spec.Stops;
             if (t < stops[0].Position)
             {

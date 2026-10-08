@@ -59,7 +59,7 @@ namespace Velvet
                 if (bound)
                 {
                     ClearStraightGradient(element, classNames);
-                    GradientBackground.Unwatch(element, current!);
+                    GradientBackground.Detach(element, current!);
                     _ctx.GradientBackgrounds.Remove(element);
                 }
                 return;

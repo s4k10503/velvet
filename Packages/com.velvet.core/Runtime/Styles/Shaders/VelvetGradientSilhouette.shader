@@ -81,7 +81,7 @@ Shader "Velvet/GradientSilhouette"
 
             // The colour stops, of which the first _StopCount are in use. GradientSilhouetteBaker sets all
             // three. VELVET_MAX_STOPS is GradientSpec.MaxStops; GradientStopCapacityTests holds the two equal.
-            #define VELVET_MAX_STOPS 16
+            #define VELVET_MAX_STOPS 64
             float4 _StopColors[VELVET_MAX_STOPS];
             float _StopPositions[VELVET_MAX_STOPS];
             float _StopCount;
@@ -202,9 +202,9 @@ Shader "Velvet/GradientSilhouette"
                     // exactly like the C# (((x % 360) + 360) % 360) idiom.
                     t = frac((ang - _ConicStart) / 360.0);
                 }
-                // The same walk and the same ceiling on t as GradientBackground.ColorAt (whose comment says
-                // what the ceiling settles), in the gradient's interpolation space.
-                t = clamp(t, 0.0, 1.0 - 1e-6);
+                // The same walk and the same ceiling on t (none for a radial) as GradientBackground.ColorAt
+                // (whose comment says what the ceiling settles), in the gradient's interpolation space.
+                t = (_Type > 0.5 && _Type < 1.5) ? max(t, 0.0) : clamp(t, 0.0, 1.0 - 1e-6);
                 int last = (int)_StopCount - 1;
                 float4 col;
                 if (t < _StopPositions[0])

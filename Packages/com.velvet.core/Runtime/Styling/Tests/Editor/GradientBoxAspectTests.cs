@@ -45,6 +45,18 @@ namespace Velvet.Tests
             return red;
         }
 
+        private static float? SilhouetteRedOf(GradientSpec spec, float boxX, float boxY)
+        {
+            var tex = GradientSilhouetteBaker.Bake(spec, 128f, 64f, 0f, 0f, Vector4.zero);
+            if (tex == null)
+            {
+                return null;
+            }
+            var red = tex.GetPixel(2 + Mathf.FloorToInt(boxX), tex.height - 1 - (2 + Mathf.FloorToInt(boxY))).r;
+            Object.DestroyImmediate(tex);
+            return red;
+        }
+
         #region Bake
 
         [Test]
@@ -219,26 +231,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABoxOfAThousandPixels_When_Keyed_Then_ItsWidthIsInOctaveSteps()
-        {
-            // Act
-            var key = GradientBackground.WidthKey(1000f);
-
-            // Assert
-            Assert.That(key, Is.EqualTo(319));
-        }
-
-        [Test]
-        public void Given_ABoxWithNoWidthYet_When_Keyed_Then_ItsWidthKeyIsZero()
-        {
-            // Act
-            var key = GradientBackground.WidthKey(float.NaN);
-
-            // Assert
-            Assert.That(key, Is.Zero);
-        }
-
-        [Test]
         public void Given_ACircle_When_Asked_Then_ItDependsOnTheAspect()
         {
             // Act
@@ -286,6 +278,49 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(absolute, Is.False);
+        }
+
+        [Test]
+        public void Given_AClosestSideEllipseAndA200PercentStop_When_BakedAtACorner_Then_TheColourKeepsRunningPastTheRadius()
+        {
+            // Act — the corner is 1.41 radii out, so 70% of the way to a stop at 200%. A parameter held at 1
+            // would stop at half.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[ellipse_closest-side,#000000,#ffffff_200%]" }, out var spec);
+            var tex = GradientBackground.Bake(spec, 1f);
+            var past = tex.GetPixel(0, 127).r;
+            Object.DestroyImmediate(tex);
+
+            // Assert
+            Assert.That(past, Is.EqualTo(0.7071f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ADiscWithAHardEdge_When_BakedPastIt_Then_TheLaterColourPaintsOutside()
+        {
+            // Act — red up to the radius and blue from it: the corner lies outside the circle.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[circle_closest-side,#ff0000_100%,#0000ff_100%]" }, out var spec);
+            var tex = GradientBackground.Bake(spec, 1f);
+            var corner = tex.GetPixel(0, 127);
+            Object.DestroyImmediate(tex);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(corner), Is.EqualTo("0000FFFF"));
+        }
+
+        [Test]
+        public void Given_ADiscWithAHardEdge_When_BakedInsideIt_Then_TheEarlierColourPaintsAtTheCentre()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[circle_closest-side,#ff0000_100%,#0000ff_100%]" }, out var spec);
+            var tex = GradientBackground.Bake(spec, 1f);
+            var centre = tex.GetPixel(64, 64);
+            Object.DestroyImmediate(tex);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(centre), Is.EqualTo("FF0000FF"));
         }
 
         #region Which gradients depend on the box
@@ -463,6 +498,43 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(red, Is.GreaterThan(0.95f));
+        }
+
+        [Test]
+        public void Given_ACircleToTheClosestSide_When_SilhouetteBakedForAWideBox_Then_ItsRadiusIsHalfTheHeight()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act — 16.5px right of the centre of 128 x 64 with a 32px radius; an ellipse would read 0.26.
+            var red = SilhouetteRed("bg-radial-[circle_closest-side]", 80f, 32f);
+
+            // Assert
+            Assert.That(red ?? float.NaN, Is.EqualTo(0.516f).Within(0.03f));
+        }
+
+        [Test]
+        public void Given_ACircleOfFixedRadius_When_SilhouetteBaked_Then_TheRadiusIsInPixels()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act — 16.5px out on a 20px radius.
+            var red = SilhouetteRed("bg-radial-[circle_20px]", 80f, 32f);
+
+            // Assert
+            Assert.That(red ?? float.NaN, Is.EqualTo(0.825f).Within(0.03f));
+        }
+
+        [Test]
+        public void Given_ACircleAndA200PercentStop_When_SilhouetteBakedPastTheRadius_Then_TheColourKeepsRunning()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act — 56.5px out on a 32px radius is 1.77 radii, 88% of the way to a stop at 200%.
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[circle_closest-side,#000000,#ffffff_200%]" }, out var spec);
+            var red = SilhouetteRedOf(spec, 120f, 32f);
+
+            // Assert
+            Assert.That(red ?? float.NaN, Is.EqualTo(0.883f).Within(0.03f));
         }
 
         #endregion

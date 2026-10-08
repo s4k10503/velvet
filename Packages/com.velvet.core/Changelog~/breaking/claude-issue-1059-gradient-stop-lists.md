@@ -16,3 +16,8 @@
   raised to it, so `from-60%` with `via-` at its 50% default puts via at 60%. Where two stops share a
   position the later one starts there, so `from-0% via-0%` begins on the via colour rather than the from
   colour.
+- A `bg-radial-[…]` bracket is read as CSS reads it. One whose body is not a shape, size and position (an
+  unknown token such as `bg-radial-[at_top_bogus]`, an ellipse with one radius) used to ignore what it did
+  not know and draw a centred or positioned radial; it now leaves the class inert, as an invalid CSS gradient
+  paints nothing. A radial's rings also run on past its radius where the box does not end, instead of
+  holding the last colour at the radius, and a position may lie outside the box.
