@@ -14,5 +14,6 @@
 - `translate-x-` and `translate-y-` (and their negated forms) take any `a/b` of whole numbers with a non-zero
   denominator, where they previously took only halves, thirds and quarters.
 - `top-auto`, `right-auto`, `bottom-auto`, `left-auto`, `inset-auto`, `inset-x-auto` and `inset-y-auto` write an
-  inline `auto` offset, which overrides a value the stylesheet supplies. Each was previously added to the class
+  inline `auto` offset, which overrides a value the stylesheet supplies and leaves the element where one with no
+  offset sits. Each was previously added to the class
   list as a plain class and did nothing.
