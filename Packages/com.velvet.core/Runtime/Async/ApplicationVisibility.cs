@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
@@ -10,40 +9,114 @@ namespace Velvet
     /// a window that has lost focus but is still shown is visible, and a minimized or hidden one is not.
     /// </summary>
     /// <remarks>
-    /// Unity exposes only focus (<c>Application.isFocused</c>), so each platform asks its window system.
-    /// On a mobile platform a backgrounded application is the one that has lost focus. On Windows the
-    /// process's main window is asked whether it is minimized. On macOS the application is hidden when
-    /// <c>NSApplication</c> says so or when none of its windows is both visible and not miniaturized. Linux and
-    /// WebGL have no reading here and always count as visible.
+    /// Unity exposes only focus (<c>Application.isFocused</c>), so each desktop platform asks its window
+    /// system. On a mobile platform a backgrounded application is the one that has lost focus. On Windows the
+    /// main thread's top-level window is asked whether it is minimized. On macOS the application is hidden when
+    /// <c>NSApplication</c> says so or when it has windows and none is both visible and not miniaturized; one
+    /// with no windows reads as visible. Linux and WebGL have no reading and always count as visible, as does
+    /// any platform whose native read fails: the first failure latches, and every later read answers visible
+    /// without trying again, so a diagnostic read never faults a mutation.
     /// </remarks>
     internal static class ApplicationVisibility
     {
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        private static bool s_unavailable;
+
+        internal static bool IsVisible()
+        {
+            if (Application.isMobilePlatform)
+            {
+                return Application.isFocused;
+            }
+
+            if (s_unavailable)
+            {
+                return true;
+            }
+
+            try
+            {
+                return !IsHidden();
+            }
+            catch (Exception)
+            {
+                s_unavailable = true;
+                return true;
+            }
+        }
+
+        private static bool IsHidden()
+        {
+#if UNITY_EDITOR_WIN || (!UNITY_EDITOR && UNITY_STANDALONE_WIN)
+            return MainWindowIsMinimized();
+#elif UNITY_EDITOR_OSX || (!UNITY_EDITOR && UNITY_STANDALONE_OSX)
+            return ApplicationIsHidden();
+#else
+            return false;
+#endif
+        }
+
+#if UNITY_EDITOR_WIN || (!UNITY_EDITOR && UNITY_STANDALONE_WIN)
+        private delegate bool EnumWindowProc(IntPtr window, IntPtr parameter);
+
+        private const uint OwnerWindow = 4;
+
+        private static readonly EnumWindowProc s_pickWindow = PickWindow;
+        private static IntPtr s_mainWindow;
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumThreadWindows(uint threadId, EnumWindowProc callback, IntPtr parameter);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr window);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindow(IntPtr window, uint command);
+
         [DllImport("user32.dll")]
         private static extern bool IsIconic(IntPtr window);
 
-        private static IntPtr s_mainWindow;
-
-        private static bool WindowsMainWindowIsMinimized()
+        // A minimized window is not the active one, so it is found among the main thread's top-level
+        // windows: the first visible one with no owner. Called from the main thread, whose id it reads.
+        private static bool MainWindowIsMinimized()
         {
-            try
+            if (s_mainWindow == IntPtr.Zero)
             {
+                EnumThreadWindows(GetCurrentThreadId(), s_pickWindow, IntPtr.Zero);
                 if (s_mainWindow == IntPtr.Zero)
                 {
-                    s_mainWindow = Process.GetCurrentProcess().MainWindowHandle;
+                    // No window to ask, such as under -batchmode: every later read answers visible.
+                    throw new InvalidOperationException("The main thread has no top-level window.");
                 }
+            }
 
-                return s_mainWindow != IntPtr.Zero && IsIconic(s_mainWindow);
-            }
-            catch (Exception missing) when (missing is DllNotFoundException or EntryPointNotFoundException)
+            return IsIconic(s_mainWindow);
+        }
+
+        private static bool PickWindow(IntPtr window, IntPtr parameter)
+        {
+            if (!IsWindowVisible(window) || GetWindow(window, OwnerWindow) != IntPtr.Zero)
             {
-                return false;
+                return true;
             }
+
+            s_mainWindow = window;
+            return false;
         }
 #endif
 
-#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+#if UNITY_EDITOR_OSX || (!UNITY_EDITOR && UNITY_STANDALONE_OSX)
         private const string ObjC = "/usr/lib/libobjc.dylib";
+
+        private static IntPtr s_application;
+        private static IntPtr s_isHidden;
+        private static IntPtr s_windows;
+        private static IntPtr s_count;
+        private static IntPtr s_objectAt;
+        private static IntPtr s_isVisible;
+        private static IntPtr s_isMiniaturized;
 
         [DllImport(ObjC)]
         private static extern IntPtr objc_getClass(string name);
@@ -63,61 +136,39 @@ namespace Velvet
         [DllImport(ObjC, EntryPoint = "objc_msgSend")]
         private static extern IntPtr SendForObjectAt(IntPtr receiver, IntPtr selector, UIntPtr index);
 
-        private static bool MacApplicationIsHidden()
+        private static bool ApplicationIsHidden()
         {
-            try
+            if (s_application == IntPtr.Zero)
             {
-                var app = SendForObject(objc_getClass("NSApplication"), sel_registerName("sharedApplication"));
-                if (app == IntPtr.Zero)
+                s_isHidden = sel_registerName("isHidden");
+                s_windows = sel_registerName("windows");
+                s_count = sel_registerName("count");
+                s_objectAt = sel_registerName("objectAtIndex:");
+                s_isVisible = sel_registerName("isVisible");
+                s_isMiniaturized = sel_registerName("isMiniaturized");
+                s_application = SendForObject(objc_getClass("NSApplication"), sel_registerName("sharedApplication"));
+                if (s_application == IntPtr.Zero)
                 {
-                    return false;
+                    throw new InvalidOperationException("NSApplication has no shared instance.");
                 }
-
-                if (SendForBool(app, sel_registerName("isHidden")) != 0)
-                {
-                    return true;
-                }
-
-                var windows = SendForObject(app, sel_registerName("windows"));
-                var count = (ulong)SendForCount(windows, sel_registerName("count"));
-                if (count == 0)
-                {
-                    return false;
-                }
-
-                var objectAt = sel_registerName("objectAtIndex:");
-                var isVisible = sel_registerName("isVisible");
-                var isMiniaturized = sel_registerName("isMiniaturized");
-                var anyShown = false;
-                for (ulong index = 0; index < count; index++)
-                {
-                    var window = SendForObjectAt(windows, objectAt, new UIntPtr(index));
-                    anyShown |= SendForBool(window, isVisible) != 0 && SendForBool(window, isMiniaturized) == 0;
-                }
-
-                return !anyShown;
             }
-            catch (Exception missing) when (missing is DllNotFoundException or EntryPointNotFoundException)
+
+            if (SendForBool(s_application, s_isHidden) != 0)
             {
-                return false;
+                return true;
             }
+
+            var windows = SendForObject(s_application, s_windows);
+            var count = (ulong)SendForCount(windows, s_count);
+            var anyShown = count == 0;
+            for (ulong index = 0; index < count; index++)
+            {
+                var window = SendForObjectAt(windows, s_objectAt, new UIntPtr(index));
+                anyShown |= SendForBool(window, s_isVisible) != 0 && SendForBool(window, s_isMiniaturized) == 0;
+            }
+
+            return !anyShown;
         }
 #endif
-
-        internal static bool IsVisible()
-        {
-            if (Application.isMobilePlatform)
-            {
-                return Application.isFocused;
-            }
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-            return !WindowsMainWindowIsMinimized();
-#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-            return !MacApplicationIsHidden();
-#else
-            return true;
-#endif
-        }
     }
 }

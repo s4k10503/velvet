@@ -153,18 +153,23 @@ first attempt, with `IsPaused` true and `MutationFn` not yet called; under `Offl
 `Always` nothing waits for a connection. A mutation that needs `Always` and no retries sets
 `Retry = new RetryPolicy { Retry = false, NetworkMode = NetworkMode.Always }`, since the policy is where
 Velvet holds the mode. Every retry that comes due waits until the application is visible and, outside
-`Always`, a connection.
+`Always`, a connection. Reading the connection on the application's behalf happens on the main thread, so a
+call started elsewhere under `Online` continues on the main thread.
 
 The readings come from `NetworkSignals`, which an application replaces once for every mutation, and from the
 policy's `IsOnline` / `IsFocused`, which replace them for one. Both are polled once per frame.
 
 - Online: `Application.internetReachability` is not `NotReachable`. It can read a local-network-only server as
   unreachable, which is what `NetworkSignals.IsOnline` is for.
-- Visible, as v5's focus manager reads `document.visibilityState` rather than focus: a window that has lost
-  focus but is still shown counts as visible, so alt-tabbing pauses nothing. A mobile platform reads
-  `Application.isFocused`, since a backgrounded app has lost it. Windows asks whether the process's main window
-  is minimized. macOS asks whether the application is hidden or has no window that is both visible and not
-  miniaturized. Linux and WebGL have no reading and always count as visible.
+- Visible, as v5's focus manager reads `document.visibilityState` rather than focus: Velvet counts a window that
+  has lost focus but is still shown as visible, so alt-tabbing pauses nothing. Velvet asks each platform:
+  a mobile platform for `Application.isFocused`, since a backgrounded app has lost it; Windows whether the
+  main thread's top-level window is minimized; macOS whether `NSApplication` is hidden or, when it has windows,
+  none is both visible and not miniaturized (no windows reads as visible). Linux and WebGL have no reading and
+  count as visible. Any failure of a native read, or the absence of a window to ask, is latched and every later
+  read answers visible. These native readings have no test behind them, so replace them through
+  `NetworkSignals.IsVisible` where the platform's answer matters. The reading gates the retries of every
+  `RetryPolicy`, a `RetryPolicy.RunAsync` around a `Hooks.Use` loader included.
 
 While a call waits, `MutationResult.IsPaused` is true, and `FailureCount` / `FailureReason` follow v5's reducer:
 zero and null when a call starts or succeeds, one more count and the failure for each failed attempt, the

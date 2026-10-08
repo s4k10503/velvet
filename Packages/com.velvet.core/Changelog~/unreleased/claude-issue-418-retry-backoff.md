@@ -10,3 +10,7 @@
   `RetryPolicy.RunAsync` wraps a `Hooks.Use` loader so the resource stays pending until the last attempt
   settles. Mutations still do not retry unless a policy is given, as TanStack's mutations default to
   `retry: 0`.
+
+- `NetworkSignals`, with `IsOnline` and `IsVisible`, replaces the connectivity and visibility readings every
+  `RetryPolicy` and `Hooks.UseMutation` call pauses on, for an application that knows better than
+  `Application.internetReachability`.
