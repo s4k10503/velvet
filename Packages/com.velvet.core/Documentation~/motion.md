@@ -589,8 +589,10 @@ step's label has already started: `controls.Pause()` freezes the cursor, and the
 step handed out runs on to its end. The handle also carries `controls.TimeSec`, the Web Animations API's
 `currentTime` and Framer Motion's `time`, read-only: seconds into the timeline, counting each hold at its
 authored length. As `currentTime` does, it keeps growing across a loop's passes rather than starting from 0
-on each; a completed sequence reads its full length, and a reseed reads 0. It is read live from the handle,
-where `state` is a per-render snapshot.
+on each; a completed sequence reads its full length, and a reseed reads 0. Under `iterations` it counts a
+`repeatDelaySec` gap as it passes, as Framer Motion's `time` counts `repeatDelay`, so the timeline of `n` passes
+of length `L` ends at `n * L + (n - 1) * repeatDelaySec`, with no gap after the last pass. It is read live from
+the handle, where `state` is a per-render snapshot.
 
 A cancel, a playback rate (`playbackRate`, Framer Motion's `speed`), seek (a settable `time`) and reverse
 (`reverse()`, a negative `playbackRate`) are not offered. Each acts on the animation already running, and the
@@ -604,6 +606,34 @@ Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, anima
 outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`
 relative-offset DSL) -- steps are a strict FIFO queue; two independently-timed tracks need two separate
 `UseAnimationSequence` coordinators.
+
+**A fixed number of passes** is the overload taking `iterations` in place of `loop` -- the Web Animations
+API's `iterations` and CSS's `animation-iteration-count`, so the count includes the first pass and Framer
+Motion's `repeat: 2` is `iterations: 3`. Each pass after the first starts again at step 0, re-committing
+its effect as `loop` does, and `IsComplete` latches once the last pass's last hold elapses, leaving the
+cursor on the last step. `iterations: 0` plays no pass: no step commits, no `Call` fires, and the sequence
+reads complete from its mount render on. A negative count throws `ArgumentOutOfRangeException`. A restart
+plays every pass again.
+
+A count changed by a re-render applies to the sequence as it plays, as the Web Animations API's
+`updateTiming` does: a count no higher than the passes already finished completes the sequence at the next
+frame with the end state a normal completion holds, as `animation-fill-mode: forwards` shows the end keyframe: the
+last step current and its label and transition adopted, with no skipped `Call` callback run. A count of zero commits
+nothing: a mount at zero commits no step, and a count lowered to zero leaves the cursor and label as they are. A count above the finished passes resumes a completed sequence at the
+next pass's step 0, after the `repeatDelaySec` gap that follows any pass already played.
+
+`repeatDelaySec` is Framer Motion's `repeatDelay`: seconds the cursor waits on the last step between one
+pass and the next, never after the last, so it does not delay completion. It throws
+`ArgumentOutOfRangeException` when negative or not finite. Under `loop`, a trailing `Wait` step is the same
+gap, since no completion waits behind it.
+
+A finished sequence keeps its last step current, as `animation-fill-mode: forwards` would, while `iterations: 0`
+commits nothing, as the default `animation-fill-mode: none` would. Where this differs from the Web Animations API
+and CSS: the count is a whole number, where both accept a fraction such as `2.5`.
+
+An alternate direction (CSS's `animation-direction: alternate`, Framer Motion's `repeatType: "reverse"`)
+is not offered: playing a `Call` step backwards has no settled answer to whether its callback fires
+again, and a `To` step played backwards would need the label before it rather than its own.
 
 ## Transition semantics: a node default a pose overrides
 
