@@ -194,6 +194,9 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base never writes a slider's direction or flag at all.
+        // What it answers for is this branch's undeclared rule: write Horizontal and false for a member no
+        // render declared, and this reddens.
         [Test]
         public void Given_ASliderBuiltVerticalAndInverted_When_OnlyItsRangeIsDeclared_Then_NeitherIsWritten()
         {
@@ -382,6 +385,23 @@ namespace Velvet.Tests
             Assert.That(
                 (whileDeclared.lowValue, whileDeclared.highValue, slider.lowValue, slider.highValue),
                 Is.EqualTo((2f, 4f, 0f, 10f)));
+        }
+
+        #endregion
+
+        #region the record
+
+        [Test]
+        public void Given_SettingsCarryingADirectionAndFlag_When_DeconstructedIntoTwo_Then_TheyYieldTheRange()
+        {
+            // Arrange
+            var settings = new SliderSettings(2f, 4f, SliderDirection.Vertical, true);
+
+            // Act
+            var (low, high) = settings;
+
+            // Assert
+            Assert.That((low, high), Is.EqualTo(((float?)2f, (float?)4f)));
         }
 
         #endregion

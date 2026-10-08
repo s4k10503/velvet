@@ -420,6 +420,7 @@
 [Velvet] method Velvet.SearchParams.Has(System.String): System.Boolean
 [Velvet] method Velvet.SearchParamsSetter.Invoke(System.Func`2[Velvet.ISearchParams, Velvet.ISearchParams], Velvet.NavigationMode): System.Void
 [Velvet] method Velvet.SearchParamsSetter.Invoke(Velvet.ISearchParams, Velvet.NavigationMode): System.Void
+[Velvet] method Velvet.SliderSettings.Deconstruct(System.Nullable`1[System.Single]&, System.Nullable`1[System.Single]&): System.Void
 [Velvet] method Velvet.StateUpdater`1[T].Equals(System.Object?): System.Boolean
 [Velvet] method Velvet.StateUpdater`1[T].Equals(Velvet.StateUpdater`1[T]): System.Boolean
 [Velvet] method Velvet.StateUpdater`1[T].GetHashCode(): System.Int32

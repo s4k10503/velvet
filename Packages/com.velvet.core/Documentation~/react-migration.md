@@ -237,9 +237,17 @@ member no render has declared is left wherever a `refCallback:` put it, and one 
 a later render dropped goes back to the value the field carried before any render declared it. The
 three focus props follow the same rule — [focus.md](focus.md) states it for those — and so do
 `V.Slider`'s `direction:` and `inverted:`: a dropped `direction:` puts back the direction the slider
-had before any render declared one, which is horizontal unless a `refCallback:` had set another by
-then. `lowValue:` and `highValue:` do not follow it: a render changing either writes both, a null
-`lowValue:` as 0 and a null `highValue:` as 10.
+had before any render declared one, which is horizontal unless something wrote another by then (a
+`refCallback:` or `onCreated:`). `lowValue:` and `highValue:` do not follow it: a render changing
+either writes both, a null `lowValue:` as 0 and a null `highValue:` as 10.
+
+`V.Slider` deviates from the web's sliders in two places. Home and End follow the slider's drawn
+direction: Home sets `highValue` on a vertical slider and on an inverted horizontal one, where
+WAI-ARIA's slider pattern and Radix's `Slider` set the minimum on Home whatever the orientation. And a
+vertical slider runs the other way from the web's: a `V.Slider` with `direction: SliderDirection.Vertical`
+has its high end at the top, while an `<input type="range">` made vertical with
+`writing-mode: vertical-lr` has its minimum at the top, so that one is `direction: SliderDirection.Vertical`
+with `inverted: true`.
 
 A field holding `isDelayed:` releases the typed text into its value on Enter, on losing focus, and on
 a render taking the flag off — that third one whether the render declares `isDelayed: false` or drops

@@ -158,7 +158,19 @@ namespace Velvet
         float? LowValue = null,
         float? HighValue = null,
         SliderDirection? Direction = null,
-        bool? Inverted = null);
+        bool? Inverted = null)
+    {
+        /// <summary>
+        /// Reads the range alone. Kept beside the four-member form the record declares so a two-element
+        /// deconstruction or positional pattern written against the record before it carried
+        /// <see cref="Direction"/> and <see cref="Inverted"/> still compiles.
+        /// </summary>
+        public void Deconstruct(out float? LowValue, out float? HighValue)
+        {
+            LowValue = this.LowValue;
+            HighValue = this.HighValue;
+        }
+    }
 
     /// <summary>Controls ScrollView scroller visibility and touch-scroll behavior.</summary>
     public sealed record ScrollViewSettings(
