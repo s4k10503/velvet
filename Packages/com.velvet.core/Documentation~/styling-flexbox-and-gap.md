@@ -198,8 +198,8 @@ No **direction or wrap** utility reaches inside a composite widget to lay its co
 spacing utilities do reach the inner box's children. Nest a plain container inside the widget and put
 the direction class there when the content needs one.
 
-**Direction source: a single resolved verdict from the class list, by USS precedence, not
-`resolvedStyle` — on a panel included.** `flex` / `flex-row` / `flex-col` / `flex-row-reverse` /
+**Direction source: an inline `flex-direction`, else a single resolved verdict from the class list by
+USS precedence, and `resolvedStyle` only after both — on a panel included.** `flex` / `flex-row` / `flex-col` / `flex-row-reverse` /
 `flex-col-reverse` are all direction-bearing (`flex` sets `flex-direction: row`, same as a bare
 `flex-row`), and an element routinely carries more than one at once — the bare `flex` beside whichever
 direction utility holds the direction, and two direction utilities written at one priority.
@@ -216,21 +216,21 @@ present.
 element's gap and space through the separate grid manipulator instead — see "`flex-wrap` and `grid`"
 below.
 
-Classes are consulted before `resolvedStyle`, even on a panel: the direction classes are USS-only
+After an inline value, classes are consulted before `resolvedStyle`, even on a panel: the direction classes are USS-only
 rules with no equivalent C# inline `flex-direction` write, so `resolvedStyle.flexDirection` only
 catches up after the panel's *next* style pass, and a same-rect direction toggle (children reorder;
 the container itself never resizes) fires no `GeometryChangedEvent` to trigger a re-derive. A
 manipulator that trusted `resolvedStyle` here could converge on the *first* toggle and then never
 converge on a later toggle back, leaving a gap margin wrong indefinitely.
 
-An inline `flex-direction` outranks every class, as an inline declaration outranks a rule in CSS, and
-a direction class outranks `flex-direction` set by a custom stylesheet rule on the SAME element rather
-than composing with it. `resolvedStyle` is read only as the fallback for the case neither can cover: a
-stylesheet-set `flex-direction` with *none* of the five direction/display classes present on the element
-at all. That fallback case still needs a live panel (`AttachToPanelEvent` above) and still cannot
-self-correct on a same-rect toggle with no intervening reconcile pass, since nothing would tell the
-manipulator to look again. An inline `flex-direction` written outside Velvet raises no event either, so
-the spacing follows it at the container's next reconcile pass. Once every direction/display class leaves
+An inline `flex-direction` is read before the classes, and a direction class outranks `flex-direction`
+set by a custom stylesheet rule on the SAME element rather than composing with it. `resolvedStyle` is
+read only as the fallback for the case neither can cover: a stylesheet-set `flex-direction` with *none*
+of the five direction/display classes present on the element at all. That fallback case still needs a
+live panel (`AttachToPanelEvent` above) and still cannot self-correct on a same-rect toggle with no
+intervening reconcile pass, since nothing would tell the manipulator to look again. The direction is read
+whenever the manipulator applies — at the container's reconcile or patch, or at a geometry change — and
+writing an inline `flex-direction` does not itself re-apply the spacing. Once every direction/display class leaves
 the element, the verdict until the next `GeometryChangedEvent` is the inline `flex-direction`, or the
 engine's column when none is set, rather than a `resolvedStyle` that can still hold the removed class —
 the same rule the wrap verdict below follows. With no direction class AND no panel to resolve against
@@ -255,8 +255,8 @@ half-margins so content stays flush to the container edge. A reversed container 
 changes which edges wrap spaces, only non-wrap's single leading/trailing edge choice.
 
 Wrap is read from the same element the direction is (see "Which element the verdict is read from"
-above), and in the same shape, for the same staleness reason: the `flex-wrap` / `flex-nowrap` /
-`flex-wrap-reverse` class markers first (by `_layout.uss` declaration order — `flex-wrap-reverse`
+above), and in the same shape, for the same staleness reason: an inline `flex-wrap` first, then the `flex-wrap` / `flex-nowrap` /
+`flex-wrap-reverse` class markers (by `_layout.uss` declaration order — `flex-wrap-reverse`
 beats `flex-nowrap` beats `flex-wrap` when more than one is present), then `resolvedStyle.flexWrap`
 whenever none of those three is present. Unlike the direction scan there is no further "a direction
 class implies a default" tier: `flex` / `flex-row(-reverse)` / `flex-col(-reverse)` say nothing about

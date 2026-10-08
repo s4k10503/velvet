@@ -1057,7 +1057,7 @@ namespace Velvet.Tests
             var container = Container(scope.Root);
             container.style.flexDirection = FlexDirection.RowReverse;
 
-            // Act — a fourth child changes the child set, which re-applies the spacing.
+            // Act — reconciling the container again applies the spacing after its children.
             var tree2 = new VNode[] { Row("flex flex-row gap-x-4", 4) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
@@ -1084,6 +1084,24 @@ namespace Velvet.Tests
 
             // Assert — a row puts the gap on the leading edge.
             Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_AWrappingGapContainer_When_AnInlineNoWrapIsSet_Then_NoHalfMarginsAreWritten()
+        {
+            // Arrange — the flex-wrap class alone would select the half-margin path.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-wrap gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexWrap = Wrap.NoWrap;
+
+            // Act — reconciling the container again applies the spacing after its children.
+            var tree2 = new VNode[] { Row("flex flex-wrap gap-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the non-wrap path leaves the first child's margins unset, where the half-margin path writes four.
+            Assert.That(container[0].style.marginRight.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         [Test]

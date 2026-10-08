@@ -18,7 +18,8 @@ namespace Velvet
     // land on an inner box: its verdict always comes from the resolvedStyle fallback (off-panel, the
     // widgetOwned default) below, and what lays it out is the widget's own built-in USS.
     //
-    // The five direction/display classes are consulted FIRST — even on a panel — in the SAME precedence USS
+    // After an inline flex-direction, the five direction/display classes are consulted — before resolvedStyle,
+    // even on a panel — in the SAME precedence USS
     // itself uses when more than one matches the element (equal specificity, so the LAST declared RULE wins):
     // _layout.uss declares .grid, .flex, .flex-col, .flex-col-reverse, .flex-row, .flex-row-reverse in that
     // source order, so flex-row-reverse beats flex-row beats flex-col-reverse beats flex-col beats the bare
@@ -50,8 +51,8 @@ namespace Velvet
     // row-family class survives the patch) must forget RowReverse entirely and see ColumnReverse fresh, which
     // a same-family-only check cannot do since it never looks at the other family at all.
     //
-    // An inline flex-direction outranks the classes, as an inline declaration outranks a rule in CSS;
-    // StyleGapManipulator.DirectionOf reads it before asking this resolver for the classes' verdict.
+    // StyleGapManipulator.DirectionOf reads an inline flex-direction before asking this resolver for the
+    // classes' verdict.
     //
     // resolvedStyle is the fallback for the one case neither can cover: flex-direction set by a custom
     // stylesheet rule with NONE of the five classes on the element — a direction class, when present,
