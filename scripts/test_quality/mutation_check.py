@@ -1404,49 +1404,92 @@ def code_line_numbers(text, numbers):
     return found
 
 
+# A label in front of a statement: `case 1:`, `default:`, `retry:`. `::` is an alias qualifier.
+LEADING_LABEL = re.compile(r"(?:case\b[^:;{}]*|default|[A-Za-z_]\w*)\s*:(?!:)\s*")
+
+
 def statements_on(code):
-    """A line's code cut at every brace, and at each semicolon whose innermost open group on the line
-    is a brace or none -- so a `for` header's two stay inside its piece."""
-    pieces, current, groups = [], [], []
-    for char in code:
+    """(head, start, end) of each statement in a line's code: `head` where its labels begin, `start`
+    where they end.
+
+    Cut at every brace, and at each semicolon whose innermost open group on the line is a brace or
+    none, so a `for` header's two stay inside one.
+    """
+    found = []
+
+    def add(start, end):
+        piece = code[start:end]
+        start += len(piece) - len(piece.lstrip())
+        head = start
+        while True:
+            label = LEADING_LABEL.match(code, start, end)
+            if not label:
+                break
+            start = label.end()
+        end = start + len(code[start:end].rstrip())
+        if end > start:
+            found.append((head, start, end))
+
+    groups, begin = [], 0
+    for index, char in enumerate(code):
         if char in "{}":
-            pieces.append("".join(current))
-            current = []
+            add(begin, index)
+            begin = index + 1
             if char == "{":
                 groups.append(char)
             elif groups:
                 groups.pop()
-            continue
-        current.append(char)
-        if char in "([":
+        elif char in "([":
             groups.append(char)
         elif char in ")]":
             if groups:
                 groups.pop()
         elif char == ";" and (not groups or groups[-1] == "{"):
-            pieces.append("".join(current))
-            current = []
-    pieces.append("".join(current))
-    return [piece.strip() for piece in pieces if piece.strip()]
+            add(begin, index + 1)
+            begin = index + 1
+    add(begin, len(code))
+    return found
+
+
+def deletable_alone(text, head, start, end):
+    """Whether `deletable_line` lets the removal take `text[start:end]` were it on a line of its own,
+    and the labels in `text[head:start]` stand where a statement may begin.
+
+    Asked of the text with the labels and the statement each moved onto a line of their own, so what
+    stands beside them -- an `else`, the `}` of a `do` block -- is read as the code above or below.
+    The labels are asked the first question `deletable_line` asks, because `name: Call()` is no label
+    where the code above it has not finished a statement: a named argument, or a ternary's arm.
+    """
+    moved = text[:head] + "\n" + text[head:start] + "\n" + text[start:end] + "\n" + text[end:]
+    number = text[:head].count("\n") + 3
+    mask, spans = code_mask(moved), line_spans(moved)
+    if head < start and not code_above(moved, mask, spans, number - 1).endswith(STATEMENT_BOUNDARY):
+        return False
+    return deletable_line(moved, mask, spans, number)
 
 
 def declined_line_numbers(text, numbers):
-    """The changed lines holding a statement in the removal pattern's shape beside a brace or another
-    statement.
+    """The changed lines holding a statement the line removal would take on a line of its own, beside
+    a brace, a label or another statement.
 
     The line removal reads a line's code whole, so the call in `try { _state.Dispose(); }` and both
-    in `A(); B();` stay, though each matches the pattern on its own.
-    Generators~/README.md ▸ The Unity assemblies says why they are named apart from the unreached
-    lines.
+    in `A(); B();` stay. Generators~/README.md ▸ The Unity assemblies says why these lines are named
+    apart from the unreached ones.
     """
     spans = line_spans(text)
     mask = code_mask(text)
     found = []
     for number in code_line_numbers(text, numbers):
-        code = code_only(text, mask, *spans[number - 1]).strip()
-        if any(piece != code and REMOVABLE_LINE.match(piece) and not CONTROL_KEYWORD.match(piece)
-               and not DECLARES_A_NAME.search(piece) for piece in statements_on(code)):
-            found.append(number)
+        offsets = [offset for offset in range(*spans[number - 1]) if mask[offset]]
+        code = "".join(text[offset] for offset in offsets)
+        whole = code.strip()
+        for head, start, end in statements_on(code):
+            piece = code[start:end]
+            if (piece != whole and REMOVABLE_LINE.match(piece) and not CONTROL_KEYWORD.match(piece)
+                    and not DECLARES_A_NAME.search(piece)
+                    and deletable_alone(text, offsets[head], offsets[start], offsets[end - 1] + 1)):
+                found.append(number)
+                break
     return found
 
 
@@ -3193,9 +3236,9 @@ def reach(mutants, unreached, project, declined=None):
     declined = declined or {}
     shared = sum(len(lines) for lines in declined.values())
     if shared:
-        report.append("{} line(s) hold a statement in the line removal's shape beside a brace or "
-                      "another\nstatement, and the removal reads a line only whole, so it removes "
-                      "none of them".format(shared))
+        report.append("{} line(s) hold a statement the line removal would take on a line of its "
+                      "own, beside a\nbrace, a label or another statement; it reads a line only "
+                      "whole, so it removes none of them".format(shared))
         report.extend(listed("declined ", declined, project))
     return "\n".join(report)
 

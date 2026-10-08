@@ -2528,15 +2528,16 @@ class ReachTests(unittest.TestCase):
 
 
 class DeclinedLineTests(unittest.TestCase):
-    """A statement in the line removal's shape beside a brace or another statement, which the removal
-    does not read because it reads a line only whole.
+    """A statement the line removal would take on a line of its own, beside a brace, a label or another
+    statement, which the removal does not read because it reads a line only whole.
 
     The reach is one bit per line, so nothing it printed over `try { _state.Dispose(); }` said a
     statement there was skipped for its formatting.
     """
 
     def declined(self, line):
-        return mutation_check.declined_line_numbers(line + "\n", {1})
+        """Line 2's reading, behind a finished statement, which is where a removal may stand."""
+        return mutation_check.declined_line_numbers("Init();\n" + line + "\n", {2})
 
     def test_Given_ACallInsideBracesOnOneLine_When_TheLinesAreRead_Then_ItIsDeclined(self):
         # Arrange
@@ -2546,7 +2547,7 @@ class DeclinedLineTests(unittest.TestCase):
         found = self.declined(line)
 
         # Assert
-        self.assertEqual(found, [1])
+        self.assertEqual(found, [2])
 
     def test_Given_TwoCallsOnOneLine_When_TheLinesAreRead_Then_ItIsDeclined(self):
         # Arrange — no brace on the line, so only the cut at the first semicolon separates the calls.
@@ -2556,7 +2557,7 @@ class DeclinedLineTests(unittest.TestCase):
         found = self.declined(line)
 
         # Assert
-        self.assertEqual(found, [1])
+        self.assertEqual(found, [2])
 
     def test_Given_ACallAloneOnItsLine_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
         # Arrange — the line the removal does read, which matches the pattern as a piece and whole.
@@ -2580,8 +2581,9 @@ class DeclinedLineTests(unittest.TestCase):
 
     def test_Given_AReturnOfATupleBehindAnotherStatement_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
         # Arrange — `return (value, true);` matches the removal pattern and is not a call. No brace,
-        # because with the braces left uncut `if (done) { return (value, true);` matches it too.
-        line = "_count++; return (value, true);"
+        # because with the braces left uncut `if (done) { return (value, true);` matches it too, and
+        # an `await` in front because no removal arm reads one.
+        line = "await Settle(); return (value, true);"
 
         # Act
         found = self.declined(line)
@@ -2600,12 +2602,52 @@ class DeclinedLineTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
-    def test_Given_TheShapeInsideAStringLiteral_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
-        # Arrange — the line's own code is an assignment.
-        line = 'text = "try { Reset(); }";'
+    def test_Given_ABracedCallInsideAComment_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the line's own code is an `await`, which no removal arm reads.
+        line = "await Settle(); // { Clear(); }"
 
         # Act
         found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ACallBehindACaseLabel_When_TheLinesAreRead_Then_ItIsDeclined(self):
+        # Arrange — the label is no statement, and the call alone on the line under it is removable.
+        text = "switch (key)\n{\n    case 1: Reset();\n        break;\n}\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {3})
+
+        # Assert
+        self.assertEqual(found, [3])
+
+    def test_Given_ANamedArgumentContinuingACall_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — `name:` reads as a label, and the code above has not finished a statement.
+        text = "Call(first,\n    name: Reset());\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {2})
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ADoLoopsTailBehindItsBrace_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — on a line of its own the tail is refused, since the `do` block would lose it.
+        text = "do\n{\n    Step();\n} while (Next());\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {4})
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AnIfWhoseElseSharesItsLine_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — on a line of its own the `if` is refused, since the `else` would be stranded.
+        text = "Init();\nif (ready) Reset(); else Clear();\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {2})
 
         # Assert
         self.assertEqual(found, [])
