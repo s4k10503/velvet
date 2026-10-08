@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -9,9 +8,10 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins <c>StyleTransitionConfig.ScaledBy</c>, the transition an animation sequence hands its Motion at a
-    /// speed other than 1: what it divides, what it multiplies, and that it carries every other settable property
-    /// across unchanged — a property added to the config later is a case of that last test without anyone writing
-    /// one.
+    /// speed other than 1: what it divides, what it multiplies, what it carries across unchanged, and that the
+    /// scheduler holds the result to its duration cap at the authored length. Every settable property of the
+    /// config is named in exactly one of <see cref="Copied"/> and <see cref="Recomputed"/>, so a property added
+    /// later fails a case here until someone decides which.
     /// </summary>
     internal sealed class StyleTransitionConfigScaledByTests
     {
@@ -31,12 +31,25 @@ namespace Velvet.Tests
             nameof(StyleTransitionConfig.Layout),
             nameof(StyleTransitionConfig.Stiffness),
             nameof(StyleTransitionConfig.Damping),
+            nameof(StyleTransitionConfig.PlaybackRate),
         }).ToArray();
 
-        private static IEnumerable<string> CopiedProperties() => typeof(StyleTransitionConfig)
-            .GetProperties(Instance)
-            .Where(property => property.CanWrite && !Recomputed.Contains(property.Name))
-            .Select(property => property.Name);
+        private static readonly string[] Copied =
+        {
+            nameof(StyleTransitionConfig.EnterFromClass),
+            nameof(StyleTransitionConfig.EnterToClass),
+            nameof(StyleTransitionConfig.ExitFromClass),
+            nameof(StyleTransitionConfig.ExitToClass),
+            nameof(StyleTransitionConfig.Type),
+            nameof(StyleTransitionConfig.Mass),
+            nameof(StyleTransitionConfig.BezierX1),
+            nameof(StyleTransitionConfig.BezierY1),
+            nameof(StyleTransitionConfig.BezierX2),
+            nameof(StyleTransitionConfig.BezierY2),
+            nameof(StyleTransitionConfig.Easing),
+            nameof(StyleTransitionConfig.ExitEasing),
+            nameof(StyleTransitionConfig.When),
+        };
 
         // A value differing from the property's default, so a copy that dropped it reads the default instead.
         private static object SampleOf(Type type)
@@ -53,7 +66,23 @@ namespace Velvet.Tests
         private static StyleTransitionConfig Spring(float stiffness, float damping, float mass)
             => new() { Type = TransitionType.Spring, Stiffness = stiffness, Damping = damping, Mass = mass };
 
-        [TestCaseSource(nameof(CopiedProperties))]
+        [Test]
+        public void Given_TheConfigsSettableProperties_When_Listed_Then_EachIsEitherCopiedOrRecomputed()
+        {
+            // Arrange
+            var decided = string.Join(",", Copied.Concat(Recomputed).OrderBy(name => name, StringComparer.Ordinal));
+
+            // Act
+            var settable = string.Join(",", typeof(StyleTransitionConfig).GetProperties(Instance)
+                .Where(property => property.CanWrite)
+                .Select(property => property.Name)
+                .OrderBy(name => name, StringComparer.Ordinal));
+
+            // Assert
+            Assert.That(settable, Is.EqualTo(decided));
+        }
+
+        [TestCaseSource(nameof(Copied))]
         public void Given_AConfigWithThisPropertySet_When_ScaledByTwo_Then_TheCopyCarriesItUnchanged(string name)
         {
             // Arrange
@@ -245,6 +274,150 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(faster.Displacement, Is.EqualTo(original.Displacement).Within(1e-6));
+        }
+
+        [Test]
+        public void Given_AnAuthoredConfig_When_ScaledByTwo_Then_ItsPlaybackRateIsTwo()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { DurationSec = 0.8f };
+
+            // Act
+            var scaled = config.ScaledBy(2f);
+
+            // Assert
+            Assert.That(scaled.PlaybackRate, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_AConfigScaledByTwo_When_ScaledByThree_Then_ItsPlaybackRateIsSix()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { DurationSec = 0.8f }.ScaledBy(2f);
+
+            // Act
+            var scaled = config.ScaledBy(3f);
+
+            // Assert
+            Assert.That(scaled.PlaybackRate, Is.EqualTo(6f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AScaledConfig_When_WithChangesOnlyItsEasing_Then_ItsPlaybackRateIsKept()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { DurationSec = 0.8f }.ScaledBy(0.25f);
+
+            // Act
+            var tuned = config.With(easing: EasingMode.Linear);
+
+            // Assert
+            Assert.That(tuned.PlaybackRate, Is.EqualTo(0.25f));
+        }
+
+        [Test]
+        public void Given_AScaledConfig_When_WithGivesItADuration_Then_ItsPlaybackRateIsOne()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { DurationSec = 0.8f }.ScaledBy(0.25f);
+
+            // Act
+            var tuned = config.With(durationSec: 2f);
+
+            // Assert
+            Assert.That(tuned.PlaybackRate, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_AScaledConfig_When_ItsExitClassesAreReplaced_Then_ItsPlaybackRateIsKept()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { DurationSec = 0.8f }.ScaledBy(0.25f);
+
+            // Act
+            var exit = config.WithExitClasses("opacity-100", "opacity-0");
+
+            // Assert
+            Assert.That(exit.PlaybackRate, Is.EqualTo(0.25f));
+        }
+
+        [Test]
+        public void Given_AThreeSecondTweenAtAQuarterOfItsSpeed_When_AskedWhetherASwapTweens_Then_ItDoes()
+        {
+            // Arrange — twelve seconds at face.
+            var config = new StyleTransitionConfig { DurationSec = 3f }.ScaledBy(0.25f);
+
+            // Act
+            var tweens = StyleAnimationScheduler.TweensOnSwap(config);
+
+            // Assert
+            Assert.That(tweens, Is.True);
+        }
+
+        [Test]
+        public void Given_AThreeSecondTweenAtAQuarterOfItsSpeed_When_AskedWhetherASwapLandsAtOnce_Then_ItDoesNot()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { DurationSec = 3f }.ScaledBy(0.25f);
+
+            // Act
+            var landsAtOnce = StyleAnimationScheduler.LandsAtOnce(config);
+
+            // Assert
+            Assert.That(landsAtOnce, Is.False);
+        }
+
+        [Test]
+        public void Given_ATweenAuthoredAtTheDurationCapAtAQuarterOfItsSpeed_When_AskedWhetherASwapTweens_Then_ItDoes()
+        {
+            // Arrange — ten seconds authored, the cap itself.
+            var config = new StyleTransitionConfig { DurationSec = 10f }.ScaledBy(0.25f);
+
+            // Act
+            var tweens = StyleAnimationScheduler.TweensOnSwap(config);
+
+            // Assert
+            Assert.That(tweens, Is.True);
+        }
+
+        [Test]
+        public void Given_ATweenAuthoredPastTheDurationCapAtFourTimesItsSpeed_When_AskedWhetherASwapLandsAtOnce_Then_ItDoes()
+        {
+            // Arrange — three seconds at face, twelve as authored.
+            var config = new StyleTransitionConfig { DurationSec = 12f }.ScaledBy(4f);
+
+            // Act
+            var landsAtOnce = StyleAnimationScheduler.LandsAtOnce(config);
+
+            // Assert
+            Assert.That(landsAtOnce, Is.True);
+        }
+
+        [Test]
+        public void Given_ABezierAuthoredAtTheDurationCapAtAQuarterOfItsSpeed_When_Validated_Then_ItIsAccepted()
+        {
+            // Arrange — ten seconds authored, the cap itself, forty at face.
+            var config = new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 10f }.ScaledBy(0.25f);
+
+            // Act
+            var valid = StyleAnimationScheduler.ValidateBezierParameters(config.BezierX1, config.BezierY1,
+                config.BezierX2, config.BezierY2, config.DurationSec, StyleAnimationScheduler.DurationCap(config));
+
+            // Assert
+            Assert.That(valid, Is.True);
+        }
+
+        [Test]
+        public void Given_ATweenAuthoredPastTheDurationCapAtFourTimesItsSpeed_When_AskedWhetherASwapTweens_Then_ItDoesNot()
+        {
+            // Arrange — three seconds at face, twelve as authored.
+            var config = new StyleTransitionConfig { DurationSec = 12f }.ScaledBy(4f);
+
+            // Act
+            var tweens = StyleAnimationScheduler.TweensOnSwap(config);
+
+            // Assert
+            Assert.That(tweens, Is.False);
         }
     }
 }

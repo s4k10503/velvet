@@ -137,7 +137,8 @@ namespace Velvet
 
         /// <summary>
         /// Stops the sequence and returns its state to how it reads before step 0 commits: the Web Animations API's
-        /// <c>cancel()</c>. The motion guide's Timelines section owns what reseeds it.
+        /// <c>cancel()</c>. With <c>deps: null</c>, the render this causes restarts the sequence, as every render
+        /// there does. The motion guide's Timelines section owns what else reseeds it.
         /// </summary>
         public Action Cancel { get; }
 
@@ -145,7 +146,7 @@ namespace Velvet
         /// Sets the rate the sequence's clock runs at — 2 plays it twice as fast — and the rate each <c>To</c> step
         /// committed afterwards plays its transition at: the Web Animations API's <c>playbackRate</c>. The motion
         /// guide's Timelines section owns what that does to a transition. Throws
-        /// <see cref="ArgumentOutOfRangeException"/> for a rate that is not finite and greater than zero.
+        /// <see cref="ArgumentOutOfRangeException"/> for a rate outside 0.001 to 1000.
         /// </summary>
         public Action<float> SetSpeed { get; }
 

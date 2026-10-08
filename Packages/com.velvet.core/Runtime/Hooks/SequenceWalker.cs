@@ -21,13 +21,20 @@ namespace Velvet
         // drains pending reentrant resets in a plain loop, so the call stack never grows past a constant depth.
         private const int MaxReentrantResets = 64;
 
+        // A rate within these has a square, which ScaledBy multiplies a spring's stiffness by, that is neither 0
+        // nor infinite, and grows a span ScaledBy divides by it at most a thousandfold. Documentation~/motion.md
+        // states both numbers.
+        public const float MinSpeed = 1e-3f;
+        public const float MaxSpeed = 1e3f;
+
         private IReadOnlyList<AnimationSequenceStep> _steps = Array.Empty<AnimationSequenceStep>();
         private int _stepIndex;
         private float _elapsedInStepSec;
         private float _currentHoldSec;
-        // The holds of the steps the cursor has left in this pass, so TimeSec reads the timeline position
-        // without re-deriving every earlier hold.
-        private float _timeBeforeStepSec;
+        // The holds of every step the cursor has left since the last reseed, across loop passes, so TimeSec reads
+        // the timeline position without re-deriving them. A double, since a loop adds to it for as long as the
+        // sequence plays.
+        private double _timeBeforeStepSec;
         private string? _currentLabel;
         // _currentTransition is the authored one a later step with no transition of its own inherits;
         // _playedTransition is that one at the speed in force when the step was arrived at, which is what
@@ -52,7 +59,7 @@ namespace Velvet
 
         public float Speed { get; private set; } = 1f;
 
-        public float TimeSec => _timeBeforeStepSec + _elapsedInStepSec;
+        public float TimeSec => (float)(_timeBeforeStepSec + _elapsedInStepSec);
 
         // Bumped on every committed Arrive (a real step transition, including a same-index re-arrival on a
         // single-step loop), independent of StepIndex — a caller diffing StepIndex alone would miss the
@@ -75,10 +82,11 @@ namespace Velvet
 
         public void SetSpeed(float speed)
         {
-            if (!(float.IsFinite(speed) && speed > 0f))
+            // Written so NaN, which every comparison refuses, is refused too.
+            if (!(speed >= MinSpeed && speed <= MaxSpeed))
             {
                 throw new ArgumentOutOfRangeException(nameof(speed), speed,
-                    "A sequence's speed must be finite and greater than zero; Pause stops it.");
+                    $"A sequence's speed must lie between {MinSpeed} and {MaxSpeed}; Pause stops it.");
             }
             Speed = speed;
         }
@@ -127,7 +135,6 @@ namespace Velvet
                         break;
                     }
                     next = 0;
-                    _timeBeforeStepSec = 0f;
                 }
                 ArriveAtStart(next);
                 // A Call callback that cancelled leaves the Call's zero hold and the cursor at step 0, from

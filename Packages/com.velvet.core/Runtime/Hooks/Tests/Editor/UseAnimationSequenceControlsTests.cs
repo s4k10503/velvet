@@ -243,7 +243,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ACancelledSequence_When_RestartedAndTimePasses_Then_TheCursorStaysOnStepZero()
+        public void Given_ACancelledSequence_When_RestartedAndTimePasses_Then_TheCursorStaysOnARecommittedStepZero()
         {
             // Arrange
             s_steps = new[] { To("a", 0.1f), To("b", 0.5f) };
@@ -255,7 +255,7 @@ namespace Velvet.Tests
             AdvanceTicks(10);
 
             // Assert
-            Assert.That(s_state.StepIndex, Is.EqualTo(0));
+            Assert.That((s_state.StepIndex, s_state.CurrentLabel), Is.EqualTo((0, "a")));
         }
 
         [Test]
@@ -307,7 +307,9 @@ namespace Velvet.Tests
         [TestCase(-1f)]
         [TestCase(float.NaN)]
         [TestCase(float.PositiveInfinity)]
-        public void Given_ARateThatIsNotFiniteAndPositive_When_SetAsTheSpeed_Then_ItIsRefused(float rate)
+        [TestCase(0.0009f)]
+        [TestCase(1000.1f)]
+        public void Given_ARateOutsideAThousandthToAThousand_When_SetAsTheSpeed_Then_ItIsRefused(float rate)
         {
             // Arrange
             s_steps = new[] { To("a", 0.4f) };
@@ -318,6 +320,21 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(setSpeed, Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        [TestCase(0.001f)]
+        [TestCase(1000f)]
+        public void Given_ARateAtAnEndOfAThousandthToAThousand_When_SetAsTheSpeed_Then_ItIsTaken(float rate)
+        {
+            // Arrange
+            s_steps = new[] { To("a", 0.4f) };
+            Mount();
+
+            // Act
+            TestDelegate setSpeed = () => s_controls.SetSpeed(rate);
+
+            // Assert
+            Assert.That(setSpeed, Throws.Nothing);
         }
 
         [Test]
@@ -363,7 +380,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALoopingSequenceOnItsSecondPass_When_TimeSecIsRead_Then_ItCountsFromZeroAgain()
+        public void Given_ALoopingSequenceOnItsSecondPass_When_TimeSecIsRead_Then_ItCountsTheFirstPassToo()
         {
             // Arrange — 240ms against a 200ms pass.
             s_steps = new[] { To("a", 0.1f), To("b", 0.1f) };
@@ -374,7 +391,7 @@ namespace Velvet.Tests
             AdvanceTicks(15);
 
             // Assert
-            Assert.That(s_controls.TimeSec, Is.EqualTo(0.04f).Within(1e-4f));
+            Assert.That(s_controls.TimeSec, Is.EqualTo(0.24f).Within(1e-4f));
         }
 
         [Test]

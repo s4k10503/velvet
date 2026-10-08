@@ -12,5 +12,5 @@
 ### Fixed
 
 - A `Call` step at index 0 of a `Hooks.UseAnimationSequence` that pauses the sequence from its callback
-  keeps it paused. A mount or a `deps` restart applied `autoplay: true` after step 0 committed, which resumed
-  the sequence the callback had just paused.
+  keeps it paused, and one that plays it under `autoplay: false` keeps it playing. A mount or a `deps`
+  restart applied `autoplay` after step 0 committed, which overrode what the callback had just set.

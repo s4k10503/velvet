@@ -192,6 +192,10 @@ namespace Velvet
         /// </summary>
         internal bool HasExitAnimation => Type == TransitionType.Spring || DurationSec > 0f;
 
+        // The rate ScaledBy played an authored config at, so StyleAnimationScheduler.DurationCap can hold the
+        // authored duration to its cap rather than the scaled one. 1 for a config nothing scaled.
+        internal float PlaybackRate { get; init; } = 1f;
+
         // Parsed class-name array caches (lazily initialized).
         private string[]? _enterFromClasses;
         private string[]? _enterToClasses;
@@ -233,6 +237,8 @@ namespace Velvet
                 Easing = easing ?? Easing,
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
+                // A duration given here is read at face, as an authored one is.
+                PlaybackRate = durationSec == null ? PlaybackRate : 1f,
                 // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
                 // the child-orchestration knobs, the spring model, or the transition a layoutId move takes.
                 PropertyOverrides = PropertyOverrides,
@@ -265,21 +271,23 @@ namespace Velvet
             {
                 return this;
             }
-            var timeScale = 1f / rate;
             return new StyleTransitionConfig
             {
                 EnterFromClass = EnterFromClass,
                 EnterToClass = EnterToClass,
                 ExitFromClass = ExitFromClass,
                 ExitToClass = ExitToClass,
-                DurationSec = DurationSec * timeScale,
+                // Divided rather than multiplied by a reciprocal: StyleAnimationScheduler.DurationCap divides the cap
+                // by the same rate, so an authored duration exactly at the cap stays exactly at it.
+                DurationSec = DurationSec / rate,
                 Easing = Easing,
                 ExitEasing = ExitEasing,
-                DelaySec = DelaySec * timeScale,
-                PropertyOverrides = ScaleOverrides(PropertyOverrides, timeScale),
+                DelaySec = DelaySec / rate,
+                PropertyOverrides = ScaleOverrides(PropertyOverrides, rate),
                 Layout = Layout?.ScaledBy(rate),
-                StaggerChildrenSec = StaggerChildrenSec * timeScale,
-                DelayChildrenSec = DelayChildrenSec * timeScale,
+                StaggerChildrenSec = StaggerChildrenSec / rate,
+                DelayChildrenSec = DelayChildrenSec / rate,
+                PlaybackRate = PlaybackRate * rate,
                 When = When,
                 Type = Type,
                 Stiffness = Stiffness * rate * rate,
@@ -298,7 +306,7 @@ namespace Velvet
 
         // A null override field stays null, so it keeps falling back to the scaled top-level value.
         private static IReadOnlyList<StylePropertyTransition>? ScaleOverrides(
-            IReadOnlyList<StylePropertyTransition>? overrides, float timeScale)
+            IReadOnlyList<StylePropertyTransition>? overrides, float rate)
         {
             if (overrides == null)
             {
@@ -308,8 +316,8 @@ namespace Velvet
             for (var i = 0; i < overrides.Count; i++)
             {
                 var o = overrides[i];
-                scaled[i] = new StylePropertyTransition(o.Property, o.DurationSec * timeScale, o.Easing,
-                    o.DelaySec * timeScale);
+                scaled[i] = new StylePropertyTransition(o.Property, o.DurationSec / rate, o.Easing,
+                    o.DelaySec / rate);
             }
             return scaled;
         }
@@ -335,6 +343,7 @@ namespace Velvet
                 Easing = Easing,
                 ExitEasing = ExitEasing,
                 DelaySec = DelaySec,
+                PlaybackRate = PlaybackRate,
                 PropertyOverrides = PropertyOverrides,
                 Type = Type,
                 Stiffness = Stiffness,
