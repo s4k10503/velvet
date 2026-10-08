@@ -556,11 +556,26 @@ namespace Velvet
             {
                 slot.OwnerGeneration++;
                 slot.OwnerDepth = 0;
+                // The tasks this gives up on can no longer count themselves out.
+                FiberWorkLoop.CountAsyncActions(-slot.AsyncOwnerDepth);
                 slot.AsyncOwnerDepth = 0;
                 ClearTransitionEnrolments(slot);
                 slot.IsPending = false;
                 slot.PendingError = null;
             }
+        }
+
+        internal void ClearOptimisticSlots()
+        {
+            if (OptimisticSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in OptimisticSlots)
+            {
+                slot.DetachFromOwners();
+            }
+            OptimisticSlots.Clear();
         }
 
         // Unwinds both sides of the enrolment record, so no fiber is left holding a slot that has stopped

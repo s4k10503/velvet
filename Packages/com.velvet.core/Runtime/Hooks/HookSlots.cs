@@ -96,15 +96,29 @@ namespace Velvet
 
         // A settle renders nobody on its own, so a retirement asks for the render that drops the entries.
         // Reached only from a transition this slot enrolled on, which leaves it holding an entry of that
-        // transition's until this removes them all.
+        // transition's until this removes or disowns them all.
         internal void RetireEntriesOwnedBy(HookTransitionSlot owner)
         {
-            RemoveEntries(owner);
+            Retire(owner);
             ComponentFiber.RequestRenderForSettledTransition(Fiber);
         }
 
-        // A null owner names the entries no transition owns (FiberWorkLoop.CurrentOptimisticOwner read null).
-        internal abstract void RemoveEntries(HookTransitionSlot? owner);
+        internal abstract void Retire(HookTransitionSlot owner);
+
+        // For a fiber whose slot list is being dropped: a transition settling afterwards would otherwise ask
+        // that fiber, reused or not, for a render on behalf of a slot it no longer holds.
+        internal abstract void DetachFromOwners();
+    }
+
+    internal sealed class OptimisticEntry<TAction>
+    {
+        public TAction Action = default!;
+        // Null for an entry no transition owns (FiberWorkLoop.CurrentOptimisticOwner read null), which the
+        // component's next Transition-lane render drops.
+        public HookTransitionSlot? Owner;
+        // An entry its transition settles before any render folded it is disowned rather than dropped, so the
+        // render addOptimistic requested still shows it once.
+        public bool Rendered;
     }
 
     internal sealed class HookOptimisticSlot<TState, TAction> : HookOptimisticSlot
@@ -112,26 +126,53 @@ namespace Velvet
         // The actions rather than the state they produced, in the order addOptimistic received them, so a
         // render folds them over the pass-through state it is handed and an entry still pending lands on
         // whatever the authoritative state has become.
-        public List<(TAction Action, HookTransitionSlot? Owner)>? Entries;
+        public readonly List<OptimisticEntry<TAction>> Entries = new();
         public Func<TState, TAction, TState> Apply = null!;
         public Action<TAction> Add = null!;
 
         internal TState Fold(TState passthroughState)
         {
-            if (Entries == null)
-            {
-                return passthroughState;
-            }
             var state = passthroughState;
             foreach (var entry in Entries)
             {
                 state = Apply(state, entry.Action);
+                entry.Rendered = true;
             }
             return state;
         }
 
-        internal override void RemoveEntries(HookTransitionSlot? owner)
-            => Entries?.RemoveAll(entry => ReferenceEquals(entry.Owner, owner));
+        // Static lambdas, since both run during renders and a capturing one would allocate at each.
+        internal bool HasUnownedEntry => Entries.Exists(static entry => entry.Owner == null);
+
+        internal void DropUnownedEntries() => Entries.RemoveAll(static entry => entry.Owner == null);
+
+        internal override void Retire(HookTransitionSlot owner)
+        {
+            for (var i = Entries.Count - 1; i >= 0; i--)
+            {
+                var entry = Entries[i];
+                if (!ReferenceEquals(entry.Owner, owner))
+                {
+                    continue;
+                }
+                if (entry.Rendered)
+                {
+                    Entries.RemoveAt(i);
+                }
+                else
+                {
+                    entry.Owner = null;
+                }
+            }
+        }
+
+        internal override void DetachFromOwners()
+        {
+            foreach (var entry in Entries)
+            {
+                entry.Owner?.OptimisticDependents?.Remove(this);
+            }
+        }
     }
 
     internal sealed class HookEffectSlot

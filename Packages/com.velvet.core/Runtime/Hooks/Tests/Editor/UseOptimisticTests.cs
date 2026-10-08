@@ -1,5 +1,8 @@
 using System;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -16,8 +19,15 @@ namespace Velvet.Tests
     /// completes or faults, and one whose declaring component unmounts at that unmount.</item>
     /// <item>An entry whose transition is still pending replays over a pass-through state another action
     /// changed, and one transition settling leaves another's entry in place.</item>
-    /// <item>An entry added outside every transition is discarded by the component's next Transition-lane
-    /// render.</item>
+    /// <item>An entry its transition settled before any render showed it is shown once, then discarded.</item>
+    /// <item>An entry added outside every scope while an async action is in flight belongs to the actions in
+    /// flight, and is discarded once none is left, whether the last completes or is given up at an
+    /// unmount.</item>
+    /// <item>An entry no transition owns is discarded by the component's next Transition-lane render, which a
+    /// parent pass subsuming the component does not cancel. Added outside every scope it logs a warning;
+    /// added in a callback run by a starter whose component has unmounted it does not.</item>
+    /// <item>A remounted fiber folds none of the previous mount's entries, and their action's settle does not
+    /// render it.</item>
     /// <item>A null apply function raises an <see cref="ArgumentNullException"/>.</item>
     /// </list>
     /// </summary>
@@ -37,6 +47,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             ResetOptimistic();
             ResetActionHost();
+            ResetSubsumingParent();
         }
 
         [Test]
@@ -59,6 +70,7 @@ namespace Velvet.Tests
             // Arrange
             s_passthrough = "base";
             using var mounted = V.Mount(_root, V.Component(OptimisticRender, key: "optimistic-add"));
+            LogAssert.Expect(LogType.Warning, OutsideEveryTransitionWarning);
 
             // Act
             s_addOptimistic.Invoke("pending");
@@ -75,6 +87,8 @@ namespace Velvet.Tests
             // Arrange
             s_passthrough = "base";
             using var mounted = V.Mount(_root, V.Component(OptimisticRender, key: "optimistic-compose"));
+            LogAssert.Expect(LogType.Warning, OutsideEveryTransitionWarning);
+            LogAssert.Expect(LogType.Warning, OutsideEveryTransitionWarning);
 
             // Act
             s_addOptimistic.Invoke("a");
@@ -307,6 +321,7 @@ namespace Velvet.Tests
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
             var scheduler = mounted.GetSchedulerForTest();
+            LogAssert.Expect(LogType.Warning, OutsideEveryTransitionWarning);
             s_hostAdd.Invoke("pending");
 
             // Act
@@ -318,6 +333,166 @@ namespace Velvet.Tests
             Assert.That($"{shown}|{s_hostObserved}", Is.EqualTo("base+pending|base"),
                 "An entry no transition owns shows at the next render and is discarded by the Transition-lane one");
         }
+
+        [Test]
+        public void Given_AnAsyncActionWhoseWriteBeforeSuspendingCommits_When_ThatTransitionLaneRenderRuns_Then_TheEntryStaysUntilTheActionCompletes()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var gate = new VelvetTaskCompletionSource();
+            s_hostStartFirst.Invoke(async () =>
+            {
+                s_hostAdd.Invoke("sent");
+                s_hostSetTick.Invoke(1);
+                await gate.Task;
+            });
+
+            // Act — the delayed drain renders the component on the Transition lane with the entry still owned
+            DrainBothTiers(mounted);
+            var whilePending = s_hostObserved;
+            gate.TrySetResult();
+            DrainBothTiers(mounted);
+
+            // Assert
+            Assert.That($"{whilePending}|{s_hostObserved}", Is.EqualTo("base+sent|base"),
+                "A Transition-lane render drops only the entries no transition owns");
+        }
+
+        [Test]
+        public void Given_AnUnownedEntryAlreadyShown_When_AParentPassSubsumesTheComponent_Then_TheTransitionLaneRenderStillDiscardsIt()
+        {
+            // Arrange — the subsumed render keeps only the lanes it asks for again, which is what this pins
+            using var mounted = V.Mount(_root, V.Component(SubsumingParentRender, key: "subsuming-parent"));
+            var scheduler = mounted.GetSchedulerForTest();
+            LogAssert.Expect(LogType.Warning, OutsideEveryTransitionWarning);
+            s_childAdd.Invoke("pending");
+            scheduler.DrainImmediateForTest();
+            var shown = s_childObserved;
+
+            // Act
+            s_parentSetTick.Invoke(1);
+            scheduler.DrainImmediateForTest();
+            var subsumed = s_childObserved;
+            scheduler.DrainDelayedForTest();
+
+            // Assert
+            Assert.That($"{shown}|{subsumed}|{s_childObserved}", Is.EqualTo("base+pending|base+pending|base"),
+                "A subsumed render that leaves the entry standing asks for the Transition-lane render again");
+        }
+
+        [Test]
+        public void Given_AnEntryAddedByASyncCallbackThatQueuesNothing_When_TheCallbackReturns_Then_TheEntryIsShownOnceBeforeItIsDiscarded()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var scheduler = mounted.GetSchedulerForTest();
+
+            // Act — the transition settles as the callback returns, ahead of the render addOptimistic asked for
+            s_hostStartFirst.Invoke(() => s_hostAdd.Invoke("sent"));
+            scheduler.DrainImmediateForTest();
+            var shown = s_hostObserved;
+            scheduler.DrainDelayedForTest();
+
+            // Assert
+            Assert.That($"{shown}|{s_hostObserved}", Is.EqualTo("base+sent|base"),
+                "An entry no render showed before its transition settled is shown once, then discarded");
+        }
+
+        [Test]
+        public void Given_AnAsyncActionInFlight_When_AnEntryIsAddedOutsideEveryScope_Then_ItStaysUntilTheActionCompletes()
+        {
+            // Arrange — the add stands for an action's code past its first suspension
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var gate = new VelvetTaskCompletionSource();
+            s_hostStartFirst.Invoke(async () => await gate.Task);
+            s_hostAdd.Invoke("late");
+            DrainBothTiers(mounted);
+            var whilePending = s_hostObserved;
+
+            // Act
+            gate.TrySetResult();
+            DrainBothTiers(mounted);
+
+            // Assert — the pending reading is the one an unowned entry fails, the delayed drain having run
+            Assert.That($"{whilePending}|{s_hostObserved}", Is.EqualTo("base+late|base"),
+                "An entry added while an async action is in flight belongs to the actions in flight");
+        }
+
+        [Test]
+        public void Given_AnEntryOwnedByTheActionsInFlight_When_TheOnlyOnesDeclaringComponentUnmounts_Then_TheEntryIsDiscarded()
+        {
+            // Arrange — the action never completes, so giving it up at the unmount is all that ends it
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var gate = new VelvetTaskCompletionSource();
+            s_childStart.Invoke(async () => await gate.Task);
+            s_hostAdd.Invoke("late");
+            DrainBothTiers(mounted);
+            var whilePending = s_hostObserved;
+
+            // Act
+            s_hostSetShowStarter.Invoke(false);
+            DrainBothTiers(mounted);
+
+            // Assert
+            Assert.That($"{whilePending}|{s_hostObserved}", Is.EqualTo("base+late|base"),
+                "An unmount that gives up the last action in flight retires what the actions in flight owned");
+        }
+
+        // GREEN_ON_BASE(characterization): the base logged no warning from addOptimistic anywhere. What this
+        // pins is that the warning this change adds stays out of a callback run by a starter whose component
+        // has unmounted, which is a transition with nothing left to own the entry.
+        [Test]
+        public void Given_AStarterWhoseComponentUnmounted_When_ItsCallbackAddsAnEntry_Then_NoWarningIsLogged()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var start = s_childStart;
+            s_hostSetShowStarter.Invoke(false);
+            DrainBothTiers(mounted);
+
+            // Act
+            start.Invoke(() => s_hostAdd.Invoke("late"));
+            DrainBothTiers(mounted);
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Given_AFiberUnmountedWithAnEntryOutstanding_When_ItIsMountedAgainAndTheEntrysActionSettles_Then_NeitherReachesTheRemount()
+        {
+            // Arrange — the Unmount then Mount pair reuses one fiber, and the action is declared on another root,
+            // so its settle reaches the remounted fiber only through a slot the unmount left enrolled
+            s_passthrough = "base";
+            var starter = FiberRenderer.CreateRoot(StarterRender);
+            FiberRenderer.Mount(starter, new VisualElement());
+            var optimistic = FiberRenderer.CreateRoot(OptimisticRender);
+            FiberRenderer.Mount(optimistic, _root);
+            var gate = new VelvetTaskCompletionSource();
+            s_childStart.Invoke(async () =>
+            {
+                s_addOptimistic.Invoke("a");
+                await gate.Task;
+            });
+            FiberWorkLoop.FlushState(optimistic);
+            FiberRenderer.Unmount(optimistic);
+            FiberRenderer.Mount(optimistic, _root);
+            var afterRemount = s_observed;
+            var rendersBefore = s_renderCount;
+
+            // Act
+            gate.TrySetResult();
+            FiberWorkLoop.FlushState(optimistic);
+            var extraRenders = s_renderCount - rendersBefore;
+            FiberRenderer.Dispose(optimistic);
+            FiberRenderer.Dispose(starter);
+
+            // Assert
+            Assert.That($"{afterRemount}|{extraRenders}", Is.EqualTo("base|0"),
+                "A remount folds none of the previous mount's entries, and their action's settle asks it for nothing");
+        }
+
+        private static readonly Regex OutsideEveryTransitionWarning = new("added outside every transition");
 
         private static void DrainBothTiers(MountedTree mounted)
         {
@@ -333,24 +508,63 @@ namespace Velvet.Tests
 
         private static string s_passthrough;
         private static string s_observed;
+        private static int s_renderCount;
         private static Action<string> s_addOptimistic;
 
         private static void ResetOptimistic()
         {
             s_passthrough = null;
             s_observed = null;
+            s_renderCount = 0;
             s_addOptimistic = null;
         }
 
-        [Component]
+        // Unwoven: the render count has to count every render the scheduler makes.
+        [Component(Compiler = false)]
         private static VNode OptimisticRender()
         {
             var (optimisticState, addOptimistic) = Hooks.UseOptimistic<string, string>(
                 s_passthrough,
                 (current, action) => current + "+" + action);
             s_observed = optimisticState;
+            s_renderCount++;
             s_addOptimistic = addOptimistic;
             return V.Label(text: optimisticState ?? string.Empty);
+        }
+
+        #endregion
+
+        #region Subsuming parent
+
+        private static string s_childObserved;
+        private static Action<string> s_childAdd;
+        private static StateUpdater<int> s_parentSetTick;
+
+        private static void ResetSubsumingParent()
+        {
+            s_childObserved = null;
+            s_childAdd = null;
+            s_parentSetTick = default;
+        }
+
+        // Unwoven: the case needs every write to the parent to render it.
+        [Component(Compiler = false)]
+        private static VNode SubsumingParentRender()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_parentSetTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(SubsumedChildRender, key: "subsumed-child") });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SubsumedChildRender()
+        {
+            var (optimisticState, addOptimistic) = Hooks.UseOptimistic<string, string>(
+                "base",
+                (current, action) => current + "+" + action);
+            s_childObserved = optimisticState;
+            s_childAdd = addOptimistic;
+            return V.Label(text: optimisticState);
         }
 
         #endregion

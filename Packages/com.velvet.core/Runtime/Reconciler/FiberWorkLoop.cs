@@ -81,8 +81,8 @@ namespace Velvet
             => RequestRenderFromHook(fiber, joinsTransition: false);
 
         // The transition an addOptimistic call belongs to, whose settle retires the entry: the innermost open
-        // scope whose slot still has an owner, on the rule MarkTransitionWorkQueued skips a released slot by.
-        // Null outside every scope, an async action's continuation past a suspension included.
+        // scope whose slot still has an owner, on the rule MarkTransitionWorkQueued skips a released slot by;
+        // failing that, every async action in flight together. Null where neither is there.
         internal static HookTransitionSlot? CurrentOptimisticOwner
         {
             get
@@ -94,8 +94,23 @@ namespace Velvet
                         return OpenTransitionScopes[i];
                     }
                 }
-                return null;
+                return s_asyncActionsInFlight > 0 ? AsyncActionsInFlight : null;
             }
+        }
+
+        internal static bool IsInTransitionScope => OpenTransitionScopes.Count > 0;
+
+        // Stands for no single slot: its isPending is lit exactly while some async action's task has not
+        // completed, so the entries it owns retire when the last of them does. Outside every scope nothing
+        // says which in-flight action's code made the call, so the entry waits for all of them.
+        internal static readonly HookTransitionSlot AsyncActionsInFlight = new();
+        private static int s_asyncActionsInFlight;
+
+        // delta: +1 where an async call takes its slot, minus the depth it held where that is given up.
+        internal static void CountAsyncActions(int delta)
+        {
+            s_asyncActionsInFlight += delta;
+            AsyncActionsInFlight.IsPending = s_asyncActionsInFlight > 0;
         }
 
         private static void RequestRenderFromHook(ComponentFiber fiber, bool joinsTransition)
@@ -824,6 +839,7 @@ namespace Velvet
             // clean, and a drain callback armed earlier that fires on that clean fiber must not read the
             // empty lane queue as this transition having settled (see SettleTransitionPending).
             slot.AsyncOwnerDepth++;
+            CountAsyncActions(1);
             slot.OwnerDepth++;
             var ownerGeneration = slot.OwnerGeneration;
             var suspended = false;
@@ -862,6 +878,7 @@ namespace Velvet
                 {
                     RecordOutcome(fiber, slot, sequence, failure);
                     slot.AsyncOwnerDepth--;
+                    CountAsyncActions(-1);
                     slot.OwnerDepth--;
                     // Same slot-scoped exit as the sync overload.
                     if (!slot.HasActiveOwner && (fiber.IsDisposed || !slot.HasQueuedWork))

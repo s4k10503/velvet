@@ -2217,8 +2217,10 @@ namespace Velvet
         /// <c>startTransition</c> callback belongs to the innermost transition open there whose
         /// <c>isPending</c> is lit, and is discarded when that <c>isPending</c> clears, whether or not
         /// <paramref name="passthroughState"/> changed and whether the action succeeded or faulted; one
-        /// transition settling leaves another's entries in place. An entry no transition owns is discarded by
-        /// the component's next Transition-lane render, which the call schedules.
+        /// transition settling leaves another's entries in place. An entry added where no such transition is
+        /// open, while an async action is in flight, belongs to the actions in flight together, and is
+        /// discarded once none is left. An entry no render has shown when its owner settles is shown once
+        /// first. An entry nothing owns is discarded by the component's next Transition-lane render.
         /// </summary>
         /// <typeparam name="TState">Optimistic state type.</typeparam>
         /// <typeparam name="TAction">Action / payload type passed to <paramref name="applyOptimistic"/>.</typeparam>
@@ -2227,7 +2229,8 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>optimisticState</c>: the pass-through state folded through the outstanding entries.
-        /// - <c>addOptimistic</c>: records an entry owned by the transition whose callback is running, if any.
+        /// - <c>addOptimistic</c>: records an entry owned by the transition whose callback is running, or by the
+        ///   async actions in flight, if either.
         /// </returns>
         public static (TState optimisticState, Action<TAction> addOptimistic) UseOptimistic<TState, TAction>(
             TState passthroughState, Func<TState, TAction, TState> applyOptimistic)
@@ -2250,7 +2253,7 @@ namespace Velvet
                 slot = typed;
                 if (FiberWorkLoop.IsRenderingTransitionLane)
                 {
-                    slot.RemoveEntries(owner: null);
+                    slot.DropUnownedEntries();
                 }
             }
             else
@@ -2261,7 +2264,15 @@ namespace Velvet
 
             // Refreshed every render, since the fold below runs it and it may capture this render's scope.
             slot.Apply = applyOptimistic;
-            return (slot.Fold(passthroughState), slot.Add);
+            var optimisticState = slot.Fold(passthroughState);
+            // Asked again by every render that leaves an unowned entry standing, as UseDeferredValue asks for
+            // its lane: a parent's pass that subsumes this component keeps only the lanes its render asked
+            // for, so a request made once, when the entry was added, is dropped there.
+            if (slot.HasUnownedEntry)
+            {
+                FiberWorkLoop.RequestTransitionRerender(fiber);
+            }
+            return (optimisticState, slot.Add);
         }
 
         private static Action<TAction> CreateOptimisticAdd<TState, TAction>(
@@ -2271,7 +2282,7 @@ namespace Velvet
             {
                 if (fiber.IsDisposed) return;
                 var owner = FiberWorkLoop.CurrentOptimisticOwner;
-                (slot.Entries ??= new List<(TAction Action, HookTransitionSlot? Owner)>()).Add((action, owner));
+                slot.Entries.Add(new OptimisticEntry<TAction> { Action = action, Owner = owner });
                 FiberWorkLoop.RequestOptimisticRender(fiber);
                 if (owner != null)
                 {
@@ -2279,12 +2290,16 @@ namespace Velvet
                     return;
                 }
 #if UNITY_EDITOR
-                FiberLogger.LogWarning("UseOptimistic",
-                    "An optimistic update was added outside a transition, so it is discarded at the component's " +
-                    "next Transition-lane render. Call addOptimistic inside startTransition to keep it until that " +
-                    "transition settles.");
+                // A callback a starter runs after its component unmounted is still a transition, owning
+                // nothing only because nothing is left to clear its isPending.
+                if (!FiberWorkLoop.IsInTransitionScope)
+                {
+                    FiberLogger.LogWarning("UseOptimistic",
+                        "An optimistic update was added outside every transition while no async action is in " +
+                        "flight, so it is discarded at the component's next Transition-lane render. Call " +
+                        "addOptimistic inside startTransition to keep it until that transition settles.");
+                }
 #endif
-                FiberWorkLoop.RequestTransitionRerender(fiber);
             };
         }
 
