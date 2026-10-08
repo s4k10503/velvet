@@ -138,13 +138,13 @@ namespace Velvet
 
         // Without a domain reload between play sessions the count would carry an action the previous session
         // never completed, and every transition settling afterwards would hand its entries to a slot that stays
-        // lit. The dependents go first because their fibers belong to the previous session.
+        // lit. The entries the slot holds retire through the setter like any other settle: a render requested
+        // for a fiber that is no longer mounted is ignored, and one still mounted drops its entries.
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetAsyncActionsInFlight()
         {
             s_asyncActionsEpoch++;
             s_asyncActionsInFlight = 0;
-            AsyncActionsInFlight.OptimisticDependents?.Clear();
             AsyncActionsInFlight.IsPending = false;
         }
 
@@ -858,15 +858,21 @@ namespace Velvet
         {
             if (asyncUpdates == null) throw new ArgumentNullException(nameof(asyncUpdates));
 
-            // Same disposed guard as the sync overload: the scope, without the flag or the error.
+            // Same disposed guard as the sync overload: the scope, without the flag or the error. The action is
+            // still counted, since the count follows the task and not the component.
             if (fiber.IsDisposed)
             {
+                var disposedEpoch = CountAsyncActionIn();
                 try
                 {
                     await RunInTransitionScope(slot, asyncUpdates);
                 }
                 catch (Exception)
                 {
+                }
+                finally
+                {
+                    CountAsyncActionOut(disposedEpoch);
                 }
                 return;
             }

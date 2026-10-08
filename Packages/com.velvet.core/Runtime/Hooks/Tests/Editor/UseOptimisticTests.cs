@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -58,8 +57,8 @@ namespace Velvet.Tests
             ResetSubsumingParent();
         }
 
-        // Each case disposes what it mounts before this runs, so a count left here is an action this fixture
-        // gave up on without an unmount, and it must not decide ownership in the fixture that runs next.
+        // The count follows each action's task, so one this fixture left awaiting is still counted after its
+        // mount is disposed, and it must not decide ownership in the fixture that runs next.
         [TearDown]
         public void TearDown() => AsyncActionsInFlightTestAccess.ResetForTest();
 
@@ -607,53 +606,82 @@ namespace Velvet.Tests
         private static readonly Regex OutsideEveryTransitionWarning = new("added outside every transition");
 
         [Test]
-        public void Given_TheResetEveryCaseHereRunsFirst_When_ItLooksUpWhatItResets_Then_BothTheMethodAndTheCountAreThere()
+        public void Given_TheResetEveryCaseHereRunsFirst_When_ItLooksUpWhatItResets_Then_TheSubsystemResetIsThere()
         {
-            // Arrange
-            const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
-
             // Act — the reset returns quietly where its method is missing, so this is what notices a rename
             var reset = AsyncActionsInFlightTestAccess.FindSubsystemReset();
-            var count = typeof(FiberWorkLoop).GetField(AsyncActionsInFlightTestAccess.CountFieldName, flags);
 
             // Assert
-            Assert.That((reset != null, count != null), Is.EqualTo((true, true)),
-                "The set-up reset reaches the subsystem reset and the in-flight count, or the ownership cases are order-dependent");
+            Assert.That(reset, Is.Not.Null,
+                "The set-up reset reaches the subsystem reset, or the ownership cases are order-dependent");
         }
 
         [Test]
-        public void Given_AnAsyncActionInFlight_When_TheSubsystemResetRuns_Then_NoActionIsCounted()
+        public void Given_AnEntryOwnedByTheActionsInFlight_When_TheSubsystemResetRuns_Then_TheEntryIsDiscarded()
         {
             // Arrange — an action the previous play session never completed
             using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
             var gate = new VelvetTaskCompletionSource();
             s_hostStartFirst.Invoke(async () => await gate.Task);
-            var before = AsyncActionsInFlightTestAccess.CountForTest();
+            s_hostAdd.Invoke("late");
+            DrainBothTiers(mounted);
+            var whilePending = s_hostObserved;
 
             // Act
             AsyncActionsInFlightTestAccess.ResetForTest();
-
-            // Assert
-            Assert.That((before, AsyncActionsInFlightTestAccess.CountForTest()), Is.EqualTo((1, 0)),
-                "The reset takes the stale action out of the count, which would otherwise keep holding settled transitions' entries");
-        }
-
-        [Test]
-        public void Given_AnActionCountedBeforeTheSubsystemReset_When_ItCompletesAfterwards_Then_TheCountStaysAtNone()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
-            var gate = new VelvetTaskCompletionSource();
-            s_hostStartFirst.Invoke(async () => await gate.Task);
-            AsyncActionsInFlightTestAccess.ResetForTest();
-
-            // Act
-            gate.TrySetResult();
             DrainBothTiers(mounted);
 
             // Assert
-            Assert.That(AsyncActionsInFlightTestAccess.CountForTest(), Is.EqualTo(0),
-                "An action the reset dropped does not count itself out of the count that replaced its own");
+            Assert.That($"{whilePending}|{s_hostObserved}", Is.EqualTo("base+late|base"),
+                "The reset retires what the stale count held, on a root that is still mounted");
+        }
+
+        [Test]
+        public void Given_AnActionCountedBeforeTheSubsystemReset_When_ItCompletesAfterwards_Then_ALaterActionsEntryStaysUntilThatOneCompletes()
+        {
+            // Arrange — the first action is counted out of the new count by the reset, and completes after it
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var stale = new VelvetTaskCompletionSource();
+            var later = new VelvetTaskCompletionSource();
+            s_hostStartFirst.Invoke(async () => await stale.Task);
+            AsyncActionsInFlightTestAccess.ResetForTest();
+            s_hostStartSecond.Invoke(async () => await later.Task);
+            stale.TrySetResult();
+            s_hostAdd.Invoke("late");
+            DrainBothTiers(mounted);
+            var whilePending = s_hostObserved;
+
+            // Act
+            later.TrySetResult();
+            DrainBothTiers(mounted);
+
+            // Assert
+            Assert.That($"{whilePending}|{s_hostObserved}", Is.EqualTo("base+late|base"),
+                "A completion from before the reset does not count the later action out");
+        }
+
+        [Test]
+        public void Given_ATransitionEnrolledOnAnotherComponent_When_AnUnrelatedDrainRendersTheHolderOfItsEntry_Then_ThatRenderKeepsIt()
+        {
+            // Arrange — the entry's transition ends on the sibling, and the parent drains under another slot.
+            // The parent's write is made first so its drain is the first one the delayed tier runs.
+            using var mounted = V.Mount(_root, V.Component(SubsumingParentRender, key: "subsuming-parent"));
+            var scheduler = mounted.GetSchedulerForTest();
+            s_parentStartOther.Invoke(() => s_parentSetTick.Invoke(1));
+            s_parentStart.Invoke(() =>
+            {
+                s_childAdd.Invoke("sent");
+                s_siblingSetTick.Invoke(1);
+            });
+            scheduler.DrainImmediateForTest();
+            var shownBefore = s_childReadings.Count;
+
+            // Act
+            scheduler.DrainDelayedForTest();
+
+            // Assert
+            Assert.That(s_childReadings.Skip(shownBefore).FirstOrDefault(), Is.EqualTo("base+sent"),
+                "A drain that does not land the transition's last work leaves its entry in the render");
         }
 
         private static void DrainBothTiers(MountedTree mounted)
@@ -703,6 +731,8 @@ namespace Velvet.Tests
         private static Action<string> s_childAdd;
         private static StateUpdater<int> s_parentSetTick;
         private static TransitionStarter s_parentStart;
+        private static TransitionStarter s_parentStartOther;
+        private static StateUpdater<int> s_siblingSetTick;
 
         private static void ResetSubsumingParent()
         {
@@ -711,6 +741,8 @@ namespace Velvet.Tests
             s_childAdd = null;
             s_parentSetTick = default;
             s_parentStart = default;
+            s_parentStartOther = default;
+            s_siblingSetTick = default;
         }
 
         // Unwoven: the case needs every write to the parent to render it.
@@ -719,9 +751,23 @@ namespace Velvet.Tests
         {
             var (_, setTick) = Hooks.UseState(0);
             var (_, start) = Hooks.UseTransition();
+            var (_, startOther) = Hooks.UseTransition();
             s_parentSetTick = setTick;
             s_parentStart = start;
-            return V.Div(children: new VNode[] { V.Component(SubsumedChildRender, key: "subsumed-child") });
+            s_parentStartOther = startOther;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(SubsumedChildRender, key: "subsumed-child"),
+                V.Component(SiblingRender, key: "sibling"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SiblingRender()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_siblingSetTick = setTick;
+            return V.Label(text: "sibling");
         }
 
         [Component(Compiler = false)]

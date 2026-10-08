@@ -12,8 +12,6 @@ namespace Velvet.TestUtilities
     /// </summary>
     internal static class AsyncActionsInFlightTestAccess
     {
-        internal const string CountFieldName = "s_asyncActionsInFlight";
-
         /// <summary>
         /// The reset production runs at subsystem registration, found by that attribute so a rename of the
         /// method cannot leave this resetting nothing.
@@ -32,9 +30,5 @@ namespace Velvet.TestUtilities
         /// </summary>
         // Bypasses: the completion that counts each action out in production.
         internal static void ResetForTest() => FindSubsystemReset()?.Invoke(null, null);
-
-        internal static int CountForTest()
-            => (int)typeof(FiberWorkLoop).GetField(CountFieldName, BindingFlags.Static | BindingFlags.NonPublic)!
-                .GetValue(null);
     }
 }

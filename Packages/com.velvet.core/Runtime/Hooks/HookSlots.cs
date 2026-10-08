@@ -258,11 +258,12 @@ namespace Velvet
             {
                 return;
             }
+            // The in-flight slot's own clear reaches here with its flag already false, so this is never it.
             // A transition settling while any async action is in flight keeps its entries until none is left:
             // the settle is not the last thing the entries wait for, so they move to the slot that stands for
             // the actions in flight and no render is asked for here.
             var inFlight = FiberWorkLoop.AsyncActionsInFlight;
-            if (!ReferenceEquals(this, inFlight) && inFlight.IsPending)
+            if (inFlight.IsPending)
             {
                 foreach (var slot in OptimisticDependents)
                 {

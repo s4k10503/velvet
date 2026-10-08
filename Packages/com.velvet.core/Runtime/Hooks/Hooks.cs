@@ -2215,13 +2215,15 @@ namespace Velvet
         /// <paramref name="applyOptimistic"/>, in the order they were added — so an entry lands on whatever
         /// the authoritative state has become while it is outstanding. An entry added inside a
         /// <c>startTransition</c> callback belongs to the innermost transition open there whose
-        /// <c>isPending</c> is lit, and is discarded when that transition settles, whether or not
+        /// <c>isPending</c> is lit, and is discarded when that transition settles (or, with an async action in
+        /// flight, when none is left), whether or not
         /// <paramref name="passthroughState"/> changed and whether the action succeeded or faulted; one
         /// transition settling leaves another's entries in place. An entry added where no such transition is
         /// open, while an async action is in flight, belongs to the actions in flight together. As in React,
         /// the actions in flight are entangled: a transition that settles while any is in flight hands its
-        /// entries to them, so they are discarded once none is left. An action counts until its task
-        /// completes, whether or not the component that started it is still mounted. A component rendered by the
+        /// entries to them, so they are discarded once none is left. An action counts from its start
+        /// until its task completes, whether or not the component that started it is still mounted, so one
+        /// awaiting a task that never completes holds every later entry. A component rendered by the
         /// Transition-lane drain that lands the last work a transition queued leaves that transition's
         /// entries out of that render. An entry no
         /// render has shown when its owner settles is shown once first. An entry nothing owns is discarded by
