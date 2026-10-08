@@ -23,9 +23,9 @@ namespace Velvet
         // so its '!' is accepted but inert. Returns the input unchanged when no modifier is present.
         //
         // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). Of the
-        // array-scanned subsystem utilities, the font, text-effect and z-* families strip the bang themselves
+        // array-scanned subsystem utilities, the font, text-effect, z-* and gap-* families strip the bang themselves
         // and let an important token win over the element's plain ones (StyleFontClass.TryExtract,
-        // StyleTextEffectClass.Parse, StyleZIndexClass.TryExtract); gap-*/divide-*/shadow-*/clip-path-* do not
+        // StyleTextEffectClass.Parse, StyleZIndexClass.TryExtract, StyleGridClass.ExtractGaps); divide-*/shadow-*/clip-path-* do not
         // recognize the bang at all.
         public static string StripImportant(string className, out bool important)
         {
