@@ -141,7 +141,8 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-        // GREEN_ON_BASE(construction): the test-side family reader is carried onto the base with this fixture;
+        // GREEN_ON_BASE(construction): the test-side family reader is carried onto the base with this fixture, and
+        // the pointer-events family this change adds to the table above does not reach these gate spellings;
         // removing the `excluded` filter makes negated predicates count as accepted families.
         [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
         [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
