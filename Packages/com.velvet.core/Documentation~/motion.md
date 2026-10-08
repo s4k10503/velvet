@@ -511,6 +511,19 @@ outside the declarative Motion/variant tree, and overlapping/parallel tracks (Fr
 relative-offset DSL) -- steps are a strict FIFO queue; two independently-timed tracks need two separate
 `UseAnimationSequence` coordinators.
 
+**A fixed number of passes** is the overload taking `iterations` in place of `loop` -- the Web Animations
+API's `iterations` and CSS's `animation-iteration-count`, so the count includes the first pass and Framer
+Motion's `repeat: 2` is `iterations: 3`. Each pass after the first starts again at step 0, re-committing
+its effect as `loop` does, and `IsComplete` latches once the last pass's last hold elapses, leaving the
+cursor on the last step. `iterations: 0` plays no pass: no step commits, no `Call` fires, and the sequence
+is complete from the start. A negative count throws `ArgumentOutOfRangeException`. A restart plays every
+pass again. A count changed by a re-render reaches a sequence still playing at the end of its current
+pass; a completed one stays complete until it restarts.
+
+An alternate direction (CSS's `animation-direction: alternate`, Framer Motion's `repeatType: "reverse"`)
+is not offered: playing a `Call` step backwards has no settled answer to whether its callback fires
+again, and a `To` step played backwards would need the label before it rather than its own.
+
 ## Transition semantics: a node default a pose overrides
 
 Every variant update on a `V.Motion` rides a `StyleTransitionConfig` — mount enters (`initial` → `animate`),

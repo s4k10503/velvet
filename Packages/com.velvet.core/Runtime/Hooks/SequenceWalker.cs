@@ -23,6 +23,7 @@ namespace Velvet
 
         private IReadOnlyList<AnimationSequenceStep> _steps = Array.Empty<AnimationSequenceStep>();
         private int _stepIndex;
+        private int _passesCompleted;
         private float _elapsedInStepSec;
         private float _currentHoldSec;
         private string? _currentLabel;
@@ -45,6 +46,10 @@ namespace Velvet
         // single-step-loop case, where "next" wraps back to the same index it started from.
         public int Generation => _generation;
 
+        // The passes a reseed plays, counting the first; null plays without end. Read at a reseed, where zero
+        // commits no step, and at each pass's end.
+        public int? Iterations { get; set; } = 1;
+
         // Re-seeds the walker at step 0 and immediately commits its effect. Called once per mount (or deps
         // change) from Hooks.UseAnimationSequence's effect, and again from controls.Restart(). Reentrant-safe:
         // a Call step's own callback invoking this (directly, or via controls.Restart()) while an arrival is
@@ -64,7 +69,7 @@ namespace Velvet
         // index so the caller can diff it against its own re-render trigger. The iteration count is bounded to
         // _steps.Count + 1 so an all-zero-hold loop (with loop: true) cannot spin forever inside one call — it
         // still keeps progressing on every subsequent frame instead.
-        public int Advance(float dt, bool loop)
+        public int Advance(float dt)
         {
             if (_isComplete || _steps.Count == 0)
             {
@@ -79,7 +84,8 @@ namespace Velvet
                 var next = _stepIndex + 1;
                 if (next >= _steps.Count)
                 {
-                    if (!loop)
+                    // A null Iterations compares false, so an endless sequence always wraps.
+                    if (++_passesCompleted >= Iterations)
                     {
                         _isComplete = true;
                         break;
@@ -110,12 +116,17 @@ namespace Velvet
         {
             _steps = steps;
             _stepIndex = 0;
+            _passesCompleted = 0;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
             _currentLabel = null;
             _currentTransition = null;
             _isComplete = _steps.Count == 0;
             WarnAboutUnvalidatedToSteps();
+            if (Iterations == 0)
+            {
+                _isComplete = true;
+            }
             return _isComplete;
         }
 

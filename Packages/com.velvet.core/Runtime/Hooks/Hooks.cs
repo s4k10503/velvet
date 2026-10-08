@@ -1232,6 +1232,38 @@ namespace Velvet
         /// <see cref="AnimationSequenceState.IsComplete"/> never latches.</param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay = true, bool loop = false)
+            => PlayAnimationSequence(steps, deps, autoplay, loop ? (int?)null : 1);
+
+        /// <summary>
+        /// Plays <paramref name="steps"/> as the overload taking <c>loop</c> does, a fixed number of times: the
+        /// Web Animations API's <c>iterations</c> and CSS's <c>animation-iteration-count</c>. Each pass after the
+        /// first starts at step 0 once the last step's hold elapses, and
+        /// <see cref="AnimationSequenceState.IsComplete"/> latches when the last pass's last hold elapses, with
+        /// that pass's last step still current.
+        /// </summary>
+        /// <param name="steps">The ordered sequence. Must not be null.</param>
+        /// <param name="deps">As on the overload taking <c>loop</c>. A restart, from a changed entry here or
+        /// from <c>controls.Restart()</c>, plays every pass again.</param>
+        /// <param name="iterations">The number of passes, counting the first: Framer Motion's <c>repeat: n</c>
+        /// is <c>n + 1</c> here. Zero plays no pass, so no step commits and the sequence is complete from the
+        /// start. A count a re-render changes reaches a sequence still playing at the end of its current pass;
+        /// a completed one stays complete until a restart. Throws
+        /// <see cref="ArgumentOutOfRangeException"/> when negative.</param>
+        /// <param name="autoplay">As on the overload taking <c>loop</c>.</param>
+        public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, int iterations, bool autoplay = true)
+        {
+            if (iterations < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(iterations), iterations,
+                    "A sequence plays zero or more passes; the overload taking loop plays it without end.");
+            }
+            return PlayAnimationSequence(steps, deps, autoplay, iterations);
+        }
+
+        // A null iterations plays without end.
+        private static (AnimationSequenceState state, AnimationSequenceControls controls) PlayAnimationSequence(
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay, int? iterations)
         {
             if (steps == null) throw new ArgumentNullException(nameof(steps));
             var fiber = Resolve("UseAnimationSequence");
@@ -1246,6 +1278,8 @@ namespace Velvet
             if (!IsStrictDiagnosticPass(fiber))
             {
                 latestSteps.Set(steps);
+                // Under the same latest-render rule: the walker reads it at a reseed and at each pass's end.
+                walker.Current.Iterations = iterations;
             }
 
             UseEffect(() =>
@@ -1263,7 +1297,7 @@ namespace Velvet
                     return;
                 }
                 var beforeGeneration = walker.Current.Generation;
-                walker.Current.Advance(dt, loop);
+                walker.Current.Advance(dt);
                 if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete)
                 {
                     bumpRenderVersion.Invoke(v => v + 1);

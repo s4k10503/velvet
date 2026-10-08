@@ -102,7 +102,10 @@ namespace Velvet
         /// <summary>Index into the authored <c>steps</c> array of the step currently holding the cursor.</summary>
         public int StepIndex { get; }
 
-        /// <summary>True once the cursor has advanced past the last step. Never latches true when <c>loop</c> is set.</summary>
+        /// <summary>
+        /// True once the cursor has advanced past the last step of the last pass, and from the start for zero
+        /// <c>iterations</c> or an empty <c>steps</c> list. Under <c>loop</c>, latches only for an empty list.
+        /// </summary>
         public bool IsComplete { get; }
 
         internal AnimationSequenceState(string? currentLabel, StyleTransitionConfig? currentTransition, int stepIndex, bool isComplete)
