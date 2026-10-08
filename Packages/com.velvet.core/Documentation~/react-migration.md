@@ -250,6 +250,10 @@ the field hands focus from its input back to itself (Enter, Shift+Enter in multi
 declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
 field; one written from `refCallback:` is not.
 
+A render changing `maxLength:` while an edit is pending keeps the edit on screen, cut to the new limit,
+and leaves it uncommitted and unreported. When the same render also takes `isDelayed:` off, the cut edit
+is released as above.
+
 ### 2-2. Conditionals and Lists
 
 | React | Velvet | Notes |
