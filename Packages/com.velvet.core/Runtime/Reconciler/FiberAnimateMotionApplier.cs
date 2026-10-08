@@ -107,7 +107,7 @@ namespace Velvet
         {
             if (IsPanMode(spec.Mode) && _ctx.GradientBackgrounds.TryGetValue(element, out var gradient))
             {
-                return StyleAnimateDriver.PanVerticalForAngle(gradient.AngleDeg);
+                return StyleAnimateDriver.PanVerticalForAngle(gradient.Spec.AngleDeg);
             }
             return false;
         }

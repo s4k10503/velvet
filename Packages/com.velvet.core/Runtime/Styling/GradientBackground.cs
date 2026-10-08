@@ -11,6 +11,7 @@ namespace Velvet
     {
         public GradientSpec Spec;
         public int AspectKey;
+        public Texture2D? Texture;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
     }
 
@@ -117,7 +118,7 @@ namespace Velvet
             binding.Spec = spec;
             var size = element.layout.size;
             binding.AspectKey = DependsOnAspect(spec) ? AspectKey(size.x, size.y) : 0;
-            Apply(element, spec, binding.AspectKey);
+            binding.Texture = Apply(element, spec, binding.AspectKey);
             SyncGeometryWatch(element, binding);
         }
 
@@ -151,13 +152,21 @@ namespace Velvet
                     return;
                 }
                 binding.AspectKey = key;
+                // Only while the image is still the one this binding wrote: a className-driven image written
+                // since (bg-[addr:…]) owns the slot, and the patch that wrote it did not touch this binding.
+                // A SceneViewElement's slot may be held by its camera, so it is always written.
+                if (element is not SceneViewElement && element.style.backgroundImage.value.texture != binding.Texture)
+                {
+                    return;
+                }
                 // The image alone: backgroundSize is whatever Apply or a pan mode last set.
-                SceneViewElement.WriteBackground(element, new StyleBackground(GetOrBake(binding.Spec, key)));
+                binding.Texture = GetOrBake(binding.Spec, key);
+                SceneViewElement.WriteBackground(element, new StyleBackground(binding.Texture));
             };
             element.RegisterCallback(binding.OnGeometryChanged);
         }
 
-        public static void Apply(VisualElement element, GradientSpec spec, int aspectKey = 0)
+        public static Texture2D Apply(VisualElement element, GradientSpec spec, int aspectKey = 0)
         {
             var tex = GetOrBake(spec, aspectKey);
             // Through the SceneView ownership gate: a live camera feed keeps the slot and defers
@@ -166,6 +175,7 @@ namespace Velvet
             // Stretch the baked texture to the full element box (no 9-slice); border-radius clips it.
             element.style.backgroundSize = new StyleBackgroundSize(
                 new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
+            return tex;
         }
 
         // Full reset: clears the gradient's background-image AND the backgroundSize it set.

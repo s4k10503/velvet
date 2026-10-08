@@ -93,6 +93,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APanOnAToRightGradient_When_Mounted_Then_ItPansHorizontally()
+        {
+            Mount(_ => GradientBase + " animate-gradient");
+
+            Assert.That(Binding.PanVertical, Is.False);
+        }
+
+        [Test]
+        public void Given_APanOnAToBottomGradient_When_Mounted_Then_ItPansVertically()
+        {
+            Mount(_ => "w-[100px] h-[40px] bg-gradient-to-b to-blue-500 animate-gradient");
+
+            Assert.That(Binding.PanVertical, Is.True);
+        }
+
+        [Test]
         public void Given_ModeChangedOnPatch_When_Drained_Then_BindingRestartsWithNewMode()
         {
             Mount(s => GradientBase + (s == 0 ? " animate-gradient" : " animate-hue"));

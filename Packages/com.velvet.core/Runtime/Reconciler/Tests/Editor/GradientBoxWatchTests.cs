@@ -48,7 +48,6 @@ namespace Velvet.Tests
             Assert.That(BackgroundOf(scope.Root[0]), Is.Not.SameAs(square));
         }
 
-        // GREEN_ON_BASE(characterization): the base never bakes again, so a size change keeps its texture there too.
         [Test]
         public void Given_ADiagonalGradient_When_ItsBoxChangesSizeAtTheSameAspect_Then_TheBackgroundIsKept()
         {
@@ -65,7 +64,6 @@ namespace Velvet.Tests
             Assert.That(BackgroundOf(scope.Root[0]), Is.SameAs(wide));
         }
 
-        // GREEN_ON_BASE(characterization): the base bakes one texture per spec, so two elements share it there too.
         [Test]
         public void Given_TwoDiagonalGradientsOfOneAspect_When_Laid_Out_Then_TheyShareATexture()
         {
@@ -243,6 +241,122 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((watchedBefore, binding.OnGeometryChanged != null), Is.EqualTo((true, false)));
+        }
+
+        // After a drop, a layout at another aspect must leave the background as the drop left it.
+
+        private static Texture2D LaidOutAfter(VisualElement element)
+        {
+            LayOut(element, 200f, 100f);
+            return BackgroundOf(element);
+        }
+
+        [Test]
+        public void Given_ADiagonalGradient_When_PatchedToOneAlongAnAxis_Then_ALaterLayoutLeavesItsBackground()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: Diagonal) };
+            Mount(scope, oldTree);
+            scope.Reconciler.Reconcile(scope.Root, oldTree, new VNode[] { V.Div(className: AlongAnAxis) });
+            var element = scope.Root[0];
+            var before = BackgroundOf(element);
+
+            // Act
+            var after = LaidOutAfter(element);
+
+            // Assert
+            Assert.That(after, Is.SameAs(before));
+        }
+
+        [Test]
+        public void Given_ADiagonalGradient_When_ItsGradientClassesAreRemoved_Then_ALaterLayoutLeavesItsBackground()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: Diagonal) };
+            Mount(scope, oldTree);
+            scope.Reconciler.Reconcile(scope.Root, oldTree, new VNode[] { V.Div(className: "p-2") });
+            var element = scope.Root[0];
+            var before = BackgroundOf(element);
+
+            // Act
+            var after = LaidOutAfter(element);
+
+            // Assert
+            Assert.That(after, Is.SameAs(before));
+        }
+
+        [Test]
+        public void Given_ADiagonalGradient_When_SkewTakesItOver_Then_ALaterLayoutLeavesItsBackground()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: Diagonal) };
+            Mount(scope, oldTree);
+            scope.Reconciler.Reconcile(scope.Root, oldTree, new VNode[] { V.Div(className: "-skew-x-6 " + Diagonal) });
+            var element = scope.Root[0];
+            var before = BackgroundOf(element);
+
+            // Act
+            var after = LaidOutAfter(element);
+
+            // Assert
+            Assert.That(after, Is.SameAs(before));
+        }
+
+        [Test]
+        public void Given_ADiagonalGradient_When_TheElementIsReleased_Then_ALaterLayoutLeavesItsBackground()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: Diagonal) };
+            Mount(scope, oldTree);
+            var element = scope.Root[0];
+            scope.Reconciler.Reconcile(scope.Root, oldTree, Array.Empty<VNode>());
+            var before = BackgroundOf(element);
+
+            // Act
+            var after = LaidOutAfter(element);
+
+            // Assert
+            Assert.That(after, Is.SameAs(before));
+        }
+
+        [Test]
+        public void Given_ADiagonalGradient_When_TheReconcilerIsDisposed_Then_ALaterLayoutLeavesItsBackground()
+        {
+            // Arrange
+            var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: Diagonal) });
+            var element = scope.Root[0];
+            scope.Dispose();
+            var before = BackgroundOf(element);
+
+            // Act
+            var after = LaidOutAfter(element);
+
+            // Assert
+            Assert.That(after, Is.SameAs(before));
+        }
+
+        [Test]
+        public void Given_ABackgroundWrittenAfterTheGradient_When_TheBoxChangesAspect_Then_ItIsKept()
+        {
+            // Arrange — another writer (a className-driven image) took the slot after the gradient bound.
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: Diagonal) });
+            var element = scope.Root[0];
+            var other = new Texture2D(2, 2);
+            element.style.backgroundImage = new StyleBackground(other);
+
+            // Act
+            LayOut(element, 200f, 100f);
+            var kept = BackgroundOf(element);
+            UnityEngine.Object.DestroyImmediate(other);
+
+            // Assert
+            Assert.That(kept, Is.SameAs(other));
         }
     }
 }

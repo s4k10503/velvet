@@ -83,8 +83,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ARadialAtTheTopMiddle_When_Baked_Then_TheTopRightCornerIsOnTheFarthestCornerEllipse()
         {
-            // Act — the ellipse through the bottom corners has half the width of the box at its centre line
-            // and the full height: the top-right corner is at 1 / sqrt 2 of the way out.
+            // Act — the ellipse through the bottom corners has semi-axes of sqrt 2 times the farthest side
+            // (0.71 of the width, 1.41 of the height): the top-right corner is at 1 / sqrt 2 of the way out.
             var red = BakedRed("bg-radial-[at_top]", 1f, 127, 127);
 
             // Assert
