@@ -538,14 +538,20 @@ namespace Velvet
             return true;
         }
 
-        // The fraction families (w-1/2, h-2/3, size-3/4, left-1/2, inset-x-1/4) resolve to an inline percent.
-        // Only a position offset takes a sign (-left-1/2), as in Tailwind.
+        // The fraction families (w-1/2, min-h-1/3, basis-3/4, left-1/2, inset-x-1/4) resolve to an inline percent,
+        // for any a/b of non-negative integers as in Tailwind (left-3/2 is 150%). Only a position offset takes a
+        // sign (-left-1/2) and a `full` keyword (left-full, -left-full), as in Tailwind.
         // The inset-x-/inset-y- rows precede inset-, because the first row whose prefix matches decides.
-        private static readonly (string Prefix, ArbitraryProperty Property, bool Signed)[] s_fractionFamilies =
+        private static readonly (string Prefix, ArbitraryProperty Property, bool Position)[] s_fractionFamilies =
         {
             ("w-", ArbitraryProperty.Width, false),
             ("h-", ArbitraryProperty.Height, false),
             ("size-", ArbitraryProperty.Size, false),
+            ("min-w-", ArbitraryProperty.MinWidth, false),
+            ("min-h-", ArbitraryProperty.MinHeight, false),
+            ("max-w-", ArbitraryProperty.MaxWidth, false),
+            ("max-h-", ArbitraryProperty.MaxHeight, false),
+            ("basis-", ArbitraryProperty.FlexBasis, false),
             ("top-", ArbitraryProperty.Top, true),
             ("right-", ArbitraryProperty.Right, true),
             ("bottom-", ArbitraryProperty.Bottom, true),
@@ -564,18 +570,41 @@ namespace Velvet
             {
                 if (body.StartsWith(s_fractionFamilies[i].Prefix.AsSpan()))
                 {
-                    return negate && !s_fractionFamilies[i].Signed ? -1 : i;
+                    return negate && !s_fractionFamilies[i].Position ? -1 : i;
                 }
             }
             return -1;
         }
 
-        // MUTANT_SURVIVES(equivalent): the boundary moves only a token opening with '/'.
-        // FractionFamilyOf declines that token either way, since every family prefix opens with a letter.
-        private static bool IsFractionToken(string cls) => cls.IndexOf('/') >= 0 && FractionFamilyOf(cls) >= 0;
+        // The sizing `*-full` classes are USS rules, so only a position family's `full` is claimed here.
+        private static bool IsFractionToken(string cls)
+        {
+            var family = FractionFamilyOf(cls);
+            return family >= 0
+                && (cls.IndexOf('/') >= 0
+                    || (s_fractionFamilies[family].Position && cls.EndsWith("-full", StringComparison.Ordinal)));
+        }
 
-        // Only the denominators 2/3/4/5/6/12 with a numerator in 1..d-1 are accepted; anything else does not
-        // parse.
+        // Digits only with no sign or leading zero, as Tailwind's isPositiveInteger reads a fraction's halves.
+        private static bool TryParseFractionPart(string text, out int value)
+        {
+            value = 0;
+            if (text.Length == 0 || text.Length > 9 || (text.Length > 1 && text[0] == '0'))
+            {
+                return false;
+            }
+            for (var i = 0; i < text.Length; i++)
+            {
+                if (text[i] < '0' || text[i] > '9')
+                {
+                    return false;
+                }
+                value = value * 10 + (text[i] - '0');
+            }
+            return true;
+        }
+
+        // A zero denominator does not parse: no percent stands for it.
         private static bool TryParseFraction(string className, out ArbitraryStyle result)
         {
             result = default;
@@ -584,28 +613,26 @@ namespace Velvet
             {
                 return false;
             }
-            var (prefix, property, _) = s_fractionFamilies[family];
+            var (prefix, property, position) = s_fractionFamilies[family];
             var negate = className[0] == '-';
             var frac = className.Substring((negate ? 1 : 0) + prefix.Length);
-            var slash = frac.IndexOf('/');
-            if (slash <= 0 || slash >= frac.Length - 1)
+            float percent;
+            if (position && frac == "full")
             {
-                return false;
+                percent = 100f;
             }
-            if (!int.TryParse(frac.Substring(0, slash), out var n)
-                || !int.TryParse(frac.Substring(slash + 1), out var d))
+            else
             {
-                return false;
+                var slash = frac.IndexOf('/');
+                if (slash < 0
+                    || !TryParseFractionPart(frac.Substring(0, slash), out var n)
+                    || !TryParseFractionPart(frac.Substring(slash + 1), out var d)
+                    || d == 0)
+                {
+                    return false;
+                }
+                percent = 100f * n / d;
             }
-            if (d != 2 && d != 3 && d != 4 && d != 5 && d != 6 && d != 12)
-            {
-                return false;
-            }
-            if (n < 1 || n >= d)
-            {
-                return false;
-            }
-            var percent = 100f * n / d;
             result = new ArbitraryStyle(property, negate ? -percent : percent, LengthUnit.Percent);
             return true;
         }

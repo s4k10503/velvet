@@ -2444,13 +2444,6 @@ namespace Velvet.Tests
             Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("w-1/2"), Is.True);
         }
 
-        [Test]
-        public void Given_NonTailwindDenominator_When_Parsed_Then_NotResolved()
-        {
-            // 7 is not an accepted sizing denominator (2/3/4/5/6/12 only), so w-1/7 does not resolve.
-            Assert.That(StyleArbitraryValueResolver.TryParse("w-1/7", out _), Is.False);
-        }
-
         static readonly object[] PositionFractionCases =
         {
             // Given_LeftHalfFraction_When_Parsed_Then_ResolvesLeftFiftyPercent
@@ -2482,6 +2475,109 @@ namespace Velvet.Tests
             // Given_NegatedInsetYThreeQuartersFraction_When_Parsed_Then_ResolvesNegativeSeventyFivePercent
             new object[] { "-inset-y-3/4", ArbitraryProperty.InsetY, -75f },
         };
+
+        static readonly object[] WideFractionCases =
+        {
+            // Given_WidthSeventhFraction_When_Parsed_Then_ResolvesFromSeven
+            new object[] { "w-1/7", ArbitraryProperty.Width, 100f / 7f },
+            // Given_HeightEighthFraction_When_Parsed_Then_ResolvesFromEight
+            new object[] { "h-7/8", ArbitraryProperty.Height, 87.5f },
+            // Given_SizeTwentyFourthFraction_When_Parsed_Then_ResolvesFromTwentyFour
+            new object[] { "size-5/24", ArbitraryProperty.Size, 500f / 24f },
+            // Given_MinWidthHalfFraction_When_Parsed_Then_ResolvesMinWidthFiftyPercent
+            new object[] { "min-w-1/2", ArbitraryProperty.MinWidth, 50f },
+            // Given_MinHeightThirdFraction_When_Parsed_Then_ResolvesMinHeightPercent
+            new object[] { "min-h-1/3", ArbitraryProperty.MinHeight, 100f / 3f },
+            // Given_MaxWidthQuarterFraction_When_Parsed_Then_ResolvesMaxWidthTwentyFivePercent
+            new object[] { "max-w-1/4", ArbitraryProperty.MaxWidth, 25f },
+            // Given_MaxHeightThreeQuartersFraction_When_Parsed_Then_ResolvesMaxHeightSeventyFivePercent
+            new object[] { "max-h-3/4", ArbitraryProperty.MaxHeight, 75f },
+            // Given_BasisThreeQuartersFraction_When_Parsed_Then_ResolvesFlexBasisSeventyFivePercent
+            new object[] { "basis-3/4", ArbitraryProperty.FlexBasis, 75f },
+            // Given_LeftEighthFraction_When_Parsed_Then_ResolvesFromEight
+            new object[] { "left-1/8", ArbitraryProperty.Left, 12.5f },
+            // Given_TopSevenTwelfthsFraction_When_Parsed_Then_ResolvesFromTwelve
+            new object[] { "top-7/12", ArbitraryProperty.Top, 700f / 12f },
+            // Given_ImproperLeftFraction_When_Parsed_Then_ResolvesAboveOneHundredPercent
+            new object[] { "left-3/2", ArbitraryProperty.Left, 150f },
+            // Given_NegatedImproperLeftFraction_When_Parsed_Then_ResolvesBelowMinusOneHundredPercent
+            new object[] { "-left-3/2", ArbitraryProperty.Left, -150f },
+            // Given_ZeroNumeratorFraction_When_Parsed_Then_ResolvesZeroPercent
+            new object[] { "left-0/5", ArbitraryProperty.Left, 0f },
+            // Given_TopFull_When_Parsed_Then_ResolvesOneHundredPercent
+            new object[] { "top-full", ArbitraryProperty.Top, 100f },
+            // Given_NegatedTopFull_When_Parsed_Then_ResolvesMinusOneHundredPercent
+            new object[] { "-top-full", ArbitraryProperty.Top, -100f },
+            // Given_InsetFull_When_Parsed_Then_ResolvesInsetOneHundredPercent
+            new object[] { "inset-full", ArbitraryProperty.Inset, 100f },
+            // Given_InsetXFull_When_Parsed_Then_ResolvesInsetXRatherThanInset
+            new object[] { "inset-x-full", ArbitraryProperty.InsetX, 100f },
+            // Given_NegatedInsetYFull_When_Parsed_Then_ResolvesInsetYMinusOneHundredPercent
+            new object[] { "-inset-y-full", ArbitraryProperty.InsetY, -100f },
+        };
+
+        [TestCaseSource(nameof(WideFractionCases))]
+        public void Given_FractionOutsideTheSizingDenominators_When_Parsed_Then_ResolvesLikeTailwind(
+            string className, object property, float percent)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
+
+            // Assert — a declined parse reads as (false, default) and fails the same comparison.
+            Assert.That((ok, s.Property, s.Unit, Mathf.Abs(s.Value - percent) < 1e-3f),
+                Is.EqualTo((true, (ArbitraryProperty)property, LengthUnit.Percent, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's fixed denominator set already declines each of these.
+        // The widened grammar admits any digits, so dropping a digit rule or the zero-denominator rule reddens one.
+        // Tailwind reads each half through isPositiveInteger, which refuses a sign, a leading zero, a fraction,
+        // a non-digit and an empty half; a zero denominator has no percent to stand for it.
+        [TestCase("left-1/0")]
+        [TestCase("left-01/2")]
+        [TestCase("left-+1/2")]
+        [TestCase("left-1.5/2")]
+        [TestCase("left-a/b")]
+        [TestCase("left-1/")]
+        [TestCase("left-/2")]
+        [TestCase("left-1/2/3")]
+        [TestCase("w-1/0")]
+        [TestCase("min-w-1/")]
+        public void Given_MalformedFraction_When_Parsed_Then_NotResolved(string className)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the sizing `*-full` classes are USS rules, so neither the gate nor
+        // the parser claims them; widening the `full` keyword to the sizing rows reddens this.
+        [TestCase("w-full")]
+        [TestCase("min-w-full")]
+        [TestCase("-w-full")]
+        public void Given_SizingFull_When_ParsedAndGated_Then_NeitherClaimsIt(string className)
+        {
+            // Act
+            var claimed = StyleArbitraryValueResolver.MayBeStaticScale(className);
+            var parsed = StyleArbitraryValueResolver.TryParse(className, out _);
+
+            // Assert
+            Assert.That((claimed, parsed), Is.EqualTo((false, false)));
+        }
+
+        [TestCase("-top-full")]
+        [TestCase("inset-x-full")]
+        [TestCase("min-h-1/3")]
+        [TestCase("basis-3/4")]
+        public void Given_FullOrWideFraction_When_DispatchGateChecked_Then_ClaimedAsStaticScale(string className)
+        {
+            // Act
+            var claimed = StyleArbitraryValueResolver.MayBeStaticScale(className);
+
+            // Assert
+            Assert.That(claimed, Is.True);
+        }
 
         [TestCaseSource(nameof(PositionFractionCases))]
         public void Given_PositionFraction_When_Parsed_Then_ResolvesAPercentOfTheContainingBlock(
