@@ -265,16 +265,16 @@ namespace Velvet
 
         // Turning multiline on puts the field's value back on screen, which on a delayed field holding an
         // uncommitted edit replaces the typed text with the value it has not received yet. So the shown text
-        // is carried across the write when it is not the value as a single-line field shows it — and only
-        // then, since the value is what brings back line breaks and characters the single-line display left
-        // out. That display drops the breaks and then cuts to maxLength; TextFieldMultilineKeyboardPropTests
-        // holds the carry, the breaks and the cut.
+        // is carried across the write when it differs from SingleLineDisplay — and only then, since the value
+        // is what brings back line breaks and characters the single-line display left out.
+        // SingleLineDisplay is what ApplyFieldValue's silent value write leaves on a single-line field. A
+        // write that changes the limit leaves the value cut with its breaks still in it instead: where a break
+        // survives the cut, that differs and is carried, and it is the text the restore would have written.
+        // TextFieldMultilineEngineTests pins the limit write's form, and TextFieldMultilineKeyboardPropTests
+        // the value write's and the restore.
         // The silent setter, because the carried text is not a new edit.
         private static void WriteMultiline(TextField field, bool value)
         {
-            // MUTANT_SURVIVES(equivalent, clause removed): a field that is not delayed puts each edit into
-            // its value as it is made, so its shown text is the single-line display of that value and the
-            // comparison below finds nothing to carry.
             if (!value || !field.isDelayed)
             {
                 field.multiline = value;

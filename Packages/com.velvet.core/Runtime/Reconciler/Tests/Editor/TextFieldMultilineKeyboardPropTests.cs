@@ -315,16 +315,18 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADelayedFieldWithNoEditWhoseValueIsCutByItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheValueUpToTheLimit()
+        public void Given_ADelayedFieldWithNoEditWhoseValueArrivedAfterItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheValueUpToTheLimit()
         {
-            // Arrange — the single-line display drops the break and then cuts to three characters, so it shows
-            // "abc" with no edit pending, and the multi-line one keeps the break inside those three.
+            // Arrange — the value arrives in a render of its own because a mount writes the value ahead of the
+            // limit, and that order shows the form TextFieldMultilineEngineTests pins for a limit written last.
+            var mountTree = new VNode[] { V.TextField(value: "x", maxLength: 3, isDelayed: true) };
             var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true) };
             var newTree = new VNode[]
             {
                 V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
             };
-            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mountTree);
+            Reconciler.Reconcile(Root, mountTree, oldTree);
             var element = (TextField)Root!.ElementAt(0);
             var whileSingleLine = ((TextElement)element.textEdition).text;
 
@@ -335,6 +337,28 @@ namespace Velvet.Tests
             Assert.That(
                 (whileSingleLine, ((TextElement)element.textEdition).text),
                 Is.EqualTo(("abc", "a\nb")));
+        }
+
+        [Test]
+        public void Given_AFieldThatIsNotDelayedWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValueUpToTheLimit()
+        {
+            // Arrange — turning multiline off drops the break from the multi-line display, which leaves the
+            // shown text in neither form SingleLineDisplay or a limit write produces.
+            var multilineTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: true) };
+            var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: false) };
+            var newTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), multilineTree);
+            Reconciler.Reconcile(Root, multilineTree, oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var whileSingleLine = ((TextElement)element.textEdition).text;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the single-line reading is folded in because the case is about what that display showed.
+            Assert.That(
+                (whileSingleLine, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("ab", "a\nb")));
         }
 
         [Test]
