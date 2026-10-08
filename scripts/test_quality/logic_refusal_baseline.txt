@@ -56,4 +56,4 @@ Packages/com.velvet.core/Runtime/Styling/StyleTextEffectResolver.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleTransformValueParser.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleUtilityProperties.g.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleVariantPayload.cs	6
-Packages/com.velvet.core/Runtime/Styling/VelvetFonts.cs	3
+Packages/com.velvet.core/Runtime/Styling/VelvetFonts.cs	5
