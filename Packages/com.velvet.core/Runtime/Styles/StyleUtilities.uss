@@ -8,6 +8,7 @@
  * properties they share. BundledStyleSheetOrderTests enforces this and names the exemptions.
  */
 
+@import url("_preflight.uss");
 @import url("_tokens.uss");
 @import url("_palette.uss");
 @import url("_layout.uss");

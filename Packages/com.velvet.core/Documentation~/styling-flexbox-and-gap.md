@@ -334,33 +334,44 @@ spells it, and the percent form especially would otherwise read as a factor of f
 `basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
 two divide what is left over after every sibling's basis is taken.
 
-## A `Label`'s own margin, padding and shrink
+## A text item's margin, padding, wrapping and minimum size
 
-Tailwind v4's preflight zeroes every element's margin and padding. Velvet ships no equivalent: its
-sheets set a `Label`'s margin, padding or `flex-shrink` only through a utility class on it. A `V.Text`
-takes no class, and a `V.Label` given none of those utilities keeps what UI Toolkit's defaults and the
-panel's theme give it. To have the three come from utilities alone, reset them under a class your own
-labels carry:
+**Margin, padding, wrapping and shrinking.** Tailwind v4's preflight zeroes every element's margin and padding,
+and CSS starts every element at `flex-shrink: 1` and, `white-space` being inherited, at its parent's. Velvet's
+`_preflight.uss` does it for the `Label` that a `V.Label`, a `V.Text` or `V.Custom<Label>` creates, by the
+class `velvet-label` those labels carry, and gives them all four values (`white-space: unset`, which takes
+the parent's, so a `whitespace-nowrap` on an ancestor still reaches the label). The sheet is imported ahead of every
+utility, so a `p-*`, `m-*`, `whitespace-*` or `shrink-*` on the label ties with it on specificity and wins on
+order. A label therefore wraps (unless an ancestor says otherwise) and shrinks by default, where a theme may
+have given it `nowrap` and `flex-shrink: 0`. A `Button` Velvet creates gets the white-space rule alone (class
+`velvet-button`), so its text wraps like a button's in CSS and keeps the theme's spacing. A label centred in a box therefore sits on the
+box's centre. A `Label` UI Toolkit builds inside its own control (a `V.TextField`'s label, a `V.Toggle`'s)
+and a `Button` keep the spacing the theme gives them, as an `<input>`'s label does on the web, where it is
+author markup.
 
-```css
-.label-reset { margin: 0; padding: 0; flex-shrink: 0; }
-```
+**Minimum size.** A CSS flex item cannot shrink below its content-based minimum size along the
+container's main axis (CSS Flexbox §4.5): its min-content size, capped by its definite preferred size on
+that axis, then by its maximum size. Velvet writes that value inline, as `min-width` in a row and
+`min-height` in a column, on every `Label` and `Button` it creates:
 
-```csharp
-V.Label(className: "label-reset text-4xl", text: "42");
-```
+- a row's min-content width is the widest run of text with no break opportunity in it: spaces
+  separate runs (a no-break space does not), a hyphen between letters ends one, and each ideograph,
+  kana or Hangul syllable is its own, bar closing punctuation sticking to the character before it. Under
+  `whitespace-nowrap` and `whitespace-pre` it is the whole text;
+- a column's min-content height is the height the text takes at the width the item was given;
+- the item's own padding and border on that axis is added to either.
 
-Writing the same rule against `.unity-label`, the class a `Label` is constructed with
-(`Label.ussClassName`), reaches every element carrying that class instead: a `V.Text`, and any `Label`
-UI Toolkit builds inside its own controls. Leave `flex-shrink: 0` out of a rule that reaches a `truncate`
-label in a `flex-row`: the label keeps its full width, and the ellipsis never shows.
+A declared `w-*` / `h-*` / `size-*` (class, bracket or inline) caps the minimum at that size, and a
+`max-w-*` / `max-h-*` caps it at the maximum; `w-fit`, `w-min`, `w-max` and `w-auto` declare no definite
+size and cap nothing. The `flex-shrink: 0` a reset rule for centred labels used to carry is replaced by this: a label in a row
+still wraps at its widest run instead of refusing to shrink, and one in a column cannot be squeezed below its
+text.
 
-`.label-reset` has the same specificity as a utility class, so nothing in the selectors keeps a `p-*`,
-`m-*` or `shrink-*` on the same label ahead of it, and the theme's `.unity-label` ties with it the same
-way. Attach the reset before Velvet's sheet, the reverse of a token override in
-[styling-variants.md](styling-variants.md#theme-the-dark-variant-and-the-token-set-beside-it): add it to
-the root's `styleSheets` before `VelvetStyleUtilities.AttachTo` runs there, since attaching Velvet's
-sheet again does not move it ([setup.md](setup.md#the-supported-path)). Then check both sides: a label
-carrying `label-reset p-2` still has its padding, and one carrying `label-reset` alone has lost whatever
-the theme gave it. A bracket value such as `p-[8px]` is inline style ([setup.md](setup.md)) and is not part
-of either tie.
+The item keeps whatever its cascade gives it when it is clipped (`overflow-hidden`, `truncate`), declares
+its own `min-w-*` / `min-h-*` on that axis, sits in a `grid` column, has children, or is
+absolutely positioned or hidden. A clipped item and a grid item have an automatic minimum of zero in CSS.
+
+Not covered: a minimum the theme or a stylesheet of your own declares on a label is not seen, and the
+automatic minimum is the inline value, so an element carrying a `transition-all` animates it. The widest
+run is searched among the 64 longest distinct runs of a text, and a variant that lights `min-w-*`, `h-*`
+or `overflow-hidden` outside a patch is read at the label's next patch.
