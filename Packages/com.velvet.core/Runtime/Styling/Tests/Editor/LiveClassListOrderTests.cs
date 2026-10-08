@@ -216,10 +216,6 @@ namespace Velvet.Tests
             return string.Join(" ", names);
         }
 
-        // GREEN_ON_BASE(construction): this branch only removes the text-balance width reader from the roster, so both sides here are the repository's own content — the runtime
-        // assembly's IL and the verdicts this fixture's own cases declare. The two therefore agree on a
-        // base run, which cannot separate them. Add an `element.GetClasses()` call to a production method
-        // that holds none and this case reddens.
         [Test]
         public void Given_TheRuntimeAssembly_When_ItsBodiesAreReadForLiveClassListEnumerations_Then_EveryMethodHoldingOneHasACaseDeclaringItsVerdict()
         {
@@ -315,10 +311,6 @@ namespace Velvet.Tests
                 + "live-class-list stand-in stops being confined to the layout gates");
         }
 
-        // GREEN_ON_BASE(characterization): this branch only removes the text-balance width reader from the roster, so the base already hands the array to these four and no others.
-        // What shows the case can fail is a fifth applier beside them — measured with an
-        // `ApplyRingManipulator` driving `StyleRingClass.TryExtract`, whose last-wins `ring-*` reading then
-        // rides on the stand-in array with every other case in this fixture still green.
         [Test]
         public void Given_TheDispatcherTheReSyncHandsItsStandInClassArrayTo_When_ItsCalleesAreReadFromTheIL_Then_TheyAreTheReadingsListedHere()
         {
