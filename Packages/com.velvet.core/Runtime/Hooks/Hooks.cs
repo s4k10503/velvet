@@ -1262,7 +1262,7 @@ namespace Velvet
         /// Animations API's <c>updateTiming</c> does: a count no higher than the passes already finished completes
         /// the sequence at the next frame, showing the end state a normal completion holds (the last step
         /// current, no skipped <c>Call</c> run), and a count above them
-        /// resumes a completed sequence at the next pass's step 0. Throws
+        /// resumes a completed sequence after the repeat gap, at the next pass's step 0. Throws
         /// <see cref="ArgumentOutOfRangeException"/> when negative.</param>
         /// <param name="autoplay">As on the overload taking <c>loop</c>.</param>
         /// <param name="repeatDelaySec">Seconds the cursor waits on the last step between one pass and the next,

@@ -168,26 +168,27 @@ namespace Velvet
 
         // A count lowered mid-pass shows the state a normal completion holds: the cursor on the last step, the
         // label and transition the To steps leave, folded as Arrive folds them, and the time a completion reads,
-        // Iterations passes of the steps' holds with a repeat gap between each, each pass costed as the first is: a
-        // later pass whose first To step names no transition would carry the previous pass's. No Call callback runs
-        // and an Await step holds for no time. Zero passes commit nothing, so a count lowered to zero leaves the cursor
+        // Iterations passes of the steps' holds with a repeat gap between each. No Call callback runs and an
+        // Await step holds for no time. Zero passes commit nothing, so a count lowered to zero leaves the cursor
         // and label as they are and reads time 0.
         private void AdoptEndState()
         {
             string? label = null;
             StyleTransitionConfig? transition = null;
-            double passSec = 0;
-            for (var i = 0; i < _steps.Count; i++)
-            {
-                if (_steps[i].Kind == AnimationSequenceStepKind.To)
-                {
-                    label = _steps[i].Label;
-                    transition = _steps[i].Transition ?? transition ?? StyleTransition.Fade;
-                }
-                passSec += HoldOf(_steps[i], transition);
-            }
+            var firstPassSec = SimulatePass(ref transition, ref label);
             var passes = Iterations ?? 0;
-            _timeBeforeStepSec = passes == 0 ? 0 : passes * passSec + (passes - 1) * (double)RepeatDelaySec;
+            // The transition a pass leaves is the same from the second pass on, so a second pass costed from the
+            // first's carry stands for every later one.
+            var laterPassSec = firstPassSec;
+            if (passes > 1)
+            {
+                var carry = transition;
+                string? laterLabel = null;
+                laterPassSec = SimulatePass(ref carry, ref laterLabel);
+            }
+            _timeBeforeStepSec = passes == 0
+                ? 0
+                : firstPassSec + (passes - 1) * (laterPassSec + (double)RepeatDelaySec);
             if (passes == 0)
             {
                 return;
@@ -197,8 +198,27 @@ namespace Velvet
             _currentTransition = transition;
         }
 
-        // The frame after a raised count, not the render that raised it: the next pass starts at step 0, and
-        // the time since the sequence completed does not count toward it.
+        // The holds of one pass from `carry`, the transition the cursor brings to its first step, folding the label
+        // and transition each To step leaves as Arrive does.
+        private double SimulatePass(ref StyleTransitionConfig? carry, ref string? label)
+        {
+            double passSec = 0;
+            for (var i = 0; i < _steps.Count; i++)
+            {
+                if (_steps[i].Kind == AnimationSequenceStepKind.To)
+                {
+                    label = _steps[i].Label;
+                    carry = _steps[i].Transition ?? carry ?? StyleTransition.Fade;
+                }
+                passSec += HoldOf(_steps[i], carry);
+            }
+            return passSec;
+        }
+
+        // The frame after a raised count, not the render that raised it, and the time since the sequence completed
+        // does not count toward what follows. A pass already played is followed by the repeat gap before the next
+        // starts at step 0, as between any two passes; a sequence that played none, completed by a count of zero,
+        // starts at step 0 at once.
         private void ResumeIfPassesRemain()
         {
             if (!PassesRemain)
@@ -207,6 +227,12 @@ namespace Velvet
             }
             _isComplete = false;
             _elapsedInStepSec = 0f;
+            if (_passesCompleted > 0 && RepeatDelaySec > 0f)
+            {
+                _inRepeatGap = true;
+                _currentHoldSec = RepeatDelaySec;
+                return;
+            }
             ArriveAtStart(0);
         }
 

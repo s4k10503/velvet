@@ -353,7 +353,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALoweredFinishInsideAGapThenARaisedCount_When_TheResumedFirstHoldElapses_Then_TheCursorMovesToStepOne()
+        public void Given_ALoweredFinishInsideAGapThenARaisedCount_When_TheGapAndPartOfTheNextPassHaveElapsed_Then_TheCursorIsBackAtStepZero()
         {
             // Arrange — lowered at 0.24s inside the gap spanning 0.2s to 0.4s, then raised again.
             s_steps = TwoLabels();
@@ -369,11 +369,56 @@ namespace Velvet.Tests
             s_rerender();
             _mounted.FlushStateForTest();
 
-            // Act — the first tick resumes at step 0, and 0.16s more passes its 0.1s hold.
-            AdvancePast(0.15f);
+            // Act — the first tick resumes into a 0.2s gap and 0.256s more is 0.056s into the pass after it; with
+            // no gap the cursor would be in the gap that follows the resumed pass, on step 1.
+            AdvancePast(0.24f);
 
             // Assert
-            Assert.That(s_state.StepIndex, Is.EqualTo(1));
+            Assert.That(s_state.StepIndex, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_TwoIterationsWithAGapThatCompleted_When_TheCountIsRaisedToThree_Then_TimeSecIsThreePassesAndTwoGaps()
+        {
+            // Arrange — the two passes end at 0.6s.
+            s_steps = TwoLabels();
+            s_iterations = 2;
+            s_repeatDelaySec = 0.2f;
+            Mount();
+            AdvancePast(1f);
+            s_iterations = 3;
+            s_rerender();
+            _mounted.FlushStateForTest();
+
+            // Act — long enough to finish the third pass at 1.0s, a gap after the second pass included.
+            AdvancePast(2f);
+
+            // Assert
+            Assert.That(s_controls.TimeSec, Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ThreeIterationsWhoseSecondPassInheritsALongerTransition_When_TheCountIsLoweredToTwoInTheThirdPass_Then_TimeSecIsTheTwoPassesPlayed()
+        {
+            // Arrange — the first To step names no transition: the first pass holds it for Fade's 0.2s and the
+            // second for the 0.3s the first pass left, so the passes take 0.5s and 0.6s and the third starts at 1.1s.
+            s_steps = new[]
+            {
+                AnimationSequenceStep.To("a"),
+                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 0.3f }),
+            };
+            s_iterations = 3;
+            Mount();
+            AdvancePast(1.1f);
+            s_iterations = 2;
+            s_rerender();
+            _mounted.FlushStateForTest();
+
+            // Act — the count was lowered at 1.12s, 0.02s into the third pass.
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_controls.TimeSec, Is.EqualTo(1.1f).Within(1e-3f));
         }
 
         [Test]
