@@ -355,6 +355,54 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "abc", string.Empty)));
         }
 
+        // Zero is a length to cut to, where -1 is no limit. The committed value is "xy" so the cut edit
+        // still differs from it and reads as uncommitted.
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderSetsMaxLengthToZero_Then_TheEditIsCutToNothingAndStaysUncommitted()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 10) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 0) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            element.SimulateChange("xy");
+            ((TextElement)element.textEdition).text = "abc";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the cut edit is not the committed text.
+            Assert.That((element.text, element.value), Is.EqualTo((string.Empty, "xy")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base registers no shown-text callback, so nothing accumulates
+        // there either. It pins that the branch's removal unregisters the one it registers.
+        // Each tenancy that records the shown text registers a change callback on the field, so a removal
+        // that left the previous one registered would add one per tenancy. The count is read after each
+        // unmount rather than against a constant, so callbacks the element carries for other reasons
+        // cancel out.
+        [Test]
+        public void Given_ARecycledDelayedField_When_ASecondTenancyRecordsAndUnmounts_Then_ItHoldsNoMoreCallbacksThanAfterTheFirst()
+        {
+            // Arrange
+            var tree = new VNode[] { V.TextField(isDelayed: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+            var firstElement = (TextField)Root!.ElementAt(0);
+            Reconciler.Reconcile(Root, tree, Array.Empty<VNode>());
+            var afterFirst = CallbackRegistryProbe.BubbleUpCallbackCount(firstElement);
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+            var secondElement = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, tree, Array.Empty<VNode>());
+
+            // Assert — the instance is folded in: a fresh one would not be the recycled field.
+            Assert.That(
+                (ReferenceEquals(secondElement, firstElement),
+                    CallbackRegistryProbe.BubbleUpCallbackCount(secondElement) - afterFirst),
+                Is.EqualTo((true, 0)));
+        }
+
         // The record follows a controlled value written on a patch, not only the mount's.
         [Test]
         public void Given_AControlledDelayedFieldWhoseValueChanged_When_TheUserTypesTheOldValueAndMaxLengthChanges_Then_TheEditSurvives()
