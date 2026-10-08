@@ -187,12 +187,12 @@ namespace Velvet
         public abstract void Dispose();
     }
 
-    internal sealed class HookMutationSlot<TVariables, TData> : HookMutationSlot
+    // TContext is Unit for the options records that carry no context. The callbacks are read through the
+    // members below rather than stored as delegates of one shape, so the context-free records reach the
+    // slot as the caller built them: adapting them to the context shape would allocate on every render.
+    internal abstract class HookMutationSlot<TVariables, TData, TContext> : HookMutationSlot
     {
-        public MutationResult<TVariables, TData> Result { get; init; } = null!;
-        public Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn { get; set; } = null!;
-        public Action<TData, TVariables>? OnSuccess { get; set; }
-        public Action<Exception, TVariables>? OnError { get; set; }
+        public MutationResult<TVariables, TData> Result { get; } = new();
         // Every call in flight, not just the newest: two Mutate calls run side by side, so unmounting has
         // more than one token to cancel. Who may write the observed Status / Data is Generation's to say
         // instead: a call writes only while it still holds the current value, and Reset advances that too,
@@ -200,6 +200,12 @@ namespace Velvet
         public List<CancellationTokenSource> Live { get; } = new();
 
         public long Generation { get; set; }
+
+        public abstract VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token);
+        public abstract TContext InvokeOnMutate(TVariables variables);
+        public abstract void InvokeOnSuccess(TData data, TVariables variables, TContext context);
+        public abstract void InvokeOnError(Exception error, TVariables variables, TContext context);
+        public abstract void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context);
 
         public override void Dispose()
         {
@@ -220,11 +226,51 @@ namespace Velvet
                 }
                 catch (Exception cancellationFailure)
                 {
-                    FiberLogger.LogException(nameof(HookMutationSlot<TVariables, TData>), cancellationFailure);
+                    FiberLogger.LogException(nameof(HookMutationSlot<TVariables, TData, TContext>), cancellationFailure);
                 }
                 callSource.Dispose();
             }
         }
+    }
+
+    internal sealed class HookMutationSlot<TVariables, TData> : HookMutationSlot<TVariables, TData, Unit>
+    {
+        public MutationOptions<TVariables, TData> Options { get; set; } = null!;
+
+        public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
+            Options.MutationFn(variables, token);
+
+        public override Unit InvokeOnMutate(TVariables variables) => Unit.Default;
+
+        public override void InvokeOnSuccess(TData data, TVariables variables, Unit context) =>
+            Options.OnSuccess?.Invoke(data, variables);
+
+        public override void InvokeOnError(Exception error, TVariables variables, Unit context) =>
+            Options.OnError?.Invoke(error, variables);
+
+        public override void InvokeOnSettled(TData data, Exception? error, TVariables variables, Unit context) =>
+            Options.OnSettled?.Invoke(data, error, variables);
+    }
+
+    internal sealed class HookContextMutationSlot<TVariables, TData, TContext>
+        : HookMutationSlot<TVariables, TData, TContext>
+    {
+        public MutationOptions<TVariables, TData, TContext> Options { get; set; } = null!;
+
+        public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
+            Options.MutationFn(variables, token);
+
+        public override TContext InvokeOnMutate(TVariables variables) =>
+            Options.OnMutate is { } onMutate ? onMutate(variables) : default!;
+
+        public override void InvokeOnSuccess(TData data, TVariables variables, TContext context) =>
+            Options.OnSuccess?.Invoke(data, variables, context);
+
+        public override void InvokeOnError(Exception error, TVariables variables, TContext context) =>
+            Options.OnError?.Invoke(error, variables, context);
+
+        public override void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context) =>
+            Options.OnSettled?.Invoke(data, error, variables, context);
     }
 
     internal sealed class HookRefSlot

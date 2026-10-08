@@ -75,9 +75,10 @@
 [Velvet] ctor Velvet.MotionVariant.ctor(System.String?, Velvet.StyleTransitionConfig?): System.Void
 [Velvet] ctor Velvet.MountOptions.ctor(System.Action`2[System.Exception, Velvet.ErrorInfo]?): System.Void
 [Velvet] ctor Velvet.MutableRef`1[T].ctor(T): System.Void
-[Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action?, System.Action`1[System.Exception]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
+[Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action?, System.Action`1[System.Exception]?, System.Action`1[System.Exception?]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?, System.Action`2[System.Exception?, TVariables]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?, System.Action`3[TData?, System.Exception?, TVariables]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`3[TVariables, TData, TContext].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Func`2[TVariables, TContext]?, System.Action`3[TData, TVariables, TContext?]?, System.Action`3[System.Exception, TVariables, TContext?]?, System.Action`4[TData?, System.Exception?, TVariables, TContext?]?): System.Void
 [Velvet] ctor Velvet.MutationResult`2[TVariables, TData].ctor(): System.Void
 [Velvet] ctor Velvet.NullStoreLogger.ctor(): System.Void
 [Velvet] ctor Velvet.ParticlesElement.ctor(): System.Void
@@ -365,6 +366,7 @@
 [Velvet] method Velvet.Hooks.UseMutation(Velvet.MutationOptions): Velvet.MutationResult`2[Velvet.Unit, Velvet.Unit]
 [Velvet] method Velvet.Hooks.UseMutation`1(Velvet.MutationOptions`1[TVariables]): Velvet.MutationResult`2[TVariables, Velvet.Unit]
 [Velvet] method Velvet.Hooks.UseMutation`2(Velvet.MutationOptions`2[TVariables, TData]): Velvet.MutationResult`2[TVariables, TData]
+[Velvet] method Velvet.Hooks.UseMutation`3(Velvet.MutationOptions`3[TVariables, TData, TContext]): Velvet.MutationResult`2[TVariables, TData]
 [Velvet] method Velvet.Hooks.UseNavigate(System.Boolean): System.Func`2[System.String, Velvet.VelvetTask`1[Velvet.NavigationResult]]
 [Velvet] method Velvet.Hooks.UseNavigation(): Velvet.NavigationState
 [Velvet] method Velvet.Hooks.UseOptimistic`2(TState, System.Func`3[TState, TAction, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
@@ -864,13 +866,21 @@
 [Velvet] property Velvet.MutableRef`1[T].Current: T
 [Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
 [Velvet] property Velvet.MutationOptions.OnError: System.Action`1[System.Exception]?
+[Velvet] property Velvet.MutationOptions.OnSettled: System.Action`1[System.Exception?]?
 [Velvet] property Velvet.MutationOptions.OnSuccess: System.Action?
 [Velvet] property Velvet.MutationOptions`1[TVariables].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask]
 [Velvet] property Velvet.MutationOptions`1[TVariables].OnError: System.Action`2[System.Exception, TVariables]?
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnSettled: System.Action`2[System.Exception?, TVariables]?
 [Velvet] property Velvet.MutationOptions`1[TVariables].OnSuccess: System.Action`1[TVariables]?
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnError: System.Action`2[System.Exception, TVariables]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSettled: System.Action`3[TData?, System.Exception?, TVariables]?
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSuccess: System.Action`2[TData, TVariables]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnError: System.Action`3[System.Exception, TVariables, TContext?]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnMutate: System.Func`2[TVariables, TContext]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSettled: System.Action`4[TData?, System.Exception?, TVariables, TContext?]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSuccess: System.Action`3[TData, TVariables, TContext?]?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Data: TData?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Error: System.Exception?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsError: System.Boolean
@@ -1133,6 +1143,7 @@
 [Velvet] type Velvet.MutationOptions
 [Velvet] type Velvet.MutationOptions`1[TVariables]
 [Velvet] type Velvet.MutationOptions`2[TVariables, TData]
+[Velvet] type Velvet.MutationOptions`3[TVariables, TData, TContext]
 [Velvet] type Velvet.MutationResultExtensions
 [Velvet] type Velvet.MutationResult`2[TVariables, TData]
 [Velvet] type Velvet.MutationStatus

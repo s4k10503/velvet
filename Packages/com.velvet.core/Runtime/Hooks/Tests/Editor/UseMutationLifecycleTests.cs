@@ -1,0 +1,456 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
+using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Specifies the lifecycle callbacks of <see cref="Hooks.UseMutation{TVariables, TData, TContext}"/> and the
+    /// <c>OnSettled</c> of the context-free option records, against TanStack Query v5's
+    /// <c>onMutate</c> / <c>onSuccess</c> / <c>onError</c> / <c>onSettled</c>.
+    /// <list type="bullet">
+    /// <item><c>OnMutate</c> runs after the handle turns pending and before the mutation function, and what it
+    /// returns is the context that call's later callbacks receive.</item>
+    /// <item><c>OnSettled</c> runs after <c>OnSuccess</c> or <c>OnError</c>, before the outcome is committed.</item>
+    /// <item>A throwing <c>OnMutate</c> fails the call with its exception, and the callbacks get no context.</item>
+    /// <item>A throwing <c>OnError</c> does not cost the call its <c>OnSettled</c>; a throwing <c>OnSettled</c> on
+    /// the failure path does not cost it its outcome; one on the success path fails the call, which then
+    /// settles again with that exception.</item>
+    /// <item>Overlapping calls each hand their callbacks their own context.</item>
+    /// <item>A call whose component unmounts while it is in flight runs no callback after its <c>OnMutate</c>.</item>
+    /// </list>
+    /// <see cref="UseMutationHookTests"/> owns the lifecycle the handle reports.
+    /// </summary>
+    [TestFixture]
+    internal sealed class UseMutationLifecycleTests
+    {
+        private const string None = "none";
+
+        private VisualElement _root = null!;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            s_log.Clear();
+            s_captured = null;
+            s_voidCaptured = null;
+            s_noInputCaptured = null;
+            s_mutationFn = (v, _) => VelvetTask.FromResult(v * 2);
+            s_voidMutationFn = (_, _) => VelvetTask.CompletedTask;
+            s_onMutateThrows = null;
+            s_onErrorThrows = null;
+            s_settledThrowsOnSuccess = null;
+            s_settledThrowsOnFailure = null;
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutation_When_Called_Then_OnMutateRunsBeforeTheMutationFunction() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_mutationFn = (v, _) =>
+            {
+                Record("fn", 0, null, v, null);
+                return VelvetTask.FromResult(v * 2);
+            };
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "mutate-order"));
+
+            // Act
+            await s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind is "mutate" or "fn", e => e.Kind), Is.EqualTo("mutate,fn"),
+                "OnMutate runs before the mutation function, as TanStack's execute awaits it before starting the retryer");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutation_When_OnMutateRuns_Then_ItReadsTheHandleAsThisCallsPendingOne() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "mutate-pending"));
+
+            // Act
+            await s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "mutate", e => $"{e.Status} {e.HandleVariables}"), Is.EqualTo("Pending 21"),
+                "The handle is already this call's pending one when OnMutate runs, as TanStack dispatches pending before calling it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutation_When_ItSucceeds_Then_OnSuccessReceivesTheContextOnMutateReturned() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "success-context"));
+
+            // Act
+            await s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "success", e => $"{e.Data} {e.Variables} {e.Context}"), Is.EqualTo("42 21 ctx21"),
+                "OnSuccess receives the data, the variables and the context OnMutate returned");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutation_When_ItSucceeds_Then_OnSettledReceivesTheDataNoErrorAndTheContext() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "success-settled"));
+
+            // Act
+            await s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "settled", e => $"{e.Data} {e.Error} {e.Variables} {e.Context}"),
+                Is.EqualTo("42 none 21 ctx21"),
+                "A successful call settles once, with its data, no error, its variables and its context");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutation_When_ItSucceeds_Then_OnSettledRunsAfterOnSuccess() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "success-order"));
+
+            // Act
+            await s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind is "success" or "settled", e => e.Kind), Is.EqualTo("success,settled"),
+                "OnSettled runs after OnSuccess");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutation_When_OnSettledRunsOnSuccess_Then_TheOutcomeIsNotCommittedYet() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "success-settled-pending"));
+
+            // Act
+            await s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "settled", e => e.Status.ToString()), Is.EqualTo("Pending"),
+                "OnSettled runs before the success is committed, as TanStack dispatches it after onSettled");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailingContextMutation_When_OnErrorRuns_Then_ItReceivesTheContext() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_mutationFn = (_, _) => throw new InvalidOperationException("boom");
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "error-context"));
+
+            // Act
+            try { await s_captured!.MutateAsync(1); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "error", e => $"{e.Error} {e.Variables} {e.Context}"), Is.EqualTo("boom 1 ctx1"),
+                "OnError receives the exception, the variables and the context to roll back to");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailingContextMutation_When_ItFails_Then_OnSettledReceivesNoDataTheErrorAndTheContext() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_mutationFn = (_, _) => throw new InvalidOperationException("boom");
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "error-settled"));
+
+            // Act
+            try { await s_captured!.MutateAsync(1); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "settled", e => $"{e.Data} {e.Error} {e.Variables} {e.Context}"),
+                Is.EqualTo("0 boom 1 ctx1"),
+                "A failed call settles once, with no data, its exception, its variables and its context");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailingContextMutation_When_ItFails_Then_OnSettledRunsAfterOnError() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_mutationFn = (_, _) => throw new InvalidOperationException("boom");
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "error-order"));
+
+            // Act
+            try { await s_captured!.MutateAsync(1); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind is "error" or "settled", e => e.Kind), Is.EqualTo("error,settled"),
+                "OnSettled runs after OnError");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailingContextMutation_When_OnErrorThrows_Then_OnSettledStillRuns() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the expected log is what makes the throw load-bearing: without it OnSettled runs
+            // whether or not the throw is contained apart from it.
+            s_mutationFn = (_, _) => throw new InvalidOperationException("boom");
+            s_onErrorThrows = new InvalidOperationException("onError threw");
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "error-throws-settled"));
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: onError threw"));
+
+            // Act
+            try { await s_captured!.MutateAsync(1); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "settled", e => e.Error), Is.EqualTo("boom"),
+                "A throwing OnError is reported on its own and the call still settles with its own exception");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailingContextMutation_When_OnSettledThrows_Then_TheCallStillEndsInItsOwnError() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var failure = new InvalidOperationException("boom");
+            s_mutationFn = (_, _) => throw failure;
+            s_settledThrowsOnFailure = new InvalidOperationException("onSettled threw");
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "error-settled-throws"));
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: onSettled threw"));
+            Exception? rethrown = null;
+
+            // Act
+            try { await s_captured!.MutateAsync(1); } catch (InvalidOperationException caught) { rethrown = caught; }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured!.Status, ReferenceEquals(s_captured.Error, failure), ReferenceEquals(rethrown, failure)),
+                Is.EqualTo((MutationStatus.Error, true, true)),
+                "A throwing OnSettled on the failure path is reported on its own and leaves the call's own outcome");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutation_When_OnMutateThrows_Then_TheCallFailsWithItAndTheCallbacksGetNoContext() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onMutateThrows = new InvalidOperationException("onMutate");
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "mutate-throws"));
+            Exception? rethrown = null;
+
+            // Act
+            try { await s_captured!.MutateAsync(1); } catch (InvalidOperationException caught) { rethrown = caught; }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (Read(e => e.Kind is "error" or "settled", e => $"{e.Kind} {e.Error} {e.Context}"),
+                    ReferenceEquals(rethrown, s_onMutateThrows), s_captured!.Status),
+                Is.EqualTo(("error onMutate none,settled onMutate none", true, MutationStatus.Error)),
+                "A throwing OnMutate fails the call with its exception, and OnError / OnSettled receive no context");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_TwoOverlappingContextMutations_When_TheySettleOutOfOrder_Then_EachCallbackGetsItsOwnCallsContext() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the second OnMutate runs while the first call is still in flight, so a context held
+            // in one place both calls write reaches the first call's OnSuccess as the second call's.
+            var first = new VelvetTaskCompletionSource<int>();
+            var second = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (v, _) => v == 1 ? first.Task : second.Task;
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "overlap-context"));
+            var firstCall = s_captured!.MutateAsync(1);
+            var secondCall = s_captured.MutateAsync(2);
+
+            // Act
+            second.TrySetResult(20);
+            await secondCall;
+            first.TrySetResult(10);
+            await firstCall;
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "success", e => $"{e.Variables} {e.Context}"), Is.EqualTo("2 ctx2,1 ctx1"),
+                "Each call's OnSuccess receives the context its own OnMutate returned");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutation_When_OnSettledThrowsOnSuccess_Then_TheCallFailsAndSettlesAgainWithThatError() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_settledThrowsOnSuccess = new InvalidOperationException("onSettled threw");
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "success-settled-throws"));
+            Exception? rethrown = null;
+
+            // Act
+            try { await s_captured!.MutateAsync(21); } catch (InvalidOperationException caught) { rethrown = caught; }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (Read(e => e.Kind is "error" or "settled", e => $"{e.Kind} {e.Error}"),
+                    ReferenceEquals(rethrown, s_settledThrowsOnSuccess), s_captured!.Status),
+                Is.EqualTo(("settled none,error onSettled threw,settled onSettled threw", true, MutationStatus.Error)),
+                "A throwing OnSettled on the success path fails the call, as a throwing OnSuccess does, and TanStack's " +
+                "failure path then runs OnError and OnSettled with that exception");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnInFlightContextMutation_When_TheComponentUnmounts_Then_NoLaterCallbackRuns() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the mutate entry is carried into the reading so a call that never started cannot
+            // pass for one whose callbacks were withheld.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-callbacks"));
+            var inFlight = s_captured!.MutateAsync(7);
+
+            // Act
+            mounted.Dispose();
+            gate.TrySetResult(42);
+            await inFlight;
+
+            // Assert
+            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate"),
+                "A call whose component unmounted runs none of its callbacks after OnMutate, OnSettled included");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextFreeMutation_When_ItSucceeds_Then_OnSettledRuns() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextFreeMutationRender, key: "context-free-settled"));
+
+            // Act
+            await s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "settled", e => $"{e.Error} {e.Variables}"), Is.EqualTo("none 21"),
+                "MutationOptions<TVariables, TData>.OnSettled runs once on success");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AVoidMutation_When_ItFails_Then_OnSettledReceivesTheError() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_voidMutationFn = (_, _) => throw new InvalidOperationException("boom");
+            using var mounted = V.Mount(_root, V.Component(VoidMutationRender, key: "void-settled"));
+
+            // Act
+            try { await s_voidCaptured!.MutateAsync(1); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "settled", e => $"{e.Error} {e.Variables}"), Is.EqualTo("boom 1"),
+                "MutationOptions<TVariables>.OnSettled receives the exception and the variables on failure");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ANoInputMutation_When_ItSucceeds_Then_OnSettledReceivesNoError() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(NoInputMutationRender, key: "no-input-settled"));
+
+            // Act
+            await s_noInputCaptured!.MutateAsync();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "settled", e => e.Error), Is.EqualTo(None),
+                "MutationOptions.OnSettled runs once on success, with no exception");
+        });
+
+        [Test]
+        public void Given_NullContextOptions_When_UseMutationCalled_Then_ThrowsArgumentNullException()
+        {
+            // Act + Assert — called outside a render, so without the guard the hook's render check throws
+            // an InvalidOperationException instead.
+            Assert.Throws<ArgumentNullException>(() => Hooks.UseMutation((MutationOptions<int, int, string>)null!));
+        }
+
+        [Component]
+        public static VNode ContextMutationRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int, string>(
+                MutationFn: s_mutationFn,
+                OnMutate: v =>
+                {
+                    Record("mutate", 0, null, v, null);
+                    if (s_onMutateThrows != null) throw s_onMutateThrows;
+                    return $"ctx{v}";
+                },
+                OnSuccess: (data, v, context) => Record("success", data, null, v, context),
+                OnError: (error, v, context) =>
+                {
+                    Record("error", 0, error, v, context);
+                    if (s_onErrorThrows != null) throw s_onErrorThrows;
+                },
+                OnSettled: (data, error, v, context) =>
+                {
+                    Record("settled", data, error, v, context);
+                    if (error == null && s_settledThrowsOnSuccess != null) throw s_settledThrowsOnSuccess;
+                    if (error != null && s_settledThrowsOnFailure != null) throw s_settledThrowsOnFailure;
+                }));
+            return V.Label(text: "ok");
+        }
+
+        [Component]
+        public static VNode ContextFreeMutationRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: s_mutationFn,
+                OnSettled: (data, error, v) => Record("settled", data, error, v, null)));
+            return V.Label(text: "ok");
+        }
+
+        [Component]
+        public static VNode VoidMutationRender()
+        {
+            s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(
+                MutationFn: s_voidMutationFn,
+                OnSettled: (error, v) => Record("settled", 0, error, v, null)));
+            return V.Label(text: "ok");
+        }
+
+        [Component]
+        public static VNode NoInputMutationRender()
+        {
+            s_noInputCaptured = Hooks.UseMutation(new MutationOptions(
+                MutationFn: _ => VelvetTask.CompletedTask,
+                OnSettled: error => Record("settled", 0, error, 0, null)));
+            return V.Label(text: "ok");
+        }
+
+        // The handle's status and variables are read when the entry is written, which is what a callback
+        // reading the handle would see at that point.
+        private static void Record(string kind, int data, Exception? error, int variables, string? context) =>
+            s_log.Add(new Entry(kind, data, error?.Message ?? None, variables, context ?? None,
+                s_captured?.Status ?? MutationStatus.Idle, s_captured?.Variables ?? 0));
+
+        private static string Read(Func<Entry, bool> which, Func<Entry, string> projection) =>
+            string.Join(",", s_log.Where(which).Select(projection));
+
+        private sealed record Entry(
+            string Kind, int Data, string Error, int Variables, string Context, MutationStatus Status, int HandleVariables);
+
+        private static readonly List<Entry> s_log = new();
+
+        private static MutationResult<int, int>? s_captured;
+        private static MutationResult<int, Unit>? s_voidCaptured;
+        private static MutationResult<Unit, Unit>? s_noInputCaptured;
+        private static Func<int, CancellationToken, VelvetTask<int>> s_mutationFn = (v, _) => VelvetTask.FromResult(v * 2);
+        private static Func<int, CancellationToken, VelvetTask> s_voidMutationFn = (_, _) => VelvetTask.CompletedTask;
+        private static Exception? s_onMutateThrows;
+        private static Exception? s_onErrorThrows;
+        private static Exception? s_settledThrowsOnSuccess;
+        private static Exception? s_settledThrowsOnFailure;
+    }
+}
