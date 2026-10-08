@@ -605,17 +605,168 @@ namespace Velvet.Tests
             Assert.That(spec.Type, Is.EqualTo(GradientType.Radial));
         }
 
-        // GREEN_ON_BASE(characterization): the base draws from- and to- for a radial bracket naming a shape keyword.
         [Test]
-        public void Given_ARadialBracketLedByAShapeKeyword_When_Extracted_Then_TheUtilityStopsStillDraw()
+        public void Given_ARadialListLedByACircle_When_Extracted_Then_ItIsACircleAtTheCentre()
         {
-            // Act — circle is not a line argument the stop list reads, so the bracket keeps its position
-            // reading and the from-/to- utilities supply the stops.
-            var ok = StyleGradientClass.TryExtract(
-                new[] { "bg-radial-[circle_at_center,#ff0000,#0000ff]", "from-[#ff0000]", "to-[#0000ff]" }, out _);
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[circle_at_center,#ff0000,#0000ff]" }, out var spec);
 
             // Assert
-            Assert.That(ok, Is.True);
+            Assert.That((spec.Radial.Circle, spec.Radial.Extent, spec.CenterX), Is.EqualTo((true, RadialExtent.FarthestCorner, 0.5f)));
+        }
+
+        [Test]
+        public void Given_AnEllipseWithAnExtentKeyword_When_Extracted_Then_BothAreRead()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[ellipse_closest-side,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Radial.Circle, spec.Radial.Extent), Is.EqualTo((false, RadialExtent.ClosestSide)));
+        }
+
+        [Test]
+        public void Given_AnExtentKeywordBeforeTheShape_When_Extracted_Then_BothAreRead()
+        {
+            // Act — CSS takes the shape and the size in either order.
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[closest-corner_circle,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Radial.Circle, spec.Radial.Extent), Is.EqualTo((true, RadialExtent.ClosestCorner)));
+        }
+
+        [Test]
+        public void Given_ACircleWithALength_When_Extracted_Then_ItsRadiusIsThatLength()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[circle_40px_at_top_left,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Radial.Circle, spec.Radial.Extent, spec.Radial.X, spec.CenterX),
+                Is.EqualTo((true, RadialExtent.Explicit, 40f, 0f)));
+        }
+
+        [Test]
+        public void Given_ALengthAlone_When_Extracted_Then_ItIsACircleOfThatRadius()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[40px,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Radial.Circle, spec.Radial.X), Is.EqualTo((true, 40f)));
+        }
+
+        [Test]
+        public void Given_AnEllipseWithAPercentageAndALength_When_Extracted_Then_BothRadiiAreRead()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[ellipse_50%_20px,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Radial.X, spec.Radial.XPercent, spec.Radial.Y, spec.Radial.YPercent),
+                Is.EqualTo((0.5f, true, 20f, false)));
+        }
+
+        [Test]
+        public void Given_AnEllipseWithOneLength_When_Extracted_Then_TheListIsNotRead()
+        {
+            // Act — an ellipse takes two radii, so the bracket keeps its position reading and the utilities'
+            // green is the first stop.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[ellipse_40px,#ff0000,#0000ff]", "from-[#00ff00]", "to-[#ffffff]" }, out var spec);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color), Is.EqualTo("00FF00FF"));
+        }
+
+        [Test]
+        public void Given_ACircleWithAPercentage_When_Extracted_Then_TheListIsNotRead()
+        {
+            // Act — a circle's radius is a length, not a percentage.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[circle_50%,#ff0000,#0000ff]", "from-[#00ff00]", "to-[#ffffff]" }, out var spec);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(spec.Stops[0].Color), Is.EqualTo("00FF00FF"));
+        }
+
+        [Test]
+        public void Given_ARadialBracketNamingACircleWithoutStops_When_Extracted_Then_TheUtilityStopsDrawOnACircle()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[circle_at_top]", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Radial.Circle, spec.CenterY), Is.EqualTo((true, 0f)));
+        }
+
+        [Test]
+        public void Given_ASlashInsideARadialBracket_When_Extracted_Then_ItIsNotTheModifier()
+        {
+            // Act — a modifier follows the closing bracket; this slash is part of the bracket's body, whose
+            // unreadable token the position reading ignores.
+            var ok = StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[at_top_left_a/b]", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((ok, spec.CenterX, spec.CenterY), Is.EqualTo((true, 0f, 0f)));
+        }
+
+        [Test]
+        public void Given_AViaColourAlone_When_Extracted_Then_ItIsBetweenTwoTransparentEnds()
+        {
+            // Act
+            var ok = StyleGradientClass.TryExtract(new[] { "bg-gradient-to-r", "via-[#00ff00]" }, out var spec);
+
+            // Assert
+            Assert.That((ok, spec.Stops?.Length ?? 0), Is.EqualTo((true, 3)));
+        }
+
+        [Test]
+        public void Given_AViaColourAlone_When_Baked_Then_TheStartIsItsTransparentVersion()
+        {
+            // Act
+            var left = SampleAcross(new[] { "bg-linear-to-r", "via-[#00ff00]" }, 0f);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(left), Is.EqualTo("00FF0000"));
+        }
+
+        [Test]
+        public void Given_StopPositionsBeyondTheBox_When_Baked_Then_TheLineRunsOnPastIt()
+        {
+            // Act — black at -50% and white at 150%: the box shows the middle of that line, so its left edge
+            // is a quarter of the way along it.
+            var left = SampleAcross(new[] { "bg-linear-[to_right,#000000_-50%,#ffffff_150%]" }, 0f);
+
+            // Assert
+            Assert.That(left.r, Is.EqualTo(0.25f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_FromAndToPositionsBeyondTheBox_When_Baked_Then_TheLineRunsOnPastIt()
+        {
+            // Act
+            var left = SampleAcross(
+                new[] { "bg-linear-to-r", "from-[#000000]", "from--50%", "to-[#ffffff]", "to-150%" }, 0f);
+
+            // Assert
+            Assert.That(left.r, Is.EqualTo(0.25f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ListsWhosePositionsDifferBeyondTheBox_When_Compared_Then_TheyAreNotEqual()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000,#ffffff_150%]" }, out var a);
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000,#ffffff_200%]" }, out var b);
+
+            // Act
+            var equal = a.Equals(b);
+
+            // Assert
+            Assert.That(equal, Is.False);
         }
 
         // GREEN_ON_BASE(characterization): the base reads a centre from a radial bracket its stop list rejects.

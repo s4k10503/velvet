@@ -358,5 +358,87 @@ namespace Velvet.Tests
             // Assert
             Assert.That(kept, Is.SameAs(other));
         }
+
+        // A pan mode paints the background twice as large along its axis.
+
+        private const string Stops = " from-[#000000] to-[#ffffff]";
+
+        private static (float, float) ScaleOf(ReconcilerScope scope, int index)
+        {
+            var scale = scope.Reconciler.Context.GradientBackgrounds[scope.Root[index]].BoxScale;
+            return (scale.x, scale.y);
+        }
+
+        [Test]
+        public void Given_AGradientPannedAlongX_When_Mounted_Then_ItIsLaidOutOverTwiceTheWidth()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "bg-linear-60" + Stops + " animate-gradient") });
+
+            // Assert
+            Assert.That(ScaleOf(scope, 0), Is.EqualTo((2f, 1f)));
+        }
+
+        [Test]
+        public void Given_AGradientPannedAlongY_When_Mounted_Then_ItIsLaidOutOverTwiceTheHeight()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "bg-linear-30" + Stops + " animate-gradient") });
+
+            // Assert
+            Assert.That(ScaleOf(scope, 0), Is.EqualTo((1f, 2f)));
+        }
+
+        [Test]
+        public void Given_AShimmerOverAGradient_When_Mounted_Then_ItIsLaidOutOverTheElementsBox()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: "bg-linear-60" + Stops + " animate-shimmer") });
+
+            // Assert
+            Assert.That(ScaleOf(scope, 0), Is.EqualTo((1f, 1f)));
+        }
+
+        [Test]
+        public void Given_AGradientPannedAlongX_When_ThePanIsRemoved_Then_ItIsLaidOutOverTheElementsBoxAgain()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: "bg-linear-60" + Stops + " animate-gradient") };
+            Mount(scope, oldTree);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, oldTree, new VNode[] { V.Div(className: "bg-linear-60" + Stops) });
+
+            // Assert
+            Assert.That(ScaleOf(scope, 0), Is.EqualTo((1f, 1f)));
+        }
+
+        [Test]
+        public void Given_APannedDiagonalGradient_When_Laid_Out_Then_ItIsBakedForTheOversizedBox()
+        {
+            // Arrange — the same gradient and layout, panned on one element and not on the other.
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[]
+            {
+                V.Div(className: "bg-linear-60" + Stops + " animate-gradient"), V.Div(className: "bg-linear-60" + Stops),
+            });
+
+            // Act
+            LayOut(scope.Root[0], 200f, 100f);
+            LayOut(scope.Root[1], 200f, 100f);
+
+            // Assert
+            Assert.That(BackgroundOf(scope.Root[0]), Is.Not.SameAs(BackgroundOf(scope.Root[1])));
+        }
     }
 }

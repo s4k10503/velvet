@@ -11,3 +11,5 @@
   bracketed list leaves the class inert, as it does there. A radial bracket that is no stop list keeps its
   earlier reading as a centre. A new gradients guide, styling-gradients.md, covers the gradient utilities
   and where they differ from CSS and Tailwind.
+  `bg-radial-[…]` also takes a CSS shape and size (`circle`, `ellipse`, the four extent keywords, or radii), stop
+  positions may lie outside 0%–100%, and `via-` alone fades in from and out to its own transparent colour.

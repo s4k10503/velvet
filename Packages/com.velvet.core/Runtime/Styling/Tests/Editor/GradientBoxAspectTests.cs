@@ -93,6 +93,201 @@ namespace Velvet.Tests
 
         #endregion
 
+        [Test]
+        public void Given_ACircleToTheClosestSide_When_BakedForAWideBox_Then_ItsRadiusIsHalfTheHeight()
+        {
+            // Act — texel 80 sits 0.13 of the width right of the centre, which is 0.26 heights in a 2:1 box;
+            // the circle reaches 0.5 heights, so the texel is 0.52 of the way out. An ellipse would put it at 0.26.
+            var red = BakedRed("bg-radial-[circle_closest-side]", 2f, 80, 64);
+
+            // Assert
+            Assert.That(red, Is.EqualTo(0.52f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ACircleOfFixedRadius_When_BakedForAKnownWidth_Then_TheRadiusIsInPixels()
+        {
+            // Act — a 200 x 100 box: texel 80 is 26px right of the centre, the circle's radius is 100px.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-radial-[circle_100px]", "from-[#000000]", "to-[#ffffff]" }, out var spec);
+            var tex = GradientBackground.Bake(spec, 2f, 200f);
+            var red = tex.GetPixel(80, 64).r;
+            Object.DestroyImmediate(tex);
+
+            // Assert
+            Assert.That(red, Is.EqualTo(0.26f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_ACircleToTheClosestSide_When_RadiiAreRead_Then_BothAreTheNearestSide()
+        {
+            // Act
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial-[circle_closest-side]"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((50, 50)));
+        }
+
+        [Test]
+        public void Given_ACircleToTheFarthestSide_When_RadiiAreRead_Then_BothAreTheFarthestSide()
+        {
+            // Act
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial-[circle_farthest-side]"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((100, 100)));
+        }
+
+        [Test]
+        public void Given_ACircleToTheClosestCorner_When_RadiiAreRead_Then_BothAreTheCornerDistance()
+        {
+            // Act — from the centre of 200 x 100 every corner is 112px away.
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial-[circle_closest-corner]"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((112, 112)));
+        }
+
+        [Test]
+        public void Given_ACircleToTheFarthestCornerOffCentre_When_RadiiAreRead_Then_BothAreTheFarthestCornerDistance()
+        {
+            // Act — at the top left the farthest corner is the bottom right, 224px away.
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial-[circle_at_top_left]"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((224, 224)));
+        }
+
+        [Test]
+        public void Given_AnEllipseToTheClosestSide_When_RadiiAreRead_Then_ItHasTheNearestHalfWidthAndHeight()
+        {
+            // Act
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial-[ellipse_closest-side]"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((100, 50)));
+        }
+
+        [Test]
+        public void Given_AnEllipseToTheFarthestSideOffCentre_When_RadiiAreRead_Then_ItHasTheFarthestWidthAndHeight()
+        {
+            // Act — at the top left the farthest sides are the right and bottom.
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial-[ellipse_farthest-side_at_top_left]"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((200, 100)));
+        }
+
+        [Test]
+        public void Given_AnEllipseToTheClosestCorner_When_RadiiAreRead_Then_ItIsTheClosestSideEllipseThroughTheCorner()
+        {
+            // Act
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial-[ellipse_closest-corner]"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((141, 71)));
+        }
+
+        [Test]
+        public void Given_ADefaultRadial_When_RadiiAreRead_Then_ItIsTheFarthestCornerEllipse()
+        {
+            // Act
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((141, 71)));
+        }
+
+        [Test]
+        public void Given_AnEllipseOfAPercentageAndALength_When_RadiiAreRead_Then_ThePercentageIsOfTheBox()
+        {
+            // Act
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial-[ellipse_50%_20px]"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((100, 20)));
+        }
+
+        [Test]
+        public void Given_ACircleOfFixedRadius_When_RadiiAreRead_Then_BothAreThatRadius()
+        {
+            // Act
+            var radii = GradientBackground.RadialRadii(Extract("bg-radial-[circle_30px]"), 200f, 100f);
+
+            // Assert
+            Assert.That((Mathf.RoundToInt(radii.x), Mathf.RoundToInt(radii.y)), Is.EqualTo((30, 30)));
+        }
+
+        [Test]
+        public void Given_ABoxOfAThousandPixels_When_Keyed_Then_ItsWidthIsInOctaveSteps()
+        {
+            // Act
+            var key = GradientBackground.WidthKey(1000f);
+
+            // Assert
+            Assert.That(key, Is.EqualTo(319));
+        }
+
+        [Test]
+        public void Given_ABoxWithNoWidthYet_When_Keyed_Then_ItsWidthKeyIsZero()
+        {
+            // Act
+            var key = GradientBackground.WidthKey(float.NaN);
+
+            // Assert
+            Assert.That(key, Is.Zero);
+        }
+
+        [Test]
+        public void Given_ACircle_When_Asked_Then_ItDependsOnTheAspect()
+        {
+            // Act
+            var depends = GradientBackground.DependsOnAspect(Extract("bg-radial-[circle]"));
+
+            // Assert
+            Assert.That(depends, Is.True);
+        }
+
+        [Test]
+        public void Given_AnEllipseToTheClosestSide_When_Asked_Then_ItDoesNotDependOnTheAspect()
+        {
+            // Act
+            var depends = GradientBackground.DependsOnAspect(Extract("bg-radial-[ellipse_closest-side]"));
+
+            // Assert
+            Assert.That(depends, Is.False);
+        }
+
+        [Test]
+        public void Given_AnEllipseOfPercentages_When_Asked_Then_ItDoesNotDependOnTheAspect()
+        {
+            // Act
+            var depends = GradientBackground.DependsOnAspect(Extract("bg-radial-[ellipse_50%_30%]"));
+
+            // Assert
+            Assert.That(depends, Is.False);
+        }
+
+        [Test]
+        public void Given_AnEllipseOfLengths_When_Asked_Then_ItDependsOnTheBoxSize()
+        {
+            // Act
+            var absolute = GradientBackground.NeedsAbsoluteSize(Extract("bg-radial-[ellipse_40px_20px]"));
+
+            // Assert
+            Assert.That(absolute, Is.True);
+        }
+
+        [Test]
+        public void Given_ACircleToTheClosestSide_When_Asked_Then_ItDoesNotDependOnTheBoxSize()
+        {
+            // Act
+            var absolute = GradientBackground.NeedsAbsoluteSize(Extract("bg-radial-[circle_closest-side]"));
+
+            // Assert
+            Assert.That(absolute, Is.False);
+        }
+
         #region Which gradients depend on the box
 
         [Test]

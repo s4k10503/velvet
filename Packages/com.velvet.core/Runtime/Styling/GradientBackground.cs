@@ -4,13 +4,16 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // A gradient element's bound spec, with the aspect its texture was baked for and the geometry watch
-    // that re-bakes it when the box's proportions change. OnGeometryChanged is set only while the spec's
-    // geometry depends on the aspect (GradientBackground.DependsOnAspect).
+    // A gradient element's bound spec, with the box its texture was baked for and the geometry watch that
+    // re-bakes it when the box changes. OnGeometryChanged is set only while the spec's geometry depends on
+    // the box (GradientBackground.DependsOnAspect). BoxScale is how many times the element's box the
+    // texture is painted over, which a pan mode that oversizes the background sets.
     internal sealed class GradientBinding
     {
         public GradientSpec Spec;
         public int AspectKey;
+        public int WidthKey;
+        public Vector2 BoxScale = Vector2.one;
         public Texture2D? Texture;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
     }
@@ -27,15 +30,15 @@ namespace Velvet
     // A gradient is trivial to compute, so it is baked on the CPU (SetPixels) — no
     // shader asset to author, and the result is unit-testable off-GPU (sample the baked pixels directly).
     //
-    // Cache: keyed by spec (value-equal) and the box's aspect, and shared across every element that
-    // resolves to the same pair. Only a gradient whose geometry depends on the box's proportions — a
-    // diagonal angle, a conic — carries an aspect in its key, quantized to
-    // AspectStepsPerOctave steps per doubling and held within +-MaxAspectSteps, so those add at most
-    // 2 * MaxAspectSteps + 1 textures per distinct spec. Every other gradient is SIZE-INDEPENDENT
-    // (stretched to fit) and keys on its spec alone, so unlike DropShadowBaker's silhouette cache — whose
-    // key includes the element size AND skew, so it needs an LRU + eviction — the key space is the set of
-    // distinct gradients a UI declares, bounded by the className authoring and not by data. So the cache
-    // is a plain memo with no eviction — which also sidesteps the use-after-evict hazard of
+    // Cache: keyed by spec (value-equal) and the box, and shared across every element that resolves to the
+    // same key. Only a gradient whose geometry depends on the box carries it: a diagonal angle, a conic and
+    // a radial circle key on the box's aspect, quantized to AspectStepsPerOctave steps per doubling and held
+    // within +-MaxAspectSteps, and a radial sized in pixels keys on the width too, so those add at most
+    // (2 * MaxAspectSteps + 1) * (MaxWidthSteps + 1) textures per distinct spec. Every other gradient is
+    // SIZE-INDEPENDENT (stretched to fit) and keys on its spec alone, so unlike DropShadowBaker's silhouette
+    // cache — whose key includes the element size AND skew, so it needs an LRU + eviction — the key space
+    // is the set of distinct gradients a UI declares, bounded by the className authoring and not by data.
+    // So the cache is a plain memo with no eviction — which also sidesteps the use-after-evict hazard of
     // destroying a texture still referenced by a mounted element. The editor reset hook drops the cache
     // each play session (textures are HideAndDontSave and would otherwise persist with Reload-Domain off).
     internal static class GradientBackground
@@ -49,12 +52,13 @@ namespace Velvet
         // +-MaxAspectSteps (aspects from 1:16 to 16:1).
         private const int AspectStepsPerOctave = 32;
         private const int MaxAspectSteps = 4 * AspectStepsPerOctave;
+        private const int MaxWidthSteps = 14 * AspectStepsPerOctave;
 
         // The largest parameter a colour is read at. A stop at 100% lies above it, so a hard stop there
         // paints its earlier colour across the box and its later one never, as CSS does.
         private const float MaxParameter = 1f - 1e-6f;
 
-        private static readonly Dictionary<(GradientSpec, int), Texture2D> s_cache = new();
+        private static readonly Dictionary<(GradientSpec, int, int), Texture2D> s_cache = new();
 
 #if UNITY_EDITOR
         // Baked textures are HideAndDontSave and persist across play-mode cycles without a Domain
@@ -84,11 +88,39 @@ namespace Velvet
                 case GradientType.Conic:
                     return true;
                 case GradientType.Radial:
-                    return false;
+                    return spec.Radial.Circle || NeedsAbsoluteSize(spec);
                 default:
                     var offAxis = Mathf.Repeat(spec.AngleDeg, 90f);
                     return !spec.ToCorner && offAxis > 0.01f && offAxis < 89.99f;
             }
+        }
+
+        // True when a radial's size is written in pixels, so the texture depends on the box's size and not
+        // only its proportions.
+        internal static bool NeedsAbsoluteSize(in GradientSpec spec)
+            => spec.Type == GradientType.Radial && spec.Radial.Extent == RadialExtent.Explicit
+                && (spec.Radial.Circle || !spec.Radial.XPercent || !spec.Radial.YPercent);
+
+        // The quantized width of a box, in the same steps per doubling as the aspect; 0 (1px) for a box with
+        // no size yet.
+        internal static int WidthKey(float width)
+        {
+            if (!(width > 1f))
+            {
+                return 0;
+            }
+            return Mathf.Clamp(Mathf.RoundToInt(Mathf.Log(width, 2f) * AspectStepsPerOctave), 0, MaxWidthSteps);
+        }
+
+        private static float WidthOf(int widthKey) => Mathf.Pow(2f, widthKey / (float)AspectStepsPerOctave);
+
+        // The keys a spec is baked for in a box of the given size, painted over scale times that box.
+        private static void KeysFor(in GradientSpec spec, Vector2 size, Vector2 scale, out int aspectKey, out int widthKey)
+        {
+            var w = size.x * scale.x;
+            var h = size.y * scale.y;
+            aspectKey = DependsOnAspect(spec) ? AspectKey(w, h) : 0;
+            widthKey = NeedsAbsoluteSize(spec) ? WidthKey(w) : 0;
         }
 
         // The quantized aspect of a box; 0 (a square) for a box with no size yet.
@@ -116,10 +148,43 @@ namespace Velvet
         public static void Rebind(VisualElement element, GradientBinding binding, GradientSpec spec)
         {
             binding.Spec = spec;
-            var size = element.layout.size;
-            binding.AspectKey = DependsOnAspect(spec) ? AspectKey(size.x, size.y) : 0;
-            binding.Texture = Apply(element, spec, binding.AspectKey);
+            KeysFor(spec, element.layout.size, binding.BoxScale, out binding.AspectKey, out binding.WidthKey);
+            binding.Texture = Apply(element, spec, binding.AspectKey, binding.WidthKey);
             SyncGeometryWatch(element, binding);
+        }
+
+        // Paints the gradient over scale times the element's box from now on, as a pan mode that oversizes
+        // the background does, and bakes it for that box.
+        public static void SetBoxScale(VisualElement element, GradientBinding binding, Vector2 scale)
+        {
+            if (binding.BoxScale == scale)
+            {
+                return;
+            }
+            binding.BoxScale = scale;
+            KeysFor(binding.Spec, element.layout.size, scale, out var aspectKey, out var widthKey);
+            Rebake(element, binding, aspectKey, widthKey);
+        }
+
+        // Writes the texture for new keys, unless they are the ones already written.
+        private static void Rebake(VisualElement element, GradientBinding binding, int aspectKey, int widthKey)
+        {
+            if (aspectKey == binding.AspectKey && widthKey == binding.WidthKey)
+            {
+                return;
+            }
+            binding.AspectKey = aspectKey;
+            binding.WidthKey = widthKey;
+            // Only while the image is still the one this binding wrote: a className-driven image written
+            // since (bg-[addr:…]) owns the slot, and the patch that wrote it did not touch this binding.
+            // A SceneViewElement's slot may be held by its camera, so it is always written.
+            if (element is not SceneViewElement && element.style.backgroundImage.value.texture != binding.Texture)
+            {
+                return;
+            }
+            // The image alone: backgroundSize is whatever Apply or a pan mode last set.
+            binding.Texture = GetOrBake(binding.Spec, aspectKey, widthKey);
+            SceneViewElement.WriteBackground(element, new StyleBackground(binding.Texture));
         }
 
         // Stops watching the element's geometry. Pairs with Clear, which the caller runs when it also
@@ -146,29 +211,15 @@ namespace Velvet
             }
             binding.OnGeometryChanged = evt =>
             {
-                var key = AspectKey(evt.newRect.width, evt.newRect.height);
-                if (key == binding.AspectKey)
-                {
-                    return;
-                }
-                binding.AspectKey = key;
-                // Only while the image is still the one this binding wrote: a className-driven image written
-                // since (bg-[addr:…]) owns the slot, and the patch that wrote it did not touch this binding.
-                // A SceneViewElement's slot may be held by its camera, so it is always written.
-                if (element is not SceneViewElement && element.style.backgroundImage.value.texture != binding.Texture)
-                {
-                    return;
-                }
-                // The image alone: backgroundSize is whatever Apply or a pan mode last set.
-                binding.Texture = GetOrBake(binding.Spec, key);
-                SceneViewElement.WriteBackground(element, new StyleBackground(binding.Texture));
+                KeysFor(binding.Spec, evt.newRect.size, binding.BoxScale, out var aspectKey, out var widthKey);
+                Rebake(element, binding, aspectKey, widthKey);
             };
             element.RegisterCallback(binding.OnGeometryChanged);
         }
 
-        public static Texture2D Apply(VisualElement element, GradientSpec spec, int aspectKey = 0)
+        public static Texture2D Apply(VisualElement element, GradientSpec spec, int aspectKey = 0, int widthKey = 0)
         {
-            var tex = GetOrBake(spec, aspectKey);
+            var tex = GetOrBake(spec, aspectKey, widthKey);
             // Through the SceneView ownership gate: a live camera feed keeps the slot and defers
             // the gradient for its release; everywhere else this is a plain style write.
             SceneViewElement.WriteBackground(element, new StyleBackground(tex));
@@ -192,14 +243,14 @@ namespace Velvet
             element.style.backgroundSize = new StyleBackgroundSize(StyleKeyword.Null);
         }
 
-        private static Texture2D GetOrBake(GradientSpec spec, int aspectKey)
+        private static Texture2D GetOrBake(GradientSpec spec, int aspectKey, int widthKey)
         {
-            var key = (spec, DependsOnAspect(spec) ? aspectKey : 0);
+            var key = (spec, DependsOnAspect(spec) ? aspectKey : 0, NeedsAbsoluteSize(spec) ? widthKey : 0);
             if (s_cache.TryGetValue(key, out var tex) && tex != null)
             {
                 return tex;
             }
-            tex = Bake(spec, AspectOf(key.Item2));
+            tex = Bake(spec, AspectOf(key.Item2), NeedsAbsoluteSize(spec) ? WidthOf(key.Item3) : 0f);
             s_cache[key] = tex;
             return tex;
         }
@@ -208,7 +259,8 @@ namespace Velvet
         // use UV with (0,0) at the top-left so the gradient axis matches screen space (y grows downward) —
         // UI Toolkit draws background-image top-left-origin, so a ToBottom gradient runs from-color at the
         // top to to-color at the bottom.
-        internal static Texture2D Bake(GradientSpec spec, float aspect)
+        // widthPx is the box's width in pixels when the spec has a size written in pixels, else 0.
+        internal static Texture2D Bake(GradientSpec spec, float aspect, float widthPx = 0f)
         {
             var tex = new Texture2D(Resolution, Resolution, TextureFormat.RGBA32, mipChain: false)
             {
@@ -222,6 +274,8 @@ namespace Velvet
             // A corner direction's lines run parallel to the box's diagonal, which the stretched texture
             // already keeps in any box, so it is laid out over a square.
             var lineAspect = spec.ToCorner ? 1f : aspect;
+            var box = widthPx > 0f ? new Vector2(widthPx, widthPx / aspect) : new Vector2(aspect, 1f);
+            var radii = RadialRadii(spec, box.x, box.y);
             for (var row = 0; row < Resolution; row++)
             {
                 // Texture2D.SetPixels is bottom-up (row 0 = bottom); flip so row 0 is the TOP of the box.
@@ -229,7 +283,7 @@ namespace Velvet
                 for (var col = 0; col < Resolution; col++)
                 {
                     var u = col / (float)(Resolution - 1);
-                    var t = ComputeT(spec, u, v, aspect, lineAspect, direction);
+                    var t = ComputeT(spec, u, v, new BakeFrame(box, lineAspect, direction, radii));
                     pixels[row * Resolution + col] = ColorAt(spec, t);
                 }
             }
@@ -239,38 +293,91 @@ namespace Velvet
             return tex;
         }
 
-        // The gradient parameter t at UV (u, v) of a box whose width over height is aspect, for the spec's
-        // type: Linear projects onto the gradient line, Radial is the elliptical distance from the centre
-        // over the farthest-corner ellipse, Conic is the clockwise angle from the centre (0° = up, matching
-        // CSS conic) minus the start angle, over 360°.
-        private static float ComputeT(GradientSpec spec, float u, float v, float aspect, float lineAspect, Vector2 direction)
+        // What a bake needs beyond the spec: the box (to scale, in pixels or in proportion), the aspect a
+        // linear line is laid out over, its direction, and a radial's radii in the box's units.
+        private readonly struct BakeFrame
+        {
+            public BakeFrame(Vector2 box, float lineAspect, Vector2 direction, Vector2 radii)
+            {
+                Box = box;
+                LineAspect = lineAspect;
+                Direction = direction;
+                Radii = radii;
+            }
+
+            public Vector2 Box { get; }
+            public float LineAspect { get; }
+            public Vector2 Direction { get; }
+            public Vector2 Radii { get; }
+        }
+
+        // The gradient parameter t at UV (u, v), for the spec's type: Linear projects onto the gradient
+        // line, Radial is the elliptical distance from the centre over the radial's radii, Conic is the
+        // clockwise angle from the centre (0° = up, matching CSS conic) minus the start angle, over 360°.
+        private static float ComputeT(GradientSpec spec, float u, float v, in BakeFrame frame)
         {
             switch (spec.Type)
             {
                 case GradientType.Radial:
-                    return RadialParameter(u - spec.CenterX, v - spec.CenterY, spec.CenterX, spec.CenterY);
+                {
+                    var nx = (u - spec.CenterX) * frame.Box.x / frame.Radii.x;
+                    var ny = (v - spec.CenterY) * frame.Box.y / frame.Radii.y;
+                    return Mathf.Sqrt((nx * nx) + (ny * ny));
+                }
                 case GradientType.Conic:
                 {
                     // atan2(x, -y): 0° straight up, increasing clockwise in the y-down UV (CSS conic).
-                    var ang = Mathf.Atan2((u - spec.CenterX) * aspect, -(v - spec.CenterY)) * Mathf.Rad2Deg;
+                    var ang = Mathf.Atan2((u - spec.CenterX) * frame.Box.x, -(v - spec.CenterY) * frame.Box.y) * Mathf.Rad2Deg;
                     return ((((ang - spec.AngleDeg) % 360f) + 360f) % 360f) / 360f;
                 }
                 default:
-                    return (((u - 0.5f) * lineAspect * direction.x) + ((v - 0.5f) * direction.y))
-                        / ((Mathf.Abs(direction.x) * lineAspect) + Mathf.Abs(direction.y)) + 0.5f;
+                    return (((u - 0.5f) * frame.LineAspect * frame.Direction.x) + ((v - 0.5f) * frame.Direction.y))
+                        / ((Mathf.Abs(frame.Direction.x) * frame.LineAspect) + Mathf.Abs(frame.Direction.y)) + 0.5f;
             }
         }
 
-        // The radial parameter of a point offset (dx, dy) in UV from a centre (cx, cy): 1 on the ellipse that
-        // CSS's default farthest-corner sizing draws, which passes through the farthest box corner with the
-        // proportions of the farthest-side ellipse, so it is the same in every box.
-        private static float RadialParameter(float dx, float dy, float cx, float cy)
+        // The radii of a radial gradient in a width x height box, in the box's units: where CSS puts the
+        // ending shape for its size. A circle has one radius and an ellipse two. The extent keywords measure
+        // the centre's distance to the sides or corners; an ellipse keeps the proportions of its side
+        // measure, and a corner extent scales them to pass through the corner. Shared with the skew
+        // silhouette bake.
+        internal static Vector2 RadialRadii(in GradientSpec spec, float width, float height)
         {
-            var rx = Mathf.Max(cx, 1f - cx);
-            var ry = Mathf.Max(cy, 1f - cy);
-            var nx = dx / rx;
-            var ny = dy / ry;
-            return Mathf.Sqrt((nx * nx) + (ny * ny)) * 0.70710678f;
+            var radial = spec.Radial;
+            var left = Mathf.Abs(spec.CenterX * width);
+            var right = Mathf.Abs((1f - spec.CenterX) * width);
+            var top = Mathf.Abs(spec.CenterY * height);
+            var bottom = Mathf.Abs((1f - spec.CenterY) * height);
+            var nearX = Mathf.Min(left, right);
+            var nearY = Mathf.Min(top, bottom);
+            var farX = Mathf.Max(left, right);
+            var farY = Mathf.Max(top, bottom);
+            Vector2 radii;
+            switch (radial.Extent)
+            {
+                case RadialExtent.Explicit:
+                    radii = radial.Circle
+                        ? new Vector2(radial.X, radial.X)
+                        : new Vector2(radial.XPercent ? radial.X * width : radial.X, radial.YPercent ? radial.Y * height : radial.Y);
+                    break;
+                case RadialExtent.ClosestSide:
+                    radii = radial.Circle ? Vector2.one * Mathf.Min(nearX, nearY) : new Vector2(nearX, nearY);
+                    break;
+                case RadialExtent.FarthestSide:
+                    radii = radial.Circle ? Vector2.one * Mathf.Max(farX, farY) : new Vector2(farX, farY);
+                    break;
+                case RadialExtent.ClosestCorner:
+                    radii = radial.Circle
+                        ? Vector2.one * Mathf.Sqrt((nearX * nearX) + (nearY * nearY))
+                        : new Vector2(nearX, nearY) * Mathf.Sqrt(2f);
+                    break;
+                default:
+                    radii = radial.Circle
+                        ? Vector2.one * Mathf.Sqrt((farX * farX) + (farY * farY))
+                        : new Vector2(farX, farY) * Mathf.Sqrt(2f);
+                    break;
+            }
+            return new Vector2(Mathf.Max(radii.x, 1e-4f), Mathf.Max(radii.y, 1e-4f));
         }
 
         // The unit direction a linear gradient runs in, for an angle in CSS degrees (0 = to top, clockwise),

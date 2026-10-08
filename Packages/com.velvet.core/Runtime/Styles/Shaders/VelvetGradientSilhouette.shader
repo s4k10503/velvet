@@ -29,11 +29,13 @@ Shader "Velvet/GradientSilhouette"
         _SkewX("Skew X (tan)", Float) = 0
         _SkewY("Skew Y (tan)", Float) = 0
         _AAWidth("AA half-width (px)", Float) = 1
-        // Gradient shape: 0 = linear (axis), 1 = radial (centre→farthest corner), 2 = conic (sweep).
+        // Gradient shape: 0 = linear (axis), 1 = radial (centre out to its radii), 2 = conic (sweep).
         _Type("Type", Float) = 0
         // Radial/conic centre in the box UV (0..1), and the conic start angle (CSS degrees, 0 = up).
         _Center("Center", Vector) = (0.5, 0.5, 0, 0)
         _ConicStart("Conic Start (deg)", Float) = 0
+        // A radial's radii in the box's pixels, from GradientBackground.RadialRadii.
+        _RadialRadii("Radial Radii (px)", Vector) = (1, 1, 0, 0)
         // Interpolation space: 0 = sRGB, 1 = OKLab.
         _Interp("Interp", Float) = 0
     }
@@ -93,6 +95,7 @@ Shader "Velvet/GradientSilhouette"
             float _Type;
             float4 _Center;
             float _ConicStart;
+            float4 _RadialRadii;
             float _Interp;
 
             Varyings vert(Attributes input)
@@ -187,11 +190,9 @@ Shader "Velvet/GradientSilhouette"
                     float lineLength = max(dot(abs(_AxisDir.xy), _AxisDir.zw), 1e-6);
                     t = dot((guv - 0.5) * _AxisDir.zw, _AxisDir.xy) / lineLength + 0.5;
                 }
-                else if (_Type < 1.5) // radial: elliptical distance over the farthest-corner ellipse
+                else if (_Type < 1.5) // radial: elliptical distance over the radii
                 {
-                    float2 a = guv - _Center.xy;
-                    float2 r = max(_Center.xy, 1.0 - _Center.xy);
-                    t = length(a / r) * 0.70710678;
+                    t = length((guv - _Center.xy) * size / _RadialRadii.xy);
                 }
                 else // conic: clockwise angle from up (0°) in pixel space, minus the start angle, over 360°
                 {

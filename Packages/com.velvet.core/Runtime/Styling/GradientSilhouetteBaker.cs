@@ -41,6 +41,7 @@ namespace Velvet
         private static readonly float[] s_stopPositions = new float[GradientSpec.MaxStops];
         private static readonly int TypeId = Shader.PropertyToID("_Type");
         private static readonly int CenterId = Shader.PropertyToID("_Center");
+        private static readonly int RadialRadiiId = Shader.PropertyToID("_RadialRadii");
         private static readonly int ConicStartId = Shader.PropertyToID("_ConicStart");
         private static readonly int InterpId = Shader.PropertyToID("_Interp");
         private static readonly int AxisDirId = Shader.PropertyToID("_AxisDir");
@@ -117,6 +118,8 @@ namespace Velvet
             m.SetFloat(TypeId, (float)(int)spec.Type);
             m.SetVector(CenterId, new Vector4(spec.CenterX, spec.CenterY, 0f, 0f));
             m.SetFloat(ConicStartId, spec.AngleDeg); // used only for conic
+            var radii = GradientBackground.RadialRadii(spec, w, h);
+            m.SetVector(RadialRadiiId, new Vector4(radii.x, radii.y, 0f, 0f)); // used only for radial
             m.SetFloat(InterpId, spec.Interp == GradientInterp.Oklab ? 1f : 0f);
             // The line's direction, then the box proportions it is laid out over: those of the element, or a
             // square for a corner direction (see GradientBackground.Bake).

@@ -6,9 +6,11 @@ texture it sets as the element's background image, stretched to the box and clip
 ([player-builds.md](player-builds.md) covers the shader behind it).
 
 A gradient is laid out over the box's real proportions, as CSS lays it out: a diagonal angle
-(`bg-linear-45`) and a conic are baked for the element's aspect, and baked again when a layout changes
-it. An angle along an axis, a corner direction (`bg-gradient-to-tr`) and a radial come out the same in
-every box, so they are baked once.
+(`bg-linear-45`), a conic and a radial circle are baked for the element's aspect, and baked again when a
+layout changes it. A radial sized in pixels is baked for the element's size too. An angle along an axis,
+a corner direction (`bg-gradient-to-tr`) and a radial ellipse sized by keyword or percentage come out the
+same in every box, so they are baked once. Under `animate-gradient` the gradient is laid out over the
+twice-as-large background the pan slides across.
 
 ## Shapes
 
@@ -17,6 +19,7 @@ every box, so they are baked once.
 | `bg-gradient-to-{dir}` / `bg-linear-to-{dir}` | linear, toward `t` `tr` `r` `br` `b` `bl` `l` `tl` |
 | `bg-linear-{n}` / `-bg-linear-{n}` / `bg-linear-[{n}deg]` | linear at an angle in degrees, 0 pointing up, clockwise |
 | `bg-radial` / `bg-radial-[at_{position}]` | radial from a centre (default the middle), an ellipse out to the farthest corner |
+| `bg-radial-[{shape} {size} at_{position}]` | `circle` or `ellipse`; `closest-side`, `closest-corner`, `farthest-side`, `farthest-corner`, or radii: a circle's length, an ellipse's two lengths or percentages (`circle_40px`, `ellipse_50%_20px`) |
 | `bg-conic` / `bg-conic-{n}` / `bg-conic-[from_{n}deg]` | conic, sweeping clockwise from a start angle |
 
 A position is keywords (`top`, `left`, `center`, …) or percentages, x before y: `at_top_left`,
@@ -29,8 +32,9 @@ The last shape utility in the class list wins, and a stop utility with no shape 
 
 `from-{colour}`, `via-{colour}` and `to-{colour}` take a palette name or a bracketed value
 (`from-[#0f172a]`); `from-{n}%`, `via-{n}%` and `to-{n}%` move that stop from its default of 0%, 50% or
-100%, and a position behind an earlier stop is raised to it, as in CSS. With only one of `from-` and
-`to-` given, the other end is that colour made transparent.
+100%, and a position behind an earlier stop is raised to it, as in CSS. A position may lie outside
+0%–100%: the gradient line runs on past the box. With only one of `from-` and `to-` given, the other end
+is that colour made transparent, and `via-` alone fades in from and out to its own transparent colour.
 
 ## Stop lists in the shape's brackets
 
@@ -46,7 +50,7 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
 ```
 
 - **The optional first argument** sets the shape: an angle (`90deg`) or `to_{side}` / `to_{side}_{side}`
-  for linear; `at_{position}` for radial; `from_{n}deg`, `at_{position}`, or `from_{n}deg_at_{position}`
+  for linear; a shape, a size and `at_{position}` for radial; `from_{n}deg`, `at_{position}`, or `from_{n}deg_at_{position}`
   for conic. Without one, a linear list runs to bottom, a radial one from the middle and a conic one
   from 0deg, as in CSS. An `in_srgb`, `in_oklab` or `in_oklch` at the start or end of it picks the
   interpolation space (`to_right_in_oklab`, or `in_oklab` alone). An angle is a number with a `deg`,
@@ -77,19 +81,19 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
   stops, and a `-` in front of `bg-linear-[…]`.
 - **A `/` modifier after a stop list leaves the class inert** on every shape, since Tailwind takes none
   after a bracketed shape. Name the space inside the bracket instead (`in_oklab`).
-- **A radial bracket that is no stop list keeps its position reading**: its `top` / `left` / … and
-  percentage tokens place the centre, every other token is ignored, and `from-` / `via-` / `to-` give
-  the stops. So `bg-radial-[circle_at_center,red,blue]` with `from-` / `to-` draws those utilities.
+- **A radial bracket that is no stop list keeps its position reading**: when its body is not a shape,
+  size and position CSS reads, its `top` / `left` / … and percentage tokens place the centre, every other
+  token is ignored, and `from-` / `via-` / `to-` give the stops. So `bg-radial-[at_top_bogus,red,blue]` with
+  `from-` / `to-` draws those utilities.
+- **A `/` inside the brackets belongs to the bracket**; only one after the closing `]` is a modifier.
 
 A list does not change what `animate-gradient` and `animate-shimmer` do; [motion.md](motion.md) covers
 both.
 
 ## Where this differs from CSS and Tailwind
 
-- Positions are percentages only, and are clamped to 0%–100%. A length (`20px`), a conic stop at an
-  angle (`red_90deg`) and a colour hint (a bare position between two stops) make the list malformed.
-- A radial shape or size keyword (`circle`, `ellipse`, `closest-side`, …) is not read, so a list that
-  opens with one is no stop list and falls back to the position reading above. `in_{space}` takes only
-  the three spaces above, and no hue-interpolation method (`longer_hue`).
+- Stop positions are percentages only. A length (`20px`), a conic stop at an angle (`red_90deg`) and a
+  colour hint (a bare position between two stops) make the list malformed.
+- `in_{space}` takes only the three spaces above, and no hue-interpolation method (`longer_hue`).
 - The gradient is a 128 by 128 texture stretched to the box, so a hard edge or a narrow band is as sharp
   as 1/128 of the box along each axis allows.

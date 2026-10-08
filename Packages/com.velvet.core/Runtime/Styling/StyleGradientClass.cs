@@ -26,6 +26,39 @@ namespace Velvet
         Oklab,
     }
 
+    // How far a radial gradient reaches: the extent keywords CSS names, or sizes given explicitly.
+    internal enum RadialExtent
+    {
+        FarthestCorner,
+        ClosestSide,
+        ClosestCorner,
+        FarthestSide,
+        Explicit,
+    }
+
+    // A radial gradient's shape and size as radial-gradient() writes them. The default is CSS's: an ellipse
+    // reaching the farthest corner. Explicit sizes are X and Y: pixels, or fractions of the box where the
+    // matching Percent flag is set (a circle's radius is X, in pixels).
+    internal readonly struct RadialSizing : IEquatable<RadialSizing>
+    {
+        public bool Circle { get; init; }
+        public RadialExtent Extent { get; init; }
+        public float X { get; init; }
+        public float Y { get; init; }
+        public bool XPercent { get; init; }
+        public bool YPercent { get; init; }
+
+        public bool Equals(RadialSizing other)
+            => Circle == other.Circle && Extent == other.Extent && XPercent == other.XPercent
+                && YPercent == other.YPercent && Mathf.RoundToInt(X * 100f) == Mathf.RoundToInt(other.X * 100f)
+                && Mathf.RoundToInt(Y * 100f) == Mathf.RoundToInt(other.Y * 100f);
+
+        public override bool Equals(object obj) => obj is RadialSizing o && Equals(o);
+
+        public override int GetHashCode()
+            => HashCode.Combine(Circle, (int)Extent, XPercent, YPercent, Mathf.RoundToInt(X * 100f), Mathf.RoundToInt(Y * 100f));
+    }
+
     // One colour stop of a resolved gradient: its colour and its position along the gradient line (0..1).
     internal readonly struct GradientStop
     {
@@ -58,6 +91,7 @@ namespace Velvet
         public GradientType Type { get; init; }
         public float AngleDeg { get; init; }
         public bool ToCorner { get; init; }
+        public RadialSizing Radial { get; init; }
         public float CenterX { get; init; }
         public float CenterY { get; init; }
         public GradientInterp Interp { get; init; }
@@ -76,7 +110,7 @@ namespace Velvet
         // Angle key at 0.25° precision, normalized mod 360 so -45° and 315° (the same axis — sin/cos are
         // periodic) share one cache entry. Position / centre keys at 0.1% precision.
         private static int AngleKey(float deg) => Mathf.RoundToInt((((deg % 360f) + 360f) % 360f) * 4f);
-        private static int PosKey(float p) => Mathf.RoundToInt(Mathf.Clamp01(p) * 1000f);
+        private static int PosKey(float p) => Mathf.RoundToInt(p * 1000f);
 
         public bool Equals(GradientSpec other)
         {
@@ -91,6 +125,10 @@ namespace Velvet
                 return false;
             }
             if (Type == GradientType.Linear && ToCorner != other.ToCorner)
+            {
+                return false;
+            }
+            if (Type == GradientType.Radial && !Radial.Equals(other.Radial))
             {
                 return false;
             }
@@ -123,6 +161,7 @@ namespace Velvet
                 h = h * 31 + (int)Interp;
                 h = h * 31 + (Type != GradientType.Radial ? AngleKey(AngleDeg) : 0);
                 h = h * 31 + (Type == GradientType.Linear && ToCorner ? 1 : 0);
+                h = h * 31 + (Type == GradientType.Radial ? Radial.GetHashCode() : 0);
                 h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterX) : 0);
                 h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterY) : 0);
                 foreach (var stop in Stops ?? Array.Empty<GradientStop>())
@@ -177,6 +216,7 @@ namespace Velvet
             public GradientType Type;
             public float Angle;
             public bool ToCorner;
+            public RadialSizing Radial;
             public float CenterX;
             public float CenterY;
             public GradientInterp Interp;
@@ -301,10 +341,10 @@ namespace Velvet
         }
 
         // Resolves the gradient: last shape activator wins, last from/via/to colour and position each win.
-        // Returns false when neither a from nor a to COLOR is given and the winning activator carries no stop
+        // Returns false when no from, via or to COLOR is given and the winning activator carries no stop
         // list (positions alone draw nothing), and a missing from/to colour defaults to the transparent
-        // version of the other stop (the default behavior). Returns false when no shape activator is present.
-        // A stop list's stops are followed by the from-/via-/to- stops when a from or to colour is given (see
+        // version of the other end, or of via when it is the only one (the default behavior). Returns false when no shape activator is present.
+        // A stop list's stops are followed by the from-/via-/to- stops when one of them names a colour (see
         // ResolveStops).
         public static bool TryExtract(string[] classNames, out GradientSpec spec)
         {
@@ -357,6 +397,7 @@ namespace Velvet
                 Type = shape.Type,
                 AngleDeg = shape.Angle,
                 ToCorner = shape.ToCorner,
+                Radial = shape.Radial,
                 CenterX = shape.CenterX,
                 CenterY = shape.CenterY,
                 Interp = shape.Interp,
@@ -372,7 +413,7 @@ namespace Velvet
         private static GradientStop[]? ResolveStops(in Shape shape, in UtilityStop fromStop, in UtilityStop viaStop,
             in UtilityStop toStop)
         {
-            if (!fromStop.HasColor && !toStop.HasColor)
+            if (!fromStop.HasColor && !viaStop.HasColor && !toStop.HasColor)
             {
                 return shape.Stops;
             }
@@ -387,8 +428,10 @@ namespace Velvet
             {
                 return cached;
             }
-            var first = new GradientStop(fromStop.HasColor ? fromStop.Color : Transparent(toStop.Color), fromStop.Position);
-            var last = new GradientStop(toStop.HasColor ? toStop.Color : Transparent(fromStop.Color), toStop.Position);
+            var first = new GradientStop(fromStop.HasColor ? fromStop.Color : Transparent(Neighbour(toStop, viaStop)),
+                fromStop.Position);
+            var last = new GradientStop(toStop.HasColor ? toStop.Color : Transparent(Neighbour(fromStop, viaStop)),
+                toStop.Position);
             var utilities = viaStop.HasColor
                 ? new[] { first, new GradientStop(viaStop.Color, viaStop.Position), last }
                 : new[] { first, last };
@@ -397,6 +440,9 @@ namespace Velvet
             s_utilityStops.Add(key, stops);
             return stops;
         }
+
+        // The colour an absent end fades from or to: the far end's when it has one, else the via stop's.
+        private static Color Neighbour(in UtilityStop far, in UtilityStop via) => far.HasColor ? far.Color : via.Color;
 
         private static Color Transparent(Color c) => new Color(c.r, c.g, c.b, 0f);
 
@@ -481,7 +527,11 @@ namespace Velvet
 
             // Split off a trailing /interp modifier (the gradient interpolation modifier).
             var baseTok = cls;
-            var slash = cls.IndexOf('/');
+            var slash = cls.LastIndexOf('/');
+            if (slash < cls.LastIndexOf(']'))
+            {
+                slash = -1; // a '/' inside the brackets belongs to the bracket's body
+            }
             if (slash >= 0)
             {
                 if (!TryParseInterp(cls.Substring(slash + 1), out shape.Interp))
@@ -524,8 +574,11 @@ namespace Velvet
             if (baseTok.StartsWith(RadialArbitraryActivator, StringComparison.Ordinal) && baseTok[baseTok.Length - 1] == ']')
             {
                 shape.Type = GradientType.Radial;
-                ParseRadialPosition(baseTok.Substring(RadialActivator.Length + 2, baseTok.Length - RadialActivator.Length - 3),
-                    ref shape.CenterX, ref shape.CenterY);
+                var body = baseTok.Substring(RadialActivator.Length + 2, baseTok.Length - RadialActivator.Length - 3);
+                if (!TryParseRadialLine(body, ref shape))
+                {
+                    ParseRadialPosition(body, ref shape.CenterX, ref shape.CenterY);
+                }
                 return true;
             }
             if (baseTok == ConicActivator)
@@ -709,7 +762,7 @@ namespace Velvet
             switch (shape.Type)
             {
                 case GradientType.Radial:
-                    return TryParseListPosition(line, out shape.CenterX, out shape.CenterY);
+                    return TryParseRadialLine(line, ref shape);
                 case GradientType.Conic:
                     return TryParseConicLine(line, ref shape);
                 default:
@@ -757,6 +810,109 @@ namespace Velvet
                 rest = parts[2];
             }
             return TryParseListPosition(rest, out shape.CenterX, out shape.CenterY);
+        }
+
+        // The head of radial-gradient(): an optional shape and size, then an optional at_{position}, in any
+        // order of shape and size. Writes the shape only when the whole line reads.
+        private static bool TryParseRadialLine(string line, ref Shape shape)
+        {
+            var tokens = line.Split('_');
+            var at = Array.IndexOf(tokens, "at");
+            float centerX = shape.CenterX, centerY = shape.CenterY;
+            if (at >= 0 && !TryParseListPosition(string.Join("_", tokens, at, tokens.Length - at), out centerX, out centerY))
+            {
+                return false;
+            }
+            var head = at < 0 ? tokens : tokens.Take(at).ToArray();
+            if (!TryParseRadialSizing(head, out var sizing))
+            {
+                return false;
+            }
+            shape.Radial = sizing;
+            shape.CenterX = centerX;
+            shape.CenterY = centerY;
+            return true;
+        }
+
+        private static bool TryParseRadialSizing(string[] head, out RadialSizing sizing)
+        {
+            sizing = default;
+            string? shapeToken = null;
+            var rest = new List<string>();
+            foreach (var token in head)
+            {
+                if (token is "circle" or "ellipse")
+                {
+                    if (shapeToken != null)
+                    {
+                        return false;
+                    }
+                    shapeToken = token;
+                }
+                else
+                {
+                    rest.Add(token);
+                }
+            }
+            var circle = shapeToken == "circle";
+            switch (rest.Count)
+            {
+                case 0:
+                    sizing = new RadialSizing { Circle = circle };
+                    return true;
+                case 1 when TryParseExtent(rest[0], out var extent):
+                    sizing = new RadialSizing { Circle = circle, Extent = extent };
+                    return true;
+                case 1 when shapeToken != "ellipse" && TryParsePixelLength(rest[0], out var radius):
+                    sizing = new RadialSizing { Circle = true, Extent = RadialExtent.Explicit, X = radius, Y = radius };
+                    return true;
+                case 2 when !circle && TryParseLengthPercentage(rest[0], out var x, out var xPercent)
+                    && TryParseLengthPercentage(rest[1], out var y, out var yPercent):
+                    sizing = new RadialSizing
+                    {
+                        Extent = RadialExtent.Explicit, X = x, Y = y, XPercent = xPercent, YPercent = yPercent,
+                    };
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseExtent(string token, out RadialExtent extent)
+        {
+            switch (token)
+            {
+                case "closest-side": extent = RadialExtent.ClosestSide; return true;
+                case "closest-corner": extent = RadialExtent.ClosestCorner; return true;
+                case "farthest-side": extent = RadialExtent.FarthestSide; return true;
+                case "farthest-corner": extent = RadialExtent.FarthestCorner; return true;
+                default: extent = RadialExtent.FarthestCorner; return false;
+            }
+        }
+
+        // A non-negative length as CSS writes one: pixels, or a bare 0.
+        private static bool TryParsePixelLength(string token, out float px)
+        {
+            px = 0f;
+            if (token == "0")
+            {
+                return true;
+            }
+            return token.EndsWith("px", StringComparison.Ordinal)
+                && StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out px, out var unit)
+                && unit == LengthUnit.Pixel && px >= 0f;
+        }
+
+        // A non-negative length or percentage: pixels as written, a percentage as a fraction of the box.
+        private static bool TryParseLengthPercentage(string token, out float value, out bool percent)
+        {
+            percent = token.EndsWith("%", StringComparison.Ordinal);
+            if (percent)
+            {
+                var ok = TryParsePercent(token, out value) && value >= 0f;
+                return ok;
+            }
+            return TryParsePixelLength(token, out value);
         }
 
         // An angle as CSS writes one: a number with a deg, grad, rad or turn unit, or a bare 0. Any other
@@ -911,7 +1067,7 @@ namespace Velvet
             }
         }
 
-        // "10%" or "[12.5%]" → 0.10 / 0.125 (clamped to 0..1). False when not a percentage. Delegates to
+        // "10%" or "[12.5%]" → 0.10 / 0.125, beyond 0..1 as written. False when not a percentage. Delegates to
         // the shared utility length grammar (the same one w-[…]-style arbitrary values use) so the numeric
         // parse can never drift from it; the explicit LengthUnit.Percent check is what keeps this a
         // percentage-only grammar even though the shared parser also accepts px/rem/bare-number lengths.
@@ -928,7 +1084,7 @@ namespace Velvet
             {
                 return false;
             }
-            frac = Mathf.Clamp01(v / 100f);
+            frac = v / 100f;
             return true;
         }
 
