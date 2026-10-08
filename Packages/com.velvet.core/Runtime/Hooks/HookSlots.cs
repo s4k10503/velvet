@@ -196,7 +196,8 @@ namespace Velvet
         // Every call in flight, not just the newest: two Mutate calls run side by side, so unmounting has
         // more than one token to cancel. Who may write the observed Status / Data is Generation's to say
         // instead: a call writes only while it still holds the current value, and Reset advances that too,
-        // so every call then in flight has lost it. The callbacks are every call's own either way.
+        // so every call then in flight has lost it. The hook options' callbacks are every call's own either
+        // way; a call's per-call callbacks are delivered only while it holds the current value.
         public List<CancellationTokenSource> Live { get; } = new();
 
         public long Generation { get; set; }

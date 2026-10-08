@@ -549,6 +549,96 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_ANoInputMutation_When_MutateIsCalledWithPerCallCallbacks_Then_TheyRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(NoInputMutationRender, key: "no-input-call-mutate"));
+            var settled = 0;
+
+            // Act
+            s_noInputCaptured!.Mutate(new MutateOptions<Unit, Unit> { OnSettled = (_, _, _, _) => settled++ });
+            await VelvetTask.Yield();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(settled, Is.EqualTo(1), "The no-input Mutate shorthand forwards its per-call callbacks");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ANoInputMutation_When_MutateAsyncIsCalledWithPerCallCallbacks_Then_TheyRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(NoInputMutationRender, key: "no-input-call-async"));
+            var settled = 0;
+
+            // Act
+            await s_noInputCaptured!.MutateAsync(new MutateOptions<Unit, Unit> { OnSettled = (_, _, _, _) => settled++ });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(settled, Is.EqualTo(1), "The no-input MutateAsync shorthand forwards its per-call callbacks");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextFreeMutation_When_PerCallCallbacksRun_Then_TheyReceiveANullContext() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextFreeMutationRender, key: "context-free-call-context"));
+            object? received = "unset";
+
+            // Act
+            await s_captured!.MutateAsync(1, new MutateOptions<int, int> { OnSuccess = (_, _, context) => received = context });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(received, Is.Null, "A context-free record has no OnMutate result, so its per-call callbacks get null rather than a boxed Unit");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_TwoOverlappingCallsWithPerCallCallbacks_When_TheFirstFailsLast_Then_ItsPerCallOnErrorDoesNotRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var first = new VelvetTaskCompletionSource<int>();
+            var second = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (v, _) => v == 1 ? first.Task : second.Task;
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-superseded-error"));
+            var firstCall = s_captured!.MutateAsync(1, CallOptions());
+            var secondCall = s_captured.MutateAsync(2, CallOptions());
+
+            // Act
+            second.TrySetResult(20);
+            await secondCall;
+            first.TrySetException(new InvalidOperationException("boom"));
+            try { await firstCall; } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind is "call-error" or "call-settled", e => $"{e.Kind} {e.Variables}"),
+                Is.EqualTo("call-settled 2"),
+                "A superseded call that fails delivers no per-call OnError or OnSettled");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallWithPerCallCallbacks_When_ItIsResetOutOfAndThenFails_Then_ItsPerCallOnErrorDoesNotRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-reset-error"));
+            var inFlight = s_captured!.MutateAsync(1, CallOptions());
+            s_captured.Reset();
+
+            // Act
+            gate.TrySetException(new InvalidOperationException("boom"));
+            try { await inFlight; } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind.StartsWith("call-"), e => e.Kind), Is.EqualTo(""),
+                "A reset call that fails delivers no per-call callbacks");
+        });
+
+        [UnityTest]
         public IEnumerator Given_AContextFreeMutation_When_ItSucceeds_Then_OnSettledRuns() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange

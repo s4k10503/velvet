@@ -214,8 +214,9 @@ namespace Velvet
         /// <summary>
         /// Awaitable mutation. Rethrows the underlying exception on failure so callers can <c>try</c> /
         /// <c>catch</c>; <see cref="Error"/> is also populated. Rejects with an
-        /// <see cref="OperationCanceledException"/> when the component unmounts while the call is in flight or
-        /// has already unmounted.
+        /// <see cref="OperationCanceledException"/> when the component unmounts while the call is in flight and
+        /// the mutation function honours its token, and when the call is made after the unmount; a function that
+        /// ignores the token completes with its own result.
         /// </summary>
         public VelvetTask<TData> MutateAsync(TVariables variables) => MutateAsync(variables, null);
 
