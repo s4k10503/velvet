@@ -132,6 +132,71 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 - A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws, so `Data` is left empty as well.
 - A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()` as a fault, which logs it with `Debug.LogException`, an `OperationCanceledException` included. `MutateAsync` still rethrows the **mutation** exception, not the handler's.
 
+### 1-2b. Cached queries — `Hooks.UseQuery`
+
+TanStack Query's `useQuery` over a `QueryClient`: a keyed cache shared by every component that reaches
+the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's cache-less `use()`
+([§2-5](#2-5-suspense--error-boundary)).
+
+| TanStack Query | Velvet |
+|----------------|--------|
+| `new QueryClient({ defaultOptions: { queries: { staleTime, gcTime } } })` | `new QueryClient(new QueryClientOptions { StaleTime = ..., GcTime = ... })` |
+| `<QueryClientProvider client={client}>` | `V.Provider(QueryClientContext.Ref, client, children: ...)` |
+| `useQueryClient()` | `Hooks.UseContext(QueryClientContext.Ref)` |
+| `useQuery({ queryKey: ['todos', id], queryFn })` | `Hooks.UseQuery(new QueryOptions<T>(new QueryKey("todos", id), ct => ...))` |
+| `useQuery(options, queryClient)` | `Hooks.UseQuery(options, client)` |
+| `staleTime` / `gcTime` on one query | `new QueryOptions<T>(...) { StaleTime = ..., GcTime = ... }` |
+| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` |
+| `refetch()` | `result.Refetch()` |
+| `queryClient.invalidateQueries({ queryKey })` | `client.InvalidateQueries(new QueryKey(...))` |
+| `queryClient.clear()` | `client.Clear()` |
+
+**One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
+under `object.Equals`, so a key rebuilt every render, a record, a tuple and a boxed number all compare by
+content. Components reading one key share one entry and one request: the first to mount starts it and
+the rest join it. A component unmounting takes nothing from the others — the request belongs to the
+entry and runs on for them. The entry keeps its result after its last reader unmounts, so navigating
+back renders that result on the first render instead of the pending state.
+
+**Freshness.** `StaleTime` defaults to zero, as in v5: a component mounting over a cached result
+renders it and fetches again in the background, with `IsFetching` true and `Status` still `Success`. A
+result is stale once its age reaches `StaleTime`, and `TimeSpan.MaxValue` keeps it fresh until it is
+invalidated. `Data` is the last successful result and stays through a later failure and through a
+refetch. `QueryClientOptions.Clock` replaces the client's stopwatch, for game time that pauses or a
+test that advances time by hand.
+
+**Changing the key** moves the component to that key's entry: it renders that entry's data, or none,
+and a result the old key's request delivers afterwards is never shown as the new key's. There is no
+`placeholderData` yet, so a key with nothing cached renders `Pending`.
+
+**Invalidating after a mutation.** `InvalidateQueries` takes the leading parts of a key, as v5's
+filter does: `new QueryKey("todos")` matches `["todos", 1]` and `["todos"]` alike. A matching entry a
+mounted component reads is fetched again; a request already in flight for it is cancelled and started
+over when the entry holds data, so a result fetched before the write does not land as current. An entry
+nothing reads is only marked stale, and is fetched by the next component that mounts over it.
+
+```csharp
+var client = Hooks.UseContext(QueryClientContext.Ref)!;
+var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
+    MutationFn: (todo, ct) => api.SaveAsync(todo, ct),
+    OnSuccess: (_, _) => client.InvalidateQueries(new QueryKey("todos"))));
+```
+
+**Deviations from v5:**
+
+- Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) is
+  removed the next time a query subscribes to the client or `InvalidateQueries` runs, and removing it
+  cancels the request it still has in flight.
+- The `CancellationToken` a query function receives is cancelled when a refetch starts that request
+  over, when the entry is removed, and by `Clear`. v5 also aborts a request whose function read its
+  signal once the last observer unsubscribes; here it runs on, so a component mounting again finds its
+  result.
+- `UseQuery` never suspends: with no data yet it returns `Pending`. There is no `useSuspenseQuery`.
+- A key holds one data type. A query reading it as another throws `InvalidOperationException`.
+- Not yet available: retries (v5 retries a failure three times by default; here a failure is an error at
+  once), `enabled`, `select`, `placeholderData`, `refetchInterval`, `refetchOnWindowFocus` and
+  `refetchOnReconnect`, and `getQueryData` / `setQueryData`.
+
 ### 1-3. State Management (React + Zustand)
 
 Velvet state is organized into two layers — **"component-local state" and "shared Store"** — each modeled on React and Zustand respectively.
@@ -304,7 +369,7 @@ A container of direct plain elements warns once for each repeated sibling key, o
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<Suspense fallback={<Spinner/>}>` | `V.Suspense(fallback, children)` | Equivalent |
-| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked |
+| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked. Like `use()`, it caches nothing beyond its own component: a cache shared across components is `Hooks.UseQuery` ([§1-2b](#1-2b-cached-queries--hooksusequery)) |
 | Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. Once a boundary catches, it keeps showing its fallback until it remounts, as React's does: a re-render — its parent's, or its own — renders the fallback again with the error it caught and does not bring its children back. Give the boundary a new `key` to render its children again. The helper suits a use directly under Mount; the functional pattern suits a fallback that reads the boundary's own props or state |
 | Class Component + `componentDidCatch` | `Hooks.UseEffect` + try-catch, or logging via an error-notification Store | When you want to log side effects from a functional component, do it inside an effect. What every caught error goes to is the root's `OnCaughtError`, in the next row |
 | `createRoot(container, { onCaughtError })` | `V.Mount(target, tree, new MountOptions(OnCaughtError: (ex, info) => ...))` | Called when a boundary in the tree catches an error, in the commit that shows its fallback: after the fallback's layout effects and before those of the boundary's ancestors, where React calls it. A boundary that an ancestor boundary replaces before that commit reports nothing, as in React. A boundary that a time-sliced transition mounted or re-rendered, catching before the transition completes, reports in the commit that completes it, after its own layout effects. `info` carries the `ComponentStack` and `ErrorBoundary`, the name of the boundary that caught it. Without a handler, the error is logged with `Debug.LogException`: the entry reads as the caught exception itself, and its stack trace goes on to name the boundary and the component stack. An exception the handler throws is logged |

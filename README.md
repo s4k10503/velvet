@@ -150,10 +150,11 @@ for the complete hook-by-hook mapping (all of `UseReducer` / `UseLayoutEffect` /
 | `useRef` | `Hooks.UseRef<T>()` (in component) / `new Ref<T>()` (outside) |
 
 Velvet also ships hooks with no direct React-core equivalent, covering Unity / DI / routing /
-async-mutation cases the React ecosystem usually hands to third-party libraries —
+data-fetching cases the React ecosystem usually hands to third-party libraries —
 `UseService<T>()` (DI resolution), `UseStore` (Zustand-style store subscription, see
-[Store](#store-zustand-style) below), `UseBlocker` (React-Router-style navigation blocking), and
-`UseMutation` (react-query-style async-mutation lifecycle).
+[Store](#store-zustand-style) below), `UseBlocker` (React-Router-style navigation blocking),
+`UseMutation` (react-query-style async-mutation lifecycle), and `UseQuery` (react-query-style cached
+queries over a `QueryClient`).
 
 ### Store (Zustand-style)
 
