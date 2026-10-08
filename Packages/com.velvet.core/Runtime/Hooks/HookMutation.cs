@@ -30,8 +30,11 @@ namespace Velvet
         Action<Exception, TVariables>? OnError = null)
     {
         /// <summary>
-        /// Retries a failed <see cref="MutationFn"/> within the same call: nothing is committed between
-        /// attempts, and <see cref="OnSuccess"/> / <see cref="OnError"/> run once, for the last attempt's
+        /// Retries a failed <see cref="MutationFn"/> within the same call: <see cref="MutationResult{TVariables, TData}.Status"/>,
+        /// <see cref="MutationResult{TVariables, TData}.Data"/> and <see cref="MutationResult{TVariables, TData}.Error"/>
+        /// stay uncommitted between attempts while <see cref="MutationResult{TVariables, TData}.FailureCount"/>,
+        /// <see cref="MutationResult{TVariables, TData}.FailureReason"/> and
+        /// <see cref="MutationResult{TVariables, TData}.IsPaused"/> follow them, and <see cref="OnSuccess"/> / <see cref="OnError"/> run once, for the last attempt's
         /// outcome. When null, the default, a failure is not retried, as TanStack Query's mutations default
         /// to <c>retry: 0</c>.
         /// </summary>

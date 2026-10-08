@@ -49,9 +49,10 @@ namespace Velvet
         public Func<bool>? IsOnline { get; init; }
 
         /// <summary>
-        /// Reads whether the application has focus. A retry that is due while it has none waits until it has,
-        /// as TanStack's retryer waits on its focus manager, in every <see cref="NetworkMode"/>. When null,
-        /// <c>Application.isFocused</c>, which is read on the main thread.
+        /// Reads whether the application is visible, as TanStack's focus manager reads the page's visibility. A
+        /// retry that is due while it is not waits until it is, in every <see cref="NetworkMode"/>. When null,
+        /// true except on a mobile platform while <c>Application.isFocused</c> is false, read on the main thread.
+        /// A desktop window that has lost focus but is still shown counts as visible, as a browser tab does.
         /// </summary>
         public Func<bool>? IsFocused { get; init; }
 
@@ -126,8 +127,12 @@ namespace Velvet
 
         private static bool ApplicationIsOnline() => Application.internetReachability != NetworkReachability.NotReachable;
 
+        // Approximates page visibility, which a focus change alone does not end: a desktop window behind
+        // another stays visible, as a browser tab does, so only a mobile platform is asked about focus.
+        private static bool ApplicationIsVisible() => !Application.isMobilePlatform || Application.isFocused;
+
         private bool CanContinue() =>
-            (IsFocused?.Invoke() ?? Application.isFocused)
+            (IsFocused?.Invoke() ?? ApplicationIsVisible())
             && (NetworkMode == NetworkMode.Always || (IsOnline?.Invoke() ?? ApplicationIsOnline()));
 
         // Polled once per frame rather than woken by Application.focusChanged, so one loop serves a supplied

@@ -350,6 +350,120 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APausedCall_When_TheDeviceComesOnlineAndMutationFnIsStillRunning_Then_TheHandleIsNoLongerPausedButStillPending()
+        {
+            // Arrange — the gate keeps the call pending after it continues, so only the continue callback can
+            // clear IsPaused: a success would clear it as well.
+            var online = false;
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_retry = s_ready with { IsOnline = () => online };
+            s_mutationFn = (_, _) => gate.Task;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "retry-continue-pending"));
+            _ = s_captured!.MutateAsync(1);
+
+            // Act
+            online = true;
+            for (var frame = 0; frame < 5; frame++) DrainEditorUpdateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured.IsPaused, s_captured.Status), Is.EqualTo((false, MutationStatus.Pending)),
+                "Continuing clears IsPaused while the attempt is still in flight");
+        }
+
+        [Test]
+        public void Given_ASupersededCall_When_ItFailsAndPausesWhileANewerCallIsCurrent_Then_TheNewerHandleIsUntouched()
+        {
+            // Arrange — the older call's attempt is still in flight when the newer call starts, so its failure
+            // and its pause both arrive while the newer call holds the handle.
+            var focused = true;
+            var older = new VelvetTaskCompletionSource<int>();
+            var newer = new VelvetTaskCompletionSource<int>();
+            s_retry = s_noDelay with { IsFocused = () => focused };
+            s_mutationFn = (v, _) => v == 1 ? older.Task : newer.Task;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "retry-superseded"));
+            _ = s_captured!.MutateAsync(1);
+            _ = s_captured.MutateAsync(2);
+            focused = false;
+
+            // Act
+            older.SetException(new InvalidOperationException("older"));
+            for (var frame = 0; frame < 5; frame++) DrainEditorUpdateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured.FailureCount, s_captured.FailureReason, s_captured.IsPaused, s_captured.Variables),
+                Is.EqualTo((0, (Exception?)null, false, 2)),
+                "A call a newer one has superseded writes none of the failure bookkeeping to the handle");
+        }
+
+        [Test]
+        public void Given_ACallReset_When_ItsAttemptFailsAfterwards_Then_TheResetHandleIsUntouched()
+        {
+            // Arrange
+            var attempt = new VelvetTaskCompletionSource<int>();
+            var gate = new VelvetTaskCompletionSource();
+            s_retry = s_ready with { Wait = (_, _) => gate.Task };
+            s_mutationFn = (_, _) => attempt.Task;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "retry-reset-inflight"));
+            _ = s_captured!.MutateAsync(1);
+            s_captured.Reset();
+
+            // Act
+            attempt.SetException(new InvalidOperationException("down"));
+            for (var frame = 0; frame < 5; frame++) DrainEditorUpdateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured.Status, s_captured.FailureCount, s_captured.FailureReason),
+                Is.EqualTo((MutationStatus.Idle, 0, (Exception?)null)),
+                "A reset out of a call keeps its failures off the handle");
+        }
+
+        [Test]
+        public void Given_AComponentRenderingTheFailureCount_When_AnAttemptFailsAfterTheLastFlush_Then_TheLabelShowsIt()
+        {
+            // Arrange — flushed once pending, so only a render the failure itself requests can change the label.
+            var attempt = new VelvetTaskCompletionSource<int>();
+            var gate = new VelvetTaskCompletionSource();
+            s_retry = s_ready with { Wait = (_, _) => gate.Task };
+            s_mutationFn = (_, _) => attempt.Task;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationLabelRender, key: "retry-label"));
+            _ = s_captured!.MutateAsync(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            attempt.SetException(new InvalidOperationException("transient"));
+            for (var frame = 0; frame < 5; frame++) DrainEditorUpdateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>().text, Is.EqualTo("pending failures=1 paused=False"),
+                "A failed attempt a retry waits on renders its count without any other state change");
+        }
+
+        [Test]
+        public void Given_AComponentRenderingIsPaused_When_ARetryPausesAfterTheLastFlush_Then_TheLabelShowsPaused()
+        {
+            // Arrange
+            var attempt = new VelvetTaskCompletionSource<int>();
+            s_retry = s_noDelay with { IsFocused = () => false };
+            s_mutationFn = (_, _) => attempt.Task;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationLabelRender, key: "retry-label-paused"));
+            _ = s_captured!.MutateAsync(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            attempt.SetException(new InvalidOperationException("transient"));
+            for (var frame = 0; frame < 5; frame++) DrainEditorUpdateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>().text, Is.EqualTo("pending failures=1 paused=True"),
+                "A pause renders without any other state change");
+        }
+
+        [Test]
         public void Given_ARetryDueWhileUnfocused_When_FramesPass_Then_TheHandleIsPausedWithItsFailureCount()
         {
             // Arrange
@@ -378,6 +492,13 @@ namespace Velvet.Tests
                 MutationFn: s_mutationFn,
                 OnError: (_, _) => s_onErrorCount++) { Retry = s_retry });
             return V.Label(text: "ok");
+        }
+
+        [Component]
+        public static VNode CaptureMutationLabelRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn) { Retry = s_retry });
+            return V.Label(text: $"{s_captured.Status.ToString().ToLowerInvariant()} failures={s_captured.FailureCount} paused={s_captured.IsPaused}");
         }
 
         [Component]

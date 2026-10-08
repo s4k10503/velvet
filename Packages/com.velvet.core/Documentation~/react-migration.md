@@ -148,13 +148,13 @@ render's `MutationFn`, as v5's retryer reads `mutationFn` on every run, and gets
 token is live; once that token is cancelled, by an unmount or by the caller, no further attempt starts.
 
 Pausing follows the retryer. Under `Online` a call started offline waits for a connection before its first
-attempt; under `OfflineFirst` it does not. Every retry that comes due waits until the application has focus
-and, outside `Always`, a connection. `IsOnline` and `IsFocused` default to
-`Application.internetReachability` and `Application.isFocused`, are polled once per frame and can be
-supplied; supply them to decide by something other than the Application's own reading. While a
-call waits this way `MutationResult.IsPaused` is true, and `FailureCount` / `FailureReason` follow v5's
-reducer: zero and null when a call starts or succeeds, one more count and the failure for each failed attempt,
-the final failure included.
+attempt; under `OfflineFirst` it does not. Every retry that comes due waits until the application is visible
+and, outside `Always`, a connection. v5 reads the page's visibility for the first; `IsFocused` defaults to true except on a mobile platform while `Application.isFocused`
+is false, so a backgrounded app pauses and an unfocused desktop window does not, and a minimized desktop
+window is not detected. `IsOnline` defaults to `Application.internetReachability`. Both are polled once per
+frame and can be supplied to decide by something else. While a call waits this way `MutationResult.IsPaused`
+is true, and `FailureCount` / `FailureReason` follow v5's reducer: zero and null when a call starts or
+succeeds, one more count and the failure for each failed attempt, the final failure included.
 
 Where v5 differs: the pause applies only to a call whose options carry a `Retry`, whereas v5's retryer
 pauses a mutation started offline with no retry set as well. The default wait is wall-clock time on the main
