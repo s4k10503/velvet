@@ -584,9 +584,28 @@ namespace Velvet
             }
         }
 
+        // Tailwind's bare position: a non-negative integer written without sign, leading zero or fraction,
+        // then '%'. Anything else has to be written in brackets.
+        private static bool IsBarePercent(string suffix)
+        {
+            var digits = suffix.Length - 1;
+            if (digits < 1 || suffix[digits] != '%' || (suffix[0] == '0' && digits > 1))
+            {
+                return false;
+            }
+            for (var i = 0; i < digits; i++)
+            {
+                if (suffix[i] < '0' || suffix[i] > '9')
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         private static StopToken ParseStopToken(string suffix)
         {
-            if (TryParsePercent(suffix, out var p))
+            if ((suffix.Length > 0 && suffix[0] == '[' || IsBarePercent(suffix)) && TryParsePercent(suffix, out var p))
             {
                 return new StopToken { IsPosition = true, Position = p };
             }

@@ -16,6 +16,8 @@
   raised to it, so `from-60%` with `via-` at its 50% default puts via at 60%. Where two stops share a
   position the later one starts there, so `from-0% via-0%` begins on the via colour rather than the from
   colour.
+- A bare `from-` / `via-` / `to-` position is a whole, unsigned percentage, as in Tailwind: `from--50%` and
+  `from-12.5%` no longer move the stop, and are written `from-[-50%]` and `from-[12.5%]`.
 - A `bg-radial-[…]` bracket is read as CSS reads it. One whose body is not a shape, size and position (an
   unknown token such as `bg-radial-[at_top_bogus]`, an ellipse with one radius) used to ignore what it did
   not know and draw a centred or positioned radial; it now leaves the class inert, as an invalid CSS gradient

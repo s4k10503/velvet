@@ -44,7 +44,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleClassProjection.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleFilterEngineWrite.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleFontResolver.cs	1
-Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs	17
+Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs	18
 Packages/com.velvet.core/Runtime/Styling/StyleHasVariantManipulator.cs	4
 Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleRuleOrder.cs	1

@@ -838,6 +838,49 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABareNegativePositionAfterAValidOne_When_Extracted_Then_TheValidPositionStands()
+        {
+            // Arrange — Tailwind's bare position is a non-negative integer percentage; a negative one is no utility.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-60%", "from--50%", "to-[#0000ff]" }, out var spec);
+
+            // Act
+            var position = spec.Stops[0].Position;
+
+            // Assert
+            Assert.That(position, Is.EqualTo(0.6f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ABareFractionalPositionAfterAValidOne_When_Extracted_Then_TheValidPositionStands()
+        {
+            // Arrange — Tailwind's bare position takes whole percentages only.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-60%", "from-12.5%", "to-[#0000ff]" }, out var spec);
+
+            // Act
+            var position = spec.Stops[0].Position;
+
+            // Assert
+            Assert.That(position, Is.EqualTo(0.6f).Within(1e-4f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already reads a bracketed position of any sign or fraction.
+        [Test]
+        public void Given_ABracketedFractionalPosition_When_Extracted_Then_ItIsTheStopsPosition()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-[12.5%]", "to-[#0000ff]" }, out var spec);
+
+            // Act
+            var position = spec.Stops[0].Position;
+
+            // Assert
+            Assert.That(position, Is.EqualTo(0.125f).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_ListsWhosePositionsDifferBeyondTheBox_When_Compared_Then_TheyAreNotEqual()
         {
             // Arrange
