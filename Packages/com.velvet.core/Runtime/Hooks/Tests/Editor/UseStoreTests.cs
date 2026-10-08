@@ -655,7 +655,9 @@ namespace Velvet.Tests
             s_textDescendantFiber = null;
         }
 
-        [Component]
+        // Unwoven, like the mid-pass components: on a memo hit a woven body skips what follows its hooks, which
+        // here is the mutation and the recorded read.
+        [Component(Compiler = false)]
         private static VNode TextAncestorRender()
         {
             s_textAncestorFiber = FiberAmbientStack.Current;
@@ -668,7 +670,7 @@ namespace Velvet.Tests
             return V.Label(text: text ?? "");
         }
 
-        [Component]
+        [Component(Compiler = false)]
         private static VNode TextDescendantRender()
         {
             s_textDescendantFiber = FiberAmbientStack.Current;
