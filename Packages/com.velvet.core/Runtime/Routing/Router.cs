@@ -227,8 +227,8 @@ namespace Velvet
         /// Router's 405 error.
         /// </summary>
         /// <param name="formData">What the submission sends. A <c>get</c> submission takes an
-        /// <see cref="ISearchParams"/> or null; anything else commits React Router's error for a body it cannot
-        /// encode, as <c>routing.md</c> describes.</param>
+        /// <see cref="ISearchParams"/> or null; anything else commits an error in the navigation instead of
+        /// throwing, as <c>routing.md</c> describes.</param>
         /// <param name="options">How to submit; null takes every default. A null
         /// <see cref="SubmitOptions.Action"/> submits to the current location.</param>
         /// <param name="cancellationToken">Token forwarded to the action and the loaders.</param>
@@ -1080,8 +1080,8 @@ namespace Velvet
             internal readonly string Action;
             internal readonly object? FormData;
             internal readonly bool? Replace;
-            // React Router's error for a method no form takes (405) or a get body that is no query string (400),
-            // committed in place of an action's result.
+            // The error for a method no form takes or a get body that is not an ISearchParams, committed in place
+            // of an action's result. It carries no status.
             internal readonly Exception? Refusal;
 
             internal Submission(string method, string action, object? formData, bool? replace)

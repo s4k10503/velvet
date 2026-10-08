@@ -43,7 +43,8 @@ namespace Velvet
     }
 
     /// <summary>The function <c>Hooks.UseSubmit</c> returns: React Router's <c>SubmitFunction</c>.</summary>
-    /// <param name="formData">What the submission sends. A <c>get</c> submission takes an <see cref="ISearchParams"/> or null.</param>
+    /// <param name="formData">What the submission sends. A <c>get</c> submission takes an <see cref="ISearchParams"/> or null; any other
+    /// form data commits an error in the navigation instead of throwing.</param>
     /// <param name="options">How to submit; null takes every default.</param>
     public delegate VelvetTask<NavigationResult> SubmitFunction(object? formData, SubmitOptions? options = null);
 }

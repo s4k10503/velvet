@@ -382,6 +382,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARefusedGetSubmissionWithNoAction_When_Submitted_Then_ItLandsOnTheCurrentLocationWithItsSearch()
+        {
+            // Arrange
+            var router = ItemsRouter("/items?q=1", Created);
+
+            // Act
+            Submit(router, "lamp", new SubmitOptions());
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=1"));
+        }
+
+        [Test]
         public void Given_AMethodNoFormTakes_When_Submitted_Then_ItCommitsTheRefusalAndRunsNoAction()
         {
             // Arrange
