@@ -1065,6 +1065,9 @@ namespace Velvet.Tests
             Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
         }
 
+        // GREEN_ON_BASE(characterization): the base never reads an inline direction, so the class row holds
+        // there throughout. What this pins is the branch's half: clearing the inline value hands the
+        // direction back to the class rather than leaving the reversed edge in place.
         [Test]
         public void Given_AFlexRowGapContainerWithAnInlineDirection_When_TheInlineDirectionIsCleared_Then_TheClassDirectionReturns()
         {
@@ -1140,6 +1143,9 @@ namespace Velvet.Tests
             Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Half4));
         }
 
+        // GREEN_ON_BASE(characterization): the base never reads an inline wrap, so the class wrap holds there
+        // throughout. What this pins is the branch's half: clearing the inline value hands the wrap back
+        // to the class rather than leaving the row on the no-wrap path.
         [Test]
         public void Given_AWrappingGapContainerWithAnInlineNoWrap_When_TheInlineWrapIsCleared_Then_TheClassWrapReturns()
         {
