@@ -188,7 +188,8 @@ namespace Velvet
             var lanes = fiber.EnsureLanes();
             var enrolled = lanes.Queue.Add(priority);
             // Records the request whether or not it changed the queue. Only a caller that resets this first
-            // reads it (FiberRenderer.SubsumeFiberIntoThisPass), so it is otherwise inert history.
+            // reads it (FiberRenderer.SubsumeFiberIntoThisPass, FiberRenderer.NotifyAsyncResourceCompleted), so it is
+            // otherwise inert history.
             lanes.LanesRequestedSinceReset.Add(priority);
 
             // A coalesced re-add must NOT restart the starvation clock: it measures how long the lane
