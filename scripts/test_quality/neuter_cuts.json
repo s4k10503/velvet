@@ -99,8 +99,20 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceManipulator.cs",
-          "anchor": "internal string Break(string text)",
+          "anchor": "internal string Break(string text, bool preserves)",
           "neuter": "return text;"
+        }
+      ]
+    },
+    {
+      "name": "breaker-opportunities",
+      "mechanism": "balance",
+      "summary": "the opportunity rules report no break between two characters",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/TextBreakOpportunities.cs",
+          "anchor": "public static bool BreakAllowedBetween(int before, int previous, int next)",
+          "neuter": "return false;"
         }
       ]
     },
@@ -684,6 +696,14 @@
         "balance-apply",
         "balance-break",
         "breaker-plan"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.TextBreakOpportunitiesTests",
+      "cuts": [
+        "breaker-opportunities"
       ],
       "caseScopes": [],
       "platform": "EditMode"

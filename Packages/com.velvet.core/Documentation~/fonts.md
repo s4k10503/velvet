@@ -253,9 +253,11 @@ line, measured with `TextElement.MeasureTextSize`. Its limits carry over: nothin
 words, a division with another number of lines than the greedy one is dropped, `text-balance` acts on
 paragraphs of up to six lines and `text-pretty` on up to four, and `text-pretty` acts when the
 last line is one word narrower than a third of the line (Chromium's other trigger, consecutive
-hyphenated lines, has no counterpart here). Text between newlines is a paragraph and a
-word is a run between spaces. Text with no spaces (CJK), and a paragraph holding any white space other
-than the space, has nothing to break and is left to the engine's own wrapping.
+hyphenated lines, has no counterpart here). Text between newlines is a paragraph. A line may break at
+white space (a tab or any white space but a no-break space, kept in the displayed text where the
+white-space preserves it), between CJK characters (ideographs, kana, hangul) with the basic kinsoku rule
+that no line begins with a closing mark, a stop or comma, `ー` or an iteration mark and none ends with an
+opening bracket, after a hyphen between two letters, and after a zero width space.
 
 A leaf is broken once it has a width, and again whenever the width its text is laid out in, its font
 or its text changes. Before its first layout it shows the text unbroken.
@@ -268,10 +270,16 @@ newline-separated paragraph.
 Deviations from CSS:
 
 - **A box UI Toolkit sizes from its text can be narrower.** A leaf with auto width in a row is measured
-  from the lines it displays, so it can end up narrower than the unbalanced text would make it, and it
-  does not re-break when only an ancestor widens: the input is the leaf's own width.
-- **Breaks fall at spaces only**, as above, where CSS also breaks between CJK characters and after
-  hyphens.
+  from the lines it displays, so it can end up narrower than the unbalanced text would make it. When
+  the parent's room for it widens by more than two pixels, the leaf is broken once against the width its
+  text takes unbroken in that room, then against its own width again at the next derive. Only the
+  leaf's direct parent is watched: a widening that reaches the leaf through a parent sized by the leaf
+  itself is not seen.
+- **Only part of UAX #14 is read**, where Chromium reads all of it through ICU. Quotation marks, the
+  numeric and symbol rules, emoji and Indic sequences, CJK symbols other than the marks named above and
+  the combining behaviour of the CJK classes are not, so a break one of those rules would allow beyond
+  the list above is not taken, and one it would prohibit can be. A tab's width is an estimate that the
+  engine's own layout of each line checks.
 - **`text-balance` stops at six lines and `text-pretty` at four**, the limits Chromium applies.
 
 **Wrapping:** `text-wrap`, `text-nowrap`, `text-balance` and `text-pretty` are CSS's `text-wrap`

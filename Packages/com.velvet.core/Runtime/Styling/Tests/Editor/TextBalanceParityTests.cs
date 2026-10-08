@@ -16,8 +16,8 @@ namespace Velvet.Tests
     /// <remarks>
     /// EditMode has no resolved layout (<c>ReconcilerScope.Root</c> is never attached to a panel), so the
     /// manipulator never has a width to break in. These tests therefore pin the wiring only; where the
-    /// lines break is covered by <see cref="TextLineBreakerTests"/> over the choice and by the PlayMode
-    /// spec (<c>TextBalancePlaybackTests</c>) over a laid-out panel.
+    /// lines break is covered by <see cref="TextLineBreakerTests"/> over the choice and by
+    /// <see cref="TextWrapBreakPanelTests"/> over a laid-out panel.
     /// </remarks>
     [TestFixture]
     internal sealed class TextBalanceParityTests

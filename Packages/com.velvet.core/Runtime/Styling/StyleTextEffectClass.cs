@@ -453,7 +453,7 @@ namespace Velvet
             text = ApplyTransform(text, transform);
             if (breaks != null)
             {
-                text = breaks.Value.Breaker.Break(text);
+                text = breaks.Value.Breaker.Break(text, breaks.Value.Preserves);
             }
             text = ApplyDecoration(text, decoration);
             return ApplyLeading(text, leading);

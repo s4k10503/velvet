@@ -14,5 +14,5 @@
   container and every text leaf under it breaks its lines; `text-wrap` or `text-nowrap` on a nearer
   element resets it. They used to act only on the element carrying the class.
 
-- Breaks fall only at spaces. Text with no spaces (CJK), and a paragraph holding a tab or another white
-  space beside the space, is left to the engine's own wrapping; the narrowing used to balance it.
+- Breaks fall at white space, between CJK characters (with basic kinsoku), after a hyphen between two
+  letters and after a zero width space, a subset of UAX #14. Other rules of the standard are not read.
