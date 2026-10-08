@@ -360,7 +360,10 @@ namespace Velvet.Tests
 
             // Act
             balanced.style.unityFontStyleAndWeight = FontStyle.Bold;
-            StyleTextEffectResolver.ReapplyElement(_mounted.Root.Reconciler.Context, balanced);
+            // The write reaches the resolved style on the next style pass, and the manipulator looks at it
+            // on the scheduler tick after that.
+            Settle();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
             Settle();
 
             // Assert

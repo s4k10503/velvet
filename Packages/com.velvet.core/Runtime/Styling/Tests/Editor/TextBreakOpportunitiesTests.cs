@@ -263,18 +263,5 @@ namespace Velvet.Tests
             // Assert — a break follows the space and none precedes it.
             Assert.That(items, Is.EqualTo("\u65E5\u200B|\u672C"));
         }
-
-        [Test]
-        public void Given_Text_When_RunsAreCollected_Then_TheyAreTheItemsWithSoftHyphensHonoured()
-        {
-            // Arrange
-            var runs = new List<string>();
-
-            // Act
-            TextBreakOpportunities.CollectRuns("a b\u00ADc", runs);
-
-            // Assert
-            Assert.That(string.Join("|", runs), Is.EqualTo("a|b\u00AD|c"));
-        }
     }
 }

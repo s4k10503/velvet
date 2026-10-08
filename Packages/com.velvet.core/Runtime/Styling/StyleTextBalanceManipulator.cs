@@ -73,6 +73,8 @@ namespace Velvet
         private float _resultWidth;
         private string _result = string.Empty;
 
+        private bool _recheckPending;
+
         private bool _hasDecision;
         private float _decisionOwn;
         private float _decisionRoom;
@@ -81,7 +83,6 @@ namespace Velvet
         private float _decisionWidth;
 
         internal StyleTextBalanceManipulator(ReconcilerContext ctx, TextWrapStyle style)
-            : base(ctx)
         {
             _ctx = ctx;
             _style = style;
@@ -303,12 +304,38 @@ namespace Velvet
                 _measuredFor = null;
                 return text;
             }
+            ScheduleKeyRecheck();
             _hasResult = true;
             _resultStyle = _style;
             _resultWidth = width;
             _result = broken;
             Broke = !string.Equals(broken, text, StringComparison.Ordinal);
             return broken;
+        }
+
+        // The style a measurement read is the last one UI Toolkit resolved, and a class or an inline write
+        // reaches it on the next style pass, which raises no event of its own when the box does not move. So
+        // a result is compared against the style once that pass has run, and the leaf re-derived if the font
+        // moved under it.
+        private void ScheduleKeyRecheck()
+        {
+            if (_recheckPending)
+            {
+                return;
+            }
+            _recheckPending = true;
+            target.schedule.Execute(RecheckKey);
+        }
+
+        private void RecheckKey()
+        {
+            _recheckPending = false;
+            if (target is TextElement textElement && _measuredFor != null
+                && !new MeasureKey(textElement.resolvedStyle).Matches(_measureKey))
+            {
+                _hasSignature = false;
+                Apply();
+            }
         }
 
         private static float Measure(TextElement textElement, string text) =>
