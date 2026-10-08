@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 
 namespace Velvet
@@ -79,7 +80,7 @@ namespace Velvet
 
         // A record class is told by the clone method the compiler declares on it.
         private static bool IsRecord(Type type)
-            => type.GetMethod("<Clone>$", BindingFlags.Public | BindingFlags.Instance) != null;
+            => type.GetMethods(BindingFlags.Public | BindingFlags.Instance).Any(method => method.Name == "<Clone>$");
 
         // Elements of these types hold nothing to share, so two collections of them are the held one or the new
         // one without boxing an element.
@@ -199,7 +200,7 @@ namespace Velvet
         // The copy is made the way the dictionary that arrived was, comparer included.
         private static object CopyDictionary(IDictionary next, object[] keys, object?[] items)
         {
-            var comparer = next.GetType().GetProperty("Comparer")!.GetValue(next);
+            var comparer = next.GetType().GetProperty(nameof(Dictionary<object, object>.Comparer))!.GetValue(next);
             var copy = (IDictionary)Activator.CreateInstance(next.GetType(), keys.Length, comparer)!;
             for (var i = 0; i < keys.Length; i++)
             {
