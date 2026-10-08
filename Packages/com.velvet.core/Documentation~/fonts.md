@@ -179,7 +179,10 @@ The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.
 as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-height`'s values: a
 unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
 (`leading-[150%]`), and `px` or `rem` (1rem = 16px, as `w-[…]` takes it), which emit an absolute
-`<line-height=Npx>`. A negative value, any other unit, or a malformed value is ignored.
+`<line-height=Npx>`. A negative value, any other unit, or a malformed value is ignored. A bare
+spacing step (`leading-6`, `leading-3-5`) is that many spacing units, as in Tailwind, and emits
+the same `<line-height=Npx>` the `--space-*` scale gives `p-*` (`leading-6` is 24px); its steps
+are that scale's, written with `-` for `.`, and `leading-px` is not one.
 
 A preset and a unitless value are numbers, as in CSS: they emit an em tag, which the **text engine
 itself** resolves against whichever font size is in effect at that point in the string, so every

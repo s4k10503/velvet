@@ -295,6 +295,11 @@ namespace Velvet
                 facets.Leading = bracketLeading;
                 return true;
             }
+            if (TryParseLeadingSpacing(cls, out var spacingPx))
+            {
+                facets.Leading = new LeadingValue(LeadingUnit.Pixel, spacingPx);
+                return true;
+            }
             return false;
         }
 
@@ -353,6 +358,20 @@ namespace Velvet
             }
             leading = new LeadingValue(unit, amount);
             return true;
+        }
+
+        // leading-<n> reads the --space-* scale, as Tailwind's bare-number line height is n spacing units.
+        // leading-px is excluded: Tailwind has no such line height, though the scale has a px step.
+        private static bool TryParseLeadingSpacing(string cls, out float px)
+        {
+            px = 0f;
+            const string prefix = "leading-";
+            if (!cls.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var suffix = cls.Substring(prefix.Length);
+            return suffix != "px" && StyleArbitraryValueResolver.TryGetSpacingPx(suffix, out px);
         }
 
         private static bool TryParseLineHeight(ReadOnlySpan<char> value, out float amount, out LeadingUnit unit)
