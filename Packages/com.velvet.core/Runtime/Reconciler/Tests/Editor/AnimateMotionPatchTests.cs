@@ -92,6 +92,7 @@ namespace Velvet.Tests
             Assert.That(Card.style.backgroundSize.value.x.value, Is.EqualTo(200f));
         }
 
+        // GREEN_ON_BASE(characterization): the base already pans a to-right gradient horizontally; this pins that the reworked direction parsing keeps it so.
         [Test]
         public void Given_APanOnAToRightGradient_When_Mounted_Then_ItPansHorizontally()
         {
@@ -100,6 +101,7 @@ namespace Velvet.Tests
             Assert.That(Binding.PanVertical, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base already pans a to-bottom gradient vertically; this pins that the reworked direction parsing keeps it so.
         [Test]
         public void Given_APanOnAToBottomGradient_When_Mounted_Then_ItPansVertically()
         {
