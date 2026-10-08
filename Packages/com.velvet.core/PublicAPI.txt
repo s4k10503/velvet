@@ -381,6 +381,7 @@
 [Velvet] method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 [Velvet] method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]?): TSel
 [Velvet] method Velvet.Hooks.UseSubmit(): Velvet.SubmitFunction
+[Velvet] method Velvet.Hooks.UseSyncExternalStore`1(System.Func`2[System.Action, System.Action], System.Func`1[T]): T
 [Velvet] method Velvet.Hooks.UseTransition(): System.ValueTuple`2[System.Boolean, Velvet.TransitionStarter]
 [Velvet] method Velvet.Hooks.Use`1(System.Func`1[Velvet.VelvetTask`1[T]], System.Object?): T
 [Velvet] method Velvet.Hooks.Use`1(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]], System.Object?): T

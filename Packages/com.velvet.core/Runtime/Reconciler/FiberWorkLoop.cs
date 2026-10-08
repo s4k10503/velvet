@@ -71,7 +71,13 @@ namespace Velvet
         // one drain, so several post-await setters commit in a single render — async auto-batching, with no opt-in.
         // The request is silently ignored if the fiber is disposed or not mounted.
         // fiber: Fiber whose state changed.
-        public static void RequestRenderFromHook(ComponentFiber fiber)
+        public static void RequestRenderFromHook(ComponentFiber fiber) => RequestRenderFromHook(fiber, joinsTransition: true);
+
+        // A UseSyncExternalStore change notification never takes the Transition lane, as React performs an
+        // external store's update as blocking even when the store is mutated inside startTransition.
+        public static void RequestExternalStoreRender(ComponentFiber fiber) => RequestRenderFromHook(fiber, joinsTransition: false);
+
+        private static void RequestRenderFromHook(ComponentFiber fiber, bool joinsTransition)
         {
             if (fiber.IsDisposed || !fiber.IsMounted)
             {
@@ -97,7 +103,7 @@ namespace Velvet
 
             // Tested ahead of the discrete-event gate below, because a discrete handler calling
             // startTransition is the ordinary way to start one and its updates are still the transition's.
-            if (OpenTransitionScopes.Count > 0)
+            if (joinsTransition && OpenTransitionScopes.Count > 0)
             {
                 // Attributed on this branch rather than inside ScheduleRerender, which would also charge
                 // UseDeferredValue's own Transition-lane request (RequestTransitionRerender) to a

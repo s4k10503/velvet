@@ -45,6 +45,7 @@ namespace Velvet.Tests
             ResetCustomComparer();
             ResetThrowingSelector();
             ResetTearingParity();
+            ResetNullTearing();
         }
 
         [Test]
@@ -260,6 +261,29 @@ namespace Velvet.Tests
                 "After the mutation's follow-up render, both readers converge to the latest snapshot");
         }
 
+        [Test]
+        public void Given_NullSnapshot_When_StoreMutatesBetweenDrains_Then_DelayedReaderObservesThePinnedNull()
+        {
+            // Arrange
+            using var store = new TestTextStore(null);
+            s_textStore = store;
+            using var mounted = V.Mount(_root, V.Div(name: "host", children: new VNode[]
+            {
+                V.Component(TextAncestorRender, key: "ancestor"),
+                V.Component(TextDescendantRender, key: "descendant"),
+            }));
+            s_textAncestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_textDescendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            store.SetText("changed");
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.AreEqual("<null>", s_textDescendantValue ?? "<null>");
+        }
+
         private sealed record PairState(int Number, string Text);
 
         private sealed record IndexedState(int Index, IReadOnlyList<int> Items);
@@ -283,6 +307,13 @@ namespace Velvet.Tests
             public TestIndexedStore(IndexedState initial) : base(initial) { }
             public void SetIndexed(IndexedState next) => SetState(_ => next);
             protected override void ResetCore() => SetState(_ => new IndexedState(0, System.Array.Empty<int>()));
+        }
+
+        private sealed class TestTextStore : Store<string>
+        {
+            public TestTextStore(string initial) : base(initial) { }
+            public void SetText(string next) => SetState(_ => next);
+            protected override void ResetCore() => SetState(_ => null);
         }
 
         private sealed class NumberEqualityOnly : IEqualityComparer<int>
@@ -433,6 +464,39 @@ namespace Velvet.Tests
             s_descendantFiber = FiberAmbientStack.Current;
             s_descendantValue = Hooks.UseStore(s_store, s => s);
             return V.Label(text: s_descendantValue.ToString());
+        }
+
+        #endregion
+
+        #region NullTearing components (a store whose pinned snapshot is null)
+
+        private static Store<string> s_textStore;
+        private static string s_textDescendantValue;
+        private static ComponentFiber s_textAncestorFiber;
+        private static ComponentFiber s_textDescendantFiber;
+
+        private static void ResetNullTearing()
+        {
+            s_textStore = null;
+            s_textDescendantValue = null;
+            s_textAncestorFiber = null;
+            s_textDescendantFiber = null;
+        }
+
+        [Component]
+        private static VNode TextAncestorRender()
+        {
+            s_textAncestorFiber = FiberAmbientStack.Current;
+            var text = Hooks.UseStore(s_textStore, s => s);
+            return V.Label(text: text ?? "");
+        }
+
+        [Component]
+        private static VNode TextDescendantRender()
+        {
+            s_textDescendantFiber = FiberAmbientStack.Current;
+            s_textDescendantValue = Hooks.UseStore(s_textStore, s => s);
+            return V.Label(text: s_textDescendantValue ?? "");
         }
 
         #endregion

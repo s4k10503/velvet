@@ -284,4 +284,71 @@ namespace Velvet
             Subscription = null;
         }
     }
+
+    // Holds no snapshot of its own beyond Value, the one the last render returned; the store stays the
+    // authority, and a notification compares against a fresh GetSnapshot read.
+    internal sealed class HookExternalStoreSlot<T> : HookStoreSlot
+    {
+        public ComponentFiber Fiber = null!;
+        public Func<T> GetSnapshot = null!;
+        public T Value = default!;
+        // Null until a subscribe call has returned, so one that threw is retried by the next render.
+        public Func<Action, Action>? Subscribe;
+#if UNITY_EDITOR
+        public bool ReportedUncachedSnapshot;
+#endif
+        private Action? _unsubscribe;
+        private bool _subscribing;
+
+        // A notification raised while subscribe runs is dropped here: the render that called this reads the
+        // snapshot again once it returns.
+        public void Resubscribe(Func<Action, Action> subscribe)
+        {
+            Dispose();
+            _subscribing = true;
+            try
+            {
+                _unsubscribe = subscribe(OnStoreChange);
+            }
+            finally
+            {
+                _subscribing = false;
+            }
+            Subscribe = subscribe;
+        }
+
+        private void OnStoreChange()
+        {
+            if (!VelvetMainThread.IsCurrent)
+            {
+                throw new InvalidOperationException(
+                    "UseSyncExternalStore: the store-change callback passed to subscribe was invoked off the Unity" +
+                    " main thread. Marshal the notification to the main thread before invoking it.");
+            }
+            if (_subscribing || !SnapshotChanged()) return;
+            FiberWorkLoop.RequestExternalStoreRender(Fiber);
+        }
+
+        // A throwing GetSnapshot counts as a change, so the render repeats the call and its exception reaches
+        // the error boundary, as UseStore does for a throwing selector.
+        private bool SnapshotChanged()
+        {
+            try
+            {
+                return !ObjectIs.AreEqual(Value, GetSnapshot());
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        public override void Dispose()
+        {
+            var unsubscribe = _unsubscribe;
+            _unsubscribe = null;
+            Subscribe = null;
+            unsubscribe?.Invoke();
+        }
+    }
 }

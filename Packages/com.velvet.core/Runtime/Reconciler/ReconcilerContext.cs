@@ -2096,6 +2096,8 @@ namespace Velvet
         // a drain — on mount or a synchronous whole-tree flush — there is no tier separation, so reads return
         // the live store.Current and nothing is pinned. Pinning is reference-keyed, so distinct stores
         // never collide and the map is empty in the steady state.
+        // Hooks.UseSyncExternalStore pins here too, keyed by its getSnapshot delegate under Delegate.Equals
+        // rather than by a Store, since an external store has no Velvet object to key on.
         private readonly Dictionary<object, object?> _pinnedStoreSnapshots = new();
         private bool _storeSnapshotWaveActive;
 
@@ -2113,9 +2115,11 @@ namespace Velvet
         internal TStore PinStoreSnapshot<TStore>(object store, TStore liveSnapshot)
         {
             if (!_storeSnapshotWaveActive) return liveSnapshot;
-            if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned) && pinned is TStore typed)
+            // A cast rather than a type test, so a pinned null is a pin like any other value: a read sharing a key
+            // asks for the type the pin was taken as, or one that type converts to by reference.
+            if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned))
             {
-                return typed;
+                return (TStore)pinned!;
             }
             _pinnedStoreSnapshots[store] = liveSnapshot;
             return liveSnapshot;

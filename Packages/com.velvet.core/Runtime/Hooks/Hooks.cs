@@ -234,6 +234,98 @@ namespace Velvet
 
         #endregion
 
+        #region UseSyncExternalStore
+
+        /// <summary>
+        /// Subscribes to a store Velvet does not own and returns its current snapshot — the counterpart of React's
+        /// <c>useSyncExternalStore(subscribe, getSnapshot)</c>. Must be used inside Render() only.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <paramref name="getSnapshot"/> must return the same value, compared with <c>Object.is</c>, on every call
+        /// while the store has not changed: cache the snapshot instead of building a new one per read. A store-change
+        /// notification re-renders the component when <paramref name="getSnapshot"/> then returns a value that is not
+        /// <c>Object.is</c>-equal to the one it last rendered, or throws, so a snapshot built afresh per read re-renders
+        /// it on every notification. In the Editor, a hook whose two consecutive reads in one render differ logs an error
+        /// once.
+        /// </para>
+        /// <para>
+        /// <paramref name="subscribe"/> receives the callback to invoke when the store changes and returns the action
+        /// that unsubscribes it. It is called on the first render, and again, after the previous subscription is
+        /// removed, by a render passing a <paramref name="subscribe"/> that is not <see cref="Delegate.Equals(object)"/>
+        /// to the previous one; the StrictMode diagnostic render never calls it. A method group on the same instance
+        /// compares equal across renders; a lambda capturing a local is a new closure each render and re-subscribes on
+        /// each later render, as an inline subscribe function does in React. Unmounting removes the subscription. A
+        /// change the store raises while <paramref name="subscribe"/> runs is returned by the render that subscribed.
+        /// </para>
+        /// <para>
+        /// The callback must be invoked on the Unity main thread: invoked from another thread, it throws
+        /// <see cref="InvalidOperationException"/> to its invoker and schedules nothing. The re-render it schedules
+        /// never takes the Transition lane, including when the store is mutated inside <c>startTransition</c>.
+        /// </para>
+        /// <para>
+        /// Readers passing equal <paramref name="getSnapshot"/> delegates observe the same snapshot across a frame's
+        /// urgent and deferred renders, as readers of one store do through <see cref="UseStore{TStore,TSel}"/>.
+        /// </para>
+        /// </remarks>
+        /// <typeparam name="T">Snapshot type.</typeparam>
+        /// <param name="subscribe">Registers a store-change callback and returns its unsubscribe action. Must not be null.</param>
+        /// <param name="getSnapshot">Returns the store's current snapshot. Must not be null.</param>
+        /// <returns>The store snapshot this render observes.</returns>
+        public static T UseSyncExternalStore<T>(Func<Action, Action> subscribe, Func<T> getSnapshot)
+        {
+            if (subscribe == null) throw new ArgumentNullException(nameof(subscribe));
+            if (getSnapshot == null) throw new ArgumentNullException(nameof(getSnapshot));
+            var fiber = Resolve("UseSyncExternalStore");
+            fiber.StoreSlots ??= new List<HookStoreSlot>();
+            var index = fiber.Indices.StoreHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            HookExternalStoreSlot<T> slot;
+            if (index >= fiber.StoreSlots.Count)
+            {
+                slot = new HookExternalStoreSlot<T> { Fiber = fiber };
+                fiber.StoreSlots.Add(slot);
+            }
+            else if (fiber.StoreSlots[index] is HookExternalStoreSlot<T> typed)
+            {
+                slot = typed;
+            }
+            else
+            {
+                throw HookSlotTypeMismatch(fiber, "UseSyncExternalStore", fiber.StoreSlots[index].GetType(),
+                    $"HookExternalStoreSlot<{typeof(T).Name}>", index);
+            }
+
+            var live = getSnapshot();
+#if UNITY_EDITOR
+            if (!slot.ReportedUncachedSnapshot && !ObjectIs.AreEqual(live, getSnapshot()))
+            {
+                slot.ReportedUncachedSnapshot = true;
+                FiberLogger.LogError("UseSyncExternalStore",
+                    $"{ComponentName(fiber)}: getSnapshot returned a different value on two consecutive reads." +
+                    " Cache the snapshot and return the same value until the store changes.");
+            }
+#endif
+            slot.GetSnapshot = getSnapshot;
+            // The wave pin is keyed by getSnapshot itself: equal delegates read the same value, whichever
+            // component holds them.
+            var ctx = fiber.Reconciler?.Context;
+            slot.Value = ctx != null ? ctx.PinStoreSnapshot(getSnapshot, live) : live;
+
+            // The StrictMode diagnostic render subscribes nothing: a subscription is externally visible.
+            if (!IsStrictDiagnosticPass(fiber) && (slot.Subscribe == null || !slot.Subscribe.Equals(subscribe)))
+            {
+                slot.Resubscribe(subscribe);
+                var latest = getSnapshot();
+                if (!ObjectIs.AreEqual(live, latest)) slot.Value = latest;
+            }
+
+            return slot.Value;
+        }
+
+        #endregion
+
         #region UseContext
 
         /// <summary>
