@@ -312,7 +312,8 @@ namespace Velvet
             {
                 held = shown;
                 // MUTANT_SURVIVES(equivalent, boundary): at a length equal to the limit Substring(0, limit) returns the text itself.
-                edit = limit >= 0 && field.text.Length > limit ? field.text.Substring(0, limit) : field.text;
+                var overLimit = field.text.Length > limit;
+                edit = limit >= 0 && overLimit ? field.text.Substring(0, limit) : field.text;
                 ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit);
             }
 
