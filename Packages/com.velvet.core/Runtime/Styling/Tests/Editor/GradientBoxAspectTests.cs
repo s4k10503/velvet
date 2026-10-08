@@ -15,9 +15,11 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class GradientBoxAspectTests
     {
+        // A utility class is named in sRGB here, so a texel's red is the gradient parameter; a bracket is already.
         private static GradientSpec Extract(string shape)
         {
-            StyleGradientClass.TryExtract(new[] { shape, "from-[#000000]", "to-[#ffffff]" }, out var spec);
+            var named = shape.Contains("[") || shape.Contains("/") ? shape : shape + "/srgb";
+            StyleGradientClass.TryExtract(new[] { named, "from-[#000000]", "to-[#ffffff]" }, out var spec);
             return spec;
         }
 

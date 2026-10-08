@@ -28,8 +28,10 @@ or column and 512 by 512 for any other, and again when the element's size crosse
 | `bg-conic` / `bg-conic-{n}` / `bg-conic-[from_{n}deg]` | conic, sweeping clockwise from a start angle |
 
 A position is keywords (`top`, `left`, `center`, …) or percentages, which may lie outside the box, x before y: `at_top_left`,
-`at_25%_75%`. A trailing `/srgb` (the default), `/srgb-linear`, `/oklab`, `/oklch`, `/lab`, `/lch` or `/hsl`
-on the shape picks the space the colours are interpolated in. In the polar spaces (`oklch`, `lch`, `hsl`) the
+`at_25%_75%`. A utility class interpolates in OKLab, as Tailwind's do, and a trailing `/srgb`, `/srgb-linear`, `/oklab`, `/oklch`, `/lab`, `/lch` or `/hsl`
+on the shape picks the space the colours are interpolated in. A gradient written in an arbitrary bracket
+(`bg-linear-[…]`, `bg-radial-[…]`, `bg-conic-[…]`) names no space and interpolates in sRGB, as CSS does for the
+colours such a bracket carries; `in_{space}` inside it names one. `bg-gradient-to-*` reads as `bg-linear-to-*`. In the polar spaces (`oklch`, `lch`, `hsl`) the
 hue travels the shorter way round the circle; `/longer`, `/increasing` and `/decreasing` (and `/shorter`)
 pick the way, and name `oklch` by themselves. A colour with no chroma has no hue and takes the other's.
 
@@ -104,8 +106,6 @@ both.
 
 ## Where this differs from CSS and Tailwind
 
-- Colours interpolate in sRGB unless a space is named, which CSS does for colours written in legacy syntax and
-  Tailwind's `bg-linear-*`, `bg-radial` and `bg-conic` utilities do not: they name OKLab.
 - Not read, and so leaving the class inert: interpolation spaces other than the seven above (`hwb`,
   `xyz`, `display-p3`, …), a centre written in lengths or with edge offsets (`at_20px_30px`,
   `at_right_10px_bottom_20px`), `calc()` and `var()` in a stop, and a colour written as `color-mix()`,

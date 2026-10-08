@@ -1269,6 +1269,126 @@ namespace Velvet.Tests
         #region Interpolation spaces
 
         [Test]
+        public void Given_BgLinearToR_When_Extracted_Then_TheSpaceIsOklab()
+        {
+            // Act — Tailwind's bg-linear-to-r is linear-gradient(to right in oklab, …).
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklab));
+        }
+
+        [Test]
+        public void Given_BgLinearAngle_When_Extracted_Then_TheSpaceIsOklab()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-45", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklab));
+        }
+
+        [Test]
+        public void Given_BgGradientToTheLegacyAlias_When_Extracted_Then_TheSpaceIsOklab()
+        {
+            // Act — the v3 spelling reads as bg-linear-to-r.
+            StyleGradientClass.TryExtract(new[] { "bg-gradient-to-r", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklab));
+        }
+
+        [Test]
+        public void Given_BgRadial_When_Extracted_Then_TheSpaceIsOklab()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklab));
+        }
+
+        [Test]
+        public void Given_BgConic_When_Extracted_Then_TheSpaceIsOklab()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-conic", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklab));
+        }
+
+        [Test]
+        public void Given_BgConicWithAStart_When_Extracted_Then_TheSpaceIsOklab()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-conic-45", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklab));
+        }
+
+        [Test]
+        public void Given_ANegativeBgLinearAngle_When_Extracted_Then_TheSpaceIsOklab()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "-bg-linear-30", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklab));
+        }
+
+        [Test]
+        public void Given_AnExplicitSrgbModifier_When_Extracted_Then_TheSpaceIsSrgb()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/srgb", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Srgb));
+        }
+
+        [Test]
+        public void Given_AnAngleInABracket_When_Extracted_Then_TheSpaceIsSrgb()
+        {
+            // Act — an arbitrary value names no interpolation, so CSS reads legacy colours in sRGB.
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[45deg]", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Srgb));
+        }
+
+        [Test]
+        public void Given_ARadialPositionInABracket_When_Extracted_Then_TheSpaceIsSrgb()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-radial-[at_top]", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Srgb));
+        }
+
+        [Test]
+        public void Given_AStopListWithNoSpace_When_Extracted_Then_TheSpaceIsSrgb()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Srgb));
+        }
+
+        [Test]
+        public void Given_BlackToWhiteWithNoModifier_When_Baked_Then_TheMidpointIsTheOklabMean()
+        {
+            // Act — half way in OKLab lightness is 0.39 in sRGB; half way in sRGB would be 0.50.
+            var middle = SampleAcross(new[] { "bg-linear-to-r", "from-[#000000]", "to-[#ffffff]" }, 0.5f);
+
+            // Assert
+            Assert.That(middle.r, Is.EqualTo(0.393f).Within(0.02f));
+        }
+
+        [Test]
         public void Given_AnOklchModifier_When_Extracted_Then_TheSpaceIsOklchNotOklab()
         {
             // Act

@@ -391,8 +391,8 @@ namespace Velvet.Tests
         public void Given_OklabInterp_When_Baked_Then_TheMidpointDiffersFromSrgb()
         {
             // Arrange — the same red→blue stops, baked in sRGB vs OKLab.
-            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r", "from-[#ff0000]", "to-[#0000ff]" }, out var srgb);
-            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/oklch", "from-[#ff0000]", "to-[#0000ff]" }, out var oklab);
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/srgb", "from-[#ff0000]", "to-[#0000ff]" }, out var srgb);
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/oklab", "from-[#ff0000]", "to-[#0000ff]" }, out var oklab);
 
             // Act — sample the gradient midpoint (t=0.5) of each.
             var sTex = GradientBackground.Bake(srgb, 1f);
@@ -437,9 +437,9 @@ namespace Velvet.Tests
         {
             // The from→via SEGMENT of a 3-stop gradient must also interpolate in OKLab (not just from→to).
             StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var srgb);
+                new[] { "bg-linear-to-r/srgb", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var srgb);
             StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r/oklch", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var oklab);
+                new[] { "bg-linear-to-r/oklab", "from-[#ff0000]", "via-[#00ff00]", "to-[#0000ff]" }, out var oklab);
 
             // Act — sample t≈0.25 (mid of the from→via segment, via at 0.5).
             var sTex = GradientBackground.Bake(srgb, 1f);

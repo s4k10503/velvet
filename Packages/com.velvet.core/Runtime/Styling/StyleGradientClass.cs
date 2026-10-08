@@ -19,8 +19,8 @@ namespace Velvet
     // The colour space the stops interpolate in. Srgb is a plain channel lerp, SrgbLinear the same on linear
     // light, Oklab and Lab the perceptually-uniform lerps (avoiding the muddy midpoint of opposing sRGB
     // hues), and Oklch, Lch and Hsl the polar forms, whose hue travels along the arc a HueMethod picks.
-    // Velvet defaults to Srgb deliberately, even though Tailwind's utilities name OKLab — this default
-    // preserves existing visuals; opt into another with the /oklab, /oklch, … modifier.
+    // A utility class with no modifier interpolates in Oklab, as Tailwind's do; a gradient written in an
+    // arbitrary bracket names no space and is Srgb, which is what CSS does for the legacy colours it carries.
     internal enum GradientInterp
     {
         Srgb,
@@ -622,6 +622,12 @@ namespace Velvet
                     return false; // unknown modifier → not a valid activator
                 }
                 baseTok = cls.Substring(0, slash);
+            }
+            else if (cls.IndexOf('[') < 0)
+            {
+                // Tailwind's utilities name OKLab unless a modifier says otherwise; an arbitrary bracket names no
+                // space, which CSS reads as sRGB for the legacy colours a bracket carries.
+                shape.Interp = GradientInterp.Oklab;
             }
 
             if (TryGetStopListBody(baseTok, out var listType, out var listBody))

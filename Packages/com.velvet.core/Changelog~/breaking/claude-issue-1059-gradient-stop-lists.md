@@ -23,3 +23,7 @@
   holding the last colour at the radius, and a position may lie outside the box.
 - The `/oklch` modifier interpolates along the OKLCH hue arc, as CSS does. It interpolated in OKLab before,
   which has no hue arc, so a gradient between hues now takes the arc through the intermediate hues.
+- A gradient utility with no modifier (`bg-linear-*`, `bg-gradient-to-*`, `bg-radial`, `bg-conic`) interpolates
+  in OKLab, as Tailwind's do, where it interpolated in sRGB: the midpoint of two hues is no longer the
+  channel-wise mean, and a fade through black or white is brighter. `/srgb` keeps the old look. A gradient
+  written in an arbitrary bracket still interpolates in sRGB.
