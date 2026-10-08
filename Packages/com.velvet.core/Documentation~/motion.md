@@ -464,27 +464,50 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 
 ## Looping utilities (`animate-*`)
 
-Five class-driven loops, each infinite, each driven from a panel-root tick. `animate-pulse` and
-`animate-spin` take Tailwind's durations and timing functions: the pulse reaches half opacity at
-mid-loop with each half eased by `cubic-bezier(0.4, 0, 0.6, 1)`, and the spin turns linearly.
+Seven class-driven loops, each infinite, each driven from a panel-root tick. `animate-pulse`, `animate-spin`,
+`animate-ping` and `animate-bounce` take Tailwind's durations, keyframes and timing functions: each keyframe
+interval is eased by the timing function its keyframe names, as a CSS animation applies it.
 
 | class | what moves | default loop |
 |---|---|---|
 | `animate-gradient` | pans a baked gradient back and forth along its axis | 3s |
 | `animate-shimmer` | sweeps the gradient one way across the box | 1.5s |
 | `animate-hue` | rotates the hue-rotate filter angle a full turn | 4s |
-| `animate-pulse` | oscillates opacity between full and half | 2s |
-| `animate-spin` | rotates a full turn, linearly | 1s |
+| `animate-pulse` | oscillates opacity from the element's own to half and back, each half on `cubic-bezier(0.4, 0, 0.6, 1)` | 2s |
+| `animate-spin` | rotates a full turn on from the element's own rotation, linearly | 1s |
+| `animate-ping` | scales to twice the element's own scale while fading to nothing by three quarters of the loop, on `cubic-bezier(0, 0, 0.2, 1)`, then holds | 1s |
+| `animate-bounce` | lifts the element a quarter of its height and drops it back, the lift easing in on `cubic-bezier(0.8, 0, 1, 1)` and out on `cubic-bezier(0, 0, 0.2, 1)` | 1s |
 
 `animate-none` cancels, and the last *recognised* `animate-*` in the class list wins — an unclaimed
 name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
 `animate-hue-[5s]`. The two gradient modes are inert without a `bg-gradient-*` to pan.
 
+Tailwind's keyframes leave some frames unnamed, and a CSS animation fills those from the element's own value.
+The loops do the same, so `opacity-75 animate-pulse` runs between 0.75 and 0.5, `rotate-45 animate-spin` turns on
+from 45 degrees, `scale-50 animate-ping` starts at half size and grows to full size, and
+`translate-y-[10px] animate-bounce` bounces about that offset. The element's own value is what its classes give
+the slot, a named class or an arbitrary one, or a value written into the slot by anything other than the loop or a
+Motion play driving that slot. Class values are re-read whenever the element's class list changes, which is how
+`hover:` and `dark:` variants reach them, and when something else that decides which rules match the element
+changes: a pointer, focus or press event on it or beneath it, a theme switch, a change to its `enabled` prop or an
+ancestor's, or a class change on an ancestor made through a render. A class added to an ancestor imperatively, and
+an enabled state set with `SetEnabled` outside the prop, are not seen until the next of those. A bounce is measured in the element's own pixels, so it moves nothing until the element has
+a laid-out height. The keyframes' `transform` applies beneath the `scale` and `rotate` properties, so a bounce on a
+scaled or turned element is scaled and turned with it. `animate-spin` on an element with an uneven `scale` does
+not carry it: CSS turns the content beneath the scale and leaves the squash axes where they are,
+while a single `rotate` and `scale` turn the squash axes with the element. An even scale is exact.
+
+A layoutId move on an element with a running `animate-bounce` or `animate-ping` composes with it as CSS composes a
+layout animation with a keyframe one: the move writes the element's translate or scale, and the bounce's lift or
+the ping's growth is added to its frame, so the element keeps bouncing or pinging while it moves.
+
 Each mode owns its style slot while it runs, as a CSS animation outranks an element's ordinary
 declarations: the gradient pair owns background position, size and repeat, `animate-hue` owns the
-filter, `animate-pulse` owns opacity, and `animate-spin` owns rotate. A static utility writing that
-slot is shadowed, and so are a `transition-filter` tween and a `Spring` or `Bezier` Motion `rotate`
-channel driving it — the mode's frame is written over each of their writes. A `Spring` or `Bezier`
+filter, `animate-pulse` owns opacity, `animate-spin` owns rotate, `animate-ping` owns opacity and scale, and
+`animate-bounce` owns translate. A static utility writing that
+slot supplies the element's own value rather than showing, and a `transition-filter` tween and a `Spring` or
+`Bezier` Motion channel on a rotate, scale or translate slot driving it are shadowed — the mode's frame is written
+over each of their writes and the channel's value is not taken for the element's own. A `Spring` or `Bezier`
 Motion `opacity` channel is the exception: it shows over `animate-pulse` for as long as its play drives
 it, and the pulse takes the slot back when the play lets go, as Framer Motion runs opacity on the
 browser's own animation engine, whose animations outrank a CSS animation. Detaching restores the slot
