@@ -570,7 +570,8 @@ namespace Velvet
             return -1;
         }
 
-        // The sizing `*-full` and `*-auto` classes are USS rules, so only a position family's keywords are claimed.
+        // The sizing `*-full` and `*-auto` classes are USS rules, so only a position family's keywords are claimed,
+        // and `-auto` only unnegated, as TryParseFraction reads it.
         private static bool IsFractionToken(string cls)
         {
             var family = FractionFamilyOf(cls);
@@ -578,7 +579,7 @@ namespace Velvet
                 && (cls.IndexOf('/') >= 0
                     || (s_fractionFamilies[family].Position
                         && (cls.EndsWith("-full", StringComparison.Ordinal)
-                            || cls.EndsWith("-auto", StringComparison.Ordinal))));
+                            || (cls[0] != '-' && cls.EndsWith("-auto", StringComparison.Ordinal)))));
         }
 
         // Digits only with no sign or leading zero, as Tailwind's isPositiveInteger reads a fraction's halves.
