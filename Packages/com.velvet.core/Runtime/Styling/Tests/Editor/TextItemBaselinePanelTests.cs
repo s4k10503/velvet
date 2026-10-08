@@ -157,7 +157,13 @@ namespace Velvet.Tests
             var label = MountLabel("flex flex-row w-[20px]", "", Sentence);
 
             // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+            var r = label.resolvedStyle;
+            var diagnostic = $"DIAG flexShrink={r.flexShrink} parentDir={label.parent.resolvedStyle.flexDirection} "
+                + $"measured={MeasuredWidth(label, LongWord)} text='{label.text}' children={label.childCount} "
+                + $"position={r.position} display={r.display} fontSize={r.fontSize} whiteSpace={r.whiteSpace} "
+                + $"inlineOverflow={label.style.overflow.keyword}/{label.style.overflow.value} "
+                + $"inlineMinW={label.style.minWidth.keyword} classes={string.Join(' ', label.GetClasses())}";
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)), diagnostic);
         }
 
         [Test]
