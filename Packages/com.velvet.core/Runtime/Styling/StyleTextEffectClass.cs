@@ -66,6 +66,19 @@ namespace Velvet
         Pretty,
     }
 
+    // The two things text-wrap, text-nowrap, text-balance and text-pretty set: the wrap mode and the style.
+    internal readonly struct TextWrapSetting
+    {
+        public readonly bool? Wraps;
+        public readonly TextWrapStyle? Style;
+
+        public TextWrapSetting(bool? wraps, TextWrapStyle? style)
+        {
+            Wraps = wraps;
+            Style = style;
+        }
+    }
+
     // What a text leaf asks of the line breaking: the breaker that holds its style and measurements, and
     // whether the white-space it inherits keeps the spaces and newlines it was written with.
     internal readonly struct TextBreakRequest
@@ -147,15 +160,15 @@ namespace Velvet
         public readonly TextWrapStyle? WrapStyle;
 
         public TextEffect(TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading,
-            WhiteSpace? whiteSpaceClass, bool? wraps, TextWrapStyle? wrapStyle)
+            WhiteSpace? whiteSpaceClass, TextWrapSetting wrap)
         {
             Transform = transform;
             Decoration = decoration;
             Whitespace = whitespace;
             Leading = leading;
             WhiteSpaceClass = whiteSpaceClass;
-            Wraps = wraps;
-            WrapStyle = wrapStyle;
+            Wraps = wrap.Wraps;
+            WrapStyle = wrap.Style;
         }
 
         // True when no axis carries a token (nothing to track for this element).
@@ -243,7 +256,7 @@ namespace Velvet
                 }
             }
             return new TextEffect(facets.Transform, facets.Decoration, whitespace, facets.Leading,
-                whiteSpaceClass, facets.Wraps, facets.WrapStyle);
+                whiteSpaceClass, new TextWrapSetting(facets.Wraps, facets.WrapStyle));
         }
 
         // The axes Parse folds a class array into, bundled so the

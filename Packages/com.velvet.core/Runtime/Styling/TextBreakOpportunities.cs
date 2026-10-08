@@ -141,18 +141,25 @@ namespace Velvet
             codePoint < 0x10000 ? char.IsLetter((char)codePoint) : char.IsLetter(char.ConvertFromUtf32(codePoint), 0);
 
         // Kana, hangul, ideographs and the other CJK scripts that break between any two of their characters.
-        private static bool IsIdeographic(int cp) =>
-            (cp >= 0x2E80 && cp <= 0x2FDF)
-            || (cp >= 0x3040 && cp <= 0x30FF && !IsCjkClosing(cp))
-            || (cp >= 0x3100 && cp <= 0x318F)
-            || (cp >= 0x31A0 && cp <= 0x33FF)
-            || (cp >= 0x3400 && cp <= 0x4DBF)
-            || (cp >= 0x4E00 && cp <= 0x9FFF)
-            || (cp >= 0xA000 && cp <= 0xA4CF)
-            || (cp >= 0xAC00 && cp <= 0xD7AF)
-            || (cp >= 0xF900 && cp <= 0xFAFF)
-            || (cp >= 0x1B000 && cp <= 0x1B16F)
-            || (cp >= 0x20000 && cp <= 0x3FFFD);
+        // The kana block holds marks a line may not begin with, which IsNoBreakBefore takes out.
+        private static readonly (int First, int Last)[] IdeographicRanges =
+        {
+            (0x2E80, 0x2FDF), (0x3040, 0x30FF), (0x3100, 0x318F), (0x31A0, 0x33FF), (0x3400, 0x4DBF),
+            (0x4E00, 0x9FFF), (0xA000, 0xA4CF), (0xAC00, 0xD7AF), (0xF900, 0xFAFF), (0x1B000, 0x1B16F),
+            (0x20000, 0x3FFFD),
+        };
+
+        private static bool IsIdeographic(int cp)
+        {
+            foreach (var (first, last) in IdeographicRanges)
+            {
+                if (cp >= first && cp <= last)
+                {
+                    return !IsCjkClosing(cp);
+                }
+            }
+            return false;
+        }
 
         // The marks a line may not begin with: closing brackets, the stops and commas of CJK text, the
         // prolonged sound mark, iteration marks and the middle dot, plus the ASCII closers.
@@ -167,21 +174,20 @@ namespace Velvet
         }
 
         // The non-ASCII marks of IsNoBreakBefore, which also let a line break after them.
-        private static bool IsCjkClosing(int cp)
+        private static readonly HashSet<int> CjkClosing = new()
         {
-            switch (cp)
-            {
-                case 0x3001: case 0x3002: case 0x3005: case 0x3009: case 0x300B: case 0x300D: case 0x300F:
-                case 0x3011: case 0x3015: case 0x3017: case 0x3019: case 0x301B: case 0x303B: case 0x309D:
-                case 0x309E: case 0x30A0: case 0x30FB: case 0x30FC: case 0x30FD: case 0x30FE: case 0x203C:
-                case 0x2047: case 0x2048: case 0x2049: case 0xFF01: case 0xFF09: case 0xFF0C: case 0xFF0E:
-                case 0xFF1A: case 0xFF1B: case 0xFF1F: case 0xFF3D: case 0xFF5D: case 0xFF60: case 0xFF63:
-                case 0xFF65:
-                    return true;
-                default:
-                    return false;
-            }
-        }
+            0x3001, 0x3002, 0x3005, 0x3009, 0x300B, 0x300D, 0x300F, 0x3011, 0x3015, 0x3017, 0x3019, 0x301B,
+            0x303B, 0x309D, 0x309E, 0x30A0, 0x30FB, 0x30FC, 0x30FD, 0x30FE, 0x203C, 0x2047, 0x2048, 0x2049,
+            0xFF01, 0xFF09, 0xFF0C, 0xFF0E, 0xFF1A, 0xFF1B, 0xFF1F, 0xFF3D, 0xFF5D, 0xFF60, 0xFF63, 0xFF65,
+        };
+
+        private static readonly HashSet<int> CjkOpening = new()
+        {
+            0x3008, 0x300A, 0x300C, 0x300E, 0x3010, 0x3014, 0x3016, 0x3018, 0x301A, 0x301D, 0xFF08, 0xFF3B,
+            0xFF5B, 0xFF5F, 0xFF62,
+        };
+
+        private static bool IsCjkClosing(int cp) => CjkClosing.Contains(cp);
 
         // The marks a line may not end with: opening brackets, CJK and ASCII.
         private static bool IsOpening(int cp)
@@ -193,17 +199,6 @@ namespace Velvet
             return IsCjkOpening(cp);
         }
 
-        private static bool IsCjkOpening(int cp)
-        {
-            switch (cp)
-            {
-                case 0x3008: case 0x300A: case 0x300C: case 0x300E: case 0x3010: case 0x3014: case 0x3016:
-                case 0x3018: case 0x301A: case 0x301D: case 0xFF08: case 0xFF3B: case 0xFF5B: case 0xFF5F:
-                case 0xFF62:
-                    return true;
-                default:
-                    return false;
-            }
-        }
+        private static bool IsCjkOpening(int cp) => CjkOpening.Contains(cp);
     }
 }

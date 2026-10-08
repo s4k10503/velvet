@@ -302,9 +302,16 @@ namespace Velvet
             var preserves = whitespace == WhitespaceCollapseKind.PreLine
                 || collapseClass == WhiteSpace.Pre || collapseClass == WhiteSpace.PreWrap;
             var write = ResolveWrite(wraps, whitespace, preserves);
-            return new ResolvedEffect(
-                transform, decoration, whitespace, leading, write, preserves,
-                ResolveBalance(write ?? deciderClass, wrapStyle));
+            return new ResolvedEffect
+            {
+                Transform = transform,
+                Decoration = decoration,
+                Whitespace = whitespace,
+                Leading = leading,
+                Write = write,
+                Preserves = preserves,
+                WrapStyle = ResolveBalance(write ?? deciderClass, wrapStyle),
+            };
         }
 
         private static WhiteSpace? ResolveWrite(bool? wraps, WhitespaceCollapseKind? whitespace, bool preserves)
@@ -380,31 +387,18 @@ namespace Velvet
             ApplyToDescendants(ctx, element);
         }
 
-        private readonly struct ResolvedEffect
+        private struct ResolvedEffect
         {
-            public readonly TextTransformKind? Transform;
-            public readonly TextDecorationKind? Decoration;
-            public readonly WhitespaceCollapseKind? Whitespace;
-            public readonly LeadingValue? Leading;
+            public TextTransformKind? Transform;
+            public TextDecorationKind? Decoration;
+            public WhitespaceCollapseKind? Whitespace;
+            public LeadingValue? Leading;
             // The inline white-space the leaf gets, or null to leave its own cascade alone.
-            public readonly WhiteSpace? Write;
+            public WhiteSpace? Write;
             // Whether the white-space the text inherits keeps its spaces and newlines.
-            public readonly bool Preserves;
+            public bool Preserves;
             // The text-wrap-style to realise on this leaf; None when it is auto or the leaf does not wrap.
-            public readonly TextWrapStyle WrapStyle;
-
-            public ResolvedEffect(
-                TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace,
-                LeadingValue? leading, WhiteSpace? write, bool preserves, TextWrapStyle wrapStyle)
-            {
-                Transform = transform;
-                Decoration = decoration;
-                Whitespace = whitespace;
-                Leading = leading;
-                Write = write;
-                Preserves = preserves;
-                WrapStyle = wrapStyle;
-            }
+            public TextWrapStyle WrapStyle;
         }
     }
 }
