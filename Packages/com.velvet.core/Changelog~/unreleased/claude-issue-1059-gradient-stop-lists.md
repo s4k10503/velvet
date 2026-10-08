@@ -19,3 +19,7 @@
   (`longer`, `shorter`, `increasing`, `decreasing`) for the polar ones.
   A hard edge or narrow band is baked at the element's length (up to 2048 texels along an axis, 512 by 512
   otherwise) instead of 128, so it stays sharp.
+- A bracketed length reads the absolute CSS units `in`, `cm`, `mm`, `pt`, `pc` and `Q` at their fixed ratios to a
+  pixel (`top-[1in]` is 96px), as it already read `px` and `rem`. This reaches every utility that takes a length
+  in brackets, among them positions, translate, blur, gap, shadow offsets, clip-path insets and `leading-[…]`,
+  as well as the gradient stop positions.

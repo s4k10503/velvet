@@ -616,8 +616,8 @@ namespace Velvet
                 && suffix != "[0]" && TryParseStopLength(suffix.Substring(1, suffix.Length - 2), out px);
         }
 
-        // A stop position's length, in pixels as written or in rem at the fixed scale
-        // StyleArbitraryValueResolver.TryParseValue gives it, and signed: a stop may sit before the start
+        // A stop position's length, with the unit StyleArbitraryValueResolver.TryParseValue reads (a bare
+        // number is no length) converted to pixels, and signed: a stop may sit before the start
         // of the line, which the percentage forms allow too. A bare 0 is the start of the line.
         private static bool TryParseStopLength(string token, out float px)
         {
@@ -626,7 +626,7 @@ namespace Velvet
             {
                 return true;
             }
-            return (token.EndsWith("px", StringComparison.Ordinal) || token.EndsWith("rem", StringComparison.Ordinal))
+            return token.Length > 0 && char.IsLetter(token[token.Length - 1])
                 && StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out px, out var unit)
                 && unit == LengthUnit.Pixel;
         }
