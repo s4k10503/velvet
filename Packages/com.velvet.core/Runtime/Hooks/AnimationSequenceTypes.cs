@@ -137,8 +137,9 @@ namespace Velvet
 
         /// <summary>
         /// Stops the sequence and returns its state to how it reads before step 0 commits: the Web Animations API's
-        /// <c>cancel()</c>. With <c>deps: null</c>, the render this causes restarts the sequence, as every render
-        /// there does. The motion guide's Timelines section owns what else reseeds it.
+        /// <c>cancel()</c>. With <c>deps: null</c>, the render this causes re-commits step 0, as every render there
+        /// does, and the sequence then plays only under <c>autoplay: true</c>. The motion guide's Timelines section
+        /// owns what else reseeds it.
         /// </summary>
         public Action Cancel { get; }
 

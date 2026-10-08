@@ -106,7 +106,7 @@ namespace Velvet
             IsPaused = true;
         }
 
-        // Advances the cursor by dt seconds, committing every step whose hold elapses along the way (a
+        // Advances the cursor by dt seconds of clock at Speed, committing every step whose hold elapses along the way (a
         // zero-hold Wait/Call chain can cross several steps within one call). Returns the committed step
         // index so the caller can diff it against its own re-render trigger. The iteration count is bounded to
         // _steps.Count + 1 so an all-zero-hold loop (with loop: true) cannot spin forever inside one call — it
@@ -143,6 +143,13 @@ namespace Velvet
                 {
                     break;
                 }
+            }
+            // The guard ran out with time still owed: a loop at a high speed can owe more than one frame's walk
+            // crosses, and carried over, that backlog would keep flipping steps for seconds after the speed drops.
+            // It is dropped, so TimeSec counts only the holds the walk crossed.
+            if (guard < 0)
+            {
+                _elapsedInStepSec = 0f;
             }
             return _stepIndex;
         }

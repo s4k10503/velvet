@@ -395,6 +395,41 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALoopRunAtAHundredTimesItsSpeed_When_TheSpeedDropsToOne_Then_TheNextFrameCrossesNoStep()
+        {
+            // Arrange — each 16ms frame at 100 owes 1.6s, far more than the three steps one frame's walk crosses.
+            s_steps = new[] { To("a", 0.1f), To("b", 0.1f) };
+            s_loop = true;
+            Mount();
+            s_controls.SetSpeed(100f);
+            AdvanceTicks(10);
+            s_controls.SetSpeed(1f);
+            var indexBefore = s_state.StepIndex;
+
+            // Act — 16ms, short of either 100ms hold.
+            AdvanceTicks(1);
+
+            // Assert
+            Assert.That(s_state.StepIndex, Is.EqualTo(indexBefore));
+        }
+
+        [Test]
+        public void Given_ALoopFrameCrossingAsManyStepsAsTheGuardAllows_When_TimeSecIsRead_Then_ItKeepsThePartialHold()
+        {
+            // Arrange — one 16ms frame at 21.875 owes 0.35s: three 100ms holds crossed, 50ms into the fourth.
+            s_steps = new[] { To("a", 0.1f), To("b", 0.1f) };
+            s_loop = true;
+            Mount();
+            s_controls.SetSpeed(21.875f);
+
+            // Act
+            AdvanceTicks(1);
+
+            // Assert
+            Assert.That(s_controls.TimeSec, Is.EqualTo(0.35f).Within(1e-3f));
+        }
+
+        [Test]
         public void Given_ASequenceIntoItsSecondHold_When_Restarted_Then_TimeSecIsZero()
         {
             // Arrange

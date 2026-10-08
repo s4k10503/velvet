@@ -516,21 +516,25 @@ Web Animations API's playback members:
   clock stops with it, so no step commits and `IsComplete` does not latch until the sequence is reseeded:
   `controls.Play()` starts it again from step 0, `controls.Restart()` re-commits step 0 and leaves it
   paused, and a `deps` restart begins it as a mount does -- with `deps: null` that includes the render
-  `Cancel` itself causes, so there the sequence starts again at once. A `Call` step's own callback may
-  cancel, and no step after it runs in that frame.
+  `Cancel` itself causes, so there step 0 commits again at once, playing under `autoplay: true` and
+  paused under `autoplay: false`. A `Call` step's own callback may cancel, and no step after it runs in
+  that frame.
 - **`controls.SetSpeed(rate)`** and **`controls.Speed`** -- `playbackRate`, Framer Motion's `speed`. The
   sequence's clock runs at `rate` from the next frame on, without moving `TimeSec`, and each `To` step that
   commits afterwards hands its Motion its transition at that rate: its duration and delay, its
   per-property overrides' durations and delays, its `StaggerChildrenSec` and `DelayChildrenSec`, and its
   `Layout` transition's, divided by `rate`; and a spring's stiffness multiplied by the square of `rate`
   and its damping by `rate`, which plays the same spring on a faster clock. A transition slowed this way
-  plays, at that rate, wherever its authored duration would have played. A Motion play already running keeps the rate it started
-  at. The rate must lie between 0.001 and 1000, and it carries across `Restart`, `Cancel` and a `deps`
-  restart.
+  plays, at that rate, wherever its authored duration would have played. A Motion play already running
+  keeps the rate it started at. The rate must lie between 0.001 and 1000, and it carries across
+  `Restart`, `Cancel` and a `deps` restart. One frame crosses at most one step more than the sequence
+  holds; a looping sequence fast enough to owe more than that drops the excess rather than working it off
+  on later frames.
 - **`controls.TimeSec`** -- `currentTime`, read-only, and Framer Motion's `time`: seconds into the
   timeline, counting each hold at its authored length whatever the speed. As `currentTime` does, it keeps
-  growing across a loop's passes rather than starting from 0 on each; a completed sequence reads its full
-  length, and a reseed reads 0. It is read live from the handle, where `state` is a per-render snapshot.
+  growing across a loop's passes rather than starting from 0 on each, though not by the excess a frame
+  drops (see `SetSpeed`); a completed sequence reads its full length, and a reseed reads 0. It is read
+  live from the handle, where `state` is a per-render snapshot.
 
 Seek (a settable `time`, the Web Animations API's `currentTime`) and reverse (`reverse()`, a negative
 `playbackRate`) are not offered. A timeline of labels cannot sample the interpolated motion between two
