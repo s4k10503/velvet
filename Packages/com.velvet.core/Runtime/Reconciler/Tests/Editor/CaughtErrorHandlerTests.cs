@@ -643,7 +643,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AReportStillPendingForABoundary_When_TheRootIsDisposed_Then_TheContextKeepsNoReport()
         {
-            // Arrange — recorded directly, because the commit that would deliver it is the one a disposal races.
+            // Arrange — recorded directly, because a pending report is hard to reach through a mount.
             _mounted = V.Mount(_root, V.Label(text: "ok"), CaughtErrors.Unlogged);
             var context = _mounted.Root.Reconciler.Context;
             FiberErrorBoundary.RecordCatch(context, new ComponentFiber(), new InvalidOperationException("boom"), new ErrorInfo(""));
