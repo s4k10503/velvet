@@ -638,7 +638,7 @@ namespace Velvet.Tests
         public void Given_AnAsyncTransitionWhoseWorkAlreadyCommitted_When_ItsTaskCompletes_Then_ADrainRendersTheComponentNotPending()
         {
             // Arrange — the write lands before the await and the delayed tier commits it there, which is the
-            // ordinary shape for any load outlasting that tier's delay. That commit renders the component with
+            // ordinary shape for any load lasting longer than a frame or two. That commit renders the component with
             // the flag still lit, so the completion is the only thing left that can take it down.
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             var gate = new VelvetTaskCompletionSource();

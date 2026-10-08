@@ -29,7 +29,8 @@ namespace Velvet
 
         /// <summary>
         /// Registers a Portal mount target.
-        /// A second registration of the same ID logs a warning and overwrites.
+        /// A second registration of the same ID to a different element logs a warning and overwrites;
+        /// restating the element already registered under it is silent.
         /// </summary>
         /// <param name="id">Identifier used by Portal consumers to look up the mount target. Null or empty values are rejected with a warning.</param>
         /// <param name="target">The destination <see cref="VisualElement"/> that Portal children are appended to. Null is rejected with a warning.</param>
@@ -47,7 +48,8 @@ namespace Velvet
                 return;
             }
 
-            if (NameKeyedRegistry.Set(id, target, _targets))
+            var restated = _targets.TryGetValue(id, out var existing) && ReferenceEquals(existing, target);
+            if (NameKeyedRegistry.Set(id, target, _targets) && !restated)
             {
                 Debug.LogWarning($"[FiberPortalRegistry] Id \"{id}\" is already registered. Overwriting.");
             }

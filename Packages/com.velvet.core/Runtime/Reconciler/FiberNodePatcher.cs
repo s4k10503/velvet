@@ -2580,11 +2580,12 @@ namespace Velvet
             }
         }
 
-        // A class the projection took off an element to let a variant win still matches: :has(.foo) tests
-        // the class attribute, which the cascade never edits.
+        // :has(.foo) tests the class attribute, which the cascade never edits: a class the projection took off
+        // an element to let a variant win still matches, and one a variant payload put on it does not.
         private static bool SubtreeCarriesClass(VisualElement root, string cls)
         {
-            if (root.ClassListContains(cls) || StyleClassProjection.SuppressesDeclared(root, cls))
+            if ((root.ClassListContains(cls) && !StyleClassProjection.IsHeldOnlyByPayload(root, cls))
+                || StyleClassProjection.SuppressesDeclared(root, cls))
             {
                 return true;
             }
