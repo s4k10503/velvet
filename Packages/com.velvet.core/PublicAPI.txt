@@ -103,7 +103,7 @@
 [Velvet] ctor Velvet.SceneViewSettings.ctor(UnityEngine.Camera?, System.Single): System.Void
 [Velvet] ctor Velvet.ScrollViewSettings.ctor(System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior]): System.Void
 [Velvet] ctor Velvet.SearchParams.ctor(): System.Void
-[Velvet] ctor Velvet.SliderSettings.ctor(System.Nullable`1[System.Single], System.Nullable`1[System.Single]): System.Void
+[Velvet] ctor Velvet.SliderSettings.ctor(System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean]): System.Void
 [Velvet] ctor Velvet.StoreLogger.ctor(): System.Void
 [Velvet] ctor Velvet.StyleOverrides.ctor(): System.Void
 [Velvet] ctor Velvet.StylePropertyTransition.ctor(System.String, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single]): System.Void
@@ -543,7 +543,7 @@
 [Velvet] method Velvet.V.SceneView(UnityEngine.Camera?, System.String?, System.String?, System.String?, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.ScrollView(System.String, Velvet.VNode?[]): Velvet.ElementNode
 [Velvet] method Velvet.V.ScrollView(System.String?, System.String?, System.String?, System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior], System.Action`1[UnityEngine.UIElements.VisualElement]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
-[Velvet] method Velvet.V.Slider(System.String?, System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Action`1[System.Single]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Slider(System.String?, System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Action`1[System.Single]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean]): Velvet.ElementNode
 [Velvet] method Velvet.V.Suspense(Velvet.VNode?, Velvet.VNode?[], System.String?): Velvet.SuspenseNode
 [Velvet] method Velvet.V.Text(System.String?): Velvet.TextNode
 [Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean]): Velvet.ElementNode
@@ -779,8 +779,10 @@
 [Velvet] property Velvet.Experimental.VImage.WhileHoverClass: System.String?
 [Velvet] property Velvet.Experimental.VImage.WhileTapClass: System.String?
 [Velvet] property Velvet.Experimental.VLabel.Text: System.String?
+[Velvet] property Velvet.Experimental.VSlider.Direction: System.Nullable`1[UnityEngine.UIElements.SliderDirection]
 [Velvet] property Velvet.Experimental.VSlider.Enabled: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VSlider.HighValue: System.Nullable`1[System.Single]
+[Velvet] property Velvet.Experimental.VSlider.Inverted: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VSlider.LowValue: System.Nullable`1[System.Single]
 [Velvet] property Velvet.Experimental.VSlider.OnChange: System.Action`1[System.Single]?
 [Velvet] property Velvet.Experimental.VSlider.Value: System.Nullable`1[System.Single]
@@ -951,7 +953,9 @@
 [Velvet] property Velvet.SearchParams.Count: System.Int32
 [Velvet] property Velvet.SearchParams.Empty: Velvet.SearchParams
 [Velvet] property Velvet.SearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] property Velvet.SliderSettings.Direction: System.Nullable`1[UnityEngine.UIElements.SliderDirection]
 [Velvet] property Velvet.SliderSettings.HighValue: System.Nullable`1[System.Single]
+[Velvet] property Velvet.SliderSettings.Inverted: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.SliderSettings.LowValue: System.Nullable`1[System.Single]
 [Velvet] property Velvet.StoreLogger.Default: Velvet.StoreLogger
 [Velvet] property Velvet.Store`1[TState].Current: TState

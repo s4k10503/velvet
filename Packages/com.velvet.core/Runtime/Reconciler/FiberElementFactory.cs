@@ -272,7 +272,7 @@ namespace Velvet
 
             if (props.Slider != null)
             {
-                FiberPropApplier.ApplySlider(element, props.Slider);
+                FiberPropApplier.ApplySlider(element, null, props.Slider);
             }
 
             if (props.ScrollView != null)

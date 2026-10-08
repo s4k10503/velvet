@@ -227,7 +227,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
 | `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it |
 | `<input type="checkbox">` | `V.Toggle()` | |
-| `<input type="range">` | `V.Slider()` | |
+| `<input type="range">` | `V.Slider()` | `min` / `max` are the `lowValue:` / `highValue:` parameters. `direction:` (`SliderDirection.Vertical`) and `inverted:` set UI Toolkit's `Slider.direction` and `Slider.inverted` — see below for what null means |
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
 | `<>{a}{b}</>` | `V.Fragment(a, b)` | `V.Fragment(children, key: "k")` is `<Fragment key="k">` |
 
@@ -235,7 +235,11 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 null, not reset: null is not `placeholder=""`, not `maxLength: -1` and not `isReadOnly: false`. A
 member no render has declared is left wherever a `refCallback:` put it, and one a render declared and
 a later render dropped goes back to the value the field carried before any render declared it. The
-three focus props follow the same rule — [focus.md](focus.md) states it for those.
+three focus props follow the same rule — [focus.md](focus.md) states it for those — and so do
+`V.Slider`'s `direction:` and `inverted:`: a dropped `direction:` puts back the direction the slider
+had before any render declared one, which is horizontal unless a `refCallback:` had set another by
+then. `lowValue:` and `highValue:` do not follow it: a render changing either writes both, a null
+`lowValue:` as 0 and a null `highValue:` as 10.
 
 A field holding `isDelayed:` releases the typed text into its value on Enter, on losing focus, and on
 a render taking the flag off — that third one whether the render declares `isDelayed: false` or drops

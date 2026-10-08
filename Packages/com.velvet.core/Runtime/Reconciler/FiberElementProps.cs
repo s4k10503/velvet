@@ -147,10 +147,16 @@ namespace Velvet
         }
     }
 
-    /// <summary>Slider.lowValue / highValue. Record structural equality simplifies DiffProps.</summary>
+    /// <summary>
+    /// Slider.lowValue / highValue / direction / inverted. Record structural equality simplifies DiffProps.
+    /// A null <see cref="Direction"/> or <see cref="Inverted"/> is undeclared, on the terms
+    /// <see cref="TextFieldSettings"/> states for its members.
+    /// </summary>
     public sealed record SliderSettings(
         float? LowValue = null,
-        float? HighValue = null);
+        float? HighValue = null,
+        SliderDirection? Direction = null,
+        bool? Inverted = null);
 
     /// <summary>Controls ScrollView scroller visibility and touch-scroll behavior.</summary>
     public sealed record ScrollViewSettings(

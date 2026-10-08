@@ -1856,7 +1856,7 @@ namespace Velvet
 
             if (oldProps.Slider != newProps.Slider)
             {
-                FiberPropApplier.ApplySlider(element, newProps.Slider);
+                FiberPropApplier.ApplySlider(element, oldProps.Slider, newProps.Slider);
             }
 
             if (oldProps.ScrollView != newProps.ScrollView)
