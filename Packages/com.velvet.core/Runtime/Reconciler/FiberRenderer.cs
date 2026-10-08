@@ -825,7 +825,8 @@ namespace Velvet
             // Re-entrancy guard: if async resolves synchronously during render, defer to schedule.
             if (fiber.IsRendering)
             {
-                fiber.MountPoint?.schedule.Execute(() => NotifyAsyncResourceCompleted(fiber));
+                fiber.MountPoint?.schedule.Execute(
+                    () => PanelSchedulerCallback.Run(fiber, NotifyAsyncResourceCompleted));
                 return;
             }
             // Searched from the parent, as React takes the nearest Suspense above the component that suspended: a

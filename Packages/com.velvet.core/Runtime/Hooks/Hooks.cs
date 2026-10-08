@@ -162,13 +162,6 @@ namespace Velvet
             // Tearing guard: readers committed in one drain pass read the snapshot the pass pinned (see
             // ReconcilerContext.PinStoreSnapshot) rather than the live store.Current.
             var snapshot = PinStoreSnapshot(fiber, store);
-            // A pin older than the store leaves this reader behind it with no notification still to come: the
-            // mutation notified before this render overwrote LastValue, or before this reader subscribed. The
-            // render this asks for reads the store in a later pass, which pins it afresh.
-            if (!ObjectIs.AreEqual(snapshot, store.Current))
-            {
-                FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Normal);
-            }
 
             if (index >= fiber.StoreSlots.Count)
             {
@@ -203,6 +196,7 @@ namespace Velvet
                 });
 
                 fiber.StoreSlots.Add(slot);
+                CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, slot.LastValue);
                 return slot.LastValue;
             }
 
@@ -222,7 +216,20 @@ namespace Velvet
             typed.Selector = selector;
             typed.Comparer = cmp;
             typed.LastValue = selector(snapshot);
+            CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, typed.LastValue);
             return typed.LastValue;
+        }
+
+        // A pin older than the store leaves a reader whose selection the mutation changed behind it with no
+        // notification still to come: the mutation notified before this render overwrote LastValue, or before
+        // this reader subscribed. The render this asks for reads the store in a later pass, which pins afresh.
+        private static void CatchUpIfPinnedBehind<TStore, TSel>(
+            ComponentFiber fiber, Store<TStore> store, TStore snapshot, Func<TStore, TSel> selector,
+            IEqualityComparer<TSel> comparer, TSel selected)
+        {
+            var live = store.Current;
+            if (ObjectIs.AreEqual(snapshot, live) || comparer.Equals(selected, selector(live))) return;
+            FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Normal);
         }
 
         // Returns the store snapshot pinned for the current batch drain wave (see

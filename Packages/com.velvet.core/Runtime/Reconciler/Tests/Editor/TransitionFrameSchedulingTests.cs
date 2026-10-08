@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -10,7 +12,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies when <c>FiberBatchScheduler</c>'s Transition tier renders, on a simulated panel whose clock
-    /// only moves when a test advances it. Each <c>FrameUpdateMs</c> is one scheduler pass.
+    /// only moves when a test advances it. A frame runs a second scheduler pass when the element hierarchy changed
+    /// after its first; the cases here change only text after mounting, so each <c>FrameUpdateMs</c> is one
+    /// pass.
     /// <list type="bullet">
     /// <item>Transition work commits in a later pass than the urgent render that requested it: a request made
     /// inside a scheduler callback drains on the next pass, one made outside every callback — a discrete
@@ -22,7 +26,9 @@ namespace Velvet.Tests
     /// one drain; an admission that already ran takes no later request.</item>
     /// <item>A transition requested from inside the Transition tier's own drain renders on the next pass, not
     /// again inside the one that requested it.</item>
-    /// <item>The Transition tier's drain commits the Normal / Urgent work still queued before its own.</item>
+    /// <item>The Transition tier's drain commits the Normal / Urgent work still queued before its own, and an
+    /// immediate pass does not commit a deferred value through the entry of a component queued beside the
+    /// parent that passes its input (TransitionTierGateTests holds the rest of that gate).</item>
     /// <item>A discrete flush that consumed the immediate queue leaves that tier's registered callback in place,
     /// so a later Normal update rides it rather than registering a second one, and still commits.</item>
     /// </list>
@@ -42,6 +48,8 @@ namespace Velvet.Tests
         private static TransitionStarter s_start;
         private static StateUpdater<int> s_setInput;
         private static StateUpdater<int> s_setTick;
+        private static StateUpdater<string> s_setGatedQuery;
+        private static StateUpdater<int> s_setGatedChildTick;
         private static int s_chainRenders;
         private static ComponentFiber s_chainFiber;
         private static ComponentFiber s_normalLaneFiber;
@@ -59,6 +67,8 @@ namespace Velvet.Tests
             s_start = default;
             s_setInput = default;
             s_setTick = default;
+            s_setGatedQuery = default;
+            s_setGatedChildTick = default;
             s_chainRenders = 0;
             s_chainFiber = null;
             s_normalLaneFiber = null;
@@ -138,6 +148,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That((Text("input"), Text("deferred")), Is.EqualTo(("1", "0")),
                 "The next pass may share the click's frame, so it admits the deferred render rather than running it");
+        }
+
+        [Test]
+        public void Given_EveryKindOfSchedulerCallbackHasRun_When_AClickChangesTheDeferredInputAndOneFramePasses_Then_TheDeferredValueHasNotCommitted()
+        {
+            // Arrange — a first click and two passes run an immediate callback, an admission, a Transition drain
+            // and a passive-effect drain, so a marker any of them left behind would be in place for the second
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredRender, key: "deferred"));
+            var button = _sim.rootVisualElement.Q<Button>("set-input");
+            button.SimulateClick();
+            _sim.FrameUpdateMs(FrameMs);
+            _sim.FrameUpdateMs(FrameMs);
+            button.SimulateClick();
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert — the first value rides along to show the earlier passes did commit it
+            Assert.That((Text("input"), Text("deferred")), Is.EqualTo(("2", "1")),
+                "A request from a click is outside every pass whatever callbacks ran before it");
         }
 
         [Test]
@@ -257,7 +287,7 @@ namespace Velvet.Tests
             // move that reaches the bound is the one on frame bound + 1, and the request on frame bound + 2
             // leaves the entry on the drain that runs in that same pass
             using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredParentRender, key: "parent"));
-            var frames = FiberWorkLoop.TransitionStarvationThreshold + 1;
+            var frames = StarvationThreshold() + 1;
             for (var i = 0; i < frames; i++)
             {
                 s_setTick.Invoke(v => v + 1);
@@ -333,7 +363,31 @@ namespace Velvet.Tests
                 "The callback the flush left registered commits what arrived after it");
         }
 
+        [Test]
+        public void Given_ADeferredChildQueuedBesideTheParentThatPassesItsInput_When_TwoFramesPass_Then_TheDeferredValueCommitsOnlyOnTheSecond()
+        {
+            // Arrange — the child's own update and the parent's both land on the immediate tier
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(GatedParentRender, key: "gated-parent"));
+            s_setGatedChildTick.Invoke(1);
+            s_setGatedQuery.Invoke("beta");
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+            var afterTheUrgentPass = Text("gated-child");
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That((afterTheUrgentPass, Text("gated-child")), Is.EqualTo(("alpha:1", "beta:1")),
+                "The child's own immediate entry does not commit the deferred value its parent's pass re-requested");
+        }
+
         private string Text(string name) => _sim.rootVisualElement.Q<Label>(name).text;
+
+        // Reflected rather than named, so this fixture compiles against a tree that keeps the field private.
+        private static int StarvationThreshold()
+            => (int)typeof(FiberWorkLoop)
+                .GetField("TransitionStarvationThreshold", BindingFlags.Static | BindingFlags.NonPublic)
+                .GetValue(null);
 
         private MountedTree MountLanePair()
             => V.Mount(_sim.rootVisualElement, V.Div(children: new VNode[]
@@ -358,6 +412,8 @@ namespace Velvet.Tests
             var (input, setInput) = Hooks.UseState(0);
             s_setInput = setInput;
             var deferred = Hooks.UseDeferredValue(input);
+            // Gives every commit a passive-effect drain, so a pass runs that bracketed callback too.
+            Hooks.UseEffect((Func<Action>)(() => null));
             return V.Div(children: new VNode[]
             {
                 V.Label(name: "input", text: input.ToString()),
@@ -390,6 +446,23 @@ namespace Velvet.Tests
         {
             var deferred = Hooks.UseDeferredValue(value);
             return V.Label(name: "child-b", text: deferred.ToString());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode GatedParentRender()
+        {
+            var (query, setQuery) = Hooks.UseState("alpha");
+            s_setGatedQuery = setQuery;
+            return V.Div(children: new VNode[] { V.Component(GatedChildRender, query, key: "gated-child") });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode GatedChildRender(string query)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setGatedChildTick = setTick;
+            var deferred = Hooks.UseDeferredValue(query);
+            return V.Label(name: "gated-child", text: $"{deferred}:{tick}");
         }
 
         [Component(Compiler = false)]

@@ -17,8 +17,9 @@ namespace Velvet.Tests
     /// <item>Re-mounting establishes a fresh subscription.</item>
     /// <item>A selector that throws on a store emit is not swallowed: it re-renders so the render-phase throw reaches the ErrorBoundary.</item>
     /// <item>Readers rendered in one batch drain pass read the snapshot that pass pinned, even when the store
-    /// mutates partway through it; a reader whose pinned read is older than the store renders again in a later
-    /// pass, so it does not stay behind the store.</item>
+    /// mutates partway through it; a reader whose pinned read selects a different value than the store now
+    /// gives — one already queued, or one mounted after the mutation — renders again in a later pass, so it does
+    /// not stay behind the store, and one whose selection the mutation left unchanged does not.</item>
     /// <item>Each drain pass pins afresh: when one reader lands on the immediate tier and another on the delayed
     /// tier and the store mutates between their tier drains — outside a transition or inside one — both commit
     /// the latest snapshot by the end of the delayed drain.</item>
@@ -267,6 +268,48 @@ namespace Velvet.Tests
                 "Outside a drain no snapshot is pinned, so a render after the change reads it");
         }
 
+        [Test]
+        public void Given_AReaderMountedInADrainPassAfterAStoreMutation_When_TheDrainEnds_Then_ItShowsTheLatestSnapshot()
+        {
+            // Arrange — the mutator mounts the reader in the same pass, after the notification it missed
+            using var store = new TestCounterStore(initial: 0);
+            s_store = store;
+            using var mounted = MountMidPassMutation();
+            s_midPassMutateOnRender = true;
+            s_midPassMountLateReader = true;
+            s_midPassFirstFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_midPassMutatorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("mid-pass-late").text, Is.EqualTo("1"),
+                "A reader whose first render read a pin older than the store renders again and catches up");
+        }
+
+        // GREEN_ON_BASE(characterization): a base reader never rendered again for a mid-pass mutation.
+        [Test]
+        public void Given_AStoreMutatedPartwayThroughADrainPass_When_ALaterReaderWhoseSelectionItLeavesUnchangedRenders_Then_ItRendersOnce()
+        {
+            // Arrange — the mutation moves the store from 0 to 1, which the reader's `>= 10` selection ignores
+            using var store = new TestCounterStore(initial: 0);
+            s_store = store;
+            using var mounted = MountMidPassMutation();
+            s_midPassMutateOnRender = true;
+            s_midPassFirstFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_midPassMutatorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_midPassCoarseFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            var rendersBefore = s_midPassCoarseRenders;
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_midPassCoarseRenders - rendersBefore, Is.EqualTo(1),
+                "A pinned read the mutation left selecting the same value asks for no further render");
+        }
+
         // GREEN_ON_BASE(characterization): a base drain pass already pinned the snapshot its first reader read.
         [Test]
         public void Given_AStoreMutatedPartwayThroughADrainPass_When_ALaterReaderInThatPassRenders_Then_ItReadsThePinnedSnapshot()
@@ -485,6 +528,9 @@ namespace Velvet.Tests
             return V.Label(text: s_descendantValue.ToString());
         }
 
+        private static bool s_midPassMountLateReader;
+        private static int s_midPassCoarseRenders;
+        private static ComponentFiber s_midPassCoarseFiber;
         private static ComponentFiber s_midPassFirstFiber;
         private static ComponentFiber s_midPassMutatorFiber;
         private static ComponentFiber s_midPassReaderFiber;
@@ -497,13 +543,33 @@ namespace Velvet.Tests
             s_midPassMutatorFiber = null;
             s_midPassReaderFiber = null;
             s_midPassMutateOnRender = false;
+            s_midPassMountLateReader = false;
+            s_midPassCoarseRenders = 0;
+            s_midPassCoarseFiber = null;
             s_midPassReaderRenders.Clear();
             return V.Mount(_root, V.Div(children: new VNode[]
             {
                 V.Component(MidPassFirstRender, key: "first"),
                 V.Component(MidPassMutatorRender, key: "mutator"),
                 V.Component(MidPassReaderRender, key: "reader"),
+                V.Component(MidPassCoarseReaderRender, key: "coarse"),
             }));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MidPassLateReaderRender()
+        {
+            var value = Hooks.UseStore(s_store, s => s);
+            return V.Label(name: "mid-pass-late", text: value.ToString());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MidPassCoarseReaderRender()
+        {
+            s_midPassCoarseFiber = FiberAmbientStack.Current;
+            s_midPassCoarseRenders++;
+            var atLeastTen = Hooks.UseStore(s_store, s => s >= 10);
+            return V.Label(text: atLeastTen.ToString());
         }
 
         [Component(Compiler = false)]
@@ -523,7 +589,9 @@ namespace Velvet.Tests
                 s_midPassMutateOnRender = false;
                 ((TestCounterStore)s_store).SetValue(1);
             }
-            return V.Label();
+            return s_midPassMountLateReader
+                ? V.Component(MidPassLateReaderRender, key: "late")
+                : V.Label();
         }
 
         [Component(Compiler = false)]

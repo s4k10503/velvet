@@ -447,7 +447,8 @@ namespace Velvet
                 // Registered so retirement sweeps elsewhere treat this parked baseline as live: the
                 // paused pass keeps diffing against it across frames.
                 reconciler.Context.ParkedBaselineFibers.Add(fiber);
-                fiber.MountPoint?.schedule.Execute(() => FiberWorkLoop.ContinueReconcile(fiber));
+                fiber.MountPoint?.schedule.Execute(
+                    () => PanelSchedulerCallback.Run(fiber, FiberWorkLoop.ContinueReconcile));
             }
             else
             {

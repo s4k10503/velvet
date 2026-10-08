@@ -8,13 +8,13 @@ namespace Velvet
     // single frame-boundary flush. A single event handler that calls
     // setState on N different fibers commits in one reconcile pass with no intermediate render between
     // the updates, instead of scheduling N independent IVisualElementScheduler callbacks.
-    // Two tiers exist so the Transition lane renders behind Normal / Urgent work: the immediate tier drains at
-    // the next frame boundary, and the Transition tier at a later one (see ScheduleDelayed), committing
+    // Two tiers exist so the Transition lane renders behind Normal / Urgent work: the immediate tier drains on
+    // the next panel scheduler pass, and the Transition tier on a later one (see ScheduleDelayed), committing
     // whatever the immediate tier still holds before its own queue. The immediate tier registers one
-    // schedule.Execute callback per pending batch, the Transition tier one per admission and one per
-    // drain (see ScheduleDelayed), and each drain takes its whole batch in one pass. The per-fiber lane queue is still popped
-    // one lane per FiberWorkLoop.FlushState call inside the drain, so lane priority ordering and starvation
-    // promotion are preserved.
+    // schedule.Execute callback per pending batch, the Transition tier one per admission and one per drain,
+    // and each drain takes its whole batch in one pass. The per-fiber lane queue is still popped one lane per
+    // FiberWorkLoop.FlushState call inside the drain, so lane priority ordering and starvation promotion are
+    // preserved.
     internal sealed class FiberBatchScheduler
     {
         // Cap on the drain-until-quiet passes one DrainImmediate performs — the
@@ -50,8 +50,8 @@ namespace Velvet
             }
         }
 
-        // One registered Transition-tier callback. RegisteredIn is the scheduler callback it was registered
-        // from, or 0 for the admission a request made outside every scheduler callback waits in.
+        // One registered Transition-tier callback. RegisteredIn is the PanelSchedulerCallback it was registered
+        // from, or 0 for the admission a request made outside every such callback waits in.
         private sealed class DelayedAdmission
         {
             internal readonly int RegisteredIn;
@@ -62,9 +62,6 @@ namespace Velvet
         private DelayedAdmission? _unadmitted;
         private DelayedAdmission? _admittedForNextPass;
 
-        // The scheduler callback running now, 0 outside every one; numbered from _callbacksStarted.
-        private int _callbackId;
-        private int _callbacksStarted;
 
         // Only the registered immediate callback retires its registration: an inline drain (a discrete flush,
         // the Transition tier's) leaves it live, so intake arriving before that callback runs rides it rather
@@ -175,7 +172,7 @@ namespace Velvet
 
         private void RunImmediateCallback()
         {
-            var outer = EnterCallback();
+            var outer = PanelSchedulerCallback.Enter();
             _inImmediateCallback = true;
             try
             {
@@ -184,25 +181,18 @@ namespace Velvet
             finally
             {
                 _inImmediateCallback = false;
-                _callbackId = outer;
+                PanelSchedulerCallback.Exit(outer);
             }
         }
 
-        private int EnterCallback()
-        {
-            var outer = _callbackId;
-            _callbackId = ++_callbacksStarted;
-            return outer;
-        }
-
-        // Short of the bound below, a Transition request does not join a drain the panel can run in the pass
-        // the request was made in, so the render that asked for it — an urgent render reaching UseDeferredValue,
-        // the urgent flush that re-enrols a surviving Transition lane — commits in an earlier pass than the
-        // transition. Made inside one of this scheduler's callbacks, the request waits for a drain registered
-        // from that callback, which the panel runs on its next pass rather than the current one; made anywhere
-        // else, the next pass may share the request's frame, so the request waits for an admission that pass
-        // runs, which registers the drain for the pass after. TransitionFrameSchedulingTests holds the
-        // next-pass behaviour both rely on.
+        // Short of the bound below, a Transition request does not join a drain the panel can run in the
+        // scheduler pass the request was made in, so the render that asked for it — an urgent render reaching
+        // UseDeferredValue, the urgent flush that re-enrols a surviving Transition lane — commits in an earlier
+        // pass than the transition. Made inside a PanelSchedulerCallback, the request waits for a drain
+        // registered from that callback, which the panel runs on a later pass rather than the current one.
+        // Made anywhere else, nothing places it relative to a pass, so it waits one pass more: for an
+        // admission the next pass runs, which registers the drain for a pass after that.
+        // TransitionFrameSchedulingTests holds the later-pass behaviour both rely on.
         // The bound: a queued fiber moves to the admission its latest request chose, so an urgent update
         // arriving every frame would keep it moving indefinitely. FiberWorkLoop's starvation promotion stops
         // that only for a fiber whose own flush the update preempts, not for one an ancestor's render
@@ -212,7 +202,7 @@ namespace Velvet
             if (fiber?.MountPoint == null) return;
             var queued = _delayedEntries.TryGetValue(fiber, out var entry);
             if (queued && entry.Deferrals >= FiberWorkLoop.TransitionStarvationThreshold) return;
-            var admission = _callbackId != 0 ? AdmissionForNextPass() : Unadmitted();
+            var admission = PanelSchedulerCallback.Current != 0 ? AdmissionForNextPass() : Unadmitted();
             if (!queued)
             {
                 _delayedOrder.Add(fiber);
@@ -227,8 +217,8 @@ namespace Velvet
         private DelayedAdmission AdmissionForNextPass()
         {
             var current = _admittedForNextPass;
-            if (current != null && current.RegisteredIn == _callbackId) return current;
-            var admission = new DelayedAdmission(_callbackId);
+            if (current != null && current.RegisteredIn == PanelSchedulerCallback.Current) return current;
+            var admission = new DelayedAdmission(PanelSchedulerCallback.Current);
             _admittedForNextPass = admission;
             Register(() => RunDelayedCallback(admission));
             return admission;
@@ -253,7 +243,7 @@ namespace Velvet
 
         private void RunAdmitCallback(DelayedAdmission admission)
         {
-            var outer = EnterCallback();
+            var outer = PanelSchedulerCallback.Enter();
             try
             {
                 if (_unadmitted == admission) _unadmitted = null;
@@ -269,20 +259,20 @@ namespace Velvet
             }
             finally
             {
-                _callbackId = outer;
+                PanelSchedulerCallback.Exit(outer);
             }
         }
 
         private void RunDelayedCallback(DelayedAdmission admission)
         {
-            var outer = EnterCallback();
+            var outer = PanelSchedulerCallback.Enter();
             try
             {
                 DrainDelayedTier(admission);
             }
             finally
             {
-                _callbackId = outer;
+                PanelSchedulerCallback.Exit(outer);
             }
         }
 
@@ -347,7 +337,7 @@ namespace Velvet
                     break;
                 }
                 totalPasses++;
-                Drain(_immediateOrder, _immediateSet);
+                Drain(_immediateOrder, _immediateSet, immediateTier: true);
             }
             if (_inImmediateCallback) _immediateScheduled = false;
             // Only the drop path can leave the loop above with intake queued, and a settle it runs can request
@@ -385,7 +375,7 @@ namespace Velvet
             // pass below is gated on the monotonic intake marker (never on a net count, which the drain's
             // own removals or a dedup onto an already-queued fiber would mask).
             _immediateWorkArrivedMidDrain = false;
-            Drain(_delayedDue, null);
+            Drain(_delayedDue, null, immediateTier: false);
             // A commit-phase write during a DELAYED-tier commit enqueues on the immediate tier; the
             // setState-in-commit guarantee (the follow-up render commits before this frame callback
             // yields) is tier-agnostic, so drain it now rather than leaving a one-frame slot/UI
@@ -396,7 +386,7 @@ namespace Velvet
             }
         }
 
-        private void Drain(List<ComponentFiber> order, HashSet<ComponentFiber>? set)
+        private void Drain(List<ComponentFiber> order, HashSet<ComponentFiber>? set, bool immediateTier)
         {
             if (order.Count == 0) return;
             // Activate UseStore snapshot pinning for the span of this drain. Bracketed only on the outer drain
@@ -418,11 +408,22 @@ namespace Velvet
                     // ancestor's inline re-expansion (SubsumeFiberIntoThisPass), which
                     // clears IsDirty and removes the fiber from the pending set. FlushState early-returns on a
                     // non-dirty fiber, so the subsumed entry is skipped rather than re-rendered a second time.
-                    // That holds only when the settle emptied the queue. A lane the subsuming render itself
-                    // requested survives it and leaves the fiber dirty, so this entry does flush, draining a
-                    // delayed-tier lane on the immediate tier. Kept because the alternative that lane had
-                    // before it survived the settle was being discarded, committing nothing at all.
-                    FiberWorkLoop.FlushState(_drainBuffer[i]);
+                    // A lane the subsuming render itself requested survives that settle and leaves the fiber
+                    // dirty, so the entry is still here; when what survived is delayed-tier work, flushing it
+                    // now would render that work in the same pass as the urgent work it is meant to trail.
+                    var fiber = _drainBuffer[i];
+                    if (immediateTier && HoldsOnlyDelayedTierLanes(fiber))
+                    {
+                        // Enrolled here rather than trusted to be, so a skipped entry is not stranded whichever
+                        // route left the fiber holding only delayed-tier lanes. ScheduleDelayed moves a fiber
+                        // waiting on an earlier admission to the one this request chooses, so the skipped work
+                        // lands in a later pass, within the bound it describes.
+                        FiberWorkLoop.ScheduleFlush(fiber, fiber.LaneQueue.Min);
+                        continue;
+                    }
+                    // Not mirrored on the delayed tier: skipping a delayed entry that holds Normal or Urgent work
+                    // would hold that work back rather than keep it from running early.
+                    FiberWorkLoop.FlushState(fiber);
                 }
                 _drainBuffer.Clear();
             }
@@ -441,6 +442,14 @@ namespace Velvet
                     _draining = false;
                 }
             }
+        }
+
+        private static bool HoldsOnlyDelayedTierLanes(ComponentFiber fiber)
+        {
+            var lanes = fiber.LaneQueue;
+            // MUTANT_SURVIVES(equivalent): an empty set reads Min as Urgent, which is an immediate-tier lane.
+            // A guard admitting a zero count therefore still returns false for it.
+            return lanes.Count > 0 && !FiberLane.SchedulesOnImmediateTier(lanes.Min);
         }
 
         // Orders the drain ancestors-before-descendants so a parent's flush (which re-expands its inline
