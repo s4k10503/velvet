@@ -288,47 +288,93 @@ namespace Velvet
             }
         }
 
-        // TextField.maxLength re-shows the committed value whenever the limit changes, which discards the
-        // text a delayed field is holding back until Enter or blur. The edit is read before the write and
-        // put back after it, silently: the notifying setter on the inner element reports the uncommitted
-        // text to onValueChanged. The restore is culled to the new limit by the element itself. The value
-        // is not touched, so the commit stays with Enter or blur, and the record keeps the text Velvet
-        // last wrote so the restored edit still reads as one. With no edit, the write re-shows the value
-        // and that becomes the record.
+        // Ordering: the edit is cut to the new limit and written silently BEFORE the limit, then written
+        // silently again after it. Narrowing the limit culls the shown text through a notifying setter, so
+        // an edit still longer than the limit would be reported to onValueChanged; cut beforehand, the cull
+        // finds nothing to change. The limit write then re-shows the committed value over the edit, which
+        // is what the second write undoes. The value is not touched, so the commit stays with Enter or
+        // blur, and the record keeps the text Velvet last wrote so the restored edit still reads as one.
+        // Both writes are skipped on an unchanged limit, which the setter ignores. With no edit, the
+        // limit write's own result is what Velvet left on screen and becomes the record.
+        // DelayedMaxLengthEditReportTests pins that nothing is reported; TextFieldInputPropTests pins that
+        // the edit survives and the no-edit cases.
         private static void WriteMaxLength(TextField field, int limit)
         {
-            var edit = HasUncommittedEdit(field) ? field.text : null;
-            field.maxLength = limit;
-            if (edit != null && field.textEdition is TextElement shown)
+            if (field.maxLength == limit)
             {
-                ((INotifyValueChanged<string>)shown).SetValueWithoutNotify(edit);
                 return;
             }
 
-            RecordShownText(field);
+            TextElement? held = null;
+            string? edit = null;
+            if (HasUncommittedEdit(field) && field.textEdition is TextElement shown)
+            {
+                held = shown;
+                edit = limit >= 0 && field.text.Length > limit ? field.text.Substring(0, limit) : field.text;
+                ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit);
+            }
+
+            field.maxLength = limit;
+            if (held == null)
+            {
+                RecordShownText(field);
+                return;
+            }
+
+            ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit!);
         }
 
-        // The text Velvet's own writes last left on screen. A delayed field holds the user's typing in the
-        // shown text while the value lags, and nothing else tells that apart from Velvet's own writes: a
-        // single-line field shows its value with line breaks stripped, so shown text differing from the
-        // value does not mean anyone typed. The shown text must also differ from the value, since a commit
-        // leaves the record behind. Every Velvet write that can change the shown text records it —
-        // ApplyFieldValue, WriteMaxLength and the baseline ApplyTextField takes — and the pool reset
-        // forgets it so a recycled field does not carry the last consumer's.
+        // The text Velvet's own writes, and the engine's commits, last left on screen. A delayed field
+        // holds the user's typing in the shown text while the value lags, and nothing else tells that
+        // apart from a rewrite: a single-line field shows its value with line breaks stripped, so shown
+        // text differing from the value does not mean anyone typed. Every Velvet write that can change the
+        // shown text records it — ApplyFieldValue, WriteMaxLength and the baseline ApplyTextField takes —
+        // and a commit records it through the callback below, since an edit that was committed and then
+        // changed again is an edit against the committed text. The pool reset forgets the record and its
+        // callback so a recycled field carries neither.
         internal static bool HasUncommittedEdit(TextField field)
             => field.isDelayed
                && s_shownText.TryGetValue(field, out var left)
-               && field.text != left.Text
-               && field.text != field.value;
+               && field.text != left.Text;
 
         internal static void RecordShownText(TextField field)
-            => s_shownText.GetOrCreateValue(field).Text = field.text;
+        {
+            if (!s_shownText.TryGetValue(field, out var left))
+            {
+                left = new ShownText(field);
+                s_shownText.Add(field, left);
+                field.RegisterValueChangedCallback(left.OnChange);
+            }
 
-        internal static void ForgetShownText(TextField field) => s_shownText.Remove(field);
+            left.Text = field.text;
+        }
+
+        internal static void ForgetShownText(TextField field)
+        {
+            if (s_shownText.TryGetValue(field, out var left))
+            {
+                field.UnregisterValueChangedCallback(left.OnChange);
+                s_shownText.Remove(field);
+            }
+        }
 
         private sealed class ShownText
         {
+            private readonly TextField _field;
+
             public string? Text;
+
+            public ShownText(TextField field) => _field = field;
+
+            // The inner text element's own change events bubble to the field; only the field's own is a
+            // commit of the value.
+            public void OnChange(ChangeEvent<string> evt)
+            {
+                if (evt.target == _field)
+                {
+                    Text = _field.text;
+                }
+            }
         }
 
         private static readonly ConditionalWeakTable<TextField, ShownText> s_shownText = new();

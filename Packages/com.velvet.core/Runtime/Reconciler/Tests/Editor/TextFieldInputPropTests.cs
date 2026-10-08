@@ -307,6 +307,27 @@ namespace Velvet.Tests
             Assert.That((element.text, element.value), Is.EqualTo(("abc", string.Empty)));
         }
 
+        // The commit is simulated with SimulateChange: the value and shown text land together and the
+        // field's change callbacks run. Without the record following the commit, the deletion reads as the
+        // text Velvet last wrote.
+        [Test]
+        public void Given_AnEditDeletedAfterTheFieldCommittedItsText_When_ALaterRenderChangesMaxLength_Then_TheDeletionSurvives()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 10) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 3) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            element.SimulateChange("abc");
+            ((TextElement)element.textEdition).text = string.Empty;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the deletion was never committed.
+            Assert.That((element.text, element.value), Is.EqualTo((string.Empty, "abc")));
+        }
+
         // A single-line field shows its value with the line breaks stripped, so nothing was typed here
         // although the shown text differs from the value. The control is a field the engine alone drove
         // through the same limit change; an edit invented from the difference would be restored over what
