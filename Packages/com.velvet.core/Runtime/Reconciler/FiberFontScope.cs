@@ -28,6 +28,7 @@ namespace Velvet
 
         private readonly HashSet<VisualElement> _pending = new();
         private readonly System.Predicate<VisualElement> _settle;
+        private VisualElement? _mountRoot;
 
         public FiberFontScope() => _settle = Settle;
 
@@ -97,15 +98,20 @@ namespace Velvet
         }
 
         // Re-resolves each queued inheritor against the family it now inherits. An inheritor stays queued
-        // until its parent chain ends at an element a panel holds: a parked pass reaches this boundary with
-        // subtrees it has created and not yet placed, and a chain ending at an unplaced ancestor says
-        // nothing about the family that ancestor will be given.
-        internal void Drain()
+        // until its parent chain ends at the mount root (the scheduler's anchor, which the tree hangs from
+        // whether or not a panel holds it) or at an element a panel holds: a parked pass reaches this
+        // boundary with subtrees it has created and not yet placed, and a chain ending at an unparented
+        // ancestor says nothing about the family that ancestor will be given.
+        internal void Drain(VisualElement? mountRoot)
         {
-            if (_pending.Count != 0)
+            if (_pending.Count == 0)
             {
-                _pending.RemoveWhere(_settle);
+                return;
             }
+
+            _mountRoot = mountRoot;
+            _pending.RemoveWhere(_settle);
+            _mountRoot = null;
         }
 
         private bool Settle(VisualElement element)
@@ -122,10 +128,10 @@ namespace Velvet
                 Inheritors[element] = (entry.Intent, family);
             }
 
-            return IsPlaced(element);
+            return IsPlaced(element, _mountRoot);
         }
 
-        private static bool IsPlaced(VisualElement element)
+        private static bool IsPlaced(VisualElement element, VisualElement? mountRoot)
         {
             var top = element;
             while (top.parent != null)
@@ -133,7 +139,7 @@ namespace Velvet
                 top = top.parent;
             }
 
-            return top.panel != null;
+            return top.panel != null || ReferenceEquals(top, mountRoot);
         }
     }
 }

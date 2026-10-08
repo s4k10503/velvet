@@ -198,6 +198,24 @@ namespace Velvet.Tests
             Assert.That(TargetAsset(), Is.SameAs(_sansBold));
         }
 
+        [Test]
+        public void Given_ABoldLabelInAFamilyContainer_When_MountedIntoARootNoPanelHolds_Then_ItResolvesThatFamilyAndLeavesNothingQueued()
+        {
+            // Arrange
+            var detachedRoot = new VisualElement();
+            var tree = V.Div(className: "font-serif", children: new[] { Target("font-bold") });
+
+            // Act
+            _mounted = V.Mount(detachedRoot, tree);
+
+            // Assert
+            var pending = (System.Collections.Generic.IReadOnlyCollection<VisualElement>)typeof(FiberFontScope)
+                .GetField("_pending", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(_mounted.Root.Reconciler.Context.FontScope);
+            var asset = detachedRoot.Q<Label>("target").style.unityFontDefinition.value.fontAsset;
+            Assert.That((ReferenceEquals(asset, _serifBold), pending.Count), Is.EqualTo((true, 0)));
+        }
+
         // GREEN_ON_BASE(characterization): the family a label names itself still wins over an ancestor's.
         [Test]
         public void Given_ALabelNamingItsOwnFamily_When_MountedInAFamilyContainer_Then_ItsOwnFamilyDecides()

@@ -304,7 +304,7 @@ namespace Velvet
                 // element created in this pass has its final parent.
                 RingOverlay.DrainPendingPlacements(_ctx);
                 // Same reason: an inherited family is read off the final parent chain (FiberFontScope).
-                _ctx.FontScope.Drain();
+                _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
                 // Last, so a ref setup sees the element where the pass finally put it and every cleanup
                 // this pass owed has already run — the portal drain above included, which reconciles a
                 // Portal's children through ChildReconciler directly and so reaches no boundary of its
@@ -439,7 +439,7 @@ namespace Velvet
         void IReconcilerBridge.DrainRefAttachesForController()
         {
             _ctx.DrainRefAttaches();
-            _ctx.FontScope.Drain();
+            _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
         }
 
         void IReconcilerBridge.CommitStrandedLayoutWorkForController() => FiberEffects.CommitStrandedLayoutWork(_ctx);

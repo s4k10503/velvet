@@ -3126,7 +3126,7 @@ namespace Velvet
             {
                 StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved, _ctx.FontScope);
                 // No pass boundary follows a variant toggle, so the inheritors it queued are settled here.
-                _ctx.FontScope.Drain();
+                _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
             }
             ApplyResolvedLayoutManipulators(element, resolved);
             if (reconciled != null)
