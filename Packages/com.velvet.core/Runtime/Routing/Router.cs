@@ -34,9 +34,9 @@ namespace Velvet
         // describes a router that no longer exists.
         private int _navigationSequence;
 
-        // The routers constructed, oldest first, held weakly: a router nobody disposed and nothing else holds
-        // stays collectable, as it was when Current named only the newest. The newest is held strongly as
-        // well, so Current names it however the caller holds it, as it always has.
+        // The routers constructed, oldest first, held weakly so that a router nobody disposed and nothing else
+        // holds stays collectable. The newest is held strongly as well, so Current names it however the caller
+        // holds it.
         private static readonly List<WeakReference<Router>> s_constructed = new();
         private static Router? s_newest;
 
@@ -59,7 +59,6 @@ namespace Velvet
             return router;
         }
 
-        // Entries whose router was collected or disposed, dropped so the list tracks what is live.
         private static void ForgetFinishedRouters()
         {
             for (var index = s_constructed.Count - 1; index >= 0; index--)
@@ -129,9 +128,10 @@ namespace Velvet
         internal SearchParamsSetter SearchParamsSetter => _searchParamsSetter ??= new SearchParamsSetter(this);
 
         /// <summary>
-        /// Raised after each successful navigation with the new location. Also re-emitted (with a fresh
-        /// location identity) when a Suspend-mode loader resolves within the current location. A subscriber
-        /// that throws out of that re-emit is reported to the console and the resolution stands: the loader's
+        /// Raised after each successful navigation with the new location. Also re-emitted, with a fresh
+        /// location identity, when a Suspend-mode loader resolves within the current location, and when a
+        /// submission's action returns a result for a route the current location matches. A subscriber that
+        /// throws out of a loader's re-emit is reported to the console and the resolution stands: the loader's
         /// round settles and the route keeps what the loader produced. The same holds for the re-emit that
         /// follows a loader failing, where what it keeps is that failure.
         /// </summary>
@@ -154,19 +154,16 @@ namespace Velvet
         {
             _routeTree = new RouteTree(routes ?? throw new ArgumentNullException(nameof(routes)));
             _loaderRunner = new RouteLoaderRunner();
+            // Both write a new dictionary rather than into the current one, which CurrentLoaderErrors and
+            // CurrentLoaderData hand out as a snapshot.
             _loaderRunner.OnSuspendLoaderFailed += (routeId, ex) =>
             {
                 UnityEngine.Debug.LogException(ex);
-                // Suspend-mode loader failed: record the error keyed by RouteId and re-emit so the nearest
-                // ErrorElement renders, mirroring the synchronous Await-mode error commit.
                 _loaderErrors = new Dictionary<string?, Exception>(_loaderErrors) { [routeId] = ex };
                 RepublishCurrentLocation(routeId);
             };
             _loaderRunner.OnSuspendLoaderCompleted += (routeId, result) =>
             {
-                // Suspend-mode loader completed: replace _loaderData with a new instance so a re-render
-                // re-reads the resolved data. The location content is unchanged, so RepublishCurrentLocation
-                // re-emits OnLocationChanged with a fresh identity to force that re-render.
                 var updated = new Dictionary<string?, object>(_loaderData) { [routeId] = result };
                 _loaderData = updated;
                 RepublishCurrentLocation(routeId);
@@ -374,7 +371,6 @@ namespace Velvet
             var matches = CurrentLocation?.Matches;
             if (matches == null || matches.Count == 0)
             {
-                // No route context yet: fall back to URL-segment-relative resolution.
                 return ResolvePathBySegments(path);
             }
 
@@ -382,7 +378,6 @@ namespace Velvet
 
             var cursor = AnchorIndex(matches, baseRouteIndex);
 
-            // Consume leading "." (no-op) and ".." (pop one route level each).
             var start = 0;
             while (start < targetParts.Length && (targetParts[start] == "." || targetParts[start] == ".."))
             {
@@ -393,14 +388,11 @@ namespace Velvet
                 start++;
             }
 
-            // The resolved base is the popped route level's cumulative pathname (or the root once we pop
-            // past the top of the matched chain).
             var basePath = cursor < 0 ? "/" : matches[cursor].PathnameBase;
 
             var baseSegments = new List<string>(
                 basePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries));
 
-            // Append the remainder segment-wise (any interior "./.." in the tail still resolves URL-wise).
             return FoldSegments(baseSegments, targetParts, start);
         }
 
@@ -408,10 +400,6 @@ namespace Velvet
         private static int AnchorIndex(IReadOnlyList<RouteMatch> matches, int baseRouteIndex) =>
             baseRouteIndex < 0 ? matches.Count - 1 : Math.Min(baseRouteIndex, matches.Count - 1);
 
-        // Folds the tail segments (from start) into baseSegments — "." is a no-op, ".." pops one level (only
-        // when non-empty), anything else appends — then rebuilds the absolute path ("/" when empty). The
-        // core URL-folding step shared by the route-relative and URL-segment-relative resolvers; the caller
-        // supplies the already-built base list since the base source differs per resolver.
         private static string FoldSegments(List<string> baseSegments, string[] tail, int start)
         {
             for (var i = start; i < tail.Length; i++)
@@ -481,10 +469,9 @@ namespace Velvet
             catch (OperationCanceledException) when (myCancellation != null && navToken.IsCancellationRequested)
             {
                 // Cancellation came from a newer navigation taking over, from the router's disposal, or from
-                // the caller's own token, which `myCancellation` is linked to. Map each of them
-                // to NavigationResult.Cancelled to match the loader-phase behavior in NavigateCore
-                // (the early `if (cancellationToken.IsCancellationRequested) return Cancelled` check)
-                // — callers branch on `nav != Success` and don't catch OCE.
+                // the caller's own token, which `myCancellation` is linked to. Reported as the in-line
+                // cancellation checks in NavigateCore and RunLoaderPhase report it, so a caller branches on the
+                // result rather than catching.
                 return NavigationResult.Cancelled;
             }
             finally
@@ -598,9 +585,8 @@ namespace Velvet
             // Built here rather than at the commit so the phases below have a destination to publish while
             // they run, and reused as the committed location so the two are one object.
             var location = BuildLocation(path, matches);
-            // Written before the Status write for the reason ReleaseClaim clears it before one: that write
-            // raises OnStatusChanged, and a navigation issued from inside it reaches ReportUnclaimedOutcome,
-            // which reads this field to decide whether an attempt holds the claim.
+            // Written before the Claim below raises OnStatusChanged, for the reason ReleaseClaim clears it
+            // before its Status write.
             PendingLocation = location;
             // A redirect keeps its initiator's submission on show while it loads, as React Router's navigation
             // does while it follows a redirect out of an action.
@@ -642,8 +628,8 @@ namespace Velvet
                     return loaderResult.Value;
                 }
                 round = loaderRound;
-                // Inside the try: the commit throws on a navigation mode outside the enum, and leaving that
-                // to escape past the handlers is what left Status mid-flight before.
+                // Inside the try: the commit throws on a navigation mode outside the enum, and that throw
+                // escaping past the handlers would leave Status mid-flight.
                 CommitHistoryEntry(path, mode, pending);
             }
             catch (OperationCanceledException)
@@ -719,7 +705,7 @@ namespace Velvet
         private bool StillCurrent(PendingNavigation pending) =>
             pending.Sequence == _navigationSequence;
 
-        // The two returns a redirect can reach above its own claim end the attempt its initiator published a
+        // A redirect refused for overflow or matching nothing ends the attempt its initiator published a
         // destination for, and the initiator does nothing afterwards but forward the result — so the
         // destination is withdrawn here or not at all. Status is left to the caller.
         private void WithdrawInitiatorsDestination(PendingNavigation? initiator)
@@ -750,8 +736,9 @@ namespace Velvet
                 return;
             }
 
-            // Before the Status write, which raises OnStatusChanged to subscribers that read the destination
-            // alongside the status.
+            // Before the Status write, which raises OnStatusChanged: UseNavigation reads the destination
+            // alongside the status, and a navigation issued from a subscriber reaches ReportUnclaimedOutcome,
+            // which reads this field to decide whether an attempt holds the claim.
             PendingLocation = null;
             Status = status;
         }
@@ -794,7 +781,7 @@ namespace Velvet
                 if (redirectTarget != null)
                 {
                     // Committing the rejected path before the target would leave a ghost entry when the target
-                    // is blocked or fails, so it inherits the initiator's history slot and effect.
+                    // matches nothing or fails, so it inherits the initiator's history slot and effect.
                     return await NavigateInternalAsync(
                         redirectTarget,
                         mode == NavigationMode.Push ? NavigationMode.Push : NavigationMode.Replace,
@@ -870,9 +857,9 @@ namespace Velvet
 
             if (cancellationToken.IsCancellationRequested)
             {
-                // This attempt has committed nothing, so neither the live loader state nor the claim on Status
-                // is its to reset: both describe wherever the user actually is, which a loader that cancelled
-                // this attempt by navigating may already have moved.
+                // This attempt has committed nothing, so the live loader state is not its to reset: it describes
+                // wherever the user actually is, which a loader that cancelled this attempt by navigating may
+                // already have moved.
                 ReleaseClaim(pending, RouterStatus.Idle);
                 return (NavigationResult.Cancelled, round);
             }
@@ -960,16 +947,13 @@ namespace Velvet
 
         /// <summary>
         /// Re-emits <see cref="OnLocationChanged"/> with a fresh <see cref="RouterLocation"/> instance
-        /// carrying the same content, so a Suspend-mode loader that resolved within the current location
-        /// forces a re-render. The path/params/matches are unchanged, but <c>V.RouterProvider</c>
-        /// stores the location in a <c>UseState</c> whose setter bails on a referentially-equal value
-        /// (Object.is). Reusing the same instance would silently drop the re-render, leaving
-        /// <c>UseLoaderData</c> / <c>UseRouteError</c> on the pre-resolution snapshot. The new identity forces
-        /// the re-render that re-reads the resolved data.
+        /// carrying the same content, so loader or action data published within the current location forces a
+        /// re-render. <c>V.RouterProvider</c> stores the location in a <c>UseState</c> whose setter bails on a
+        /// referentially-equal value (Object.is), so reusing the instance would drop the re-render and leave
+        /// the routing hooks on the data they last read.
         /// <para/>
-        /// Skips the re-emit when <paramref name="resolvedRouteId"/> is no longer part of the current
-        /// location's matches: the user navigated away before the loader resolved, so the result is stale and
-        /// must not churn the unrelated current location (a navigated-away loader's result is discarded).
+        /// Skips the re-emit when <paramref name="resolvedRouteId"/> is not among the current location's
+        /// matches, which is where an action's result lands when its route is not the one on screen.
         /// </summary>
         private void RepublishCurrentLocation(string? resolvedRouteId)
         {
@@ -1235,8 +1219,7 @@ namespace Velvet
             // Retire the outstanding claim BEFORE the Cancel, which inverts the ordering a navigation uses.
             // A navigation takes its claim afterwards so that a prior attempt unwinding synchronously inside
             // the Cancel still restores its own state; here there is no such attempt worth restoring, and
-            // that same synchronous unwind would write an index back and raise OnStatusChanged on a router
-            // being torn down.
+            // that same synchronous unwind would raise OnStatusChanged on a router being torn down.
             _navigationSequence++;
             // Retiring the claim above is what stops the unwinding attempt from clearing this itself, and a
             // destination left published would outlive the navigation that was heading for it.
