@@ -242,7 +242,7 @@ a render taking the flag off — that third one whether the render declares `isD
 the parameter. The render-driven release reports through `onValueChanged:`, so a component that turns
 the flag off mid-edit receives the pending text rather than stranding it on screen.
 A render changing `maxLength:` while an edit is pending keeps the edit on screen, cut to the new limit,
-and leaves it uncommitted.
+and leaves it uncommitted and unreported.
 
 ### 2-2. Conditionals and Lists
 

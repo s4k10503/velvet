@@ -288,9 +288,10 @@ namespace Velvet.Tests
 
         // The edit is arranged as the two cases above do. maxLength is the cut: writing it through
         // TextField re-shows the committed value, and the shown text is the only place the edit lives.
-        // The new limit sits below the edit's length so the cut-to-limit half is measured as well.
+        // DelayedMaxLengthEditReportTests measures the same change on a panel, where the restore could
+        // report.
         [Test]
-        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderChangesMaxLength_Then_TheEditSurvivesCutToTheLimit()
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderChangesMaxLength_Then_TheEditIsStillShownUncommitted()
         {
             // Arrange
             var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 10) };
@@ -304,6 +305,36 @@ namespace Velvet.Tests
 
             // Assert — the value is folded in: the edit stays uncommitted.
             Assert.That((element.text, element.value), Is.EqualTo(("abc", string.Empty)));
+        }
+
+        // A single-line field shows its value with the line breaks stripped, so nothing was typed here
+        // although the shown text differs from the value. The control is a field the engine alone drove
+        // through the same limit change; an edit invented from the difference would be restored over what
+        // the engine shows.
+        [Test]
+        public void Given_ADelayedValueWithLineBreaksAndNoEdit_When_ALaterRenderChangesMaxLength_Then_TheFieldShowsWhatTheEngineAloneWould()
+        {
+            // Arrange
+            const string value = "a\nbcdef";
+            var oldTree = new VNode[]
+            {
+                V.TextField(value: value, isDelayed: true, maxLength: 10),
+            };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: value, isDelayed: true, maxLength: 3),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var control = new TextField { isDelayed = true, maxLength = 10 };
+            control.SetValueWithoutNotify(value);
+            control.maxLength = 3;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(element.text, Is.EqualTo(control.text));
         }
 
         [Test]
