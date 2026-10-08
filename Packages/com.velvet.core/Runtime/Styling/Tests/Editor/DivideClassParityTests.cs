@@ -427,6 +427,21 @@ namespace Velvet.Tests
             Assert.That(scope.Root[0][1].style.borderRightWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        [Test]
+        public void Given_AnImportantDivideWidth_When_ADividedChildHasAClassProjectionButOnlyAPlainBorderWidthClass_Then_TheDivideWins()
+        {
+            // Arrange — the unrelated important class gives the child a class projection, so the child's plain
+            // border-r-2 is the only claim on the width and it is not important.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row !divide-x-4", "border-r-2 !opacity-50") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(4f));
+        }
+
         [TestCase("flex flex-row divide-x !divide-gray-200")]
         [TestCase("flex flex-row divide-x divide-gray-200!")]
         public void Given_AnImportantDivideColor_When_ADividedChildCarriesItsOwnBorderColor_Then_TheDivideWins(
