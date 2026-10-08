@@ -389,6 +389,73 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region the value beside the range
+
+        [Test]
+        public void Given_AValueAndAHighValueAboveTheDefaultRange_When_TheSliderIsMounted_Then_TheValueLands()
+        {
+            // Arrange
+            var tree = new VNode[] { V.Slider(value: 50f, highValue: 100f) };
+
+            // Act
+            var slider = ReconcileAndGet(tree);
+
+            // Assert
+            Assert.That((slider.highValue, slider.value), Is.EqualTo((100f, 50f)));
+        }
+
+        [Test]
+        public void Given_AValue_When_ALaterRenderRaisesTheHighValueAndTheValueTogether_Then_TheValueLands()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.Slider(value: 5f, highValue: 10f) };
+            var newTree = new VNode[] { V.Slider(value: 50f, highValue: 100f) };
+            var slider = ReconcileAndGet(oldTree);
+
+            // Act
+            Reconciler!.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That((slider.highValue, slider.value), Is.EqualTo((100f, 50f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the value first, so it reports nothing here either;
+        // this is what the range-first order must not start reporting, and replacing the in-between write with
+        // the plain bounds reddens it.
+        [Test]
+        public void Given_AValueOutsideTheNewRange_When_ALaterRenderMovesTheRangeAndTheValueTogether_Then_OnValueChangedIsNotCalled()
+        {
+            // Arrange
+            var reported = new System.Collections.Generic.List<float>();
+            Action<float> record = reported.Add;
+            var oldTree = new VNode[] { V.Slider(value: 50f, lowValue: 0f, highValue: 100f, onValueChanged: record) };
+            var newTree = new VNode[] { V.Slider(value: 7f, lowValue: 5f, highValue: 10f, onValueChanged: record) };
+            var slider = ReconcileAndGet(oldTree);
+
+            // Act
+            Reconciler!.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That((string.Join("|", reported), slider.value), Is.EqualTo(("", 7f)));
+        }
+
+        // GREEN_ON_BASE(characterization): same reason as the case above, at mount.
+        [Test]
+        public void Given_AValueInsideARaisedLowValue_When_TheSliderIsMounted_Then_OnValueChangedIsNotCalled()
+        {
+            // Arrange
+            var reported = new System.Collections.Generic.List<float>();
+            var tree = new VNode[] { V.Slider(value: 7f, lowValue: 5f, onValueChanged: reported.Add) };
+
+            // Act
+            var slider = ReconcileAndGet(tree);
+
+            // Assert
+            Assert.That((string.Join("|", reported), slider.value), Is.EqualTo(("", 7f)));
+        }
+
+        #endregion
+
         #region the step
 
         [TestCase(0f)]

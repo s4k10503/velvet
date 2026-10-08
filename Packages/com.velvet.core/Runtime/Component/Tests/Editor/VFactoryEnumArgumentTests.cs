@@ -524,5 +524,44 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region V.Slider(step:)
+
+        [Test]
+        public void Given_AStepOfZero_When_VSliderRefusesIt_Then_TheCallRentsNothing()
+        {
+            // Arrange — a value and a handler make the call rent a bag and an event array once it is past
+            // the check, and the same call with a step named is the control: a count that never moved
+            // would satisfy the refusal's zeroes on its own.
+            Action<float> onChanged = _ => { };
+            var before = VNodePoolTestAccess.RentedOutCountsForTest();
+            string? refusedParam = null;
+
+            // Act
+            try
+            {
+                V.Slider(value: 1f, onValueChanged: onChanged, step: 0f);
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                refusedParam = ex.ParamName;
+            }
+            var afterRefusal = VNodePoolTestAccess.RentedOutCountsForTest();
+            var accepted = V.Slider(value: 1f, onValueChanged: onChanged, step: 0.5f);
+            var afterAccepted = VNodePoolTestAccess.RentedOutCountsForTest();
+            VNodePool.ReturnProps(accepted.Props);
+            VNodePool.ReturnEventArray(accepted.Events);
+
+            // Assert
+            Assert.That(
+                (refusedParam,
+                    afterRefusal.Props - before.Props,
+                    afterRefusal.EventArrays - before.EventArrays,
+                    afterAccepted.Props - afterRefusal.Props,
+                    afterAccepted.EventArrays - afterRefusal.EventArrays),
+                Is.EqualTo(("step", 0, 0, 1, 1)));
+        }
+
+        #endregion
     }
 }

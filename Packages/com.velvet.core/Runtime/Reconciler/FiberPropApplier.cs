@@ -193,7 +193,13 @@ namespace Velvet
         // every call would rewrite a range a refCallback set each time a render changes only the direction
         // or the flag. Those two take ApplyTextField's recorded-default shape, for the reason given there.
         // SliderDirectionPropTests measures both.
-        public static void ApplySlider(VisualElement element, SliderSettings? previous, SliderSettings? settings)
+        //
+        // A declared value that arrives with a range change is written in between: the range widens to hold
+        // both ranges, the value is placed inside the new one without a notification, and only then do the
+        // bounds narrow, so the value neither falls to the old range nor reports a clamp the render never asked
+        // for. SliderDirectionPropTests measures both.
+        public static void ApplySlider(
+            VisualElement element, SliderSettings? previous, SliderSettings? settings, object? declaredValue = null)
         {
             if (element is not Slider sliderEl)
             {
@@ -203,8 +209,17 @@ namespace Velvet
             FiberSliderKeyboard.SetStep(sliderEl, settings?.Step);
             if (previous?.LowValue != settings?.LowValue || previous?.HighValue != settings?.HighValue)
             {
-                sliderEl.lowValue = Resolve(settings?.LowValue, 0f);
-                sliderEl.highValue = Resolve(settings?.HighValue, 10f);
+                var low = Resolve(settings?.LowValue, 0f);
+                var high = Resolve(settings?.HighValue, 10f);
+                if (declaredValue is float value)
+                {
+                    sliderEl.lowValue = UnityEngine.Mathf.Min(sliderEl.lowValue, low);
+                    sliderEl.highValue = UnityEngine.Mathf.Max(sliderEl.highValue, high);
+                    sliderEl.SetValueWithoutNotify(UnityEngine.Mathf.Clamp(value, low, high));
+                }
+
+                sliderEl.lowValue = low;
+                sliderEl.highValue = high;
             }
 
             if (!s_sliderDefaults.TryGetValue(sliderEl, out var built))

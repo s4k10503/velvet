@@ -93,16 +93,9 @@ namespace Velvet.Tests
             V.Slider(value: value, lowValue: Low, highValue: WideHigh, onValueChanged: Recorder(reported),
                 direction: direction, inverted: inverted, step: step, onCreated: onCreated);
 
-        // The value is written in a second render, once the range it falls in stands.
         private Slider MountWide(List<float> reported, SliderDirection? direction = null, bool? inverted = null,
-            float? step = null, float start = WideStart, Action<VisualElement> onCreated = null)
-        {
-            var first = new[] { WideNode(reported, Low, direction, inverted, step, onCreated) };
-            var second = new[] { WideNode(reported, start, direction, inverted, step, onCreated) };
-            _reconciler.Reconcile(_root, Array.Empty<VNode>(), first);
-            _reconciler.Reconcile(_root, first, second);
-            return (Slider)_root.ElementAt(0);
-        }
+            float? step = null, float start = WideStart, Action<VisualElement> onCreated = null) =>
+            Mount(WideNode(reported, start, direction, inverted, step, onCreated));
 
         private static string Reported(int whileMounted, List<float> reported) =>
             whileMounted + ":" + string.Join("|", reported);
