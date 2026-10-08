@@ -91,6 +91,7 @@ namespace Velvet
             if (!PassesRemain)
             {
                 AdoptEndState();
+                _inRepeatGap = false;
                 _isComplete = true;
                 return _stepIndex;
             }
@@ -132,8 +133,8 @@ namespace Velvet
         private bool PassesRemain => Iterations == null || _passesCompleted < Iterations;
 
         // A count lowered mid-pass shows the state a normal completion holds: the cursor on the last step and the
-        // label and transition the To steps leave, folded as Arrive folds them. No Call callback runs. A count of
-        // zero commits nothing, as a reseed at zero does, so the cursor stays where it is.
+        // label and transition the To steps leave, folded as Arrive folds them. No Call callback runs. Zero passes
+        // commit nothing, so a count lowered to zero leaves the cursor and label as they are.
         private void AdoptEndState()
         {
             if (Iterations == 0)

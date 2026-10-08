@@ -264,6 +264,90 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ThreeIterationsLoweredToZeroDuringTheSecondPass_When_TheNextFramesTick_Then_TheCursorAndLabelStayAndTheSequenceIsComplete()
+        {
+            // Arrange
+            LowerDuringSecondPass(0);
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That((s_state.CurrentLabel, s_state.StepIndex, s_state.IsComplete), Is.EqualTo(("a", 0, true)));
+        }
+
+        [Test]
+        public void Given_LoweredFinishOverStepsWithNoTransition_When_TheNextFramesTick_Then_TheTransitionIsFade()
+        {
+            // Arrange
+            LowerDuringSecondPass(1);
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_state.CurrentTransition, Is.SameAs(StyleTransition.Fade));
+        }
+
+        [Test]
+        public void Given_LoweredFinishWhereOnlyAnEarlierStepNamesATransition_When_TheNextFramesTick_Then_TheLastStepInheritsIt()
+        {
+            // Arrange
+            LowerDuringSecondPass(1, new[]
+            {
+                AnimationSequenceStep.To("a", StyleTransition.SlideUp, holdSec: 0.1f),
+                AnimationSequenceStep.To("b", holdSec: 0.1f),
+            });
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_state.CurrentTransition, Is.SameAs(StyleTransition.SlideUp));
+        }
+
+        [Test]
+        public void Given_LoweredFinishWhereTheLastStepNamesATransition_When_TheNextFramesTick_Then_ItIsTheLastStepsOwn()
+        {
+            // Arrange
+            LowerDuringSecondPass(1, new[]
+            {
+                AnimationSequenceStep.To("a", StyleTransition.SlideUp, holdSec: 0.1f),
+                AnimationSequenceStep.To("b", StyleTransition.SlideDown, holdSec: 0.1f),
+            });
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert
+            Assert.That(s_state.CurrentTransition, Is.SameAs(StyleTransition.SlideDown));
+        }
+
+        [Test]
+        public void Given_ALoweredFinishInsideAGapThenARaisedCount_When_TheResumedFirstHoldElapses_Then_TheCursorMovesToStepOne()
+        {
+            // Arrange — lowered at 0.24s inside the gap spanning 0.2s to 0.4s, then raised again.
+            s_steps = TwoLabels();
+            s_iterations = 3;
+            s_repeatDelaySec = 0.2f;
+            Mount();
+            AdvancePast(0.22f);
+            s_iterations = 1;
+            s_rerender();
+            _mounted.FlushStateForTest();
+            AdvancePast(0f);
+            s_iterations = 3;
+            s_rerender();
+            _mounted.FlushStateForTest();
+
+            // Act — the first tick resumes at step 0, and 0.16s more passes its 0.1s hold.
+            AdvancePast(0.15f);
+
+            // Assert
+            Assert.That(s_state.StepIndex, Is.EqualTo(1));
+        }
+
+        [Test]
         public void Given_ThreeIterationsLoweredToTwoDuringTheSecondPass_When_TheNextFramesTick_Then_TheSecondPassStillPlays()
         {
             // Arrange

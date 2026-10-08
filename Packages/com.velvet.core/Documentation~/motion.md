@@ -523,7 +523,7 @@ A count changed by a re-render applies to the sequence as it plays, as the Web A
 `updateTiming` does: a count no higher than the passes already finished completes the sequence at the next
 frame with the end state a normal completion holds, as `animation-fill-mode: forwards` shows the end keyframe: the
 last step current and its label and transition adopted, with no skipped `Call` callback run. A count of zero commits
-nothing, as it does at a mount. A count above the finished passes resumes a completed sequence at the
+nothing: a mount at zero commits no step, and a count lowered to zero leaves the cursor and label as they are. A count above the finished passes resumes a completed sequence at the
 next pass's step 0.
 
 `repeatDelaySec` is Framer Motion's `repeatDelay`: seconds the cursor waits on the last step between one
