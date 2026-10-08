@@ -334,10 +334,18 @@ namespace Velvet
             RegisterActiveObservers();
             EstablishFocusAnchor();
             ApplyActiveStyling();
-            BeginOverlaySession();
+            JoinMountedOverlays();
+            SyncOverlays();
 
             var args = new DragStartArgs(ActiveInfo(), _origin);
             FireDiscrete(() => _scope.Settings.OnDragStart?.Invoke(args));
+            // The start callback's commit can mount an overlay (the activeId recipe), which no earlier
+            // join saw.
+            if (!_closed)
+            {
+                JoinMountedOverlays();
+                SyncOverlays();
+            }
         }
 
         private void CaptureActiveSnapshot()
@@ -416,12 +424,18 @@ namespace Velvet
             ApplyDragActiveClasses();
         }
 
-        // Every overlay mounted at activation under this session's scope shows the preview, as every
-        // dnd-kit DragOverlay renders its children while its own context's drag is active.
-        private void BeginOverlaySession()
+        // Every overlay mounted under this session's scope shows the preview, as every dnd-kit
+        // DragOverlay renders its children while its own context's drag is active. Runs at activation,
+        // after the start callback's commit and on every move, so an overlay that mounts mid-drag
+        // joins; a positioner already joined is skipped.
+        private void JoinMountedOverlays()
         {
             foreach (var (positioner, binding) in _ctx.DragOverlayBindings)
             {
+                if (HasJoinedOverlay(positioner))
+                {
+                    continue;
+                }
                 if (!ReferenceEquals(FindEnclosingScope(binding.Anchor ?? positioner, _ctx, out _), _scopeElement))
                 {
                     continue;
@@ -429,7 +443,16 @@ namespace Velvet
                 _overlays.Add((positioner, binding));
                 DndOverlayDriver.BeginSession(positioner, _originRect.size);
             }
-            SyncOverlays();
+        }
+
+        private bool HasJoinedOverlay(VisualElement positioner)
+        {
+            var found = false;
+            foreach (var (joined, _) in _overlays)
+            {
+                found |= ReferenceEquals(joined, positioner);
+            }
+            return found;
         }
 
         private void SyncOverlays()
@@ -511,6 +534,7 @@ namespace Velvet
             {
                 _source.style.translate = new Translate(_baseTranslate.x + _delta.x, _baseTranslate.y + _delta.y);
             }
+            JoinMountedOverlays();
             SyncOverlays();
             UpdateCollision();
             evt.StopPropagation();

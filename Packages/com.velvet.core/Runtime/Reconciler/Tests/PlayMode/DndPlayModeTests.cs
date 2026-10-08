@@ -16,7 +16,8 @@ namespace Velvet.Tests
     /// captures at its own pointer-down still drags — under a distance constraint and with none —
     /// without clicking the child, while a sub-threshold press on it stays its click, a real drag ending
     /// on a Clickable source does NOT fire its click, and every DragOverlay positioner mounted at
-    /// activation tracks the pointer on the Overlay layer panel with picking disabled.
+    /// activation tracks the pointer on the Overlay layer panel with picking disabled, and one mounted
+    /// after activation joins the drag.
     /// </summary>
     internal sealed class DndPlayModeTests
     {
@@ -28,6 +29,8 @@ namespace Velvet.Tests
         private static readonly List<string> s_ended = new();
         private static DragActivation s_cardActivation;
         private static StateUpdater<bool> s_setShowChild;
+        private static StateUpdater<bool> s_setShowOverlay;
+        private static bool s_startMountsOverlay;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
@@ -36,6 +39,8 @@ namespace Velvet.Tests
             s_ended.Clear();
             s_cardActivation = new DragActivation(Distance: 4f);
             s_setShowChild = default;
+            s_setShowOverlay = default;
+            s_startMountsOverlay = false;
             _panelGo = new GameObject("DndPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
             _settings = TestPanelSettings.Create();
@@ -601,6 +606,75 @@ namespace Velvet.Tests
                 (overlayRoot.Q<Label>("first-ghost").parent.style.display.value,
                     overlayRoot.Q<Label>("second-ghost").parent.style.display.value),
                 Is.EqualTo((DisplayStyle.None, DisplayStyle.None)));
+        }
+
+        // The overlay is declared only while showOverlay is set; s_startMountsOverlay says whether the
+        // drag's start callback is what sets it.
+        [Component]
+        private static VNode LateOverlayScene()
+        {
+            var (showOverlay, setShowOverlay) = Hooks.UseState(false);
+            s_setShowOverlay = setShowOverlay;
+            return V.DndContext(
+                onDragStart: e =>
+                {
+                    s_started.Add(e.Active.Id);
+                    if (s_startMountsOverlay)
+                    {
+                        setShowOverlay.Invoke(true);
+                    }
+                },
+                activation: DragActivation.None,
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", name: "item", movement: DragMovement.None,
+                        className: "absolute left-[30px] top-[20px] w-[50px] h-[50px]"),
+                    showOverlay
+                        ? V.DragOverlay(key: "late", children: new VNode[] { V.Label("ghost", name: "late-ghost") })
+                        : null,
+                });
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADragOverlayMountedByTheStartCallback_When_ThePressActivatesTheDrag_Then_TheOverlayShows()
+        {
+            // Arrange
+            s_startMountsOverlay = true;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+
+            // Act
+            SendPointerDown(Main("item"), new Vector2(40, 30));
+            yield return null;
+
+            // Assert — the Overlay layer host exists only once an overlay has mounted.
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+            Assert.That(overlayRoot.Q<Label>("late-ghost").parent.style.display.value, Is.EqualTo(DisplayStyle.Flex));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADragOverlayMountedByARenderDuringTheDrag_When_ThePointerMoves_Then_TheOverlayShows()
+        {
+            // Arrange — no start callback mounts it, so only a later join can see it.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var item = Main("item");
+            SendPointerDown(item, new Vector2(40, 30));
+            s_setShowOverlay.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Act
+            SendPointerMove(item, new Vector2(60, 30));
+            yield return null;
+
+            // Assert — the Overlay layer host exists only once an overlay has mounted.
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+            Assert.That(overlayRoot.Q<Label>("late-ghost").parent.style.display.value, Is.EqualTo(DisplayStyle.Flex));
         }
 
         [UnityTest]
