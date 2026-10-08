@@ -102,14 +102,33 @@ establish that an identifier or call returns a string, so replacing a `+` betwee
 expressions can still emit an invalid `-`, which the verdict **not a mutant (the operator does not
 apply)** below reads instead of failing the run.
 
+The line removal also reads a write standing alone on its line — a plain or compound assignment, or an
+increment, to a name, a member path or an element — whose value closes every group it opens, so
+`Left = 1 };` closing an initializer opened above it is not one. A compound write and an increment read
+their target first, so removing one cannot leave the target unassigned, and neither is refused for what
+it writes. A plain `=` is refused where removing it could leave a later read with no write before it:
+anywhere inside a struct constructor; where its target is a name the file declares as a local without a
+value, an `out` parameter, an `out` argument or a pattern variable; and where its target is a member
+path rooted at a local without a value or an `out` parameter, since a struct can be assigned field by
+field. An element write is not refused for its root, because indexing reads the root. An `out` read
+outside a member body's braces is taken for a parameter and one inside for an argument. The names are
+read over the whole file rather than the method holding the write, so a local declared without a value
+in one method refuses a plain write to a field of the same name in another, an element write aside. At `106ce04d`, over the
+corpus a campaign mutates, this refuses 1058 lines in the write shape: 560 writes to an `out`
+parameter, 279 inside a struct constructor, 100 to a local without a value, 76 through a member path on
+an `out` parameter, 41 to a pattern variable or an `out` argument, and 2 through a member path on a
+local. Like the refusals above it reads the text rather than deciding definite assignment, so a write it
+lets through can still compile nowhere. `AssignmentRemovalTests` in `test_mutation_check.py` is the
+fixture for them.
+
 The generator carries an explicit mutation-model version in every scope digest. The digest also
 covers the merge base, platform and digestible content of each mutable target. Changing the operator
 model bumps the version, which makes cached killed verdicts from the older model
 ineligible even when every other input is unchanged.
 
-**Most of a diff is in none of those shapes, so a survivor count is a statement about the lines an operator reached rather than about the change.** Measured over the twenty-four commits ending at `48057c8`, with the generator as it stands after the parse fixes below: 487 changed production code lines, 211 mutants, and 147 lines reached — 30%. Two things move this number, so re-take it against both rather than quoting it bare: the window slides as main moves, and a change to what the operators generate moves it without the window moving at all. A method written as a run of assignments generates nothing at all: a branch adding state-transition methods to the mutation hook came back with six mutants over its 27 changed code lines, and all 22 lines of the file holding those transitions were reached by none of them. So every verdict is printed against that denominator and the unreached lines are named, and a change whose code lines are reached by nothing at all refuses a local run rather than reporting a clean run over no line.
+**Most of a diff is in none of those shapes, so a survivor count is a statement about the lines an operator reached rather than about the change.** Measured over the forty first-parent commits ending at `106ce04d`: 6403 changed production code lines, which 1916 mutants reached 1296 of — 20% — before the line removal read writes, and 2206 mutants reach 1528 of — 24% — with it. Two things move this number, so re-take it against both rather than quoting it bare: the window slides as main moves, and a change to what the operators generate moves it without the window moving at all. So every verdict is printed against that denominator and the unreached lines are named, and a change whose code lines are reached by nothing at all refuses a local run rather than reporting a clean run over no line. Under it the run prints a second share, over the changed code lines that start inside a member body's braces and hold more than brackets and separators — 5180 of the window's lines, 1215 of them reached before the write arm and 1447 with it. It sits beside the first rather than replacing it, because what it leaves out — a declaration, a signature, an expression-bodied member — can carry behaviour too.
 
-Widening the operator set is the obvious answer and is not free: a statement-deletion operator adds a mutant for every statement line it reaches. It also has to emit compilable C#, which deleting a declaration the rest of the method reads does not — the constraint the refusal above already meets, at the three operators that delete.
+Widening the operator set is the obvious answer and is not free: a statement-deletion operator adds a mutant for every statement line it reaches — the write arm took the corpus a campaign mutates from 15456 mutants to 18556. It also has to emit compilable C#, which deleting a declaration the rest of the method reads does not — the constraint the refusal above already meets, at the three operators that delete.
 
 Twelve verdicts:
 

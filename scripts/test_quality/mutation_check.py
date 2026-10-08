@@ -176,7 +176,7 @@ UNREADABLE = object()
 CARRIED_REFUSAL = 3
 
 # Include generation semantics in verdict identity.
-MUTATION_MODEL_VERSION = 7
+MUTATION_MODEL_VERSION = 8
 
 
 class Mutant:
@@ -913,10 +913,21 @@ FOREVER_LOOP = re.compile(r"\bwhile\s*\(\s*true\s*$")
 # The argument list is a character class rather than a balanced read: a nested generic is inside it,
 # and what is deliberately not inside it is `;` or `(`, so a comparison -- `a < b && c > (d);` -- is
 # not read as one.
+#
+# The second arm is a write: a plain or compound assignment, or an increment, to a name, a member
+# path or an element. A reset helper is a run of these, and the call arm alone removes none of its
+# lines. `assignment_refused` is what keeps off the writes whose removal strands a read.
+ASSIGNMENT_TARGET = r"(?:this\.)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\[\];]*\])*"
+ASSIGNMENT_LINE = re.compile(
+    r"^(?P<target>" + ASSIGNMENT_TARGET + r")\s*"
+    r"(?:(?P<plain>=)(?![=>])|(?:[-+*/%&|^]|<<|>>>?|\?\?)=)[^;]*;$"
+    r"|^(?:\+\+|--)\s*" + ASSIGNMENT_TARGET + r"\s*;$"
+    r"|^" + ASSIGNMENT_TARGET + r"\s*(?:\+\+|--)\s*;$")
 REMOVABLE_LINE = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*"
     r"(<[A-Za-z0-9_.,<>\[\]?\s]*>)?"
-    r"\s*\([^;]*\)\s*;$")
+    r"\s*\([^;]*\)\s*;$"
+    r"|" + ASSIGNMENT_LINE.pattern)
 
 # `return (value, done);` has the shape above and is not a line whose code can go: what replaces it
 # is an empty statement, so what the line returns goes with it. A word rather than a prefix, because
@@ -1310,6 +1321,183 @@ def line_spans(text):
     return tuple(spans)
 
 
+# What a brace opens, read off the words in front of it. A type's braces hold declarations and a
+# member's hold statements. A struct constructor is kept apart because a write removed there can leave
+# a field unassigned at its return, which C# before version 11 refuses.
+NAMESPACE_BLOCK = "namespace"
+TYPE_BLOCK = "type"
+STRUCT_BLOCK = "struct"
+BODY_BLOCK = "body"
+STRUCT_CONSTRUCTOR_BLOCK = "struct constructor"
+
+# Attributes in front of a header, stripped before its words are read, since `[StructLayout(...)]`
+# would otherwise end the words at its parenthesis.
+LEADING_ATTRIBUTES = re.compile(r"^\s*(?:\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\]\s*)+")
+
+
+def block_kind(header, enclosing):
+    """(what a brace opens, the type's name where it opens a struct), from the code since the
+    statement or block before it, inside the block `enclosing` describes the same way.
+
+    Read off the words before the first punctuation, and a constructor off the parenthesis after them:
+    a method's `where T : struct` constraint comes after its parameter list, and a type's keyword comes
+    before anything but modifiers.
+    """
+    header = LEADING_ATTRIBUTES.sub("", header).strip()
+    leading = re.match(r"[\w\s]*", header).group(0)
+    words = leading.split()
+    if "namespace" in words:
+        return NAMESPACE_BLOCK, ""
+    if "struct" in words:
+        position = words.index("struct") + 1
+        return STRUCT_BLOCK, words[position] if position < len(words) else ""
+    if any(word in words for word in ("class", "interface", "enum", "record")):
+        return TYPE_BLOCK, ""
+    kind, name = enclosing
+    if (kind == STRUCT_BLOCK and words and words[-1] == name
+            and header[len(leading):].startswith("(")):
+        return STRUCT_CONSTRUCTOR_BLOCK, ""
+    return BODY_BLOCK, ""
+
+
+@functools.lru_cache(maxsize=16)
+def block_scopes(text):
+    """For each line, the kinds of the blocks open where it starts, outermost first."""
+    mask = code_mask(text)
+    stack = []
+    pending = []
+    scopes = []
+    for start, end in line_spans(text):
+        scopes.append(tuple(kind for kind, _ in stack))
+        for offset in range(start, end):
+            if not mask[offset]:
+                continue
+            character = text[offset]
+            if character == "{":
+                stack.append(block_kind("".join(pending), stack[-1] if stack else ("", "")))
+                pending = []
+            elif character == "}":
+                if stack:
+                    stack.pop()
+                pending = []
+            elif character == ";":
+                pending = []
+            else:
+                pending.append(character)
+    return tuple(scopes)
+
+
+def in_member_body(scope):
+    return bool(scope) and scope[-1] in (BODY_BLOCK, STRUCT_CONSTRUCTOR_BLOCK)
+
+
+# A local declaration: modifiers, a type, then the declarators. The type is one token -- a dotted name
+# with type arguments, a tuple, an array or nullable suffix -- so a call or an assignment is not one.
+LOCAL_DECLARATION = re.compile(
+    r"^(?:(?:const|scoped|ref|readonly|unsafe|static)\s+)*"
+    r"(?P<type>\([^;=]*?\)|[A-Za-z_][\w.]*(?:\s*<[^;=(){}]*>)?)"
+    r"(?:\s*\?)?(?:\s*\[[,\s]*\])*(?:\s*\?)?"
+    r"\s+(?P<rest>[A-Za-z_]\w*\s*[=,;].*)$")
+# The words that can stand where the declaration's type stands and begin a statement instead.
+STATEMENT_KEYWORDS = frozenset((
+    "await", "break", "case", "checked", "continue", "default", "do", "else", "fixed", "for",
+    "foreach", "goto", "if", "lock", "new", "return", "switch", "throw", "try", "unchecked",
+    "unsafe", "using", "while", "yield"))
+# An `out` parameter, or an `out` argument declaring a variable.
+OUT_DECLARATION = re.compile(
+    r"\bout\s+[A-Za-z_][\w.]*(?:\s*<[^()]*?>)?(?:\s*\?)?(?:\s*\[[,\s]*\])*(?:\s*\?)?\s+([A-Za-z_]\w*)")
+DESIGNATION_NAME = re.compile(PATTERN_DESIGNATION.pattern + r"\w*")
+
+
+def declarators_without_value(rest):
+    """The names a declarator list leaves unassigned, up to its terminating `;`.
+
+    Split at the commas the list holds at its own depth. A comma inside a generic argument list sits
+    at that depth too, so the piece after it is read as a declarator -- which only adds a name.
+    """
+    names = []
+    depth = 0
+    piece = []
+    for character in rest + ";":
+        if character in OPENING:
+            depth += 1
+        elif character in CLOSING:
+            depth -= 1
+        elif depth == 0 and character in ",;":
+            named = re.match(r"([A-Za-z_]\w*)\s*(=?)", "".join(piece).strip())
+            if named and not named.group(2):
+                names.append(named.group(1))
+            piece = []
+            if character == ";":
+                break
+            continue
+        piece.append(character)
+    return names
+
+
+@functools.lru_cache(maxsize=16)
+def unassigned_names(text):
+    """(names a write to the whole variable can be the first to assign, names a write to one of its
+    fields can be), over the whole file.
+
+    The first holds a pattern variable, which a failed match leaves unassigned, and an `out` argument,
+    which a call that never ran leaves so. The second holds what a struct can be assigned field by
+    field into: a local declared without a value, and an `out` parameter -- read as an `out` declared
+    outside a member body, which is where a parameter list sits. Read over the whole file rather than
+    the method holding the write, so a write in one method is refused for a name another declares.
+    """
+    mask = code_mask(text)
+    spans = line_spans(text)
+    scopes = block_scopes(text)
+    whole, fieldwise = set(), set()
+    for number, (start, end) in enumerate(spans, start=1):
+        code = code_only(text, mask, start, end).strip()
+        whole.update(match.group(0).split()[-1] for match in DESIGNATION_NAME.finditer(code))
+        if not in_member_body(scopes[number - 1]):
+            fieldwise.update(OUT_DECLARATION.findall(code))
+            continue
+        whole.update(OUT_DECLARATION.findall(code))
+        declared = LOCAL_DECLARATION.match(code)
+        if declared and declared.group("type") not in STATEMENT_KEYWORDS:
+            fieldwise.update(declarators_without_value(declared.group("rest")))
+    return frozenset(whole), frozenset(fieldwise)
+
+
+def balanced(code):
+    """Whether the code closes every group it opens, and none it did not."""
+    depth = 0
+    for character in code:
+        if character in OPENING:
+            depth += 1
+        elif character in CLOSING:
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
+def assignment_refused(text, number, statement):
+    """Whether removing the write on line `number` could leave a read with no write before it.
+
+    Such a mutant compiles nowhere and is scored unmeasured. Only a plain `=` can do it, since every
+    other write reads its target first. Refused: any plain write inside a struct constructor; a write
+    to a name `unassigned_names` holds; and a write through a member path rooted at a name it holds as
+    assignable field by field. An element write is never refused for its root, because indexing reads
+    the root, so the root is already assigned.
+    """
+    written = ASSIGNMENT_LINE.match(statement)
+    if not written or not written.group("plain"):
+        return False
+    if STRUCT_CONSTRUCTOR_BLOCK in block_scopes(text)[number - 1]:
+        return True
+    target = written.group("target")
+    if target.startswith("this.") or "[" in target:
+        return False
+    whole, fieldwise = unassigned_names(text)
+    root = re.match(r"\w+", target).group(0)
+    return root in fieldwise or (root == target and root in whole)
+
+
 def mutations_for(path, text, target_lines):
     constructs = mask_spans(text)
     mask = code_mask(text, constructs)
@@ -1352,8 +1540,12 @@ def mutations_for(path, text, target_lines):
         # compiler sees a difference in.
         code = code_only(text, mask, start, end)
         statement = code.strip()
+        # `balanced` because the assignment arm's value runs to the semicolon: `Left = 1 };` closes an
+        # initializer the line did not open.
         if (REMOVABLE_LINE.match(statement) and not CONTROL_KEYWORD.match(statement)
                 and not DECLARES_A_NAME.search(code)
+                and balanced(statement)
+                and not assignment_refused(text, number, statement)
                 and deletable_line(text, mask, spans, number)):
             # Spliced over the code the mask leaves rather than over the raw line: taking the line
             # whole carries off a block comment's opening, or its closing, when only one of the two
@@ -1383,12 +1575,27 @@ def mutations_for(path, text, target_lines):
     return found
 
 
+def body_line_numbers(text, numbers):
+    """The changed code lines that start inside a member body's braces and hold more than brackets
+    and separators.
+
+    A second denominator beside `code_line_numbers`, never in place of it: what this leaves out -- a
+    declaration, a signature, an expression-bodied member -- can carry behaviour too.
+    """
+    spans = line_spans(text)
+    mask = code_mask(text)
+    scopes = block_scopes(text)
+    return [number for number in code_line_numbers(text, numbers)
+            if in_member_body(scopes[number - 1])
+            and code_only(text, mask, *spans[number - 1]).strip(" \t\r\n(){}[];,")]
+
+
 def code_line_numbers(text, numbers):
     """The changed lines the compiler sees something on beyond block punctuation.
 
     This is the denominator every verdict is quoted against, because the operators above reach a
-    minority of it -- a method written as a run of assignments generates nothing at all -- and a
-    campaign reporting only that nothing survived reads as a statement about the whole change.
+    minority of it, and a campaign reporting only that nothing survived reads as a statement about the
+    whole change.
     Generators~/README.md ▸ Mutation testing carries what that minority measures.
     """
     spans = line_spans(text)
@@ -3154,6 +3361,16 @@ def declarations_for(targets, changed):
     return found
 
 
+def body_reach(mutants, body):
+    """Printed under `reach`'s line rather than in place of it, for the reason `body_line_numbers`
+    gives."""
+    reached = {(mutant.path, mutant.line) for mutant in mutants}
+    hit = sum(1 for line in body if line in reached)
+    share = " ({}%)".format(round(100 * hit / len(body))) if body else ""
+    return ("{} of the {} changed code line(s) inside a member body's braces, beyond brackets and "
+            "separators alone, carry a mutant{}".format(hit, len(body), share))
+
+
 def answered(mutants, deferred, declared):
     """(the survivors nothing answers for, the declarations nothing is left for them to answer).
 
@@ -3708,17 +3925,21 @@ def main():
             + ["  {} lines {}-{} read as a {}".format(path, first, last, kind)
                for path, defects in blinded for first, last, kind in defects]))
 
+    body = []
     mutants = []
     unreached = {}
     for path, lines in sorted(targets.items()):
         text = path.read_text()
         found = mutations_for(path, text, lines)
         mutants.extend(found)
+        body.extend((path, number) for number in body_line_numbers(text, lines))
         covered = {mutant.line for mutant in found}
         left = [number for number in code_line_numbers(text, lines) if number not in covered]
         if left:
             unreached[path] = left
     coverage = reach(mutants, unreached, project)
+
+    coverage = "\n".join((coverage, body_reach(mutants, body)))
 
     if args.plan and args.survivors_of is None:
         if len(mutants) > MAX_SHARDS * SHARD_CEILING[args.platform]:
