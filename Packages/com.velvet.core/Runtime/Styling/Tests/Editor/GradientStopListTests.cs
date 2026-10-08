@@ -92,13 +92,25 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AZeroWidthFirstStop_When_Baked_Then_TheLeftEdgeIsTheSecondColour()
+        public void Given_AZeroWidthLastStop_When_Baked_Then_TheRightEdgeIsTheLastColour()
         {
-            // Act — red and blue both at 0%: the left edge, where t clamps to 0, shows the later colour.
-            var left = SampleAcross(new[] { "bg-linear-[to_right,#ff0000_0%,#0000ff_0%]" }, 0f);
+            // Act — blue and green both at 100%: the right edge, where t reaches 1, shows the later colour.
+            var right = SampleAcross(new[] { "bg-linear-[to_right,#ff0000,#0000ff_100%,#00ff00_100%]" }, 1f);
 
             // Assert
-            Assert.That(ColorUtility.ToHtmlStringRGBA(left), Is.EqualTo("0000FFFF"));
+            Assert.That(ColorUtility.ToHtmlStringRGBA(right), Is.EqualTo("00FF00FF"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base paints the from colour where from and via share 0%.
+        [Test]
+        public void Given_FromAndViaBothAtZero_When_Baked_Then_TheLeftEdgeIsTheFromColour()
+        {
+            // Act — t clamps to 0 at the left edge, where from and via both sit.
+            var left = SampleAcross(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "via-[#00ff00]", "via-0%", "to-[#0000ff]" }, 0f);
+
+            // Assert
+            Assert.That(ColorUtility.ToHtmlStringRGBA(left), Is.EqualTo("FF0000FF"));
         }
 
         // GREEN_ON_BASE(refactor): a to- colour alone still fades from its own transparent version.
@@ -166,23 +178,111 @@ namespace Velvet.Tests
             Assert.That(ColorUtility.ToHtmlStringRGBA(left), Is.EqualTo("FF0000FF"));
         }
 
+        // GREEN_ON_BASE(characterization): the base paints via-to from via's own 50% past a from at 60%.
         [Test]
-        public void Given_AFromPositionPastTheViaDefault_When_Baked_Then_ViaIsRaisedToTheFromPosition()
+        public void Given_AFromPositionPastTheViaDefault_When_Baked_Then_TheViaSegmentStillStartsAtFifty()
         {
-            // Arrange — from at 60% with via at its 50% default: via is raised to 60%, so just past 60% the
-            // via→to segment has barely begun. Left at 50%, it would be a fifth of the way to blue.
+            // Arrange — from at 60% with via at its 50% default. The utilities' positions are not fixed up,
+            // so just past 60% the via→to segment is already about a fifth of the way to blue; raising via
+            // to 60% would put it at the start of that segment instead.
             var classNames = new[] { "bg-linear-to-r", "from-[#ff0000]", "from-60%", "via-[#00ff00]", "to-[#0000ff]" };
 
             // Act
             var pastFrom = SampleAcross(classNames, 0.61f);
 
             // Assert
-            Assert.That(pastFrom.g, Is.GreaterThan(0.9f));
+            Assert.That(pastFrom.g, Is.EqualTo(0.79f).Within(0.02f));
         }
 
         #endregion
 
         #region Line argument
+
+        [Test]
+        public void Given_ALinearListWithNoLineArgument_When_Extracted_Then_ItRunsToBottom()
+        {
+            // Act — CSS's default direction for linear-gradient() is to bottom, 180deg.
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(180f));
+        }
+
+        [Test]
+        public void Given_ALineEndingInAnInterpolationSpace_When_Extracted_Then_BothAreRead()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_oklab,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.AngleDeg, spec.Interp), Is.EqualTo((90f, GradientInterp.Oklab)));
+        }
+
+        [Test]
+        public void Given_ALineLedByAnInterpolationSpace_When_Extracted_Then_BothAreRead()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[in_oklch_45deg,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.AngleDeg, spec.Interp), Is.EqualTo((45f, GradientInterp.Oklab)));
+        }
+
+        [Test]
+        public void Given_ALineOfAnInterpolationSpaceAlone_When_Extracted_Then_ItRunsToBottomInThatSpace()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[in_oklab,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.AngleDeg, spec.Interp), Is.EqualTo((180f, GradientInterp.Oklab)));
+        }
+
+        [Test]
+        public void Given_AnInterpolationSpaceInTheListAndAModifier_When_Extracted_Then_TheListWins()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[in_srgb,#ff0000,#0000ff]/oklab" }, out var spec);
+
+            // Assert
+            Assert.That((spec.AngleDeg, spec.Interp), Is.EqualTo((180f, GradientInterp.Srgb)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
+        [Test]
+        public void Given_AnUnknownInterpolationSpaceAfterAPlainActivator_When_Extracted_Then_ThePlainActivatorStillWins()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_left_in_hsl,#00ff00,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(90f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
+        [Test]
+        public void Given_AnInWithNoSpaceAfterAPlainActivator_When_Extracted_Then_ThePlainActivatorStillWins()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[in,#00ff00,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(90f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
+        [Test]
+        public void Given_AnInterpolationSpaceInsideTheLineAfterAPlainActivator_When_Extracted_Then_ThePlainActivatorStillWins()
+        {
+            // Act — in_{space} may lead or end the line argument, not split it.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_in_oklab_left,#00ff00,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(90f));
+        }
 
         [Test]
         public void Given_ToRightLine_When_Extracted_Then_TheAngleIs90()
@@ -325,7 +425,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AConicListWithAnUnreadableTailAfterAPlainActivator_When_Extracted_Then_ThePlainActivatorStillWins()
         {
-            // Act — after from_90deg only an at_ position may follow.
+            // Act — bogus is neither an at_ position nor an in_ interpolation space.
             StyleGradientClass.TryExtract(
                 new[] { "bg-conic-45", "from-[#ff0000]", "bg-conic-[from_90deg_bogus,#00ff00,#0000ff]" }, out var spec);
 
@@ -383,7 +483,7 @@ namespace Velvet.Tests
         {
             // Act
             StyleGradientClass.TryExtract(
-                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_left,#00ff00,notacolor]" }, out var spec);
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_left,#00ff00,notacolor,#0000ff]" }, out var spec);
 
             // Assert
             Assert.That(spec.AngleDeg, Is.EqualTo(90f));

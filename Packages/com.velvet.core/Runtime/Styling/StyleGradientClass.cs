@@ -39,7 +39,10 @@ namespace Velvet
     }
 
     // A resolved gradient: shape (linear angle / radial-or-conic centre), interpolation space, and its ordered
-    // colour stops, whose positions StyleGradientClass has already fixed up into a non-decreasing 0..1 run.
+    // colour stops (positions 0..1). A stop list's positions are fixed up into a non-decreasing run; the
+    // from-/via-/to- utilities' positions are kept as written, and GradientBackground.ColorAt paints them
+    // as it did before stop lists existed.
+    // Stops arrays are shared between specs through StyleGradientClass's memos and are never written.
     // AngleDeg is the linear axis angle (CSS degrees, 0 = to top, clockwise) and doubles as the conic start
     // angle. Equality is value-based (quantized) so the baked-texture cache and the reconciler binding skip
     // redundant work when an unchanged class list re-resolves to the same gradient.
@@ -130,7 +133,8 @@ namespace Velvet
     //   - stops: from-/via-/to-{color} (named palette or arbitrary [#hex]) and from-/via-/to-{N%} positions
     //     (a percentage value is a POSITION, anything else a COLOR — independent utilities);
     //   - or a CSS argument list in the shape's brackets, its stops carried with it:
-    //     bg-linear-[90deg,red_0%,blue_100%], bg-radial-[at_top,…], bg-conic-[from_90deg_at_25%_75%,…].
+    //     bg-linear-[90deg,red_0%,blue_100%], bg-linear-[to_right_in_oklab,…], bg-radial-[at_top,…],
+    //     bg-conic-[from_90deg_at_25%_75%,…].
     // A lone stop with no shape activator is inert. Cheap prefix gate + a cascade-correct
     // extractor (last shape wins; last from/via/to colour and position win).
     //
@@ -168,6 +172,13 @@ namespace Velvet
             public GradientStop[]? Stops;
         }
 
+        // A class string's reading as a shape activator, Ok false when it is not one.
+        private struct ActivatorReading
+        {
+            public bool Ok;
+            public Shape Shape;
+        }
+
         // The accumulated reading of one of the from-/via-/to- utilities.
         private struct UtilityStop
         {
@@ -175,6 +186,52 @@ namespace Velvet
             public Color Color;
             public float Position;
         }
+
+        // A from-/via-/to- suffix's reading: a position, a colour, or neither.
+        private struct StopToken
+        {
+            public bool IsPosition;
+            public float Position;
+            public bool IsColor;
+            public Color Color;
+        }
+
+        // ApplyGradientOnPatch re-extracts on every patch of a gradient element, so each reading of a class
+        // string, and each stop array the from-/via-/to- utilities build, is kept and handed out again.
+        // Rejected: ClassNameParseCache's admission scheme, which keeps moving values from pushing out a
+        // render's stable strings because a string parsed again after leaving that cache is a new array the
+        // reconciler reads as a change. A spec is compared by value, so an entry cleared here costs only a
+        // re-parse to an equal one.
+        private sealed class BoundedMemo<TKey, TValue> where TKey : notnull
+        {
+            private const int Capacity = 256;
+            private readonly Dictionary<TKey, TValue> _entries = new();
+
+            public bool TryGet(TKey key, out TValue value)
+            {
+                if (_entries.TryGetValue(key, out var found))
+                {
+                    value = found;
+                    return true;
+                }
+                value = default!;
+                return false;
+            }
+
+            public void Add(TKey key, TValue value)
+            {
+                if (_entries.Count >= Capacity)
+                {
+                    _entries.Clear();
+                }
+                _entries.Add(key, value);
+            }
+        }
+
+        private static readonly BoundedMemo<string, ActivatorReading> s_activators = new();
+        private static readonly BoundedMemo<string, StopToken> s_stopTokens = new();
+        private static readonly BoundedMemo<((bool, Color, float), (bool, Color, float), (bool, Color, float)), GradientStop[]>
+            s_utilityStops = new();
 
         // Cheap prefix/equality table for gradient shape activators, shared by the gate and the parser
         // so the two can never drift apart: TryParseActivator consults this SAME table as its first
@@ -257,22 +314,22 @@ namespace Velvet
                     continue;
                 }
 
-                if (TryParseActivator(cls, out var parsed))
+                if (TryReadActivator(cls, out var parsed))
                 {
                     shape = parsed;
                     hasShape = true;
                 }
                 else if (cls.StartsWith(FromPrefix, StringComparison.Ordinal))
                 {
-                    ParseStop(cls.Substring(FromPrefix.Length), ref fromStop);
+                    ReadStop(cls, FromPrefix.Length, ref fromStop);
                 }
                 else if (cls.StartsWith(ViaPrefix, StringComparison.Ordinal))
                 {
-                    ParseStop(cls.Substring(ViaPrefix.Length), ref viaStop);
+                    ReadStop(cls, ViaPrefix.Length, ref viaStop);
                 }
                 else if (cls.StartsWith(ToPrefix, StringComparison.Ordinal))
                 {
-                    ParseStop(cls.Substring(ToPrefix.Length), ref toStop);
+                    ReadStop(cls, ToPrefix.Length, ref toStop);
                 }
             }
 
@@ -294,25 +351,91 @@ namespace Velvet
             return true;
         }
 
+        // The positions are kept as written, not fixed up: see GradientSpec.
         private static GradientStop[]? StopsFromUtilities(in UtilityStop fromStop, in UtilityStop viaStop, in UtilityStop toStop)
         {
             if (!fromStop.HasColor && !toStop.HasColor)
             {
                 return null;
             }
-            var colors = new List<Color>(3) { fromStop.HasColor ? fromStop.Color : Transparent(toStop.Color) };
-            var positions = new List<float>(3) { fromStop.Position };
-            if (viaStop.HasColor)
+            var key = ((fromStop.HasColor, fromStop.Color, fromStop.Position), (viaStop.HasColor, viaStop.Color,
+                viaStop.Position), (toStop.HasColor, toStop.Color, toStop.Position));
+            if (s_utilityStops.TryGet(key, out var cached))
             {
-                colors.Add(viaStop.Color);
-                positions.Add(viaStop.Position);
+                return cached;
             }
-            colors.Add(toStop.HasColor ? toStop.Color : Transparent(fromStop.Color));
-            positions.Add(toStop.Position);
-            return FixUp(colors, positions);
+            var first = new GradientStop(fromStop.HasColor ? fromStop.Color : Transparent(toStop.Color), fromStop.Position);
+            var last = new GradientStop(toStop.HasColor ? toStop.Color : Transparent(fromStop.Color), toStop.Position);
+            var stops = viaStop.HasColor
+                ? new[] { first, new GradientStop(viaStop.Color, viaStop.Position), last }
+                : new[] { first, last };
+            s_utilityStops.Add(key, stops);
+            return stops;
         }
 
         private static Color Transparent(Color c) => new Color(c.r, c.g, c.b, 0f);
+
+        // The memoised TryParseActivator. The prefix gate runs first, so a class that is no activator is
+        // turned away without a lookup or an entry.
+        private static bool TryReadActivator(string cls, out Shape shape)
+        {
+            shape = default;
+            if (!MatchesActivatorPrefix(cls))
+            {
+                return false;
+            }
+            if (!s_activators.TryGet(cls, out var reading))
+            {
+                reading.Ok = TryParseActivator(cls, out reading.Shape);
+                s_activators.Add(cls, reading);
+            }
+            shape = reading.Shape;
+            return reading.Ok;
+        }
+
+        // A from-/via-/to- remainder is EITHER a stop position (a percentage) or a colour — independent
+        // utilities. A percentage sets only the position; a recognized colour sets the colour (and marks
+        // the stop present); anything else is ignored (leaves the accumulated values untouched).
+        private static void ReadStop(string cls, int prefixLength, ref UtilityStop stop)
+        {
+            if (!s_stopTokens.TryGet(cls, out var token))
+            {
+                token = ParseStopToken(cls.Substring(prefixLength));
+                s_stopTokens.Add(cls, token);
+            }
+            if (token.IsPosition)
+            {
+                stop.Position = token.Position;
+            }
+            else if (token.IsColor)
+            {
+                stop.Color = token.Color;
+                stop.HasColor = true;
+            }
+        }
+
+        // An interpolation space as the /modifier and a list's in_{space} both name it.
+        private static bool TryParseInterp(string space, out GradientInterp interp)
+        {
+            switch (space)
+            {
+                case "oklch":
+                case "oklab": interp = GradientInterp.Oklab; return true;
+                case "srgb": interp = GradientInterp.Srgb; return true;
+                default: interp = GradientInterp.Srgb; return false;
+            }
+        }
+
+        private static StopToken ParseStopToken(string suffix)
+        {
+            if (TryParsePercent(suffix, out var p))
+            {
+                return new StopToken { IsPosition = true, Position = p };
+            }
+            return VelvetPalette.TryResolveColorToken(suffix, out var c)
+                ? new StopToken { IsColor = true, Color = c }
+                : default;
+        }
 
         // Parses a gradient shape activator, including an optional /interp modifier: type, angle (linear
         // axis / conic start; 0 for radial), centre (radial/conic; 0.5,0.5 default), interp, and the stop
@@ -336,12 +459,9 @@ namespace Velvet
             var slash = cls.IndexOf('/');
             if (slash >= 0)
             {
-                switch (cls.Substring(slash + 1))
+                if (!TryParseInterp(cls.Substring(slash + 1), out shape.Interp))
                 {
-                    case "oklch":
-                    case "oklab": shape.Interp = GradientInterp.Oklab; break;
-                    case "srgb": shape.Interp = GradientInterp.Srgb; break;
-                    default: return false; // unknown modifier → not a valid activator
+                    return false; // unknown modifier → not a valid activator
                 }
                 baseTok = cls.Substring(0, slash);
             }
@@ -426,6 +546,11 @@ namespace Velvet
             var args = SplitTopLevel(body, ',');
             var colors = new List<Color>();
             var positions = new List<float>();
+            if (shape.Type == GradientType.Linear)
+            {
+                // CSS's default direction, to bottom, for a list with no line argument.
+                shape.Angle = 180f;
+            }
             if (!TryAddColorStop(args[0], colors, positions) && !TryParseLine(args[0], ref shape))
             {
                 return false;
@@ -518,24 +643,42 @@ namespace Velvet
         }
 
         // The leading line argument: an angle or to_{side}[_{side}] for linear, at_{position} for radial,
-        // from_{angle} and/or at_{position} for conic.
+        // from_{angle} and/or at_{position} for conic, each optionally led or followed by in_{space}. An
+        // in_{space} overrides the activator's /modifier.
         private static bool TryParseLine(string arg, ref Shape shape)
+        {
+            var tokens = arg.Split('_');
+            var at = Array.IndexOf(tokens, "in");
+            if (at < 0)
+            {
+                return TryParseShapeLine(arg, ref shape);
+            }
+            if (at + 1 >= tokens.Length || (at != 0 && at != tokens.Length - 2)
+                || !TryParseInterp(tokens[at + 1], out shape.Interp))
+            {
+                return false;
+            }
+            var line = at == 0 ? string.Join("_", tokens, 2, tokens.Length - 2) : string.Join("_", tokens, 0, at);
+            return line.Length == 0 || TryParseShapeLine(line, ref shape);
+        }
+
+        private static bool TryParseShapeLine(string line, ref Shape shape)
         {
             switch (shape.Type)
             {
                 case GradientType.Radial:
-                    if (!arg.StartsWith("at_", StringComparison.Ordinal))
+                    if (!line.StartsWith("at_", StringComparison.Ordinal))
                     {
                         return false;
                     }
-                    ParseRadialPosition(arg, ref shape.CenterX, ref shape.CenterY);
+                    ParseRadialPosition(line, ref shape.CenterX, ref shape.CenterY);
                     return true;
                 case GradientType.Conic:
-                    return TryParseConicLine(arg, ref shape);
+                    return TryParseConicLine(line, ref shape);
                 default:
-                    return arg.StartsWith("to_", StringComparison.Ordinal)
-                        ? TryParseSides(arg.Substring(3), out shape.Angle)
-                        : TryParseAngleValue("[" + arg + "]", out shape.Angle);
+                    return line.StartsWith("to_", StringComparison.Ordinal)
+                        ? TryParseSides(line.Substring(3), out shape.Angle)
+                        : TryParseAngleValue("[" + line + "]", out shape.Angle);
             }
         }
 
@@ -676,23 +819,6 @@ namespace Velvet
                         }
                         break;
                 }
-            }
-        }
-
-        // A from-/via-/to- remainder is EITHER a stop position (a percentage) or a colour — independent
-        // utilities. A percentage sets only the position; a recognized colour sets the colour (and
-        // marks the stop present); anything else is ignored (leaves the accumulated values untouched).
-        private static void ParseStop(string suffix, ref UtilityStop stop)
-        {
-            if (TryParsePercent(suffix, out var p))
-            {
-                stop.Position = p;
-                return;
-            }
-            if (VelvetPalette.TryResolveColorToken(suffix, out var c))
-            {
-                stop.Color = c;
-                stop.HasColor = true;
             }
         }
 

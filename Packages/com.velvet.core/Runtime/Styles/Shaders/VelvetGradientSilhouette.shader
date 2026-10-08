@@ -204,27 +204,31 @@ Shader "Velvet/GradientSilhouette"
                 }
                 t = saturate(t);
 
-                // Position-based stops, the same walk as GradientBackground.ColorAt: flat first colour before
-                // the first stop, flat last colour from the last stop on, and a lerp between the two stops
-                // bracketing t, in the gradient's interpolation space.
-                int count = (int)_StopCount;
-                float4 col = _StopColors[0];
-                if (t >= _StopPositions[0])
+                // Position-based stops, the same walk as GradientBackground.ColorAt (whose comment says why
+                // the two ends are tested first), in the gradient's interpolation space.
+                int last = (int)_StopCount - 1;
+                float4 col;
+                if (t <= _StopPositions[0])
                 {
-                    col = _StopColors[count - 1];
+                    col = _StopColors[0];
+                }
+                else if (t >= _StopPositions[last])
+                {
+                    col = _StopColors[last];
+                }
+                else
+                {
+                    int seg = last;
                     for (int i = 1; i < VELVET_MAX_STOPS; i++)
                     {
-                        if (i >= count)
+                        if (i >= last || t < _StopPositions[i])
                         {
-                            break;
-                        }
-                        if (t < _StopPositions[i])
-                        {
-                            float p0 = _StopPositions[i - 1];
-                            col = v_gradLerp(_StopColors[i - 1], _StopColors[i], (t - p0) / max(_StopPositions[i] - p0, 1e-5));
+                            seg = i;
                             break;
                         }
                     }
+                    float p0 = _StopPositions[seg - 1];
+                    col = v_gradLerp(_StopColors[seg - 1], _StopColors[seg], (t - p0) / max(_StopPositions[seg] - p0, 1e-5));
                 }
 
                 return half4(col.rgb, col.a * mask);

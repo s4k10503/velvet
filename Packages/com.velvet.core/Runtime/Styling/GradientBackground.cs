@@ -178,28 +178,35 @@ namespace Velvet
             return Mathf.Sqrt((dx * dx) + (dy * dy));
         }
 
-        // Colour at axis parameter t (0..1), honoring the stop POSITIONS: flat first colour before the first
-        // stop, flat last colour from the last stop on, and a linear interpolation between the two stops
-        // bracketing t. A zero-length segment (two stops at one position) is never the bracketing pair, so
-        // it draws as a hard edge with the later colour at the shared position itself. The skew silhouette
-        // shader evaluates the same walk.
+        // Colour at axis parameter t (0..1), honoring the stop POSITIONS: the first colour up to the first
+        // stop, the last colour from the last stop on, and otherwise a linear interpolation from the stop
+        // before the first one past t. The two ends are tested before the walk, which is what keeps the
+        // from-/via-/to- utilities, whose positions are not fixed up, painting as they did with three
+        // stops. A zero-length segment is never walked to, so two stops at one position draw a hard edge.
+        // The skew silhouette shader evaluates the same walk.
         private static Color ColorAt(GradientSpec spec, float t)
         {
             var stops = spec.Stops;
-            if (t < stops[0].Position)
+            var last = stops.Length - 1;
+            if (t <= stops[0].Position)
             {
                 return stops[0].Color;
             }
-            for (var i = 1; i < stops.Length; i++)
+            if (t >= stops[last].Position)
             {
-                if (t < stops[i].Position)
-                {
-                    var a = stops[i - 1];
-                    var b = stops[i];
-                    return Lerp(a.Color, b.Color, (t - a.Position) / Mathf.Max(b.Position - a.Position, 1e-5f), spec.Interp);
-                }
+                return stops[last].Color;
             }
-            return stops[stops.Length - 1].Color;
+            var i = 1;
+            // MUTANT_SURVIVES(equivalent): > and >= paint the same colour wherever CSS defines one.
+            // They part only at a t exactly on an interior position two stops share, the point CSS's
+            // infinitesimal transition between those stops leaves without a colour of its own.
+            while (t >= stops[i].Position)
+            {
+                i++;
+            }
+            var a = stops[i - 1];
+            var b = stops[i];
+            return Lerp(a.Color, b.Color, (t - a.Position) / Mathf.Max(b.Position - a.Position, 1e-5f), spec.Interp);
         }
 
         // Lerps two stops in the gradient's interpolation space: a plain sRGB channel lerp, or the
