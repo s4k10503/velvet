@@ -24,28 +24,28 @@ namespace Velvet
     // CONTAINER a nested [&>*]: would walk, so the inner wrap has nothing to apply to and must not silently
     // degrade into applying the leaf directly.
     //
-    // This recognizes the literal [&>*]: direct-child scope and one narrower scope, [&>#unity-text-input]:, the
-    // text-input box of a TextField-shaped control. V.TextField and V.IntegerField write that second form
-    // themselves (StyleTextInputSurface) so a field's surface utilities land on the box; it carries the same
-    // payload rules as the first and differs only in which child the walk hands the payload to. This is not a
-    // general child-combinator family.
+    // This recognizes the literal [&>*]: direct-child scope and one narrower scope, [&>.unity-base-field__input]:,
+    // the input box of a field control. The input-box factories write that second form themselves
+    // (StyleInputBoxSurface) so a field's surface utilities land on the box; it carries the same payload rules
+    // as the first and differs only in which child the walk hands the payload to. This is not a general
+    // child-combinator family.
     internal static class StyleChildVariantClass
     {
         private const string Prefix = "[&>*]:";
 
-        // The scope prefix naming the one child whose element name is TextField.textInputUssName.
-        internal const string TextInputPrefix = "[&>#" + TextInputName + "]:";
+        // The scope prefix naming the one child that carries BaseField's input class.
+        internal const string InputBoxPrefix = "[&>." + InputBoxClass + "]:";
 
-        // A literal so the prefix above can be a constant; TextInputSurfaceTests pins it to the engine's name.
-        internal const string TextInputName = "unity-text-input";
+        // A literal so the prefix above can be a constant; InputBoxSurfaceTests pins it to the engine's name.
+        internal const string InputBoxClass = "unity-base-field__input";
 
-        // True when cls is a [&>*]: token (or the text-input scope) — the cheap routing gate the class-list
+        // True when cls is a [&>*]: token (or the input-box scope) — the cheap routing gate the class-list
         // sites check before their inline-resolved branch, so the combinator token (which starts with '[' and
         // would otherwise look inline-resolvable) never enters the CONTAINER's own class list.
         public static bool IsChildVariant(string? cls)
             => !string.IsNullOrEmpty(cls)
                && (cls.StartsWith(Prefix, StringComparison.Ordinal)
-                   || cls.StartsWith(TextInputPrefix, StringComparison.Ordinal));
+                   || cls.StartsWith(InputBoxPrefix, StringComparison.Ordinal));
 
         // Cheap early-out gate: true when ANY class is a [&>*]: token. Skips the full TryExtract scan on the
         // ~99% of elements that carry no child-combinator variant.
@@ -73,22 +73,22 @@ namespace Velvet
         public static bool TryParse(string? cls, out string payload)
             => TryParse(cls, out payload, out _);
 
-        // As above, also reporting whether the token is the text-input scope rather than every child.
-        public static bool TryParse(string? cls, out string payload, out bool textInputOnly)
+        // As above, also reporting whether the token is the input-box scope rather than every child.
+        public static bool TryParse(string? cls, out string payload, out bool inputBoxOnly)
         {
             payload = string.Empty;
-            textInputOnly = false;
+            inputBoxOnly = false;
             if (!IsChildVariant(cls))
             {
                 return false;
             }
-            var scoped = cls!.StartsWith(TextInputPrefix, StringComparison.Ordinal);
-            var inner = cls.Substring(scoped ? TextInputPrefix.Length : Prefix.Length);
+            var scoped = cls!.StartsWith(InputBoxPrefix, StringComparison.Ordinal);
+            var inner = cls.Substring(scoped ? InputBoxPrefix.Length : Prefix.Length);
             if (inner.Length == 0 || NestsUngatedVariant(inner))
             {
                 return false;
             }
-            textInputOnly = scoped;
+            inputBoxOnly = scoped;
             payload = inner;
             return true;
         }
@@ -136,7 +136,7 @@ namespace Velvet
         public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations)
             => TryExtract(classNames, out payloads, out declarations, out _);
 
-        // As above, with a flag per payload saying it belongs to the text-input scope, aligned with payloads.
+        // As above, with a flag per payload saying it belongs to the input-box scope, aligned with payloads.
         public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations, out bool[] inputOnly)
         {
             payloads = Array.Empty<string>();

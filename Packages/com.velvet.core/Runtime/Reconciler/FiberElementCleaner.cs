@@ -83,6 +83,12 @@ namespace Velvet
                 || ((exactType == typeof(Button) || exactType == typeof(Label)) && element.childCount == 0))
             {
                 CleanupElementResources(element);
+                if (exactType == typeof(TextField))
+                {
+                    // Its input box carries what the field's surface utilities put on it (StyleInputBoxSurface):
+                    // stacked variant manipulators keyed by the box and paint bindings.
+                    CleanupDescendants(element);
+                }
                 ReturnToPool(element);
             }
             else

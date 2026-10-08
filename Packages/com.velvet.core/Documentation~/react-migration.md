@@ -242,9 +242,9 @@ a render taking the flag off — that third one whether the render declares `isD
 the parameter. The render-driven release reports through `onValueChanged:`, so a component that turns
 the flag off mid-edit receives the pending text rather than stranding it on screen.
 
-A `V.TextField`'s (and `V.IntegerField`'s) `className` background, border, radius and padding utilities paint
-the box the text is typed into, as on an `<input>`; [which utilities that covers and which stay on the outer
-control](styling-variants.md#payloads-velvet-realises-itself) is listed with the `[&>*]:` composite notes.
+A field's `className` background, border, radius, padding, shadow and ring utilities paint the box the value
+is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
+is listed with the `[&>*]:` composite notes.
 
 ### 2-2. Conditionals and Lists
 

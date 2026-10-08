@@ -424,22 +424,39 @@ child and is reached. How far the payload gets differs per control because `& > 
 A declared `label:` seats the label element ahead of the input, and it takes the payload as well, so
 `[&>*]:text-red-500` on a labelled field colours both.
 
-**A text field's own background, border, radius and padding utilities paint its input box.** On an
-`<input>` the class lands on the box the text is typed into; UI Toolkit draws `V.TextField` and
-`V.IntegerField` as an outer control around a child box (`#unity-text-input`) that the theme dresses.
-Those two factories therefore send `bg-*`, `border` / `border-*`, `rounded` / `rounded-*` and the `p-*`
-padding family to the box, written as `[&>#unity-text-input]:` payloads, so a state, theme or responsive
-variant on one (`focus:border-blue-500`, `dark:bg-slate-800`) goes with it. `V.TextField(className:
-"w-64 bg-slate-800 rounded-lg px-3")` sizes the outer control and paints the box; a declared `label:` is
-left unpainted, unlike under `[&>*]:`. The box is the only part they reach, and this applies to those two
-factories only.
+**A field control's own surface utilities paint its input box.** On an `<input>` or a `<select>` the class
+lands on the box the value is shown in; UI Toolkit draws a field as an outer control around a child box (the
+element carrying `unity-base-field__input`, `#unity-text-input` in a text field) that the theme dresses. So
+the field factories — `V.TextField`, `V.IntegerField`, `V.DropdownField` and `V.Custom<T>` for a `T` that is
+a text-input field (`FloatField`, `DoubleField`, `LongField`, …) or a popup field (`PopupField<T>`, …) — send
+these to the box:
 
-Everything else stays on the outer control. So do four utilities that would be box utilities on an
-`<input>`: the gradient backgrounds (`bg-linear-*`, `bg-gradient-*`, `bg-radial-*`, `bg-conic-*`), the
-`border-solid` / `border-dashed` / `border-dotted` line style, `shadow-*` and `ring-*` / `outline-*`, which paint the outer control.
-A variant the child combinator refuses (`first:`, `has-[…]:`, `data-[…]:`, `supports-[…]:`) is declined with
-them. `TextInputSurfaceTests` pins each routed and each declined spelling; `ChildVariantCompositeReachPanelTests`
-pins the background against the theme's own, on a resting field, and nothing else about the theme.
+- backgrounds, including the gradient utilities (`bg-*`, `bg-linear-*`, `from-*` / `via-*` / `to-*`);
+- borders, including the line style (`border`, `border-*`, `border-solid` / `-dashed` / `-dotted`);
+- radius (`rounded`, `rounded-*`) and padding (`p-*`, `px-*`, `py-*`, `pt-*` … `pe-*`);
+- `shadow-*`, `drop-shadow-*`, `ring-*` and `outline-*`.
+
+`V.TextField(className: "w-64 bg-slate-800 rounded-lg px-3")` sizes the outer control and paints the box;
+layout, size and margin utilities, and every utility not listed, stay on the outer control. A declared
+`label:` is left unpainted, unlike under `[&>*]:`. `whileHoverClass` / `whileTapClass` / `whileFocusClass`
+send their surface classes to the box the same way.
+
+Where a variant's condition lives decides who evaluates it:
+
+- `hover:`, `focus:`, `active:`, `focus-visible:`, `dark:` and the responsive variants are the
+  box's own, so `focus:border-blue-500` follows focus on the box, as it does on an `<input>`.
+- `group-*` and `peer-*` look for their source from the control: the peer is a sibling of the control, not of
+  the box, and the group an ancestor of it.
+- `first:`, `last:`, `odd:`, `even:`, `has-[…]:`, `data-[…]:`, `aria-[…]:` and `supports-[…]:` are
+  conditions on the control, so the control evaluates them and the box takes the paint.
+
+The same holds when a container's `[&>*]:` payload lands on a field. A variant stacked behind one of the
+control's conditions (`first:hover:bg-x`) is not routed to the box.
+
+The cases that pin this are `InputBoxSurfaceTests` (the class list each factory builds, where each
+payload and paint binding lands, and what teardown releases) and `InputBoxSurfacePanelTests` (the
+sheet-attached resolved colours, the peer source and focus). They resolve the utility's colour from a
+reference element carrying the same class rather than from a literal.
 
 **`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
 spelled on the *container* rather than on the element it lands on, and a child is fully built before

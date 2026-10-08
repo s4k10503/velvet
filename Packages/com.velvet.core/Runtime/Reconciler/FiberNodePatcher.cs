@@ -2177,23 +2177,23 @@ namespace Velvet
         {
             private readonly string[] _payloads;
             private readonly int[] _declarations;
-            private readonly bool[] _textInputOnly;
+            private readonly bool[] _inputBoxOnly;
 
-            internal ChildVariantOp(string[] payloads, int[] declarations, bool[] textInputOnly)
+            internal ChildVariantOp(string[] payloads, int[] declarations, bool[] inputBoxOnly)
             {
                 _payloads = payloads;
                 _declarations = declarations;
-                _textInputOnly = textInputOnly;
+                _inputBoxOnly = inputBoxOnly;
             }
 
             public Dictionary<VisualElement, StyleChildVariantManipulator> Table(ReconcilerContext ctx)
                 => ctx.ChildVariantManipulators;
 
             public StyleChildVariantManipulator Create(ReconcilerContext ctx)
-                => new StyleChildVariantManipulator(ctx, _payloads, _declarations, _textInputOnly);
+                => new StyleChildVariantManipulator(ctx, _payloads, _declarations, _inputBoxOnly);
 
             public void Update(StyleChildVariantManipulator manipulator)
-                => manipulator.UpdatePayloads(_payloads, _declarations, _textInputOnly);
+                => manipulator.UpdatePayloads(_payloads, _declarations, _inputBoxOnly);
         }
 
         private readonly struct GapOp : IManipulatorOp<StyleGapManipulator>
@@ -3050,10 +3050,10 @@ namespace Velvet
             // A [&>*]: token can still resolve to no payload (every wrapped payload was a dead-token kind —
             // structural / has- / attribute- / supports-), so the real gate is TryExtract, not the prefix scan.
             var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads, out var declarations,
-                out var textInputOnly);
+                out var inputBoxOnly);
 
             Configure<ChildVariantOp, StyleChildVariantManipulator>(element, hasPayloads,
-                new ChildVariantOp(payloads, declarations, textInputOnly));
+                new ChildVariantOp(payloads, declarations, inputBoxOnly));
         }
 
         // Configures the four manipulators whose existence is gated purely on a layout utility class being

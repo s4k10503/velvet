@@ -40,6 +40,9 @@ namespace Velvet
             {
                 return;
             }
+            var control = target;
+            VisualElement? box = null;
+            var boxChanged = false;
 
             // Set when this call toggled a gate token (see IsVariantGateToken) on the live class list.
             // Signalled once after the whole payload array rather than per token, so `md:grid md:grid-cols-3`
@@ -70,7 +73,7 @@ namespace Velvet
                 // available (the parameterless callers and the leaf-path unit tests).
                 if (ctx != null && owner != null && StyleVariantClass.IsVariant(payload))
                 {
-                    ctx.GateStackedVariant(target, owner, payload, on, priority, declaration);
+                    ctx.GateStackedVariant(control, owner, payload, on, priority, declaration);
                     continue;
                 }
 
@@ -81,12 +84,22 @@ namespace Velvet
                 {
                     continue;
                 }
+                // The condition belongs to the control and the paint to its input box (StyleInputBoxSurface).
+                var dest = DestinationOf(ctx, control, core, on);
                 var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
                 var (payloadGated, payloadReSync) =
-                    ToggleResolvedPayload(target, payload, on, effectivePriority, ctx, declaration);
-                gateChanged |= payloadGated;
-                reSyncOnly |= payloadReSync;
+                    ToggleResolvedPayload(dest, payload, on, effectivePriority, ctx, declaration);
+                if (ReferenceEquals(dest, control))
+                {
+                    gateChanged |= payloadGated;
+                    reSyncOnly |= payloadReSync;
+                }
+                else
+                {
+                    box = dest;
+                    boxChanged |= payloadGated || payloadReSync;
+                }
 
                 // A clip-path payload (hover:clip-path-[…], dark:/first:clip-path-[…], …) was just toggled as a class,
                 // but UITK has no clip-path property — the class alone does nothing. Re-resolve the element's
@@ -94,7 +107,7 @@ namespace Velvet
                 // create/patch wrap gate sees the variant clip), so this only swaps the cached mask.
                 if (ctx != null && StyleClipPathClass.IsClipPathClass(core))
                 {
-                    ctx.ClipPathReResolve?.Invoke(target);
+                    ctx.ClipPathReResolve?.Invoke(dest);
                 }
             }
 
@@ -104,11 +117,28 @@ namespace Velvet
                 // reconciler, so the layout manipulators and paint layers those tokens gate must be
                 // re-derived here — nothing else will run until the element's next patch, which may never
                 // come (a breakpoint crossing re-renders nothing).
-                ctx?.VariantGatedReSync?.Invoke(target);
+                ctx?.VariantGatedReSync?.Invoke(control);
+            }
+            if (boxChanged)
+            {
+                ctx?.VariantGatedReSync?.Invoke(box!);
             }
 
             // A clipped element's wrapper lays the element out from the same classes, so it takes the toggle too.
-            ClipPathLayoutBox.SyncClasses(target);
+            ClipPathLayoutBox.SyncClasses(control);
+        }
+
+        // Where core lands: the control's input box for a surface utility (StyleInputBoxSurface), else the
+        // control. A box a gate token reaches is put on the record a paint re-sync reads first.
+        private static VisualElement DestinationOf(ReconcilerContext? ctx, VisualElement control, string core,
+            bool on)
+        {
+            var dest = StyleInputBoxSurface.DestinationFor(control, core);
+            if (ctx != null && on && IsVariantGateToken(core) && StyleInputBoxSurface.IsBox(dest))
+            {
+                StyleInputBoxSurface.EnsurePaintState(ctx, dest);
+            }
+            return dest;
         }
 
         // Applies or clears one payload whose priority is already resolved, reporting back the two things the
