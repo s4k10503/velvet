@@ -12,7 +12,7 @@ namespace Velvet.Tests
     /// pin what is deliberately still left to source order, the important band, the agreement with an inline
     /// arbitrary value, and the <c>Visible</c> prop. Class membership would read the same either way, so
     /// every case runs in a real <see cref="UnityEditor.EditorWindow"/> panel with <c>StyleUtilities.uss</c>
-    /// attached, drives a real breakpoint or theme change, and reads <c>resolvedStyle</c>. Each example the
+    /// attached, toggles the relevant class payload, breakpoint or theme, and reads <c>resolvedStyle</c>. Each example the
     /// variants guide states is one of the cases below.
     /// <para>
     /// A case whose subject is a payload turning back OFF asserts the tuple of both states rather than the
@@ -266,6 +266,49 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        [TestCase("scale-50", "scale-90 scale-50", "scale-x-75", new[] { 0.75f, 0.5f }, new[] { 0.75f, 0.9f }, new[] { 0.75f, 1f })]
+        [TestCase("scale-50", "scale-90 scale-50", "scale-y-75", new[] { 0.5f, 0.75f }, new[] { 0.9f, 0.75f }, new[] { 1f, 0.75f })]
+        [TestCase("scale-[.5]", "scale-[.9] scale-50", "scale-x-75", new[] { 0.75f, 0.5f }, new[] { 0.75f, 0.9f }, new[] { 0.75f, 1f })]
+        [TestCase("!scale-50", "!scale-90 !scale-50", "scale-x-75", new[] { 0.5f, 0.5f }, new[] { 0.9f, 0.9f }, new[] { 0.75f, 1f })]
+        public void Given_AUniformScaleAndAnAxis_When_TheUniformPayloadsChange_Then_TheOtherAxisFollowsTheCascade(
+            string uniform, string changedUniform, string axis, float[] initialScale,
+            float[] changedScale, float[] removedScale)
+        {
+            // Arrange
+            VNode Tree(string classes) => V.Div(children: new VNode?[]
+            {
+                V.Div(name: "uniform-control", className: "scale-50"),
+                V.Div(name: "scaled-axis", className: classes),
+            });
+            _mounted = V.Mount(_window.rootVisualElement, Tree(uniform + " " + axis));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var control = _window.rootVisualElement.Q<VisualElement>("uniform-control").resolvedStyle.scale.value;
+            var leaf = _window.rootVisualElement.Q<VisualElement>("scaled-axis");
+            var initial = leaf.resolvedStyle.scale.value;
+
+            // Act
+            Vector3 ReadScale()
+            {
+                ForcePanelUpdate(leaf.panel);
+                return leaf.resolvedStyle.scale.value;
+            }
+            var changedPayloads = changedUniform.Split(' ');
+            var originalPayloads = uniform.Split(' ');
+            StyleVariantPayload.Apply(leaf, changedPayloads, true);
+            var changed = ReadScale();
+            StyleVariantPayload.Apply(leaf, changedPayloads, false);
+            StyleVariantPayload.Apply(leaf, originalPayloads, false);
+            var removed = ReadScale();
+            StyleVariantPayload.Apply(leaf, originalPayloads, true);
+            var restored = ReadScale();
+
+            // Assert
+            Assert.That(new[] { control.x, control.y, initial.x, initial.y, changed.x, changed.y,
+                    removed.x, removed.y, restored.x, restored.y },
+                Is.EqualTo(new[] { 0.5f, 0.5f, initialScale[0], initialScale[1], changedScale[0], changedScale[1],
+                    removedScale[0], removedScale[1], initialScale[0], initialScale[1] }).Within(0.0001f));
+        }
 
         #region A payload that evaluates off without ever having applied
 

@@ -97,8 +97,9 @@ namespace Velvet
             return false;
         }
 
-        // Extracts the column gap and row gap (px) a grid owns from the gap-*/gap-x-*/gap-y-* classes (last
-        // wins per axis, matching CSS cascade): gap-N sets both, gap-x-N the column gap, gap-y-N the row gap.
+        // Extracts the column gap and row gap (px) a grid owns from the gap-*/gap-x-*/gap-y-* classes.
+        // Important wins over plain, then last wins per axis: gap-N sets both, gap-x-N the column gap,
+        // gap-y-N the row gap.
         // space-* is not a gap.
         // A grid routes its gap through StyleGridManipulator, so the values are read here rather than left to
         // the (suppressed) gap manipulator. Defaults to 0 when no gap class is present.
@@ -106,6 +107,8 @@ namespace Velvet
         {
             columnGap = 0f;
             rowGap = 0f;
+            var columnImportant = false;
+            var rowImportant = false;
             if (classNames == null)
             {
                 return;
@@ -113,27 +116,25 @@ namespace Velvet
 
             foreach (var cls in classNames)
             {
-                // A space-* token is a margin on the children, which the grid adds on its own.
-                if (StyleGapClass.IsSpaceToken(cls))
-                {
-                    continue;
-                }
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
                 if (!StyleGapClass.TryParse(cls, out var g, out var axis))
                 {
                     continue;
                 }
-                switch (axis)
+                // A space-* token is a margin on the children, which the grid adds on its own.
+                if (StyleGapClass.IsSpaceToken(core))
                 {
-                    case GapAxis.Horizontal:
-                        columnGap = g;
-                        break;
-                    case GapAxis.Vertical:
-                        rowGap = g;
-                        break;
-                    default:
-                        columnGap = g;
-                        rowGap = g;
-                        break;
+                    continue;
+                }
+                if (axis != GapAxis.Vertical && (important || !columnImportant))
+                {
+                    columnGap = g;
+                    columnImportant = important;
+                }
+                if (axis != GapAxis.Horizontal && (important || !rowImportant))
+                {
+                    rowGap = g;
+                    rowImportant = important;
                 }
             }
         }

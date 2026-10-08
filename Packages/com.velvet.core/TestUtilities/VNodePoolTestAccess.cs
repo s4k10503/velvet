@@ -1,14 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using UnityEngine.UIElements;
 
 namespace Velvet.TestUtilities
 {
     /// <summary>
-    /// Drains and measures <c>VNodePool</c>'s process-wide recyclable-element pools, and reads its rented-out
-    /// sets and its rental journal. Every member goes
+    /// Drains, fills and measures <c>VNodePool</c>'s process-wide recyclable-element pools, and reads its rented-out
+    /// sets and its rental journal. Every drain and every reading goes
     /// through reflection because production types carry no test-only members, and because the pool type is
-    /// a private nested one that no signature here could name even if they did.
+    /// a private nested one that no signature here could name even if they did; a fill goes in through the
+    /// pool's own return method.
     /// <para>
     /// Every member throws — <see cref="MissingFieldException"/>, <see cref="MissingMethodException"/> or
     /// <see cref="MissingMemberException"/> — when what it reflects for is gone. Throwing is the point: a
@@ -29,6 +31,7 @@ namespace Velvet.TestUtilities
         private const string RentalJournalFieldName = "s_rentalJournal";
         private const string ClearMethodName = "Clear";
         private const string CountPropertyName = "Count";
+        private const int SaturationFillLimit = 1024;
 
         // Bypasses: nothing — it resets a static pool, which no production path does.
         public static void ClearLabelPoolForTest() => Clear(LabelPoolFieldName);
@@ -54,6 +57,19 @@ namespace Velvet.TestUtilities
         // Bypasses: nothing — it reads a static pool's depth.
         public static int TextFieldPoolCountForTest => Count(TextFieldPoolFieldName);
 
+        // For a case whose identity term has to tell a patch from a discard-and-recreate at a pooled slot.
+        // ChildReconciler.PatchOrReplaceAtSlot removes the occupant before it creates the replacement and
+        // the pools pop the last element pushed, so with room left the discard is rented straight back as
+        // the replacement. A full pool drops the return instead. Each answers whether the fill reached the
+        // cap, which the caller folds into its assertion so a fill that stopped working fails the case.
+        // Bypasses: FiberElementCleaner — it returns Labels no tree mounted, through ReturnLabel.
+        public static bool SaturateLabelPoolForTest()
+            => Saturate(LabelPoolFieldName, () => VNodePool.ReturnLabel(new Label()));
+
+        // Bypasses: FiberElementCleaner — it returns TextFields no tree mounted, through ReturnTextField.
+        public static bool SaturateTextFieldPoolForTest()
+            => Saturate(TextFieldPoolFieldName, () => VNodePool.ReturnTextField(new TextField()));
+
         // Bypasses: nothing — it reads how many props bags, single-event arrays and node arrays are rented out.
         public static (int Props, int EventArrays, int NodeArrays) RentedOutCountsForTest()
             => (Count(OwnedPropsFieldName), Count(OwnedEventArraysFieldName), Count(OwnedNodeArraysFieldName));
@@ -67,6 +83,19 @@ namespace Velvet.TestUtilities
 
         // Bypasses: nothing — it reads the capacity the journal's backing array keeps.
         public static int RentalJournalCapacityForTest => ((List<object>)Pool(RentalJournalFieldName)).Capacity;
+
+        // Fills until a return stops deepening the pool rather than counting up to the cap: the cap is a
+        // private constant, and a mirror of it here would go quietly wrong the day it moves.
+        private static bool Saturate(string fieldName, Action returnOne)
+        {
+            for (var i = 0; i < SaturationFillLimit; i++)
+            {
+                var before = Count(fieldName);
+                returnOne();
+                if (Count(fieldName) == before) return true;
+            }
+            return false;
+        }
 
         private static void Clear(string fieldName)
         {

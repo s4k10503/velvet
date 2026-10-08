@@ -34,6 +34,13 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ReconcilerKeyedTests : ReconcilerTestFixture
     {
+        public override void TearDown()
+        {
+            base.TearDown();
+            // A saturating case below fills a process-wide pool, which the rest of the run would inherit.
+            VNodePoolTestAccess.ClearLabelPoolForTest();
+        }
+
         private string[] LabelTexts()
         {
             var texts = new string[Root.childCount];
@@ -286,10 +293,12 @@ namespace Velvet.Tests
             Assert.That(Root.ElementAt(0), Is.InstanceOf<Button>());
         }
 
+        // GREEN_ON_BASE(characterization): the base patches key b in place, so its instance stays put.
         [Test]
         public void Given_PartialTypeChange_When_Reconciled_Then_UnchangedKeyKeepsInstance()
         {
-            // Arrange
+            // Arrange — both keys line up positionally, so the linear prefix pass settles each slot; the
+            // saturation is for the reason SaturateLabelPoolForTest gives.
             var oldTree = new VNode[]
             {
                 V.Label(text: "A", key: "a"),
@@ -302,12 +311,13 @@ namespace Velvet.Tests
             };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var elementB = Root.ElementAt(1);
+            var poolSaturated = VNodePoolTestAccess.SaturateLabelPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
-            Assert.That(Root.ElementAt(1), Is.SameAs(elementB),
+            Assert.That((poolSaturated, ReferenceEquals(Root.ElementAt(1), elementB)), Is.EqualTo((true, true)),
                 "The key whose type is unchanged keeps its instance and is patched");
         }
 
