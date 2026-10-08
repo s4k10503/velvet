@@ -27,7 +27,6 @@ namespace Velvet.Tests
     internal sealed class PropsDiffTests : ReconcilerTestFixture
     {
         private const string HiddenClass = "hidden";
-        private const int SaturationFillLimit = 1024;
 
         public override void TearDown()
         {
@@ -35,25 +34,6 @@ namespace Velvet.Tests
             // The saturating cases below fill process-wide pools, which the rest of the run would inherit.
             VNodePoolTestAccess.ClearLabelPoolForTest();
             VNodePoolTestAccess.ClearTextFieldPoolForTest();
-        }
-
-        private static bool SaturateLabelPool()
-            => Saturate(() => VNodePoolTestAccess.LabelPoolCountForTest, () => VNodePool.ReturnLabel(new Label()));
-
-        private static bool SaturateTextFieldPool()
-            => Saturate(() => VNodePoolTestAccess.TextFieldPoolCountForTest, () => VNodePool.ReturnTextField(new TextField()));
-
-        // Fills until a return stops deepening the pool rather than counting up to the cap: the cap is a
-        // private constant, and a mirror of it here would go quietly wrong the day it moves.
-        private static bool Saturate(Func<int> depth, Action returnOne)
-        {
-            for (var i = 0; i < SaturationFillLimit; i++)
-            {
-                var before = depth();
-                returnOne();
-                if (depth() == before) return true;
-            }
-            return false;
         }
 
         [Test]
@@ -213,7 +193,7 @@ namespace Velvet.Tests
             Assert.That(Root.ElementAt(0).tooltip, Is.EqualTo(string.Empty));
         }
 
-        // GREEN_ON_BASE(characterization): the base patches this slot and restores the constructed value.
+        // GREEN_ON_BASE(characterization): the base patches this Label in place and restores its -1 tab index.
         [Test]
         public void Given_TabIndexDeclared_When_PatchedToUnset_Then_ElementConstructedValueRestored()
         {
@@ -224,12 +204,9 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = Root.ElementAt(0);
             var whileDeclared = element.tabIndex;
-            // Saturating the pool between the mount and the patch is what lets the identity term below tell a
-            // restore from a remount. With room in the pool, a discard that removes the occupant before
-            // creating the replacement returns this Label and rents the same instance straight back, and the
-            // return's reset writes the very -1 the restore is read for. A saturated pool drops the return
-            // instead, so the discarded element does not come back.
-            var poolSaturated = SaturateLabelPool();
+            // Saturated for the reason SaturateLabelPoolForTest gives, which matters twice here: a Label the
+            // pool took back would also have the reset write the very -1 the restore is read for.
+            var poolSaturated = VNodePoolTestAccess.SaturateLabelPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
@@ -240,7 +217,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, 3, -1)));
         }
 
-        // GREEN_ON_BASE(characterization): the base patches this slot and restores the constructed value.
+        // GREEN_ON_BASE(characterization): the base patches this TextField in place and restores its delegation.
         [Test]
         public void Given_DelegatesFocusDeclared_When_PatchedToUnset_Then_ElementConstructedValueRestored()
         {
@@ -253,7 +230,7 @@ namespace Velvet.Tests
             var whileDeclared = element.delegatesFocus;
             // Same saturation, and for the reason the tab-index case above gives — here it is the TextField
             // pool, whose return writes back the delegatesFocus this case reads the restore for.
-            var poolSaturated = SaturateTextFieldPool();
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);

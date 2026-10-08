@@ -2527,6 +2527,157 @@ class ReachTests(unittest.TestCase):
             (["literal"], "1,3,5"))
 
 
+class DeclinedLineTests(unittest.TestCase):
+    """A statement the line removal would take on a line of its own, beside a brace, a label or another
+    statement, which the removal does not read because it reads a line only whole.
+
+    The reach is one bit per line, so nothing it printed over `try { _state.Dispose(); }` said a
+    statement there was skipped for its formatting.
+    """
+
+    def declined(self, line):
+        """Line 2's reading, behind a finished statement, which is where a removal may stand."""
+        return mutation_check.declined_line_numbers("Init();\n" + line + "\n", {2})
+
+    def test_Given_ACallInsideBracesOnOneLine_When_TheLinesAreRead_Then_ItIsDeclined(self):
+        # Arrange
+        line = "try { _state.Dispose(); }"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [2])
+
+    def test_Given_TwoCallsOnOneLine_When_TheLinesAreRead_Then_ItIsDeclined(self):
+        # Arrange — no brace on the line, so only the cut at the first semicolon separates the calls.
+        line = "Reset(); Notify();"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [2])
+
+    def test_Given_ACallAloneOnItsLine_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the line the removal does read, which matches the pattern as a piece and whole.
+        line = "Reset();"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AForHeaderOfCalls_When_TheLinesAreRead_Then_ItsClausesAreNotDeclined(self):
+        # Arrange — `More();` would match the removal pattern if the header's semicolons cut the line.
+        line = "for (Init(); More(); Advance()) Step();"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AReturnOfATupleBehindAnotherStatement_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — `return (value, true);` matches the removal pattern and is not a call. No brace,
+        # because with the braces left uncut `if (done) { return (value, true);` matches it too, and
+        # an `await` in front because no removal arm reads one.
+        line = "await Settle(); return (value, true);"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ADeconstructionInsideBraces_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the removal refuses a declaration wherever it stands, so naming it would say the
+        # formatting cost a mutant it never could have had.
+        line = "if (ready) { var (a, b) = Split(); }"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ABracedCallInsideAComment_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the line's own code is an `await`, which no removal arm reads.
+        line = "await Settle(); // { Clear(); }"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ACallBehindACaseLabel_When_TheLinesAreRead_Then_ItIsDeclined(self):
+        # Arrange — the label is no statement, and the call alone on the line under it is removable.
+        text = "switch (key)\n{\n    case 1: Reset();\n        break;\n}\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {3})
+
+        # Assert
+        self.assertEqual(found, [3])
+
+    def test_Given_ANamedArgumentContinuingACall_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — `name:` reads as a label, and the code above has not finished a statement.
+        text = "Call(first,\n    name: Reset());\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {2})
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ADoLoopsTailBehindItsBrace_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — on a line of its own the tail is refused, since the `do` block would lose it.
+        text = "do\n{\n    Step();\n} while (Next());\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {4})
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AnIfWhoseElseSharesItsLine_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — on a line of its own the `if` is refused, since the `else` would be stranded.
+        text = "Init();\nif (ready) Reset(); else Clear();\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {2})
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AOneLineTryAndCatch_When_Listed_Then_TheReachNamesBothLinesDeclined(self):
+        # Arrange — the containment the issue measured, beside a line that does carry a mutant so the
+        # run reaches the listing rather than the refusal of a change no operator reaches.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Probe
+                {
+                    internal static bool Ready(int a, int b) => a <= b;
+                    internal void Dispose()
+                    {
+                        try { _state.Dispose(); }
+                        catch (Exception ex) { Logger.LogError(ex.Message); }
+                    }
+                }
+            }
+            """))
+
+        # Act
+        campaign.run("--list")
+
+        # Assert
+        self.assertEqual(re.findall(r"^  declined .*$", campaign.printed, re.MULTILINE),
+                         ["  declined   Packages/com.velvet.core/Runtime/Probe.cs:8,9"])
+
+
 class UnreachableChangeTests(unittest.TestCase):
     def test_Given_ADiffOfCodeNoOperatorReaches_When_TheCampaignStarts_Then_ItRefusesToVerdict(self):
         # Arrange — a verdict here would be about no line at all, and the run returned 0 for it.

@@ -329,3 +329,34 @@ spells it, and the percent form especially would otherwise read as a factor of f
 
 `basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
 two divide what is left over after every sibling's basis is taken.
+
+## A `Label`'s own margin, padding and shrink
+
+Tailwind v4's preflight zeroes every element's margin and padding. Velvet ships no equivalent: its
+sheets set a `Label`'s margin, padding or `flex-shrink` only through a utility class on it. A `V.Text`
+takes no class, and a `V.Label` given none of those utilities keeps what UI Toolkit's defaults and the
+panel's theme give it. To have the three come from utilities alone, reset them under a class your own
+labels carry:
+
+```css
+.label-reset { margin: 0; padding: 0; flex-shrink: 0; }
+```
+
+```csharp
+V.Label(className: "label-reset text-4xl", text: "42");
+```
+
+Writing the same rule against `.unity-label`, the class a `Label` is constructed with
+(`Label.ussClassName`), reaches every element carrying that class instead: a `V.Text`, and any `Label`
+UI Toolkit builds inside its own controls. Leave `flex-shrink: 0` out of a rule that reaches a `truncate`
+label in a `flex-row`: the label keeps its full width, and the ellipsis never shows.
+
+`.label-reset` has the same specificity as a utility class, so nothing in the selectors keeps a `p-*`,
+`m-*` or `shrink-*` on the same label ahead of it, and the theme's `.unity-label` ties with it the same
+way. Attach the reset before Velvet's sheet, the reverse of a token override in
+[styling-variants.md](styling-variants.md#theme-the-dark-variant-and-the-token-set-beside-it): add it to
+the root's `styleSheets` before `VelvetStyleUtilities.AttachTo` runs there, since attaching Velvet's
+sheet again does not move it ([setup.md](setup.md#the-supported-path)). Then check both sides: a label
+carrying `label-reset p-2` still has its padding, and one carrying `label-reset` alone has lost whatever
+the theme gave it. A bracket value such as `p-[8px]` is inline style ([setup.md](setup.md)) and is not part
+of either tie.
