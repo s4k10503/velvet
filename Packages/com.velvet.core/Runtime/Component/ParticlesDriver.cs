@@ -285,6 +285,7 @@ namespace Velvet
             // inactive until spawned must still drive a live element.
             host.gameObject.SetActive(true);
             VelvetObjectUtil.HideFrameworkSceneObject(host.gameObject);
+            CloneExternalSubEmitters(host);
             var systems = host.GetComponentsInChildren<ParticleSystem>();
             var subEmitters = new System.Collections.Generic.HashSet<ParticleSystem>();
             foreach (var system in systems)
@@ -323,6 +324,49 @@ namespace Velvet
             binding.SourceId = source.GetEntityId();
             binding.Host = host;
             ApplyPlayTrigger(binding);
+        }
+
+        // Instantiate remaps a reference only when its target sits inside the cloned hierarchy, so a
+        // sub-emitter living elsewhere would still be triggered on the source's system, which the
+        // framework never simulates or draws. Each such target is cloned under the host (once, however
+        // many systems name it), at the host's origin, and the reference re-pointed at the clone. The
+        // queue also visits the clones, so a sub-emitter's own external sub-emitters follow.
+        private static void CloneExternalSubEmitters(ParticleSystem host)
+        {
+            var clones = new System.Collections.Generic.Dictionary<ParticleSystem, ParticleSystem>();
+            var pending = new System.Collections.Generic.Queue<ParticleSystem>(host.GetComponentsInChildren<ParticleSystem>());
+            while (pending.Count > 0)
+            {
+                var module = pending.Dequeue().subEmitters;
+                for (var s = 0; s < module.subEmittersCount; s++)
+                {
+                    var target = module.GetSubEmitterSystem(s);
+                    if (target == null || target.transform.IsChildOf(host.transform))
+                    {
+                        continue;
+                    }
+                    if (!clones.TryGetValue(target, out var clone))
+                    {
+                        clone = CloneUnderHost(target, host);
+                        clones.Add(target, clone);
+                        foreach (var system in clone.GetComponentsInChildren<ParticleSystem>())
+                        {
+                            pending.Enqueue(system);
+                        }
+                    }
+                    module.SetSubEmitterSystem(s, clone);
+                }
+            }
+        }
+
+        private static ParticleSystem CloneUnderHost(ParticleSystem target, ParticleSystem host)
+        {
+            var clone = UnityEngine.Object.Instantiate(target, host.transform);
+            clone.transform.localPosition = Vector3.zero;
+            clone.transform.localRotation = Quaternion.identity;
+            clone.gameObject.SetActive(true);
+            VelvetObjectUtil.HideFrameworkSceneObject(clone.gameObject);
+            return clone;
         }
 
         // What the scene would draw of the source system: nothing with its renderer off or set to

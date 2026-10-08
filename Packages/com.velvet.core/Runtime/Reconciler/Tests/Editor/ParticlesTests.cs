@@ -511,6 +511,26 @@ namespace Velvet.Tests
             Assert.That(binding.RepaintTick, Is.Null);
         }
 
+        [Test]
+        public void Given_ARootWhoseSubEmitterIsNotItsChild_When_Mounted_Then_TheHostRootTriggersACloneUnderTheHost()
+        {
+            // Arrange — the sub-emitter is a separate object, so Instantiate leaves the host's
+            // reference pointing at it.
+            var external = new GameObject("fx-external-sub").AddComponent<ParticleSystem>();
+            _spawned.Add(external.gameObject);
+            var effect = CreateEffectSource("fx-external-root");
+            var subEmitters = effect.subEmitters;
+            subEmitters.enabled = true;
+            subEmitters.AddSubEmitter(external, ParticleSystemSubEmitterType.Birth, ParticleSystemSubEmitterProperties.InheritNothing);
+
+            // Act
+            MountAndLayout(V.Particles(effect, name: "px-external-sub", className: "w-[128px] h-[128px]"));
+            var host = _mounted.Root.Reconciler.Context.ParticlesBindings[_host.Root.Q<VisualElement>("px-external-sub")].Host;
+
+            // Assert
+            Assert.That(host.subEmitters.GetSubEmitterSystem(0).transform.IsChildOf(host.transform), Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): a finished burst whose particles still live keeps the tick running, as before.
         [Test]
         public void Given_AFinishedBurstWithLiveParticles_When_TheTickObservesIt_Then_TheTickKeepsRunning()
