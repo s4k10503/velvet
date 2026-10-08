@@ -1,5 +1,5 @@
 ### Fixed
 
-- Turning `V.TextField`'s `multiline:` off and back on over a delayed field whose value has a line break and
-  a `maxLength:` no longer leaves the break-less text on screen as if it had been typed, which blurring
-  then committed as a new value. The field shows the value up to the limit again, with its break.
+- Turning `V.TextField`'s `multiline:` off and back on over a delayed field no longer leaves text nobody
+  typed on screen for a blur to commit. The field shows the value again, with its line breaks and up to
+  the current `maxLength:`, while text the user typed before the toggle stays.

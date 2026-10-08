@@ -276,52 +276,25 @@ namespace Velvet
         }
 
         // Turning multiline on puts the field's value back on screen, which on a delayed field holding an
-        // uncommitted edit replaces the typed text with the value it has not received yet. So the shown text
-        // is carried across the write when it differs from SingleLineDisplay — and only then, since the value
-        // is what brings back line breaks and characters the single-line display left out.
-        // SingleLineDisplay is what ApplyFieldValue's silent value write leaves on a single-line field. A
-        // write that changes the limit leaves the value cut with its breaks still in it instead: where a break
-        // survives the cut, that differs and is carried, and it is the text the restore would have written.
-        // Multiline coming off then drops the breaks from that cut value, which is CutThenStripped, and no
-        // edit made it either. A user edit equal to one of those two forms is not told from them, so it is
-        // replaced by the value's display.
-        // TextFieldMultilineEngineTests pins the limit write's form, and TextFieldMultilineKeyboardPropTests
-        // the value write's, the restore and the off-then-on sequence.
-        // The silent setter, because the carried text is not a new edit.
+        // uncommitted edit replaces the typed text with the value it has not received yet, so the edit is
+        // written back silently — the silent setter because the carried text is not a new edit, and the
+        // record is left alone so it still reads as one. Turning it off rewrites the display the same
+        // way, and an edit there stays an edit because the record is not moved either. With no edit, the
+        // display the write leaves is what Velvet left on screen and becomes the record, whatever form the
+        // engine gave it. TextFieldMultilineEngineTests pins the engine's writes, and
+        // TextFieldMultilineKeyboardPropTests the carry, the restore and the toggles.
         private static void WriteMultiline(TextField field, bool value)
         {
-            if (!value || !field.isDelayed)
+            var edit = HasUncommittedEdit(field) ? field.text : null;
+            field.multiline = value;
+            if (edit == null)
             {
-                field.multiline = value;
-                return;
+                RecordShownText(field);
             }
-
-            var shown = field.text;
-            var uncommitted = shown != SingleLineDisplay(field) && shown != CutThenStripped(field);
-            field.multiline = true;
-            if (uncommitted)
+            else if (value)
             {
-                ((INotifyValueChanged<string>)(TextElement)field.textEdition).SetValueWithoutNotify(shown);
+                ((INotifyValueChanged<string>)(TextElement)field.textEdition).SetValueWithoutNotify(edit);
             }
-        }
-
-        private static string SingleLineDisplay(TextField field)
-        {
-            return CutToLimit(field, (field.value ?? string.Empty).Replace("\n", string.Empty));
-        }
-
-        private static string CutThenStripped(TextField field)
-        {
-            return CutToLimit(field, field.value ?? string.Empty).Replace("\n", string.Empty);
-        }
-
-        private static string CutToLimit(TextField field, string text)
-        {
-            // MUTANT_SURVIVES(equivalent, boundary): a cut to the text's own length returns it unchanged,
-            // and a field limited to no characters shows nothing whether its text is cut or carried.
-            return field.maxLength >= 0 && text.Length > field.maxLength
-                ? text.Substring(0, field.maxLength)
-                : text;
         }
 
         // The engine writes keyboardType back to Default and autoCorrection back to false when the field

@@ -342,8 +342,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AFieldThatIsNotDelayedWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValueUpToTheLimit()
         {
-            // Arrange — turning multiline off drops the break from the multi-line display, which leaves the
-            // shown text in neither form SingleLineDisplay or a limit write produces.
+            // Arrange — turning multiline off drops the break from the multi-line display.
             var multilineTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: true) };
             var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: false) };
             var newTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: true) };
@@ -364,8 +363,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADelayedFieldWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOnWithNoEdit_Then_TheFieldShowsTheValueUpToTheLimit()
         {
-            // Arrange — turning multiline off leaves the value cut with its break removed, a third form beside
-            // SingleLineDisplay and the limit write's, and no one typed it.
+            // Arrange — turning multiline off leaves the value cut with its break removed, and no one typed it.
             var multilineTree = new VNode[]
             {
                 V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
@@ -390,6 +388,58 @@ namespace Velvet.Tests
             Assert.That(
                 (whileSingleLine, ((TextElement)element.textEdition).text),
                 Is.EqualTo(("ab", "a\nb")));
+        }
+
+        [Test]
+        public void Given_ADelayedFieldWithNoEdit_When_TheLimitIsRaisedWhileMultilineIsOffAndMultilineComesBackOn_Then_TheFieldShowsTheValueUpToTheNewLimit()
+        {
+            // Arrange — the single-line display at the old limit is not what the raised limit shows, so the
+            // text left on screen while multiline is off is not told from an edit by its form.
+            Func<int, bool, VNode[]> tree = (limit, multiline) => new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: limit, isDelayed: true, multiline: multiline),
+            };
+            var mounted = tree(3, true);
+            var off = tree(3, false);
+            var raised = tree(5, false);
+            var on = tree(5, true);
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            Reconciler.Reconcile(Root, mounted, off);
+            Reconciler.Reconcile(Root, off, raised);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, raised, on);
+
+            // Assert
+            Assert.That(((TextElement)element.textEdition).text, Is.EqualTo("a\nbcd"));
+        }
+
+        [Test]
+        public void Given_ADelayedFieldWhoseUserBackspacedTheSingleLineDisplay_When_MultilineComesOn_Then_TheShortenedTextStays()
+        {
+            // Arrange — the shortened text equals the value cut to the limit with its break removed, which is
+            // what a toggle leaves with no edit, so only the record tells the two apart.
+            var mountTree = new VNode[] { V.TextField(value: "x", maxLength: 3, isDelayed: true) };
+            var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true) };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mountTree);
+            Reconciler.Reconcile(Root, mountTree, oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var beforeTyping = ((TextElement)element.textEdition).text;
+            ((TextElement)element.textEdition).text = "ab";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the display before the backspace is folded in because the case is about the edit
+            // against it.
+            Assert.That(
+                (beforeTyping, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("abc", "ab")));
         }
 
         [Test]
