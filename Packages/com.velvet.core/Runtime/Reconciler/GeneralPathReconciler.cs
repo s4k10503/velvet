@@ -1170,6 +1170,13 @@ namespace Velvet
             WalkPosition position,
             int nodeIndex)
         {
+            // Ahead of the empty-tree return: a fiber rendering nothing now can render a presence later.
+            if (_ctx.EnclosingPresenceChild is { } enclosingChild)
+            {
+                fiber.EnclosingPresence = enclosingChild.State;
+                fiber.EnclosingPresenceKey = enclosingChild.Key;
+            }
+
             // MUTANT_SURVIVES(equivalent, clause removed): an empty tree sets and restores the walk's fiber and tree
             // around a descent that expands no node.
             if (tree == null || tree.Length == 0) return;
@@ -1620,7 +1627,7 @@ namespace Velvet
             }
 
             // Every child counts as removed while the enclosing child is leaving, so each takes the ghost path below.
-            var newKeyed = ReadEnclosingPresence(state!, presence, commit != null)
+            var newKeyed = ReadEnclosingPresence(state!, presence, walk.Parent, commit != null)
                 ? _ctx.BufferPool.RentKeyedList()
                 : _factory.BuildKeyedMapCopy(presence.Children);
             var newKeySet = _ctx.BufferPool.RentPresenceKeySet();
@@ -1732,16 +1739,22 @@ namespace Velvet
 
         // Framer's usePresence(propagate): whether the enclosing presence's keyed child this presence sits in is
         // leaving, in which case it treats every child of its own as not present. The emission around this
-        // expansion says so itself; a re-render of this presence alone reads what the enclosing presence last
-        // recorded. Without propagate the enclosing child is not consulted, and a slot held in its exit wait is
-        // given up, as Framer unregisters when subscribe turns false. Records are written only by a committing
-        // expansion.
+        // expansion says so itself. A presence mounted in a render of its own has none around it, and takes the
+        // child its host element sits in, else the one its fiber or an ancestor fiber was last expanded inside;
+        // a re-render later on reads what was last recorded. Without propagate the enclosing child is not
+        // consulted, and a slot held in its exit wait is given up, as Framer unregisters when subscribe turns
+        // false. Records are written only by a committing expansion.
         private bool ReadEnclosingPresence(
             ReconcilerContext.PresenceBoundaryState state,
             AnimatePresenceNode presence,
+            VisualElement? host,
             bool commits)
         {
             var emitting = _ctx.EnclosingPresenceChild;
+            if (!emitting.HasValue && presence.Propagate && state.Enclosing == null && host != null)
+            {
+                emitting = _ctx.PresenceChildOf(host) ?? FiberPresenceChild();
+            }
             var leaving = presence.Propagate
                 && (emitting.HasValue
                     ? !emitting.Value.IsPresent
@@ -1757,6 +1770,21 @@ namespace Velvet
             state.ExitedForEnclosing = leaving;
             if (!presence.Propagate) state.Registration?.Complete();
             return leaving;
+        }
+
+        // The presence child the current fiber, else the nearest ancestor fiber that has one, was last expanded inside.
+        private ReconcilerContext.PresenceChildContext? FiberPresenceChild()
+        {
+            for (var fiber = _ctx.FiberStack.Current; fiber != null; fiber = fiber.Parent)
+            {
+                if (fiber.EnclosingPresence != null)
+                {
+                    return new ReconcilerContext.PresenceChildContext(
+                        fiber.EnclosingPresence, fiber.EnclosingPresenceKey!,
+                        !fiber.EnclosingPresence.IsLeaving(fiber.EnclosingPresenceKey!));
+                }
+            }
+            return null;
         }
 
         // Ghost branch of the per-plan-entry walk: a previously-committed key now absent from the new
@@ -1798,13 +1826,7 @@ namespace Velvet
             if (!RemovalPlaysExit(state, key, node))
             {
                 // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
-                state.Exiting.Remove(key);
-                pass.Tally.RemovedInstantThisRender = true;
-                // Same as the finished-exit drop above: leave the committed set, then retire.
-                RemovePresenceCommittedEntry(state.Committed, key);
-                // Same memoized-element retirement as the finished-exit drop above.
-                RetirePresenceKeyEntries(state, key);
-                FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundaryFiber);
+                RemoveGhostAtOnce(in pass, key, node);
                 return;
             }
 
@@ -1820,6 +1842,14 @@ namespace Velvet
                 else state.MotionElements.TryGetValue(key!, out ghostMotionElement);
             }
 
+            // An emission that placed nothing, a propagating presence whose children played no exit and left at
+            // once, leaves no element to keep mounted, so there is no exit to wait for.
+            if (commit != null && ghostAnchor == null)
+            {
+                RemoveGhostAtOnce(in pass, key, node);
+                return;
+            }
+
             // Track the live ghost anchor so the drop path (exit complete) can dispose the subtree
             // fibers under it — see DisposeExitedGhostFibers.
             if (commit != null && ghostAnchor != null) state.ExitAnchors[key] = ghostAnchor;
@@ -1831,6 +1861,19 @@ namespace Velvet
             }
 
             pass.NextCommitted.Add((key, node));
+        }
+
+        // The removal of a key that has nothing to exit: it leaves the committed set, then its entries and node
+        // retire, and the pass reports an instant removal so the presence's onExitComplete still runs.
+        private void RemoveGhostAtOnce(in PresenceExpansion pass, string key, VNode node)
+        {
+            var state = pass.State;
+            state.Exiting.Remove(key);
+            pass.Tally.RemovedInstantThisRender = true;
+            // Same as the finished-exit drop: leave the committed set, then retire.
+            RemovePresenceCommittedEntry(state.Committed, key);
+            RetirePresenceKeyEntries(state, key);
+            FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), pass.BoundaryFiber);
         }
 
         // Whether removing key plays an exit at all: its anchor's, a descendant Motion's, or the removal of a
@@ -2213,9 +2256,10 @@ namespace Velvet
 
         // A torn-down descendant settles the wait from inside FiberElementCleaner, which unmounting the whole
         // presence reaches as well, and so does an inner presence retired while the wait holds a slot for it
-        // (tornDown is null then). Where either element still has a panel the check waits for the next frame, by
-        // which that presence's state is retired and no onExitComplete fires; with neither attached it runs at
-        // the teardown itself.
+        // (tornDown is null then, and ghostAnchor is the only element to read a panel from). Where an element
+        // has a panel the check waits for the next frame: a presence unmounted whole has retired its state by
+        // then and fires no onExitComplete, while one still mounted, an enclosing presence whose inner presence
+        // was retired alone, does fire it. With no panel the check runs at the teardown itself.
         private void SettleExitWaitByTeardown(
             ReconcilerContext.PresenceBoundaryState state,
             ReconcilerContext.PresenceExitWait wait,

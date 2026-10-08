@@ -664,6 +664,13 @@ namespace Velvet
         /// </summary>
         internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder { get; set; }
 
+        // The presence and key of the AnimatePresence child this fiber was last expanded inside. A presence this
+        // fiber, or a fiber below it, first mounts in a render of its own has no emission of that child around
+        // it, and reads the child from here (GeneralPathReconciler.ReadEnclosingPresence).
+        internal ReconcilerContext.PresenceBoundaryState? EnclosingPresence { get; set; }
+
+        internal string? EnclosingPresenceKey { get; set; }
+
         // Whether a Motion this fiber mounts outside every presence emission withholds its mount enter: what
         // MotionContext.EntersBlocked said where the fiber was created, else its parent's answer.
         internal bool BlocksInitialEnters { get; set; }

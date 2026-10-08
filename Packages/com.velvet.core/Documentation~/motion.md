@@ -116,8 +116,9 @@ present and exits them through its own exit path, and the enclosing child stays 
 completed.
 
 - Each presence owns its own exits. The inner presence's `onExitComplete` runs once, when its own exits have
-  finished, whatever else the enclosing child still waits on; the enclosing presence's runs after the child has
-  left.
+  finished, whatever else the enclosing child still waits on. When those were the last thing the enclosing child
+  waited for, the enclosing presence's `onExitComplete` runs first and the inner presence's second, as in Framer,
+  where the inner presence's `safeToRemove()` completes the enclosing child before its own callback runs.
 - A child the inner presence was already exiting is waited for and not exited again. One it removes in the same
   render keeps the one exit.
 - The nearest enclosing presence decides: a presence between the two that does not propagate stops it, and the
@@ -130,7 +131,8 @@ completed.
 - While the enclosing child is leaving, the inner presence's children are the ones it already holds. A key added
   to it in that time is not mounted.
 - The inner presence is found wherever it sits under the enclosing child: written inline under elements, rendered
-  by a component, at the top of the child, or inside a `V.Portal`.
+  by a component, at the top of the child, or inside a `V.Portal`, and whether it mounted with the child or in a
+  later render of its own component.
 
 ```csharp
 V.AnimatePresence(key: "pages", children: new VNode[]

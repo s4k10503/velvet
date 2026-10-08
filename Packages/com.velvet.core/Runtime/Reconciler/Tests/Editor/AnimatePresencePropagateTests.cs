@@ -48,6 +48,7 @@ namespace Velvet.Tests
         private static KeySetStore s_innerKeys;
         private static FlagStore s_propagate;
         private static FlagStore s_show;
+        private static FlagStore s_showOuter;
         private static string s_shape;
         private static string s_innerChild;
         private static bool s_middlePropagate;
@@ -55,6 +56,8 @@ namespace Velvet.Tests
         private static VisualElement s_portalTarget;
         private static int s_outerCompleted;
         private static int s_innerCompleted;
+        private static float s_innerDurationSec;
+        private static readonly List<string> s_order = new();
 
         private EditorPanelSimulator _sim;
 
@@ -68,6 +71,7 @@ namespace Velvet.Tests
             s_innerKeys = null;
             s_propagate = null;
             s_show = null;
+            s_showOuter = null;
             s_shape = null;
             s_innerChild = "motion";
             s_middlePropagate = false;
@@ -75,6 +79,8 @@ namespace Velvet.Tests
             s_portalTarget = null;
             s_outerCompleted = 0;
             s_innerCompleted = 0;
+            s_innerDurationSec = 0.3f;
+            s_order.Clear();
         }
 
         [TearDown]
@@ -84,6 +90,7 @@ namespace Velvet.Tests
             s_innerKeys?.Dispose();
             s_propagate?.Dispose();
             s_show?.Dispose();
+            s_showOuter?.Dispose();
             _sim?.Dispose();
             _sim = null;
         }
@@ -97,13 +104,15 @@ namespace Velvet.Tests
         // Declares an enter and an exit of its own, so either one playing is readable off its element.
         private static VNode TimedMotion(string name, string key) => V.Motion(name: name, key: key, variants: s_fade,
             initial: "hidden", animate: "visible", exit: "hidden",
-            transition: new StyleTransitionConfig { DurationSec = 0.3f });
+            transition: new StyleTransitionConfig { DurationSec = s_innerDurationSec });
 
         // The inner presence's child for a key: the Motion itself, or a Motion one element below the keyed child.
         private static VNode InnerChild(string key) => s_innerChild switch
         {
             "motion" => TimedMotion("inner-" + key, key),
             "nested" => V.Div(key: key, children: new[] { TimedMotion("inner-" + key, null) }),
+            // Plays no exit, so its removal is immediate.
+            "plain" => V.Div(name: "inner-" + key, key: key),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_innerChild), s_innerChild, null),
         };
 
@@ -114,7 +123,11 @@ namespace Velvet.Tests
             {
                 children.Add(InnerChild(key.ToString()));
             }
-            return V.AnimatePresence(key: "inner", propagate: propagate, onExitComplete: () => s_innerCompleted++,
+            return V.AnimatePresence(key: "inner", propagate: propagate, onExitComplete: () =>
+                {
+                    s_innerCompleted++;
+                    s_order.Add("inner");
+                },
                 children: children.ToArray());
         }
 
@@ -164,6 +177,7 @@ namespace Velvet.Tests
                     V.Portal(s_portalTarget, new[] { V.Component(StatefulInnerRender) }),
                 }),
                 "retirable" => V.Div(key: key, children: new[] { V.Component(RetirableInnerRender) }),
+                "retirable-top" => V.Component(RetirableInnerRender, key: key),
                 "middle" => V.Div(key: key, children: new[] { MiddlePresence() }),
                 "middle-top" => V.Component(MiddleTopRender, key: key),
                 // Exits more slowly than the inner Motion, so the inner presence finishes first.
@@ -180,6 +194,7 @@ namespace Velvet.Tests
             var outerKeys = Hooks.UseStore(s_outerKeys, s => s.Keys);
             var innerKeys = Hooks.UseStore(s_innerKeys, s => s.Keys);
             var propagate = Hooks.UseStore(s_propagate, s => s.On);
+            var outerShown = Hooks.UseStore(s_showOuter, s => s.On);
             var children = new List<VNode>();
             foreach (var key in outerKeys)
             {
@@ -187,19 +202,25 @@ namespace Velvet.Tests
             }
             return V.Div(name: "host", children: new VNode[]
             {
-                V.AnimatePresence(key: "outer", mode: s_outerMode, onExitComplete: () => s_outerCompleted++,
-                    children: children.ToArray()),
+                outerShown
+                    ? V.AnimatePresence(key: "outer", mode: s_outerMode, onExitComplete: () =>
+                    {
+                        s_outerCompleted++;
+                        s_order.Add("outer");
+                    }, children: children.ToArray())
+                    : null,
             });
         }
 
         // The outer presence holding key "a" over the inner presence holding innerKeys, propagating, settled.
-        private MountedTree MountSettled(string shape, string innerKeys = "x")
+        private MountedTree MountSettled(string shape, string innerKeys = "x", bool innerShown = true)
         {
             s_shape = shape;
             s_outerKeys = new KeySetStore("a");
             s_innerKeys = new KeySetStore(innerKeys);
             s_propagate = new FlagStore(true);
-            s_show = new FlagStore(true);
+            s_show = new FlagStore(innerShown);
+            s_showOuter = new FlagStore(true);
             if (shape == "portal")
             {
                 s_portalTarget = new VisualElement { name = "target" };
@@ -343,17 +364,18 @@ namespace Velvet.Tests
         public void Given_AnInnerChildWhoseExitIsUnderWay_When_TheOuterKeyIsRemoved_Then_TheChildLeavesWhenThatExitEndsNotLater(
             string shape)
         {
-            // Arrange — the inner key left 5 frames ago, so its 300ms exit has most of its time still to run.
+            // Arrange — a 1s exit that began 20 frames (320ms) before the outer key leaves.
+            s_innerDurationSec = 1f;
             using var mounted = MountSettled(shape);
             s_innerKeys.Set(string.Empty);
             Drain(mounted);
-            Frames(5);
+            Frames(20);
             s_outerKeys.Set(string.Empty);
             Drain(mounted);
             var heldWhileExiting = HostChildCount;
 
-            // Act — 21 frames in all is past the first exit's end and short of the end a replay from rest would have.
-            Frames(16);
+            // Act — 68 frames (1088ms) in all: 88ms past the first exit's end, 232ms short of a replay from rest.
+            Frames(48);
             Drain(mounted);
 
             // Assert
@@ -657,6 +679,109 @@ namespace Velvet.Tests
             // Assert
             Assert.That((newChildWhileExiting == null, Root.Q<VisualElement>("b-child") != null, InnerItem == null),
                 Is.EqualTo((true, true, true)));
+        }
+
+        [TestCase("retirable")]
+        [TestCase("retirable-top")]
+        public void Given_AnInnerPresenceFirstMountedByARenderOfItsOwn_When_TheOuterKeyIsRemoved_Then_TheChildIsHeldUntilTheInnerExitCompletes(
+            string shape)
+        {
+            // Arrange — the outer child is already present when the inner presence first mounts.
+            using var mounted = MountSettled(shape, "x", innerShown: false);
+            s_show.Set(true);
+            Drain(mounted);
+            Frames(40);
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            var heldWhileExiting = HostChildCount;
+
+            // Act — well past the inner Motion's 300ms exit.
+            Frames(40);
+            Drain(mounted);
+
+            // Assert
+            Assert.That((heldWhileExiting, HostChildCount), Is.EqualTo((1, 0)));
+        }
+
+        [TestCase("wrapper")]
+        [TestCase("top")]
+        public void Given_AnInnerPresenceWhoseChildrenPlayNoExit_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesAtOnceAndBothCallbacksRun(
+            string shape)
+        {
+            // Arrange
+            s_innerChild = "plain";
+            using var mounted = MountSettled(shape);
+
+            // Act
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+
+            // Assert
+            Assert.That((HostChildCount, s_outerCompleted, s_innerCompleted), Is.EqualTo((0, 1, 1)));
+        }
+
+        [TestCase("wrapper")]
+        [TestCase("top")]
+        [TestCase("inline")]
+        public void Given_AnInnerExitThatWasTheLastThingTheOuterChildWaitedFor_When_ItCompletes_Then_TheOuterCallbackRunsBeforeTheInnerOne(
+            string shape)
+        {
+            // Arrange
+            using var mounted = MountSettled(shape);
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+
+            // Act — well past the inner Motion's 300ms exit.
+            Frames(40);
+            Drain(mounted);
+
+            // Assert
+            Assert.That(string.Join(",", s_order), Is.EqualTo("outer,inner"));
+        }
+
+        [TestCase("wrapper")]
+        [TestCase("top")]
+        [TestCase("inline")]
+        public void Given_TheOuterPresenceUnmountedMidExit_When_TheInnerExitWasWaitedOn_Then_NothingIsLeftMountedOrRegistered(
+            string shape)
+        {
+            // Arrange
+            using var mounted = MountSettled(shape);
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            Frames(3);
+
+            // Act
+            s_showOuter.Set(false);
+            Drain(mounted);
+            Frames(40);
+            Drain(mounted);
+
+            // Assert
+            Assert.That((HostChildCount, Registrations(mounted)), Is.EqualTo((0, 0)));
+        }
+
+        [TestCase("wrapper")]
+        [TestCase("top")]
+        public void Given_PropagateTurnedOffThenOnMidExit_When_TheInnerPresenceIsWaitedOn_Then_TheOuterChildLeavesOnce(
+            string shape)
+        {
+            // Arrange
+            using var mounted = MountSettled(shape);
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            Frames(3);
+            s_propagate.Set(false);
+            Drain(mounted);
+
+            // Act
+            s_propagate.Set(true);
+            Drain(mounted);
+            Frames(40);
+            Drain(mounted);
+
+            // Assert
+            Assert.That((HostChildCount, s_outerCompleted), Is.EqualTo((0, 1)));
         }
 
         [TestCase("wrapper")]
