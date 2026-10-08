@@ -269,12 +269,29 @@ namespace Velvet
             if (declared is { } value)
             {
                 built.MaxLength ??= new Recorded<int>(field.maxLength);
-                field.maxLength = value;
+                WriteMaxLength(field, value);
             }
             else if (built.MaxLength != null)
             {
-                field.maxLength = built.MaxLength.Value;
+                WriteMaxLength(field, built.MaxLength.Value);
             }
+        }
+
+        // TextField.maxLength re-shows the committed value whenever the limit changes, which discards the
+        // text a delayed field is holding back until Enter or blur. The edit is read before the write and
+        // put back after it, cut to the new limit; the value is not touched, so the commit stays with
+        // Enter or blur. The edit is told apart from a committed state the way WriteDelayed tells it:
+        // the shown text differs from the value. TextFieldInputPropTests measures it.
+        private static void WriteMaxLength(TextField field, int limit)
+        {
+            var edit = field.isDelayed && field.text != field.value ? field.text : null;
+            field.maxLength = limit;
+            if (edit == null || field.textEdition is not TextElement shown)
+            {
+                return;
+            }
+
+            shown.text = limit >= 0 && edit.Length > limit ? edit.Substring(0, limit) : edit;
         }
 
         private static void ApplyReadOnlyFlag(TextField field, bool? declared, TextFieldDefaults built)

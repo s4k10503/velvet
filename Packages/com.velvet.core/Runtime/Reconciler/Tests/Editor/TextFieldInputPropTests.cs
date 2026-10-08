@@ -286,6 +286,26 @@ namespace Velvet.Tests
             Assert.That(element.value, Is.EqualTo("typed"));
         }
 
+        // The edit is arranged as the two cases above do. maxLength is the cut: writing it through
+        // TextField re-shows the committed value, and the shown text is the only place the edit lives.
+        // The new limit sits below the edit's length so the cut-to-limit half is measured as well.
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderChangesMaxLength_Then_TheEditSurvivesCutToTheLimit()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 10) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 3) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "abcd";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the edit stays uncommitted.
+            Assert.That((element.text, element.value), Is.EqualTo(("abc", string.Empty)));
+        }
+
         [Test]
         public void Given_AFieldThatNeverDeclaredAnyOfThem_When_AbsentSettingsAreApplied_Then_NothingIsWritten()
         {
