@@ -29,10 +29,11 @@ namespace Velvet
     /// and <c>AssertDomIndexInvariant</c> computes its count inside the <c>Debug.Assert</c> arguments so a
     /// player build compiles it out with the call. What remains is one bounded walk per DOM touch. A
     /// container with no invisible child still pays it: the walk is proportional to the slot index, not to
-    /// the whole list, so a loop calling these once per child is quadratic in the child count. A loop that
-    /// resolves its slots in ascending order holds a <see cref="LogicalSlotCursor"/> instead, which walks
-    /// on from the last slot it resolved; a cached count is not the fix, since every insert and remove
-    /// would have to invalidate it.
+    /// the whole list, so a loop calling these once per child is quadratic in the child count. The general
+    /// path's leaf commit holds a <see cref="LogicalSlotCursor"/> instead, which walks on from the last slot
+    /// it resolved. The flat keyed and indexed paths in <c>ChildReconciler</c> and
+    /// <c>FiberNodePatcher.ApplyStructuralVariants</c> still walk from slot zero per child; the fix for them
+    /// is a cursor too, not a cached count, which every insert and remove would have to invalidate.
     /// </para>
     /// </remarks>
     internal static class LogicalChildSlots
@@ -162,7 +163,7 @@ namespace Velvet
     /// The remembered slot is trusted only while its element still sits at the remembered physical index;
     /// otherwise the call walks from the start. A single insert or removal before that element moves it,
     /// which the check sees, and one after it is counted by the walk on. The check misses an insert and a
-    /// removal before it that cancel out where one of them is a rendered child, so hold a cursor only across
+    /// removal before it that cancel out where exactly one of them is a rendered child, so hold a cursor only across
     /// a loop in which the container's rendered children keep their slots.
     /// </remarks>
     internal struct LogicalSlotCursor

@@ -5,11 +5,13 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that <see cref="LogicalSlotCursor"/> answers as <see cref="LogicalChildSlots.TryGetPhysical"/>
-    /// does after the container changed under the slot it remembers.
+    /// does when the container changed under the slot it remembers, and when the slot asked for lies past
+    /// the last rendered child.
     /// <list type="bullet">
     /// <item>A child inserted ahead of that slot shifts every later slot's physical index.</item>
     /// <item>A container shrunk to that slot's physical index reports the slot empty.</item>
-    /// <item>A slot past the last child is reported empty, at the static walk's append position.</item>
+    /// <item>A slot past the last rendered child is reported empty, at the static walk's append position, which
+    /// sits ahead of a trailing invisible child rather than at the end of the child list.</item>
     /// </list>
     /// <see cref="GeneralPathSlotLookupScalingTests"/> holds that the cursor walks on rather than from the start.
     /// </summary>
@@ -58,10 +60,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARememberedSlot_When_ASlotPastTheLastChildIsAsked_Then_ItIsEmptyAtTheAppendPosition()
+        public void Given_ARememberedSlot_When_ASlotPastTheLastRenderedChildIsAsked_Then_ItIsEmptyAtTheAppendPositionAheadOfATrailingSpacer()
         {
-            // Arrange
+            // Arrange — a trailing invisible child puts the append position (3) short of childCount (4).
             var container = Container(3);
+            var trailing = new VisualElement();
+            trailing.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
+            container.Add(trailing);
             var cursor = new LogicalSlotCursor();
             cursor.TryGetPhysical(container, 1, out _);
 

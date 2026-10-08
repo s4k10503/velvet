@@ -80,8 +80,8 @@ namespace Velvet
             // has placed what the walk emitted: React disconnects and reconnects them in its commit, and a walk
             // that rolls back or stops leaves on screen what was there.
             public List<(ComponentFiber Fiber, bool Hidden)>? OffscreenChanges;
-            // A list whose order holds resolves its old leaves in ascending slots, so each lookup walks on from
-            // the last one rather than from slot zero.
+            // Every old-leaf lookup of this walk goes through it; LogicalSlotCursor owns what it saves and when
+            // it falls back.
             public LogicalSlotCursor OldSlots;
         }
 

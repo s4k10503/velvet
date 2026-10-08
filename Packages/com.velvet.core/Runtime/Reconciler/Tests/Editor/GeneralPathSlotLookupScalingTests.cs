@@ -5,8 +5,8 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that a parent re-render of a container holding a list of inline components reads the
-    /// container's children a number of times proportional to the list, not to its square: where the order
+    /// Specifies that a parent re-render of a container holding a list of inline components makes a number of
+    /// contentContainer calls on the container proportional to the list, not to its square: where the order
     /// holds, each old leaf the walk takes is found from the one before it rather than from the first child.
     /// </summary>
     [TestFixture]
@@ -59,7 +59,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AListOfInlineComponents_When_ItsParentReRendersAtTwiceTheLength_Then_TheContainerReadsAtMostDouble()
+        public void Given_AListOfInlineComponents_When_ItsParentReRendersAtTwiceTheLength_Then_TheContainerReadsGrowLessThanTwoAndAHalfTimes()
         {
             // Arrange
             var readsAtN = BoxReadsDuringParentRerender(100);
