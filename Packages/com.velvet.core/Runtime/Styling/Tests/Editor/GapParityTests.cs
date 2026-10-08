@@ -1185,6 +1185,26 @@ namespace Velvet.Tests
             Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
         }
 
+        // GREEN_ON_BASE(characterization): the base answers Column once every direction class has left too. What
+        // this pins is the branch's half: the call that finds the classes gone sets the window itself, so a
+        // manipulator that read them present only once still does not take the off-panel fallback, which is Row.
+        [Test]
+        public void Given_AGapRowReadOnceWithItsDirectionClass_When_EveryDirectionClassIsRemoved_Then_TheGapMovesToTheColumnEdge()
+        {
+            // Arrange — the manipulator's creation is the only read that finds a direction class.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+
+            // Act
+            var tree2 = new VNode[] { Row("gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — an element carrying no direction class lays out as a column.
+            Assert.That(container[1].style.marginTop.value.value, Is.EqualTo(Space4));
+        }
+
         [Test]
         public void Given_FlexRowSpaceX4_When_Reconciled_Then_TheFirstChildCarriesTheEndMargin()
         {
@@ -2334,6 +2354,36 @@ namespace Velvet.Tests
 
             // Assert — the half-margin: the leading path writes no margin-top on a row.
             Assert.That(b.style.marginTop.value.value, Is.EqualTo(8f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base answers from the inline flex-wrap, unset here, once a wrap
+        // class has left too. What this pins is the branch's half: the call that finds the marker gone sets the
+        // window itself, so a manipulator that read the marker present only once does not take resolvedStyle,
+        // which the rule keeps at wrap.
+        [Test]
+        public void Given_ARowThatAStylesheetRuleWrapsAndTheWrapClassIsReadOnce_When_ItIsRemoved_Then_TheRowLeavesTheWrapPathBeforeAnyLayout()
+        {
+            // Arrange — the gap and the wrap class arrive together, after the panel has resolved the rule's wrap,
+            // so adding the manipulator is the only read that finds the marker and no layout pass follows it.
+            File.WriteAllText(UserSheetPath, ".test-wraps-by-rule { flex-wrap: wrap; }\n");
+            AssetDatabase.ImportAsset(UserSheetPath, ImportAssetOptions.ForceSynchronousImport);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(UserSheetPath));
+            using var store = new ClassNameStore("flex flex-row test-wraps-by-rule w-[150px] h-[60px]");
+            s_classNameStore = store;
+            using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            store.Set("flex flex-row flex-wrap test-wraps-by-rule gap-4 w-[150px] h-[60px]");
+            scheduler.DrainImmediateForTest();
+
+            // Act — drop the marker; no panel pass.
+            store.Set("flex flex-row test-wraps-by-rule gap-4 w-[150px] h-[60px]");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the leading path writes no margin-top on a row.
+            Assert.That(b.style.marginTop.value.value, Is.EqualTo(0f));
         }
 
         [Component]

@@ -488,6 +488,8 @@ namespace Velvet
             var fromClass = StyleFlexDirectionResolver.FromClasses(container);
             var hadClass = _directionFromClass;
             _directionFromClass = fromClass != null;
+            // MUTANT_SURVIVES(equivalent, clause removed): the flag is read only once the class is gone, and the
+            // call that first finds it gone sets the flag itself, so setting it earlier changes nothing.
             if (hadClass && fromClass == null)
             {
                 _directionClassLeft = true;
@@ -531,6 +533,8 @@ namespace Velvet
             var marker = WrapMarker(container);
             var hadMarker = _wrapFromMarker;
             _wrapFromMarker = marker != null;
+            // MUTANT_SURVIVES(equivalent, clause removed): the flag is read only once the marker is gone, and the
+            // call that first finds it gone sets the flag itself, so setting it earlier changes nothing.
             if (hadMarker && marker == null)
             {
                 _wrapClassLeft = true;
