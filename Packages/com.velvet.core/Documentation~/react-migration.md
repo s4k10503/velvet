@@ -270,7 +270,7 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 |-------|--------|------|
 | `<MyComponent/>` | `V.Component(MyRender, key: "...")` | `MyRender` is a static method annotated with `[Component]`. Stores are distributed via `V.Provider` + `UseContext` |
 | `React.memo(Component)` | `[Component(Memoize = true)]` | An opt-in attribute that compares props one member at a time at the reconcile boundary and bails out of parent re-render if they are equal. The attribute's own remarks state the per-member rule, and which props values skip the member walk |
-| React Compiler (automatic memoization) | no annotation (all `[Component]`) | The ILPP `CompilerWeaver` weaves inner automatic memoization with default-on. Opt out with `[Component(Compiler = false)]` |
+| React Compiler (automatic memoization) | no annotation (all `[Component]`) | The ILPP `CompilerWeaver` weaves inner automatic memoization with default-on, as one cache per component rather than one per subtree (deviation in the note below). Opt out with `[Component(Compiler = false)]` |
 | `useMemo(value, deps)` | `Hooks.UseMemo(() => value, deps)` | Value-memoization hook; recomputes only when a dep changes (use inside render) |
 | `useMemo(() => <X/>, deps)` | `Hooks.UseMemo(() => V.X(), deps)` or `V.Memoized(() => V.X(), deps)` | The hook returns a memoized VNode; `V.Memoized` is a node-level escape hatch usable outside render (e.g. expanded by `[MemoizeMethod]`), diff-skipping the subtree |
 | `useCallback(fn, deps)` | `Hooks.UseCallback(fn, deps)` | Returns a stable delegate while deps are unchanged |
@@ -278,6 +278,8 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 > **Note — Two memoization axes**  
 > `[Component(Memoize = true)]` is equivalent to **React.memo**, bailing out of parent-driven re-render when props are shallow-equal to the previous ones (opt-in).  
 > **Inner automatic memoization** (equivalent to React Compiler) is **default-on** for all `[Component]`; the ILPP caches VNode construction keyed on the component's props and hook-derived inputs, compared per [§1-4](#1-4-what-a-dependency-list-means). No annotation needed. `ComponentAttribute.Compiler` states what a render whose inputs compare equal shows, and which components are left unwoven. To exclude a specific Component, use `[Component(Compiler = false)]` (equivalent to React's `"use no memo"`).
+>
+> **Velvet deviation:** the cache is all-or-nothing per component. The weaver emits a single gate keyed on every prop and every hook-derived input together, and the runtime grants each render of a component one memo slot (`Hooks.TryGetMemoizedVNode`), so a change to any one input runs the component's whole VNode construction again, including subtrees that read none of the changed inputs. React Compiler groups a body into reactive scopes, each invalidated by its own dependencies, so a change usually leaves the scopes that do not depend on it cached. To keep a subtree cached across such a change, split it out by hand: `V.Memoized(factory, deps)`, `Hooks.UseMemo`, or a child component declared `[Component(Memoize = true)]` (or mounted through `V.Memo`). Without that, its own cache compares a reference-type props object by instance, and the parent's re-run builds a fresh one.
 >
 > A props change accepted by the component comparison invalidates its inner VNode cache. A float member changing from `0f` to `-0f` therefore rebuilds the output even when the enclosing record struct considers those props equal.
 >

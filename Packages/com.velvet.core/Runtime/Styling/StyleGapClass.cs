@@ -64,6 +64,7 @@ namespace Velvet
                 return false;
             }
 
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
             var negate = cls.StartsWith("-space-", StringComparison.Ordinal);
             var body = negate ? cls.Substring(1) : cls;
             string suffix;
@@ -80,20 +81,20 @@ namespace Velvet
                 axis = GapAxis.Vertical;
                 suffix = body.Substring("space-y-".Length);
             }
-            else if (cls.StartsWith("gap-x-", StringComparison.Ordinal))
+            else if (core.StartsWith("gap-x-", StringComparison.Ordinal))
             {
                 axis = GapAxis.Horizontal;
-                suffix = cls.Substring("gap-x-".Length);
+                suffix = core.Substring("gap-x-".Length);
             }
-            else if (cls.StartsWith("gap-y-", StringComparison.Ordinal))
+            else if (core.StartsWith("gap-y-", StringComparison.Ordinal))
             {
                 axis = GapAxis.Vertical;
-                suffix = cls.Substring("gap-y-".Length);
+                suffix = core.Substring("gap-y-".Length);
             }
-            else if (cls.StartsWith("gap-", StringComparison.Ordinal))
+            else if (core.StartsWith("gap-", StringComparison.Ordinal))
             {
                 axis = GapAxis.Auto;
-                suffix = cls.Substring("gap-".Length);
+                suffix = core.Substring("gap-".Length);
             }
             else
             {
@@ -123,7 +124,8 @@ namespace Velvet
         // scan below and the variant-payload gate (StyleVariantPayload) resolve the family through here.
         public static bool IsGapToken(string cls)
             => !string.IsNullOrEmpty(cls)
-                && (cls.StartsWith("gap-", StringComparison.Ordinal) || IsSpaceToken(cls));
+                && (StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("gap-", StringComparison.Ordinal)
+                    || IsSpaceToken(cls));
 
         // True for the space-x-* / space-y-* family, negative forms and reverse markers included.
         public static bool IsSpaceToken(string cls)
@@ -131,8 +133,8 @@ namespace Velvet
                 || cls.StartsWith("space-y-", StringComparison.Ordinal)
                 || cls.StartsWith("-space-", StringComparison.Ordinal);
 
-        // Cheap early-out gate: true when ANY class begins with the gap- prefix. No dictionary
-        // lookup and no substring allocation — used to skip the full TryExtract scan on the
+        // Cheap early-out gate: true when ANY class belongs to the gap / space family, including important
+        // gap tokens. No dictionary lookup — used to skip the full TryExtract scan on the
         // ~99% of elements that carry no gap class at all.
         public static bool HasGapClass(string[] classNames)
         {
