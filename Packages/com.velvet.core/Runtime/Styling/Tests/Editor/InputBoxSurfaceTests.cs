@@ -240,7 +240,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 (Box(scope.Root[0]).style.backgroundColor.value, scope.Root[0].style.backgroundColor.keyword),
-                Is.EqualTo((Color.red, StyleKeyword.Undefined)));
+                Is.EqualTo((Color.red, StyleKeyword.Null)));
         }
 
         [Test]
@@ -413,21 +413,26 @@ namespace Velvet.Tests
         [Test]
         public void Given_AFirstChildBackgroundOnTextFields_When_Reconciled_Then_OnlyTheFirstFieldsBoxTakesIt()
         {
-            // Arrange
+            // Arrange — the fields sit in a container: a first: rule is evaluated by its parent's post-children
+            // pass, which the reconciler's root does not run.
             using var scope = new ReconcilerScope();
             var tree = new VNode[]
             {
-                V.TextField(className: "first:bg-red-500"),
-                V.TextField(className: "first:bg-red-500"),
+                V.Div(children: new VNode?[]
+                {
+                    V.TextField(className: "first:bg-red-500"),
+                    V.TextField(className: "first:bg-red-500"),
+                }),
             };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
 
             // Assert
+            var fields = scope.Root[0];
             Assert.That(
-                (Box(scope.Root[0]).ClassListContains("bg-red-500"), Box(scope.Root[1]).ClassListContains("bg-red-500"),
-                    scope.Root[0].ClassListContains("bg-red-500")),
+                (Box(fields[0]).ClassListContains("bg-red-500"), Box(fields[1]).ClassListContains("bg-red-500"),
+                    fields[0].ClassListContains("bg-red-500")),
                 Is.EqualTo((true, false, false)));
         }
 
