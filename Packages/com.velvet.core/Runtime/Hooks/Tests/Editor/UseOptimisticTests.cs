@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
@@ -16,14 +18,18 @@ namespace Velvet.Tests
     /// <item>Invoking addOptimistic derives the optimistic state via the apply function and shows it immediately.</item>
     /// <item>Successive addOptimistic calls compose on top of the previous optimistic value.</item>
     /// <item>An entry added inside a transition is discarded when that transition settles, with the pass-through
-    /// state unchanged: a synchronous callback's once the work it queued commits, an async action's when it
-    /// completes or faults, and one whose declaring component unmounts at that unmount.</item>
+    /// state unchanged: a synchronous callback's once the work it queued commits, and an async action's when
+    /// it completes or faults. A settle while any async action is in flight, the declaring component of the
+    /// action unmounted or not, holds the entry until none is left.</item>
+    /// <item>The Transition-lane render that lands the last work a transition queued already leaves its
+    /// entries out, whether the component holding them is the one drained or a descendant its pass
+    /// renders.</item>
     /// <item>An entry whose transition is still pending replays over a pass-through state another action
-    /// changed, and one transition settling leaves another's entry in place.</item>
+    /// changed.</item>
     /// <item>An entry its transition settled before any render showed it is shown once, then discarded.</item>
     /// <item>An entry added outside every scope while an async action is in flight belongs to the actions in
-    /// flight, and is discarded once none is left, whether the last completes or is given up at an
-    /// unmount.</item>
+    /// flight, and is discarded once none is left. The count follows each action's task, and the subsystem
+    /// reset puts it back to none.</item>
     /// <item>An entry no transition owns is discarded by the component's next Transition-lane render, which a
     /// parent pass subsuming the component does not cancel. Added outside every scope it logs a warning;
     /// added in a callback run by a starter whose component has unmounted it does not.</item>
@@ -234,7 +240,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoPendingActions_When_TheFirstSettlesHavingChangedThePassthrough_Then_TheSecondsEntryReplaysOverTheNewState()
+        public void Given_TwoPendingActions_When_TheFirstSettlesHavingChangedThePassthrough_Then_BothEntriesReplayOverTheNewStateUntilTheSecondSettles()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
@@ -263,12 +269,12 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That($"{bothPending}|{secondPending}|{s_hostObserved}",
-                Is.EqualTo("base+a+b|committed+b|committed"),
-                "The pending entry is folded over the pass-through state the settled action wrote");
+                Is.EqualTo("base+a+b|committed+a+b|committed"),
+                "Entangled actions hold every entry, folded over the pass-through state, until the last completes");
         }
 
         [Test]
-        public void Given_TwoPendingActions_When_TheLaterOneSettlesFirst_Then_OnlyItsEntryIsDiscarded()
+        public void Given_TwoPendingActions_When_TheLaterOneSettlesFirst_Then_NeitherEntryIsDiscardedUntilTheFirstSettlesToo()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
@@ -295,14 +301,38 @@ namespace Velvet.Tests
             DrainBothTiers(mounted);
 
             // Assert
-            Assert.That($"{bothPending}|{firstPending}|{s_hostObserved}", Is.EqualTo("base+a+b|base+a|base"),
-                "One action settling discards its own entry and leaves the other pending action's in place");
+            Assert.That($"{bothPending}|{firstPending}|{s_hostObserved}", Is.EqualTo("base+a+b|base+a+b|base"),
+                "An action settling ahead of another in flight leaves its entry in place until that one settles");
         }
 
         [Test]
-        public void Given_AnEntryOwnedByAPendingAction_When_TheComponentDeclaringItsTransitionUnmounts_Then_TheEntryIsDiscarded()
+        public void Given_AnAsyncActionInFlight_When_ASyncTransitionAddingAnEntryCommitsItsWork_Then_TheEntryStaysUntilTheActionCompletes()
         {
-            // Arrange — the action never completes, so the unmount is all that ends its transition
+            // Arrange — the transition starts after the action, so the action's entanglement is what holds the entry
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var gate = new VelvetTaskCompletionSource();
+            s_hostStartFirst.Invoke(async () => await gate.Task);
+            s_hostStartSecond.Invoke(() =>
+            {
+                s_hostAdd.Invoke("sent");
+                s_hostSetTick.Invoke(1);
+            });
+            DrainBothTiers(mounted);
+            var whilePending = s_hostObserved;
+
+            // Act
+            gate.TrySetResult();
+            DrainBothTiers(mounted);
+
+            // Assert
+            Assert.That($"{whilePending}|{s_hostObserved}", Is.EqualTo("base+sent|base"),
+                "A transition started while an async action is in flight holds its entry until that action completes");
+        }
+
+        [Test]
+        public void Given_AnEntryOwnedByAPendingAction_When_TheComponentDeclaringItsTransitionUnmounts_Then_TheEntryStaysUntilTheActionCompletes()
+        {
+            // Arrange — the action is still awaiting when its declaring component goes
             using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
             var gate = new VelvetTaskCompletionSource();
             s_childStart.Invoke(async () =>
@@ -311,15 +341,17 @@ namespace Velvet.Tests
                 await gate.Task;
             });
             DrainBothTiers(mounted);
-            var whilePending = s_hostObserved;
+            s_hostSetShowStarter.Invoke(false);
+            DrainBothTiers(mounted);
+            var afterUnmount = s_hostObserved;
 
             // Act
-            s_hostSetShowStarter.Invoke(false);
+            gate.TrySetResult();
             DrainBothTiers(mounted);
 
             // Assert
-            Assert.That($"{whilePending}|{s_hostObserved}", Is.EqualTo("base+sent|base"),
-                "Unmounting the component that declared the transition settles it, discarding the entry it owned");
+            Assert.That($"{afterUnmount}|{s_hostObserved}", Is.EqualTo("base+sent|base"),
+                "The action counts until its task completes, the component that started it mounted or not");
         }
 
         [Test]
@@ -426,23 +458,96 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnEntryOwnedByTheActionsInFlight_When_TheOnlyOnesDeclaringComponentUnmounts_Then_TheEntryIsDiscarded()
+        public void Given_AnEntryOwnedByTheActionsInFlight_When_TheOnlyOnesDeclaringComponentUnmounts_Then_TheEntryStaysUntilTheActionCompletes()
         {
-            // Arrange — the action never completes, so giving it up at the unmount is all that ends it
+            // Arrange
             using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
             var gate = new VelvetTaskCompletionSource();
             s_childStart.Invoke(async () => await gate.Task);
             s_hostAdd.Invoke("late");
             DrainBothTiers(mounted);
-            var whilePending = s_hostObserved;
+            s_hostSetShowStarter.Invoke(false);
+            DrainBothTiers(mounted);
+            var afterUnmount = s_hostObserved;
 
             // Act
-            s_hostSetShowStarter.Invoke(false);
+            gate.TrySetResult();
             DrainBothTiers(mounted);
 
             // Assert
-            Assert.That($"{whilePending}|{s_hostObserved}", Is.EqualTo("base+late|base"),
-                "An unmount that gives up the last action in flight retires what the actions in flight owned");
+            Assert.That($"{afterUnmount}|{s_hostObserved}", Is.EqualTo("base+late|base"),
+                "An unmount does not count the action out, so the entry waits for the task");
+        }
+
+        [Test]
+        public void Given_ASyncTransitionsEntryAlreadyShown_When_TheDrainLandingItsWorkRenders_Then_ThatRenderLeavesItOut()
+        {
+            // Arrange — the write to the same component is the work whose commit settles the transition
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var scheduler = mounted.GetSchedulerForTest();
+            s_hostStartFirst.Invoke(() =>
+            {
+                s_hostAdd.Invoke("sent");
+                s_hostSetTick.Invoke(1);
+            });
+            scheduler.DrainImmediateForTest();
+            var shownBefore = s_hostReadings.Count;
+
+            // Act
+            scheduler.DrainDelayedForTest();
+
+            // Assert
+            Assert.That(s_hostReadings.Skip(shownBefore).FirstOrDefault(), Is.EqualTo("base"),
+                "The first render the drain makes already shows the pass-through state");
+        }
+
+        [Test]
+        public void Given_ADescendantHoldingASyncTransitionsEntry_When_TheParentsDrainLandsTheWork_Then_TheDescendantsRenderLeavesItOut()
+        {
+            // Arrange — the work is the parent's write, and the entry sits on the component its pass renders
+            using var mounted = V.Mount(_root, V.Component(SubsumingParentRender, key: "subsuming-parent"));
+            var scheduler = mounted.GetSchedulerForTest();
+            s_parentStart.Invoke(() =>
+            {
+                s_childAdd.Invoke("sent");
+                s_parentSetTick.Invoke(1);
+            });
+            scheduler.DrainImmediateForTest();
+            var shownBefore = s_childReadings.Count;
+
+            // Act
+            scheduler.DrainDelayedForTest();
+
+            // Assert
+            Assert.That(s_childReadings.Skip(shownBefore).FirstOrDefault(), Is.EqualTo("base"),
+                "The descendant commits with the parent's drain, so its first render there already omits the entry");
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps an entry through every render until the pass-through
+        // state changes, so it holds this one too. What the case pins is that the leave-out this change adds
+        // stays off while an action is in flight.
+        [Test]
+        public void Given_ASyncTransitionsEntryAlreadyShown_When_AnAsyncActionIsInFlightAtTheDrain_Then_ThatRenderKeepsIt()
+        {
+            // Arrange — the entry waits for the action, so the drain's commit is not what takes it down
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var scheduler = mounted.GetSchedulerForTest();
+            var gate = new VelvetTaskCompletionSource();
+            s_hostStartFirst.Invoke(async () => await gate.Task);
+            s_hostStartSecond.Invoke(() =>
+            {
+                s_hostAdd.Invoke("sent");
+                s_hostSetTick.Invoke(1);
+            });
+            scheduler.DrainImmediateForTest();
+            var shownBefore = s_hostReadings.Count;
+
+            // Act
+            scheduler.DrainDelayedForTest();
+
+            // Assert
+            Assert.That(s_hostReadings.Skip(shownBefore).FirstOrDefault(), Is.EqualTo("base+sent"),
+                "The leave-out applies only where the transition settles with the commit");
         }
 
         // GREEN_ON_BASE(characterization): the base logged no warning from addOptimistic anywhere. What this
@@ -502,18 +607,53 @@ namespace Velvet.Tests
         private static readonly Regex OutsideEveryTransitionWarning = new("added outside every transition");
 
         [Test]
-        public void Given_TheResetEveryCaseHereRunsFirst_When_ItLooksUpWhatItResets_Then_BothFieldsAreThere()
+        public void Given_TheResetEveryCaseHereRunsFirst_When_ItLooksUpWhatItResets_Then_BothTheMethodAndTheCountAreThere()
         {
             // Arrange
             const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
 
-            // Act — the reset returns quietly where a field is missing, so this is what notices a rename
+            // Act — the reset returns quietly where its method is missing, so this is what notices a rename
+            var reset = AsyncActionsInFlightTestAccess.FindSubsystemReset();
             var count = typeof(FiberWorkLoop).GetField(AsyncActionsInFlightTestAccess.CountFieldName, flags);
-            var owner = typeof(FiberWorkLoop).GetField(AsyncActionsInFlightTestAccess.OwnerFieldName, flags);
 
             // Assert
-            Assert.That((count != null, owner != null), Is.EqualTo((true, true)),
-                "The set-up reset reaches the in-flight count and its owner slot, or the ownership cases are order-dependent");
+            Assert.That((reset != null, count != null), Is.EqualTo((true, true)),
+                "The set-up reset reaches the subsystem reset and the in-flight count, or the ownership cases are order-dependent");
+        }
+
+        [Test]
+        public void Given_AnAsyncActionInFlight_When_TheSubsystemResetRuns_Then_NoActionIsCounted()
+        {
+            // Arrange — an action the previous play session never completed
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var gate = new VelvetTaskCompletionSource();
+            s_hostStartFirst.Invoke(async () => await gate.Task);
+            var before = AsyncActionsInFlightTestAccess.CountForTest();
+
+            // Act
+            AsyncActionsInFlightTestAccess.ResetForTest();
+
+            // Assert
+            Assert.That((before, AsyncActionsInFlightTestAccess.CountForTest()), Is.EqualTo((1, 0)),
+                "The reset takes the stale action out of the count, which would otherwise keep holding settled transitions' entries");
+        }
+
+        [Test]
+        public void Given_AnActionCountedBeforeTheSubsystemReset_When_ItCompletesAfterwards_Then_TheCountStaysAtNone()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"));
+            var gate = new VelvetTaskCompletionSource();
+            s_hostStartFirst.Invoke(async () => await gate.Task);
+            AsyncActionsInFlightTestAccess.ResetForTest();
+
+            // Act
+            gate.TrySetResult();
+            DrainBothTiers(mounted);
+
+            // Assert
+            Assert.That(AsyncActionsInFlightTestAccess.CountForTest(), Is.EqualTo(0),
+                "An action the reset dropped does not count itself out of the count that replaced its own");
         }
 
         private static void DrainBothTiers(MountedTree mounted)
@@ -559,14 +699,18 @@ namespace Velvet.Tests
         #region Subsuming parent
 
         private static string s_childObserved;
+        private static readonly List<string> s_childReadings = new();
         private static Action<string> s_childAdd;
         private static StateUpdater<int> s_parentSetTick;
+        private static TransitionStarter s_parentStart;
 
         private static void ResetSubsumingParent()
         {
             s_childObserved = null;
+            s_childReadings.Clear();
             s_childAdd = null;
             s_parentSetTick = default;
+            s_parentStart = default;
         }
 
         // Unwoven: the case needs every write to the parent to render it.
@@ -574,7 +718,9 @@ namespace Velvet.Tests
         private static VNode SubsumingParentRender()
         {
             var (_, setTick) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
             s_parentSetTick = setTick;
+            s_parentStart = start;
             return V.Div(children: new VNode[] { V.Component(SubsumedChildRender, key: "subsumed-child") });
         }
 
@@ -585,6 +731,7 @@ namespace Velvet.Tests
                 "base",
                 (current, action) => current + "+" + action);
             s_childObserved = optimisticState;
+            s_childReadings.Add(optimisticState);
             s_childAdd = addOptimistic;
             return V.Label(text: optimisticState);
         }
@@ -594,6 +741,7 @@ namespace Velvet.Tests
         #region Action host component
 
         private static string s_hostObserved;
+        private static readonly List<string> s_hostReadings = new();
         private static int s_hostRenderCount;
         private static Action<string> s_hostAdd;
         private static StateUpdater<string> s_hostSetPassthrough;
@@ -606,6 +754,7 @@ namespace Velvet.Tests
         private static void ResetActionHost()
         {
             s_hostObserved = null;
+            s_hostReadings.Clear();
             s_hostRenderCount = 0;
             s_hostAdd = null;
             s_hostSetPassthrough = default;
@@ -629,6 +778,7 @@ namespace Velvet.Tests
                 passthrough,
                 (current, action) => current + "+" + action);
             s_hostObserved = optimisticState;
+            s_hostReadings.Add(optimisticState);
             s_hostRenderCount++;
             s_hostAdd = addOptimistic;
             s_hostSetPassthrough = setPassthrough;

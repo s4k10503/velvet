@@ -105,6 +105,8 @@ namespace Velvet
 
         internal abstract void Retire(HookTransitionSlot owner);
 
+        internal abstract void Reown(HookTransitionSlot from, HookTransitionSlot to);
+
         // For a fiber whose slot list is being dropped: a transition settling afterwards would otherwise ask
         // that fiber, reused or not, for a render on behalf of a slot it no longer holds.
         internal abstract void DetachFromOwners();
@@ -130,13 +132,21 @@ namespace Velvet
         public Func<TState, TAction, TState> Apply = null!;
         public Action<TAction> Add = null!;
 
-        internal TState Fold(TState passthroughState)
+        // drainingFiber: FiberWorkLoop.TransitionDrainFiber, null outside a Transition-lane drain. An entry whose
+        // owner settles with that fiber's commit is left out of this render, so the commit that lands the
+        // transition's work shows it already gone. Nothing is removed here, since the render may never commit:
+        // Retire does that at the settle.
+        internal TState Fold(TState passthroughState, ComponentFiber? drainingFiber)
         {
             var state = passthroughState;
             foreach (var entry in Entries)
             {
-                state = Apply(state, entry.Action);
                 entry.Rendered = true;
+                if (drainingFiber != null && entry.Owner?.SettlesWithCommitOf(drainingFiber) == true)
+                {
+                    continue;
+                }
+                state = Apply(state, entry.Action);
             }
             return state;
         }
@@ -162,6 +172,17 @@ namespace Velvet
                 else
                 {
                     entry.Owner = null;
+                }
+            }
+        }
+
+        internal override void Reown(HookTransitionSlot from, HookTransitionSlot to)
+        {
+            foreach (var entry in Entries)
+            {
+                if (ReferenceEquals(entry.Owner, from))
+                {
+                    entry.Owner = to;
                 }
             }
         }
@@ -220,10 +241,35 @@ namespace Velvet
             }
         }
 
+        // True where this transition's last outstanding work is the commit of drainingFiber's Transition-lane
+        // drain, which is when the settle clears this slot. The conditions are the ones
+        // ComponentFiber.SettleIfNothingOutstanding clears on, plus that no async action is in flight, since
+        // RetireOptimisticEntries holds the entries behind one.
+        internal bool SettlesWithCommitOf(ComponentFiber drainingFiber)
+            => !HasActiveOwner
+                && !IsAsyncInFlight
+                && !FiberWorkLoop.AsyncActionsInFlight.IsPending
+                && EnrolledFibers is { Count: 1 }
+                && ReferenceEquals(EnrolledFibers[0], drainingFiber);
+
         private void RetireOptimisticEntries()
         {
             if (OptimisticDependents == null)
             {
+                return;
+            }
+            // A transition settling while any async action is in flight keeps its entries until none is left:
+            // the settle is not the last thing the entries wait for, so they move to the slot that stands for
+            // the actions in flight and no render is asked for here.
+            var inFlight = FiberWorkLoop.AsyncActionsInFlight;
+            if (!ReferenceEquals(this, inFlight) && inFlight.IsPending)
+            {
+                foreach (var slot in OptimisticDependents)
+                {
+                    slot.Reown(this, inFlight);
+                    inFlight.EnrolOptimisticDependent(slot);
+                }
+                OptimisticDependents.Clear();
                 return;
             }
             foreach (var slot in OptimisticDependents)

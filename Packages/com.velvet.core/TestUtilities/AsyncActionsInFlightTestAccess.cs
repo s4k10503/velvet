@@ -1,4 +1,6 @@
+using System.Linq;
 using System.Reflection;
+using UnityEngine;
 
 namespace Velvet.TestUtilities
 {
@@ -11,26 +13,28 @@ namespace Velvet.TestUtilities
     internal static class AsyncActionsInFlightTestAccess
     {
         internal const string CountFieldName = "s_asyncActionsInFlight";
-        internal const string OwnerFieldName = "AsyncActionsInFlight";
 
         /// <summary>
-        /// Zeroes the count, and through the owner slot's cleared <c>isPending</c> retires whatever entries it
-        /// held. A tree without the count has nothing to reset, so this returns there rather than throwing:
-        /// it runs from a fixture's set-up, where a throw would take down every case beside the one
-        /// UseOptimisticTests keeps for the field going missing.
+        /// The reset production runs at subsystem registration, found by that attribute so a rename of the
+        /// method cannot leave this resetting nothing.
         /// </summary>
-        // Bypasses: the completion, or the unmount giving the action up, that counts each action out in production.
-        internal static void ResetForTest()
-        {
-            const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
-            var count = typeof(FiberWorkLoop).GetField(CountFieldName, flags);
-            var owner = typeof(FiberWorkLoop).GetField(OwnerFieldName, flags)?.GetValue(null) as HookTransitionSlot;
-            if (count == null || owner == null)
-            {
-                return;
-            }
-            count.SetValue(null, 0);
-            owner.IsPending = false;
-        }
+        internal static MethodInfo FindSubsystemReset()
+            => typeof(FiberWorkLoop)
+                .GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+                .SingleOrDefault(method =>
+                    method.GetCustomAttribute<RuntimeInitializeOnLoadMethodAttribute>()?.loadType
+                    == RuntimeInitializeLoadType.SubsystemRegistration);
+
+        /// <summary>
+        /// Runs the production reset. A tree without it has nothing to reset, so this returns there rather than
+        /// throwing: it runs from a fixture's set-up, where a throw would take down every case beside the one
+        /// UseOptimisticTests keeps for the method going missing.
+        /// </summary>
+        // Bypasses: the completion that counts each action out in production.
+        internal static void ResetForTest() => FindSubsystemReset()?.Invoke(null, null);
+
+        internal static int CountForTest()
+            => (int)typeof(FiberWorkLoop).GetField(CountFieldName, BindingFlags.Static | BindingFlags.NonPublic)!
+                .GetValue(null);
     }
 }

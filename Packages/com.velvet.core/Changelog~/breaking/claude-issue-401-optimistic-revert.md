@@ -6,7 +6,11 @@
   transition settles is disowned instead, so the render `addOptimistic` requested still shows it, and the
   component's next Transition-lane render discards it. An entry added outside every
   `startTransition` callback while an `async` action is in flight, that action's own code after an `await`
-  included, belongs to the actions in flight together and is discarded once none is left. Each render folds
+  included, belongs to the actions in flight together and is discarded once none is left. As React entangles
+  its async actions, a transition that settles while any is in flight hands its entries to them as well, and an
+  action counts until its task completes, whether or not the component that started it is still mounted. The
+  Transition-lane render that lands a transition's last work leaves that transition's entries out, so the
+  commit already shows them gone. Each render folds
   the pass-through state through the entries still outstanding, so an entry whose transition is still
   pending is applied over a pass-through state that changed meanwhile instead of being dropped by that
   change, and one transition settling leaves another's entries in place. An entry nothing owns is shown by

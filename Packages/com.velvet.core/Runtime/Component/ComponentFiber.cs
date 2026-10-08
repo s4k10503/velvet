@@ -556,8 +556,6 @@ namespace Velvet
             {
                 slot.OwnerGeneration++;
                 slot.OwnerDepth = 0;
-                // The tasks this gives up on can no longer count themselves out.
-                FiberWorkLoop.CountAsyncActions(-slot.AsyncOwnerDepth);
                 slot.AsyncOwnerDepth = 0;
                 ClearTransitionEnrolments(slot);
                 slot.IsPending = false;

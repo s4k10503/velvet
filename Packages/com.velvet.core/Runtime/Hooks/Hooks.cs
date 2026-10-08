@@ -2215,12 +2215,17 @@ namespace Velvet
         /// <paramref name="applyOptimistic"/>, in the order they were added — so an entry lands on whatever
         /// the authoritative state has become while it is outstanding. An entry added inside a
         /// <c>startTransition</c> callback belongs to the innermost transition open there whose
-        /// <c>isPending</c> is lit, and is discarded when that <c>isPending</c> clears, whether or not
+        /// <c>isPending</c> is lit, and is discarded when that transition settles, whether or not
         /// <paramref name="passthroughState"/> changed and whether the action succeeded or faulted; one
         /// transition settling leaves another's entries in place. An entry added where no such transition is
-        /// open, while an async action is in flight, belongs to the actions in flight together, and is
-        /// discarded once none is left. An entry no render has shown when its owner settles is shown once
-        /// first. An entry nothing owns is discarded by the component's next Transition-lane render.
+        /// open, while an async action is in flight, belongs to the actions in flight together. As in React,
+        /// the actions in flight are entangled: a transition that settles while any is in flight hands its
+        /// entries to them, so they are discarded once none is left. An action counts until its task
+        /// completes, whether or not the component that started it is still mounted. A component rendered by the
+        /// Transition-lane drain that lands the last work a transition queued leaves that transition's
+        /// entries out of that render. An entry no
+        /// render has shown when its owner settles is shown once first. An entry nothing owns is discarded by
+        /// the component's next Transition-lane render.
         /// </summary>
         /// <typeparam name="TState">Optimistic state type.</typeparam>
         /// <typeparam name="TAction">Action / payload type passed to <paramref name="applyOptimistic"/>.</typeparam>
@@ -2264,7 +2269,7 @@ namespace Velvet
 
             // Refreshed every render, since the fold below runs it and it may capture this render's scope.
             slot.Apply = applyOptimistic;
-            var optimisticState = slot.Fold(passthroughState);
+            var optimisticState = slot.Fold(passthroughState, FiberWorkLoop.TransitionDrainFiber);
             // Asked again by every render that leaves an unowned entry standing, as UseDeferredValue asks for
             // its lane: a parent's pass that subsumes this component keeps only the lanes its render asked
             // for, so a request made once, when the entry was added, is dropped there.
