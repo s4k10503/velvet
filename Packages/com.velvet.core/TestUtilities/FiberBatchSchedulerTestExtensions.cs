@@ -24,12 +24,12 @@ namespace Velvet.TestUtilities
         private const string DrainDelayedMethodName = "DrainDelayed";
 
         /// <summary>Drains the Normal / Urgent tier.</summary>
-        // Bypasses: the panel scheduler callback: production registers DrainImmediate with _anchor.schedule.Execute and never calls it.
+        // Bypasses: the panel scheduler callback: production registers RunImmediateCallback, which also retires the tier's registration and marks a scheduler pass; this drains as FlushImmediate and the Transition tier's drain do, doing neither.
         internal static void DrainImmediateForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, DrainImmediateMethodName);
 
-        /// <summary>Drains the Transition tier.</summary>
-        // Bypasses: the panel scheduler callback and its delay: production registers DrainDelayed with schedule.Execute(...).ExecuteLater(delayMs).
+        /// <summary>Drains every Transition-tier entry, after whatever the Normal / Urgent tier still holds.</summary>
+        // Bypasses: the panel callbacks and their admission: a panel callback drains only the entries waiting for its own registration; VelvetPreviewHost.Settle is the production caller that drains the whole tier this way.
         internal static void DrainDelayedForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, DrainDelayedMethodName);
 

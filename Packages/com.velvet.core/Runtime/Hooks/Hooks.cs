@@ -159,13 +159,8 @@ namespace Velvet
             HookCountSentinel.ThrowIfPastCommittedCount(fiber);
             var cmp = comparer ?? ObjectIsEqualityComparer<TSel>.Instance;
 
-            // Cross-tier tearing guard: read the snapshot pinned for this store within the current batch
-            // drain wave instead of the live store.Current. An ancestor on the immediate tier and a
-            // descendant on the delayed tier (separated by up to DelayedTierDelayMs) therefore observe the SAME
-            // store value even if the store mutates between their tier drains; the mutation re-schedules every
-            // reader, and that follow-up render lands on the next immediate drain, which re-pins to the now-
-            // current snapshot so readers converge. Falls back to store.Current
-            // outside a reconcile context (e.g. a fiber not yet attached to a Reconciler).
+            // Tearing guard: readers committed in one drain pass read the snapshot the pass pinned (see
+            // ReconcilerContext.PinStoreSnapshot) rather than the live store.Current.
             var snapshot = PinStoreSnapshot(fiber, store);
 
             if (index >= fiber.StoreSlots.Count)
@@ -201,6 +196,7 @@ namespace Velvet
                 });
 
                 fiber.StoreSlots.Add(slot);
+                CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, slot.LastValue);
                 return slot.LastValue;
             }
 
@@ -220,7 +216,20 @@ namespace Velvet
             typed.Selector = selector;
             typed.Comparer = cmp;
             typed.LastValue = selector(snapshot);
+            CatchUpIfPinnedBehind(fiber, store, snapshot, selector, cmp, typed.LastValue);
             return typed.LastValue;
+        }
+
+        // A pin older than the store leaves a reader whose selection the mutation changed behind it with no
+        // notification still to come: the mutation notified before this render overwrote LastValue, or before
+        // this reader subscribed. The render this asks for reads the store in a later pass, which pins afresh.
+        private static void CatchUpIfPinnedBehind<TStore, TSel>(
+            ComponentFiber fiber, Store<TStore> store, TStore snapshot, Func<TStore, TSel> selector,
+            IEqualityComparer<TSel> comparer, TSel selected)
+        {
+            var live = store.Current;
+            if (ObjectIs.AreEqual(snapshot, live) || comparer.Equals(selected, selector(live))) return;
+            FiberWorkLoop.ScheduleRerender(fiber, FiberUpdatePriority.Normal);
         }
 
         // Returns the store snapshot pinned for the current batch drain wave (see
@@ -2119,10 +2128,10 @@ namespace Velvet
         /// <param name="value">Latest value (provided by the caller).</param>
         /// <returns>
         /// First render: returns <paramref name="value"/> as-is.
-        /// Subsequent renders: returns the previously committed value and queues the next value as pending
-        /// on the Transition lane. A re-render that is not draining that lane keeps returning the previously
-        /// committed value and re-queues the lane.
-        /// The render that drains the Transition lane: commits the pending value and returns the new value.
+        /// A later render that is not draining Transition-lane work and carries a changed value: returns the
+        /// previously committed value and queues the new value as pending on the Transition lane.
+        /// A render draining Transition-lane work: commits <paramref name="value"/> and returns it, whether or
+        /// not it is the value last queued.
         /// </returns>
         public static T UseDeferredValue<T>(T value)
             => UseDeferredValueCore(value, default!, hasInitialValue: false);
@@ -2172,13 +2181,12 @@ namespace Velvet
                     $"HookDeferredValueSlot<{typeof(T).Name}>", index);
             }
 
-            if (typed.HasPending && ObjectIs.AreEqual(typed.Pending, value)
-                && FiberWorkLoop.IsRenderingTransitionLane)
+            if (FiberWorkLoop.IsRenderingTransitionLane)
             {
-                // Only the render draining transition-lane work may promote pending to current. The rest of
-                // the condition tests the input alone, so without the gate any re-render still carrying it
-                // commits — and the subtree the deferral exists to keep off the urgent path renders there.
-                // A render that is not the one falls through to the change branch, which re-queues the lane.
+                // A render draining transition-lane work commits the input it was handed, whether or not it is
+                // the value an urgent render queued: requiring the two to match left an input built afresh on
+                // every render never committing. Any other render falls through to the change branch, which
+                // re-queues the lane.
                 typed.Current = value;
                 typed.Pending = default;
                 typed.HasPending = false;
