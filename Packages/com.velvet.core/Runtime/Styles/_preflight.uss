@@ -1,12 +1,13 @@
 /*
  * Preflight - the baseline every utility outranks.
  *
- * Tailwind v4's preflight zeroes margin and padding on every element. Velvet resets them on the Labels it
- * creates (VNodePool.VelvetLabelClassName); a Label UI Toolkit builds inside its own control keeps the
- * theme's. The rule is imported ahead of every utility sheet, so a `p-*` or `m-*` on the same element ties
+ * Tailwind v4's preflight zeroes margin and padding on every element, and CSS starts every element at
+ * white-space: normal and flex-shrink: 1. Velvet gives the Labels it creates (VNodePool.VelvetLabelClassName)
+ * those values; a Label UI Toolkit builds inside its own control keeps the theme's. The rule is imported
+ * ahead of every utility sheet, so a `p-*`, `m-*`, `whitespace-*` or `shrink-*` on the same element ties
  * with it on specificity and wins on order.
  *
  * The generator's utility table does not read this sheet (StyleUtilityTableBuilder.PreflightSheetName).
  */
 
-.velvet-label { margin: 0; padding: 0; }
+.velvet-label { margin: 0; padding: 0; white-space: normal; flex-shrink: 1; }

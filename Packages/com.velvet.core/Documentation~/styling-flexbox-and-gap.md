@@ -330,12 +330,15 @@ spells it, and the percent form especially would otherwise read as a factor of f
 `basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
 two divide what is left over after every sibling's basis is taken.
 
-## A text item's margin, padding and minimum size
+## A text item's margin, padding, wrapping and minimum size
 
-**Margin and padding.** Tailwind v4's preflight zeroes every element's margin and padding. Velvet's
+**Margin, padding, wrapping and shrinking.** Tailwind v4's preflight zeroes every element's margin and padding,
+and CSS starts every element at `white-space: normal` and `flex-shrink: 1`. Velvet's
 `_preflight.uss` does it for the `Label` that a `V.Label`, a `V.Text` or `V.Custom<Label>` creates, by the
-class `velvet-label` those labels carry. The sheet is imported ahead of every utility, so a `p-*` or `m-*`
-on the label ties with it on specificity and wins on order. A label centred in a box therefore sits on the
+class `velvet-label` those labels carry, and gives them all four values. The sheet is imported ahead of every
+utility, so a `p-*`, `m-*`, `whitespace-*` or `shrink-*` on the label ties with it on specificity and wins on
+order. A label therefore wraps and shrinks by default, where a theme may have given it `nowrap` and
+`flex-shrink: 0`. A label centred in a box therefore sits on the
 box's centre. A `Label` UI Toolkit builds inside its own control (a `V.TextField`'s label, a `V.Toggle`'s)
 and a `Button` keep the spacing the theme gives them, as an `<input>`'s label does on the web, where it is
 author markup.
@@ -348,8 +351,7 @@ that axis, then by its maximum size. Velvet writes that value inline, as `min-wi
 - a row's min-content width is the widest run of text with no break opportunity in it: spaces
   separate runs (a no-break space does not), a hyphen between letters ends one, and each ideograph,
   kana or Hangul syllable is its own, bar closing punctuation sticking to the character before it. Under
-  `whitespace-nowrap` and `whitespace-pre` it is the whole text, and the label's white-space is the one
-  its cascade resolves, so a theme that gives labels `nowrap` needs `whitespace-normal` for the widest run;
+  `whitespace-nowrap` and `whitespace-pre` it is the whole text;
 - a column's min-content height is the height the text takes at the width the item was given;
 - the item's own padding and border on that axis is added to either.
 

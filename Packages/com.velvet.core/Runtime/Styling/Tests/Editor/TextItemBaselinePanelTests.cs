@@ -8,7 +8,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins what a text item gets from Velvet before any class of its own: the preflight reset of the
-    /// margin and padding of a <see cref="Label"/> Velvet creates (<c>_preflight.uss</c>), and the automatic
+    /// margin, padding, white-space and flex-shrink of a <see cref="Label"/> Velvet creates
+    /// (<c>_preflight.uss</c>), and the automatic
     /// minimum size (<see cref="StyleFlexMinSizeManipulator"/>) along its parent's main axis.
     /// <para>
     /// A real <see cref="UnityEditor.EditorWindow"/> panel with the bundled <c>StyleUtilities.uss</c> is
@@ -37,13 +38,8 @@ namespace Velvet.Tests
             return element;
         }
 
-        // A Label starts under whatever white-space the panel's theme gives it, so a case that is not about
-        // white-space says whitespace-normal itself.
         private Label MountLabel(string containerClass, string labelClass, string text)
-            => Mount<Label>(containerClass, V.Label(className: WrapByDefault(labelClass), text: text));
-
-        private static string WrapByDefault(string labelClass)
-            => labelClass.Contains("whitespace-") ? labelClass : ("whitespace-normal " + labelClass).Trim();
+            => Mount<Label>(containerClass, V.Label(className: labelClass, text: text));
 
         private static void Settle(VisualElement element)
         {
@@ -98,6 +94,46 @@ namespace Velvet.Tests
             Assert.That(
                 (label.resolvedStyle.paddingLeft, label.resolvedStyle.marginLeft),
                 Is.EqualTo((8f, 4f)));
+        }
+
+        [Test]
+        public void Given_AVelvetLabelWithNoUtilities_When_Resolved_Then_ItWrapsLikeCssNormalText()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-row", "", "text");
+
+            // Assert
+            Assert.That(label.resolvedStyle.whiteSpace, Is.EqualTo(WhiteSpace.Normal));
+        }
+
+        [Test]
+        public void Given_AVelvetLabelWithNoUtilities_When_Resolved_Then_ItShrinksLikeACssFlexItem()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-row", "", "text");
+
+            // Assert
+            Assert.That(label.resolvedStyle.flexShrink, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_AVelvetLabelWithWhitespaceNowrap_When_Resolved_Then_TheUtilityWinsOverTheReset()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-row", "whitespace-nowrap", "text");
+
+            // Assert
+            Assert.That(label.resolvedStyle.whiteSpace, Is.EqualTo(WhiteSpace.NoWrap));
+        }
+
+        [Test]
+        public void Given_AVelvetLabelWithShrink0_When_Resolved_Then_TheUtilityWinsOverTheReset()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-row", "shrink-0", "text");
+
+            // Assert
+            Assert.That(label.resolvedStyle.flexShrink, Is.EqualTo(0f));
         }
 
         [Test]
@@ -193,7 +229,7 @@ namespace Velvet.Tests
         public void Given_AButtonInARow_When_Resolved_Then_ItsMinWidthIsItsWidestWordPlusItsOwnFrame()
         {
             // Arrange / Act
-            var button = Mount<Button>("flex flex-row w-[20px]", V.Button(className: "whitespace-normal", text: Sentence));
+            var button = Mount<Button>("flex flex-row w-[20px]", V.Button(text: Sentence));
 
             // Assert
             Assert.That(button.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(button, LongWord)));
@@ -412,7 +448,7 @@ namespace Velvet.Tests
             _window.rootVisualElement.Add(scope.Root);
             VNode[] Tree(string labelClass) => new VNode[]
             {
-                V.Div("flex flex-row w-[20px]", V.Label(className: WrapByDefault(labelClass), text: Sentence)),
+                V.Div("flex flex-row w-[20px]", V.Label(className: labelClass, text: Sentence)),
             };
             var before = Tree("min-w-0");
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
@@ -434,7 +470,7 @@ namespace Velvet.Tests
             _window.rootVisualElement.Add(scope.Root);
             VNode[] Tree(string labelClass) => new VNode[]
             {
-                V.Div("flex flex-row w-[20px]", V.Label(className: WrapByDefault(labelClass), text: Sentence)),
+                V.Div("flex flex-row w-[20px]", V.Label(className: labelClass, text: Sentence)),
             };
             var before = Tree("");
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
@@ -460,7 +496,7 @@ namespace Velvet.Tests
             _window.rootVisualElement.Add(scope.Root);
             VNode[] Tree(string text) => new VNode[]
             {
-                V.Div("flex flex-row w-[20px]", V.Label(className: "whitespace-normal transition-all duration-500", text: text)),
+                V.Div("flex flex-row w-[20px]", V.Label(className: "transition-all duration-500", text: text)),
             };
             var before = Tree(Sentence);
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
