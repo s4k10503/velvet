@@ -68,9 +68,9 @@ namespace Velvet
             }
         }
 
-        // A plain object's own enumerable properties: the public members a type declares itself, in declaration
-        // order, read by reflection as ComponentPropsComparer reads a props bag. A number-like primitive is the one body that
-        // converts to a string instead, which parses as a query string.
+        // A plain object's own enumerable properties: the readable public properties and then the public fields a
+        // type declares itself, each in declaration order, read by reflection as ComponentPropsComparer reads a
+        // props bag.
         private static void AddProperties(List<KeyValuePair<string, string>> pairs, object body)
         {
             if (body.GetType().IsPrimitive || body is Enum || body is decimal || body is BigInteger)
@@ -122,7 +122,7 @@ namespace Velvet
                 pair = Pair(tuple[0], tuple[1]);
                 return true;
             }
-            if (entry is IList { Count: 2 } list && entry is not string)
+            if (entry is IList { Count: 2 } list)
             {
                 pair = Pair(list[0], list[1]);
                 return true;
@@ -157,23 +157,19 @@ namespace Velvet
             {
                 return "0";
             }
+            // MUTANT_SURVIVES(equivalent): the invariant culture writes these "NaN" and "Infinity", which fall
+            // through the layout below unchanged after the sign.
             if (double.IsNaN(number) || double.IsInfinity(number))
             {
-                return double.IsNaN(number) ? "NaN" : number > 0 ? "Infinity" : "-Infinity";
+                return double.IsNaN(number) ? "NaN" : double.IsPositiveInfinity(number) ? "Infinity" : "-Infinity";
             }
+            // MUTANT_SURVIVES(equivalent, boundary): zero has returned above, so `<` and `<=` split what is left alike.
             var sign = number < 0 ? "-" : string.Empty;
-            var roundTrip = Math.Abs(number).ToString("R", CultureInfo.InvariantCulture);
-            var mantissa = roundTrip;
-            var exponent = 0;
-            var e = roundTrip.IndexOf('E');
-            if (e >= 0)
-            {
-                mantissa = roundTrip.Substring(0, e);
-                exponent = int.Parse(roundTrip.Substring(e + 1), CultureInfo.InvariantCulture);
-            }
-            var dot = mantissa.IndexOf('.');
+            var roundTrip = Math.Abs(number).ToString("R", CultureInfo.InvariantCulture).Split('E');
+            var mantissa = roundTrip[0];
+            var exponent = roundTrip.Length > 1 ? int.Parse(roundTrip[1], CultureInfo.InvariantCulture) : 0;
             var digits = mantissa.Replace(".", string.Empty);
-            var point = (dot < 0 ? mantissa.Length : dot) + exponent;
+            var point = mantissa.Split('.')[0].Length + exponent;
             var lead = digits.Length - digits.TrimStart('0').Length;
             digits = digits.TrimStart('0').TrimEnd('0');
             point -= lead;
@@ -183,21 +179,20 @@ namespace Velvet
         // digits with the decimal point after the first `point` of them, as Number::toString lays them out.
         private static string Layout(string digits, int point)
         {
-            if (point >= digits.Length && point <= 21)
+            if (point > 21 || point <= -6)
+            {
+                var tail = digits.Length > 1 ? "." + digits.Substring(1) : string.Empty;
+                return digits[0] + tail + "e" + (point - 1).ToString("+0;-0", CultureInfo.InvariantCulture);
+            }
+            if (point >= digits.Length)
             {
                 return digits + new string('0', point - digits.Length);
             }
-            if (point > 0 && point <= 21)
+            if (point > 0)
             {
                 return digits.Substring(0, point) + "." + digits.Substring(point);
             }
-            if (point > -6 && point <= 0)
-            {
-                return "0." + new string('0', -point) + digits;
-            }
-            var exponent = point - 1;
-            var tail = digits.Length > 1 ? "." + digits.Substring(1) : string.Empty;
-            return digits[0] + tail + "e" + (exponent < 0 ? "-" : "+") + Math.Abs(exponent).ToString(CultureInfo.InvariantCulture);
+            return "0." + new string('0', -point) + digits;
         }
     }
 }

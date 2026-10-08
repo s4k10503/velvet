@@ -4,6 +4,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Numerics;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine.TestTools;
@@ -485,7 +486,7 @@ namespace Velvet.Tests
             Submit(router, null, new SubmitOptions { Action = "/items" });
 
             // Assert
-            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items"));
+            Assert.That((router.CurrentLocation!.Path, router.CurrentLoaderErrors.Count), Is.EqualTo(("/items", 0)));
         }
 
         [Test]
@@ -546,6 +547,11 @@ namespace Velvet.Tests
         [TestCase(1e21, "1e%2B21")]
         [TestCase(1e-7, "1e-7")]
         [TestCase(123456789012345680000.0, "123456789012345680000")]
+        [TestCase(25.0, "25")]
+        [TestCase(0.5, "0.5")]
+        [TestCase(double.NaN, "NaN")]
+        [TestCase(double.PositiveInfinity, "Infinity")]
+        [TestCase(double.NegativeInfinity, "-Infinity")]
         public void Given_AGetSubmissionOfADoubleMember_When_Submitted_Then_ItIsWrittenAsJavaScriptWritesIt(double value, string written)
         {
             // Arrange
@@ -556,6 +562,105 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?n=" + written));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAStringPairWithAnEmptyName_When_Submitted_Then_ThePairKeepsTheEmptyName()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, "=x", new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?=x"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnEnum_When_Submitted_Then_ItsNameParsesAsAQueryString()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, Shade.Dark, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?Dark="));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfADecimal_When_Submitted_Then_ItParsesAsAQueryString()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, 1.5m, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?1.5="));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfABigInteger_When_Submitted_Then_ItParsesAsAQueryString()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, BigInteger.Parse("123456789012345678901234567890", CultureInfo.InvariantCulture),
+                new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?123456789012345678901234567890="));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnObjectWithAWriteOnlyProperty_When_Submitted_Then_OnlyTheReadableOneIsTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new WriteOnlyBody(), new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?Q=lamp"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnObjectWithAPublicField_When_Submitted_Then_TheFieldIsTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new FieldBody(), new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?Q=lamp"));
+        }
+
+        private enum Shade
+        {
+            Dark,
+        }
+
+        private sealed class WriteOnlyBody
+        {
+            public string Q => "lamp";
+
+            public string Sink
+            {
+                set { }
+            }
+        }
+
+        private sealed class FieldBody
+        {
+            public string Q = "lamp";
         }
 
         [Test]
