@@ -256,6 +256,64 @@ namespace Velvet
             };
         }
 
+        // The same transition played `rate` times as fast: every span in seconds divided by it, and the spring's
+        // stiffness and damping multiplied by its square and by it, which replays the spring's trajectory at
+        // that rate with its mass unchanged (pinned by StyleTransitionConfigScaledByTests).
+        internal StyleTransitionConfig ScaledBy(float rate)
+        {
+            if (rate == 1f)
+            {
+                return this;
+            }
+            var timeScale = 1f / rate;
+            return new StyleTransitionConfig
+            {
+                EnterFromClass = EnterFromClass,
+                EnterToClass = EnterToClass,
+                ExitFromClass = ExitFromClass,
+                ExitToClass = ExitToClass,
+                DurationSec = DurationSec * timeScale,
+                Easing = Easing,
+                ExitEasing = ExitEasing,
+                DelaySec = DelaySec * timeScale,
+                PropertyOverrides = ScaleOverrides(PropertyOverrides, timeScale),
+                Layout = Layout?.ScaledBy(rate),
+                StaggerChildrenSec = StaggerChildrenSec * timeScale,
+                DelayChildrenSec = DelayChildrenSec * timeScale,
+                When = When,
+                Type = Type,
+                Stiffness = Stiffness * rate * rate,
+                Damping = Damping * rate,
+                Mass = Mass,
+                BezierX1 = BezierX1,
+                BezierY1 = BezierY1,
+                BezierX2 = BezierX2,
+                BezierY2 = BezierY2,
+                _enterFromClasses = _enterFromClasses,
+                _enterToClasses = _enterToClasses,
+                _exitFromClasses = _exitFromClasses,
+                _exitToClasses = _exitToClasses,
+            };
+        }
+
+        // A null override field stays null, so it keeps falling back to the scaled top-level value.
+        private static IReadOnlyList<StylePropertyTransition>? ScaleOverrides(
+            IReadOnlyList<StylePropertyTransition>? overrides, float timeScale)
+        {
+            if (overrides == null)
+            {
+                return null;
+            }
+            var scaled = new StylePropertyTransition[overrides.Count];
+            for (var i = 0; i < overrides.Count; i++)
+            {
+                var o = overrides[i];
+                scaled[i] = new StylePropertyTransition(o.Property, o.DurationSec * timeScale, o.Easing,
+                    o.DelaySec * timeScale);
+            }
+            return scaled;
+        }
+
         /// <summary>
         /// Builds a new StyleTransitionConfig for a variant `exit` (see
         /// <see cref="Velvet.MotionNode.Exit"/>): copies every timing / spring / per-property-override knob

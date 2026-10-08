@@ -25,20 +25,34 @@ namespace Velvet
         private int _stepIndex;
         private float _elapsedInStepSec;
         private float _currentHoldSec;
+        // The holds of the steps the cursor has left in this pass, so TimeSec reads the timeline position
+        // without re-deriving every earlier hold.
+        private float _timeBeforeStepSec;
         private string? _currentLabel;
+        // _currentTransition is the authored one a later step with no transition of its own inherits;
+        // _playedTransition is that one at the speed in force when the step was arrived at, which is what
+        // ToState hands to the Motion.
         private StyleTransitionConfig? _currentTransition;
+        private StyleTransitionConfig? _playedTransition;
         private bool _isComplete;
+        private bool _isCancelled;
         private int _generation;
         private bool _isArriving;
         private IReadOnlyList<AnimationSequenceStep>? _pendingResetSteps;
 
-        // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is simply never called while
-        // true (the caller gates it), so there is nothing more for this flag to do here.
+        // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play() and by Cancel; Advance is simply never
+        // called while true (the caller gates it), so there is nothing more for this flag to do here.
         public bool IsPaused { get; set; }
 
         public bool IsComplete => _isComplete;
 
         public int StepIndex => _stepIndex;
+
+        public bool IsCancelled => _isCancelled;
+
+        public float Speed { get; private set; } = 1f;
+
+        public float TimeSec => _timeBeforeStepSec + _elapsedInStepSec;
 
         // Bumped on every committed Arrive (a real step transition, including a same-index re-arrival on a
         // single-step loop), independent of StepIndex — a caller diffing StepIndex alone would miss the
@@ -59,6 +73,31 @@ namespace Velvet
             ResetImmediate(steps);
         }
 
+        public void SetSpeed(float speed)
+        {
+            if (!(float.IsFinite(speed) && speed > 0f))
+            {
+                throw new ArgumentOutOfRangeException(nameof(speed), speed,
+                    "A sequence's speed must be finite and greater than zero; Pause stops it.");
+            }
+            Speed = speed;
+        }
+
+        // A pending reentrant Reset is dropped: a Call callback that restarts and then cancels asked for the
+        // cancel last.
+        public void Cancel()
+        {
+            _pendingResetSteps = null;
+            _stepIndex = 0;
+            _elapsedInStepSec = 0f;
+            _timeBeforeStepSec = 0f;
+            _currentLabel = null;
+            _playedTransition = null;
+            _isComplete = false;
+            _isCancelled = true;
+            IsPaused = true;
+        }
+
         // Advances the cursor by dt seconds, committing every step whose hold elapses along the way (a
         // zero-hold Wait/Call chain can cross several steps within one call). Returns the committed step
         // index so the caller can diff it against its own re-render trigger. The iteration count is bounded to
@@ -71,27 +110,37 @@ namespace Velvet
                 return _stepIndex;
             }
 
-            _elapsedInStepSec += dt;
+            _elapsedInStepSec += dt * Speed;
             var guard = _steps.Count + 1;
             while (!_isComplete && _elapsedInStepSec >= _currentHoldSec && guard-- > 0)
             {
                 _elapsedInStepSec -= _currentHoldSec;
+                _timeBeforeStepSec += _currentHoldSec;
                 var next = _stepIndex + 1;
                 if (next >= _steps.Count)
                 {
                     if (!loop)
                     {
                         _isComplete = true;
+                        // A finished sequence reads its full length, not the overshoot past it.
+                        _elapsedInStepSec = 0f;
                         break;
                     }
                     next = 0;
+                    _timeBeforeStepSec = 0f;
                 }
                 ArriveAtStart(next);
+                // A Call callback that cancelled leaves the Call's zero hold and the cursor at step 0, from
+                // which this loop would go on to arrive at step 1.
+                if (_isCancelled)
+                {
+                    break;
+                }
             }
             return _stepIndex;
         }
 
-        public AnimationSequenceState ToState() => new(_currentLabel, _currentTransition, _stepIndex, _isComplete);
+        public AnimationSequenceState ToState() => new(_currentLabel, _playedTransition, _stepIndex, _isComplete);
 
         private void ResetImmediate(IReadOnlyList<AnimationSequenceStep>? steps)
         {
@@ -112,9 +161,12 @@ namespace Velvet
             _stepIndex = 0;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
+            _timeBeforeStepSec = 0f;
             _currentLabel = null;
             _currentTransition = null;
+            _playedTransition = null;
             _isComplete = _steps.Count == 0;
+            _isCancelled = false;
             WarnAboutUnvalidatedToSteps();
             return _isComplete;
         }
@@ -203,6 +255,7 @@ namespace Velvet
                 case AnimationSequenceStepKind.To:
                     _currentLabel = step.Label;
                     _currentTransition = step.Transition ?? _currentTransition ?? StyleTransition.Fade;
+                    _playedTransition = _currentTransition.ScaledBy(Speed);
                     _currentHoldSec = Math.Max(0f, step.HoldSec ?? ResolveHoldFromTransition(_currentTransition));
                     break;
                 case AnimationSequenceStepKind.Wait:

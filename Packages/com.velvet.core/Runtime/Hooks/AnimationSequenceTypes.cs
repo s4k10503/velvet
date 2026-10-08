@@ -114,10 +114,19 @@ namespace Velvet
         }
     }
 
-    /// <summary>Imperative controls for a sequence started by <see cref="Hooks.UseAnimationSequence"/>.</summary>
+    /// <summary>
+    /// Imperative controls for a sequence started by <see cref="Hooks.UseAnimationSequence"/>. They drive the
+    /// sequence's own timeline — its step cursor and clock — and not a <c>V.Motion</c> play already running from a
+    /// step's label: see the motion guide's Timelines section for what each reaches.
+    /// </summary>
     public readonly struct AnimationSequenceControls
     {
-        /// <summary>Resumes advancing (idempotent). Also what <c>autoplay: true</c> starts with on mount.</summary>
+        private readonly SequenceWalker _walker;
+
+        /// <summary>
+        /// Resumes advancing (idempotent). Also what <c>autoplay: true</c> starts with on mount. After
+        /// <see cref="Cancel"/>, starts the sequence again from step 0.
+        /// </summary>
         public Action Play { get; }
 
         /// <summary>Freezes the cursor at its current step — elapsed time stops accumulating toward the next hold.</summary>
@@ -126,11 +135,38 @@ namespace Velvet
         /// <summary>Returns to step 0 and re-commits its effect (firing a <c>Call</c> step 0's callback again). Does not implicitly unpause.</summary>
         public Action Restart { get; }
 
-        internal AnimationSequenceControls(Action play, Action pause, Action restart)
+        /// <summary>
+        /// Stops the sequence and returns its state to how it reads before step 0 commits: the Web Animations API's
+        /// <c>cancel()</c>. The motion guide's Timelines section owns what reseeds it.
+        /// </summary>
+        public Action Cancel { get; }
+
+        /// <summary>
+        /// Sets the rate the sequence's clock runs at — 2 plays it twice as fast — and the rate each <c>To</c> step
+        /// committed afterwards plays its transition at: the Web Animations API's <c>playbackRate</c>. The motion
+        /// guide's Timelines section owns what that does to a transition. Throws
+        /// <see cref="ArgumentOutOfRangeException"/> for a rate that is not finite and greater than zero.
+        /// </summary>
+        public Action<float> SetSpeed { get; }
+
+        /// <summary>The rate <see cref="SetSpeed"/> last set; 1 until it is called. Read live, not per render.</summary>
+        public float Speed => _walker.Speed;
+
+        /// <summary>
+        /// Seconds into the sequence's timeline, counting each step's hold at its authored length whatever the
+        /// speed. Read live, not per render; the motion guide's Timelines section owns the rest.
+        /// </summary>
+        public float TimeSec => _walker.TimeSec;
+
+        internal AnimationSequenceControls(Action play, Action pause, Action restart, Action cancel,
+            Action<float> setSpeed, SequenceWalker walker)
         {
             Play = play;
             Pause = pause;
             Restart = restart;
+            Cancel = cancel;
+            SetSpeed = setSpeed;
+            _walker = walker;
         }
     }
 }

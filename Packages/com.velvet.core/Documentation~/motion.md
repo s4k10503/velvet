@@ -506,6 +506,36 @@ restarts it on every render, so a sequence that plays once per mount passes `Arr
 `useEffect(fn, [])` would. `controls.Restart()` returns to step 0 and re-commits its effect (including
 firing a `Call` step 0's callback again) without implicitly resuming a paused sequence.
 
+`controls` drive the sequence's own timeline -- its step cursor and its clock -- and not a Motion play a
+step's label has already started: `controls.Pause()` freezes the cursor, and the transition the current
+step handed out runs on to its end. Alongside `Play`, `Pause` and `Restart`, the handle carries three of the
+Web Animations API's playback members:
+
+- **`controls.Cancel()`** -- `cancel()`. Stops the sequence and returns `state` to how it reads before
+  step 0 commits: no `CurrentLabel` or `CurrentTransition`, step 0, not complete, and `TimeSec` 0. The
+  clock stops with it, so no step commits and `IsComplete` does not latch until the sequence is reseeded:
+  `controls.Play()` starts it again from step 0, `controls.Restart()` re-commits step 0 and leaves it
+  paused, and a `deps` restart begins it as a mount does. A `Call` step's own callback may cancel, and no
+  step after it runs in that frame.
+- **`controls.SetSpeed(rate)`** and **`controls.Speed`** -- `playbackRate`, Framer Motion's `speed`. The
+  sequence's clock runs at `rate` from the next frame on, without moving `TimeSec`, and each `To` step that
+  commits afterwards hands its Motion its transition at that rate: its duration and delay, its
+  per-property overrides' durations and delays, its `StaggerChildrenSec` and `DelayChildrenSec`, and its
+  `Layout` transition's, divided by `rate`; and a spring's stiffness multiplied by the square of `rate`
+  and its damping by `rate`, which plays the same spring on a faster clock. A Motion play already running
+  keeps the rate it started at. The rate must be finite and greater than zero, and it carries across
+  `Restart`, `Cancel` and a `deps` restart.
+- **`controls.TimeSec`** -- `currentTime`, read-only, and Framer Motion's `time`: seconds into the
+  timeline, counting each hold at its authored length whatever the speed. A loop reads from 0 again on
+  each pass; a completed sequence reads its full length. It is read live from the handle, where `state`
+  is a per-render snapshot.
+
+Seek (a settable `time`, the Web Animations API's `currentTime`) and reverse (`reverse()`, a negative
+`playbackRate`) are not offered. A timeline of labels cannot sample the interpolated motion between two
+of them, and running it backwards across a `Call` step has no settled answer to whether the callback fires
+again, so either would be a jump between labels presented as scrubbing. To reverse a transition a label
+started, flip that Motion's `animate` label back: see "Springs" for what an interrupted spring keeps.
+
 Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
 outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`
 relative-offset DSL) -- steps are a strict FIFO queue; two independently-timed tracks need two separate
