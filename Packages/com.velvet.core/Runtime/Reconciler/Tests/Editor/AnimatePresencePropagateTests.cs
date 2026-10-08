@@ -538,8 +538,7 @@ namespace Velvet.Tests
 
         [TestCase("wrapper")]
         [TestCase("top")]
-        [TestCase("inline")]
-        public void Given_AnInnerKeyNeverSeenBefore_When_ItIsAddedWhileTheOuterChildLeaves_Then_ItIsNotMounted(
+        public void Given_AnInnerKeyNeverSeenBefore_When_ItIsAddedWhileTheOuterChildLeaves_Then_ItMountsAtItsInitialPose(
             string shape)
         {
             // Arrange
@@ -551,11 +550,37 @@ namespace Velvet.Tests
             // Act
             s_innerKeys.Set("xz");
             Drain(mounted);
+
+            // Assert — mounted with its initial pose, not the pose its animate label rests at.
+            var added = Root.Q<VisualElement>("inner-z");
+            Assert.That((added?.ClassListContains("opacity-0"), added?.ClassListContains("opacity-100")),
+                Is.EqualTo((true, false)));
+        }
+
+        [TestCase("wrapper")]
+        [TestCase("top")]
+        public void Given_AnInnerKeyAddedWhileTheOuterChildLeaves_When_ItsExitOutlastsTheOthers_Then_TheOuterChildWaitsForItAndEachCallbackRunsOnce(
+            string shape)
+        {
+            // Arrange — 2s exits: x began its exit at the outer removal, z mounts leaving 160ms later.
+            s_innerDurationSec = 2f;
+            using var mounted = MountSettled(shape);
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            Frames(10);
+            s_innerKeys.Set("xz");
+            Drain(mounted);
+
+            // Act — 2080ms after the outer removal: x's exit is over and z's is not.
+            Frames(120);
+            Drain(mounted);
+            var whileZExits = (HostChildCount, s_innerCompleted, s_outerCompleted);
             Frames(40);
             Drain(mounted);
 
             // Assert
-            Assert.That(Root.Q<VisualElement>("inner-z"), Is.Null);
+            Assert.That((whileZExits, (HostChildCount, s_innerCompleted, s_outerCompleted)),
+                Is.EqualTo(((1, 0, 0), (0, 1, 1))));
         }
 
         [TestCase("wrapper")]

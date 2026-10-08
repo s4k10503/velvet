@@ -128,8 +128,10 @@ completed.
   for a cancelled exit. A child the inner presence removed itself stays exiting.
 - An inner presence that stops propagating, or is no longer rendered, while the enclosing child waits on it stops
   holding that child.
-- While the enclosing child is leaving, the inner presence's children are the ones it already holds. A key added
-  to it in that time is not mounted.
+- A key added to the inner presence while the enclosing child is leaving mounts already leaving, as Framer's
+  `PresenceChild` mounts it with `isPresent=false`: its Motions start at their `initial` pose, with no enter, and
+  play their `exit` from there. The key counts in the enclosing child's wait while the inner presence's exits
+  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have.
 - The inner presence is found wherever it sits under the enclosing child: written inline under elements, rendered
   by a component, at the top of the child, or inside a `V.Portal`, and whether it mounted with the child or in a
   later render of its own component. When it mounts that way, the nearest enclosing child is the one that

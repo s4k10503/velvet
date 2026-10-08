@@ -1805,6 +1805,13 @@ namespace Velvet
             // The slot this presence holds in the enclosing child's exit wait, for as long as it holds one.
             public PresenceRegistration? Registration;
 
+            // The keys of the children the last committing expansion was given, which tells a key added since
+            // from one a finished exit has dropped while the props still list it.
+            public readonly HashSet<string> PropKeys = new();
+
+            // The keys mounted already leaving, whose Motions rest at their initial pose until they return or drop.
+            public readonly HashSet<string> LeavingMounts = new();
+
             // Whether the key is on its way out, not yet dropped: an exit running, or finished and awaiting the
             // render that drops it.
             internal bool IsLeaving(string key) => Exiting.Contains(key) || ExitComplete.Contains(key);
@@ -1860,6 +1867,10 @@ namespace Velvet
         // child's subtree reads as its nearest enclosing presence. Same set/restore discipline as
         // PresenceAnchorMotion, and null outside any presence child's emission.
         internal PresenceChildContext? EnclosingPresenceChild;
+
+        // Whether the keyed child being emitted was mounted already leaving: its Motions rest at their initial pose
+        // and exit from there. Same set/restore discipline as PresenceAnchorMotion.
+        internal bool PresenceMountsLeaving;
 
         internal readonly record struct PresenceChildContext(PresenceBoundaryState State, string Key, bool IsPresent);
 

@@ -1627,9 +1627,9 @@ namespace Velvet
             }
 
             // Every child counts as removed while the enclosing child is leaving, so each takes the ghost path below.
-            var newKeyed = ReadEnclosingPresence(state!, presence, walk.Parent, commit != null)
-                ? _ctx.BufferPool.RentKeyedList()
-                : _factory.BuildKeyedMapCopy(presence.Children);
+            var leaving = ReadEnclosingPresence(state!, presence, walk.Parent, commit != null);
+            var givenKeyed = _factory.BuildKeyedMapCopy(presence.Children);
+            var newKeyed = leaving ? _ctx.BufferPool.RentKeyedList() : givenKeyed;
             var newKeySet = _ctx.BufferPool.RentPresenceKeySet();
             var prevCommitted = _ctx.BufferPool.RentKeyedList();
             var nextCommitted = _ctx.BufferPool.RentKeyedList();
@@ -1685,6 +1685,12 @@ namespace Velvet
                     ExpandPresenceEnterEntry(in pass, key, node);
                 }
 
+                if (commit != null)
+                {
+                    if (leaving && !firstRender) MountNewChildrenLeaving(in pass, givenKeyed);
+                    RecordGivenKeys(state, givenKeyed);
+                }
+
                 // onExitComplete fires once the exiting children are gone. When every removed child
                 // had NO exit animation (all instant-removed above) no PlayExit callback runs to fire it, so fire it
                 // here — but only when no animated exit is still in flight (those fire it when the Exiting set drains).
@@ -1729,12 +1735,60 @@ namespace Velvet
             }
             finally
             {
+                if (!ReferenceEquals(newKeyed, givenKeyed)) _ctx.BufferPool.Return(givenKeyed);
                 _ctx.BufferPool.Return(newKeyed);
                 _ctx.BufferPool.ReturnPresenceKeySet(newKeySet);
                 _ctx.BufferPool.Return(prevCommitted);
                 _ctx.BufferPool.Return(nextCommitted);
                 _ctx.BufferPool.Return(plan);
             }
+        }
+
+        // The keys the expansion was given, kept to tell a key added since the last one.
+        private static void RecordGivenKeys(
+            ReconcilerContext.PresenceBoundaryState state, List<(string key, VNode node)> given)
+        {
+            state.PropKeys.Clear();
+            foreach (var (key, _) in given) state.PropKeys.Add(key);
+        }
+
+        // A key given to this presence since its last expansion, while its enclosing child is leaving, mounts as
+        // Framer's PresenceChild mounts it: not present, so already leaving.
+        private void MountNewChildrenLeaving(in PresenceExpansion pass, List<(string key, VNode node)> given)
+        {
+            foreach (var (key, node) in given)
+            {
+                if (pass.State.PropKeys.Contains(key) || PresenceContainsKey(pass.PrevCommitted, key)) continue;
+                MountChildLeaving(in pass, key, node);
+            }
+        }
+
+        // The child mounts at its initial pose with no enter, and plays its exit from there as a ghost does, so it
+        // counts in the enclosing child's wait while the presence's exits are running. A child that places nothing
+        // is not kept.
+        private void MountChildLeaving(in PresenceExpansion pass, string key, VNode node)
+        {
+            var state = pass.State;
+            var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
+            var site = new PresenceChildSite
+            {
+                Walk = pass.Walk, Position = pass.Position, State = state, Absent = true, SuppressInitial = true,
+                MountsLeaving = true,
+            };
+            var before = SnapshotEmission(pass.Walk);
+            var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement, out _);
+            if (anchor == null)
+            {
+                UndoEmission(pass.Walk, before);
+                return;
+            }
+            state.LeavingMounts.Add(key);
+            if (motionElement != null) state.MotionElements[key] = motionElement;
+            state.ExitAnchors[key] = anchor;
+            state.Exiting.Add(key);
+            pass.NextCommitted.Add((key, node));
+            StartPresenceExit(in pass, key, node, anchor, motionElement, motion);
+            pass.Tally.ExitIndex++;
         }
 
         // Framer's usePresence(propagate): whether the enclosing presence's keyed child this presence sits in is
@@ -1848,7 +1902,11 @@ namespace Velvet
             }
 
             var ghostMotionNode = FiberNodeFactory.FindFirstMotionDescendant(node);
-            var site = new PresenceChildSite { Walk = walk, Position = pass.Position, State = state, Absent = true };
+            var site = new PresenceChildSite
+            {
+                Walk = walk, Position = pass.Position, State = state, Absent = true,
+                MountsLeaving = state.LeavingMounts.Contains(key),
+            };
             // Only a child whose exit is a propagating presence's can place nothing and still be emitted.
             var emissionBefore = commit != null && PropagatingPresenceHoldsChildren(state, key)
                 ? SnapshotEmission(walk)
@@ -2363,6 +2421,7 @@ namespace Velvet
             // gate, so CreateElement can tell this SAME node (which the dispatch below is about to
             // explicitly animate) apart from every OTHER Motion the emission below might create.
             var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
+            state.LeavingMounts.Remove(key);
             var site = LiveEntrySite(in pass, key);
             var anchor = EmitPresenceChildAsAnchor(in site, node, motion, key, out var motionElement,
                 out var anchorEmission);
@@ -2515,6 +2574,7 @@ namespace Velvet
             state.MotionElements.Remove(key);
             state.ChildRoots.Remove(key);
             state.ExitWaits.Remove(key);
+            state.LeavingMounts.Remove(key);
         }
 
         private void CancelInterruptedPresenceExit(
@@ -2927,6 +2987,8 @@ namespace Velvet
             var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
             var previousAnchorEnterDelaySec = _ctx.PresenceAnchorEnterDelaySec;
             var previousEnclosing = _ctx.EnclosingPresenceChild;
+            var previousMountsLeaving = _ctx.PresenceMountsLeaving;
+            _ctx.PresenceMountsLeaving = site.MountsLeaving;
             if (site.State != null && key != null)
             {
                 _ctx.EnclosingPresenceChild = new ReconcilerContext.PresenceChildContext(site.State, key, !site.Absent);
@@ -2957,6 +3019,7 @@ namespace Velvet
                 _ctx.PresenceAnchorEnterHandled = previousAnchorEnterHandled;
                 _ctx.PresenceAnchorCreated = previousAnchorCreated;
                 _ctx.EnclosingPresenceChild = previousEnclosing;
+                _ctx.PresenceMountsLeaving = previousMountsLeaving;
             }
         }
 
@@ -2981,6 +3044,9 @@ namespace Velvet
             // The key is leaving: a presence expanding inside its subtree reads that as its enclosing child
             // not being present.
             internal bool Absent { get; init; }
+
+            // The key was mounted already leaving, so its Motions rest at their initial pose.
+            internal bool MountsLeaving { get; init; }
         }
 
         // Records the top-level elements this emission of key placed as the key's roots. An element an inner

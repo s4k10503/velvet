@@ -6,4 +6,4 @@
   `onExitComplete` runs once, when its own exits finish. A child the inner presence was already exiting is waited
   for rather than exited again, a returning enclosing key brings the inner presence's present children back, and
   a presence between the two that does not propagate stops it. A key added to the inner presence while the
-  enclosing child is leaving is not mounted.
+  enclosing child is leaving mounts already leaving, at its `initial` pose, and plays its `exit`.
