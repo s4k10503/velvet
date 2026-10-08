@@ -200,9 +200,9 @@ namespace Velvet
             // The marker on the OTHER axis is discarded here: the axis is final by now, and a marker that
             // does not name it can never apply.
             var reverse = axis == DivideAxis.Horizontal ? xReverse : yReverse;
-            var important = (axisImportant ? DivideImportance.Width : DivideImportance.None)
+            var importance = (axisImportant ? DivideImportance.Width : DivideImportance.None)
                 | (hasColor && colorImportant ? DivideImportance.Color : DivideImportance.None);
-            spec = new DivideSpec(axis, width, hasColor ? color : null, style, reverse, important);
+            spec = new DivideSpec(axis, width, hasColor ? color : null, style, reverse, importance);
             return true;
         }
 
