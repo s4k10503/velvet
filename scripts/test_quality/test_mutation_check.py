@@ -1752,6 +1752,91 @@ class ForwardingMemberTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [("Probe.Text.get", 7, 7, "default", None)])
 
+    def test_Given_AGenericMethodReturningAGenericType_When_MembersAreRead_Then_ItIsNamedForTheMethod(self):
+        # Arrange — the return type's argument list and the method's both stand in the head, and the
+        # first `<` is the return type's.
+        members = "public List<T> Get<T>(int x) => Inner<T>(x);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Get", 5, 5, "default", None)])
+
+    def test_Given_ATupleTypedPropertyWithAnAccessor_When_MembersAreRead_Then_TheAccessorIsAForward(self):
+        # Arrange — the head holds a parenthesis without being a method's.
+        members = ("public (int, int) Pair\n"
+                   "{\n"
+                   "    get => _core.Pair;\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Pair.get", 7, 7, "default", None)])
+
+    def test_Given_APropertyWithAnAttributeArgument_When_MembersAreRead_Then_TheAccessorIsAForward(self):
+        # Arrange
+        members = ("[Obsolete(Reason)]\n"
+                   "public int Count\n"
+                   "{\n"
+                   "    get => _core.Count;\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Count.get", 8, 8, "default", None)])
+
+    def test_Given_AMethodWithTwoConstraintClauses_When_MembersAreRead_Then_ItsLocalFunctionIsNotAForward(self):
+        # Arrange — `class where` across the two clauses has the spelling of a type's head.
+        members = ("public void Run<T, U>()\n"
+                   "    where T : class\n"
+                   "    where U : struct\n"
+                   "{\n"
+                   "    int Read() => _core.Read();\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ANestedType_When_MembersAreRead_Then_ItIsNamedUnderItsOuterType(self):
+        # Arrange
+        members = ("internal sealed class Inner\n"
+                   "{\n"
+                   "    public short Version => _core.Version;\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Inner.Version", 7, 7, "default", None)])
+
+    def test_Given_TypesOfOneNameDifferingInArity_When_PairsAreRead_Then_TheMemberIsPaired(self):
+        # Arrange — a runner without a result beside one with a result.
+        text = textwrap.dedent("""\
+            internal sealed class Method<TStateMachine>
+            {
+                public short Version => _core.Version;
+            }
+            internal sealed class Method<TStateMachine, T>
+            {
+                public short Version => _core.Version;
+            }
+            """)
+
+        # Act
+        paired = mutation_check.paired_forwards(mutation_check.forwarding_members(text))
+
+        # Assert
+        self.assertEqual(paired, {("Method", "Version")})
+
     def test_Given_AGenericAndANonGenericTypeForwardingOneMember_When_PairsAreRead_Then_TheMemberIsPaired(self):
         # Arrange
         text = textwrap.dedent("""\
@@ -1879,6 +1964,40 @@ class ForwarderCensusTests(unittest.TestCase):
         self.assertEqual(rows[0], "\t".join(("Packages/com.velvet.core/Runtime/Probe.cs:5-5",
                                              "Source.GetStatus", "member", "paired", "default", "0",
                                              "0")))
+
+    def test_Given_AFileNamedRelativeToTheProject_When_TheCensusRunsElsewhere_Then_ItReadsThatFile(self):
+        # Arrange
+        census = self.load_census()
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Probe
+                {
+                    public short Version => _core.Version;
+                }
+            }
+            """))
+        spoken = io.StringIO()
+
+        # Act
+        with contextlib.redirect_stdout(spoken):
+            census.main(["--project", str(campaign.project), StubbedCampaign.SOURCE])
+
+        # Assert
+        self.assertIn("\tProbe.Version\t", spoken.getvalue())
+
+    def test_Given_ANamedFileThatIsMissing_When_TheCensusRuns_Then_ItExitsNonZero(self):
+        # Arrange — an empty census would otherwise read as a file holding no forwarding member.
+        census = self.load_census()
+        campaign = StubbedCampaign()
+
+        # Act
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = census.main(["--project", str(campaign.project),
+                                "Packages/com.velvet.core/Runtime/Nope.cs"])
+
+        # Assert
+        self.assertNotEqual(code, 0)
 
 
 class GenerationHealthTests(unittest.TestCase):

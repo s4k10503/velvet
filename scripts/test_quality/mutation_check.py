@@ -1524,8 +1524,9 @@ def sha(path):
 # Forwarding members
 # --------------------------------------------------------------------------------------------------
 
-# A member whose expression body is one identifier chain, with at most one argument list of plain
-# identifier chains closing it: `public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);`.
+# A member whose expression body is one identifier chain, optionally followed by a type argument list,
+# with at most one argument list closing it whose arguments are identifier chains, each optionally
+# behind `ref`, `out` or `in`: `public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);`.
 # A literal or a keyword in the body is something the body decides rather than forwards, so either
 # takes a member out. `ForwardedBodyReachTests` fails the day an operator emits inside one of the
 # package's.
@@ -1544,11 +1545,11 @@ RESERVED_WORDS = frozenset("""
     string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual
     void volatile while await nameof""".split())
 ARGUMENT_MODIFIER = re.compile(r"(?:^|(?<=[(,]))\s*(?:ref|out|in)\s+")
-TYPE_HEAD = re.compile(r"\b(?:class|struct|interface|record)\s+([A-Za-z_]\w*)\s*(<)?")
+TYPE_HEAD = re.compile(r"\b(?:class|struct|interface|record)\s+([A-Za-z_]\w*)\s*(<[^{]*)?")
 MEMBER_MODIFIERS = re.compile(r"\b(?:public|private|protected|internal|static|virtual|override|"
                               r"abstract|sealed|new|extern|unsafe|readonly|partial|async|required|file)\b")
 ACCESSOR_HEAD = re.compile(r"^(?:(?:private|protected|internal|readonly)\s+)*(get|set|init|add|remove)$")
-MEMBER_NAME = re.compile(r"((?:[A-Za-z_]\w*(?:\s*<[^()]*?>)?\s*\.\s*)*[A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*$")
+IDENTIFIER_AT_END = re.compile(r"[A-Za-z_]\w*$")
 CONSTRUCTOR_INITIALIZER = re.compile(r"\)\s*:\s*(?:base|this)\b")
 CONSTRAINT_CLAUSE = re.compile(r"\)\s*where\b")
 # The two cuts `forwarder_census.py` proposes: an empty body where nothing is returned, the returned
@@ -1561,10 +1562,9 @@ class Forwarder:
     """One forwarding member: its lines, the offsets of its forwarded body, and the cut the census
     proposes for it, or why it proposes none."""
 
-    def __init__(self, type_name, generic, member, accessor, first, last, arrow, body, end, cut,
-                 declined):
-        self.type_name = type_name
-        self.generic = generic
+    def __init__(self, owner, member, accessor, first, last, arrow, body, end, cut, declined):
+        # ((name, arity), ...) from the outermost type in.
+        self.owner = owner
         self.member = member
         self.accessor = accessor
         self.first = first
@@ -1576,8 +1576,15 @@ class Forwarder:
         self.declined = declined
 
     @property
+    def type_name(self):
+        """The enclosing types' names without their arities, which is what an arity twin shares."""
+        return ".".join(name for name, _ in self.owner)
+
+    @property
     def name(self):
-        return "{}{}.{}".format(self.type_name, "<>" if self.generic else "", self.member)
+        return "{}.{}".format(".".join(
+            name + ("<{}>".format("," * (arity - 1)) if arity else "") for name, arity in self.owner),
+            self.member)
 
 
 def without_attributes(head):
@@ -1620,6 +1627,58 @@ def matching_opener(text, close):
     return 0
 
 
+def without_type_arguments(text):
+    """`text` with a balanced type argument list at its end taken off, and the offset it ended at."""
+    text = text.rstrip()
+    if not text.endswith(">"):
+        return text
+    depth = 0
+    for index in range(len(text) - 1, -1, -1):
+        depth += text[index] == ">"
+        depth -= text[index] == "<"
+        if depth == 0:
+            return text[:index].rstrip()
+    return text
+
+
+def member_name(prefix):
+    """(name, offset it starts at) of the member a head's prefix ends on, or None.
+
+    Read from the end, so a return type's own type arguments are not taken for the member's, and an
+    explicit interface's qualifier stays on the name.
+    """
+    rest = without_type_arguments(prefix)
+    found = IDENTIFIER_AT_END.search(rest)
+    if not found:
+        return None
+    start, name = found.start(), found.group(0)
+    while rest[:start].rstrip().endswith("."):
+        qualifier = without_type_arguments(rest[:start].rstrip()[:-1])
+        outer = IDENTIFIER_AT_END.search(qualifier)
+        if not outer:
+            break
+        name = re.sub(r"\s+", "", rest[outer.start():start]) + name
+        start = outer.start()
+    return name, start
+
+
+def type_arity(arguments):
+    """How many type parameters a `<...>` list declares; 0 for none."""
+    if not arguments:
+        return 0
+    depth, count = 0, 1
+    for char in arguments:
+        if char == "<":
+            depth += 1
+        elif char == ">":
+            depth -= 1
+            if depth == 0:
+                return count
+        elif char == "," and depth == 1:
+            count += 1
+    return count
+
+
 def member_reading(head):
     """(member name, cut, declined) for a head standing directly in a type's braces, or None where the
     head is not a member's -- a field whose initializer holds a lambda reaches `=>` through an `=`."""
@@ -1643,11 +1702,11 @@ def member_reading(head):
         declined = None
     if re.search(r"\boperator\b", prefix):
         return "operator " + prefix.split("operator", 1)[1].strip(), DEFAULT_VALUE, declined
-    named = MEMBER_NAME.search(prefix)
+    named = member_name(prefix)
     if not named:
         return None
-    member = "this[]" if parameters.startswith("[") else re.sub(r"\s+", "", named.group(1))
-    returned = MEMBER_MODIFIERS.sub(" ", prefix[:named.start()]).strip()
+    member = "this[]" if parameters.startswith("[") else named[0]
+    returned = MEMBER_MODIFIERS.sub(" ", prefix[:named[1]]).strip()
     # A constructor and a finalizer return nothing, as a `void` member does.
     return member, EMPTY_BODY if returned in ("", "~", "void") else DEFAULT_VALUE, declined
 
@@ -1675,7 +1734,8 @@ def forwards_only(body):
 
 def forwarding_members(text):
     """The forwarding members of a source: methods, properties, operators, constructors and indexers
-    standing directly in a type's braces, and the accessors of a property standing there.
+    standing directly in a type's braces, and the accessors of a property, an indexer or an event
+    standing there.
 
     What stands inside any other brace -- a method body, a lambda, an initializer -- is not read,
     since a local function or a lambda is no member of the type.
@@ -1689,11 +1749,12 @@ def forwarding_members(text):
         char = code[index]
         if char == "{":
             head = code[boundary:index]
-            typed = TYPE_HEAD.search(head)
+            typed = type_head(head)
             inside_type = bool(braces) and braces[-1][0] == "type"
             if typed:
-                braces.append(("type", typed.group(1), bool(typed.group(2))))
-            elif inside_type and "(" not in head and not re.search(r"\b(?:enum|namespace)\b", head):
+                outer = braces[-1][1] if inside_type else ()
+                braces.append(("type", outer + ((typed.group(1), type_arity(typed.group(2))),)))
+            elif inside_type and property_head(head):
                 braces.append(("property", head, braces[-1]))
             else:
                 braces.append(("other",))
@@ -1718,6 +1779,28 @@ def forwarding_members(text):
     return found
 
 
+def type_head(head):
+    """TYPE_HEAD's match where `head` declares a type, or None.
+
+    Taken only ahead of any parenthesis, since a method's constraint clause -- `where T : class` --
+    holds the same words behind its parameters.
+    """
+    head = without_attributes(head)
+    typed = TYPE_HEAD.search(head)
+    return typed if typed and "(" not in head[:typed.start()] else None
+
+
+def property_head(head):
+    """Whether a brace standing in a type's braces opens a property's, an indexer's or an event's
+    accessors: a head that does not end on a parameter list, once its constraint clause and its
+    constructor initializer are cut off."""
+    head = without_attributes(head)
+    if not head or re.search(r"\b(?:enum|namespace)\b", head):
+        return False
+    tail = CONSTRUCTOR_INITIALIZER.search(head) or CONSTRAINT_CLAUSE.search(head)
+    return not (head[:tail.start() + 1] if tail else head).endswith(")")
+
+
 def read_forwarder(code, starts, enclosing, boundary, arrow, end):
     head = code[boundary:arrow]
     body = code[arrow + 2:end]
@@ -1737,7 +1820,7 @@ def read_forwarder(code, starts, enclosing, boundary, arrow, end):
         cut = DEFAULT_VALUE if accessor.group(1) == "get" else EMPTY_BODY
     first = boundary + len(head) - len(head.lstrip())
     lead = len(body) - len(body.lstrip())
-    return Forwarder(owner[1], owner[2], member, bool(accessor),
+    return Forwarder(owner[1], member, bool(accessor),
                      bisect.bisect_right(starts, first), bisect.bisect_right(starts, end), arrow,
                      (arrow + 2 + lead, arrow + 2 + len(body.rstrip())), end,
                      None if declined else cut, declined)
@@ -1752,11 +1835,12 @@ def inside_forwarded_bodies(text, forwarders, mutants):
 
 
 def paired_forwards(forwarders):
-    """The (type, member) keys a generic and a non-generic type of one name both forward."""
+    """The (type, member) keys that types of one name and different arities both forward."""
     arities = {}
     for forwarder in forwarders:
-        arities.setdefault((forwarder.type_name, forwarder.member), set()).add(forwarder.generic)
-    return {key for key, generic in arities.items() if generic == {True, False}}
+        arities.setdefault((forwarder.type_name, forwarder.member), set()).add(
+            tuple(arity for _, arity in forwarder.owner))
+    return {key for key, owners in arities.items() if len(owners) > 1}
 
 
 def unmeasured_forwards(targets, mutants):

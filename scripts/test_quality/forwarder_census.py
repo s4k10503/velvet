@@ -4,7 +4,7 @@
 A forwarding member hands its arguments to another member and does nothing else, and a campaign
 writes no mutant inside one, so whether a test notices it forwarding to nothing is asked by no
 campaign; a cut asks it. This is the inventory a sweep of those cuts starts from: each row names a
-member, its lines, whether a generic and a non-generic type of one name both declare it, and the cut
+member, its lines, whether types of one name and different arities both declare it, and the cut
 that replaces what it forwards. What a member is, and what each cut is, is
 `mutation_check.forwarding_members`' reading, so the inventory and a campaign's reach agree on it.
 
@@ -26,11 +26,20 @@ import mutation_check  # noqa: E402
 
 
 def sources(project, names):
-    if names:
-        return [path for path in (Path(name).resolve() for name in names)
-                if mutation_check.mutable(path, project)]
-    return [path for path in sorted((project / mutation_check.PACKAGE).rglob("*.cs"))
-            if mutation_check.mutable(path, project)]
+    """(the sources to read, the named ones refused and why). A name is read against `project`."""
+    if not names:
+        return [path for path in sorted((project / mutation_check.PACKAGE).rglob("*.cs"))
+                if mutation_check.mutable(path, project)], []
+    chosen, refused = [], []
+    for name in names:
+        path = (project / name).resolve()
+        if not path.is_file():
+            refused.append("{}: no such file under {}".format(name, project))
+        elif not mutation_check.mutable(path, project):
+            refused.append("{}: not a mutable package source".format(name))
+        else:
+            chosen.append(path)
+    return chosen, refused
 
 
 def census(project, paths):
@@ -63,7 +72,7 @@ def render(project, rows, paired_only):
              or (row[1].type_name, row[1].member) in paired]
     members = [row for row in shown if not row[1].accessor]
     lines.append("{} member(s) and {} accessor(s) in {} file(s); {} with a mutant on their lines, "
-                 "{} mutant(s) inside a forwarded body; {} in a generic/non-generic pair".format(
+                 "{} mutant(s) inside a forwarded body; {} in an arity pair".format(
                      len(members), len(shown) - len(members), len({row[0] for row in shown}),
                      sum(1 for row in shown if row[2]), sum(row[3] for row in shown),
                      sum(1 for row in shown if (row[1].type_name, row[1].member) in paired)))
@@ -75,17 +84,24 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--project", default=".", help="Unity project root (default: cwd)")
     parser.add_argument("--paired", action="store_true",
-                        help="only the members a generic and a non-generic type of one name both declare")
-    parser.add_argument("files", nargs="*", help="sources to read; default is every mutable one")
+                        help="only the members that types of one name and different arities both "
+                             "declare, among the sources read -- so naming files pairs within them")
+    parser.add_argument("files", nargs="*",
+                        help="sources to read, relative to --project; default is every mutable one")
     args = parser.parse_args(argv)
     project = Path(args.project).resolve()
+    paths, refused = sources(project, args.files)
+    for reason in refused:
+        print("error: {}".format(reason), file=sys.stderr)
+    if refused:
+        return 2
     head = subprocess.run(["git", "-C", str(project), "rev-parse", "HEAD"],
                           capture_output=True, text=True).stdout.strip() or "(no commit)"
     dirty = subprocess.run(["git", "-C", str(project), "status", "--porcelain", "--",
                             mutation_check.PACKAGE], capture_output=True, text=True).stdout.strip()
     print("# {}{}".format(head, " with uncommitted changes to the package" if dirty else ""))
     print("# path:lines\tmember\tkind\tpair\tcut\tmutants on its lines\tmutants inside its body")
-    for line in render(project, census(project, sources(project, args.files)), args.paired):
+    for line in render(project, census(project, paths), args.paired):
         print(line)
     return 0
 
