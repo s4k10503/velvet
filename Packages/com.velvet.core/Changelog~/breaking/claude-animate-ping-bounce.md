@@ -4,7 +4,7 @@
   keyframes it leaves unnamed. `opacity-75 animate-pulse` runs between 0.75 and 0.5 rather than between 1
   and 0.5, and `rotate-45 animate-spin` turns on from 45 degrees rather than from 0. The own value is the
   element's class value, a named one or an arbitrary one, re-read when its class list, its pointer, focus or
-  press state, the theme or an ancestor's classes change; an element with no opacity or rotation class runs as
+  press state, enabled state, the theme or an ancestor's classes change; an element with no opacity or rotation class runs as
   before. A Motion `Spring` or `Bezier` frame in a slot the play drives is still written over rather than taken
   for the element's own. `animate-spin` on an element with an uneven `scale` turns the squash axes with the
   element, where CSS leaves them.

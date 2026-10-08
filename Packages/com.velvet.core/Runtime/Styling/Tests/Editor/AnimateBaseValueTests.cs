@@ -446,15 +446,15 @@ namespace Velvet.Tests
             }
         }
 
-        // The hover pseudo-state, set the way the panel does when the pointer is over the element but without the
-        // pointer events, so that a case chooses which signal reaches the loop.
-        private static void SetHover(VisualElement element, bool on)
+        // A pseudo-state, set the way the panel does when the pointer is over the element but without the pointer
+        // events, so that a case chooses which signal reaches the loop.
+        private static void SetPseudo(VisualElement element, string state, bool on)
         {
             var property = typeof(VisualElement).GetProperty("pseudoStates",
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
-            var hover = Convert.ToInt32(Enum.Parse(property.PropertyType, "Hover"));
+            var flag = Convert.ToInt32(Enum.Parse(property.PropertyType, state));
             var current = Convert.ToInt32(property.GetValue(element));
-            property.SetValue(element, Enum.ToObject(property.PropertyType, on ? current | hover : current & ~hover));
+            property.SetValue(element, Enum.ToObject(property.PropertyType, on ? current | flag : current & ~flag));
         }
 
         // A card whose scale a bundled rule sets under :hover, with a ping attached and warm.
@@ -477,7 +477,7 @@ namespace Velvet.Tests
         {
             // Arrange — the rule matches by pseudo-state, so the element's class list does not change.
             var (card, binding) = MountHoverCardUnder("a");
-            SetHover(card, true);
+            SetPseudo(card, "Hover", true);
             ForcePanelUpdate(_window.rootVisualElement.panel);
             using (var over = PointerOverEvent.GetPooled())
             {
@@ -496,7 +496,7 @@ namespace Velvet.Tests
         {
             // Arrange — the pointer is over the card with no event delivered, and the signal is the ancestor's patch.
             var (card, binding) = MountHoverCardUnder("a");
-            SetHover(card, true);
+            SetPseudo(card, "Hover", true);
             ForcePanelUpdate(_window.rootVisualElement.panel);
             VNode Tree(string outer) => V.Div(name: "outer", className: outer, children: new VNode[]
             {
@@ -516,7 +516,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var (card, binding) = MountHoverCardUnder("a");
-            SetHover(card, true);
+            SetPseudo(card, "Hover", true);
             ForcePanelUpdate(_window.rootVisualElement.panel);
             VelvetTheme.IsDark = true;
 
@@ -525,6 +525,81 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(card.style.scale.value.value.x, Is.EqualTo(1.05f).Within(1e-4f));
+        }
+
+        private const string FocusRuleSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateFocusRule.uss";
+
+        // A card carrying className with a ping attached and warm.
+        private (VisualElement card, StyleAnimateBinding binding) MountRuleCard(string className)
+        {
+            var sheet = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(FocusRuleSheet);
+            _window.rootVisualElement.styleSheets.Add(sheet);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card", className: className));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            _attachedTo = card;
+            _attached = StyleAnimateDriver.Attach(card, new AnimateSpec(AnimateMode.Ping, 1f), panVertical: false);
+            StyleAnimateDriver.ApplyFrame(card, _attached, 0f);
+            return (card, _attached);
+        }
+
+        private static void Fire<TEvent>(VisualElement element) where TEvent : EventBase<TEvent>, new()
+        {
+            using var evt = EventBase<TEvent>.GetPooled();
+            element.SimulateEvent(evt);
+        }
+
+        [Test]
+        public void Given_APingOverAFocusRule_When_AFocusEventReachesTheElement_Then_ItStartsFromTheFocusedScale()
+        {
+            // Arrange — the rule matches by pseudo-state, so the class list does not change.
+            var (card, binding) = MountRuleCard("w-[40px] h-[40px] bg-red-500 focus-scale-110");
+            SetPseudo(card, "Focus", true);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            Fire<FocusInEvent>(card);
+
+            // Act
+            StyleAnimateDriver.ApplyFrame(card, binding, 0f);
+
+            // Assert
+            Assert.That(card.style.scale.value.value.x, Is.EqualTo(1.1f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_APingOverAnActiveRule_When_APressEventReachesTheElement_Then_ItStartsFromThePressedScale()
+        {
+            // Arrange
+            var (card, binding) = MountRuleCard("w-[40px] h-[40px] bg-red-500 active-scale-95");
+            SetPseudo(card, "Active", true);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            Fire<PointerDownEvent>(card);
+
+            // Act
+            StyleAnimateDriver.ApplyFrame(card, binding, 0f);
+
+            // Assert
+            Assert.That(card.style.scale.value.value.x, Is.EqualTo(0.95f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_APulseOverADisabledRule_When_TheEnabledPropChangesInARender_Then_ItStartsFromTheDisabledOpacity()
+        {
+            // Arrange
+            const string classes = "w-[40px] h-[40px] bg-red-500 disabled-opacity-50 animate-pulse";
+            VNode Button(bool enabled) => V.Button(name: "card", className: classes, enabled: enabled);
+            _mounted = V.Mount(_window.rootVisualElement, Button(true));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            _mounted.Root.Reconciler.Context.AnimationBindings.TryGetValue(card, out var binding);
+            StyleAnimateDriver.ApplyFrame(card, binding, 0f);
+            _mounted.Root.Reconciler.Reconcile(_window.rootVisualElement, new[] { Button(true) }, new[] { Button(false) });
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Act
+            StyleAnimateDriver.ApplyFrame(card, binding, 0f);
+
+            // Assert
+            Assert.That(card.style.opacity.value, Is.EqualTo(0.5f).Within(1e-5f));
         }
     }
 }

@@ -449,8 +449,9 @@ from 45 degrees, `scale-50 animate-ping` starts at half size and grows to full s
 the slot, a named class or an arbitrary one, or a value written into the slot by anything other than the loop or a
 Motion play driving that slot. Class values are re-read whenever the element's class list changes, which is how
 `hover:` and `dark:` variants reach them, and when something else that decides which rules match the element
-changes: a pointer, focus or press event on it or beneath it, a theme switch, or a class change on an ancestor made
-through a render. A bounce is measured in the element's own pixels, so it moves nothing until the element has
+changes: a pointer, focus or press event on it or beneath it, a theme switch, a change to its `enabled` prop or an
+ancestor's, or a class change on an ancestor made through a render. A class added to an ancestor imperatively, and
+an enabled state set with `SetEnabled` outside the prop, are not seen until the next of those. A bounce is measured in the element's own pixels, so it moves nothing until the element has
 a laid-out height. The keyframes' `transform` applies beneath the `scale` and `rotate` properties, so a bounce on a
 scaled or turned element is scaled and turned with it. `animate-spin` on an element with an uneven `scale` does
 not carry it: CSS turns the content beneath the scale and leaves the squash axes where they are,

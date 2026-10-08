@@ -28,7 +28,11 @@ namespace Velvet
             => element.tooltip = tooltip ?? string.Empty;
 
         public static void ApplyEnabled(VisualElement element, bool? enabled)
-            => element.SetEnabled(enabled ?? true);
+        {
+            element.SetEnabled(enabled ?? true);
+            // :disabled matches the element and everything beneath it, with no class change on any of them.
+            StyleAnimateDriver.NotifySubtreeStyleChanged(element);
+        }
 
         // Hiding writes the same `hidden` utility an author could write, so it goes through the class
         // projection rather than straight onto the class list — outside it, a `md:flex` payload and this prop
