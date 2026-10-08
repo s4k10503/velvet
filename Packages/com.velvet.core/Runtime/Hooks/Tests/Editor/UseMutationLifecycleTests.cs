@@ -458,15 +458,32 @@ namespace Velvet.Tests
         // The handle's status and variables are read when the entry is written, which is what a callback
         // reading the handle would see at that point.
         private static void Record(string kind, int data, Exception? error, int variables, string? context) =>
-            s_log.Add(new Entry(kind, data, error?.Message ?? None, error is OperationCanceledException, variables,
-                context ?? None, s_captured?.Status ?? MutationStatus.Idle, s_captured?.Variables ?? 0));
+            s_log.Add(new Entry
+            {
+                Kind = kind,
+                Data = data,
+                Error = error?.Message ?? None,
+                Cancelled = error is OperationCanceledException,
+                Variables = variables,
+                Context = context ?? None,
+                Status = s_captured?.Status ?? MutationStatus.Idle,
+                HandleVariables = s_captured?.Variables ?? 0,
+            });
 
         private static string Read(Func<Entry, bool> which, Func<Entry, string> projection) =>
             string.Join(",", s_log.Where(which).Select(projection));
 
-        private sealed record Entry(
-            string Kind, int Data, string Error, bool Cancelled, int Variables, string Context, MutationStatus Status,
-            int HandleVariables);
+        private sealed record Entry
+        {
+            public string Kind { get; init; } = None;
+            public int Data { get; init; }
+            public string Error { get; init; } = None;
+            public bool Cancelled { get; init; }
+            public int Variables { get; init; }
+            public string Context { get; init; } = None;
+            public MutationStatus Status { get; init; }
+            public int HandleVariables { get; init; }
+        }
 
         private static readonly List<Entry> s_log = new();
 
