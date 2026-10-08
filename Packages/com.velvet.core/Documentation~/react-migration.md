@@ -97,7 +97,7 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 
 | React Query | Velvet |
 |-------------|--------|
-| `useMutation({ mutationFn, onSuccess, onError, onSettled })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData>(MutationFn: ..., OnSuccess: ..., OnError: ..., OnSettled: ...))` |
+| `useMutation({ mutationFn, onSuccess, onError, onSettled })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData>(MutationFn: ..., OnSuccess: ..., OnError: ...) { OnSettled = ... })` |
 | `useMutation({ mutationFn, onMutate, onSuccess, onError, onSettled })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData, TContext>(MutationFn: ..., OnMutate: ..., OnSuccess: ..., OnError: ..., OnSettled: ...))` |
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
@@ -110,26 +110,41 @@ with the call's `Variables`, before `MutationFn` — and what it returns is the 
 failure. That is v5's order, and with it v5's optimistic-update recipe: snapshot and write the
 optimistic value in `OnMutate`, roll it back from the context in `OnError`, finish in `OnSettled`.
 Each call's context is its own, so overlapping calls never see each other's. The context-free option
-records carry `OnSettled` too; `OnMutate` and the context are only on
-`MutationOptions<TVariables, TData, TContext>`. A void mutation takes `Unit` as `TData` there.
+records carry `OnSettled` too, as an init-only property set in an object initializer; `OnMutate` and the
+context are only on `MutationOptions<TVariables, TData, TContext>`, which has no void form: a void
+mutation takes `Unit` as `TData` there and returns `Unit.Default`.
 
 ```csharp
+// Loadout is a class, so a context OnMutate never returned arrives as null.
 var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
-    MutationFn: (item, ct) => inventoryApi.EquipAsync(item, ct),
+    MutationFn: async (item, ct) =>
+    {
+        await inventoryApi.EquipAsync(item, ct);    // a VelvetTask
+        return Unit.Default;
+    },
     OnMutate: item =>
     {
         var previous = inventory.Current.Loadout;   // snapshot
         inventory.Equip(item);                      // optimistic write through a Store action
         return previous;
     },
-    OnError: (_, _, previous) => inventory.RestoreLoadout(previous),
+    OnError: (_, _, previous) =>
+    {
+        if (previous != null) inventory.RestoreLoadout(previous);   // null when OnMutate threw
+    },
     OnSettled: (_, _, _, _) => setBusy.Invoke(false)));
 ```
 
-Where this deviates from v5: `OnMutate` returns the context itself where v5 awaits a returned promise, as every
-callback here is synchronous; and no later callback runs for a call whose component unmounted while it was in
-flight — `OnError` and `OnSettled` included, so a rollback written there does not happen — where v5's
-mutation outlives its observer and runs them.
+**Unmounting.** The callbacks of a call in flight still run after its component unmounts, as v5's
+option callbacks outlive the observer; only the handle is no longer written and the component no longer
+re-rendered. Unlike v5, which never cancels, Velvet cancels the call's `CancellationToken` on unmount. A
+`MutationFn` that honours it ends in the `OperationCanceledException`, which `OnError` and then
+`OnSettled` receive with the call's context, so a write `OnMutate` made is rolled back; `MutateAsync`
+then completes with default data rather than rejecting. One that ignores it completes as usual and runs
+`OnSuccess` or `OnError`, then `OnSettled`.
+
+`OnMutate` returns the context itself where v5 awaits a returned promise, as every callback here is
+synchronous.
 
 **Concurrent calls.** Calling `Mutate` twice starts two runs, neither cancels the other, each
 delivers its own callbacks with its own context, and `Status` / `Data` / `Error` / `Variables` are one
@@ -139,8 +154,8 @@ shows the previous one's result. Not cancelling on re-entry, following the newes
 `Data` when a call starts are all v5's behaviour.
 
 The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
-only its variables. It is cancelled when the component unmounts, which is what a Unity web request
-wants, and it is never cancelled by a later call.
+only its variables. It is cancelled when the component unmounts (see **Unmounting** above), which is what
+a Unity web request wants, and it is never cancelled by a later call.
 
 **`Reset`.** Puts the handle back to `Idle` and abandons whatever is in flight, as v5's `reset()`
 detaches the observer from the mutation. The abandoned call is not cancelled: it runs to completion

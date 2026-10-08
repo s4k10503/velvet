@@ -22,16 +22,20 @@ namespace Velvet
     /// <summary>
     /// Options passed to <see cref="Hooks.UseMutation{TVariables, TData}"/>. The <see cref="MutationFn"/>
     /// is the async function invoked by <see cref="MutationResult{TVariables, TData}.Mutate"/> /
-    /// <see cref="MutationResult{TVariables, TData}.MutateAsync"/>. <see cref="OnSettled"/> runs after
-    /// <see cref="OnSuccess"/> or <see cref="OnError"/>, with the data on success and the exception on failure.
-    /// For a value carried from before the call to its callbacks, use
-    /// <see cref="MutationOptions{TVariables, TData, TContext}"/>.
+    /// <see cref="MutationResult{TVariables, TData}.MutateAsync"/>. For a value carried from before the call to
+    /// its callbacks, use <see cref="MutationOptions{TVariables, TData, TContext}"/>.
     /// </summary>
     public sealed record MutationOptions<TVariables, TData>(
         Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn,
         Action<TData, TVariables>? OnSuccess = null,
-        Action<Exception, TVariables>? OnError = null,
-        Action<TData?, Exception?, TVariables>? OnSettled = null);
+        Action<Exception, TVariables>? OnError = null)
+    {
+        /// <summary>
+        /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the data and a null exception on
+        /// success and default data and the exception on failure.
+        /// </summary>
+        public Action<TData?, Exception?, TVariables>? OnSettled { get; init; }
+    }
 
     /// <summary>
     /// Options passed to <see cref="Hooks.UseMutation{TVariables, TData, TContext}"/>: TanStack Query's
@@ -51,25 +55,34 @@ namespace Velvet
     /// <summary>
     /// Options for a void mutation that takes <typeparamref name="TVariables"/> input but returns no data.
     /// Use this overload when the mutation is fire-and-forget (typical for Store actions that update state internally).
-    /// <see cref="OnSettled"/> runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on
-    /// failure and null on success.
     /// </summary>
     public sealed record MutationOptions<TVariables>(
         Func<TVariables, CancellationToken, VelvetTask> MutationFn,
         Action<TVariables>? OnSuccess = null,
-        Action<Exception, TVariables>? OnError = null,
-        Action<Exception?, TVariables>? OnSettled = null);
+        Action<Exception, TVariables>? OnError = null)
+    {
+        /// <summary>
+        /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on failure and null on
+        /// success.
+        /// </summary>
+        public Action<Exception?, TVariables>? OnSettled { get; init; }
+    }
 
     /// <summary>
     /// Options for a void mutation that takes no input and returns no data. Common for "save current state" /
-    /// "logout" / "reset" actions where everything is captured in closure. <see cref="OnSettled"/> runs after
-    /// <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on failure and null on success.
+    /// "logout" / "reset" actions where everything is captured in closure.
     /// </summary>
     public sealed record MutationOptions(
         Func<CancellationToken, VelvetTask> MutationFn,
         Action? OnSuccess = null,
-        Action<Exception>? OnError = null,
-        Action<Exception?>? OnSettled = null);
+        Action<Exception>? OnError = null)
+    {
+        /// <summary>
+        /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on failure and null on
+        /// success.
+        /// </summary>
+        public Action<Exception?>? OnSettled { get; init; }
+    }
 
     /// <summary>
     /// Mutation handle returned by <see cref="Hooks.UseMutation{TVariables, TData}"/>. Exposes

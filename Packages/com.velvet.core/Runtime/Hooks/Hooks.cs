@@ -2007,8 +2007,10 @@ namespace Velvet
                     return Unit.Default;
                 },
                 OnSuccess: options.OnSuccess is { } onSuccess ? (_, v) => onSuccess(v) : null,
-                OnError: options.OnError,
-                OnSettled: options.OnSettled is { } onSettled ? (_, ex, v) => onSettled(ex, v) : null));
+                OnError: options.OnError)
+            {
+                OnSettled = options.OnSettled is { } onSettled ? (_, ex, v) => onSettled(ex, v) : null,
+            });
         }
 
         /// <summary>
@@ -2026,8 +2028,10 @@ namespace Velvet
                     return Unit.Default;
                 },
                 OnSuccess: options.OnSuccess is { } onSuccess ? (_, _) => onSuccess() : null,
-                OnError: options.OnError is { } onError ? (ex, _) => onError(ex) : null,
-                OnSettled: options.OnSettled is { } onSettled ? (_, ex, _) => onSettled(ex) : null));
+                OnError: options.OnError is { } onError ? (ex, _) => onError(ex) : null)
+            {
+                OnSettled = options.OnSettled is { } onSettled ? (_, ex, _) => onSettled(ex) : null,
+            });
         }
 
         private static ComponentFiber NextMutationSlot(out int index, out HookMutationSlot? existing)
@@ -2088,7 +2092,6 @@ namespace Velvet
                 // as this call's pending one, and a throw from it fails the call before MutationFn is reached.
                 context = slot.InvokeOnMutate(variables);
                 var data = await slot.InvokeMutationFn(variables, cts.Token);
-                if (fiber.IsDisposed) return data;
                 // The handlers run before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess and OnSettled read is the handle as it stands rather than
                 // their own result. Either one throwing leaves the call a failure with nothing of its own
@@ -2096,43 +2099,21 @@ namespace Velvet
                 // a throwing OnSettled included, as TanStack's catch does.
                 slot.InvokeOnSuccess(data, variables, context);
                 slot.InvokeOnSettled(data, null, variables, context);
-                if (mine == slot.Generation) slot.Result.MarkSuccess(data);
-                RequestRender(fiber);
+                CommitOutcome(fiber, slot, mine, data, error: null);
                 return data;
             }
-            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            catch (OperationCanceledException cancelled) when (cts.IsCancellationRequested)
             {
+                // Only an unmount cancels this source. The handlers still run, so a write OnMutate made
+                // optimistically is rolled back from OnError although the request it stood for was cancelled.
+                DeliverFailure(slot, cancelled, variables, context);
                 return default!;
             }
             catch (Exception ex)
             {
-                // The owner is gone, so there is nobody to deliver to and nothing to render.
-                if (fiber.IsDisposed)
-                {
-                    if (rethrowOnFailure) throw;
-                    return default!;
-                }
-                // Contained one by one, as TanStack contains them: a throwing OnError must not cost the call
-                // its OnSettled, and neither may cost it the Error status below.
-                try
-                {
-                    slot.InvokeOnError(ex, variables, context);
-                }
-                catch (Exception handlerEx)
-                {
-                    VelvetTask.FromException(handlerEx).Forget();
-                }
-                try
-                {
-                    slot.InvokeOnSettled(default!, ex, variables, context);
-                }
-                catch (Exception handlerEx)
-                {
-                    VelvetTask.FromException(handlerEx).Forget();
-                }
+                DeliverFailure(slot, ex, variables, context);
                 // Committed after the handlers for the same reason as a success.
-                if (mine == slot.Generation) slot.Result.MarkFailed(ex);
-                RequestRender(fiber);
+                CommitOutcome(fiber, slot, mine, default!, ex);
                 if (rethrowOnFailure) throw;
                 return default!;
             }
@@ -2143,6 +2124,50 @@ namespace Velvet
                 // it here would leave that loop cancelling a source this finally had already disposed.
                 if (slot.Live.Remove(cts)) cts.Dispose();
             }
+        }
+
+        // Contained one by one, as TanStack contains them: a throwing OnError must not cost the call its
+        // OnSettled, and neither may cost it the outcome the caller commits after this returns.
+        private static void DeliverFailure<TVariables, TData, TContext>(
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            Exception error,
+            TVariables variables,
+            TContext context)
+        {
+            try
+            {
+                slot.InvokeOnError(error, variables, context);
+            }
+            catch (Exception handlerEx)
+            {
+                VelvetTask.FromException(handlerEx).Forget();
+            }
+            try
+            {
+                slot.InvokeOnSettled(default!, error, variables, context);
+            }
+            catch (Exception handlerEx)
+            {
+                VelvetTask.FromException(handlerEx).Forget();
+            }
+        }
+
+        // The handlers above run whether or not the component is still mounted, as TanStack's option
+        // callbacks outlive the observer; only the handle and the render belong to the mounted component.
+        private static void CommitOutcome<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            long generation,
+            TData data,
+            Exception? error)
+        {
+            if (fiber.IsDisposed) return;
+            if (generation == slot.Generation)
+            {
+                if (error == null) slot.Result.MarkSuccess(data);
+                else slot.Result.MarkFailed(error);
+            }
+            RequestRender(fiber);
         }
 
         private static void ResetMutation<TVariables, TData, TContext>(

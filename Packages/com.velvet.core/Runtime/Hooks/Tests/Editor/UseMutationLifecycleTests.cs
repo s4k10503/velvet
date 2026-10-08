@@ -25,7 +25,8 @@ namespace Velvet.Tests
     /// the failure path does not cost it its outcome; one on the success path fails the call, which then
     /// settles again with that exception.</item>
     /// <item>Overlapping calls each hand their callbacks their own context.</item>
-    /// <item>A call whose component unmounts while it is in flight runs no callback after its <c>OnMutate</c>.</item>
+    /// <item>A call whose component unmounts while it is in flight still runs its callbacks — with the cancellation
+    /// where the mutation function honours its token — and writes nothing to the handle.</item>
     /// </list>
     /// <see cref="UseMutationHookTests"/> owns the lifecycle the handle reports.
     /// </summary>
@@ -303,13 +304,13 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_AnInFlightContextMutation_When_TheComponentUnmounts_Then_NoLaterCallbackRuns() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AnInFlightContextMutation_When_TheComponentUnmountsAndItThenSucceeds_Then_OnSuccessAndOnSettledStillRun() => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — the mutate entry is carried into the reading so a call that never started cannot
-            // pass for one whose callbacks were withheld.
+            // Arrange — the mutation function ignores its token, so the call completes after the unmount
+            // rather than being cancelled by it.
             var gate = new VelvetTaskCompletionSource<int>();
             s_mutationFn = (_, _) => gate.Task;
-            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-callbacks"));
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-success"));
             var inFlight = s_captured!.MutateAsync(7);
 
             // Act
@@ -318,8 +319,53 @@ namespace Velvet.Tests
             await inFlight;
 
             // Assert
-            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate"),
-                "A call whose component unmounted runs none of its callbacks after OnMutate, OnSettled included");
+            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
+                "A call that completes after its component unmounted still runs OnSuccess and OnSettled, as " +
+                "TanStack's option callbacks outlive the observer");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContextMutationHonouringItsToken_When_TheComponentUnmounts_Then_OnErrorAndOnSettledRunWithTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the unmount cancels the call's token, and the mutation function honours it, so the
+            // call ends in the cancellation rather than in a result.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-cancel"));
+            var inFlight = s_captured!.MutateAsync(7);
+
+            // Act
+            mounted.Dispose();
+            await inFlight;
+
+            // Assert
+            Assert.That(Read(e => e.Kind is "error" or "settled", e => $"{e.Kind} {e.Cancelled} {e.Context}"),
+                Is.EqualTo("error True ctx7,settled True ctx7"),
+                "A call the unmount cancelled hands OnError and OnSettled the cancellation and its context, so a " +
+                "write OnMutate made can be rolled back");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnInFlightContextMutation_When_TheComponentUnmountsAndItThenFails_Then_TheHandleIsNotCommitted() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the rejection is carried into the reading: a call that never failed leaves the
+            // handle pending whether or not the failure is committed.
+            var failure = new InvalidOperationException("boom");
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-failure"));
+            var captured = s_captured!;
+            var inFlight = captured.MutateAsync(7);
+            Exception? rethrown = null;
+
+            // Act
+            mounted.Dispose();
+            gate.TrySetException(failure);
+            try { await inFlight; } catch (InvalidOperationException caught) { rethrown = caught; }
+
+            // Assert
+            Assert.That((ReferenceEquals(rethrown, failure), captured.Status), Is.EqualTo((true, MutationStatus.Pending)),
+                "A call that fails after its component unmounted rejects to its caller and writes nothing to the handle");
         });
 
         [UnityTest]
@@ -368,6 +414,28 @@ namespace Velvet.Tests
                 "MutationOptions.OnSettled runs once on success, with no exception");
         });
 
+        [UnityTest]
+        public IEnumerator Given_AMutationRenderedPending_When_ItSucceeds_Then_TheComponentRendersTheOutcome() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the pending render is flushed before the call completes, so the render request the
+            // call made when it started cannot be what shows the outcome.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            using var mounted = V.Mount(_root, V.Component(StatusRender, key: "outcome-render"));
+            var inFlight = s_captured!.MutateAsync(1);
+            mounted.FlushStateForTest();
+            var pendingText = _root.Q<Label>().text;
+
+            // Act
+            gate.TrySetResult(2);
+            await inFlight;
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((pendingText, _root.Q<Label>().text), Is.EqualTo(("Pending", "Success")),
+                "Committing an outcome asks the component for a render");
+        });
+
         [Test]
         public void Given_NullContextOptions_When_UseMutationCalled_Then_ThrowsArgumentNullException()
         {
@@ -403,43 +471,54 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode StatusRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn));
+            return V.Label(text: s_captured.Status.ToString());
+        }
+
+        [Component]
         public static VNode ContextFreeMutationRender()
         {
-            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: s_mutationFn,
-                OnSettled: (data, error, v) => Record("settled", data, error, v, null)));
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn)
+            {
+                OnSettled = (data, error, v) => Record("settled", data, error, v, null),
+            });
             return V.Label(text: "ok");
         }
 
         [Component]
         public static VNode VoidMutationRender()
         {
-            s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(
-                MutationFn: s_voidMutationFn,
-                OnSettled: (error, v) => Record("settled", 0, error, v, null)));
+            s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(MutationFn: s_voidMutationFn)
+            {
+                OnSettled = (error, v) => Record("settled", 0, error, v, null),
+            });
             return V.Label(text: "ok");
         }
 
         [Component]
         public static VNode NoInputMutationRender()
         {
-            s_noInputCaptured = Hooks.UseMutation(new MutationOptions(
-                MutationFn: _ => VelvetTask.CompletedTask,
-                OnSettled: error => Record("settled", 0, error, 0, null)));
+            s_noInputCaptured = Hooks.UseMutation(new MutationOptions(MutationFn: _ => VelvetTask.CompletedTask)
+            {
+                OnSettled = error => Record("settled", 0, error, 0, null),
+            });
             return V.Label(text: "ok");
         }
 
         // The handle's status and variables are read when the entry is written, which is what a callback
         // reading the handle would see at that point.
         private static void Record(string kind, int data, Exception? error, int variables, string? context) =>
-            s_log.Add(new Entry(kind, data, error?.Message ?? None, variables, context ?? None,
-                s_captured?.Status ?? MutationStatus.Idle, s_captured?.Variables ?? 0));
+            s_log.Add(new Entry(kind, data, error?.Message ?? None, error is OperationCanceledException, variables,
+                context ?? None, s_captured?.Status ?? MutationStatus.Idle, s_captured?.Variables ?? 0));
 
         private static string Read(Func<Entry, bool> which, Func<Entry, string> projection) =>
             string.Join(",", s_log.Where(which).Select(projection));
 
         private sealed record Entry(
-            string Kind, int Data, string Error, int Variables, string Context, MutationStatus Status, int HandleVariables);
+            string Kind, int Data, string Error, bool Cancelled, int Variables, string Context, MutationStatus Status,
+            int HandleVariables);
 
         private static readonly List<Entry> s_log = new();
 
