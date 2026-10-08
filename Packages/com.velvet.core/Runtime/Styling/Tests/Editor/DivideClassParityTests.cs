@@ -452,6 +452,39 @@ namespace Velvet.Tests
             Assert.That(content[1].style.borderBottomWidth.value, Is.EqualTo(1f));
         }
 
+        // GREEN_ON_BASE(characterization): the base writes the divider without reading flex-wrap, as it must.
+        [Test]
+        public void Given_AWrappingDivideXRow_When_Reconciled_Then_EveryChildButTheLastHasTheEndBorder()
+        {
+            // Arrange — Tailwind's `:where(& > :not(:last-child))` selects by sibling position, so which wrapped
+            // line a child sits on changes nothing.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row flex-wrap divide-x", 4) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(EdgeWidths(scope.Root[0], c => c.style.borderRightWidth.value),
+                Is.EqualTo(new[] { 1f, 1f, 1f, 0f }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the divider without reading flex-wrap, as it must.
+        [Test]
+        public void Given_AWrappingDivideYColumn_When_Reconciled_Then_EveryChildButTheLastHasTheBottomBorder()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-col flex-wrap divide-y", 4) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(EdgeWidths(scope.Root[0], c => c.style.borderBottomWidth.value),
+                Is.EqualTo(new[] { 1f, 1f, 1f, 0f }));
+        }
+
         #endregion
 
         #region End-to-end (dashed / dotted dividers)
@@ -686,6 +719,16 @@ namespace Velvet.Tests
                 V.Div(className: "child " + childBorderClass),
                 V.Div(className: "child"),
             });
+
+        private static float[] EdgeWidths(VisualElement container, System.Func<VisualElement, float> edge)
+        {
+            var widths = new float[container.childCount];
+            for (var i = 0; i < widths.Length; i++)
+            {
+                widths[i] = edge(container[i]);
+            }
+            return widths;
+        }
 
         private static VNode Row(string className, int childCount)
         {

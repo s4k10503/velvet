@@ -217,9 +217,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_ARunningSpinOverAnArbitraryRotation_When_TheSpinIsRemoved_Then_TheClassRotationIsBack()
         {
-            // Arrange — the rotate slot is shared. The spin drives it while it runs; the class under it is
-            // inline-resolved, so the diff does not re-apply a token that did not change, and only the detach
-            // path can put it back.
+            // Arrange — the rotate slot is shared. The spin drives it while it runs, turning on from the class's
+            // 30 degrees; the class under it is inline-resolved, so the diff does not re-apply a token that did
+            // not change, and only the detach path can put it back.
             const string spinning = "w-[40px] h-[40px] bg-red-500 rotate-[30deg] animate-spin";
             const string still = "w-[40px] h-[40px] bg-red-500 rotate-[30deg]";
             var (element, binding) = Mount(spinning);
@@ -233,7 +233,7 @@ namespace Velvet.Tests
                 new VNode[] { V.Div(className: still, name: "card") });
 
             // Assert
-            Assert.That((whileSpinning, element.style.rotate.value.angle.ToDegrees()), Is.EqualTo((180f, 30f)));
+            Assert.That((whileSpinning, element.style.rotate.value.angle.ToDegrees()), Is.EqualTo((210f, 30f)));
         }
 
         [Test]
