@@ -473,6 +473,8 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?5="));
         }
 
+        // GREEN_ON_BASE(characterization): a null get body already gave an empty query on the base; this pins
+        // that the new encoding keeps null on that path rather than reporting it as unencodable.
         [Test]
         public void Given_AGetSubmissionOfNull_When_Submitted_Then_TheQueryIsEmpty()
         {
@@ -499,6 +501,8 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?tags=a%2Cb"));
         }
 
+        // GREEN_ON_BASE(characterization): an ISearchParams body was the one get body the base accepted; this pins
+        // that the new encoding leaves its grouping of repeated keys as the base wrote it.
         [Test]
         public void Given_AGetSubmissionOfASearchParams_When_Submitted_Then_ItsRepeatedKeysAreGrouped()
         {
@@ -567,6 +571,8 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLoaderErrors["/items"].Message, Is.EqualTo("Unable to encode submission body"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already left a post's one-shot sequence unenumerated; this
+        // pins that the encoding added for get bodies does not reach a post's.
         [Test]
         public void Given_APostOfAOneShotSequence_When_Submitted_Then_ItIsNotEnumerated()
         {
