@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Threading;
 
 namespace Velvet
 {
@@ -10,12 +11,13 @@ namespace Velvet
         To,
         Wait,
         Call,
+        Await,
     }
 
     /// <summary>
     /// One step in an animation sequence played by <see cref="Hooks.UseAnimationSequence"/>. A step is
-    /// exactly one of: a variant-label change (<see cref="To"/>), a pure timing gap (<see cref="Wait"/>), or a
-    /// synchronous C# callback (<see cref="Call"/>).
+    /// exactly one of: a variant-label change (<see cref="To"/>), a pure timing gap (<see cref="Wait"/>), a
+    /// synchronous C# callback (<see cref="Call"/>), or a wait on a task (<see cref="Await"/>).
     /// </summary>
     public readonly struct AnimationSequenceStep
     {
@@ -38,21 +40,27 @@ namespace Velvet
         /// <see cref="TransitionType.Tween"/> or <see cref="TransitionType.Bezier"/>, both fixed-duration); a
         /// <see cref="TransitionType.Spring"/>-typed <see cref="To"/> step holds for its <c>DelaySec</c> plus the
         /// duration Framer Motion's sequence gives the same spring — see the motion guide's Timelines section.
-        /// Required on <see cref="Wait"/> (negative values clamp to 0). Always 0 on <see cref="Call"/>.
+        /// Required on <see cref="Wait"/> (negative values clamp to 0). Always 0 on <see cref="Call"/> and
+        /// <see cref="Await"/>.
         /// </summary>
         public float? HoldSec { get; }
 
         /// <summary>The callback to invoke. Non-null only on a <see cref="Call"/> step.</summary>
         public Action? Callback { get; }
 
+        /// <summary>The function whose task the step waits on. Non-null only on an <see cref="Await"/> step.</summary>
+        public Func<CancellationToken, VelvetTask>? AwaitFactory { get; }
+
         private AnimationSequenceStep(AnimationSequenceStepKind kind, string? label,
-            StyleTransitionConfig? transition, float? holdSec, Action? callback)
+            StyleTransitionConfig? transition, float? holdSec, Action? callback,
+            Func<CancellationToken, VelvetTask>? awaitFactory = null)
         {
             Kind = kind;
             Label = label;
             Transition = transition;
             HoldSec = holdSec;
             Callback = callback;
+            AwaitFactory = awaitFactory;
         }
 
         /// <summary>
@@ -88,6 +96,19 @@ namespace Velvet
             if (callback == null) throw new ArgumentNullException(nameof(callback));
             return new AnimationSequenceStep(AnimationSequenceStepKind.Call, null, null, 0f, callback);
         }
+
+        /// <summary>
+        /// Calls <paramref name="taskFactory"/> on arrival and holds the cursor until the task it returns
+        /// settles — an <c>await</c> between the animations of Framer Motion's <c>useAnimate</c>. A restart, a
+        /// <c>deps</c> change or unmount that leaves the step with the task still pending cancels the token. The
+        /// motion guide's Timelines section owns what a settle, a fault and a pause do.
+        /// </summary>
+        /// <param name="taskFactory">Returns the task to wait on. Must not be null.</param>
+        public static AnimationSequenceStep Await(Func<CancellationToken, VelvetTask> taskFactory)
+        {
+            if (taskFactory == null) throw new ArgumentNullException(nameof(taskFactory));
+            return new AnimationSequenceStep(AnimationSequenceStepKind.Await, null, null, 0f, null, taskFactory);
+        }
     }
 
     /// <summary>Per-render snapshot of a sequence, returned by <see cref="Hooks.UseAnimationSequence"/>.</summary>
@@ -114,9 +135,15 @@ namespace Velvet
         }
     }
 
-    /// <summary>Imperative controls for a sequence started by <see cref="Hooks.UseAnimationSequence"/>.</summary>
+    /// <summary>
+    /// Imperative controls for a sequence started by <see cref="Hooks.UseAnimationSequence"/>. They drive the
+    /// sequence's own timeline — its step cursor and clock — and not a <c>V.Motion</c> play already running from a
+    /// step's label: see the motion guide's Timelines section for what each reaches.
+    /// </summary>
     public readonly struct AnimationSequenceControls
     {
+        private readonly SequenceWalker _walker;
+
         /// <summary>Resumes advancing (idempotent). Also what <c>autoplay: true</c> starts with on mount.</summary>
         public Action Play { get; }
 
@@ -126,11 +153,18 @@ namespace Velvet
         /// <summary>Returns to step 0 and re-commits its effect (firing a <c>Call</c> step 0's callback again). Does not implicitly unpause.</summary>
         public Action Restart { get; }
 
-        internal AnimationSequenceControls(Action play, Action pause, Action restart)
+        /// <summary>
+        /// Seconds into the sequence's timeline, counting each step's hold at its authored length. Read live, not
+        /// per render; the motion guide's Timelines section owns the rest.
+        /// </summary>
+        public float TimeSec => _walker.TimeSec;
+
+        internal AnimationSequenceControls(Action play, Action pause, Action restart, SequenceWalker walker)
         {
             Play = play;
             Pause = pause;
             Restart = restart;
+            _walker = walker;
         }
     }
 }

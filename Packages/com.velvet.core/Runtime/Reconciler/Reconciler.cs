@@ -84,15 +84,14 @@ namespace Velvet
                 // Pending passive effects must be flushed before a new discrete-event update; wire the scheduler
                 // to drain them at that boundary so an effect from a prior commit runs before the next render.
                 _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
-                // Brackets each drain to drive (1) the UseStore cross-tier tearing guard — pinning is active only
-                // inside a drain, the immediate drain opens a fresh wave (reset = true) and the delayed drain
-                // reuses it (reset = false) — and (2) the layout-effect commit phase: fibers defer their effect
-                // commit during the drain so all renders precede any layout effect, flushed at drain end
-                // (before the wave ends, so a layout effect still reads the pinned snapshot).
+                // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
+                // drain, and each drain pass is a wave of its own — and (2) the layout-effect commit phase:
+                // fibers defer their effect commit during the drain so all renders precede any layout effect,
+                // flushed at drain end (before the wave ends, so a layout effect still reads the pinned snapshot).
                 _ctx.BatchScheduler.SetStoreSnapshotWaveCallbacks(
-                    reset =>
+                    () =>
                     {
-                        _ctx.BeginStoreSnapshotWave(reset);
+                        _ctx.BeginStoreSnapshotWave();
                         _ctx.DeferDrainLayoutEffects = true;
                     },
                     () =>
@@ -303,6 +302,8 @@ namespace Velvet
                 // drain just above. Draining here, at the top-level boundary, is the first point where every
                 // element created in this pass has its final parent.
                 RingOverlay.DrainPendingPlacements(_ctx);
+                // Same reason: an inherited family is read off the final parent chain (FiberFontScope).
+                _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
                 // Last, so a ref setup sees the element where the pass finally put it and every cleanup
                 // this pass owed has already run — the portal drain above included, which reconciles a
                 // Portal's children through ChildReconciler directly and so reaches no boundary of its
@@ -434,7 +435,11 @@ namespace Velvet
 
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
 
-        void IReconcilerBridge.DrainRefAttachesForController() => _ctx.DrainRefAttaches();
+        void IReconcilerBridge.DrainRefAttachesForController()
+        {
+            _ctx.DrainRefAttaches();
+            _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
+        }
 
         void IReconcilerBridge.CommitStrandedLayoutWorkForController() => FiberEffects.CommitStrandedLayoutWork(_ctx);
 
@@ -557,6 +562,7 @@ namespace Velvet
             _ctx.StyleAnimationScheduler.CancelAll();
             _ctx.EventManager.Clear();
             _ctx.ComponentRegistry.Dispose();
+            _ctx.PendingCaughtErrorReports.Clear();
             _ctx.FiberMemoCache.DisposeAndReturnCachedTrees();
             _ctx.WrapperToInnerMap.Clear();
             // Hosts go last: destroying a layer or world-space host takes its runtime-created panel with
