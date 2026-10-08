@@ -140,14 +140,15 @@ namespace Velvet
 
         private const int UnreadableKey = int.MinValue;
 
-        // The class list as a hash, read without allocating: GetClasses hands back the element's own list.
+        // The set of classes as a hash, read without allocating: GetClasses hands back the element's own list. The
+        // hashes are added rather than chained, so the order the classes arrived in does not move the key.
         private static int ClassKey(VisualElement element)
         {
             if (element.GetClasses() is not System.Collections.Generic.List<string> classes) return UnreadableKey;
             var key = classes.Count;
             for (var i = 0; i < classes.Count; i++)
             {
-                key = unchecked((key * 31) + classes[i].GetHashCode());
+                key = unchecked(key + classes[i].GetHashCode());
             }
             return key == UnreadableKey ? 0 : key;
         }

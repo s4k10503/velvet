@@ -68,6 +68,8 @@ namespace Velvet.Tests
         private const string HostClassesReader =
             "System.Void Velvet.VelvetStyleUtilities.AddDocumentClasses("
             + "UnityEngine.UIElements.VisualElement, System.Collections.Generic.HashSet`1<System.String>)";
+        private const string CascadeKeyReader =
+            "System.Int32 Velvet.CascadeSnapshot.ClassKey(UnityEngine.UIElements.VisualElement)";
         private const string HostStampReader =
             "System.Int32 Velvet.VelvetStyleUtilities.ClassStamp(System.Int32, UnityEngine.UIElements.VisualElement)";
 
@@ -95,6 +97,9 @@ namespace Velvet.Tests
         // answer no case expects rather than throw.
         private static readonly MethodInfo CollectHostClasses = typeof(VelvetStyleUtilities)
             .GetMethod("AddDocumentClasses", BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static readonly MethodInfo KeyOfClasses = typeof(CascadeSnapshot)
+            .GetMethod("ClassKey", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         private static readonly MethodInfo StampHostClasses = typeof(VelvetStyleUtilities)
             .GetMethod("ClassStamp", BindingFlags.NonPublic | BindingFlags.Static);
@@ -180,6 +185,9 @@ namespace Velvet.Tests
             CollectHostClasses.Invoke(null, new object[] { element, into });
             return string.Join(" ", into.OrderBy(cls => cls, StringComparer.Ordinal));
         }
+
+        private static int CascadeKey(VisualElement element)
+            => (int)KeyOfClasses.Invoke(null, new object[] { element })!;
 
         private static int? HostStamp(VisualElement element)
             => (int?)StampHostClasses?.Invoke(null, new object[] { 0, element });
@@ -709,6 +717,25 @@ namespace Velvet.Tests
                 Is.EqualTo(new[] { 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 1f, 0.75f, 1f,
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f,
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f }).Within(0.0001f));
+        }
+
+        [Test]
+        [ReaderVerdict(CascadeKeyReader)]
+        public void Given_TwoClassesOnAnElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheCascadeKeyIsTheSameBothWaysAndMovesWithTheSet()
+        {
+            // Arrange — a different set beside the two orders, so that a key which ignored the classes would not agree.
+            var added = Carrying("opacity-50", "rotate-45");
+            var reversed = Carrying("rotate-45", "opacity-50");
+            var other = Carrying("opacity-50", "rotate-90");
+
+            // Act
+            var fromAdded = CascadeKey(added);
+            var fromReversed = CascadeKey(reversed);
+            var fromOther = CascadeKey(other);
+
+            // Assert
+            Assert.That((fromAdded == fromReversed, fromAdded == fromOther), Is.EqualTo((true, false)),
+                "a loop re-reads the cascade when the set of classes changes, and a reorder alone changes nothing it reads");
         }
 
         [Test]
