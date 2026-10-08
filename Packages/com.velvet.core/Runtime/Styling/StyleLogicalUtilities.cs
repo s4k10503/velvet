@@ -124,7 +124,8 @@ namespace Velvet
                 Scale.Padding => TryParseSpacing(family.Property, suffix.ToString(), negate, allowAuto: false, out result),
                 Scale.Inset => TryParseInset(family.Property, suffix.ToString(), negate, out result),
                 Scale.BorderWidth => TryParseBorderWidth(family.Property, suffix, out result),
-                _ => TryParseRadius(family.Property, suffix.ToString(), out result),
+                Scale.Radius => TryParseRadius(family.Property, suffix.ToString(), out result),
+                _ => throw new ArgumentOutOfRangeException(nameof(family), family.Scale, null),
             };
         }
 
