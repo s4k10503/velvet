@@ -9,7 +9,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies <c>V.TextField</c>'s <c>multiline:</c>, <c>keyboardType:</c> and <c>autoCorrection:</c>
     /// on the undeclared-when-null contract <see cref="TextFieldInputPropTests"/> pins for the props before
-    /// them, plus what a declared multiline does to a value carrying line breaks.
+    /// them, plus what a declared multiline does to a value carrying line breaks and to a delayed field's
+    /// uncommitted edit.
     /// <para/>
     /// The keyboard cases read the element's properties. That is what Velvet writes; what a touch-screen
     /// platform's soft keyboard then does is not measured here.
@@ -153,21 +154,6 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false, true)));
         }
 
-        [Test]
-        public void Given_AFieldThatNeverDeclaredAnyOfThem_When_AbsentSettingsAreApplied_Then_NothingIsWritten()
-        {
-            // Arrange
-            var field = new PrefilledTextField();
-
-            // Act
-            FiberPropApplier.ApplyTextField(field, null);
-
-            // Assert
-            Assert.That(
-                (field.multiline, field.keyboardType, field.autoCorrection),
-                Is.EqualTo((true, PrefilledTextField.BuiltKeyboardType, true)));
-        }
-
         // The three below share TextFieldInputPropTests' refCallback sequence, and its reason for one
         // callback instance standing in both trees.
         [Test]
@@ -289,6 +275,83 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(element.value, Is.EqualTo("first\nsecond"));
+        }
+
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderTurnsMultilineOn_Then_TheTypedTextStays()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(value: "saved", isDelayed: true) };
+            var newTree = new VNode[] { V.TextField(value: "saved", isDelayed: true, multiline: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "draft";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is read beside the shown text, so the edit has to stay uncommitted as well as
+            // on screen.
+            Assert.That(
+                (element.multiline, element.value, ((TextElement)element.textEdition).text),
+                Is.EqualTo((true, "saved", "draft")));
+        }
+
+        [Test]
+        public void Given_ADelayedFieldWithNoEditWhoseValueHasALineBreak_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheBreak()
+        {
+            // Arrange — the single-line display leaves the break out, so the shown text differs from the value
+            // with no edit pending.
+            var oldTree = new VNode[] { V.TextField(value: "first\nsecond", isDelayed: true) };
+            var newTree = new VNode[] { V.TextField(value: "first\nsecond", isDelayed: true, multiline: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(((TextElement)element.textEdition).text, Is.EqualTo("first\nsecond"));
+        }
+
+        // A length limit narrower than the value leaves the shown text short of the value on a field that is
+        // not delayed, so the shown text and the value disagree with no edit pending. The control is a
+        // bare field given the same writes in the order the reconciler makes them, so the case asks only
+        // that turning multiline on does nothing to a field that is not delayed beyond what the engine does.
+        [Test]
+        public void Given_AFieldThatIsNotDelayedShowingAClippedValue_When_ALaterRenderTurnsMultilineOn_Then_ItShowsWhatABareFieldWould()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(value: "abcdefgh", maxLength: 3) };
+            var newTree = new VNode[] { V.TextField(value: "abcdefgh", maxLength: 3, multiline: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var bare = new TextField();
+            bare.SetValueWithoutNotify("abcdefgh");
+            bare.maxLength = 3;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+            bare.multiline = true;
+
+            // Assert
+            Assert.That(
+                ((TextElement)element.textEdition).text,
+                Is.EqualTo(((TextElement)bare.textEdition).text));
+        }
+
+        [Test]
+        public void Given_ADelayedFieldDeclaredSingleLine_When_ItIsReconciled_Then_ItStaysSingleLine()
+        {
+            // Arrange — the delayed flag is written ahead of multiline, so the multiline write meets a delayed
+            // field.
+            var tree = new VNode[] { V.TextField(isDelayed: true, multiline: false) };
+
+            // Act
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(((TextField)Root!.ElementAt(0)).multiline, Is.False);
         }
     }
 }

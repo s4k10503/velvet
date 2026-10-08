@@ -242,7 +242,12 @@ same rule — [focus.md](focus.md) states it for those.
 A field holding `isDelayed:` releases the typed text into its value on Enter, on losing focus, and on
 a render taking the flag off — that third one whether the render declares `isDelayed: false` or drops
 the parameter. The render-driven release reports through `onValueChanged:`, so a component that turns
-the flag off mid-edit receives the pending text rather than stranding it on screen.
+the flag off mid-edit receives the pending text rather than stranding it on screen. A render turning
+`multiline:` on leaves that pending text on screen too, still unreleased.
+
+UI Toolkit puts a field's `keyboardType` back to `Default` and its `autoCorrection` back to false when
+Enter leaves a single-line field. A declared `keyboardType:` or `autoCorrection:` is written again
+each time focus comes back into the field; one written from `refCallback:` is not.
 
 ### 2-2. Conditionals and Lists
 
