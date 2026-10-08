@@ -44,7 +44,8 @@ The last shape utility in the class list wins, and a stop utility with no shape 
 100%, and a position behind an earlier stop is raised to it, as in CSS. A position may lie outside
 0%–100%: the gradient line runs on past the box. As in Tailwind, a bare position is a whole, unsigned
 percentage; a negative or fractional one is written in brackets (`from-[-50%]`, `via-[12.5%]`). A stop may
-also sit at a length in pixels, written in brackets (`from-[20px]`); other length units are not read. With only one of `from-` and `to-` given, the other end
+also sit at a length in `px` or `rem` (1rem is 16px, as elsewhere), negative allowed, written in brackets
+(`from-[20px]`, `via-[-1rem]`). Other length units, `calc()` and the other math functions are not read. With only one of `from-` and `to-` given, the other end
 is that colour made transparent, and `via-` alone fades in from and out to its own transparent colour.
 
 ## Stop lists in the shape's brackets
@@ -69,8 +70,8 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
   `grad`, `rad` or `turn` unit, or a bare `0`.
 - **Each stop** is a colour, then none, one or two positions. The colour is a palette name
   (`slate-900`), a bracketed value, or anything the arbitrary `bg-[…]` value takes: `#0f172a`,
-  `rgb(15,23,42)`, or a basic colour name such as `red`. A position is a percentage, a length in pixels
-  (`red_20px`; not on a conic), or on a conic an angle (`red_90deg`, in the units a first argument takes).
+  `rgb(15,23,42)`, or a basic colour name such as `red`. A position is a percentage, a length in `px` or
+  `rem`, negative allowed (`red_20px`, `red_-1rem`; not on a conic), or on a conic an angle (`red_90deg`, in the units a first argument takes).
   Two positions make the colour hold between them (`red_0%_40%`) and count as two stops. A position in
   pixels is a share of the gradient line (a radial's ray), so it is placed once the element's size is
   known.

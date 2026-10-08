@@ -607,14 +607,28 @@ namespace Velvet
             return true;
         }
 
-        // A bracketed pixel length, as list-bracket positions read one; a bare 0 is no length to Tailwind's
-        // length test, so it is declined here.
+        // A bracketed length for a from-/via-/to- position, read as a list-bracket position is. A bare 0 is
+        // declined: Tailwind's length test requires a unit.
         private static bool TryParseBracketedPixels(string suffix, out float px)
         {
             px = 0f;
-            return suffix.Length > 4 && suffix[0] == '[' && suffix[suffix.Length - 1] == ']'
-                && TryParsePixelLength(suffix.Substring(1, suffix.Length - 2), out px)
-                && suffix.EndsWith("px]", StringComparison.Ordinal);
+            return suffix.Length > 2 && suffix[0] == '[' && suffix[suffix.Length - 1] == ']'
+                && suffix != "[0]" && TryParseStopLength(suffix.Substring(1, suffix.Length - 2), out px);
+        }
+
+        // A stop position's length, in pixels as written or in rem at the fixed scale
+        // StyleArbitraryValueResolver.TryParseValue gives it, and signed: a stop may sit before the start
+        // of the line, which the percentage forms allow too. A bare 0 is the start of the line.
+        private static bool TryParseStopLength(string token, out float px)
+        {
+            px = 0f;
+            if (token == "0")
+            {
+                return true;
+            }
+            return (token.EndsWith("px", StringComparison.Ordinal) || token.EndsWith("rem", StringComparison.Ordinal))
+                && StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out px, out var unit)
+                && unit == LengthUnit.Pixel;
         }
 
         private static StopToken ParseStopToken(string suffix)
@@ -875,7 +889,7 @@ namespace Velvet
                 return ok;
             }
             fraction = float.NaN;
-            return TryParsePixelLength(token, out px);
+            return TryParseStopLength(token, out px);
         }
 
         // A palette name or [bracketed] value as from-/via-/to- take it, or a bare CSS colour (#hex, rgb(),

@@ -907,6 +907,7 @@ namespace Velvet.Tests
             Assert.That(px, Is.EqualTo(40f).Within(1e-4f));
         }
 
+        // GREEN_ON_BASE(characterization): the base never sets a pixel position, so none is left to drop.
         [Test]
         public void Given_APercentageAfterABracketedPixelPosition_When_Extracted_Then_ThePixelLengthIsDropped()
         {
@@ -919,6 +920,72 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(float.IsNaN(px), Is.True);
+        }
+
+        [Test]
+        public void Given_ARemFromPosition_When_Extracted_Then_TheStopSitsAtSixteenPixelsARem()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-[2rem]", "to-[#0000ff]" }, out var spec);
+
+            // Act
+            var px = spec.Stops[0].PositionPx;
+
+            // Assert
+            Assert.That(px, Is.EqualTo(32f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ANegativePixelFromPosition_When_Extracted_Then_TheStopSitsBeforeTheStart()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-[-10px]", "to-[#0000ff]" }, out var spec);
+
+            // Act
+            var px = spec.Stops[0].PositionPx;
+
+            // Assert
+            Assert.That(px, Is.EqualTo(-10f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ARemListPosition_When_Extracted_Then_TheStopSitsAtSixteenPixelsARem()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-[to_right,#000000_0px,#ffffff_2rem]" }, out var spec);
+
+            // Act
+            var px = spec.Stops[1].PositionPx;
+
+            // Assert
+            Assert.That(px, Is.EqualTo(32f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ANegativePixelListPosition_When_Extracted_Then_TheStopSitsBeforeTheStart()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-[to_right,#000000_-20px,#ffffff_100px]" }, out var spec);
+
+            // Act
+            var px = spec.Stops[0].PositionPx;
+
+            // Assert
+            Assert.That(px, Is.EqualTo(-20f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ANegativePixelStop_When_BakedForAKnownWidth_Then_TheLineRunsOnBeforeTheBox()
+        {
+            // Act — black at -100px and white at 100px on a 200px line: the left edge is half way along it.
+            var texel = PixelAt(new[] { "bg-linear-[to_right,#000000_-100px,#ffffff_100px]" }, 2f, 200f, 0, 64);
+
+            // Assert
+            Assert.That(texel.r, Is.EqualTo(0.5f).Within(0.02f));
         }
 
         // GREEN_ON_BASE(characterization): the base already reads a bracketed position of any sign or fraction.
