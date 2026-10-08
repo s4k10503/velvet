@@ -839,6 +839,8 @@ namespace Velvet
                     => orientation == FocusScopeOrientation.Vertical,
                 NavigationMoveEvent.Direction.Up or NavigationMoveEvent.Direction.Down
                     => orientation == FocusScopeOrientation.Horizontal,
+                // MUTANT_SURVIVES(equivalent): OnNavigationMove returns Next and Previous before this call, and a
+                // None move travels nowhere either way; FocusScopeOrientationPlaybackTests holds the engine to that.
                 _ => false,
             };
 

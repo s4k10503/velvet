@@ -260,6 +260,20 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_AVerticalGroup_When_ANoneMoveDispatchesFromAMemberWithAnotherBelow_Then_FocusStaysOnTheMember()
+        {
+            // Arrange
+            var start = Element("colVA");
+            (bool, Focusable) outcome = default;
+
+            // Act
+            yield return MoveFrom(start, NavigationMoveEvent.Direction.None, r => outcome = r);
+
+            // Assert
+            Assert.That(outcome, Is.EqualTo((true, (Focusable)start)));
+        }
+
+        [UnityTest]
         public IEnumerator Given_AScopeThatIsNotASingleTabStop_When_ItNamesAnOrientation_Then_ADownMoveStillTravels()
         {
             // Arrange
