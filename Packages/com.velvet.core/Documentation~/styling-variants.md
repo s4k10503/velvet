@@ -137,6 +137,12 @@ higher-priority inline layer comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-
 both work. The filter family is the exception — filters compose rather than override, so a `filter` class
 and a `blur-[6px]` layer both apply.
 
+A per-axis scale keeps the uniform utility on its other axis: `scale-50 scale-x-75` resolves to
+`(0.75, 0.5)`, and `scale-50 scale-y-75` to `(0.5, 0.75)`. Adding or removing a uniform preset
+updates that fallback. Several uniform presets follow the bundled stylesheet's declaration order;
+an inline uniform value supplies the fallback ahead of a plain preset. The priority rules above
+still decide which classes and inline layers participate.
+
 `origin-[…]` takes CSS `transform-origin`'s grammar, the underscore standing for a space as it does in
 `shadow-[0px_2px_8px_#0004]` and `clip-path-[polygon(…)]`: `origin-[33%_75%]` is
 `transform-origin: 33% 75%`, `origin-[left_20px]` and `origin-[bottom_left]` mix and reorder keywords the
