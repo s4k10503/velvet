@@ -2,11 +2,13 @@
 
 - `Hooks.UseSyncExternalStore<T>(subscribe, getSnapshot)`, React's `useSyncExternalStore`, reads a store
   Velvet does not own without mirroring it into a `Store<T>`. A notification re-renders when the
-  snapshot is not `Object.is`-equal to the rendered one or `getSnapshot` throws; a `subscribe` that is
+  snapshot is not `Object.is`-equal to the rendered one or `getSnapshot` throws, on the Urgent lane and
+  never the Transition lane, flushed from the main thread's posted work; a `getSnapshot` that builds a
+  new snapshot per read re-renders until the update-depth limit drops the update. A `subscribe` that is
   not equal to the previous render's re-subscribes, and unmounting unsubscribes. The change callback
-  must be invoked on the main thread and never schedules on the Transition lane, and readers with equal
-  `getSnapshot` delegates share one snapshot within a batch drain wave, as `Hooks.UseStore` readers of
-  one store do.
+  must be invoked on the main thread, and readers with equal `getSnapshot` delegates share one snapshot
+  within a batch drain wave, as `Hooks.UseStore` readers of one store do. A time-sliced pass resumed
+  with such a re-render pending flushes it before its next slice.
 
 ### Changed
 

@@ -27,6 +27,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             _strictModeBefore = FiberStrictMode.Enabled;
             FiberStrictMode.Enabled = false;
+            FiberWorkLoop.IsInDiscreteEvent = false;
             ResetReader();
             ResetPair();
             ResetSwitching();
@@ -36,6 +37,7 @@ namespace Velvet.Tests
             ResetUncached();
             ResetNullArgument();
             ResetLateMount();
+            ResetResume();
         }
 
         [TearDown]
@@ -299,7 +301,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_StoreChangedInsideStartTransition_When_ReaderIsNotified_Then_ItIsScheduledOnTheNormalLaneOnly()
+        public void Given_StoreChangedInsideStartTransition_When_ReaderIsNotified_Then_ItIsNotScheduledOnTheTransitionLane()
         {
             // Arrange
             s_counter = new ExternalSource<int>(0);
@@ -308,10 +310,58 @@ namespace Velvet.Tests
             // Act
             s_startTransition.Invoke(() => s_counter.Set(1));
 
-            // Assert
+            // Assert — folded with the enrolment, which an update that never scheduled would also leave off the lane
             Assert.AreEqual((false, true),
-                (s_laneReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                (s_laneReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Transition), s_laneReaderFiber.IsDirty));
+        }
+
+        [Test]
+        public void Given_StoreChangedOutsideAnyEvent_When_ReaderIsNotified_Then_ItIsScheduledOnTheUrgentLaneOnly()
+        {
+            // Arrange
+            s_counter = new ExternalSource<int>(0);
+            using var mounted = V.Mount(_root, V.Component(TransitionHostRender, key: "host"));
+
+            // Act
+            s_counter.Set(1);
+
+            // Assert
+            Assert.AreEqual((true, false),
+                (s_laneReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Urgent),
                  s_laneReaderFiber.LaneQueue.Contains(FiberUpdatePriority.Normal)));
+        }
+
+        [Test]
+        public void Given_StoreChangedOutsideAnyEvent_When_TheMainThreadServicesItsPostedWork_Then_TheReaderRendersTheNewSnapshotWithoutADrain()
+        {
+            // Arrange
+            s_counter = new ExternalSource<int>(0);
+            using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+
+            // Act
+            s_counter.Set(5);
+            VelvetMainThread.RunHandoffs();
+
+            // Assert
+            Assert.AreEqual(5, s_readerValue);
+        }
+
+        [Test]
+        public void Given_StoreChangedWhileASliceIsParked_When_ThePassResumes_Then_ReadersItCommittedEarlierShowTheSnapshotALaterRowRenders()
+        {
+            // Arrange — the resume's first slice renders row 1; row 0 was committed by the slice before it
+            s_resumeSource = new ExternalSource<int>(0);
+            using var mounted = V.Mount(_root, V.Component(ResumeListHost, key: "resume-list"));
+            s_resumeStart.Invoke(() => s_resumeSetGen.Invoke(1));
+            s_resumeListFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_resumeListFiber.HasPendingReconcileWorkForTest();
+            s_resumeSource.Set(1);
+
+            // Act
+            FiberWorkLoop.ContinueReconcile(s_resumeListFiber);
+
+            // Assert — the parked state is folded in because a pass that never parked has no earlier slice
+            Assert.AreEqual((true, 1, 1), (parked, s_resumeSeen[0], s_resumeSeen[1]));
         }
 
         [Test]
@@ -368,6 +418,24 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — LogAssert.Expect takes the one error; a second fails the case as an unexpected log
+        }
+
+        [Test]
+        public void Given_GetSnapshotBuildingANewValuePerRead_When_TheImmediateTierDrains_Then_ItRerendersPastTheUpdateDepthLimit()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Error, new Regex("getSnapshot returned a different value on two consecutive reads"));
+            LogAssert.Expect(LogType.Error, new Regex("Maximum update depth exceeded"));
+            s_uncached = new ExternalSource<int>(0);
+            using var mounted = V.Mount(_root, V.Component(UncachedRender, key: "uncached"));
+            s_uncached.Notify();
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — more renders than the drain's nested-update cap, which only the limit ends; a reader
+            // that stopped after the render its notification asked for would leave this at two
+            Assert.That(s_uncachedRenders, Is.GreaterThan(50));
         }
 
         [Test]
@@ -793,17 +861,70 @@ namespace Velvet.Tests
         #region Uncached component (getSnapshot boxes a new object per read)
 
         private static ExternalSource<int> s_uncached;
+        private static int s_uncachedRenders;
 
         private static void ResetUncached()
         {
             s_uncached = null;
+            s_uncachedRenders = 0;
         }
 
         [Component]
         private static VNode UncachedRender()
         {
+            s_uncachedRenders++;
             var boxed = Hooks.UseSyncExternalStore(s_uncached.Subscribe, () => (object)s_uncached.GetSnapshot());
             return V.Label(text: boxed.ToString());
+        }
+
+        #endregion
+
+        #region Resume components (a keyed list of readers a Transition pass parks inside)
+
+        private static readonly ComponentContext<string> ResumeCtx = ComponentContext<string>.Create("DEFAULT");
+        private const int ResumeRowCount = 4;
+        private static ExternalSource<int> s_resumeSource;
+        private static ComponentFiber s_resumeListFiber;
+        private static StateUpdater<int> s_resumeSetGen;
+        private static TransitionStarter s_resumeStart;
+        private static readonly Dictionary<int, int> s_resumeSeen = new();
+
+        private static void ResetResume()
+        {
+            s_resumeSource = null;
+            s_resumeListFiber = null;
+            s_resumeSetGen = default;
+            s_resumeStart = default;
+            s_resumeSeen.Clear();
+        }
+
+        // The context read is what re-renders a row when the host's transition changes its Provider's value.
+        private static VNode ResumeRowBody(int index)
+        {
+            Hooks.UseContext(ResumeCtx);
+            s_resumeSeen[index] = Hooks.UseSyncExternalStore(s_resumeSource.Subscribe, s_resumeSource.GetSnapshot);
+            return V.Label(name: "resume-row-" + index, text: s_resumeSeen[index].ToString());
+        }
+
+        // Keyed Divs at the top level, so the fiber's own reconcile takes the time-sliceable keyed path; each
+        // row's Provider and reader sit one level down, reached once that row is committed.
+        [Component]
+        private static VNode ResumeListHost()
+        {
+            var (gen, setGen) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_resumeSetGen = setGen;
+            s_resumeStart = start;
+            s_resumeListFiber = FiberAmbientStack.Current;
+            var children = new VNode[ResumeRowCount];
+            for (var i = 0; i < ResumeRowCount; i++)
+            {
+                children[i] = V.Div(key: "rs" + i, name: "resume-cell-" + i, children: new VNode[]
+                {
+                    V.Provider(ResumeCtx, $"g{gen}-{i}", new VNode[] { V.Component(ResumeRowBody, i, key: "row") }),
+                });
+            }
+            return V.Fragment(children: children);
         }
 
         #endregion

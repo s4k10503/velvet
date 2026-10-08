@@ -245,9 +245,11 @@ namespace Velvet
         /// <paramref name="getSnapshot"/> must return the same value, compared with <c>Object.is</c>, on every call
         /// while the store has not changed: cache the snapshot instead of building a new one per read. A store-change
         /// notification re-renders the component when <paramref name="getSnapshot"/> then returns a value that is not
-        /// <c>Object.is</c>-equal to the one it last rendered, or throws, so a snapshot built afresh per read re-renders
-        /// it on every notification. In the Editor, a hook whose two consecutive reads in one render differ logs an error
-        /// once.
+        /// <c>Object.is</c>-equal to the one it last rendered, or throws. A render that returns another snapshot than
+        /// the previous one, or that subscribes, checks the snapshot again once it commits, so a snapshot built afresh
+        /// per read re-renders the component after every render until the scheduler's update-depth limit drops the
+        /// update and logs an error. In the Editor, a hook whose two consecutive reads in one render differ logs an
+        /// error once.
         /// </para>
         /// <para>
         /// <paramref name="subscribe"/> receives the callback to invoke when the store changes and returns the action
@@ -262,7 +264,11 @@ namespace Velvet
         /// <para>
         /// The callback must be invoked on the Unity main thread: invoked from another thread, it throws
         /// <see cref="InvalidOperationException"/> to its invoker and schedules nothing. The re-render it schedules
-        /// never takes the Transition lane, including when the store is mutated inside <c>startTransition</c>.
+        /// takes the Urgent lane and never the Transition lane, including when the store is mutated inside
+        /// <c>startTransition</c>, and the scheduler flushes it from the main thread's posted work instead of waiting
+        /// for its next frame-boundary callback. A time-sliced pass resumed with such a re-render pending flushes it
+        /// first, so readers the pass committed in an earlier slice show the changed snapshot before a later slice
+        /// renders it.
         /// </para>
         /// <para>
         /// Within one batch drain wave — an immediate drain and the delayed drain continuing it — readers passing
@@ -311,11 +317,10 @@ namespace Velvet
                     " Cache the snapshot and return the same value until the store changes.");
             }
 #endif
-            slot.GetSnapshot = getSnapshot;
             // The wave pin is keyed by getSnapshot itself: equal delegates read the same value, whichever
             // component holds them.
             var ctx = fiber.Reconciler?.Context;
-            slot.Value = ctx != null ? ctx.PinStoreSnapshot(getSnapshot, live) : live;
+            slot.Record(getSnapshot, ctx != null ? ctx.PinStoreSnapshot(getSnapshot, live) : live);
 
             // The StrictMode diagnostic render subscribes nothing: a subscription is externally visible.
             if (!IsStrictDiagnosticPass(fiber) && (slot.Subscribe == null || !slot.Subscribe.Equals(subscribe)))

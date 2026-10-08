@@ -71,13 +71,19 @@ namespace Velvet
         // one drain, so several post-await setters commit in a single render — async auto-batching, with no opt-in.
         // The request is silently ignored if the fiber is disposed or not mounted.
         // fiber: Fiber whose state changed.
-        public static void RequestRenderFromHook(ComponentFiber fiber) => RequestRenderFromHook(fiber, joinsTransition: true);
+        public static void RequestRenderFromHook(ComponentFiber fiber) => RequestRenderFromHook(fiber, isExternalStore: false);
 
-        // A UseSyncExternalStore change notification never takes the Transition lane, as React performs an
-        // external store's update as blocking even when the store is mutated inside startTransition.
-        public static void RequestExternalStoreRender(ComponentFiber fiber) => RequestRenderFromHook(fiber, joinsTransition: false);
+        // A UseSyncExternalStore change notification never takes the Transition lane and always takes the
+        // Urgent one, as React gives an external store's update its sync lane even when the store is mutated
+        // inside startTransition. The scheduler is then asked to flush the immediate tier without waiting for
+        // its frame-boundary callback (FiberBatchScheduler.OweExternalStoreFlush).
+        public static void RequestExternalStoreRender(ComponentFiber fiber)
+        {
+            RequestRenderFromHook(fiber, isExternalStore: true);
+            if (fiber.IsDirty) fiber.Reconciler?.Context.BatchScheduler.OweExternalStoreFlush();
+        }
 
-        private static void RequestRenderFromHook(ComponentFiber fiber, bool joinsTransition)
+        private static void RequestRenderFromHook(ComponentFiber fiber, bool isExternalStore)
         {
             if (fiber.IsDisposed || !fiber.IsMounted)
             {
@@ -103,7 +109,7 @@ namespace Velvet
 
             // Tested ahead of the discrete-event gate below, because a discrete handler calling
             // startTransition is the ordinary way to start one and its updates are still the transition's.
-            if (joinsTransition && OpenTransitionScopes.Count > 0)
+            if (!isExternalStore && OpenTransitionScopes.Count > 0)
             {
                 // Attributed on this branch rather than inside ScheduleRerender, which would also charge
                 // UseDeferredValue's own Transition-lane request (RequestTransitionRerender) to a
@@ -113,7 +119,7 @@ namespace Velvet
                 return;
             }
 
-            ScheduleRerender(fiber, IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
+            ScheduleRerender(fiber, isExternalStore || IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
         }
 
         // JavaScript's await resumes in a microtask, once the code that called startTransition has returned, so
@@ -482,6 +488,8 @@ namespace Velvet
         // advance in EditMode) so a parked slice can be driven to completion manually.
         internal static void ContinueReconcile(ComponentFiber fiber)
         {
+            // Ahead of the guards below, since the flush can unmount the fiber or finish its pass.
+            fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRenders();
             if (!fiber.IsMounted) return;
             if (fiber.Reconciler == null) return;
             var mountPoint = fiber.MountPoint;
