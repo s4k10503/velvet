@@ -81,10 +81,11 @@ namespace Velvet
         // Single-token half of HasDivideClass. Its own predicate so the prefix has ONE definition — both
         // the array scan below and the variant-payload gate (StyleVariantPayload) resolve the family here.
         public static bool IsDivideToken(string cls)
-            => !string.IsNullOrEmpty(cls) && cls.StartsWith("divide-", StringComparison.Ordinal);
+            => !string.IsNullOrEmpty(cls)
+                && StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("divide-", StringComparison.Ordinal);
 
-        // Cheap early-out gate: true when ANY class begins with the divide- prefix. No allocation —
-        // used to skip the full TryExtract scan on the ~99% of elements with no divide class.
+        // Cheap early-out gate: true when ANY class belongs to the divide family, important tokens included.
+        // Allocates only for a token that carries a bang — used to skip the full TryExtract scan on the ~99% of elements with no divide class.
         public static bool HasDivideClass(string[] classNames)
         {
             if (classNames == null)
@@ -102,7 +103,9 @@ namespace Velvet
         }
 
         // Scans classNames for the divide utilities and accumulates the axis + width (last axis class
-        // wins), color (last color class wins) and the per-axis reverse markers. Returns false when no axis
+        // wins), color (last color class wins), style (last style class wins) and the per-axis reverse
+        // markers. Within the axis, the color and the style slot, an important token beats a plain one
+        // whatever their order, and the last of equal importance wins. Returns false when no axis
         // class is present — a lone divide-{color}, or a lone divide-x-reverse, is inert.
         public static bool TryExtract(string[] classNames, out DivideSpec spec)
         {
@@ -120,9 +123,13 @@ namespace Velvet
             var style = BorderLineStyle.Solid;
             var xReverse = false;
             var yReverse = false;
+            var axisImportant = false;
+            var colorImportant = false;
+            var styleImportant = false;
 
-            foreach (var cls in classNames)
+            foreach (var raw in classNames)
             {
+                var cls = StyleArbitraryValueResolver.StripImportant(raw, out var important);
                 if (string.IsNullOrEmpty(cls) || !cls.StartsWith("divide-", StringComparison.Ordinal))
                 {
                     continue;
@@ -144,18 +151,27 @@ namespace Velvet
                 }
                 else if (TryParseAxisWidth(cls, out var a, out var w))
                 {
-                    foundAxis = true;
-                    axis = a;
-                    width = w;
+                    if (Outranks(important, ref axisImportant))
+                    {
+                        foundAxis = true;
+                        axis = a;
+                        width = w;
+                    }
                 }
                 else if (TryParseStyle(cls, out var st))
                 {
-                    style = st;
+                    if (Outranks(important, ref styleImportant))
+                    {
+                        style = st;
+                    }
                 }
                 else if (TryParseColor(cls, out var c))
                 {
-                    hasColor = true;
-                    color = c;
+                    if (Outranks(important, ref colorImportant))
+                    {
+                        hasColor = true;
+                        color = c;
+                    }
                 }
                 // Otherwise an unsupported divide-* (divide-double, …): skip it without disturbing the
                 // accumulated spec.
@@ -169,6 +185,18 @@ namespace Velvet
             // does not name it can never apply.
             var reverse = axis == DivideAxis.Horizontal ? xReverse : yReverse;
             spec = new DivideSpec(axis, width, hasColor, color, style, reverse);
+            return true;
+        }
+
+        // True when a token of the given importance takes a slot whose current holder has heldImportant, and
+        // records it as the new holder. A plain token never displaces an important one.
+        private static bool Outranks(bool important, ref bool heldImportant)
+        {
+            if (heldImportant && !important)
+            {
+                return false;
+            }
+            heldImportant = important;
             return true;
         }
 

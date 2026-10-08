@@ -240,6 +240,64 @@ namespace Velvet.Tests
             Assert.That(has, Is.True);
         }
 
+        [TestCase("!divide-x-4 divide-x-2", 4f)]
+        [TestCase("divide-x-4! divide-x-2", 4f)]
+        [TestCase("!divide-x-2 divide-x-4", 2f)]
+        [TestCase("!divide-x-2 !divide-x-4", 4f)]
+        [TestCase("divide-x-2 divide-x-4", 4f)]
+        public void Given_ImportantAndPlainAxisWidths_When_Extracted_Then_ImportantWinsAndTheLastOfEqualImportanceWins(
+            string className, float expectedWidth)
+        {
+            // Act
+            StyleDivideClass.TryExtract(className.Split(' '), out var spec);
+
+            // Assert
+            Assert.That(spec.Width, Is.EqualTo(expectedWidth));
+        }
+
+        [Test]
+        public void Given_ImportantVerticalDivideBeforeAPlainHorizontalOne_When_Extracted_Then_TheImportantAxisWins()
+        {
+            // Act
+            StyleDivideClass.TryExtract(new[] { "!divide-y-2", "divide-x-4" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Axis, spec.Width), Is.EqualTo((DivideAxis.Vertical, 2f)));
+        }
+
+        [Test]
+        public void Given_ImportantColorBeforeAPlainColor_When_Extracted_Then_TheImportantColorWins()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+
+            // Act
+            StyleDivideClass.TryExtract(new[] { "divide-x", "!divide-gray-200", "divide-red-500" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Color, Is.EqualTo(gray200));
+        }
+
+        [Test]
+        public void Given_ImportantDashedBeforePlainSolid_When_Extracted_Then_TheImportantStyleWins()
+        {
+            // Act
+            StyleDivideClass.TryExtract(new[] { "divide-x", "divide-dashed!", "divide-solid" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Style, Is.EqualTo(BorderLineStyle.Dashed));
+        }
+
+        [Test]
+        public void Given_OnlyAnImportantDivideClass_When_HasDivideClassProbed_Then_GateReturnsTrue()
+        {
+            // Act
+            var has = StyleDivideClass.HasDivideClass(new[] { "flex", "!divide-x" });
+
+            // Assert
+            Assert.That(has, Is.True);
+        }
+
         #endregion
 
         #region End-to-end (manipulator drives child borders)
@@ -256,6 +314,51 @@ namespace Velvet.Tests
 
             // Assert — the divider sits on the end (right) edge of every child but the last.
             Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(1f));
+        }
+
+        [TestCase("flex flex-row !divide-x-4 divide-x-2")]
+        [TestCase("flex flex-row divide-x-4! divide-x-2")]
+        public void Given_AnImportantDivideWidthBeforeAPlainOne_When_Reconciled_Then_TheImportantWidthIsDrawn(string className)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row(className, 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(4f));
+        }
+
+        [TestCase("flex flex-row divide-x-2 hover:divide-x-4", 4f)]
+        [TestCase("flex flex-row !divide-x-2 hover:divide-x-4", 2f)]
+        [TestCase("flex flex-row !divide-x-2 hover:!divide-x-4", 4f)]
+        [TestCase("flex flex-row divide-x-2 hover:divide-x-4!", 4f)]
+        public void Given_AVariantDivideWidth_When_HoverStartsAndEnds_Then_TheWinningWidthAppliesAndRestores(
+            string className, float hoveredWidth)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row(className, 2) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = scope.Root[0];
+            var atRest = container[0].style.borderRightWidth.value;
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                container.SimulateEvent(over);
+            }
+            var whileHover = container[0].style.borderRightWidth.value;
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                container.SimulateEvent(leave);
+            }
+            var afterLeave = container[0].style.borderRightWidth.value;
+
+            // Assert
+            Assert.That((atRest, whileHover, afterLeave), Is.EqualTo((2f, hoveredWidth, 2f)));
         }
 
         [Test]
