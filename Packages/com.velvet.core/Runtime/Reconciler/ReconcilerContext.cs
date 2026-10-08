@@ -672,6 +672,10 @@ namespace Velvet
         // pure side-table (teardown is a plain Remove), so it is enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, VariantGateState> VariantGateClasses { get; } = new();
 
+        // The family each element's font layer named or inherited (FiberFontScope). Its two tables are pure
+        // side-tables, enrolled below.
+        internal FiberFontScope FontScope { get; } = new();
+
         // Hook to re-run every class-driven pass a variant payload can change (the layout manipulators and
         // the paint layers) against the element's current class source, set by FiberNodePatcher.
         // StyleVariantPayload.Apply invokes it after a variant toggles one of the gate tokens above: that
@@ -2215,6 +2219,8 @@ namespace Velvet
                 ChildBoxOwners,
                 ChildDividerOwners,
                 VariantGateClasses,
+                FontScope.Families,
+                FontScope.Inheritors,
                 ZLayerHosts,
                 ZLayerMembers,
             };

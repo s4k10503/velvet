@@ -87,7 +87,7 @@ With the `Bold` entry registered, `font-bold` renders a **true** bold asset rath
 ### What `DefaultFamily` reaches
 
 `DefaultFamily` supplies the family to an element that has a weight or italic class (`font-normal`,
-`font-bold`, `italic`, …) and no `font-<name>`, and Velvet writes the resolved asset inline on that
+`font-bold`, `italic`, …), no `font-<name>`, and no ancestor naming a family (below), and Velvet writes the resolved asset inline on that
 element. Its descendants inherit that asset like any other. **A label with no font class, and no
 ancestor carrying one, gets no font from Velvet**: it keeps whatever font its stylesheets, ancestors
 and the panel's text settings give it.
@@ -108,15 +108,12 @@ under this root, so the target, layer root or world-space panel root needs the c
 `DefaultFamilyScopePanelTests` pins the scope and both kinds of root on a panel with no theme
 stylesheet.
 
-With a family-class root, register the same family as the default as well. Descendants that carry a
-weight or italic class resolve their family from `DefaultFamily`, never from an ancestor's class, so
-without it `font-bold` under a `font-sans` root writes `-unity-font-style: bold` over the asset the
-root resolved instead of selecting the registered `Bold` entry.
-
-That is also where Velvet deviates from CSS: in CSS a weight class keeps the family it inherits, so
-`font-bold` inside a `font-serif` container is a bold serif. Velvet resolves it against
-`DefaultFamily` instead; when that names another family, the bold text switches to it. Give such a
-descendant its family explicitly (`font-serif font-bold`).
+A weight or italic class on an element with no `font-<name>` of its own keeps the family it inherits,
+as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
+The family is the one named by the nearest ancestor carrying a `font-<name>` class; an ancestor that has
+only a weight class names none. `DefaultFamily` applies only when no ancestor names a family, so a
+`font-sans` root does not need `sans` registered as the default for `font-bold` below it to select
+`sans`'s `Bold` entry. `InheritedFontFamilyPanelTests` pins this.
 
 Glyphs the assigned asset lacks still go through TextCore's fallback chain, which
 [Multilingual / CJK fallback](#multilingual--cjk-fallback) covers.
