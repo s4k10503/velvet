@@ -284,6 +284,7 @@ namespace Velvet
             DetachManipulator(element, _ctx.DivideManipulators);
             DetachManipulator(element, _ctx.GridManipulators);
             DetachManipulator(element, _ctx.TextBalanceManipulators);
+            DetachManipulator(element, _ctx.FlexMinSizeManipulators);
             DetachManipulator(element, _ctx.ChildVariantManipulators);
             if (_ctx.PointerEventsScopes.TryGetValue(element, out var pointerEvents))
             {

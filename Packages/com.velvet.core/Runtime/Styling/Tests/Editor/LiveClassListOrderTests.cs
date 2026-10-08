@@ -59,6 +59,8 @@ namespace Velvet.Tests
         private const string BalanceWidthReader =
             "System.Boolean Velvet.StyleTextBalanceClass.DeclaresWidthClass("
             + "UnityEngine.UIElements.VisualElement)";
+        private const string FlexMinSizeScanReader =
+            "System.Void Velvet.StyleFlexMinSizeManipulator.Scan(UnityEngine.UIElements.TextElement)";
         private const string OwnSlotReader =
             "System.Boolean Velvet.StyleArbitraryValueResolver.DeclaresOwn("
             + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot)";
@@ -83,6 +85,12 @@ namespace Velvet.Tests
 
             public string Reader { get; }
         }
+
+        private static readonly MethodInfo ScanFlexMinSizeClasses = typeof(StyleFlexMinSizeManipulator)
+            .GetMethod("Scan", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        private static readonly FieldInfo FlexMinSizeSpecifiedWidth = typeof(StyleFlexMinSizeManipulator)
+            .GetField("_specifiedWidth", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
         private static readonly MethodInfo RouteOneClass = typeof(FiberNodePatcher)
             .GetMethod("AddClass", BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -120,6 +128,8 @@ namespace Velvet.Tests
         {
             "System.Boolean Velvet.StyleGridClass.HasGridClass(System.String[])",
             "System.Void Velvet.FiberNodePatcher.ApplyDivideManipulator("
+                + "UnityEngine.UIElements.VisualElement, System.String[])",
+            "System.Void Velvet.FiberNodePatcher.ApplyFlexMinSizeManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
             "System.Void Velvet.FiberNodePatcher.ApplyGapManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[], System.Boolean)",
@@ -166,6 +176,23 @@ namespace Velvet.Tests
                 RouteOneClass.Invoke(null, new object[] { element, cls });
             }
             return element;
+        }
+
+        private static Label Labelled(params string[] classNames)
+        {
+            var label = new Label();
+            FiberElementFactory.ApplyClassNames(label, classNames);
+            return label;
+        }
+
+        private static float? ScannedWidth(Label label)
+        {
+            var manipulator = new StyleFlexMinSizeManipulator(null!, System.Array.Empty<string>());
+            ScanFlexMinSizeClasses.Invoke(manipulator, new object[] { label });
+            var declared = FlexMinSizeSpecifiedWidth.GetValue(manipulator);
+            return declared == null
+                ? null
+                : (float)declared.GetType().GetProperty("Value")!.GetValue(declared)!;
         }
 
         private static string[] LiveClasses(VisualElement element)
@@ -681,6 +708,27 @@ namespace Velvet.Tests
             // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
             Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
                 "the balance manipulator stands down for a declared width wherever it sits in the list");
+        }
+
+        // What shows the case can fail is Scan taking the last width token in the list again: the two orders
+        // then declare the two widths in turn. The verdict is that only the set decides, the later rule in
+        // StyleRuleOrder winning.
+        [Test]
+        [ReaderVerdict(FlexMinSizeScanReader)]
+        public void Given_TwoWidthTokens_When_TheOrderTheyWereAddedInIsReversed_Then_TheFlexMinSizeScanDeclaresTheSameWidthBothWays()
+        {
+            // Arrange
+            var added = Labelled("w-4", "w-8");
+            var reversed = Labelled("w-8", "w-4");
+
+            // Act
+            var fromAdded = ScannedWidth(added);
+            var fromReversed = ScannedWidth(reversed);
+
+            // Assert — a width is declared in both, folded in: two absent widths would agree while measuring
+            // nothing.
+            Assert.That((fromAdded.HasValue, fromAdded == fromReversed), Is.EqualTo((true, true)),
+                "the automatic minimum caps at the same width wherever its token sits in the list");
         }
 
         // What shows the case can fail is trading the `return true` in DeclaresOwn for an answer each class
