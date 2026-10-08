@@ -2,10 +2,9 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The re-derive triggers StyleTextBalanceManipulator and StyleFlexMinSizeManipulator share: attach, the
-    // target's own and its parent's GeometryChangedEvent, and ChangeEvent<string>. Each derives from the
-    // target's text and the parent's box, writes an inline value, and guards its re-derive with a signature
-    // over its inputs.
+    // The re-derive triggers a manipulator of a text leaf shares: attach, the target's own and its parent's
+    // GeometryChangedEvent, and ChangeEvent<string>. A subclass derives from the target's text and the
+    // parent's box and guards its re-derive with a signature over its inputs.
     internal abstract class StyleTextItemManipulator : Manipulator
     {
         // Answers whether the target's parent is a grid container, whose manipulator writes the same slots.
