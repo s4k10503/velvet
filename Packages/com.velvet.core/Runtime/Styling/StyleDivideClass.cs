@@ -28,7 +28,7 @@ namespace Velvet
 
     // The slots of a divide whose winning token carries the important modifier. An important slot is written
     // over the divided child's own border width or colour instead of giving way to it, as Tailwind's
-    // `!important` divide declaration does. The line style has no bit: nothing in the child competes for it.
+    // `!important` divide declaration does. The line style has no bit because the style never yields to a child's slot.
     [Flags]
     internal enum DivideImportance
     {

@@ -447,6 +447,82 @@ namespace Velvet.Tests
                 Is.EqualTo((gray200, gray200, gray200, gray200)));
         }
 
+        [Test]
+        public void Given_AnImportantDivideColor_When_ADividedChildCarriesABorderColorClass_Then_TheDivideWins()
+        {
+            // Arrange — a bundled USS color class is what DeclaresOwn reads, unlike the inline arbitrary color above.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x !divide-gray-200", "border-gray-300") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightColor.value, Is.EqualTo(gray200));
+        }
+
+        [Test]
+        public void Given_APlainDivideColor_When_ADividedChildCarriesABorderColorClass_Then_TheChildKeepsIt()
+        {
+            // Arrange — the control for the important case above: the same row without the bang.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-gray-200", "border-gray-300") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightColor.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AnImportantDashedDivideWidth_When_ADividedChildCarriesItsOwnBorderWidthClass_Then_TheDivideWinsOnTheDashedPath()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row !divide-x-4 divide-dashed", "border-r-2") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            var child = scope.Root[0][1];
+            Assert.That((child.style.borderRightWidth.value, scope.Reconciler.Context.DivideDashBindings.ContainsKey(child)),
+                Is.EqualTo((4f, true)));
+        }
+
+        [Test]
+        public void Given_AnImportantDivideWidth_When_ADividedChildCarriesAnImportantBorderWidth_Then_TheDivideStillWins()
+        {
+            // Arrange — a deviation from CSS, where the child's higher specificity would win.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row !divide-x-4", "!border-r-[3px]") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_AnImportantDivideWidth_When_PatchedToAPlainOne_Then_TheChildsOwnBorderWidthReturns()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { DividerRowWithColoredChild("flex flex-row !divide-x-4", "border-r-[3px]") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var important = scope.Root[0][1].style.borderRightWidth.value;
+
+            // Act
+            var tree2 = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x-4", "border-r-[3px]") };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the important width before the patch rides along.
+            Assert.That((important, scope.Root[0][1].style.borderRightWidth.value), Is.EqualTo((4f, 3f)));
+        }
+
         [TestCase("flex flex-row divide-x divide-gray-200 hover:divide-red-500", false)]
         [TestCase("flex flex-row divide-x !divide-gray-200 hover:divide-red-500", true)]
         [TestCase("flex flex-row divide-x !divide-gray-200 hover:!divide-red-500", false)]

@@ -4,3 +4,5 @@
   were dropped, so the divider was not drawn. An important axis, width, colour or line style now beats a
   plain one wherever it sits on the element, including through an active variant, and an important width or
   colour is drawn over a divided child's own border width or colour instead of giving way to it.
+  A child's own important border (`!border-r-[3px]`) still loses to an important divide, where CSS would
+  let the child's higher specificity win.
