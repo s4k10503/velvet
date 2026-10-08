@@ -381,6 +381,13 @@ namespace Velvet
             {
                 return;
             }
+            if (_owned == axis)
+            {
+                // CSS never animates an automatic minimum. Rewriting an owned value in place is a change
+                // between two lengths, which a transition covering the property would animate; clearing first
+                // makes the new value start from `auto`. TextItemBaselinePanelTests pins that it lands at once.
+                Release(textElement);
+            }
             if (horizontal)
             {
                 textElement.style.minWidth = new StyleLength(value);

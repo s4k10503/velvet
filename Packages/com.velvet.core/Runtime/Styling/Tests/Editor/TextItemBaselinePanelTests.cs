@@ -446,5 +446,32 @@ namespace Velvet.Tests
             // as well, and the claim is that the class takes a written value back out.
             Assert.That((wrote, label.style.minWidth.keyword), Is.EqualTo((true, StyleKeyword.Null)));
         }
+
+        [Test]
+        public void Given_ATransitionAllLabel_When_ItsMinimumChanges_Then_TheNewMinimumLandsAtOnce()
+        {
+            // Arrange — a half-second transition on every property, which an animated rewrite of the minimum
+            // would still be near its start value under, the panel clock not having advanced.
+            const string Longer = "antidisestablishmentarianism is long";
+            using var scope = new ReconcilerScope();
+            _window.rootVisualElement.Add(scope.Root);
+            VNode[] Tree(string text) => new VNode[]
+            {
+                V.Div("flex flex-row w-[20px]", V.Label(className: "transition-all duration-500", text: text)),
+            };
+            var before = Tree(Sentence);
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var label = scope.Root.Q<Label>();
+            Settle(label);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, Tree(Longer));
+            ForcePanelUpdate(label.panel);
+
+            // Assert
+            Assert.That(
+                label.resolvedStyle.minWidth.value,
+                Is.EqualTo(WidestWordMinimum(label, "antidisestablishmentarianism")));
+        }
     }
 }
