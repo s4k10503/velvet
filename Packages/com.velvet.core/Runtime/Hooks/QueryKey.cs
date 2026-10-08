@@ -18,7 +18,9 @@ namespace Velvet
     /// The parts are copied when the key is built, so editing the array passed in afterwards does not move
     /// the key. A part whose equality or hash code changes after the key is built — a mutable collection,
     /// for instance — is outside that guarantee. <b>Deviation:</b> a dictionary is a sequence too and compares
-    /// in its enumeration order, where v5 sorts an object's keys before hashing it.
+    /// in its enumeration order, where v5 sorts an object's keys before hashing it. A sequence part is
+    /// enumerated when the key is built and again on every comparison, so pass a materialised collection
+    /// rather than a lazy query.
     /// </remarks>
     public sealed class QueryKey : IEquatable<QueryKey>
     {
@@ -63,12 +65,20 @@ namespace Velvet
         {
             var leftItems = left.GetEnumerator();
             var rightItems = right.GetEnumerator();
-            while (true)
+            try
             {
-                var hasLeft = leftItems.MoveNext();
-                if (hasLeft != rightItems.MoveNext()) return false;
-                if (!hasLeft) return true;
-                if (!PartEquals(leftItems.Current, rightItems.Current)) return false;
+                while (true)
+                {
+                    var hasLeft = leftItems.MoveNext();
+                    if (hasLeft != rightItems.MoveNext()) return false;
+                    if (!hasLeft) return true;
+                    if (!PartEquals(leftItems.Current, rightItems.Current)) return false;
+                }
+            }
+            finally
+            {
+                (leftItems as IDisposable)?.Dispose();
+                (rightItems as IDisposable)?.Dispose();
             }
         }
 
