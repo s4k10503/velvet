@@ -67,6 +67,11 @@ namespace Velvet
                 return false;
             }
 
+            if (StyleLogicalUtilities.TryParse(className, out result))
+            {
+                return true;
+            }
+
             // Color opacity modifier: {bg|text|border}-<color>/<N> applies alpha N% to the resolved base
             // color (bg-red-500/50, text-black/75, border-white/10, bg-[#fff]/50). Detected before the
             // bracket parsing below because the palette form carries no '[' at all. A leading '-' never
@@ -274,7 +279,8 @@ namespace Velvet
             {
                 return true;
             }
-            if (IsFractionToken(cls))
+            // Logical-direction utilities (ms-4, start-1/2, rounded-ss-lg) have no USS class at all.
+            if (IsFractionToken(cls) || StyleLogicalUtilities.TryParse(cls, out _))
             {
                 return true;
             }
@@ -602,7 +608,7 @@ namespace Velvet
         }
 
         // A zero denominator does not parse: no percent stands for it.
-        private static bool TryParseFractionPercent(string frac, out float percent)
+        internal static bool TryParseFractionPercent(string frac, out float percent)
         {
             percent = 0f;
             var slash = frac.IndexOf('/');
