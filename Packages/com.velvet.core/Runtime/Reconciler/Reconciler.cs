@@ -843,6 +843,13 @@ namespace Velvet
             }
 
             _ctx.TextBalanceManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.FlexMinSizeManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.FlexMinSizeManipulators.Clear();
+
             foreach (var scope in _ctx.PointerEventsScopes.Values)
             {
                 // MUTANT_SURVIVES(unreachable): no case leaves a scope in the table by now, since the unmount

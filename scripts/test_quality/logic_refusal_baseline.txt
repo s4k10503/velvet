@@ -53,7 +53,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs	19
 Packages/com.velvet.core/Runtime/Styling/StyleHasVariantManipulator.cs	4
 Packages/com.velvet.core/Runtime/Styling/StyleInputBoxSurface.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs	2
-Packages/com.velvet.core/Runtime/Styling/StyleRuleOrder.cs	1
+Packages/com.velvet.core/Runtime/Styling/StyleRuleOrder.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleSkewChildTranslateManipulator.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleSlotRecipe.cs	1

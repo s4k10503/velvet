@@ -13,23 +13,67 @@ namespace Velvet
     internal static class StyleRuleOrder
     {
         // Tailwind v4's property-order.ts (tailwindcss@fa81d697), kept to the properties a UI Toolkit longhand
-        // maps to, plus line-height (see s_lineHeightIndex), in that file's order. Tailwind leaves a property it
-        // does not list out of the sort, and so does PropertySortOf.
+        // maps to, the shorthand and logical properties s_shorthandIndexes and StyleLogicalUtilities place tokens
+        // by, plus line-height (see s_lineHeightIndex), in that file's order. Tailwind leaves a property it does
+        // not list out of the sort, and so does PropertySortOf.
         private static readonly string[] s_tailwindPropertyOrder =
         {
-            "visibility", "position", "top", "right", "bottom", "left", "margin-top", "margin-right",
+            "visibility", "position", "inset", "inset-inline", "inset-block", "inset-inline-start",
+            "inset-inline-end", "inset-block-start", "inset-block-end", "top", "right", "bottom", "left", "margin",
+            "margin-inline", "margin-block", "margin-inline-start", "margin-inline-end",
+            "margin-block-start", "margin-block-end", "margin-top", "margin-right",
             "margin-bottom", "margin-left", "display", "aspect-ratio", "height", "max-height", "min-height", "width",
             "max-width", "min-width", "flex-shrink", "flex-grow", "flex-basis", "transform-origin", "translate",
             "scale", "rotate", "cursor", "flex-direction", "flex-wrap", "align-content", "align-items",
-            "justify-content", "align-self", "overflow", "border-top-left-radius", "border-top-right-radius",
-            "border-bottom-right-radius", "border-bottom-left-radius", "border-top-width", "border-right-width",
-            "border-bottom-width", "border-left-width", "border-top-color", "border-right-color",
-            "border-bottom-color", "border-left-color", "background-color", "background-image", "background-size",
-            "background-position", "background-repeat", "padding-top", "padding-right", "padding-bottom",
+            "justify-content", "align-self", "overflow", "border-radius", "border-start-start-radius", "border-start-end-radius",
+            "border-end-end-radius", "border-end-start-radius", "border-top-left-radius", "border-top-right-radius",
+            "border-bottom-right-radius", "border-bottom-left-radius", "border-width", "border-inline-width",
+            "border-block-width", "border-inline-start-width",
+            "border-inline-end-width", "border-block-start-width", "border-block-end-width", "border-top-width",
+            "border-right-width", "border-bottom-width", "border-left-width", "border-top-color",
+            "border-right-color", "border-bottom-color", "border-left-color", "background-color", "background-image", "background-size",
+            "background-position", "background-repeat", "padding", "padding-inline", "padding-block", "padding-inline-start", "padding-inline-end",
+            "padding-block-start", "padding-block-end", "padding-top", "padding-right", "padding-bottom",
             "padding-left", "text-align", "font-family", "font-size", "line-height", "letter-spacing", "text-overflow",
             "white-space", "color", "opacity", "filter", "transition-property", "transition-delay",
             "transition-duration", "transition-timing-function",
         };
+
+        // The Tailwind property a utility that writes exactly these longhands declares, where Tailwind declares
+        // one shorthand for them (m-4 declares margin, mx-4 margin-inline). Sorted by its longhands, m-4 would
+        // follow ms-4, since margin-inline-start precedes margin-top; Tailwind emits margin ahead of both.
+        private static readonly (StyleLonghandSet Set, int Index)[] s_shorthandIndexes = BuildShorthandIndexes();
+
+        private static (StyleLonghandSet, int)[] BuildShorthandIndexes()
+        {
+            var sets = new (StyleLonghand[] Longhands, string Name)[]
+            {
+                (new[] { StyleLonghand.MarginTop, StyleLonghand.MarginRight, StyleLonghand.MarginBottom, StyleLonghand.MarginLeft }, "margin"),
+                (new[] { StyleLonghand.MarginLeft, StyleLonghand.MarginRight }, "margin-inline"),
+                (new[] { StyleLonghand.MarginTop, StyleLonghand.MarginBottom }, "margin-block"),
+                (new[] { StyleLonghand.PaddingTop, StyleLonghand.PaddingRight, StyleLonghand.PaddingBottom, StyleLonghand.PaddingLeft }, "padding"),
+                (new[] { StyleLonghand.PaddingLeft, StyleLonghand.PaddingRight }, "padding-inline"),
+                (new[] { StyleLonghand.PaddingTop, StyleLonghand.PaddingBottom }, "padding-block"),
+                (new[] { StyleLonghand.Top, StyleLonghand.Right, StyleLonghand.Bottom, StyleLonghand.Left }, "inset"),
+                (new[] { StyleLonghand.Left, StyleLonghand.Right }, "inset-inline"),
+                (new[] { StyleLonghand.Top, StyleLonghand.Bottom }, "inset-block"),
+                (new[] { StyleLonghand.BorderTopLeftRadius, StyleLonghand.BorderTopRightRadius, StyleLonghand.BorderBottomRightRadius, StyleLonghand.BorderBottomLeftRadius }, "border-radius"),
+                (new[] { StyleLonghand.BorderTopWidth, StyleLonghand.BorderRightWidth, StyleLonghand.BorderBottomWidth, StyleLonghand.BorderLeftWidth }, "border-width"),
+                (new[] { StyleLonghand.BorderLeftWidth, StyleLonghand.BorderRightWidth }, "border-inline-width"),
+                (new[] { StyleLonghand.BorderTopWidth, StyleLonghand.BorderBottomWidth }, "border-block-width"),
+            };
+            var indexes = new (StyleLonghandSet, int)[sets.Length];
+            for (var i = 0; i < sets.Length; i++)
+            {
+                var set = StyleLonghandSet.Empty;
+                foreach (var longhand in sets[i].Longhands)
+                {
+                    set = set.Union(StyleLonghandSet.Of(longhand));
+                }
+                indexes[i] = (set, Array.IndexOf(s_tailwindPropertyOrder, sets[i].Name));
+            }
+            return indexes;
+        }
 
         // The CSS property a UI Toolkit longhand stands for where the two names differ.
         private static readonly Dictionary<string, string> s_cssNames = new(StringComparer.Ordinal)
@@ -264,6 +308,18 @@ namespace Velvet
         private static string SelectorOf(string token, string? payload)
             => token.Substring(0, Math.Max(0, token.Length - (payload?.Length ?? 0) - 1));
 
+        private static int? ShorthandIndexOf(StyleLonghandSet set)
+        {
+            foreach (var (shorthandSet, index) in s_shorthandIndexes)
+            {
+                if (shorthandSet == set)
+                {
+                    return index;
+                }
+            }
+            return null;
+        }
+
         // The Tailwind property-order indexes of what the utility writes, ascending, and how many longhands it
         // writes.
         private static (List<int> Order, int Count) PropertySortOf(string utility)
@@ -305,6 +361,21 @@ namespace Velvet
                 {
                     order.Add(s_tailwindIndex[i]);
                 }
+            }
+            if (inline && StyleLogicalUtilities.SortPropertiesOf(core) is { } logical)
+            {
+                // Tailwind places the token by the logical property it declares, not by the physical edges
+                // the longhands above name.
+                order.Clear();
+                foreach (var name in logical)
+                {
+                    order.Add(Array.IndexOf(s_tailwindPropertyOrder, name));
+                }
+            }
+            else if (ShorthandIndexOf(set) is { } shorthand)
+            {
+                order.Clear();
+                order.Add(shorthand);
             }
             order.Sort();
             return (order, count);

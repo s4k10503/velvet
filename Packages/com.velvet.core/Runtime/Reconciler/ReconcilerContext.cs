@@ -656,6 +656,9 @@ namespace Velvet
         // text-balance's per-element measure-and-narrow manipulator. Mirrors GapManipulators /
         // GridManipulators; removed on cleanup / dispose.
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
+        // The automatic minimum size of a text flex item, one per Label / Button the reconciler creates.
+        // Removed on cleanup / dispose like the manipulators above.
+        public Dictionary<VisualElement, StyleFlexMinSizeManipulator> FlexMinSizeManipulators { get; } = new();
         // Each element whose own class list carries pointer-events-none or pointer-events-auto. Not a pure
         // side-table: a scope holds picking off across a subtree, released on cleanup / dispose.
         public Dictionary<VisualElement, PointerEventsScope> PointerEventsScopes { get; } = new();
