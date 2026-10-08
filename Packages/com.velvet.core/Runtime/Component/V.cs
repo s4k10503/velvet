@@ -427,8 +427,10 @@ namespace Velvet
         /// and one a later render drops goes back to what the element carried before any render declared it.</param>
         /// <param name="inverted">When true, swaps the ends the low and high values sit at, written to
         /// <c>Slider.inverted</c>. Null is undeclared, as for <paramref name="direction"/>.</param>
+        /// <param name="step">Distance one arrow key moves the value, and the grid Home, End and the paging keys
+        /// land on, counted from <paramref name="lowValue"/>. Null is Radix's default of 1.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="direction"/> names no member of
-        /// <see cref="SliderDirection"/>.</exception>
+        /// <see cref="SliderDirection"/>, or <paramref name="step"/> is not above zero and finite.</exception>
         /// <returns>The created <see cref="ElementNode"/> representing this slider.</returns>
         public static ElementNode Slider(
             string? className = null,
@@ -447,7 +449,8 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null,
             SliderDirection? direction = null,
-            bool? inverted = null)
+            bool? inverted = null,
+            float? step = null)
         {
             VNode.RequireKey(key);
             // Above both rents below, so a refusal here strands no event array or bag this factory rented.
@@ -456,17 +459,24 @@ namespace Velvet
                 throw new ArgumentOutOfRangeException(nameof(direction), direction,
                     "V.Slider takes a member of SliderDirection as its direction.");
             }
+
+            if (step is { } stepValue && !(stepValue > 0f && float.IsFinite(stepValue)))
+            {
+                throw new ArgumentOutOfRangeException(nameof(step), step,
+                    "V.Slider takes a step above zero and finite.");
+            }
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<float> { Handler = onValueChanged } : null);
 
             FiberElementProps? props = null;
             if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue
-                || direction.HasValue || inverted.HasValue)
+                || direction.HasValue || inverted.HasValue || step.HasValue)
             {
                 props = VNodePool.RentProps();
                 props.FieldValue = value;
                 props.Enabled = enabled;
-                props.Slider = (lowValue.HasValue || highValue.HasValue || direction.HasValue || inverted.HasValue)
-                    ? new SliderSettings(lowValue, highValue, direction, inverted)
+                props.Slider = (lowValue.HasValue || highValue.HasValue || direction.HasValue || inverted.HasValue
+                        || step.HasValue)
+                    ? new SliderSettings(lowValue, highValue, direction, inverted, step)
                     : null;
             }
             props = WithAttributes(props, data, aria);

@@ -389,6 +389,33 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region the step
+
+        [TestCase(0f)]
+        [TestCase(-1f)]
+        [TestCase(float.NaN)]
+        [TestCase(float.PositiveInfinity)]
+        public void Given_AStepNotAboveZeroAndFinite_When_VSliderIsCalled_Then_ItThrowsNamingTheStep(float step)
+        {
+            // Act
+            var ex = Assert.Throws<ArgumentOutOfRangeException>(() => V.Slider(step: step));
+
+            // Assert
+            Assert.That(ex.ParamName, Is.EqualTo("step"));
+        }
+
+        [Test]
+        public void Given_ADeclaredStep_When_VSliderIsCalled_Then_TheNodeCarriesIt()
+        {
+            // Act
+            var node = V.Slider(step: 0.25f);
+
+            // Assert
+            Assert.That(node.Props?.Slider?.Step, Is.EqualTo(0.25f));
+        }
+
+        #endregion
+
         #region the record
 
         [Test]

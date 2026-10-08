@@ -227,7 +227,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
 | `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it |
 | `<input type="checkbox">` | `V.Toggle()` | |
-| `<input type="range">` | `V.Slider()` | `min` / `max` are the `lowValue:` / `highValue:` parameters. `direction:` (`SliderDirection.Vertical`) and `inverted:` set UI Toolkit's `Slider.direction` and `Slider.inverted` — see below for what null means |
+| `<input type="range">` | `V.Slider()` | `min` / `max` / `step` are the `lowValue:` / `highValue:` / `step:` parameters. `direction:` (`SliderDirection.Vertical`) and `inverted:` set UI Toolkit's `Slider.direction` and `Slider.inverted` — see below for what null means |
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
 | `<>{a}{b}</>` | `V.Fragment(a, b)` | `V.Fragment(children, key: "k")` is `<Fragment key="k">` |
 
@@ -242,8 +242,14 @@ had before any render declared one, which is horizontal unless something wrote a
 either writes both, a null `lowValue:` as 0 and a null `highValue:` as 10.
 
 A `V.Slider` with `direction: SliderDirection.Vertical` has its high end at the top, as Radix's vertical
-`Slider` does, and `inverted: true` puts the low end there. Home sets the low value and End the high value
-whatever the direction and the flag, as in WAI-ARIA's slider pattern and Radix's `Slider`.
+`Slider` does, and `inverted: true` puts the low end there. Its input is Radix's `Slider`, whatever the
+direction and the flag: Home sets the low value and End the high value; PageUp and PageDown move ten
+steps; an arrow moves one step, ten with Shift, with no Enter pressed first. The
+arrows are Radix's: Up and Right raise the value and Down and Left lower it, except that an inverted
+horizontal slider swaps Left and Right and an inverted vertical one swaps Up and Down. `step:` is the
+distance one step covers and defaults to 1, as in Radix, and a value a key or a drag gives the slider
+lands on the grid of steps counted from `lowValue:`, which is why a slider over 0 to 1 declares
+`step: 0.01`; the controlled `value:` is shown as declared. A key aimed at the numeric input field a slider shows is the field's.
 
 A field holding `isDelayed:` releases the typed text into its value on Enter, on losing focus, and on
 a render taking the flag off — that third one whether the render declares `isDelayed: false` or drops

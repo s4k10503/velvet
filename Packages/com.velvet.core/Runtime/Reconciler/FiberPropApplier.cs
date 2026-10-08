@@ -116,6 +116,7 @@ namespace Velvet
             else if (element is Slider slider)
             {
                 s_sliderDefaults.Remove(slider);
+                FiberSliderKeyboard.ForgetStep(slider);
             }
         }
 
@@ -199,6 +200,7 @@ namespace Velvet
                 return;
             }
 
+            FiberSliderKeyboard.SetStep(sliderEl, settings?.Step);
             if (previous?.LowValue != settings?.LowValue || previous?.HighValue != settings?.HighValue)
             {
                 sliderEl.lowValue = Resolve(settings?.LowValue, 0f);

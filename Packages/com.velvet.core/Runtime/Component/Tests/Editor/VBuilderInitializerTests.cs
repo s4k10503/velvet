@@ -182,6 +182,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_VSliderWithAStep_When_Built_Then_TheNodeCarriesIt()
+        {
+            // Arrange
+            var builder = new VSlider("slider") { Step = 5f };
+
+            // Act
+            VNode node = builder;
+
+            // Assert
+            Assert.That(((ElementNode)node).Props?.Slider?.Step, Is.EqualTo(5f));
+        }
+
+        [Test]
         public void Given_VToggleWithOnChange_When_Built_Then_BindsSingleChangeEvent()
         {
             VNode node = new VToggle("toggle") { Value = true, OnChange = _ => { } };

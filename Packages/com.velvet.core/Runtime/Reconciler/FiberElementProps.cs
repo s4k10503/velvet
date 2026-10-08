@@ -148,22 +148,23 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Slider.lowValue / highValue / direction / inverted. Record structural equality simplifies DiffProps.
+    /// Slider.lowValue / highValue / direction / inverted, and the keyboard step. Record structural equality simplifies DiffProps.
     /// A null <see cref="Direction"/> or <see cref="Inverted"/> is undeclared: one no render has declared is
     /// not written, and one a render declared and a later render dropped is restored to what the slider
     /// carried when a render first declared it. A null bound is written as 0 or 10 whenever either bound's
-    /// declaration changes.
+    /// declaration changes. <see cref="Step"/> is Radix's <c>step</c>, and null is its default of 1.
     /// </summary>
     public sealed record SliderSettings(
         float? LowValue = null,
         float? HighValue = null,
         SliderDirection? Direction = null,
-        bool? Inverted = null)
+        bool? Inverted = null,
+        float? Step = null)
     {
         /// <summary>
-        /// Reads the range alone. Kept beside the four-member form the record declares so a two-element
+        /// Reads the range alone. Kept beside the five-member form the record declares so a two-element
         /// deconstruction or positional pattern written against the record before it carried
-        /// <see cref="Direction"/> and <see cref="Inverted"/> still compiles.
+        /// <see cref="Direction"/>, <see cref="Inverted"/> and <see cref="Step"/> still compiles.
         /// </summary>
         public void Deconstruct(out float? LowValue, out float? HighValue)
         {
