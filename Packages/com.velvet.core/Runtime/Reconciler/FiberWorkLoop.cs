@@ -72,6 +72,33 @@ namespace Velvet
         // The request is silently ignored if the fiber is disposed or not mounted.
         // fiber: Fiber whose state changed.
         public static void RequestRenderFromHook(ComponentFiber fiber)
+            => RequestRenderFromHook(fiber, joinsTransition: true);
+
+        // addOptimistic's own render is never a transition's: on the Transition lane it would wait out the
+        // delayed tier, and enrol the optimistic component on the transition whose pending lifetime the value
+        // exists to cover.
+        internal static void RequestOptimisticRender(ComponentFiber fiber)
+            => RequestRenderFromHook(fiber, joinsTransition: false);
+
+        // The transition an addOptimistic call belongs to, whose settle retires the entry: the innermost open
+        // scope whose slot still has an owner, on the rule MarkTransitionWorkQueued skips a released slot by.
+        // Null outside every scope, an async action's continuation past a suspension included.
+        internal static HookTransitionSlot? CurrentOptimisticOwner
+        {
+            get
+            {
+                for (var i = OpenTransitionScopes.Count - 1; i >= 0; i--)
+                {
+                    if (OpenTransitionScopes[i].HasActiveOwner)
+                    {
+                        return OpenTransitionScopes[i];
+                    }
+                }
+                return null;
+            }
+        }
+
+        private static void RequestRenderFromHook(ComponentFiber fiber, bool joinsTransition)
         {
             if (fiber.IsDisposed || !fiber.IsMounted)
             {
@@ -97,7 +124,7 @@ namespace Velvet
 
             // Tested ahead of the discrete-event gate below, because a discrete handler calling
             // startTransition is the ordinary way to start one and its updates are still the transition's.
-            if (OpenTransitionScopes.Count > 0)
+            if (joinsTransition && OpenTransitionScopes.Count > 0)
             {
                 // Attributed on this branch rather than inside ScheduleRerender, which would also charge
                 // UseDeferredValue's own Transition-lane request (RequestTransitionRerender) to a

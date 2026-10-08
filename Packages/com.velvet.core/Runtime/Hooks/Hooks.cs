@@ -2208,21 +2208,26 @@ namespace Velvet
         #region UseOptimistic
 
         /// <summary>
-        /// Returns the optimistic state and an
-        /// <c>addOptimistic</c> action. Normally the returned state equals <paramref name="passthroughState"/>.
-        /// When <c>addOptimistic(action)</c> is invoked, <paramref name="applyOptimistic"/> derives an
-        /// optimistic state that is shown immediately (a re-render is requested) while the real update is in
-        /// flight; once <paramref name="passthroughState"/> changes (the real update lands), the optimistic
-        /// override is discarded and the pass-through state is shown again.
+        /// Returns the optimistic state and an <c>addOptimistic</c> action. With no optimistic update
+        /// outstanding the returned state is <paramref name="passthroughState"/>. Each
+        /// <c>addOptimistic(action)</c> records an entry and requests a render, and every render returns
+        /// <paramref name="passthroughState"/> folded through the outstanding entries by
+        /// <paramref name="applyOptimistic"/>, in the order they were added — so an entry lands on whatever
+        /// the authoritative state has become while it is outstanding. An entry added inside a
+        /// <c>startTransition</c> callback belongs to the innermost transition open there whose
+        /// <c>isPending</c> is lit, and is discarded when that <c>isPending</c> clears, whether or not
+        /// <paramref name="passthroughState"/> changed and whether the action succeeded or faulted; one
+        /// transition settling leaves another's entries in place. An entry no transition owns is discarded by
+        /// the component's next Transition-lane render, which the call schedules.
         /// </summary>
         /// <typeparam name="TState">Optimistic state type.</typeparam>
         /// <typeparam name="TAction">Action / payload type passed to <paramref name="applyOptimistic"/>.</typeparam>
         /// <param name="passthroughState">The authoritative state. Shown when no optimistic update is outstanding.</param>
-        /// <param name="applyOptimistic">Pure reducer <c>(currentState, action) =&gt; optimisticState</c>. Must not be null.</param>
+        /// <param name="applyOptimistic">Pure reducer <c>(currentState, action) =&gt; optimisticState</c>, run during render. Must not be null.</param>
         /// <returns>
         /// 2-tuple:
-        /// - <c>optimisticState</c>: the optimistic state while an update is outstanding, otherwise the pass-through state.
-        /// - <c>addOptimistic</c>: applies an optimistic action; the override is cleared when the pass-through state changes.
+        /// - <c>optimisticState</c>: the pass-through state folded through the outstanding entries.
+        /// - <c>addOptimistic</c>: records an entry owned by the transition whose callback is running, if any.
         /// </returns>
         public static (TState optimisticState, Action<TAction> addOptimistic) UseOptimistic<TState, TAction>(
             TState passthroughState, Func<TState, TAction, TState> applyOptimistic)
@@ -2233,39 +2238,30 @@ namespace Velvet
             var index = fiber.Indices.OptimisticHookIndex++;
             HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
+            HookOptimisticSlot<TState, TAction> slot;
             if (index >= fiber.OptimisticSlots.Count)
             {
-                var slot = new HookOptimisticSlot<TState, TAction>
-                {
-                    Base = passthroughState,
-                    OptimisticState = passthroughState,
-                    HasOptimistic = false,
-                    Apply = applyOptimistic,
-                };
+                slot = new HookOptimisticSlot<TState, TAction> { Fiber = fiber };
                 slot.Add = CreateOptimisticAdd(slot, fiber);
                 fiber.OptimisticSlots.Add(slot);
-                return (slot.OptimisticState, slot.Add);
             }
-
-            if (fiber.OptimisticSlots[index] is not HookOptimisticSlot<TState, TAction> typed)
+            else if (fiber.OptimisticSlots[index] is HookOptimisticSlot<TState, TAction> typed)
+            {
+                slot = typed;
+                if (FiberWorkLoop.IsRenderingTransitionLane)
+                {
+                    slot.RemoveEntries(owner: null);
+                }
+            }
+            else
             {
                 throw HookSlotTypeMismatch(fiber, "UseOptimistic", fiber.OptimisticSlots[index].GetType(),
                     $"HookOptimisticSlot<{typeof(TState).Name}, {typeof(TAction).Name}>", index);
             }
 
-            // Refresh the apply function (it may capture the latest render's scope).
-            typed.Apply = applyOptimistic;
-
-            if (!ObjectIs.AreEqual(typed.Base, passthroughState))
-            {
-                // The authoritative state changed (the real update landed): adopt it and drop the optimistic
-                // override, resetting the optimistic state once the update completes.
-                typed.Base = passthroughState;
-                typed.OptimisticState = passthroughState;
-                typed.HasOptimistic = false;
-            }
-
-            return (typed.HasOptimistic ? typed.OptimisticState : typed.Base, typed.Add);
+            // Refreshed every render, since the fold below runs it and it may capture this render's scope.
+            slot.Apply = applyOptimistic;
+            return (slot.Fold(passthroughState), slot.Add);
         }
 
         private static Action<TAction> CreateOptimisticAdd<TState, TAction>(
@@ -2274,11 +2270,21 @@ namespace Velvet
             return action =>
             {
                 if (fiber.IsDisposed) return;
-                // Layer onto the already-optimistic value so multiple addOptimistic calls compose.
-                var current = slot.HasOptimistic ? slot.OptimisticState : slot.Base;
-                slot.OptimisticState = slot.Apply(current, action);
-                slot.HasOptimistic = true;
-                RequestRender(fiber);
+                var owner = FiberWorkLoop.CurrentOptimisticOwner;
+                (slot.Entries ??= new List<(TAction Action, HookTransitionSlot? Owner)>()).Add((action, owner));
+                FiberWorkLoop.RequestOptimisticRender(fiber);
+                if (owner != null)
+                {
+                    owner.EnrolOptimisticDependent(slot);
+                    return;
+                }
+#if UNITY_EDITOR
+                FiberLogger.LogWarning("UseOptimistic",
+                    "An optimistic update was added outside a transition, so it is discarded at the component's " +
+                    "next Transition-lane render. Call addOptimistic inside startTransition to keep it until that " +
+                    "transition settles.");
+#endif
+                FiberWorkLoop.RequestTransitionRerender(fiber);
             };
         }
 

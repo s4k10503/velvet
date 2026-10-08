@@ -90,15 +90,48 @@ namespace Velvet
         public bool HasPending;
     }
 
-    internal abstract class HookOptimisticSlot { }
+    internal abstract class HookOptimisticSlot
+    {
+        public ComponentFiber Fiber = null!;
+
+        // A settle renders nobody on its own, so a retirement asks for the render that drops the entries.
+        // Reached only from a transition this slot enrolled on, which leaves it holding an entry of that
+        // transition's until this removes them all.
+        internal void RetireEntriesOwnedBy(HookTransitionSlot owner)
+        {
+            RemoveEntries(owner);
+            ComponentFiber.RequestRenderForSettledTransition(Fiber);
+        }
+
+        // A null owner names the entries no transition owns (FiberWorkLoop.CurrentOptimisticOwner read null).
+        internal abstract void RemoveEntries(HookTransitionSlot? owner);
+    }
 
     internal sealed class HookOptimisticSlot<TState, TAction> : HookOptimisticSlot
     {
-        public TState Base = default!;
-        public TState OptimisticState = default!;
-        public bool HasOptimistic;
+        // The actions rather than the state they produced, in the order addOptimistic received them, so a
+        // render folds them over the pass-through state it is handed and an entry still pending lands on
+        // whatever the authoritative state has become.
+        public List<(TAction Action, HookTransitionSlot? Owner)>? Entries;
         public Func<TState, TAction, TState> Apply = null!;
         public Action<TAction> Add = null!;
+
+        internal TState Fold(TState passthroughState)
+        {
+            if (Entries == null)
+            {
+                return passthroughState;
+            }
+            var state = passthroughState;
+            foreach (var entry in Entries)
+            {
+                state = Apply(state, entry.Action);
+            }
+            return state;
+        }
+
+        internal override void RemoveEntries(HookTransitionSlot? owner)
+            => Entries?.RemoveAll(entry => ReferenceEquals(entry.Owner, owner));
     }
 
     internal sealed class HookEffectSlot
@@ -118,7 +151,47 @@ namespace Velvet
 
     internal sealed class HookTransitionSlot
     {
-        public bool IsPending;
+        // Every clear retires the optimistic entries this transition owns, the release an unmount forces
+        // included: the task that would have settled it no longer can, so nothing else would retire them.
+        public bool IsPending
+        {
+            get => _isPending;
+            set
+            {
+                var settled = _isPending && !value;
+                _isPending = value;
+                if (settled)
+                {
+                    RetireOptimisticEntries();
+                }
+            }
+        }
+        private bool _isPending;
+        // The optimistic slots holding an entry made while FiberWorkLoop.CurrentOptimisticOwner named this slot.
+        public List<HookOptimisticSlot>? OptimisticDependents;
+
+        internal void EnrolOptimisticDependent(HookOptimisticSlot slot)
+        {
+            OptimisticDependents ??= new List<HookOptimisticSlot>();
+            if (!OptimisticDependents.Contains(slot))
+            {
+                OptimisticDependents.Add(slot);
+            }
+        }
+
+        private void RetireOptimisticEntries()
+        {
+            if (OptimisticDependents == null)
+            {
+                return;
+            }
+            foreach (var slot in OptimisticDependents)
+            {
+                slot.RetireEntriesOwnedBy(this);
+            }
+            OptimisticDependents.Clear();
+        }
+
         // An awaiting async StartTransition may hold IsPending=true on a fiber with NO pending lane (its
         // setState calls come after the await), and a drain callback armed earlier can legitimately fire
         // on that clean fiber — the settle-time sweep (SettleTransitionPending) must not read the absence of
