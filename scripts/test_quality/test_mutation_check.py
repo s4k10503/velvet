@@ -1607,6 +1607,280 @@ class RepositoryReachTests(unittest.TestCase):
         self.assertEqual(guards, {"if (!ReferenceEquals(round, _liveRound)) return;"})
 
 
+class ForwardingMemberTests(unittest.TestCase):
+    """Which expression bodies read as forwarding, and the cut each one is given.
+
+    The class body under test starts on line 5 of the source `forwards_in` builds.
+    """
+
+    @staticmethod
+    def forwards_in(members):
+        """(name, first line, last line, cut, declined) of each forwarding member of a class body."""
+        text = "namespace Velvet\n{\n    internal sealed class Probe\n    {\n" + textwrap.indent(
+            textwrap.dedent(members), " " * 8) + "    }\n}\n"
+        return [(forwarder.name, forwarder.first, forwarder.last, forwarder.cut, forwarder.declined)
+                for forwarder in mutation_check.forwarding_members(text)]
+
+    def test_Given_AWrappedForwardingBody_When_MembersAreRead_Then_ItsLinesRunFromTheHeadToTheBody(self):
+        # Arrange — the spelling whose tail `STATEMENT_BOUNDARY` refuses to remove.
+        members = ("public bool TrySetCanceled(CancellationToken token) =>\n"
+                   "    _core.TrySetCanceled(token);\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.TrySetCanceled", 5, 6, "default", None)])
+
+    def test_Given_AVoidForward_When_MembersAreRead_Then_ItsCutIsAnEmptyBody(self):
+        # Arrange — `default` is no body for a member that returns nothing.
+        members = "public void Return(Item item) => _pool.Return(item);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Return", 5, 5, "{ }", None)])
+
+    def test_Given_ABodyPassingALiteral_When_MembersAreRead_Then_ItIsNotAForward(self):
+        # Arrange
+        members = "public bool Set() => _core.Set(1);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ABodyPassingAKeyword_When_MembersAreRead_Then_ItIsNotAForward(self):
+        # Arrange — `default` is a word the identifier chain would otherwise take as a name.
+        members = "public bool TrySetResult() => _source.TrySettle(default);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ALambdaInsideAMethodBody_When_MembersAreRead_Then_ItIsNotAForward(self):
+        # Arrange — the lambda's shape is a forward's; it stands in a method's braces, not the type's.
+        members = ("public void Run()\n"
+                   "{\n"
+                   "    Action run = () => _core.Run();\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AFieldInitialisedWithALambda_When_MembersAreRead_Then_ItIsNotAForward(self):
+        # Arrange — the arrow stands in the type's braces, behind the `=` of a field, and the lambda's
+        # parameter is a name the head would otherwise end on.
+        members = "readonly Func<Key, int> _read = key => _core.Read(key);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AForwardWithAnOutArgument_When_MembersAreRead_Then_ItIsGivenNoCut(self):
+        # Arrange — neither cut assigns the out parameter.
+        members = "public bool TryRead(out int value) => _core.TryRead(out value);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.TryRead", 5, 5, None, "an out parameter")])
+
+    def test_Given_AnAsyncForward_When_MembersAreRead_Then_ItIsGivenNoCut(self):
+        # Arrange — which cut fits depends on whether the task carries a result, which the head's
+        # spelling does not settle.
+        members = "public async VelvetTask Run() => _core.RunAsync();\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Run", 5, 5, None, "async")])
+
+    def test_Given_AConstrainedGenericForward_When_MembersAreRead_Then_ItIsNamedForItsMethod(self):
+        # Arrange — the constraint stands between the parameters and the arrow, where the head is
+        # otherwise read for its name.
+        members = "public T Get<T>(Key key) where T : class => _core.Get<T>(key);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Get", 5, 5, "default", None)])
+
+    def test_Given_AForwardingConstructorWithAnInitializer_When_MembersAreRead_Then_ItsCutIsAnEmptyBody(self):
+        # Arrange
+        members = "internal Probe(Sheet sheet) : base(sheet) => Read(sheet);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Probe", 5, 5, "{ }", None)])
+
+    def test_Given_AnEqualityOperator_When_MembersAreRead_Then_ItIsAForward(self):
+        # Arrange — `==` is the `=` a field is told apart by, inside an operator's own token.
+        members = "public static bool operator ==(Probe left, Probe right) => left.Equals(right);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.operator ==", 5, 5, "default", None)])
+
+    def test_Given_AGetAccessor_When_MembersAreRead_Then_ItIsNamedForItsProperty(self):
+        # Arrange
+        members = ("public string Text\n"
+                   "{\n"
+                   "    get => _props.Text;\n"
+                   "    set { _props.Text = value; }\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Text.get", 7, 7, "default", None)])
+
+    def test_Given_AGenericAndANonGenericTypeForwardingOneMember_When_PairsAreRead_Then_TheMemberIsPaired(self):
+        # Arrange
+        text = textwrap.dedent("""\
+            internal sealed class Source
+            {
+                public short Version => _core.Version;
+                public bool IsPooled => _isPooled;
+            }
+            internal sealed class Source<T>
+            {
+                public short Version => _core.Version;
+            }
+            """)
+
+        # Act
+        paired = mutation_check.paired_forwards(mutation_check.forwarding_members(text))
+
+        # Assert
+        self.assertEqual(paired, {("Source", "Version")})
+
+
+class ForwardedBodyReachTests(unittest.TestCase):
+    """`FORWARD_BODY` is the shape no operator emits inside; this is what says so of the package."""
+
+    def test_Given_ThePackagesForwardingMembers_When_MutantsAreGenerated_Then_NoneLandsInAForwardedBody(self):
+        # Arrange
+        sources = [path for path in sorted((REPO_ROOT / mutation_check.PACKAGE).rglob("*.cs"))
+                   if mutation_check.mutable(path, REPO_ROOT)]
+
+        # Act
+        members, inside = 0, 0
+        for path in sources:
+            text = path.read_text()
+            forwarders = mutation_check.forwarding_members(text)
+            lines = {number for forwarder in forwarders
+                     for number in range(forwarder.first, forwarder.last + 1)}
+            mutants = mutation_check.mutations_for(path, text, lines)
+            members += len(forwarders)
+            inside += len(mutation_check.inside_forwarded_bodies(text, forwarders, mutants))
+
+        # Assert — with the count beside it, since a reading that finds no member finds no mutant in one.
+        self.assertEqual((members > 100, inside), (True, 0))
+
+
+class ForwardingReachReportTests(unittest.TestCase):
+    """A changed forwarding member is named, since no mutant edits what it forwards."""
+
+    DEFAULTED = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static void Run(Fiber fiber, bool twice = false) => Executor.Run(fiber, twice);
+            }
+        }
+        """)
+
+    def test_Given_AForwarderWhoseHeadCarriesALiteral_When_TheReachIsListed_Then_TheForwardIsNamed(self):
+        # Arrange — the `false` is mutated, so the member's one line reads as reached, and the
+        # unreached list says nothing about the forward standing on it.
+        campaign = StubbedCampaign(self.DEFAULTED)
+
+        # Act
+        campaign.run("--list")
+
+        # Assert
+        self.assertIn("  forwards   Packages/com.velvet.core/Runtime/Probe.cs:5 Probe.Run",
+                      campaign.printed.splitlines())
+
+    # GREEN_ON_BASE(characterization): a block body calling the same member names no forward, as the base names none.
+    def test_Given_ABlockBodyCallingTheSameMember_When_TheReachIsListed_Then_NoForwardIsNamed(self):
+        # Arrange — the control for the case above: a body an operator does reach.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal static class Probe
+                {
+                    internal static void Run(Fiber fiber, bool twice = false)
+                    {
+                        Executor.Run(fiber, twice);
+                    }
+                }
+            }
+            """))
+
+        # Act
+        campaign.run("--list")
+
+        # Assert
+        self.assertNotIn("forwards", campaign.printed)
+
+
+class ForwarderCensusTests(unittest.TestCase):
+    """The inventory a cut sweep over forwarding members starts from."""
+
+    @staticmethod
+    def load_census():
+        spec = importlib.util.spec_from_file_location(
+            "forwarder_census", Path(__file__).with_name("forwarder_census.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_Given_APairedForwarder_When_TheCensusIsRendered_Then_ItsRowCarriesThePairAndTheCut(self):
+        # Arrange
+        census = self.load_census()
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Source
+                {
+                    public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
+                }
+                internal sealed class Source<T>
+                {
+                    public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
+                }
+            }
+            """))
+
+        # Act
+        rows = census.render(campaign.project, census.census(campaign.project, [campaign.source]), False)
+
+        # Assert
+        self.assertEqual(rows[0], "\t".join(("Packages/com.velvet.core/Runtime/Probe.cs:5-5",
+                                             "Source.GetStatus", "member", "paired", "default", "0",
+                                             "0")))
+
+
 class GenerationHealthTests(unittest.TestCase):
     # GREEN_ON_BASE(characterization): cuts stayed balanced before, and must across the new operator reach.
     def test_Given_EveryRuntimeSource_When_MutantsAreGenerated_Then_NoCutSpansAnUnbalancedParenthesis(self):

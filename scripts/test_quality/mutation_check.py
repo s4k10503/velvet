@@ -163,7 +163,7 @@ MINIMUM_REASON_WORDS = 4
 DECLARATION = re.compile(
     r"MUTANT_SURVIVES\(([A-Za-z]*)(?:\s*,\s*([^)]*?))?\)\s*:\s*(.*)")
 
-# How many unreached line numbers a file lists before the rest become a count. The count stays exact
+# How many unreached line numbers, or forwarding members, a file lists before the rest become a count. The count stays exact
 # either way; what this bounds is a whole-file `--files` run printing several hundred of them.
 LINES_LISTED = 25
 
@@ -1518,6 +1518,278 @@ def mutable(path, project):
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else ""
+
+
+# --------------------------------------------------------------------------------------------------
+# Forwarding members
+# --------------------------------------------------------------------------------------------------
+
+# A member whose expression body is one identifier chain, with at most one argument list of plain
+# identifier chains closing it: `public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);`.
+# A literal or a keyword in the body is something the body decides rather than forwards, so either
+# takes a member out. `ForwardedBodyReachTests` fails the day an operator emits inside one of the
+# package's.
+FORWARD_CHAIN = r"[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*"
+FORWARD_ARGUMENT = r"(?:(?:ref|out|in)\s+)?" + FORWARD_CHAIN
+FORWARD_BODY = re.compile(
+    r"^" + FORWARD_CHAIN + r"(?:\s*<[\w\s.,<>?\[\]]*>)?"
+    r"(?:\s*\(\s*(?:" + FORWARD_ARGUMENT + r"(?:\s*,\s*" + FORWARD_ARGUMENT + r")*)?\s*\))?$")
+# `ref`, `out` and `in` are read as argument modifiers by the pattern above, and taken off before
+# the body's words are compared with this.
+RESERVED_WORDS = frozenset("""
+    abstract as base bool break byte case catch char checked class const continue decimal default
+    delegate do double else enum event explicit extern false finally fixed float for foreach goto if
+    implicit in int interface internal is lock long namespace new null object operator out override
+    params private protected public readonly ref return sbyte sealed short sizeof stackalloc static
+    string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual
+    void volatile while await nameof""".split())
+ARGUMENT_MODIFIER = re.compile(r"(?:^|(?<=[(,]))\s*(?:ref|out|in)\s+")
+TYPE_HEAD = re.compile(r"\b(?:class|struct|interface|record)\s+([A-Za-z_]\w*)\s*(<)?")
+MEMBER_MODIFIERS = re.compile(r"\b(?:public|private|protected|internal|static|virtual|override|"
+                              r"abstract|sealed|new|extern|unsafe|readonly|partial|async|required|file)\b")
+ACCESSOR_HEAD = re.compile(r"^(?:(?:private|protected|internal|readonly)\s+)*(get|set|init|add|remove)$")
+MEMBER_NAME = re.compile(r"((?:[A-Za-z_]\w*(?:\s*<[^()]*?>)?\s*\.\s*)*[A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*$")
+CONSTRUCTOR_INITIALIZER = re.compile(r"\)\s*:\s*(?:base|this)\b")
+CONSTRAINT_CLAUSE = re.compile(r"\)\s*where\b")
+# The two cuts `forwarder_census.py` proposes: an empty body where nothing is returned, the returned
+# type's default where something is.
+EMPTY_BODY = "{ }"
+DEFAULT_VALUE = "default"
+
+
+class Forwarder:
+    """One forwarding member: its lines, the offsets of its forwarded body, and the cut the census
+    proposes for it, or why it proposes none."""
+
+    def __init__(self, type_name, generic, member, accessor, first, last, arrow, body, end, cut,
+                 declined):
+        self.type_name = type_name
+        self.generic = generic
+        self.member = member
+        self.accessor = accessor
+        self.first = first
+        self.last = last
+        self.arrow = arrow
+        self.body = body
+        self.end = end
+        self.cut = cut
+        self.declined = declined
+
+    @property
+    def name(self):
+        return "{}{}.{}".format(self.type_name, "<>" if self.generic else "", self.member)
+
+
+def without_attributes(head):
+    head = head.strip()
+    while head.startswith("["):
+        depth = 0
+        for index, char in enumerate(head):
+            depth += char == "["
+            depth -= char == "]"
+            if depth == 0:
+                head = head[index + 1:].strip()
+                break
+        else:
+            return head
+    return head
+
+
+def stands_at_depth_zero(text, wanted):
+    depth = 0
+    for char in text:
+        if char in OPENING:
+            depth += 1
+        elif char in CLOSING:
+            depth -= 1
+        elif char == wanted and depth == 0:
+            return True
+    return False
+
+
+def matching_opener(text, close):
+    opener = OPENING[CLOSING.index(text[close])]
+    depth = 0
+    for index in range(close, -1, -1):
+        if text[index] == text[close]:
+            depth += 1
+        elif text[index] == opener:
+            depth -= 1
+            if depth == 0:
+                return index
+    return 0
+
+
+def member_reading(head):
+    """(member name, cut, declined) for a head standing directly in a type's braces, or None where the
+    head is not a member's -- a field whose initializer holds a lambda reaches `=>` through an `=`."""
+    head = without_attributes(head)
+    # An operator's own token can be `==`, so the `=` that marks a field is not looked for in one.
+    if not head or (stands_at_depth_zero(head, "=") and not re.search(r"\boperator\b", head)):
+        return None
+    tail = CONSTRUCTOR_INITIALIZER.search(head) or CONSTRAINT_CLAUSE.search(head)
+    if tail:
+        head = head[:tail.start() + 1]
+    if head[-1] in ")]":
+        opened = matching_opener(head, len(head) - 1)
+        prefix, parameters = head[:opened], head[opened:]
+    else:
+        prefix, parameters = head, ""
+    if re.search(r"\bout\b", parameters):
+        declined = "an out parameter"
+    elif re.search(r"\basync\b", prefix):
+        declined = "async"
+    else:
+        declined = None
+    if re.search(r"\boperator\b", prefix):
+        return "operator " + prefix.split("operator", 1)[1].strip(), DEFAULT_VALUE, declined
+    named = MEMBER_NAME.search(prefix)
+    if not named:
+        return None
+    member = "this[]" if parameters.startswith("[") else re.sub(r"\s+", "", named.group(1))
+    returned = MEMBER_MODIFIERS.sub(" ", prefix[:named.start()]).strip()
+    # A constructor and a finalizer return nothing, as a `void` member does.
+    return member, EMPTY_BODY if returned in ("", "~", "void") else DEFAULT_VALUE, declined
+
+
+def forwarded_body_end(code, start):
+    """The offset of the semicolon ending the expression body that starts at `start`, or None."""
+    depth = 0
+    for index in range(start, len(code)):
+        if code[index] in OPENING:
+            depth += 1
+        elif code[index] in CLOSING:
+            depth -= 1
+            if depth < 0:
+                return None
+        elif code[index] == ";" and depth == 0:
+            return index
+    return None
+
+
+def forwards_only(body):
+    if not FORWARD_BODY.match(body):
+        return False
+    return not set(re.findall(r"[A-Za-z_]\w*", ARGUMENT_MODIFIER.sub(" ", body))) & RESERVED_WORDS
+
+
+def forwarding_members(text):
+    """The forwarding members of a source: methods, properties, operators, constructors and indexers
+    standing directly in a type's braces, and the accessors of a property standing there.
+
+    What stands inside any other brace -- a method body, a lambda, an initializer -- is not read,
+    since a local function or a lambda is no member of the type.
+    """
+    mask = code_mask(text)
+    code = "".join(char if mask[index] or char == "\n" else " " for index, char in enumerate(text))
+    starts = [start for start, _ in line_spans(text)]
+    braces, found = [], []
+    boundary = index = 0
+    while index < len(code):
+        char = code[index]
+        if char == "{":
+            head = code[boundary:index]
+            typed = TYPE_HEAD.search(head)
+            inside_type = bool(braces) and braces[-1][0] == "type"
+            if typed:
+                braces.append(("type", typed.group(1), bool(typed.group(2))))
+            elif inside_type and "(" not in head and not re.search(r"\b(?:enum|namespace)\b", head):
+                braces.append(("property", head, braces[-1]))
+            else:
+                braces.append(("other",))
+            boundary = index + 1
+        elif char == "}":
+            if braces:
+                braces.pop()
+            boundary = index + 1
+        elif char == ";":
+            boundary = index + 1
+        elif code.startswith("=>", index) and braces and braces[-1][0] in ("type", "property"):
+            end = forwarded_body_end(code, index + 2)
+            if end is None:
+                index += 2
+                continue
+            forwarder = read_forwarder(code, starts, braces[-1], boundary, index, end)
+            if forwarder:
+                found.append(forwarder)
+            index = end
+            continue
+        index += 1
+    return found
+
+
+def read_forwarder(code, starts, enclosing, boundary, arrow, end):
+    head = code[boundary:arrow]
+    body = code[arrow + 2:end]
+    if not forwards_only(body.strip()):
+        return None
+    if enclosing[0] == "type":
+        owner, accessor, reading = enclosing, None, member_reading(head)
+    else:
+        owner = enclosing[2]
+        accessor = ACCESSOR_HEAD.match(without_attributes(head))
+        reading = member_reading(enclosing[1]) if accessor else None
+    if reading is None:
+        return None
+    member, cut, declined = reading
+    if accessor:
+        member = "{}.{}".format(member, accessor.group(1))
+        cut = DEFAULT_VALUE if accessor.group(1) == "get" else EMPTY_BODY
+    first = boundary + len(head) - len(head.lstrip())
+    lead = len(body) - len(body.lstrip())
+    return Forwarder(owner[1], owner[2], member, bool(accessor),
+                     bisect.bisect_right(starts, first), bisect.bisect_right(starts, end), arrow,
+                     (arrow + 2 + lead, arrow + 2 + len(body.rstrip())), end,
+                     None if declined else cut, declined)
+
+
+def inside_forwarded_bodies(text, forwarders, mutants):
+    """The mutants among `mutants` whose edit starts inside one of the forwarded bodies."""
+    starts = line_spans(text)
+    return [mutant for mutant in mutants
+            if any(forwarder.body[0] <= starts[mutant.line - 1][0] + mutant.column < forwarder.body[1]
+                   for forwarder in forwarders)]
+
+
+def paired_forwards(forwarders):
+    """The (type, member) keys a generic and a non-generic type of one name both forward."""
+    arities = {}
+    for forwarder in forwarders:
+        arities.setdefault((forwarder.type_name, forwarder.member), set()).add(forwarder.generic)
+    return {key for key, generic in arities.items() if generic == {True, False}}
+
+
+def unmeasured_forwards(targets, mutants):
+    """The forwarding members a changed line falls in and no mutant edits the forwarded body of.
+
+    A line counts as reached once any operator emits on it, so a member written on one line whose
+    head carries a `true` or `false` default reads as reached through the `literal` mutant there,
+    while what it forwards is asked about by nothing.
+    """
+    found = {}
+    for path, lines in sorted(targets.items()):
+        text = path.read_text()
+        members = [forwarder for forwarder in forwarding_members(text)
+                   if any(forwarder.first <= number <= forwarder.last for number in lines)]
+        own = [mutant for mutant in mutants if mutant.path == path]
+        left = [forwarder for forwarder in members
+                if not inside_forwarded_bodies(text, [forwarder], own)]
+        if left:
+            found[path] = left
+    return found
+
+
+def forwards_report(forwarded, project):
+    count = sum(len(members) for members in forwarded.values())
+    report = ["{} forwarding member(s) on the changed lines, and no mutant edits what any of them "
+              "forwards".format(count)]
+    for path, members in sorted(forwarded.items(), key=lambda item: str(item[0])):
+        where = relative_to(path, project)
+        for forwarder in members[:LINES_LISTED]:
+            report.append("  forwards   {}:{} {}".format(where, forwarder.first, forwarder.name))
+        if len(members) > LINES_LISTED:
+            report.append("  forwards   {}: and {} more".format(where, len(members) - LINES_LISTED))
+    return "\n".join(report)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -3719,6 +3991,10 @@ def main():
         if left:
             unreached[path] = left
     coverage = reach(mutants, unreached, project)
+
+    forwarded = unmeasured_forwards(targets, mutants)
+    if forwarded:
+        coverage += "\n" + forwards_report(forwarded, project)
 
     if args.plan and args.survivors_of is None:
         if len(mutants) > MAX_SHARDS * SHARD_CEILING[args.platform]:
