@@ -31,9 +31,9 @@ namespace Velvet
     // composite widget's inner box; else self.
     //
     // A child's own border width or color on an edge the divider writes (e.g. border-r-4 on a child of a
-    // divide-x row) wins there, as it does over Tailwind's zero-specificity divider — see ApplyToChild — unless
-    // the divide's width or color is important, which is drawn over the child's, an important child border
-    // included. On a dashed / dotted divided edge the child's wins less far: the dash is painted in the divide
+    // divide-x row) wins there, as it does over Tailwind's zero-specificity divider — see ApplyToChild. An
+    // important divide width or color is drawn over the child's own plain one and yields to its important
+    // one, as the two !important declarations compare in CSS. On a dashed / dotted divided edge the child's wins less far: the dash is painted in the divide
     // color over a color of the child's own, a width class of the child's own takes the edge off the dashed
     // path and draws it solid, and a bracket width widens the edge while the dash stays at the divider's width.
     // Limitations: a child whose border face is owned by a higher paint layer — a skew
@@ -198,12 +198,11 @@ namespace Velvet
         // paints the stroke on the child's own generateVisualContent (DivideDashChildBinding). A divide-{color}
         // colors all four edges of a divided child, as Tailwind's `border-color` does. Tailwind writes all of it
         // at zero specificity, so a width or color the child's own classes set on an edge wins there, unless the
-        // divide's own token is important.
+        // divide's own token is important and the child's is not — see ChildOutranks.
         private void ApplyToChild(VisualElement child, DivideEdge edge, bool isDivider)
         {
             var divides = isDivider
-                && ((_spec.Important & DivideImportance.Width) != 0
-                    || !StyleArbitraryValueResolver.DeclaresOwn(child, WidthSlot(edge)));
+                && !ChildOutranks(child, WidthSlot(edge), (_spec.Important & DivideImportance.Width) != 0);
             // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
             // dashed divider on the same child would fight it — route it through the solid path (documented known
             // limitation). Gates on EITHER owner, mirroring the element-level border-dashed gate.
@@ -253,14 +252,19 @@ namespace Velvet
             }
         }
 
-        // An important width stays held over the child's own arbitrary border width, where an ordinary one yields.
+        // Whether the child's own declaration of slot beats the divide's. An ordinary divide yields to any of
+        // the child's own, an important one to its important ones alone: the divide's selector has zero
+        // specificity and the child's has a class, so between two important declarations the child's wins.
+        private static bool ChildOutranks(VisualElement child, HeldSlot slot, bool divideImportant)
+            => StyleArbitraryValueResolver.DeclaresOwn(child, slot)
+                && (!divideImportant || StyleArbitraryValueResolver.DeclaresImportantOwn(child, slot));
+
+        // Holds the divide width, yielding to the child's own arbitrary border width — to an important one
+        // alone where the divide is important.
         private void HoldWidth(VisualElement child, DivideEdge edge)
         {
             StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
-            if ((_spec.Important & DivideImportance.Width) == 0)
-            {
-                StyleArbitraryValueResolver.Yield(child, WidthSlot(edge));
-            }
+            StyleArbitraryValueResolver.Yield(child, WidthSlot(edge), (_spec.Important & DivideImportance.Width) != 0);
         }
 
         // Holds the divide-{color} on every edge of a divided child but skip, where the child's own classes set
@@ -276,13 +280,10 @@ namespace Velvet
                 }
                 var slot = ColorSlot(edge);
                 if (isDivider && _spec.HasColor
-                    && (colorImportant || !StyleArbitraryValueResolver.DeclaresOwn(child, slot)))
+                    && !ChildOutranks(child, slot, colorImportant))
                 {
                     StyleArbitraryValueResolver.Hold(child, slot, new StyleColor(_spec.Color));
-                    if (!colorImportant)
-                    {
-                        StyleArbitraryValueResolver.Yield(child, slot);
-                    }
+                    StyleArbitraryValueResolver.Yield(child, slot, colorImportant);
                 }
                 else
                 {

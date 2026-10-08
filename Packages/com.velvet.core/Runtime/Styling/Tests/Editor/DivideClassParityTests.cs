@@ -493,9 +493,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnImportantDivideWidth_When_ADividedChildCarriesAnImportantBorderWidth_Then_TheDivideStillWins()
+        public void Given_AnImportantDivideWidth_When_ADividedChildCarriesAnImportantArbitraryBorderWidth_Then_TheChildWins()
         {
-            // Arrange — a deviation from CSS, where the child's higher specificity would win.
+            // Arrange — both declarations are !important in CSS, where the divide's :where() selector has zero
+            // specificity and the child's utility class has one.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row !divide-x-4", "!border-r-[3px]") };
 
@@ -503,7 +504,35 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(4f));
+            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void Given_AnImportantDivideWidth_When_ADividedChildCarriesAnImportantBorderWidthClass_Then_TheChildWins()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row !divide-x-4", "!border-r-2") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AnImportantDivideColor_When_ADividedChildCarriesAnImportantBorderColor_Then_TheChildWins()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x !divide-gray-200", "!border-[#ff0000]") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightColor.value, Is.EqualTo(Color.red));
         }
 
         [Test]
