@@ -375,6 +375,8 @@ namespace Velvet.Tests
             Assert.That((element.text, element.value), Is.EqualTo(("a", "b")));
         }
 
+        // GREEN_ON_BASE(characterization): with no edit pending the base leaves the field to the engine, as
+        // the control does. It pins that the branch's restore invents no edit across two limit changes.
         // The limit narrows and widens with no edit pending, so what the field shows after the first change
         // is what the next one is judged against; a stale record reads it as typed text and holds it over the
         // wider limit. The control is the engine driven through the same two changes.
@@ -443,6 +445,8 @@ namespace Velvet.Tests
             Assert.That((element.text, element.value), Is.EqualTo(("abc", string.Empty)));
         }
 
+        // GREEN_ON_BASE(characterization): with no edit pending the base leaves the field to the engine, as
+        // the control does. It pins that the branch reads no edit from the stripped line breaks.
         // A single-line field shows its value with the line breaks stripped, so nothing was typed here
         // although the shown text differs from the value. The control is a field the engine alone drove
         // through the same limit change; an edit invented from the difference would be restored over what

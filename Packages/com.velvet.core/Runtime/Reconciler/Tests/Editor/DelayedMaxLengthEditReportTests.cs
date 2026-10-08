@@ -61,6 +61,8 @@ namespace Velvet.Tests
             Assert.That((whileHeld, string.Join("|", reported), element.text), Is.EqualTo((0, string.Empty, "abc")));
         }
 
+        // GREEN_ON_BASE(characterization): the base never restores a held edit, so a zero limit reports
+        // nothing there either. It pins that the branch's restore treats zero as a bound.
         // Zero is a bound: the cut leaves nothing, and a cut skipped for it would leave the engine's own
         // cull to report the edit.
         [Test]
