@@ -2386,6 +2386,65 @@ namespace Velvet
 
         #endregion
 
+        #region UseQuery
+
+        /// <summary>
+        /// TanStack Query's <c>useQuery</c>. Reads the entry <paramref name="options"/>' key names in a
+        /// <see cref="QueryClient"/>, fetches it with the options' query function when it has no data or its
+        /// data is stale, and re-renders the component when a property of the result it reads changes.
+        /// Components reading one key share one entry and one request in flight, and the entry keeps its
+        /// result after they unmount, so a component mounting over it later renders that result at once.
+        /// </summary>
+        /// <remarks>
+        /// Not a Suspense hook: a query with no data yet returns <see cref="QueryStatus.Pending"/> rather than
+        /// suspending, as <c>useQuery</c> does. <see cref="Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/>
+        /// stays the cache-less <c>use()</c>.
+        /// <para/>
+        /// The component subscribes in a passive effect, as <c>useQuery</c> does, and a fetch that mounting
+        /// starts begins there. A change of key moves the subscription to the new key's entry: the result
+        /// shows that entry's data, or none, and nothing the old key's request delivers afterwards.
+        /// <para/>
+        /// A failed request runs again up to <see cref="QueryOptions{T}.Retry"/> times before the failure is
+        /// the entry's error, and a request that lands is shared structurally with the data the entry held
+        /// (<see cref="QueryOptions{T}.StructuralSharing"/>), as <c>useQuery</c> does.
+        /// </remarks>
+        /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
+        /// <param name="options">The key, the query function, and optionally the stale and garbage-collection
+        /// times, the retry policy, the structural sharing and the result properties that re-render.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static QueryResult<T> UseQuery<T>(QueryOptions<T> options, QueryClient? client = null)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (options.QueryKey == null) throw new ArgumentException("QueryOptions.QueryKey must not be null.", nameof(options));
+            if (options.QueryFn == null) throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
+            // Surface "UseQuery" in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve("UseQuery");
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                "UseQuery found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                "above the caller, or pass the client to UseQuery.");
+            var (_, setVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent, arithmetic): any step makes a value the slot does not hold, which is all the re-render asks.
+            var observer = UseMutableRef<QueryObserver<T>>(() => new QueryObserver<T>(() => setVersion.Invoke(v => v + 1))).Current;
+            var staleTime = QueryClient.RequireNonNegative(
+                options.StaleTime ?? queryClient.DefaultStaleTime, nameof(QueryOptions<T>.StaleTime));
+            var gcTime = QueryClient.RequireNonNegative(
+                options.GcTime ?? queryClient.DefaultGcTime, nameof(QueryOptions<T>.GcTime));
+
+            UseEffect(observer.UnmountEffect, Array.Empty<object?>());
+            UseEffect((Func<Action?>)(() =>
+            {
+                observer.Sync(queryClient, options, staleTime, gcTime);
+                return null;
+            }));
+
+            return observer.Read(queryClient.Peek<T>(options.QueryKey), staleTime);
+        }
+
+        #endregion
+
         #region UseDeferredValue
 
         /// <summary>
