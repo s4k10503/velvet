@@ -17,3 +17,5 @@
   colour hint that moves the half-way mix of the pair.
   The interpolation space may also be `srgb-linear`, `lab`, `lch` or `hsl`, with a hue method
   (`longer`, `shorter`, `increasing`, `decreasing`) for the polar ones.
+  A hard edge or narrow band is baked at the element's length (up to 2048 texels along an axis, 512 by 512
+  otherwise) instead of 128, so it stays sharp.

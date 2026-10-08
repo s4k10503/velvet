@@ -323,6 +323,113 @@ namespace Velvet.Tests
             Assert.That(ColorUtility.ToHtmlStringRGBA(centre), Is.EqualTo("FF0000FF"));
         }
 
+        #region Texture shape and sharpness
+
+        private static (int, int) SizeOfBake(string shape, int resolution)
+        {
+            var tex = GradientBackground.Bake(Extract(shape), 1f, 0f, resolution);
+            var size = (tex.width, tex.height);
+            Object.DestroyImmediate(tex);
+            return size;
+        }
+
+        [Test]
+        public void Given_AGradientToTheRight_When_Baked_Then_ItIsOneRow()
+        {
+            // Act
+            var size = SizeOfBake("bg-gradient-to-r", 0);
+
+            // Assert
+            Assert.That(size, Is.EqualTo((128, 1)));
+        }
+
+        [Test]
+        public void Given_AGradientToTheBottom_When_Baked_Then_ItIsOneColumn()
+        {
+            // Act
+            var size = SizeOfBake("bg-gradient-to-b", 0);
+
+            // Assert
+            Assert.That(size, Is.EqualTo((1, 128)));
+        }
+
+        [Test]
+        public void Given_ADiagonalGradient_When_Baked_Then_ItIsSquare()
+        {
+            // Act
+            var size = SizeOfBake("bg-linear-45", 0);
+
+            // Assert
+            Assert.That(size, Is.EqualTo((128, 128)));
+        }
+
+        [Test]
+        public void Given_AGradientToTheRight_When_BakedAtAResolution_Then_TheRowIsThatLong()
+        {
+            // Act
+            var size = SizeOfBake("bg-gradient-to-r", 1024);
+
+            // Assert
+            Assert.That(size, Is.EqualTo((1024, 1)));
+        }
+
+        [Test]
+        public void Given_ADiagonalGradient_When_BakedAtAResolution_Then_TheSquareIsThatLong()
+        {
+            // Act
+            var size = SizeOfBake("bg-linear-45", 512);
+
+            // Assert
+            Assert.That(size, Is.EqualTo((512, 512)));
+        }
+
+        [Test]
+        public void Given_AHardStopBakedForALongRow_When_Read_Then_TheEdgeFallsBetweenTwoNeighbouringTexels()
+        {
+            // Arrange — red up to 50%, blue from it, in a row of 1024 texels.
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#ff0000_50%,#0000ff_50%]" }, out var spec);
+
+            // Act
+            var tex = GradientBackground.Bake(spec, 1f, 0f, 1024);
+            var edge = (ColorUtility.ToHtmlStringRGBA(tex.GetPixel(511, 0)), ColorUtility.ToHtmlStringRGBA(tex.GetPixel(512, 0)));
+            Object.DestroyImmediate(tex);
+
+            // Assert
+            Assert.That(edge, Is.EqualTo(("FF0000FF", "0000FFFF")));
+        }
+
+        [Test]
+        public void Given_AHardStop_When_Asked_Then_ItHasASharpFeature()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#ff0000_50%,#0000ff_50%]" }, out var spec);
+
+            // Assert
+            Assert.That(GradientBackground.HasSharpFeature(spec), Is.True);
+        }
+
+        [Test]
+        public void Given_ASmoothGradient_When_Asked_Then_ItHasNoSharpFeature()
+        {
+            // Act
+            var sharp = GradientBackground.HasSharpFeature(Extract("bg-gradient-to-r"));
+
+            // Assert
+            Assert.That(sharp, Is.False);
+        }
+
+        [Test]
+        public void Given_AStopInPixels_When_Asked_Then_ItHasASharpFeature()
+        {
+            // Act — where the stop falls is not known until the size is.
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#ff0000_0px,#0000ff_100px]" }, out var spec);
+
+            // Assert
+            Assert.That(GradientBackground.HasSharpFeature(spec), Is.True);
+        }
+
+        #endregion
+
         #region Which gradients depend on the box
 
         [Test]

@@ -12,6 +12,11 @@ a corner direction (`bg-gradient-to-tr`) and a radial ellipse sized by keyword o
 same in every box, so they are baked once. Under `animate-gradient` the gradient is laid out over the
 twice-as-large background the pan slides across.
 
+The texture is 128 texels along each side, and a gradient along an axis is a single row or column of them.
+A hard edge or a narrow band (two stops under 1/64 of the line apart) or a stop in pixels asks for more:
+such a gradient is baked at the element's length, rounded up to a power of two, up to 2048 texels for a row
+or column and 512 by 512 for any other, and again when the element's size crosses one.
+
 ## Shapes
 
 | Utility | Shape |
@@ -101,5 +106,7 @@ both.
 
 - Colours interpolate in sRGB unless a space is named, which CSS does for colours written in legacy syntax and
   Tailwind's `bg-linear-*`, `bg-radial` and `bg-conic` utilities do not: they name OKLab.
-- The gradient is a 128 by 128 texture stretched to the box, so a hard edge or a narrow band is as sharp
-  as 1/128 of the box along each axis allows.
+- Not read, and so leaving the class inert: interpolation spaces other than the seven above (`hwb`,
+  `xyz`, `display-p3`, …), a centre written in lengths or with edge offsets (`at_20px_30px`,
+  `at_right_10px_bottom_20px`), `calc()` and `var()` in a stop, and a colour written as `color-mix()`,
+  `hsl()`, `oklch()` and the other functions the arbitrary-colour parser does not read.

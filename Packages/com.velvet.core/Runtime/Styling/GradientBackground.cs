@@ -7,19 +7,42 @@ namespace Velvet
     // A gradient element's bound spec, with the box its texture was baked for and the geometry watch that
     // re-bakes it when the box changes. OnGeometryChanged is set only while the spec's geometry depends on
     // the box (GradientBackground.DependsOnAspect). BoxScale is how many times the element's box the
-    // texture is painted over, which a pan mode that oversizes the background sets. BoxKeyA and BoxKeyB are
-    // the box as the cache keys it (GradientBackground.KeysFor), and Held is the cache entry this binding
-    // keeps alive.
+    // texture is painted over, which a pan mode that oversizes the background sets. Box is the box as the
+    // cache keys it (GradientBackground.KeysFor), and Held is the cache entry this binding keeps alive.
     internal sealed class GradientBinding
     {
         public GradientSpec Spec;
-        public int BoxKeyA;
-        public int BoxKeyB;
+        public BoxKey Box;
         public Vector2 BoxScale = Vector2.one;
         public Vector2 BoxSize;
         public Texture2D? Texture;
-        public (GradientSpec, int, int)? Held;
+        public (GradientSpec, BoxKey)? Held;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
+    }
+
+    // The box a texture is baked for, as the cache keys it. A is the quantized aspect, or the whole-pixel
+    // width of a gradient sized in pixels (with B its height); Resolution is the texture's side, 0 for the
+    // default.
+    internal readonly struct BoxKey : System.IEquatable<BoxKey>
+    {
+        public BoxKey(int a, int b, int resolution)
+        {
+            A = a;
+            B = b;
+            Resolution = resolution;
+        }
+
+        public int A { get; }
+        public int B { get; }
+        public int Resolution { get; }
+
+        public bool IsDefault => A == 0 && B == 0 && Resolution == 0;
+
+        public bool Equals(BoxKey other) => A == other.A && B == other.B && Resolution == other.Resolution;
+
+        public override bool Equals(object obj) => obj is BoxKey o && Equals(o);
+
+        public override int GetHashCode() => System.HashCode.Combine(A, B, Resolution);
     }
 
     // Bakes a GradientSpec into a small Texture2D and applies it as an element's background-image,
@@ -49,7 +72,15 @@ namespace Velvet
     {
         // Resolution of the baked gradient, stretched to any element size with bilinear filtering: a stop
         // list's detail, a hard stop included, lands at 1/128 of the box along each axis.
-        private const int Resolution = 128;
+        private const int DefaultResolution = 128;
+
+        // The largest side a gradient with a sharp feature is baked at: a line bakes N x 1 up to
+        // MaxLineResolution, anything else N x N up to MaxResolution.
+        private const int MaxResolution = 512;
+        private const int MaxLineResolution = 2048;
+
+        // A gap between neighbouring stops narrower than this is a sharp feature the default texture would blur.
+        private const float SharpGap = 2f / DefaultResolution;
 
         // The aspect (width over height) a baked texture is laid out for is held as a step count of this
         // many per doubling, so a box that grows a pixel does not bake a new texture, and within
@@ -70,11 +101,11 @@ namespace Velvet
         {
             public Texture2D Texture = null!;
             public int Holders;
-            public LinkedListNode<(GradientSpec, int, int)>? Idle;
+            public LinkedListNode<(GradientSpec, BoxKey)>? Idle;
         }
 
-        private static readonly Dictionary<(GradientSpec, int, int), CacheEntry> s_cache = new();
-        private static readonly LinkedList<(GradientSpec, int, int)> s_idle = new();
+        private static readonly Dictionary<(GradientSpec, BoxKey), CacheEntry> s_cache = new();
+        private static readonly LinkedList<(GradientSpec, BoxKey)> s_idle = new();
 
 #if UNITY_EDITOR
         // Baked textures are HideAndDontSave and persist across play-mode cycles without a Domain
@@ -111,8 +142,7 @@ namespace Velvet
                 case GradientType.Radial:
                     return spec.Radial.Circle || NeedsAbsoluteSize(spec);
                 default:
-                    var offAxis = Mathf.Repeat(spec.AngleDeg, 90f);
-                    return !spec.ToCorner && offAxis > 0.01f && offAxis < 89.99f;
+                    return !spec.ToCorner && !IsAxisAngle(spec.AngleDeg);
             }
         }
 
@@ -122,21 +152,69 @@ namespace Velvet
             => spec.HasLengths || (spec.Type == GradientType.Radial && spec.Radial.Extent == RadialExtent.Explicit
                 && (spec.Radial.Circle || !spec.Radial.XPercent || !spec.Radial.YPercent));
 
-        // The box a spec is baked for, as the cache keys it, in a box of the given size painted over scale times
-        // that box: the quantized aspect (and 0) for a gradient that depends on proportions, the whole-pixel
-        // width and height for one sized in pixels, (0, 0) otherwise.
-        private static void KeysFor(in GradientSpec spec, Vector2 size, Vector2 scale, out int keyA, out int keyB)
+        // True when the gradient has a feature the default texture would blur: two stops a hair apart (a hard
+        // edge, a narrow band), or a stop written in pixels, whose place is not yet known.
+        internal static bool HasSharpFeature(in GradientSpec spec)
+        {
+            if (spec.HasLengths)
+            {
+                return true;
+            }
+            var stops = spec.Stops;
+            for (var i = 1; i < stops.Length; i++)
+            {
+                if (stops[i].Position - stops[i - 1].Position < SharpGap)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // True for a linear gradient along an axis, which varies in one direction only: it bakes as a single
+        // row (horizontal) or column.
+        internal static bool IsAxisLine(in GradientSpec spec, out bool horizontal)
+        {
+            horizontal = Mathf.Abs(Mathf.Sin(spec.AngleDeg * Mathf.Deg2Rad)) > 0.5f;
+            return spec.Type == GradientType.Linear && !spec.ToCorner && IsAxisAngle(spec.AngleDeg);
+        }
+
+        private static bool IsAxisAngle(float angleDeg)
+        {
+            var offAxis = Mathf.Repeat(angleDeg, 90f);
+            return offAxis <= 0.01f || offAxis >= 89.99f;
+        }
+
+        // Whether the box has to be watched: its proportions, or the size a sharp feature needs a texture for.
+        private static bool WatchesBox(in GradientSpec spec) => DependsOnAspect(spec) || HasSharpFeature(spec);
+
+        // The side to bake a gradient with a sharp feature at in a box of the given size: its length in
+        // pixels, up to the cap, in powers of two; 0 (the default texture) when that is no more than it.
+        private static int ResolutionFor(in GradientSpec spec, float width, float height)
+        {
+            if (!HasSharpFeature(spec) || !(width > 0f) || !(height > 0f))
+            {
+                return 0;
+            }
+            var line = IsAxisLine(spec, out var horizontal);
+            var length = line ? (horizontal ? width : height) : Mathf.Max(width, height);
+            var side = Mathf.Min(Mathf.NextPowerOfTwo(Mathf.CeilToInt(length)), line ? MaxLineResolution : MaxResolution);
+            return side > DefaultResolution ? side : 0;
+        }
+
+        // The box a spec is baked for in a box of the given size painted over scale times that box: the
+        // quantized aspect for a gradient that depends on proportions, the whole-pixel width and height for
+        // one sized in pixels, and the texture side a sharp feature asks for.
+        private static BoxKey KeysFor(in GradientSpec spec, Vector2 size, Vector2 scale)
         {
             var w = size.x * scale.x;
             var h = size.y * scale.y;
+            var resolution = ResolutionFor(spec, w, h);
             if (NeedsAbsoluteSize(spec))
             {
-                keyA = Mathf.RoundToInt(Mathf.Max(w, 0f));
-                keyB = Mathf.RoundToInt(Mathf.Max(h, 0f));
-                return;
+                return new BoxKey(Mathf.RoundToInt(Mathf.Max(w, 0f)), Mathf.RoundToInt(Mathf.Max(h, 0f)), resolution);
             }
-            keyA = DependsOnAspect(spec) ? AspectKey(w, h) : 0;
-            keyB = 0;
+            return new BoxKey(DependsOnAspect(spec) ? AspectKey(w, h) : 0, 0, resolution);
         }
 
         // The quantized aspect of a box; 0 (a square) for a box with no size yet.
@@ -164,7 +242,7 @@ namespace Velvet
         public static void Rebind(VisualElement element, GradientBinding binding, GradientSpec spec)
         {
             binding.Spec = spec;
-            KeysFor(spec, SizeOf(element, binding), binding.BoxScale, out binding.BoxKeyA, out binding.BoxKeyB);
+            binding.Box = KeysFor(spec, SizeOf(element, binding), binding.BoxScale);
             binding.Texture = Hold(binding);
             // Through the SceneView ownership gate: a live camera feed keeps the slot and defers
             // the gradient for its release; everywhere else this is a plain style write.
@@ -191,19 +269,17 @@ namespace Velvet
                 return;
             }
             binding.BoxScale = scale;
-            KeysFor(binding.Spec, SizeOf(element, binding), scale, out var keyA, out var keyB);
-            Rebake(element, binding, keyA, keyB);
+            Rebake(element, binding, KeysFor(binding.Spec, SizeOf(element, binding), scale));
         }
 
         // Writes the texture for a new box, unless it is the one already written.
-        private static void Rebake(VisualElement element, GradientBinding binding, int keyA, int keyB)
+        private static void Rebake(VisualElement element, GradientBinding binding, BoxKey box)
         {
-            if (keyA == binding.BoxKeyA && keyB == binding.BoxKeyB)
+            if (box.Equals(binding.Box))
             {
                 return;
             }
-            binding.BoxKeyA = keyA;
-            binding.BoxKeyB = keyB;
+            binding.Box = box;
             // Only while the image is still the one this binding wrote: a className-driven image written
             // since (bg-[addr:…]) owns the slot, and the patch that wrote it did not touch this binding.
             // A SceneViewElement's slot may be held by its camera, so it is always written.
@@ -221,7 +297,8 @@ namespace Velvet
         private static Texture2D Hold(GradientBinding binding)
         {
             var spec = binding.Spec;
-            var key = (spec, DependsOnAspect(spec) ? binding.BoxKeyA : 0, NeedsAbsoluteSize(spec) ? binding.BoxKeyB : 0);
+            var key = (spec, new BoxKey(
+                DependsOnAspect(spec) ? binding.Box.A : 0, NeedsAbsoluteSize(spec) ? binding.Box.B : 0, binding.Box.Resolution));
             if (binding.Held is { } held && held.Equals(key) && s_cache.TryGetValue(key, out var kept) && kept.Texture != null)
             {
                 return kept.Texture;
@@ -229,9 +306,10 @@ namespace Velvet
             Release(binding);
             if (!s_cache.TryGetValue(key, out var entry) || entry.Texture == null)
             {
+                var box = key.Item2;
                 var absolute = NeedsAbsoluteSize(spec);
-                var aspect = absolute ? (key.Item2 > 0 && key.Item3 > 0 ? key.Item2 / (float)key.Item3 : 1f) : AspectOf(key.Item2);
-                entry = new CacheEntry { Texture = Bake(spec, aspect, absolute ? Mathf.Max(key.Item2, 1) : 0f) };
+                var aspect = absolute ? (box.A > 0 && box.B > 0 ? box.A / (float)box.B : 1f) : AspectOf(box.A);
+                entry = new CacheEntry { Texture = Bake(spec, aspect, absolute ? Mathf.Max(box.A, 1) : 0f, box.Resolution) };
                 s_cache[key] = entry;
             }
             entry.Holders++;
@@ -272,7 +350,7 @@ namespace Velvet
                 s_cache.Remove(key);
                 return;
             }
-            if (!DependsOnAspect(key.Item1))
+            if (key.Item2.IsDefault)
             {
                 return;
             }
@@ -311,7 +389,7 @@ namespace Velvet
 
         private static void SyncGeometryWatch(VisualElement element, GradientBinding binding)
         {
-            if (!DependsOnAspect(binding.Spec))
+            if (!WatchesBox(binding.Spec))
             {
                 Unwatch(element, binding);
                 return;
@@ -323,8 +401,7 @@ namespace Velvet
             binding.OnGeometryChanged = evt =>
             {
                 binding.BoxSize = evt.newRect.size;
-                KeysFor(binding.Spec, binding.BoxSize, binding.BoxScale, out var keyA, out var keyB);
-                Rebake(element, binding, keyA, keyB);
+                Rebake(element, binding, KeysFor(binding.Spec, binding.BoxSize, binding.BoxScale));
             };
             element.RegisterCallback(binding.OnGeometryChanged);
         }
@@ -347,17 +424,23 @@ namespace Velvet
         // use UV with (0,0) at the top-left so the gradient axis matches screen space (y grows downward) —
         // UI Toolkit draws background-image top-left-origin, so a ToBottom gradient runs from-color at the
         // top to to-color at the bottom.
-        // widthPx is the box's width in pixels when the spec has a size written in pixels, else 0.
-        internal static Texture2D Bake(GradientSpec spec, float aspect, float widthPx = 0f)
+        // widthPx is the box's width in pixels when the spec has a size written in pixels, else 0. resolution is
+        // the texture's side, 0 for the default; a gradient along an axis bakes as one row or column of that
+        // length, and the stretch to the box fills in the other direction.
+        internal static Texture2D Bake(GradientSpec spec, float aspect, float widthPx = 0f, int resolution = 0)
         {
-            var tex = new Texture2D(Resolution, Resolution, TextureFormat.RGBA32, mipChain: false)
+            var side = resolution > 0 ? resolution : DefaultResolution;
+            var line = IsAxisLine(spec, out var horizontal);
+            var width = line && !horizontal ? 1 : side;
+            var height = line && horizontal ? 1 : side;
+            var tex = new Texture2D(width, height, TextureFormat.RGBA32, mipChain: false)
             {
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear,
                 hideFlags = HideFlags.HideAndDontSave,
             };
 
-            var pixels = new Color[Resolution * Resolution];
+            var pixels = new Color32[width * height];
             var direction = LinearDirection(spec.AngleDeg);
             // A corner direction's lines run parallel to the box's diagonal, which the stretched texture
             // already keeps in any box, so it is laid out over a square.
@@ -365,19 +448,19 @@ namespace Velvet
             var box = widthPx > 0f ? new Vector2(widthPx, widthPx / aspect) : new Vector2(aspect, 1f);
             var frame = new BakeFrame(box, lineAspect, direction, RadialRadii(spec, box.x, box.y));
             var stops = ResolveStops(spec, box.x, box.y);
-            for (var row = 0; row < Resolution; row++)
+            for (var row = 0; row < height; row++)
             {
                 // Texture2D.SetPixels is bottom-up (row 0 = bottom); flip so row 0 is the TOP of the box.
-                var v = 1f - row / (float)(Resolution - 1);
-                for (var col = 0; col < Resolution; col++)
+                var v = height > 1 ? 1f - row / (float)(height - 1) : 0.5f;
+                for (var col = 0; col < width; col++)
                 {
-                    var u = col / (float)(Resolution - 1);
+                    var u = width > 1 ? col / (float)(width - 1) : 0.5f;
                     var t = ComputeT(spec, u, v, in frame);
-                    pixels[row * Resolution + col] = ColorAt(stops, t, spec.Type, spec.Interp, spec.Hue);
+                    pixels[(row * width) + col] = ColorAt(stops, t, spec.Type, spec.Interp, spec.Hue);
                 }
             }
 
-            tex.SetPixels(pixels);
+            tex.SetPixels32(pixels);
             tex.Apply(updateMipmaps: false, makeNoLongerReadable: false);
             return tex;
         }

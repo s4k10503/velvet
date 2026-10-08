@@ -513,5 +513,92 @@ namespace Velvet.Tests
             // Assert
             Assert.That(wide == null && BackgroundOf(scope.Root[0]) != null, Is.True);
         }
+
+        // A sharp feature is baked at the element's length.
+
+        private const string HardEdge = "bg-linear-[to_right,#ff0000_50%,#0000ff_50%]";
+
+        [Test]
+        public void Given_AHardEdgeAlongAnAxis_When_Mounted_Then_ItsBoxIsWatched()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            Mount(scope, new VNode[] { V.Div(className: HardEdge) });
+
+            // Assert
+            Assert.That(BindingOf(scope).OnGeometryChanged, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_AHardEdgeAlongAnAxis_When_ItsBoxIsALongRow_Then_ItIsBakedAtThatLength()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: HardEdge) });
+
+            // Act — 1000px rounds up to 1024 texels.
+            LayOut(scope.Root[0], 1000f, 100f);
+
+            // Assert
+            Assert.That((BackgroundOf(scope.Root[0]).width, BackgroundOf(scope.Root[0]).height), Is.EqualTo((1024, 1)));
+        }
+
+        [Test]
+        public void Given_AHardEdgeAlongAnAxis_When_ItsBoxIsVeryLong_Then_TheRowStopsAtTheCap()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: HardEdge) });
+
+            // Act
+            LayOut(scope.Root[0], 5000f, 100f);
+
+            // Assert
+            Assert.That(BackgroundOf(scope.Root[0]).width, Is.EqualTo(2048));
+        }
+
+        [Test]
+        public void Given_AHardEdgeDownAColumn_When_ItsBoxIsTall_Then_ItIsBakedAsAColumnOfThatLength()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "bg-linear-[to_bottom,#ff0000_50%,#0000ff_50%]") });
+
+            // Act
+            LayOut(scope.Root[0], 100f, 600f);
+
+            // Assert
+            Assert.That((BackgroundOf(scope.Root[0]).width, BackgroundOf(scope.Root[0]).height), Is.EqualTo((1, 1024)));
+        }
+
+        [Test]
+        public void Given_ADiagonalHardEdge_When_ItsBoxIsLarge_Then_ItIsBakedSquareAtTheCap()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "bg-linear-[45deg,#ff0000_50%,#0000ff_50%]") });
+
+            // Act
+            LayOut(scope.Root[0], 1000f, 800f);
+
+            // Assert
+            Assert.That((BackgroundOf(scope.Root[0]).width, BackgroundOf(scope.Root[0]).height), Is.EqualTo((512, 512)));
+        }
+
+        [Test]
+        public void Given_AHardEdgeInASmallBox_When_Laid_Out_Then_TheDefaultTextureIsEnough()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: HardEdge) });
+
+            // Act
+            LayOut(scope.Root[0], 100f, 100f);
+
+            // Assert
+            Assert.That(BackgroundOf(scope.Root[0]).width, Is.EqualTo(128));
+        }
     }
 }
