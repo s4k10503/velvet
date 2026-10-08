@@ -20,8 +20,9 @@ namespace Velvet
         public TimeSpan StaleTime { get; init; } = TimeSpan.Zero;
 
         /// <summary>
-        /// How long an entry nothing observes is kept; the first sweep after that removes it, as the remarks
-        /// on <see cref="QueryClient"/> say. TanStack Query's default is five minutes.
+        /// How long an entry nothing observes is kept; after that it reads as absent and the next sweep
+        /// removes it, as the remarks on <see cref="QueryClient"/> say. TanStack Query's default is five
+        /// minutes.
         /// <see cref="TimeSpan.MaxValue"/> keeps it until <see cref="QueryClient.Clear"/>.
         /// </summary>
         public TimeSpan GcTime { get; init; } = TimeSpan.FromMinutes(5);
@@ -57,8 +58,9 @@ namespace Velvet
     /// </summary>
     /// <remarks>
     /// Main thread only, like the rest of Velvet. <b>Deviation:</b> garbage collection runs no timer. An
-    /// entry whose time has run out is removed the next time a query subscribes to this client or
-    /// <see cref="InvalidateQueries"/> runs, where TanStack Query removes it when its timer fires.
+    /// entry whose time has run out reads as absent from then on, and is removed, cancelling its request,
+    /// the next time a query subscribes to this client or <see cref="InvalidateQueries"/> runs, where
+    /// TanStack Query removes it when its timer fires.
     /// </remarks>
     public sealed class QueryClient
     {
@@ -128,11 +130,15 @@ namespace Velvet
 
         internal TimeSpan Now => _clock();
 
+        // An expired entry reads as absent before a sweep removes it, so a render never shows an entry that had
+        // already expired and that a sibling's subscription in the same commit would sweep.
         internal QueryEntry<T>? Peek<T>(QueryKey key)
-            => _entries.TryGetValue(key, out var entry) ? Typed<T>(entry) : null;
+            => _entries.TryGetValue(key, out var entry) && !IsExpired(entry, Now) ? Typed<T>(entry) : null;
 
         internal QueryEntry<T> Build<T>(QueryKey key, TimeSpan gcTime)
         {
+            // Before the lookup, so an expired entry is replaced rather than handed back.
+            CollectGarbage();
             if (_entries.TryGetValue(key, out var existing))
             {
                 var typed = Typed<T>(existing);
@@ -151,7 +157,12 @@ namespace Velvet
             _inactive.Add(entry);
         }
 
-        internal void MarkActive(QueryEntry entry) => _inactive.Remove(entry);
+        internal void MarkActive(QueryEntry entry)
+        {
+            entry.InactiveSince = null;
+            // MUTANT_SURVIVES(equivalent, line removed): an entry left listed has no InactiveSince, so no sweep expires it; the list only grows.
+            _inactive.Remove(entry);
+        }
 
         internal void CollectGarbage()
         {
@@ -159,12 +170,15 @@ namespace Velvet
             for (var i = _inactive.Count - 1; i >= 0; i--)
             {
                 var entry = _inactive[i];
-                if (now - entry.InactiveSince < entry.GcTime) continue;
+                if (!IsExpired(entry, now)) continue;
                 _inactive.RemoveAt(i);
                 _entries.Remove(entry.Key);
                 entry.Remove();
             }
         }
+
+        private static bool IsExpired(QueryEntry entry, TimeSpan now)
+            => entry.InactiveSince is { } since && now - since >= entry.GcTime;
 
         internal static TimeSpan RequireNonNegative(TimeSpan value, string name)
             => value < TimeSpan.Zero
@@ -196,7 +210,7 @@ namespace Velvet
         internal QueryClient Client { get; }
         internal QueryKey Key { get; }
         internal TimeSpan GcTime { get; private set; }
-        internal TimeSpan InactiveSince { get; set; }
+        internal TimeSpan? InactiveSince { get; set; }
         internal abstract Type DataType { get; }
 
         // The longest any query asked for, as TanStack's updateGcTime keeps.
@@ -242,8 +256,6 @@ namespace Velvet
         {
             _observers.Add(observer);
             if (_observers.Count == 1) Client.MarkActive(this);
-            // After MarkActive, so a sweep cannot remove the entry being subscribed to.
-            Client.CollectGarbage();
             if (IsStaleFor(observer.StaleTime))
             {
                 Fetch(observer.QueryFn, cancelRefetch: false);

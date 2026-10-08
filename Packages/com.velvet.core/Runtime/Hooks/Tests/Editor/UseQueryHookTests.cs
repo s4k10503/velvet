@@ -27,11 +27,13 @@ namespace Velvet.Tests
     /// <item>An entry nothing reads is removed once it has gone unread for the longest garbage-collection time
     /// a query asked for, by the next sweep — an invalidation or a subscription — and removing it cancels its
     /// request. An entry something reads again, or still reads, is not removed, and a new entry for a key
-    /// whose old entry was removed is not swept with it.</item>
+    /// whose old entry was removed is not swept with it. An expired entry reads as absent before the sweep,
+    /// and a reader mounting over it subscribes to a new entry.</item>
     /// <item>A key change requests the new key and releases the old key's entry, and the old key's request
-    /// landing is never shown as the new key's data. A change of client moves the query to the new one.</item>
+    /// landing is never shown as the new key's data. Until the commit's effect moves the subscription, the
+    /// old entry keeps the old key's query function. A change of client moves the query to the new one.</item>
     /// <item><c>InvalidateQueries</c> refetches the entries its key leads, starts over a refetch already in
-    /// flight and joins a first request; <c>Refetch</c> fetches again and starts over a refetch in flight;
+    /// flight and joins a first request, and fetches nothing for an entry nobody reads; <c>Refetch</c> fetches again and starts over a refetch in flight;
     /// <c>Clear</c> makes a mounted query fetch into a new entry; a request started over that completes on
     /// another thread does not land; a cancellation callback that throws is logged rather than raised.</item>
     /// <item>The client is read from <see cref="QueryClientContext.Ref"/> when none is passed, and a query
@@ -442,6 +444,53 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoExpiredUnreadEntries_When_ReadersOfBothMountInOneCommit_Then_TheSecondRendersNoData()
+        {
+            // Arrange — whichever reader subscribes first sweeps the other's expired entry, so that reader's
+            // render has to have read it as absent already.
+            using var mounted = MountExpiredBoard();
+
+            // Act
+            s_setShowA.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((s_rendersB[0].Status, s_rendersB[0].Data), Is.EqualTo((QueryStatus.Pending, 0)),
+                "An expired entry reads as absent before a sweep removes it");
+        }
+
+        [Test]
+        public void Given_AnExpiredUnreadEntry_When_ItsReaderMountsAgain_Then_ItSubscribesToAFreshEntry()
+        {
+            // Arrange
+            using var mounted = MountExpiredBoard();
+
+            // Act
+            s_setShowA.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Data), Is.EqualTo((QueryStatus.Pending, 0)),
+                "Subscribing sweeps before it looks the key up, so the expired entry is not handed back");
+        }
+
+        [Test]
+        public void Given_AnUnreadEntry_When_ItIsInvalidated_Then_NoRequestRuns()
+        {
+            // Arrange
+            using var mounted = MountResolvedSoloThenHide(7);
+
+            // Act
+            s_client.InvalidateQueries();
+
+            // Assert
+            Assert.That(s_fetched.Count, Is.EqualTo(1), "An entry nothing reads is only marked stale");
+        }
+
+        [Test]
         public void Given_AnUnreadEntryWithARequestInFlight_When_ItIsRemoved_Then_TheRequestIsCancelled()
         {
             // Arrange
@@ -615,6 +664,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Data), Is.EqualTo((QueryStatus.Pending, 0)),
                 "A render reads the entry its own key names, so page 1's result is never shown as page 2's");
+        }
+
+        [Test]
+        public void Given_AKeyChangeNotYetSubscribed_When_TheOldEntryIsInvalidated_Then_ItRunsTheOldKeysFunction()
+        {
+            // Arrange — page 1 holds data, so the invalidation starts a request rather than joining one, and
+            // the effect moving the subscription to page 2 has not run.
+            using var mounted = V.Mount(_root, V.Component(Pager, key: "pager"));
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetResult(10);
+            mounted.FlushStateForTest();
+            s_setPage.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_client.InvalidateQueries();
+
+            // Assert
+            Assert.That(Last(s_fetched), Is.EqualTo("[page, 1]"),
+                "A render's options reach the subscription only with the commit's effect, as v5's setOptions does");
         }
 
         [Test]
@@ -899,6 +968,21 @@ namespace Velvet.Tests
             return mounted;
         }
 
+        // Both readers resolved, then hidden at zero, then the clock moved to their gcTime.
+        private MountedTree MountExpiredBoard()
+        {
+            var mounted = V.Mount(_root, V.Component(Board, key: "board"));
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetResult(1);
+            s_sources[1].TrySetResult(2);
+            mounted.FlushStateForTest();
+            Hide(mounted);
+            s_now = GcTime;
+            s_rendersA.Clear();
+            s_rendersB.Clear();
+            return mounted;
+        }
+
         private MountedTree MountResolvedSoloThenHide(int data)
         {
             var mounted = MountResolvedSolo(data);
@@ -1011,11 +1095,14 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode Board() => V.Div(children: new VNode[]
+        private static VNode Board()
         {
-            V.Component(ReaderTodo, key: "todo"),
-            V.Component(ReaderUsers, key: "users"),
-        });
+            var (show, setShow) = Hooks.UseState(true);
+            s_setShowA = setShow;
+            return V.Div(children: show
+                ? new VNode[] { V.Component(ReaderTodo, key: "todo"), V.Component(ReaderUsers, key: "users") }
+                : Array.Empty<VNode>());
+        }
 
         #endregion
     }

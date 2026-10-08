@@ -2137,21 +2137,21 @@ namespace Velvet
             var (_, setVersion) = UseState(0);
             // MUTANT_SURVIVES(equivalent, arithmetic): any step makes a value the slot does not hold, which is all the re-render asks.
             var observer = UseMutableRef<QueryObserver<T>>(() => new QueryObserver<T>(() => setVersion.Invoke(v => v + 1))).Current;
-            observer.QueryFn = options.QueryFn;
-            observer.StaleTime = QueryClient.RequireNonNegative(
+            var staleTime = QueryClient.RequireNonNegative(
                 options.StaleTime ?? queryClient.DefaultStaleTime, nameof(QueryOptions<T>.StaleTime));
-            observer.GcTime = QueryClient.RequireNonNegative(
+            var gcTime = QueryClient.RequireNonNegative(
                 options.GcTime ?? queryClient.DefaultGcTime, nameof(QueryOptions<T>.GcTime));
             var key = options.QueryKey;
+            var queryFn = options.QueryFn;
 
             UseEffect(observer.UnmountEffect, Array.Empty<object?>());
             UseEffect((Func<Action?>)(() =>
             {
-                observer.Sync(queryClient, key);
+                observer.Sync(queryClient, key, queryFn, staleTime, gcTime);
                 return null;
             }));
 
-            return observer.Read(queryClient.Peek<T>(key));
+            return observer.Read(queryClient.Peek<T>(key), staleTime);
         }
 
         #endregion

@@ -12,6 +12,9 @@ namespace Velvet.Tests
     /// <item>A key rebuilt with equal parts finds the entry an earlier key stored; a key differing in any part
     /// does not, a part of another type included, and neither does a key one part longer, even where the hash
     /// codes collide.</item>
+    /// <item>A sequence part other than a string compares element by element: rebuilt with equal elements, as
+    /// another kind of sequence included, it is equal and hashes alike; with an element differing or one more
+    /// element it does not match. A string is matched and hashed whole, not as its characters.</item>
     /// <item>Editing the array a key was built from does not move the key, and a null array is refused.</item>
     /// <item>No key equals null or a key under the object overload that differs from it.</item>
     /// <item>A key starts with each of its leading runs and not with a longer key.</item>
@@ -73,6 +76,57 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(reading, Is.EqualTo((true, false)), "A key equals only a key of its own length, prefix or not");
+        }
+
+        [Test]
+        public void Given_AnArrayPartRebuiltWithEqualElements_When_Compared_Then_TheKeysAreEqual()
+        {
+            // Act
+            var equal = new QueryKey("todos", new[] { 1, 2 }).Equals(new QueryKey("todos", new[] { 1, 2 }));
+
+            // Assert
+            Assert.That(equal, Is.True, "A sequence part compares by its elements, not by instance");
+        }
+
+        [Test]
+        public void Given_AnArrayPartAndAListPartWithEqualElements_When_Hashed_Then_TheHashCodesMatch()
+        {
+            // Act
+            var same = new QueryKey("todos", new[] { 1, 2 }).GetHashCode()
+                == new QueryKey("todos", new List<int> { 1, 2 }).GetHashCode();
+
+            // Assert
+            Assert.That(same, Is.True, "A sequence part hashes by its elements, so equal keys find one entry");
+        }
+
+        [Test]
+        public void Given_SequencePartsDifferingInAnElementOrInLength_When_Matched_Then_NeitherMatches()
+        {
+            // Arrange — matched as filters rather than compared, since a filter match compares the parts
+            // without the hash codes, which would tell these apart before any element did.
+            var key = new QueryKey(new[] { 1, 2 });
+
+            // Act
+            var reading = (key.StartsWith(new QueryKey(new[] { 1, 3 })), key.StartsWith(new QueryKey(new[] { 1, 2, 3 })),
+                new QueryKey(new[] { 1, 2, 3 }).StartsWith(key));
+
+            // Assert
+            Assert.That(reading, Is.EqualTo((false, false, false)),
+                "Every element counts, and a sequence that runs on past the other is not equal to it");
+        }
+
+        [Test]
+        public void Given_AStringPartAndACharArrayPart_When_MatchedAndHashed_Then_NeitherAgrees()
+        {
+            // Arrange
+            var text = new QueryKey("ab");
+            var characters = new QueryKey(new[] { 'a', 'b' });
+
+            // Act
+            var reading = (text.StartsWith(characters), text.GetHashCode() == characters.GetHashCode());
+
+            // Assert
+            Assert.That(reading, Is.EqualTo((false, false)), "A string is one value, not a sequence of characters");
         }
 
         [Test]

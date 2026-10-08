@@ -70,8 +70,8 @@ namespace Velvet
         /// <summary>True while a request for the entry is in flight, or is about to start because this
         /// component is mounting over an entry with no data or stale data.</summary>
         public bool IsFetching { get; }
-        /// <summary>True when the entry has no data, has been invalidated, or is older than the query's stale
-        /// time.</summary>
+        /// <summary>True when the entry has no data, has been invalidated, or holds data at least as old as the
+        /// query's stale time.</summary>
         public bool IsStale { get; }
 
         /// <summary>
@@ -82,8 +82,8 @@ namespace Velvet
         public void Refetch() => _refetch();
     }
 
-    // The per-component half of UseQuery, TanStack's QueryObserver: the latest options a render passed, and
-    // which entry the committed render subscribed to.
+    // The per-component half of UseQuery, TanStack's QueryObserver: the options of the latest committed render,
+    // and the entry that render subscribed to.
     internal sealed class QueryObserver<T>
     {
         private readonly Action _unsubscribe;
@@ -100,9 +100,8 @@ namespace Velvet
         internal Action Refetch { get; }
         internal Func<Action?> UnmountEffect { get; }
 
-        internal Func<CancellationToken, VelvetTask<T>> QueryFn { get; set; } = null!;
-        internal TimeSpan StaleTime { get; set; }
-        internal TimeSpan GcTime { get; set; }
+        internal Func<CancellationToken, VelvetTask<T>> QueryFn { get; private set; } = null!;
+        internal TimeSpan StaleTime { get; private set; }
 
         internal QueryEntry<T>? Entry { get; private set; }
 
@@ -112,8 +111,14 @@ namespace Velvet
         // Runs after every commit rather than on a key dependency: QueryKey compares by content, and an
         // effect's dependency array compares a reference type by instance, so a key rebuilt each render
         // would resubscribe — and refetch a stale entry — on every commit.
-        internal void Sync(QueryClient client, QueryKey key)
+        // The options are taken here rather than at render, as v5's setOptions runs in an effect: until this
+        // commit's subscription moves to the new key, a refetch or an invalidation reaching the old entry has
+        // to run the old entry's query function.
+        internal void Sync(QueryClient client, QueryKey key, Func<CancellationToken, VelvetTask<T>> queryFn,
+            TimeSpan staleTime, TimeSpan gcTime)
         {
+            QueryFn = queryFn;
+            StaleTime = staleTime;
             var current = Entry;
             if (current != null && !current.IsRemoved && ReferenceEquals(current.Client, client) && current.Key.Equals(key))
             {
@@ -121,7 +126,7 @@ namespace Velvet
             }
 
             Unsubscribe();
-            var entry = client.Build<T>(key, GcTime);
+            var entry = client.Build<T>(key, gcTime);
             Entry = entry;
             entry.Subscribe(this);
             // A change that landed between the render and this subscription was delivered to no one here.
@@ -139,7 +144,7 @@ namespace Velvet
             entry.Unsubscribe(this);
         }
 
-        internal QueryResult<T> Read(QueryEntry<T>? entry)
+        internal QueryResult<T> Read(QueryEntry<T>? entry, TimeSpan staleTime)
         {
             _renderedEntry = entry;
             _renderedVersion = entry?.Version ?? 0;
@@ -148,7 +153,7 @@ namespace Velvet
                 return new QueryResult<T>(QueryStatus.Pending, default, null, isFetching: true, isStale: true, Refetch);
             }
 
-            var isStale = entry.IsStaleFor(StaleTime);
+            var isStale = entry.IsStaleFor(staleTime);
             // TanStack's getOptimisticResult: a render whose subscription will fetch already reports that
             // fetch, rather than the render before the subscription's own reporting a settled entry.
             var willFetch = !ReferenceEquals(entry, Entry) && isStale;

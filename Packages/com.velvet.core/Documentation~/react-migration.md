@@ -153,7 +153,8 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 
 **One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
 under `object.Equals`, so a key rebuilt every render, a record, a tuple and a boxed number all compare by
-content. Components reading one key share one entry and one request: the first to mount starts it and
+content. A part that is a sequence other than a string — an array or a list — compares element by element,
+in order, as v5's structural hash compares an array. Components reading one key share one entry and one request: the first to mount starts it and
 the rest join it. A component unmounting takes nothing from the others — the request belongs to the
 entry and runs on for them. The entry keeps its result after its last reader unmounts, so navigating
 back renders that result on the first render instead of the pending state.
@@ -170,7 +171,9 @@ and a result the old key's request delivers afterwards is never shown as the new
 `placeholderData` yet, so a key with nothing cached renders `Pending`.
 
 **Invalidating after a mutation.** `InvalidateQueries` takes the leading parts of a key, as v5's
-filter does: `new QueryKey("todos")` matches `["todos", 1]` and `["todos"]` alike. A matching entry a
+non-exact filter does with an array key: `new QueryKey("todos")` matches `["todos", 1]` and `["todos"]`
+alike. Each part must equal its counterpart whole; v5 also matches an object part partially, on the
+properties the filter names, which this does not. A matching entry a
 mounted component reads is fetched again; a request already in flight for it is cancelled and started
 over when the entry holds data, so a result fetched before the write does not land as current. An entry
 nothing reads is only marked stale, and is fetched by the next component that mounts over it.
@@ -184,9 +187,19 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 
 **Deviations from v5:**
 
-- Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) is
-  removed the next time a query subscribes to the client or `InvalidateQueries` runs, and removing it
-  cancels the request it still has in flight.
+- Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
+  absent from then on, and is removed the next time a query subscribes to the client or
+  `InvalidateQueries` runs; removing it cancels the request it still has in flight.
+- A dictionary part compares in its enumeration order, where v5 sorts an object's keys before hashing.
+- No structural sharing: each successful request replaces `Data` with the instance it returned, where v5
+  keeps the previous instance, or the unchanged parts of it, when the new result is deeply equal.
+- A request going into flight and a request landing each re-render every component reading the entry,
+  one landing a result equal to the last included; v5 re-renders only for the result properties a
+  component read.
+- A query function returning a task that has already completed settles the entry before the next
+  reader in the same commit subscribes, so with the default `StaleTime` of zero that reader finds the
+  result stale and requests it again. v5's result arrives a microtask later, after every subscription
+  of the commit, so the readers share one request there.
 - The `CancellationToken` a query function receives is cancelled when a refetch starts that request
   over, when the entry is removed, and by `Clear`. v5 also aborts a request whose function read its
   signal once the last observer unsubscribes; here it runs on, so a component mounting again finds its
