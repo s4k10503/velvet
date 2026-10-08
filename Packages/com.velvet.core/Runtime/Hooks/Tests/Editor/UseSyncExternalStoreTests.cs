@@ -144,6 +144,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_FirstOfTwoSubscriptionsThrowsOnUnsubscribe_When_Unmounted_Then_TheSecondIsStillRemoved()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, new Regex("unsubscribe failed"));
+            s_sourceA = new ExternalSource<int>(0) { ThrowOnUnsubscribe = true };
+            s_sourceB = new ExternalSource<int>(0);
+            var mounted = V.Mount(_root, V.Component(TwoStoresRender, key: "two"));
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.AreEqual(0, s_sourceB.ListenerCount);
+        }
+
+        [Test]
         public void Given_TwoReadersOfOneStore_When_StoreChanges_Then_BothRenderTheNewSnapshot()
         {
             // Arrange
@@ -349,10 +365,13 @@ namespace Velvet.Tests
             // Act
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_tearSource.Set(1);
+            var rendersBefore = s_descendantRenders;
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
-            // Assert — the snapshot the immediate drain's ancestor rendered, not the live 1
-            Assert.AreEqual(0, s_descendantValue);
+            // Assert — the snapshot the immediate drain's ancestor rendered, not the live 1, read by a render
+            // the delayed drain made
+            Assert.AreEqual("0, rendered in the delayed drain: True",
+                $"{s_descendantValue}, rendered in the delayed drain: {s_descendantRenders > rendersBefore}");
         }
 
         [Test]
@@ -395,6 +414,9 @@ namespace Velvet.Tests
             // Runs once, inside the next Subscribe call, after the listener is registered.
             public Action DuringSubscribe { get; set; }
 
+            // Makes an unsubscribe throw once it has removed its listener.
+            public bool ThrowOnUnsubscribe { get; set; }
+
             public Action Subscribe(Action onStoreChange)
             {
                 SubscribeCalls++;
@@ -402,7 +424,11 @@ namespace Velvet.Tests
                 var during = DuringSubscribe;
                 DuringSubscribe = null;
                 during?.Invoke();
-                return () => _listeners.Remove(onStoreChange);
+                return () =>
+                {
+                    _listeners.Remove(onStoreChange);
+                    if (ThrowOnUnsubscribe) throw new InvalidOperationException("unsubscribe failed");
+                };
             }
 
             public T GetSnapshot() => _value;
@@ -545,6 +571,14 @@ namespace Velvet.Tests
             return V.Label(text: s_switchingValue.ToString());
         }
 
+        [Component]
+        private static VNode TwoStoresRender()
+        {
+            var first = Hooks.UseSyncExternalStore(s_sourceA.Subscribe, s_sourceA.GetSnapshot);
+            var second = Hooks.UseSyncExternalStore(s_sourceB.Subscribe, s_sourceB.GetSnapshot);
+            return V.Label(text: $"{first}/{second}");
+        }
+
         #endregion
 
         #region Throwing component (getSnapshot indexes past the array)
@@ -613,6 +647,7 @@ namespace Velvet.Tests
         private static ExternalSource<int> s_tearSource;
         private static int s_ancestorValue;
         private static int s_descendantValue;
+        private static int s_descendantRenders;
         private static ComponentFiber s_ancestorFiber;
         private static ComponentFiber s_descendantFiber;
 
@@ -621,6 +656,7 @@ namespace Velvet.Tests
             s_tearSource = null;
             s_ancestorValue = 0;
             s_descendantValue = 0;
+            s_descendantRenders = 0;
             s_ancestorFiber = null;
             s_descendantFiber = null;
         }
@@ -644,6 +680,7 @@ namespace Velvet.Tests
         private static VNode DescendantRender()
         {
             s_descendantFiber = FiberAmbientStack.Current;
+            s_descendantRenders++;
             s_descendantValue = Hooks.UseSyncExternalStore(s_tearSource.Subscribe, s_tearSource.GetSnapshot);
             return V.Label(text: s_descendantValue.ToString());
         }

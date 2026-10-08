@@ -5,7 +5,13 @@
   snapshot is not `Object.is`-equal to the rendered one or `getSnapshot` throws; a `subscribe` that is
   not equal to the previous render's re-subscribes, and unmounting unsubscribes. The change callback
   must be invoked on the main thread and never schedules on the Transition lane, and readers with equal
-  `getSnapshot` delegates share one snapshot across a frame's urgent and deferred renders.
+  `getSnapshot` delegates share one snapshot within a batch drain wave, as `Hooks.UseStore` readers of
+  one store do.
+
+### Changed
+
+- The error for a component rendering more or fewer store hooks than before names the kind
+  `UseStore / UseSyncExternalStore`, since the two hooks share one slot list.
 
 ### Fixed
 

@@ -302,9 +302,10 @@ namespace Velvet
 
         // A notification raised while subscribe runs is dropped here: the render that called this reads the
         // snapshot again once it returns.
+        // The previous unsubscribe runs uncontained here: a throw from it is a throw from the render.
         public void Resubscribe(Func<Action, Action> subscribe)
         {
-            Dispose();
+            Detach()?.Invoke();
             _subscribing = true;
             try
             {
@@ -343,12 +344,27 @@ namespace Velvet
             }
         }
 
+        // Contained as HookEffectExecutor.RunCleanups contains a throwing effect cleanup, so an unmount still
+        // reaches the fiber's other slots.
         public override void Dispose()
+        {
+            var unsubscribe = Detach();
+            try
+            {
+                unsubscribe?.Invoke();
+            }
+            catch (Exception exception)
+            {
+                ComponentBoundarySearch.PropagateException(Fiber, exception);
+            }
+        }
+
+        private Action? Detach()
         {
             var unsubscribe = _unsubscribe;
             _unsubscribe = null;
             Subscribe = null;
-            unsubscribe?.Invoke();
+            return unsubscribe;
         }
     }
 }

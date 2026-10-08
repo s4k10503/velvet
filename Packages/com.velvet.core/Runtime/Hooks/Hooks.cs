@@ -264,8 +264,10 @@ namespace Velvet
         /// never takes the Transition lane, including when the store is mutated inside <c>startTransition</c>.
         /// </para>
         /// <para>
-        /// Readers passing equal <paramref name="getSnapshot"/> delegates observe the same snapshot across a frame's
-        /// urgent and deferred renders, as readers of one store do through <see cref="UseStore{TStore,TSel}"/>.
+        /// Within one batch drain wave — an immediate drain and the delayed drain continuing it — readers passing
+        /// equal <paramref name="getSnapshot"/> delegates observe the snapshot the wave's first read pinned, as
+        /// readers of one store do through <see cref="UseStore{TStore,TSel}"/>. A render outside a drain reads the
+        /// live snapshot, and so does a render whose <paramref name="subscribe"/> raises a change while it runs.
         /// </para>
         /// </remarks>
         /// <typeparam name="T">Snapshot type.</typeparam>

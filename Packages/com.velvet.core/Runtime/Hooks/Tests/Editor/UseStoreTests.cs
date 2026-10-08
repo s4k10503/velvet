@@ -278,10 +278,12 @@ namespace Velvet.Tests
             // Act
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             store.SetText("changed");
+            var rendersBefore = s_textDescendantRenders;
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
-            // Assert
-            Assert.AreEqual("<null>", s_textDescendantValue ?? "<null>");
+            // Assert — the pinned null, read by a render the delayed drain made
+            Assert.AreEqual("<null>, rendered in the delayed drain: True",
+                $"{s_textDescendantValue ?? "<null>"}, rendered in the delayed drain: {s_textDescendantRenders > rendersBefore}");
         }
 
         private sealed record PairState(int Number, string Text);
@@ -472,6 +474,7 @@ namespace Velvet.Tests
 
         private static Store<string> s_textStore;
         private static string s_textDescendantValue;
+        private static int s_textDescendantRenders;
         private static ComponentFiber s_textAncestorFiber;
         private static ComponentFiber s_textDescendantFiber;
 
@@ -479,6 +482,7 @@ namespace Velvet.Tests
         {
             s_textStore = null;
             s_textDescendantValue = null;
+            s_textDescendantRenders = 0;
             s_textAncestorFiber = null;
             s_textDescendantFiber = null;
         }
@@ -495,6 +499,7 @@ namespace Velvet.Tests
         private static VNode TextDescendantRender()
         {
             s_textDescendantFiber = FiberAmbientStack.Current;
+            s_textDescendantRenders++;
             s_textDescendantValue = Hooks.UseStore(s_textStore, s => s);
             return V.Label(text: s_textDescendantValue ?? "");
         }
