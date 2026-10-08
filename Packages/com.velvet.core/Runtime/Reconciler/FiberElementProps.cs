@@ -247,7 +247,28 @@ namespace Velvet
         bool Contain = false,
         bool RestoreFocus = false,
         bool AutoFocus = false,
-        bool SingleTabStop = false);
+        bool SingleTabStop = false)
+    {
+        /// <summary>
+        /// The axis arrow/d-pad moves travel inside a <see cref="SingleTabStop"/> group. A move on the other
+        /// axis keeps focus on the member it started from, as a horizontal toolbar ignores the vertical
+        /// arrows in React Aria's <c>useToolbar</c>. Of nested groups, the outermost one's value decides.
+        /// </summary>
+        public FocusScopeOrientation Orientation { get; init; }
+    }
+
+    /// <summary>The axes an arrow/d-pad move may travel inside a <c>singleTabStop</c> group.</summary>
+    public enum FocusScopeOrientation
+    {
+        /// <summary>Moves on both axes travel between members; the geometry decides.</summary>
+        Both,
+
+        /// <summary>Left and right moves travel; up and down keep focus on the member.</summary>
+        Horizontal,
+
+        /// <summary>Up and down moves travel; left and right keep focus on the member.</summary>
+        Vertical,
+    }
 
     /// <summary>
     /// The 3D Transform an Anchored element's screen position tracks, plus the camera whose projection

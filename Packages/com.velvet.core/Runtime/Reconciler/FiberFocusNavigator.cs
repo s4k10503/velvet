@@ -695,7 +695,7 @@ namespace Velvet
             // Ahead of the placeholder forwarding below, which would carry a landing on a placeholder
             // outside the group on to whatever that placeholder stands for.
             if (IsSpatialMove(evt.direction)
-                && TryHoldInSingleTabStopGroup(target, evt.relatedTarget as VisualElement, ctx))
+                && TryHoldInSingleTabStopGroup(target, evt.relatedTarget as VisualElement, evt.direction, ctx))
             {
                 return;
             }
@@ -798,20 +798,33 @@ namespace Velvet
         }
 
         // Arrow/d-pad moves never leave a SingleTabStop group, the composite-widget contract whose Tab half
-        // TryHandleSingleTabStopGroupExit owns. The engine's 2D search is not public, so the move is corrected
-        // after it lands rather than predicted: a landing outside the group returns to the member the
-        // move started from.
+        // TryHandleSingleTabStopGroupExit owns, and a group with an orientation keeps a move on the other axis
+        // on its member too. The engine's 2D search is not public, so the move is corrected after it lands
+        // rather than predicted: a landing the group does not allow returns to the member the move started from.
         private static bool TryHoldInSingleTabStopGroup(
-            VisualElement target, VisualElement? relatedTarget, ReconcilerContext ctx)
+            VisualElement target, VisualElement? relatedTarget, FocusChangeDirection direction, ReconcilerContext ctx)
         {
-            var groupRoot = FindOutermostSingleTabStopRoot(relatedTarget, ctx, out _);
-            if (groupRoot == null || groupRoot.Contains(target))
+            var groupRoot = FindOutermostSingleTabStopRoot(relatedTarget, ctx, out var binding);
+            if (groupRoot == null)
+            {
+                return false;
+            }
+            if (groupRoot.Contains(target) && !IsExcludedAxis(binding!.Settings.Orientation, direction))
             {
                 return false;
             }
             relatedTarget!.Focus();
             ScheduleRevertedLandingSettle(target, ctx);
             return true;
+        }
+
+        // The engine hands a spatial move to FocusIn as Left 1, Right 2, Up 3, Down 4;
+        // FocusScopeOrientationPlaybackTests holds each axis to that.
+        private static bool IsExcludedAxis(FocusScopeOrientation orientation, FocusChangeDirection direction)
+        {
+            int value = direction;
+            var horizontal = value is 1 or 2;
+            return orientation == (horizontal ? FocusScopeOrientation.Vertical : FocusScopeOrientation.Horizontal);
         }
 
         // A spatial move reaches FocusIn under a direction that is neither sequential nor the unspecified

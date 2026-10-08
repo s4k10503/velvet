@@ -53,6 +53,11 @@ a spatial move that lands outside it returns to the member it started from. An e
 group that lies between two members is where a move toward the members beyond it lands, so that
 move is reverted and those members are not reached by arrows from that side.
 
+`orientation:` (`FocusScopeOrientation`, `Both` by default) names the axis a group's arrows travel, as
+React Aria's `useToolbar` takes an orientation: with `Horizontal` an up or down move, and with `Vertical`
+a left or right move, keeps focus on the member it started from, even where a member lies in that
+direction. Of nested groups, the outermost one's value decides.
+
 `TabIndex` -1 takes an element out of the Tab ring while `Focus()` and a pointer press still focus
 it, as the web's `tabindex="-1"` does. On a runtime panel it also takes the element out of
 arrow/d-pad navigation, which is why `singleTabStop` is interception-based rather than a hand-rolled
@@ -132,4 +137,4 @@ A `focusOrder:` naming no `PanelFocusOrder` member is refused at construction: `
 
 - No `whileFocusVisibleClass` gesture prop; the `focus-visible:` variant and `UseFocusRing`
   cover both channels.
-- No orientation/wrap options on `singleTabStop`; spatial navigation handles in-group movement.
+- No `wrap` option on `singleTabStop`; spatial navigation decides where an arrow at the group's edge lands.
