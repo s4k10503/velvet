@@ -865,6 +865,13 @@ refuses on being `scripts/release/published_check.py`'s answer — and the floor
 cannot resolve to a source it reads. Named is weaker than posed, deliberately: what a name match
 says is that some case exists, not that the case asks anything.
 
+`scripts/hooks/test_hook_verdicts.py` is the posed half. Each of those scripts has a pair there —
+an event it refuses, or under `report/` a state it reports, and a near miss beside it that it lets
+through — run through `unreadable_state_check.run_hook` under the same pins, with stubbed programs,
+and a refusal counts only where its message carries a phrase of its own, so one given for another
+reason does not stand in for the decision. Its floor fails a script added under either directory
+without a pair.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
