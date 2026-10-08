@@ -44,6 +44,8 @@ namespace Velvet
         private string[] _payloads;
         // Each payload's rule place among the CONTAINER's rules, aligned with _payloads.
         private int[] _declarations;
+        // Aligned with _payloads: true for a payload only the input-box child takes. Empty when none is.
+        private bool[] _inputBoxOnly;
 
         // Every child this manipulator has applied the payload to. On each Apply / Clear any tracked
         // element no longer a current child is offered for release; whether it loses the payload is the
@@ -56,9 +58,11 @@ namespace Velvet
         private int _lastSignature;
         private bool _hasSignature;
 
-        public StyleChildVariantManipulator(ReconcilerContext ctx, string[] payloads, int[]? declarations = null)
+        public StyleChildVariantManipulator(ReconcilerContext ctx, string[] payloads, int[]? declarations = null,
+            bool[]? inputBoxOnly = null)
         {
             _declarations = declarations ?? System.Array.Empty<int>();
+            _inputBoxOnly = inputBoxOnly ?? System.Array.Empty<bool>();
             _ctx = ctx;
             _payloads = payloads ?? System.Array.Empty<string>();
         }
@@ -69,11 +73,12 @@ namespace Velvet
         // lets Apply re-derive against the live child set through its signature. Mirrors
         // StyleHasVariantManipulator.UpdatePayloads's pre-clear, NOT StyleGapManipulator.UpdateGap (gap never
         // needs it — it always overwrites the SAME fixed property with a new scalar, not a variable class set).
-        public void UpdatePayloads(string[] payloads, int[]? declarations = null)
+        public void UpdatePayloads(string[] payloads, int[]? declarations = null, bool[]? inputBoxOnly = null)
         {
             payloads ??= System.Array.Empty<string>();
             declarations ??= System.Array.Empty<int>();
-            if (SamePayloads(payloads) && SameDeclarations(declarations))
+            inputBoxOnly ??= System.Array.Empty<bool>();
+            if (SamePayloads(payloads) && SameDeclarations(declarations) && SameScopes(inputBoxOnly))
             {
                 Apply();
                 return;
@@ -87,6 +92,7 @@ namespace Velvet
             }
             _payloads = payloads;
             _declarations = declarations;
+            _inputBoxOnly = inputBoxOnly;
             _applied.Clear();
             _hasSignature = false;
             Apply();
@@ -208,8 +214,45 @@ namespace Velvet
         // other: every payload applied from here carries the child-combinator variant in its rank, a stacked
         // one included (see StyleLayerPriority.Stack), and no payload the child declares does.
         private void ApplyPayloads(VisualElement child, bool on)
-            => StyleVariantPayload.Apply(child, _payloads, on, StyleLayerPriority.ChildVariant, _ctx, this,
-                _declarations);
+        {
+            if (_inputBoxOnly.Length == 0 || child.ClassListContains(StyleChildVariantClass.InputBoxClass))
+            {
+                StyleVariantPayload.Apply(child, _payloads, on, StyleLayerPriority.ChildVariant, _ctx, this,
+                    _declarations);
+                return;
+            }
+
+            // A child that is not the input box takes only the payloads written for every child.
+            var kept = new List<string>();
+            var keptDeclarations = new List<int>();
+            for (var i = 0; i < _payloads.Length; i++)
+            {
+                if (i < _inputBoxOnly.Length && _inputBoxOnly[i])
+                {
+                    continue;
+                }
+                kept.Add(_payloads[i]);
+                keptDeclarations.Add(i < _declarations.Length ? _declarations[i] : StyleVariantPayload.NoDeclaration);
+            }
+            StyleVariantPayload.Apply(child, kept.ToArray(), on, StyleLayerPriority.ChildVariant, _ctx, this,
+                keptDeclarations.ToArray());
+        }
+
+        private bool SameScopes(bool[] inputBoxOnly)
+        {
+            if (inputBoxOnly.Length != _inputBoxOnly.Length)
+            {
+                return false;
+            }
+            for (var i = 0; i < inputBoxOnly.Length; i++)
+            {
+                if (inputBoxOnly[i] != _inputBoxOnly[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         private bool SameDeclarations(int[] declarations)
         {

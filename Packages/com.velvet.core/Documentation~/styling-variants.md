@@ -426,6 +426,40 @@ child and is reached. How far the payload gets differs per control because `& > 
 A declared `label:` seats the label element ahead of the input, and it takes the payload as well, so
 `[&>*]:text-red-500` on a labelled field colours both.
 
+**A field control's own surface utilities paint its input box.** On an `<input>` or a `<select>` the class
+lands on the box the value is shown in; UI Toolkit draws a field as an outer control around a child box (the
+element carrying `unity-base-field__input`, `#unity-text-input` in a text field) that the theme dresses. So
+the field factories — `V.TextField`, `V.IntegerField`, `V.DropdownField` and `V.Custom<T>` for a `T` that is
+a text-input field (`FloatField`, `DoubleField`, `LongField`, …) or a popup field (`PopupField<T>`, …) — send
+these to the box:
+
+- backgrounds, including the gradient utilities (`bg-*`, `bg-linear-*`, `from-*` / `via-*` / `to-*`);
+- borders, including the line style (`border`, `border-*`, `border-solid` / `-dashed` / `-dotted`);
+- radius (`rounded`, `rounded-*`) and padding (`p-*`, `px-*`, `py-*`, `pt-*` … `pe-*`);
+- `shadow-*`, `drop-shadow-*`, `ring-*` and `outline-*`.
+
+`V.TextField(className: "w-64 bg-slate-800 rounded-lg px-3")` sizes the outer control and paints the box;
+layout, size and margin utilities, and every utility not listed, stay on the outer control. A declared
+`label:` is left unpainted, unlike under `[&>*]:`. `whileHoverClass` / `whileTapClass` / `whileFocusClass`
+send their surface classes to the box the same way.
+
+Where a variant's condition lives decides who evaluates it:
+
+- `hover:`, `focus:`, `active:`, `focus-visible:`, `dark:` and the responsive variants are the
+  box's own, so `focus:border-blue-500` follows focus on the box, as it does on an `<input>`.
+- `group-*` and `peer-*` look for their source from the control: the peer is a sibling of the control, not of
+  the box, and the group an ancestor of it.
+- `first:`, `last:`, `odd:`, `even:`, `has-[…]:`, `data-[…]:`, `aria-[…]:` and `supports-[…]:` are
+  conditions on the control, so the control evaluates them and the box takes the paint.
+
+The same holds when a container's `[&>*]:` payload lands on a field. A variant stacked behind one of the
+control's conditions (`first:hover:bg-x`) is not routed to the box.
+
+The cases that pin this are `InputBoxSurfaceTests` (the class list each factory builds, where each
+payload and paint binding lands, and what teardown releases) and `InputBoxSurfacePanelTests` (the
+sheet-attached resolved colours, the peer source and focus). They resolve the utility's colour from a
+reference element carrying the same class rather than from a literal.
+
 **`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
 spelled on the *container* rather than on the element it lands on, and a child is fully built before
 the container applies it. The layout utilities still re-derive at mount, so `[&>*]:gap-2` spaces

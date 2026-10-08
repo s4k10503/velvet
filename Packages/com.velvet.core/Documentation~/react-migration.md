@@ -315,6 +315,10 @@ the field hands focus from its input back to itself (Enter, Shift+Enter in multi
 declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
 field; one written from `refCallback:` is not.
 
+A field's `className` background, border, radius, padding, shadow and ring utilities paint the box the value
+is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
+is listed with the `[&>*]:` composite notes.
+
 ### 2-2. Conditionals and Lists
 
 | React | Velvet | Notes |

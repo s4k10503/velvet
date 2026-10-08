@@ -117,6 +117,9 @@ namespace Velvet
         // it suppresses.
         private bool _pointerFocus;
 
+        // Whether Hook added the descendant-focus listeners, so Unhook removes exactly what was added.
+        private bool _hearsDescendantFocus;
+
         // Whether this element's ring follows InputModality.Announced, which it does while it holds focus.
         private bool _following;
 
@@ -142,6 +145,14 @@ namespace Velvet
             target.RegisterCallback<PointerCancelEvent>(OnPointerCancel);
             target.RegisterCallback<FocusEvent>(OnFocus);
             target.RegisterCallback<BlurEvent>(OnBlur);
+            // A field's input box takes focus through the element inside it, and a focus event does not bubble,
+            // so the box listens on the way down as well (StyleInputBoxSurface). InputBoxSurfacePanelTests holds it.
+            _hearsDescendantFocus = StyleInputBoxSurface.IsBox(target);
+            if (_hearsDescendantFocus)
+            {
+                target.RegisterCallback<FocusEvent>(OnDescendantFocus, TrickleDown.TrickleDown);
+                target.RegisterCallback<BlurEvent>(OnDescendantBlur, TrickleDown.TrickleDown);
+            }
 
             if (registerChecked)
             {
@@ -167,6 +178,12 @@ namespace Velvet
             _target.UnregisterCallback<PointerCancelEvent>(OnPointerCancel);
             _target.UnregisterCallback<FocusEvent>(OnFocus);
             _target.UnregisterCallback<BlurEvent>(OnBlur);
+            if (_hearsDescendantFocus)
+            {
+                _target.UnregisterCallback<FocusEvent>(OnDescendantFocus, TrickleDown.TrickleDown);
+                _target.UnregisterCallback<BlurEvent>(OnDescendantBlur, TrickleDown.TrickleDown);
+                _hearsDescendantFocus = false;
+            }
             if (_registerChecked)
             {
                 _target.UnregisterCallback<ChangeEvent<bool>>(OnCheckedChange);
@@ -289,6 +306,23 @@ namespace Velvet
             {
                 _following = false;
                 InputModality.Announced -= OnModalityChanged;
+            }
+        }
+
+        // The target phase is OnFocus's / OnBlur's own, so only an event aimed below the element is handled here.
+        private void OnDescendantFocus(FocusEvent evt)
+        {
+            if (evt.target != _target)
+            {
+                OnFocus(evt);
+            }
+        }
+
+        private void OnDescendantBlur(BlurEvent evt)
+        {
+            if (evt.target != _target)
+            {
+                OnBlur(evt);
             }
         }
 
