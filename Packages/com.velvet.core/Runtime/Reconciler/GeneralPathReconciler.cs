@@ -1619,7 +1619,10 @@ namespace Velvet
                 state!.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
             }
 
-            var newKeyed = _factory.BuildKeyedMapCopy(presence.Children);
+            // Every child counts as removed while the enclosing child is leaving, so each takes the ghost path below.
+            var newKeyed = ReadEnclosingPresence(state!, presence, commit != null)
+                ? _ctx.BufferPool.RentKeyedList()
+                : _factory.BuildKeyedMapCopy(presence.Children);
             var newKeySet = _ctx.BufferPool.RentPresenceKeySet();
             var prevCommitted = _ctx.BufferPool.RentKeyedList();
             var nextCommitted = _ctx.BufferPool.RentKeyedList();
@@ -1727,6 +1730,35 @@ namespace Velvet
             }
         }
 
+        // Framer's usePresence(propagate): whether the enclosing presence's keyed child this presence sits in is
+        // leaving, in which case it treats every child of its own as not present. The emission around this
+        // expansion says so itself; a re-render of this presence alone reads what the enclosing presence last
+        // recorded. Without propagate the enclosing child is not consulted, and a slot held in its exit wait is
+        // given up, as Framer unregisters when subscribe turns false. Records are written only by a committing
+        // expansion.
+        private bool ReadEnclosingPresence(
+            ReconcilerContext.PresenceBoundaryState state,
+            AnimatePresenceNode presence,
+            bool commits)
+        {
+            var emitting = _ctx.EnclosingPresenceChild;
+            var leaving = presence.Propagate
+                && (emitting.HasValue
+                    ? !emitting.Value.IsPresent
+                    : state.Enclosing != null && state.Enclosing.IsLeaving(state.EnclosingKey!));
+            if (!commits) return leaving;
+
+            if (emitting.HasValue)
+            {
+                state.Enclosing = emitting.Value.State;
+                state.EnclosingKey = emitting.Value.Key;
+            }
+            state.Propagate = presence.Propagate;
+            state.ExitedForEnclosing = leaving;
+            if (!presence.Propagate) state.Registration?.Complete();
+            return leaving;
+        }
+
         // Ghost branch of the per-plan-entry walk: a previously-committed key now absent from the new
         // children, spliced into the plan at its old position (see ExpandAnimatePresenceInline). A finished
         // exit is dropped (not emitted → the diff removes its leaves); a child without an exit animation is
@@ -1777,7 +1809,7 @@ namespace Velvet
             }
 
             var ghostMotionNode = FiberNodeFactory.FindFirstMotionDescendant(node);
-            var site = new PresenceChildSite { Walk = walk, Position = pass.Position, State = state };
+            var site = new PresenceChildSite { Walk = walk, Position = pass.Position, State = state, Absent = true };
             var ghostAnchor = EmitPresenceChildAsAnchor(in site, node, ghostMotionNode, key, out var ghostMotionElement, out _);
             // A ghost reproduces the SAME committed node on both diff sides, so the patch that
             // would re-record the Motion's element bails on reference equality — fall back to
@@ -1801,12 +1833,50 @@ namespace Velvet
             pass.NextCommitted.Add((key, node));
         }
 
-        // Whether removing key plays an exit at all: its anchor's, or a descendant Motion's.
+        // Whether removing key plays an exit at all: its anchor's, a descendant Motion's, or the removal of a
+        // propagating presence inside it that still holds children, which is when Framer's inner presence
+        // registers with the child and so settles it through its own exit path.
         private bool RemovalPlaysExit(ReconcilerContext.PresenceBoundaryState state, string key, VNode node)
         {
             var anchor = FiberNodeFactory.FindFirstMotionDescendant(node);
             return ResolveExitTransition(anchor)?.HasExitAnimation == true
-                || CollectDescendantExits(state, key, anchor, into: null) > 0;
+                || CollectDescendantExits(state, key, anchor, into: null) > 0
+                || PropagatingPresenceHoldsChildren(state, key);
+        }
+
+        private static bool IsPropagatingPresenceOf(
+            ReconcilerContext.PresenceBoundaryState inner,
+            ReconcilerContext.PresenceBoundaryState outer,
+            string key)
+            => inner.Propagate && ReferenceEquals(inner.Enclosing, outer) && inner.EnclosingKey == key;
+
+        // Read before the removal's emission, which is what puts that presence's children through the ghost path.
+        private bool PropagatingPresenceHoldsChildren(ReconcilerContext.PresenceBoundaryState outer, string key)
+        {
+            if (_ctx.PresenceStates.Count < 2) return false;
+            foreach (var inner in _ctx.PresenceStates.Values)
+            {
+                if (IsPropagatingPresenceOf(inner, outer, key) && inner.Committed.Count > 0) return true;
+            }
+            return false;
+        }
+
+        // The propagating presences inside key's child whose exits are running for its removal, the ones the
+        // child's exit waits on. A presence that has not expanded for this removal, or has nothing left running,
+        // holds nothing.
+        private List<ReconcilerContext.PresenceBoundaryState>? PresencesRunningExitsUnder(
+            ReconcilerContext.PresenceBoundaryState outer, string key)
+        {
+            List<ReconcilerContext.PresenceBoundaryState>? running = null;
+            if (_ctx.PresenceStates.Count < 2) return running;
+            foreach (var inner in _ctx.PresenceStates.Values)
+            {
+                if (IsPropagatingPresenceOf(inner, outer, key) && inner.ExitedForEnclosing && inner.Exiting.Count > 0)
+                {
+                    (running ??= new List<ReconcilerContext.PresenceBoundaryState>()).Add(inner);
+                }
+            }
+            return running;
         }
 
         // Walks down from the elements key's last committing emission placed, through z-managed placeholders
@@ -1994,6 +2064,8 @@ namespace Velvet
                 // mirroring HookEffectExecutor's effect-exception containment.
                 if (capturedState.Exiting.Count == 0)
                 {
+                    // Framer's safeToRemove, which runs ahead of the presence's own onExitComplete.
+                    capturedState.Registration?.Complete();
                     try
                     {
                         capturedOnExitComplete?.Invoke();
@@ -2085,33 +2157,18 @@ namespace Velvet
             var anchorPlays = ResolveExitTransition(ghostMotionNode)?.HasExitAnimation == true;
             var descendants = new List<ReconcilerContext.PresenceDescendantExit>();
             CollectDescendantExits(state, key, ghostMotionNode, descendants);
-            if (!anchorPlays && descendants.Count == 0)
+            var inners = PresencesRunningExitsUnder(state, key);
+            if (!anchorPlays && descendants.Count == 0 && inners == null)
             {
                 Settled();
                 return;
             }
 
             ReconcilerContext.PresenceExitWait? wait = null;
-            // A torn-down descendant settles the wait from inside FiberElementCleaner, which unmounting the whole
-            // presence reaches as well. Where either element still has a panel the check below waits for the
-            // next frame, by which that presence's state is retired and no onExitComplete fires; with neither
-            // attached it runs at the teardown itself.
-            void SettledByTeardown(VisualElement tornDown)
-            {
-                void SettleIfStillExiting()
-                {
-                    if (_ctx.PresenceStates.ContainsValue(state) && state.ExitWaits.ContainsValue(wait!))
-                    {
-                        runExitComplete();
-                    }
-                }
-                var panel = tornDown.panel ?? ghostAnchor.panel;
-                if (panel != null) panel.visualTree.schedule.Execute(SettleIfStillExiting);
-                else SettleIfStillExiting();
-            }
             // Every exit is counted before the first play starts, so a completion one of them fires
             // synchronously cannot settle the wait while the rest are still to start.
-            var exitWait = new ReconcilerContext.PresenceExitWait(anchorPlays, descendants, Settled, SettledByTeardown);
+            var exitWait = new ReconcilerContext.PresenceExitWait(anchorPlays, descendants, inners, Settled,
+                tornDown => SettleExitWaitByTeardown(state, wait!, ghostAnchor, runExitComplete, tornDown));
             wait = exitWait;
             state.ExitWaits[key] = exitWait;
             foreach (var exit in descendants)
@@ -2152,6 +2209,30 @@ namespace Velvet
             {
                 PlayDescendantExit(exit, exitWait, staggerSec);
             }
+        }
+
+        // A torn-down descendant settles the wait from inside FiberElementCleaner, which unmounting the whole
+        // presence reaches as well, and so does an inner presence retired while the wait holds a slot for it
+        // (tornDown is null then). Where either element still has a panel the check waits for the next frame, by
+        // which that presence's state is retired and no onExitComplete fires; with neither attached it runs at
+        // the teardown itself.
+        private void SettleExitWaitByTeardown(
+            ReconcilerContext.PresenceBoundaryState state,
+            ReconcilerContext.PresenceExitWait wait,
+            VisualElement ghostAnchor,
+            Action runExitComplete,
+            VisualElement? tornDown)
+        {
+            void SettleIfStillExiting()
+            {
+                if (_ctx.PresenceStates.ContainsValue(state) && state.ExitWaits.ContainsValue(wait))
+                {
+                    runExitComplete();
+                }
+            }
+            var panel = tornDown?.panel ?? ghostAnchor.panel;
+            if (panel != null) panel.visualTree.schedule.Execute(SettleIfStillExiting);
+            else SettleIfStillExiting();
         }
 
         // Lands the descendant's hold, and writes its exit pose's inline values at the swap, on the anchor's terms
@@ -2319,6 +2400,7 @@ namespace Velvet
         private void ReleaseDescendantExits(ReconcilerContext.PresenceBoundaryState state, string key)
         {
             if (!state.ExitWaits.Remove(key, out var wait)) return;
+            foreach (var registration in wait.Registrations) registration.Release();
             for (var i = 0; i < wait.Descendants.Count; i++)
             {
                 var exit = wait.Descendants[i];
@@ -2764,6 +2846,11 @@ namespace Velvet
             var previousAnchorCreated = _ctx.PresenceAnchorCreated;
             var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
             var previousAnchorEnterDelaySec = _ctx.PresenceAnchorEnterDelaySec;
+            var previousEnclosing = _ctx.EnclosingPresenceChild;
+            if (site.State != null && key != null)
+            {
+                _ctx.EnclosingPresenceChild = new ReconcilerContext.PresenceChildContext(site.State, key, !site.Absent);
+            }
             _ctx.PresenceAnchorMotion = anchorMotion;
             _ctx.PresenceAnchorMotionElement = null;
             _ctx.ComponentContextStack.Push(MotionContext.EntersBlocked, site.SuppressInitial);
@@ -2789,6 +2876,7 @@ namespace Velvet
                 _ctx.PresenceAnchorEnterDelaySec = previousAnchorEnterDelaySec;
                 _ctx.PresenceAnchorEnterHandled = previousAnchorEnterHandled;
                 _ctx.PresenceAnchorCreated = previousAnchorCreated;
+                _ctx.EnclosingPresenceChild = previousEnclosing;
             }
         }
 
@@ -2809,6 +2897,10 @@ namespace Velvet
             internal ReconcilerContext.PresenceBoundaryState? State { get; init; }
             internal bool SuppressInitial { get; init; }
             internal float AnchorEnterDelaySec { get; init; }
+
+            // The key is leaving: a presence expanding inside its subtree reads that as its enclosing child
+            // not being present.
+            internal bool Absent { get; init; }
         }
 
         // Records the top-level elements this emission of key placed as the key's roots. An element an inner
@@ -2835,7 +2927,7 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent, boundary): no claim carries this emission's number before this loop
                 // writes it, so a claim equal to it is never read.
                 if (_ctx.PresenceChildRoots.GetValueOrDefault(root).Emission > emission) continue;
-                _ctx.PresenceChildRoots[root] = new ReconcilerContext.PresenceChildRootOwner(roots, emission);
+                _ctx.PresenceChildRoots[root] = new ReconcilerContext.PresenceChildRootOwner(roots, emission, state, key);
                 roots.Add(root);
             }
         }

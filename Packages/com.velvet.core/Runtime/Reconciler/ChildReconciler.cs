@@ -431,6 +431,10 @@ namespace Velvet
                 // it records is the one the children below reconcile at.
                 if (declaringFiber != null) _ctx.FiberStack.Push(declaringFiber);
                 var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
+                // A presence in the Portal's children expands with no emission of its enclosing presence child
+                // around it, so the child is read off where the placeholder sits.
+                var enclosingPresenceChild = _ctx.EnclosingPresenceChild;
+                _ctx.EnclosingPresenceChild = _ctx.PresenceChildOf(placeholder);
                 try
                 {
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
@@ -438,6 +442,7 @@ namespace Velvet
                 }
                 finally
                 {
+                    _ctx.EnclosingPresenceChild = enclosingPresenceChild;
                     _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                     if (declaringFiber != null) _ctx.FiberStack.Pop();
                     _ctx.CurrentPortalPlaceholder = enclosingPortal;

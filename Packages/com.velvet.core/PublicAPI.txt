@@ -476,7 +476,7 @@
 [Velvet] method Velvet.Unit.GetHashCode(): System.Int32
 [Velvet] method Velvet.Unit.ToString(): System.String
 [Velvet] method Velvet.V.Anchored(UnityEngine.Transform?, UnityEngine.Camera?, System.Nullable`1[UnityEngine.Vector2], System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single], System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
-[Velvet] method Velvet.V.AnimatePresence(Velvet.VNode?[]?, System.String?, System.Boolean, System.Single, System.Single, System.Int32, Velvet.AnimatePresenceMode, System.Action?): Velvet.AnimatePresenceNode
+[Velvet] method Velvet.V.AnimatePresence(Velvet.VNode?[]?, System.String?, System.Boolean, System.Single, System.Single, System.Int32, Velvet.AnimatePresenceMode, System.Action?, System.Boolean): Velvet.AnimatePresenceNode
 [Velvet] method Velvet.V.Await`1(Velvet.Deferred`1[T], System.Func`2[T, Velvet.VNode?], Velvet.VNode?, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Await`1(Velvet.Deferred`1[T], Velvet.VNode, Velvet.VNode?, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Button(System.String, Velvet.VNode?[]): Velvet.ElementNode
@@ -667,6 +667,7 @@
 [Velvet] property Velvet.AnimatePresenceNode.Initial: System.Boolean
 [Velvet] property Velvet.AnimatePresenceNode.Mode: Velvet.AnimatePresenceMode
 [Velvet] property Velvet.AnimatePresenceNode.OnExitComplete: System.Action?
+[Velvet] property Velvet.AnimatePresenceNode.Propagate: System.Boolean
 [Velvet] property Velvet.AnimatePresenceNode.StaggerDirection: System.Int32
 [Velvet] property Velvet.AnimatePresenceNode.StaggerSec: System.Single
 [Velvet] property Velvet.AnimationSequenceControls.Pause: System.Action

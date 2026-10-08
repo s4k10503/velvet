@@ -2175,6 +2175,9 @@ namespace Velvet
         /// pulls an exiting child out of layout flow so still-present siblings reflow immediately.</param>
         /// <param name="onExitComplete">Invoked once when every in-flight exit animation has finished;
         /// not fired for cancelled exits or animation-less removals.</param>
+        /// <param name="propagate">Set on an inner presence: while the enclosing presence's keyed child holding it is
+        /// leaving, every child of this presence exits too, and the enclosing presence keeps that child mounted until
+        /// they have completed. A presence between the two that does not propagate stops it.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="mode"/> names no member of
         /// <see cref="AnimatePresenceMode"/>.</exception>
         /// <returns>The created <see cref="AnimatePresenceNode"/>.</returns>
@@ -2190,7 +2193,8 @@ namespace Velvet
             float delayChildrenSec = 0f,
             int staggerDirection = 1,
             AnimatePresenceMode mode = AnimatePresenceMode.Sync,
-            Action? onExitComplete = null)
+            Action? onExitComplete = null,
+            bool propagate = false)
         {
             if (mode is not (AnimatePresenceMode.Sync or AnimatePresenceMode.Wait or AnimatePresenceMode.PopLayout))
             {
@@ -2207,6 +2211,7 @@ namespace Velvet
                 StaggerDirection = staggerDirection,
                 Mode = mode,
                 OnExitComplete = onExitComplete,
+                Propagate = propagate,
             };
         }
 
