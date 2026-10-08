@@ -64,21 +64,26 @@ namespace Velvet
             }
             // Copied first: a retarget can light a payload, and a payload that is itself a variant adds to or
             // removes from the stacked registry (see ReconcilerContext.CopyStackedVariantsOn).
-            // Both copies are taken before either walk, so the stacked walk reads the registry as the pass left
-            // it rather than as a relational retarget then changed it.
             var relational = ctx.BufferPool.RentRelationalVariantList();
-            var stacked = ctx.BufferPool.RentStackedVariantList();
             try
             {
                 foreach (var manipulator in ctx.RelationalVariantManipulators.Values)
                 {
                     relational.Add(manipulator);
                 }
-                ctx.CopyStackedVariants(stacked);
                 foreach (var manipulator in relational)
                 {
                     manipulator.Retarget();
                 }
+            }
+            finally
+            {
+                ctx.BufferPool.ReturnRelationalVariantList(relational);
+            }
+            var stacked = ctx.BufferPool.RentStackedVariantList();
+            try
+            {
+                ctx.CopyStackedVariants(stacked);
                 foreach (var manipulator in stacked)
                 {
                     manipulator.RetargetRelational();
@@ -87,7 +92,6 @@ namespace Velvet
             finally
             {
                 ctx.BufferPool.ReturnStackedVariantList(stacked);
-                ctx.BufferPool.ReturnRelationalVariantList(relational);
             }
         }
 

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -10,7 +11,8 @@ namespace Velvet.Tests
     /// Specifies that <see cref="ReconcilerContext"/>'s by-target index of stacked-variant manipulators follows
     /// the registry through four ways a registration leaves it — an outer gate closing over a level-based
     /// inner, an owner being dropped, an element being detached, the owning reconciler being disposed — and
-    /// that it keeps the registrations that stay. Gates are opened and closed by hand, so no reconcile pass
+    /// that it keeps the registrations that stay — and that the element-local settle copies only the swept
+    /// element's registrations out of it. Gates are opened and closed by hand, so no reconcile pass
     /// decides what the index is handed; the dispose cases take their context from a reconciler, the rest
     /// build one bare.
     /// </summary>
@@ -22,6 +24,40 @@ namespace Velvet.Tests
 
         private static void Close(ReconcilerContext context, VisualElement target, object owner, string payload)
             => context.GateStackedVariant(target, owner, payload, false, StyleLayerPriority.Data, 0);
+
+        // The list the element-local settle copied into goes back to the reconciler's pool cleared but keeping
+        // the capacity the copy grew it to, so that capacity bounds how many manipulators the settle copied.
+        private static int CapacityOfLastReturnedStackedList(ReconcilerContext context)
+        {
+            const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
+            var pool = typeof(ReconcilerBufferPool).GetField("_stackedVariantListPool", Private)!
+                .GetValue(context.BufferPool);
+            var stack = (Stack<List<StyleStackedVariantManipulator>>)pool.GetType().GetField("_pool", Private)!
+                .GetValue(pool);
+            return stack.Peek().Capacity;
+        }
+
+        [Test]
+        public void Given_AnElementWithOneStackedInnerAmongManyOthers_When_ItIsSwept_Then_TheSweepCopiesOnlyItsOwn()
+        {
+            // Arrange — one registration on target and sixty-four on other elements.
+            const int Unrelated = 64;
+            var context = new ReconcilerContext();
+            var target = new VisualElement();
+            var owner = new object();
+            Open(context, target, owner, "hover:w-[10px]");
+            for (var i = 0; i < Unrelated; i++)
+            {
+                Open(context, new VisualElement(), owner, "hover:w-[10px]");
+            }
+
+            // Act
+            VariantSettleSweep.ForEach(target, context, static _ => { });
+
+            // Assert — a copy of the whole registry would have grown the list past the unrelated count, and a
+            // capacity of zero would mean the pool kept nothing to read.
+            Assert.That(CapacityOfLastReturnedStackedList(context), Is.InRange(1, Unrelated - 1));
+        }
 
         [Test]
         public void Given_AStackedDarkInner_When_ItsOuterGateCloses_Then_TheIndexLetsTheElementGo()
