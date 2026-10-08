@@ -255,8 +255,13 @@ namespace Velvet
             // The create path plays no swap between two poses (the element is built already carrying the
             // resting variant), so the resolved variant's own transition is not read here — the mount enter
             // further down resolves the one for its OWN target label instead.
-            var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient,
-                out var variantClasses, out _);
+            // A Motion a presence mounts already leaving rests at its initial pose, where its exit starts.
+            string[] variantClasses;
+            var appliedClasses = _ctx.PresenceMountsLeaving
+                ? MotionVariantResolver.ResolveAppliedAt(motionNode,
+                    MotionVariantResolver.InitialLabel(motionNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                    out variantClasses, out _)
+                : MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out variantClasses, out _);
             var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
             _ctx.MotionNodes[element] = motionNode;
             // The presence expansion dispatches this anchor Motion's variant enter/exit against the

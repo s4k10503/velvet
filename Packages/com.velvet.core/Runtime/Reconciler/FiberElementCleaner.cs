@@ -83,6 +83,12 @@ namespace Velvet
                 || ((exactType == typeof(Button) || exactType == typeof(Label)) && element.childCount == 0))
             {
                 CleanupElementResources(element);
+                if (exactType == typeof(TextField))
+                {
+                    // Its input box carries what the field's surface utilities put on it (StyleInputBoxSurface):
+                    // stacked variant manipulators keyed by the box and paint bindings.
+                    CleanupDescendants(element);
+                }
                 ReturnToPool(element);
             }
             else
@@ -280,6 +286,13 @@ namespace Velvet
             DetachManipulator(element, _ctx.TextBalanceManipulators);
             DetachManipulator(element, _ctx.FlexMinSizeManipulators);
             DetachManipulator(element, _ctx.ChildVariantManipulators);
+            if (_ctx.PointerEventsScopes.TryGetValue(element, out var pointerEvents))
+            {
+                pointerEvents.Release();
+                _ctx.PointerEventsScopes.Remove(element);
+            }
+            // Before the pool return, which resets a control's own picking mode and not its internals'.
+            PointerEventsScope.ReleaseTorn(element);
             // Must run before ClearAll, which drops the holds and the layers the hand-back resolves to.
             StyleArbitraryValueResolver.HandBackAll(element);
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's

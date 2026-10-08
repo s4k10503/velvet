@@ -84,15 +84,14 @@ namespace Velvet
                 // Pending passive effects must be flushed before a new discrete-event update; wire the scheduler
                 // to drain them at that boundary so an effect from a prior commit runs before the next render.
                 _ctx.BatchScheduler.SetPassiveEffectFlush(() => FiberEffects.FlushPendingPassiveEffects(_ctx));
-                // Brackets each drain to drive (1) the UseStore cross-tier tearing guard — pinning is active only
-                // inside a drain, the immediate drain opens a fresh wave (reset = true) and the delayed drain
-                // reuses it (reset = false) — and (2) the layout-effect commit phase: fibers defer their effect
-                // commit during the drain so all renders precede any layout effect, flushed at drain end
-                // (before the wave ends, so a layout effect still reads the pinned snapshot).
+                // Brackets each drain to drive (1) the UseStore tearing guard — pinning is active only inside a
+                // drain, and each drain pass is a wave of its own — and (2) the layout-effect commit phase:
+                // fibers defer their effect commit during the drain so all renders precede any layout effect,
+                // flushed at drain end (before the wave ends, so a layout effect still reads the pinned snapshot).
                 _ctx.BatchScheduler.SetStoreSnapshotWaveCallbacks(
-                    reset =>
+                    () =>
                     {
-                        _ctx.BeginStoreSnapshotWave(reset);
+                        _ctx.BeginStoreSnapshotWave();
                         _ctx.DeferDrainLayoutEffects = true;
                     },
                     () =>
@@ -101,7 +100,15 @@ namespace Velvet
                         // not left permanently active.
                         try
                         {
-                            FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
+                            // Ahead of the layout effects, which read the tree the drain committed.
+                            try
+                            {
+                                PointerEventsScope.OnDrainEnd(_ctx);
+                            }
+                            finally
+                            {
+                                FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
+                            }
                         }
                         finally
                         {
@@ -188,7 +195,7 @@ namespace Velvet
                     {
                         try
                         {
-                            FinishTopLevelPass();
+                            FinishTopLevelPass(parent ?? _ctx.MainPanelRoot);
                         }
                         finally
                         {
@@ -249,8 +256,9 @@ namespace Velvet
         // pass's genuine top-level boundary just as much as a fresh Reconcile call. Any new per-pass
         // reset belongs here, or it leaks on the shared context until some unrelated fiber's next
         // top-level Reconcile happens to run.
-        private void FinishTopLevelPass()
+        private void FinishTopLevelPass(VisualElement? reconciledInto)
         {
+            _ctx.PointerEventsWalkHeld++;
             LastTopLevelWasAborted = _ctx.IsAborted;
             // The abort flag stops sibling work inside the pass that just ended; the deferred
             // host mounts below are commit work for placeholders that SURVIVED it. A boundary
@@ -289,6 +297,10 @@ namespace Velvet
                 if (!_ctx.DeferDrainLayoutEffects) MotionLayoutIdDriver.ExpireSnapshots(_ctx);
                 // After the portal drain, whose reconciles insert elements of their own.
                 StyleRelationalVariantManipulator.RetargetAll(_ctx);
+                // After the portal drain for the same reason: a Portal's target can sit inside a scope. Every walk
+                // requested since the pass started was held for this one.
+                _ctx.PointerEventsWalkHeld--;
+                PointerEventsScope.OnPassEnd(_ctx, reconciledInto);
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
@@ -303,6 +315,8 @@ namespace Velvet
                 // drain just above. Draining here, at the top-level boundary, is the first point where every
                 // element created in this pass has its final parent.
                 RingOverlay.DrainPendingPlacements(_ctx);
+                // Same reason: an inherited family is read off the final parent chain (FiberFontScope).
+                _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
                 // Last, so a ref setup sees the element where the pass finally put it and every cleanup
                 // this pass owed has already run — the portal drain above included, which reconciles a
                 // Portal's children through ChildReconciler directly and so reaches no boundary of its
@@ -398,7 +412,9 @@ namespace Velvet
                 {
                     if (isTopLevel)
                     {
-                        FinishTopLevelPass();
+                        // A resume keeps no record of the element its pass reconciles into; the tree's own
+                        // mount target is above every element the resume can insert outside a Portal.
+                        FinishTopLevelPass(_ctx.MainPanelRoot);
                     }
                 }
                 finally
@@ -434,9 +450,19 @@ namespace Velvet
 
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
 
-        void IReconcilerBridge.DrainRefAttachesForController() => _ctx.DrainRefAttaches();
+        void IReconcilerBridge.DrainRefAttachesForController()
+        {
+            _ctx.DrainRefAttaches();
+            _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
+        }
 
-        void IReconcilerBridge.CommitStrandedLayoutWorkForController() => FiberEffects.CommitStrandedLayoutWork(_ctx);
+        // Every range render ends here, and one run from a geometry or scroll callback has no pass whose end would
+        // walk the pointer-events scopes; ahead of the layout work, which reads the rows it placed.
+        void IReconcilerBridge.CommitStrandedLayoutWorkForController()
+        {
+            PointerEventsScope.RequestSyncAll(_ctx);
+            FiberEffects.CommitStrandedLayoutWork(_ctx);
+        }
 
         VisualElement IReconcilerBridge.PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode)
         {
@@ -557,6 +583,7 @@ namespace Velvet
             _ctx.StyleAnimationScheduler.CancelAll();
             _ctx.EventManager.Clear();
             _ctx.ComponentRegistry.Dispose();
+            _ctx.PendingCaughtErrorReports.Clear();
             _ctx.FiberMemoCache.DisposeAndReturnCachedTrees();
             _ctx.WrapperToInnerMap.Clear();
             // Hosts go last: destroying a layer or world-space host takes its runtime-created panel with
@@ -821,6 +848,18 @@ namespace Velvet
             }
 
             _ctx.FlexMinSizeManipulators.Clear();
+
+            foreach (var scope in _ctx.PointerEventsScopes.Values)
+            {
+                // MUTANT_SURVIVES(unreachable): no case leaves a scope in the table by now, since the unmount
+                // reconcile ahead of Dispose releases the scope of each element it tears down; this loop is for an
+                // element that reconcile skipped, a shape no fixture builds.
+                scope.Release();
+            }
+
+            // MUTANT_SURVIVES(equivalent): a disposed context runs no pass that walks the table, and a second
+            // Release of a scope still listed drops nothing.
+            _ctx.PointerEventsScopes.Clear();
             // Empties every pure side-table in one call, mirroring the per-element ClearElementSideTables
             // used on cleanup: the structural / has-[.class]: / data- / aria- rules and their attribute
             // store, supports-, the Motion applied-classes, child label and node, the presence-child roots,

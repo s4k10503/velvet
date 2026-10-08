@@ -123,7 +123,11 @@ namespace Velvet
         /// <summary>Index into the authored <c>steps</c> array of the step currently holding the cursor.</summary>
         public int StepIndex { get; }
 
-        /// <summary>True once the cursor has advanced past the last step. Never latches true when <c>loop</c> is set.</summary>
+        /// <summary>
+        /// True once the cursor has advanced past the last step of the last pass, or a lowered <c>iterations</c>
+        /// has ended the sequence, and from the mount render on for zero <c>iterations</c> or an empty
+        /// <c>steps</c> list. A raised count clears it. Under <c>loop</c>, latches only for an empty list.
+        /// </summary>
         public bool IsComplete { get; }
 
         internal AnimationSequenceState(string? currentLabel, StyleTransitionConfig? currentTransition, int stepIndex, bool isComplete)
@@ -135,9 +139,15 @@ namespace Velvet
         }
     }
 
-    /// <summary>Imperative controls for a sequence started by <see cref="Hooks.UseAnimationSequence"/>.</summary>
+    /// <summary>
+    /// Imperative controls for a sequence started by <see cref="Hooks.UseAnimationSequence"/>. They drive the
+    /// sequence's own timeline — its step cursor and clock — and not a <c>V.Motion</c> play already running from a
+    /// step's label: see the motion guide's Timelines section for what each reaches.
+    /// </summary>
     public readonly struct AnimationSequenceControls
     {
+        private readonly SequenceWalker _walker;
+
         /// <summary>Resumes advancing (idempotent). Also what <c>autoplay: true</c> starts with on mount.</summary>
         public Action Play { get; }
 
@@ -147,11 +157,18 @@ namespace Velvet
         /// <summary>Returns to step 0 and re-commits its effect (firing a <c>Call</c> step 0's callback again). Does not implicitly unpause.</summary>
         public Action Restart { get; }
 
-        internal AnimationSequenceControls(Action play, Action pause, Action restart)
+        /// <summary>
+        /// Seconds into the sequence's timeline, counting each step's hold at its authored length. Read live, not
+        /// per render; the motion guide's Timelines section owns the rest.
+        /// </summary>
+        public float TimeSec => _walker.TimeSec;
+
+        internal AnimationSequenceControls(Action play, Action pause, Action restart, SequenceWalker walker)
         {
             Play = play;
             Pause = pause;
             Restart = restart;
+            _walker = walker;
         }
     }
 }

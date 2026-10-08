@@ -26,8 +26,8 @@ namespace Velvet.Tests
     /// branch its own arguments never take, and whether the assertion under a verdict measures that reader
     /// at all. Neither is mechanical, and both stay a reviewer's to check, as does the residual below.
     /// The roster quantifies over GetClasses() call sites, so a reading that takes the ARRAY LiveClasses
-    /// returns rather than an element sits outside it — which is seven of the nine values below. Cases pin
-    /// those seven, but no roster obliges one: the case listing what the layout dispatcher hands that array
+    /// returns rather than an element sits outside it — which is every case marked
+    /// ReaderVerdict(LiveClassesReader) below. Those cases pin such readings, but no roster obliges one: the case listing what the layout dispatcher hands that array
     /// on to reddens when a reading joins that callee set, and a reading taking the array anywhere else
     /// costs nothing here, including inside one of those callees, beside the dispatcher call in the re-sync
     /// that binds the array, and at a second call site of LiveClasses.
@@ -70,6 +70,8 @@ namespace Velvet.Tests
         private const string HostClassesReader =
             "System.Void Velvet.VelvetStyleUtilities.AddDocumentClasses("
             + "UnityEngine.UIElements.VisualElement, System.Collections.Generic.HashSet`1<System.String>)";
+        private const string CascadeKeyReader =
+            "System.Int32 Velvet.CascadeSnapshot.ClassKey(UnityEngine.UIElements.VisualElement)";
         private const string HostStampReader =
             "System.Int32 Velvet.VelvetStyleUtilities.ClassStamp(System.Int32, UnityEngine.UIElements.VisualElement)";
 
@@ -104,8 +106,17 @@ namespace Velvet.Tests
         private static readonly MethodInfo CollectHostClasses = typeof(VelvetStyleUtilities)
             .GetMethod("AddDocumentClasses", BindingFlags.NonPublic | BindingFlags.Static);
 
+        private static readonly MethodInfo KeyOfClasses = typeof(CascadeSnapshot)
+            .GetMethod("ClassKey", BindingFlags.NonPublic | BindingFlags.Static)!;
+
         private static readonly MethodInfo StampHostClasses = typeof(VelvetStyleUtilities)
             .GetMethod("ClassStamp", BindingFlags.NonPublic | BindingFlags.Static);
+
+        // Null on a tree without the pointer-events utilities, which PointerEventsOf reports as an answer no
+        // case expects rather than throw.
+        private static readonly MethodInfo ReadPointerEvents = typeof(V).Assembly
+            .GetType("Velvet.StylePointerEventsClass")
+            ?.GetMethod("Read", BindingFlags.Public | BindingFlags.Static);
 
         // A helper that applies classes runs the production routing, and the routing reaches production code
         // an arrangement can leave unexecuted.
@@ -123,6 +134,8 @@ namespace Velvet.Tests
             "System.Void Velvet.FiberNodePatcher.ApplyGapManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[], System.Boolean)",
             "System.Void Velvet.FiberNodePatcher.ApplyGridManipulator("
+                + "UnityEngine.UIElements.VisualElement, System.String[])",
+            "System.Void Velvet.FiberNodePatcher.ApplyPointerEvents("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
             "System.Void Velvet.FiberNodePatcher.ApplyTextBalanceManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
@@ -208,8 +221,23 @@ namespace Velvet.Tests
             return string.Join(" ", into.OrderBy(cls => cls, StringComparer.Ordinal));
         }
 
+        private static int CascadeKey(VisualElement element)
+            => (int)KeyOfClasses.Invoke(null, new object[] { element })!;
+
         private static int? HostStamp(VisualElement element)
             => (int?)StampHostClasses?.Invoke(null, new object[] { 0, element });
+
+        private static string PointerEventsOf(string[] classNames)
+            => ReadPointerEvents?.Invoke(null, new object[] { classNames })?.ToString() ?? "no reader";
+
+        // Null on a tree without the pointer-events utilities, which then has no such family to filter for.
+        private static readonly MethodInfo PointerEventsTokenPredicate = typeof(V).Assembly
+            .GetType("Velvet.StylePointerEventsClass")
+            ?.GetMethod("IsPointerEventsToken", BindingFlags.Public | BindingFlags.Static);
+
+        private static bool IsPointerEventsToken(string cls)
+            => PointerEventsTokenPredicate != null
+                && (bool)PointerEventsTokenPredicate.Invoke(null, new object[] { cls })!;
 
         // The name is kept beside the definition so the composed order can be read back by name rather than
         // by definition reference.
@@ -347,16 +375,15 @@ namespace Velvet.Tests
                 + "live-class-list stand-in stops being confined to the layout gates");
         }
 
-        // GREEN_ON_BASE(characterization): the base already hands the array to these six and no others.
-        // What shows the case can fail is a seventh reading beside them — measured with an
+        // What shows the case can fail is one more applier beside them — measured with an
         // `ApplyRingManipulator` driving `StyleRingClass.TryExtract`, whose last-wins `ring-*` reading then
         // rides on the stand-in array with every other case in this fixture still green.
         [Test]
         public void Given_TheDispatcherTheReSyncHandsItsStandInClassArrayTo_When_ItsCalleesAreReadFromTheIL_Then_TheyAreTheReadingsListedHere()
         {
-            // Arrange — the roster above quantifies over GetClasses() call sites, and seven of the nine
-            // values below resolve from the ARRAY this dispatcher hands on rather than from an element, so
-            // the roster obliges no case for them. The set rather than the call sequence: which of gap and
+            // Arrange — the roster above quantifies over GetClasses() call sites, and every case marked
+            // ReaderVerdict(LiveClassesReader) resolves from the ARRAY this dispatcher hands on rather than from
+            // an element, so the roster obliges no case for them. The set rather than the call sequence: which of gap and
             // grid runs first is the departing manipulator's handoff, which the dispatcher's own comment
             // owns.
             using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
@@ -617,6 +644,27 @@ namespace Velvet.Tests
                 + "token the class list hands over last");
         }
 
+        // What shows the case can fail is a first-wins guard in StylePointerEventsClass.Read: each arrangement
+        // then takes the utility it was handed first and the pair inverts.
+        [Test]
+        [ReaderVerdict(LiveClassesReader)]
+        public void Given_BothPointerEventsUtilitiesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheModeTheReSyncResolvesIsTheOneAddedLast()
+        {
+            // Arrange — the same re-sync hands its class source to the pointer-events scope, whose mode is the
+            // later of the two utilities when neither carries the important modifier.
+            var added = Carrying("pointer-events-none", "pointer-events-auto");
+            var reversed = Carrying("pointer-events-auto", "pointer-events-none");
+
+            // Act
+            var fromAdded = PointerEventsOf(LiveClasses(added));
+            var fromReversed = PointerEventsOf(LiveClasses(reversed));
+
+            // Assert
+            Assert.That((fromAdded, fromReversed), Is.EqualTo(("Auto", "None")),
+                "the mode this path configures the pointer-events scope with is whichever of the two "
+                + "utilities the class list hands over last");
+        }
+
         [Test]
         [ReaderVerdict(ClipWrapperMirrorReader)]
         public void Given_TwoClassesOnAClippedElement_When_TheOrderTheyWereAddedInIsReversed_Then_ItsWrapperCarriesTheSameClassesBothWays()
@@ -757,6 +805,25 @@ namespace Velvet.Tests
                 Is.EqualTo(new[] { 0.75f, 0.9f, 0.75f, 0.9f, 0.75f, 1f, 0.75f, 1f,
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f,
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f }).Within(0.0001f));
+        }
+
+        [Test]
+        [ReaderVerdict(CascadeKeyReader)]
+        public void Given_TwoClassesOnAnElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheCascadeKeyIsTheSameBothWaysAndMovesWithTheSet()
+        {
+            // Arrange — a different set beside the two orders, so that a key which ignored the classes would not agree.
+            var added = Carrying("opacity-50", "rotate-45");
+            var reversed = Carrying("rotate-45", "opacity-50");
+            var other = Carrying("opacity-50", "rotate-90");
+
+            // Act
+            var fromAdded = CascadeKey(added);
+            var fromReversed = CascadeKey(reversed);
+            var fromOther = CascadeKey(other);
+
+            // Assert
+            Assert.That((fromAdded == fromReversed, fromAdded == fromOther), Is.EqualTo((true, false)),
+                "a loop re-reads the cascade when the set of classes changes, and a reorder alone changes nothing it reads");
         }
 
         [Test]
@@ -901,8 +968,8 @@ namespace Velvet.Tests
                 + "filter applied there for the first time that list's order is the compose order");
         }
 
-        // GREEN_ON_BASE(construction): the base reads its own generated table; adding a `divide-dashed`
-        // entry with a nonempty property set would make this guard fail.
+        // GREEN_ON_BASE(construction): the table and the family predicates are both the repository's own content.
+        // Adding a `divide-dashed` entry with a nonempty property set would make this guard fail.
         [Test]
         public void Given_TheGeneratedStyleTable_When_ItIsFilteredToTheFamiliesAnOrderDecidedReadingResolvesFrom_Then_OnlyTheBareGridMarkerDeclaresAProperty()
         {
@@ -921,6 +988,7 @@ namespace Velvet.Tests
                     || StyleGapClass.IsGapToken(cls)
                     || StyleGridClass.IsGridToken(cls)
                     || StyleDivideClass.IsDivideToken(cls)
+                    || IsPointerEventsToken(cls)
                     || StyleFilterValueParser.IsFilterLeaf(cls))
                 .Where(cls => StyleUtilityProperties.TryGet(cls, out var rule) && !rule.Properties.IsEmpty)
                 .OrderBy(cls => cls, StringComparer.Ordinal);

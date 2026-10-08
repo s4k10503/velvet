@@ -90,15 +90,110 @@ namespace Velvet
         public bool HasPending;
     }
 
-    internal abstract class HookOptimisticSlot { }
+    internal abstract class HookOptimisticSlot
+    {
+        public ComponentFiber Fiber = null!;
+
+        // A settle renders nobody on its own, so a retirement asks for the render that drops the entries.
+        // Reached only from a transition this slot enrolled on, which leaves it holding an entry of that
+        // transition's until this removes or disowns them all.
+        internal void RetireEntriesOwnedBy(HookTransitionSlot owner)
+        {
+            Retire(owner);
+            ComponentFiber.RequestRenderForSettledTransition(Fiber);
+        }
+
+        internal abstract void Retire(HookTransitionSlot owner);
+
+        internal abstract void Reown(HookTransitionSlot from, HookTransitionSlot to);
+
+        // For a fiber whose slot list is being dropped: a transition settling afterwards would otherwise ask
+        // that fiber, reused or not, for a render on behalf of a slot it no longer holds.
+        internal abstract void DetachFromOwners();
+    }
+
+    internal sealed class OptimisticEntry<TAction>
+    {
+        public TAction Action = default!;
+        // Null for an entry no transition owns (FiberWorkLoop.CurrentOptimisticOwner read null), which the
+        // component's next Transition-lane render drops.
+        public HookTransitionSlot? Owner;
+        // An entry its transition settles before any render folded it is disowned rather than dropped, so the
+        // render addOptimistic requested still shows it once.
+        public bool Rendered;
+    }
 
     internal sealed class HookOptimisticSlot<TState, TAction> : HookOptimisticSlot
     {
-        public TState Base = default!;
-        public TState OptimisticState = default!;
-        public bool HasOptimistic;
+        // The actions rather than the state they produced, in the order addOptimistic received them, so a
+        // render folds them over the pass-through state it is handed and an entry still pending lands on
+        // whatever the authoritative state has become.
+        public readonly List<OptimisticEntry<TAction>> Entries = new();
         public Func<TState, TAction, TState> Apply = null!;
         public Action<TAction> Add = null!;
+
+        // drainingFiber: FiberWorkLoop.TransitionDrainFiber, null outside a Transition-lane drain. An entry whose
+        // owner settles with that fiber's commit is left out of this render, so the commit that lands the
+        // transition's work shows it already gone. Nothing is removed here, since the render may never commit:
+        // Retire does that at the settle.
+        internal TState Fold(TState passthroughState, ComponentFiber? drainingFiber)
+        {
+            var state = passthroughState;
+            foreach (var entry in Entries)
+            {
+                entry.Rendered = true;
+                if (drainingFiber != null && entry.Owner?.SettlesWithCommitOf(drainingFiber) == true)
+                {
+                    continue;
+                }
+                state = Apply(state, entry.Action);
+            }
+            return state;
+        }
+
+        // Static lambdas, since both run during renders and a capturing one would allocate at each.
+        internal bool HasUnownedEntry => Entries.Exists(static entry => entry.Owner == null);
+
+        internal void DropUnownedEntries() => Entries.RemoveAll(static entry => entry.Owner == null);
+
+        internal override void Retire(HookTransitionSlot owner)
+        {
+            for (var i = Entries.Count - 1; i >= 0; i--)
+            {
+                var entry = Entries[i];
+                if (!ReferenceEquals(entry.Owner, owner))
+                {
+                    continue;
+                }
+                if (entry.Rendered)
+                {
+                    Entries.RemoveAt(i);
+                }
+                else
+                {
+                    entry.Owner = null;
+                }
+            }
+        }
+
+        internal override void Reown(HookTransitionSlot from, HookTransitionSlot to)
+        {
+            foreach (var entry in Entries)
+            {
+                if (ReferenceEquals(entry.Owner, from))
+                {
+                    entry.Owner = to;
+                }
+            }
+        }
+
+        internal override void DetachFromOwners()
+        {
+            foreach (var entry in Entries)
+            {
+                entry.Owner?.OptimisticDependents?.Remove(this);
+            }
+        }
     }
 
     internal sealed class HookEffectSlot
@@ -118,7 +213,73 @@ namespace Velvet
 
     internal sealed class HookTransitionSlot
     {
-        public bool IsPending;
+        // Every clear retires the optimistic entries this transition owns, the release an unmount forces
+        // included: the task that would have settled it no longer can, so nothing else would retire them.
+        public bool IsPending
+        {
+            get => _isPending;
+            set
+            {
+                var settled = _isPending && !value;
+                _isPending = value;
+                if (settled)
+                {
+                    RetireOptimisticEntries();
+                }
+            }
+        }
+        private bool _isPending;
+        // The optimistic slots holding an entry made while FiberWorkLoop.CurrentOptimisticOwner named this slot.
+        public List<HookOptimisticSlot>? OptimisticDependents;
+
+        internal void EnrolOptimisticDependent(HookOptimisticSlot slot)
+        {
+            OptimisticDependents ??= new List<HookOptimisticSlot>();
+            if (!OptimisticDependents.Contains(slot))
+            {
+                OptimisticDependents.Add(slot);
+            }
+        }
+
+        // True where this transition's last outstanding work is the commit of drainingFiber's Transition-lane
+        // drain, which is when the settle clears this slot. The conditions are the ones
+        // ComponentFiber.SettleIfNothingOutstanding clears on, plus that no async action is in flight, since
+        // RetireOptimisticEntries holds the entries behind one.
+        internal bool SettlesWithCommitOf(ComponentFiber drainingFiber)
+            => !HasActiveOwner
+                && !IsAsyncInFlight
+                && !FiberWorkLoop.AsyncActionsInFlight.IsPending
+                && EnrolledFibers is { Count: 1 }
+                && ReferenceEquals(EnrolledFibers[0], drainingFiber);
+
+        private void RetireOptimisticEntries()
+        {
+            if (OptimisticDependents == null)
+            {
+                return;
+            }
+            // The in-flight slot's own clear reaches here with its flag already false, so this is never it.
+            // A transition settling while any async action is in flight keeps its entries until none is left:
+            // the settle is not the last thing the entries wait for, so they move to the slot that stands for
+            // the actions in flight and no render is asked for here.
+            var inFlight = FiberWorkLoop.AsyncActionsInFlight;
+            if (inFlight.IsPending)
+            {
+                foreach (var slot in OptimisticDependents)
+                {
+                    slot.Reown(this, inFlight);
+                    inFlight.EnrolOptimisticDependent(slot);
+                }
+                OptimisticDependents.Clear();
+                return;
+            }
+            foreach (var slot in OptimisticDependents)
+            {
+                slot.RetireEntriesOwnedBy(this);
+            }
+            OptimisticDependents.Clear();
+        }
+
         // An awaiting async StartTransition may hold IsPending=true on a fiber with NO pending lane (its
         // setState calls come after the await), and a drain callback armed earlier can legitimately fire
         // on that clean fiber — the settle-time sweep (SettleTransitionPending) must not read the absence of
@@ -187,19 +348,28 @@ namespace Velvet
         public abstract void Dispose();
     }
 
-    internal sealed class HookMutationSlot<TVariables, TData> : HookMutationSlot
+    // TContext is Unit for the options records that carry no context. The callbacks are read through the
+    // members below rather than stored as delegates of one shape, so the context-free records reach the
+    // slot as the caller built them: adapting them to the context shape would allocate on every render.
+    internal abstract class HookMutationSlot<TVariables, TData, TContext> : HookMutationSlot
     {
-        public MutationResult<TVariables, TData> Result { get; init; } = null!;
-        public Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn { get; set; } = null!;
-        public Action<TData, TVariables>? OnSuccess { get; set; }
-        public Action<Exception, TVariables>? OnError { get; set; }
+        public MutationResult<TVariables, TData> Result { get; } = new();
         // Every call in flight, not just the newest: two Mutate calls run side by side, so unmounting has
         // more than one token to cancel. Who may write the observed Status / Data is Generation's to say
         // instead: a call writes only while it still holds the current value, and Reset advances that too,
-        // so every call then in flight has lost it. The callbacks are every call's own either way.
+        // so every call then in flight has lost it. The hook options' callbacks are every call's own either
+        // way; a call's per-call callbacks are delivered only while it holds the current value.
         public List<CancellationTokenSource> Live { get; } = new();
 
         public long Generation { get; set; }
+
+        public abstract VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token);
+        public abstract TContext InvokeOnMutate(TVariables variables);
+        // What a per-call callback receives as the context, which the context-free slot declines to box.
+        public virtual object? BoxContext(TContext context) => context;
+        public abstract void InvokeOnSuccess(TData data, TVariables variables, TContext context);
+        public abstract void InvokeOnError(Exception error, TVariables variables, TContext context);
+        public abstract void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context);
 
         public override void Dispose()
         {
@@ -220,11 +390,53 @@ namespace Velvet
                 }
                 catch (Exception cancellationFailure)
                 {
-                    FiberLogger.LogException(nameof(HookMutationSlot<TVariables, TData>), cancellationFailure);
+                    FiberLogger.LogException(nameof(HookMutationSlot<TVariables, TData, TContext>), cancellationFailure);
                 }
                 callSource.Dispose();
             }
         }
+    }
+
+    internal sealed class HookMutationSlot<TVariables, TData> : HookMutationSlot<TVariables, TData, Unit>
+    {
+        public MutationOptions<TVariables, TData> Options { get; set; } = null!;
+
+        public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
+            Options.MutationFn(variables, token);
+
+        public override Unit InvokeOnMutate(TVariables variables) => Unit.Default;
+
+        public override object? BoxContext(Unit context) => null;
+
+        public override void InvokeOnSuccess(TData data, TVariables variables, Unit context) =>
+            Options.OnSuccess?.Invoke(data, variables);
+
+        public override void InvokeOnError(Exception error, TVariables variables, Unit context) =>
+            Options.OnError?.Invoke(error, variables);
+
+        public override void InvokeOnSettled(TData data, Exception? error, TVariables variables, Unit context) =>
+            Options.OnSettled?.Invoke(data, error, variables);
+    }
+
+    internal sealed class HookContextMutationSlot<TVariables, TData, TContext>
+        : HookMutationSlot<TVariables, TData, TContext>
+    {
+        public MutationOptions<TVariables, TData, TContext> Options { get; set; } = null!;
+
+        public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
+            Options.MutationFn(variables, token);
+
+        public override TContext InvokeOnMutate(TVariables variables) =>
+            Options.OnMutate is { } onMutate ? onMutate(variables) : default!;
+
+        public override void InvokeOnSuccess(TData data, TVariables variables, TContext context) =>
+            Options.OnSuccess?.Invoke(data, variables, context);
+
+        public override void InvokeOnError(Exception error, TVariables variables, TContext context) =>
+            Options.OnError?.Invoke(error, variables, context);
+
+        public override void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context) =>
+            Options.OnSettled?.Invoke(data, error, variables, context);
     }
 
     internal sealed class HookRefSlot

@@ -245,6 +245,72 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Inherited font family across a parked pass
+
+        private static int s_fontRowCount;
+        private static ComponentFiber s_fontRowsFiber;
+
+        [Component]
+        private static VNode FontRowsRender()
+        {
+            s_fontRowsFiber = FiberAmbientStack.Current;
+            var rows = new VNode[s_fontRowCount];
+            for (var i = 0; i < s_fontRowCount; i++)
+            {
+                rows[i] = V.Div(children: new[] { V.Label(className: "font-bold", text: "row", name: $"row-{i}") });
+            }
+
+            return V.Fragment(children: rows);
+        }
+
+        [Test]
+        public void Given_ParkedPassCreatingRowsUnderAFamilyContainer_When_Resumed_Then_EveryBoldLabelResolvesThatFamily()
+        {
+            // Arrange
+            VelvetFonts.Clear();
+            var assets = new System.Collections.Generic.List<UnityEngine.TextCore.Text.FontAsset>();
+            UnityEngine.TextCore.Text.FontAsset NewBoldFamily(string name)
+            {
+                var asset = UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(
+                    UnityEngine.Resources.GetBuiltinResource<UnityEngine.Font>("LegacyRuntime.ttf"));
+                assets.Add(asset);
+                VelvetFonts.Register(new VelvetFontFamily(name,
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Bold, upright = asset }));
+                return asset;
+            }
+
+            try
+            {
+                NewBoldFamily("sans");
+                var serifBold = NewBoldFamily("serif");
+                VelvetFonts.DefaultFamily = "sans";
+                s_fontRowCount = 3;
+                using var mounted = V.Mount(_root, V.Div(className: "font-serif",
+                    children: new[] { V.Component(FontRowsRender, key: "rows") }));
+                s_fontRowCount = 40;
+                s_fontRowsFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+                s_fontRowsFiber.FlushStateWithTinyBudgetForTest();
+
+                // Act
+                s_fontRowsFiber.DrainTimeSlicedReconcileForTest();
+
+                // Assert
+                var labels = _root.Query<Label>().ToList();
+                Assert.That((labels.Count, labels.Count(l => l.style.unityFontDefinition.value.fontAsset != serifBold)),
+                    Is.EqualTo((40, 0)));
+            }
+            finally
+            {
+                VelvetFonts.Clear();
+                foreach (var asset in assets)
+                {
+                    UnityEngine.Object.DestroyImmediate(asset);
+                }
+            }
+        }
+
+        #endregion
+
         #region Reentrancy guard (resume on stack)
 
         [Test]
@@ -864,6 +930,8 @@ namespace Velvet.Tests
         {
             s_flatListCount = 0;
             s_flatListFiber = null;
+            s_fontRowCount = 0;
+            s_fontRowsFiber = null;
         }
 
         [Component]

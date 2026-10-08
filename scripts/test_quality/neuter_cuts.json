@@ -549,8 +549,8 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleChildVariantClass.cs",
-          "anchor": "public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations)",
-          "neuter": "payloads = Array.Empty<string>(); declarations = Array.Empty<int>(); return false;"
+          "anchor": "public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations, out bool[] inputOnly)",
+          "neuter": "payloads = Array.Empty<string>(); declarations = Array.Empty<int>(); inputOnly = Array.Empty<bool>(); return false;"
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleChildVariantClass.cs",
@@ -559,8 +559,8 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleChildVariantClass.cs",
-          "anchor": "public static bool TryParse(string? cls, out string payload)",
-          "neuter": "payload = string.Empty; return false;"
+          "anchor": "public static bool TryParse(string? cls, out string payload, out bool inputBoxOnly)",
+          "neuter": "payload = string.Empty; inputBoxOnly = false; return false;"
         }
       ]
     },
@@ -590,6 +590,30 @@
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceClass.cs",
           "anchor": "public static TextWrapStyle ReadWrapStyle(string[] classNames)",
           "neuter": "return TextWrapStyle.None;"
+        }
+      ]
+    },
+    {
+      "name": "pointer-events-parser",
+      "mechanism": "pointer-events",
+      "summary": "the pointer-events class reader declares nothing for any class list",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StylePointerEventsClass.cs",
+          "anchor": "public static PointerEventsMode Read(string[] classNames)",
+          "neuter": "return PointerEventsMode.Inherit;"
+        }
+      ]
+    },
+    {
+      "name": "pointer-events-walk",
+      "mechanism": "pointer-events",
+      "summary": "a pointer-events scope takes and drops no hold when it is walked",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/PointerEventsScope.cs",
+          "anchor": "public void Sync()",
+          "neuter": "return;"
         }
       ]
     },
@@ -671,6 +695,33 @@
       "cuts": [
         "balance-attach",
         "balance-apply"
+      ],
+      "caseScopes": [],
+      "platform": "PlayMode"
+    },
+    {
+      "fixture": "Velvet.Tests.PointerEventsUtilityTests",
+      "cuts": [
+        "pointer-events-parser",
+        "pointer-events-walk"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.PointerEventsPanelTests",
+      "cuts": [
+        "pointer-events-parser",
+        "pointer-events-walk"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.PointerEventsHoverPlaybackTests",
+      "cuts": [
+        "pointer-events-parser",
+        "pointer-events-walk"
       ],
       "caseScopes": [],
       "platform": "PlayMode"

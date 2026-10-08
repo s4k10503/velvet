@@ -4,7 +4,8 @@ namespace Velvet
 {
     // The wrapper-less PAINT layer for animate-* motion utilities. Gradient/Shimmer pan an existing
     // bg-gradient-* (so they defer to FiberGradientApplier's baked spec); the non-pan modes drive their own
-    // shared inline slot (style.filter / style.opacity / style.rotate) directly, independent of any gradient.
+    // shared inline slot (style.filter / style.opacity / style.rotate / style.scale / style.translate) directly,
+    // independent of any gradient.
     internal sealed class FiberAnimateMotionApplier
     {
         private readonly ReconcilerContext _ctx;
@@ -84,8 +85,8 @@ namespace Velvet
             RestoreSharedInlineSlot(element, teardownMode, classNames);
         }
 
-        // The non-pan modes own a shared inline slot while active — style.filter / style.opacity / style.rotate
-        // — that an inline-resolved utility also writes (the arbitrary filter-[..] / opacity-[.x] forms, and the
+        // The non-pan modes own a shared inline slot while active — style.filter / style.opacity / style.rotate /
+        // style.scale / style.translate — that an inline-resolved utility also writes (the arbitrary filter-[..] / opacity-[.x] forms, and the
         // filter presets blur-sm etc.). Detach nulls that slot to return to the no-motion state: a NAMED USS
         // class (opacity-50) then re-resolves on its own, but a surviving inline-resolved value is lost —
         // DiffClassList does not re-apply a token that did not change across the patch. So after Detach, re-assert

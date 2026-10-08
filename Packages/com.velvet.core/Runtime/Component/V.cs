@@ -121,7 +121,7 @@ namespace Velvet
         /// <c>V.Custom&lt;T&gt;("class", child1, child2)</c> form, see the <c>params</c> overload.
         /// </summary>
         /// <typeparam name="T">Concrete VisualElement subclass to instantiate.</typeparam>
-        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces. A text-input or popup field type takes its surface utilities on its input box, as <see cref="TextField"/> does.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="props">Optional FiberElementProps (text / tooltip / enabled / etc.) bag.</param>
@@ -151,7 +151,7 @@ namespace Velvet
                 Key = key,
                 ElementType = typeof(T),
                 Name = name,
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseCustomClassNames<T>(className),
                 Props = WithAttributes(props, data, aria),
                 Children = children ?? EmptyChildren,
                 Events = EmptyEvents,
@@ -177,7 +177,7 @@ namespace Velvet
             new ElementNode
             {
                 ElementType = typeof(T),
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseCustomClassNames<T>(className),
                 Children = children == null || children.Length == 0 ? EmptyChildren : children,
                 Events = EmptyEvents,
             };
@@ -537,11 +537,12 @@ namespace Velvet
         /// Creates a TextField.
         /// </summary>
         /// <remarks>
-        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/> and
-        /// <paramref name="isDelayed"/> are undeclared when null rather than reset to a default;
+        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/>,
+        /// <paramref name="isDelayed"/>, <paramref name="multiline"/>, <paramref name="keyboardType"/> and
+        /// <paramref name="autoCorrection"/> are undeclared when null rather than reset to a default;
         /// <c>Documentation~/react-migration.md</c> owns what a null and a dropped one each do.
         /// </remarks>
-        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces. Background, border, radius, padding, shadow and ring utilities style the field's box; <c>Documentation~/styling-variants.md</c> owns the list.</param>
         /// <param name="value">Current text value (controlled).</param>
         /// <param name="onValueChanged">Handler invoked when the input text changes.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -559,6 +560,9 @@ namespace Velvet
         /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
         /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
         /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
+        /// <param name="multiline">When true, the field is multi-line (HTML <c>&lt;textarea&gt;</c>).</param>
+        /// <param name="keyboardType">Written to the field's <c>keyboardType</c> (HTML <c>inputmode</c>).</param>
+        /// <param name="autoCorrection">Written to the field's <c>autoCorrection</c> (HTML <c>autocorrect</c>).</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -581,13 +585,17 @@ namespace Velvet
             string? placeholder = null,
             int? maxLength = null,
             bool? isReadOnly = null,
-            bool? isDelayed = null)
+            bool? isDelayed = null,
+            bool? multiline = null,
+            TouchScreenKeyboardType? keyboardType = null,
+            bool? autoCorrection = null)
         {
             VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
-                                    || isReadOnly.HasValue || isDelayed.HasValue;
+                                    || isReadOnly.HasValue || isDelayed.HasValue || multiline.HasValue
+                                    || keyboardType.HasValue || autoCorrection.HasValue;
 
             FiberElementProps? props = null;
             if (value != null || label != null || declaresTextField || enabled.HasValue)
@@ -598,6 +606,11 @@ namespace Velvet
                 props.Enabled = enabled;
                 props.TextField = declaresTextField
                     ? new TextFieldSettings(isPasswordField, placeholder, maxLength, isReadOnly, isDelayed)
+                    {
+                        Multiline = multiline,
+                        KeyboardType = keyboardType,
+                        AutoCorrection = autoCorrection,
+                    }
                     : null;
             }
             props = WithAttributes(props, data, aria);
@@ -607,7 +620,7 @@ namespace Velvet
                 Key = key,
                 ElementType = typeof(TextField),
                 Name = name,
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseFieldClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
                 Events = events,
@@ -801,7 +814,7 @@ namespace Velvet
         /// <summary>
         /// Creates a DropdownField.
         /// </summary>
-        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces. Background, border, radius, padding, shadow and ring utilities style the field's box; <c>Documentation~/styling-variants.md</c> owns the list.</param>
         /// <param name="value">Currently selected value (controlled).</param>
         /// <param name="choices">List of selectable values shown in the dropdown.</param>
         /// <param name="onValueChanged">Handler invoked when the selection changes.</param>
@@ -851,7 +864,7 @@ namespace Velvet
                 Key = key,
                 ElementType = typeof(DropdownField),
                 Name = name,
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseFieldClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
                 Events = events,
@@ -1044,7 +1057,7 @@ namespace Velvet
         /// <summary>
         /// Creates an IntegerField for entering integer values.
         /// </summary>
-        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces. Background, border, radius, padding, shadow and ring utilities style the field's box; <c>Documentation~/styling-variants.md</c> owns the list.</param>
         /// <param name="value">Current integer value (controlled).</param>
         /// <param name="onValueChanged">Handler invoked when the integer value changes.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -1091,7 +1104,7 @@ namespace Velvet
                 Key = key,
                 ElementType = typeof(IntegerField),
                 Name = name,
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseFieldClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
                 Events = events,
@@ -2175,6 +2188,9 @@ namespace Velvet
         /// pulls an exiting child out of layout flow so still-present siblings reflow immediately.</param>
         /// <param name="onExitComplete">Invoked once when every in-flight exit animation has finished;
         /// not fired for cancelled exits or animation-less removals.</param>
+        /// <param name="propagate">Set on an inner presence: while the enclosing presence's keyed child holding it is
+        /// leaving, every child of this presence exits too, and the enclosing presence keeps that child mounted until
+        /// they have completed. A presence between the two that does not propagate stops it.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="mode"/> names no member of
         /// <see cref="AnimatePresenceMode"/>.</exception>
         /// <returns>The created <see cref="AnimatePresenceNode"/>.</returns>
@@ -2190,7 +2206,8 @@ namespace Velvet
             float delayChildrenSec = 0f,
             int staggerDirection = 1,
             AnimatePresenceMode mode = AnimatePresenceMode.Sync,
-            Action? onExitComplete = null)
+            Action? onExitComplete = null,
+            bool propagate = false)
         {
             if (mode is not (AnimatePresenceMode.Sync or AnimatePresenceMode.Wait or AnimatePresenceMode.PopLayout))
             {
@@ -2207,6 +2224,7 @@ namespace Velvet
                 StaggerDirection = staggerDirection,
                 Mode = mode,
                 OnExitComplete = onExitComplete,
+                Propagate = propagate,
             };
         }
 
@@ -2809,6 +2827,18 @@ namespace Velvet
         /// The array is shared with other callers passing the same string, so it must not be mutated;
         /// <see cref="ClassNameParseCache"/> owns how long it stays shared.
         /// </summary>
+        // The field factories' class list: the surface utilities are sent to the input box (StyleInputBoxSurface).
+        private static string[] ParseFieldClassNames(string? classNames)
+            => StyleInputBoxSurface.Route(ParseClassNames(classNames));
+
+        private static string[] ParseCustomClassNames<T>(string? classNames)
+            => FieldControl<T>.IsField ? ParseFieldClassNames(classNames) : ParseClassNames(classNames);
+
+        private static class FieldControl<T>
+        {
+            internal static readonly bool IsField = StyleInputBoxSurface.IsControlType(typeof(T));
+        }
+
         internal static string[] ParseClassNames(string? classNames)
             => string.IsNullOrEmpty(classNames) ? EmptyClassNames : s_classNameCache.Parse(classNames);
 

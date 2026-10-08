@@ -373,6 +373,18 @@ namespace Velvet.Tests
             Assert.That(plan.IsEmpty, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base resolves no top-auto, so it plans no channel there either.
+        // What shows the case can fail is the auto keyword being read as a length the spring interpolates.
+        [Test]
+        public void Given_APositionAutoSide_When_Resolved_Then_NoLengthChannelIsPlanned()
+        {
+            // Arrange / Act — top-auto is an unset offset, not a magnitude, like w-auto above.
+            var plan = MotionSpringClassParser.Resolve(new[] { "top-0" }, new[] { "top-auto" });
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
         [Test]
         public void Given_AColorsOnlySpringVariantEnter_When_Started_Then_TheCompletionDoesNotFireSynchronously()
         {
@@ -628,6 +640,20 @@ namespace Velvet.Tests
             // Assert — -16px to -32px, sampled halfway.
             Assert.That(state != null ? (Length?)element.style.marginTop.value : null,
                 Is.EqualTo(new Length(-24f, LengthUnit.Pixel)));
+        }
+
+        [Test]
+        public void Given_APositionFractionPair_When_SteppedToHalfTheDuration_Then_TheInlineLeftIsTheMidpointPercent()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act
+            var state = CreateHalfway(element, new[] { "left-1/4" }, new[] { "left-3/4" });
+
+            // Assert — 25% to 75%, sampled halfway.
+            Assert.That(state != null ? (Length?)element.style.left.value : null,
+                Is.EqualTo(new Length(50f, LengthUnit.Percent)));
         }
 
         [Test]
