@@ -20,6 +20,8 @@ namespace Velvet.Tests
     /// <item>An urgent update reaching a component whose deferred value is already queued for the coming pass
     /// commits in that pass without the deferred value, which moves to the pass after — until it has moved as
     /// often as FiberWorkLoop's starvation bound, after which it stays and commits.</item>
+    /// <item>A request stays outside every pass after a frame callback's tick has run, and a cleared scheduler
+    /// queues a fiber it held afresh.</item>
     /// <item>Requests made outside every pass share one admission, and requests made inside one callback share
     /// one drain; an admission that already ran takes no later request.</item>
     /// <item>A transition requested from inside the Transition tier's own drain renders on the next pass, not
@@ -169,6 +171,47 @@ namespace Velvet.Tests
             // Assert — the first value rides along to show the earlier passes did commit it
             Assert.That((afterOnePass.Item1, afterOnePass.Item2, Text("deferred")), Is.EqualTo(("2", "1", "2")),
                 "A request from a click is outside every pass after those callbacks ran, and still commits");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's fixed delay already kept that click's deferred value out of the next pass.
+        [Test]
+        public void Given_AUseFrameTickHasRunOnThePanel_When_AClickChangesTheDeferredInputAndOneFramePasses_Then_TheDeferredValueHasNotCommitted()
+        {
+            // Arrange — the first pass runs the passive effect that subscribes the frame callback, and the
+            // second runs its tick, so a marker that tick left behind would be in place for the click
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Div(children: new VNode[]
+            {
+                V.Component(FrameSubscriberRender, key: "frame-subscriber"),
+                V.Component(DeferredRender, key: "deferred"),
+            }));
+            _sim.FrameUpdateMs(FrameMs);
+            _sim.FrameUpdateMs(FrameMs);
+            _sim.rootVisualElement.Q<Button>("set-input").SimulateClick();
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That((Text("input"), Text("deferred")), Is.EqualTo(("1", "0")),
+                "A click after a frame callback's tick is still outside every pass");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's Clear already emptied the delayed tier's set as well as its order.
+        [Test]
+        public void Given_AClearedScheduler_When_AFiberItHeldIsEnrolledOnTheTransitionTierAgain_Then_ItIsPending()
+        {
+            // Arrange — the fiber was queued before the clear, which also drops the anchor
+            using var mounted = MountLanePair();
+            var scheduler = mounted.GetSchedulerForTest();
+            s_transitionLaneFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            scheduler.Clear();
+
+            // Act
+            FiberWorkLoop.ScheduleFlush(s_transitionLaneFiber, FiberUpdatePriority.Transition);
+
+            // Assert
+            Assert.That(scheduler.DelayedPendingCount, Is.EqualTo(1),
+                "Clear forgets every entry, so enrolling the fiber again queues it afresh");
         }
 
         [Test]
@@ -419,6 +462,13 @@ namespace Velvet.Tests
             var (_, start) = Hooks.UseTransition();
             s_start = start;
             return V.Label(name: "value", text: value.ToString());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode FrameSubscriberRender()
+        {
+            Hooks.UseFrame(_ => { });
+            return V.Label();
         }
 
         [Component(Compiler = false)]
