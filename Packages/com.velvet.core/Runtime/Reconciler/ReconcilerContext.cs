@@ -656,6 +656,18 @@ namespace Velvet
         // text-balance's per-element measure-and-narrow manipulator. Mirrors GapManipulators /
         // GridManipulators; removed on cleanup / dispose.
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
+        // Each element whose own class list carries pointer-events-none or pointer-events-auto. Not a pure
+        // side-table: a scope holds picking off across a subtree, released on cleanup / dispose.
+        public Dictionary<VisualElement, PointerEventsScope> PointerEventsScopes { get; } = new();
+        // Elements this context put children into, or may have changed a pointer-events utility under, since the
+        // pointer-events scopes were last walked: the element each top-level pass reconciled into, each Portal
+        // target a mount or patch reconciled into, and the mount target and Portal targets a request outside a pass
+        // names (PointerEventsScope.NoteReconciledInto). Every walk (PointerEventsScope.WalkAll) empties it.
+        public HashSet<VisualElement> PointerEventsAnchors { get; } = new();
+        // Above zero from the start of Reconciler.FinishTopLevelPass until the pointer-events walk near its end. In
+        // that span SharedReconcileDepth is already back at zero, while the portal drain can still create elements,
+        // and the relational retarget toggle payloads, that request a walk (PointerEventsScope.RequestSyncAll).
+        internal int PointerEventsWalkHeld { get; set; }
 
         // Elements a VARIANT currently has a gate token toggled onto, keyed by that element. A gate token is
         // one whose mere presence in a class array decides what a class-driven pass builds; the families are

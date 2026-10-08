@@ -341,8 +341,8 @@ namespace Velvet
         // - The [&>*]: child-combinator variant runs first so gap / divide / grid (next) win a shared child
         //   edge — [&>*]:ml-[2px] behaves like a child's own margin, which gap already overwrites. It too runs
         //   AFTER PatchCommon so it sees the final child set.
-        // - The layout manipulators (gap, divide, grid and text-balance — ApplyResolvedLayoutManipulators
-        //   owns the order among those four) run next but still
+        // - The layout manipulators (gap, divide, grid and text-balance, with the pointer-events scope —
+        //   ApplyResolvedLayoutManipulators owns the order among them) run next but still
         //   AFTER PatchCommon (which reconciles children) so gap's margin writes are the final word on the
         //   element — the wrap path writes the container's OWN margins (-gap/2) — and so they re-apply
         //   against the current child set (a child add / remove re-spaces even when the className did not
@@ -1269,6 +1269,7 @@ namespace Velvet
             var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
             try
             {
+                PointerEventsScope.NoteReconciledInto(_ctx, target);
                 _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
             }
             finally
@@ -3055,10 +3056,11 @@ namespace Velvet
         }
 
         // Configures the four manipulators whose existence is gated purely on a layout utility class being
-        // present: gap, divide, grid, text-balance. They are configured as a unit because gap and grid share
-        // one ownership rule — a grid owns its children's margins, so the gap manipulator must be suppressed
-        // for exactly the class lists that produce a grid manipulator. Call AFTER the container's children
-        // have been reconciled so each sees the final child list.
+        // present: gap, divide, grid, text-balance; and the pointer-events scope, which rides the same sequence
+        // (ApplyResolvedLayoutManipulators) because the variant re-sync runs it too. The four are configured as
+        // a unit because gap and grid share one ownership rule — a grid owns its children's margins, so the gap
+        // manipulator must be suppressed for exactly the class lists that produce a grid manipulator. Call AFTER
+        // the container's children have been reconciled so each sees the final child list.
         // Resolves its own class source rather than taking the one the paint passes use: those resolve after
         // the structural / has- passes (see ApplyPostChildrenClassPasses), and gap has to run before them.
         internal void ApplyLayoutManipulators(VisualElement element, string[] classNames)
@@ -3183,6 +3185,8 @@ namespace Velvet
         // CHILDREN's widths, which is the one slot text-balance also writes, and the handoff for that is
         // the child's own: a text-balance element inside a grid container stands down entirely (see
         // StyleTextBalanceManipulator's grid-parent check).
+        // The pointer-events scope writes only pickingMode, which none of the four writes, so its place is not
+        // load-bearing either.
         private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
         {
             if (StyleGridClass.HasGridClass(classNames))
@@ -3197,6 +3201,7 @@ namespace Velvet
             }
             ApplyDivideManipulator(element, classNames);
             ApplyTextBalanceManipulator(element, classNames);
+            ApplyPointerEvents(element, classNames);
         }
 
         // The class source every gate-driven pass reads: the reconciled array, followed by each gate token a
@@ -3261,10 +3266,11 @@ namespace Velvet
             => ResolveVariantClasses(element, classNames, classNames, paintTail, out _);
 
         // The same source for the gates that resolve at their own point in the sequence — the four layout
-        // manipulators (ApplyLayoutManipulators), the font layer (ApplyFontLayer) and the text-effect cascade
-        // (ApplyTextEffects). It reads the cached array but does not REPLACE it: the paint resolve a few
-        // passes later answers "did the classes change" by comparing against that same record, and advancing it
-        // here would swallow a payload one of the has- / attribute passes in between had just toggled.
+        // manipulators and the pointer-events scope (ApplyLayoutManipulators), the font layer (ApplyFontLayer)
+        // and the text-effect cascade (ApplyTextEffects). It reads the cached array but does not REPLACE it: the
+        // paint resolve a few passes later answers "did the classes change" by comparing against that same record,
+        // and advancing it here would swallow a payload one of the has- / attribute passes in between had just
+        // toggled.
         private string[] ResolveGateClasses(VisualElement element, string[] classNames)
             => _ctx.VariantGateClasses.Count == 0
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
@@ -3455,6 +3461,39 @@ namespace Velvet
                 element.AddManipulator(manipulator);
                 _ctx.TextBalanceManipulators[element] = manipulator;
             }
+        }
+
+        // A scope whose mode moved, or that came or went, can change what an enclosing scope's walk reaches, so
+        // every scope is walked again rather than this one alone.
+        private void ApplyPointerEvents(VisualElement element, string[] classNames)
+        {
+            var mode = StylePointerEventsClass.Read(classNames);
+            var scopes = _ctx.PointerEventsScopes;
+            if (scopes.TryGetValue(element, out var existing))
+            {
+                if (existing.Mode == mode)
+                {
+                    return;
+                }
+                if (mode == PointerEventsMode.Inherit)
+                {
+                    existing.Release();
+                    scopes.Remove(element);
+                }
+                else
+                {
+                    existing.Mode = mode;
+                }
+            }
+            else if (mode == PointerEventsMode.Inherit)
+            {
+                return;
+            }
+            else
+            {
+                scopes[element] = new PointerEventsScope(element, mode);
+            }
+            PointerEventsScope.RequestSyncAll(_ctx);
         }
 
         #endregion
