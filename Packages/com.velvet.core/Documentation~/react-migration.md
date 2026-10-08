@@ -164,7 +164,7 @@ policy's `IsOnline` / `IsFocused`, which replace them for one. Both are polled o
 - Visible, as v5's focus manager reads `document.visibilityState` rather than focus: Velvet counts a window that
   has lost focus but is still shown as visible, so alt-tabbing pauses nothing. Velvet asks each platform:
   a mobile platform for `Application.isFocused`, since a backgrounded app has lost it; Windows whether the
-  main thread's top-level window is minimized; macOS whether `NSApplication` is hidden or, when it has windows,
+  main thread's top-level window is minimized; macOS whether NSApplication is hidden or, when it has windows,
   none is both visible and not miniaturized (no windows reads as visible). Linux and WebGL have no reading and
   count as visible. Any failure of a native read, or the absence of a window to ask, is latched and every later
   read answers visible. These native readings have no test behind them, so replace them through
