@@ -283,9 +283,9 @@ resolved start described above.
   per-corner spellings.
 - **Spacing-scale lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*`
   … `inset-y-*`) and `basis-*`, from the `--space-*` scale (`p-4`, `w-64`, `-mt-2`), the sizing
-  fractions (`w-1/2`), and the bracket forms. These dirty Yoga layout on every tick — the whole
-  subtree relayouts each frame for the length of the play — so reach for a transform channel first
-  and animate a length only where the reflow is the point.
+  and position fractions (`w-1/2`, `left-1/2`), and the bracket forms. These dirty Yoga layout on
+  every tick — the whole subtree relayouts each frame for the length of the play — so reach for a
+  transform channel first and animate a length only where the reflow is the point.
 - **Border widths,** from the `border-*` width utilities (`border`, `border-2`, `border-t-4`) and
   the bracket forms. These read a **separate literal scale mirroring the stylesheet's own
   declarations**, not the spacing scale — `border-2` is 2px, not `--space-2`. Same per-tick layout
