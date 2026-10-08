@@ -507,6 +507,16 @@ namespace Velvet
         /// nor for children removed without an exit animation.
         /// </summary>
         public Action? OnExitComplete { get; init; }
+
+        /// <summary>
+        /// Set on an inner presence, after Framer's <c>propagate</c>: while the enclosing presence's keyed child
+        /// holding this one is leaving, this presence treats every one of its own children as not present, plays
+        /// their exits through its own exit path, and the enclosing presence keeps that child mounted until they
+        /// have completed. <see cref="OnExitComplete"/> runs when this presence's own exits finish. The nearest
+        /// enclosing presence decides, so one between the two that does not propagate stops it. When false
+        /// (default), this presence's children are left as they are when the enclosing presence removes the child.
+        /// </summary>
+        public bool Propagate { get; init; }
     }
 
     /// <summary>

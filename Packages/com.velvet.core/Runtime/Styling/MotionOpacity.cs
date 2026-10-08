@@ -146,6 +146,10 @@ namespace Velvet
                 .Every(StyleAnimateDriver.TickMs);
         }
 
+        // True while a crossfade draws the element, so its inline opacity is the crossfade's rather than anything the
+        // element's own classes or a loop gave it.
+        public static bool Draws(VisualElement element) => s_drawing.TryGetValue(element, out _);
+
         // Drops an element torn down mid-crossfade, so that nothing writing it after the pool hands it on finds it drawn.
         public static void Forget(VisualElement element)
         {
@@ -265,24 +269,18 @@ namespace Velvet
             drawing.Value = Mathf.LerpUnclamped(drawing.From, drawing.Target, UssEasing.Evaluate(drawing.Easing, t));
         }
 
-        // The style an element's classes cascade to, which UI Toolkit caches under the element's matchingRulesHash
-        // (StyleCache), internal to it and so read by reflection. Where that cannot be read, the classes' value stays
-        // the one the crossfade started from. Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_
+        // The style an element's classes cascade to, read through StyleCascade. Where that cannot be read, the classes'
+        // value stays the one the crossfade started from. Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_
         // Then_ItsOwnIsCarriedOnThatTransition fails when the read stops giving the cascaded value.
         private static class Cascade
         {
-            private static readonly FieldInfo? s_style = EngineMember.ElementComputedStyle.ResolveField();
-            private static readonly FieldInfo? s_hash = EngineMember.ComputedStyleMatchingRulesHash.ResolveField();
-            private static readonly MethodInfo? s_tryGet = EngineMember.TryGetComputedStyle.ResolveMethod();
             private static readonly PropertyInfo? s_opacity = EngineMember.ComputedStyleOpacity.ResolveProperty();
             private static readonly PropertyInfo? s_property = EngineMember.ComputedStyleTransitionProperty.ResolveProperty();
             private static readonly PropertyInfo? s_duration = EngineMember.ComputedStyleTransitionDuration.ResolveProperty();
             private static readonly PropertyInfo? s_delay = EngineMember.ComputedStyleTransitionDelay.ResolveProperty();
             private static readonly PropertyInfo? s_curve = EngineMember.ComputedStyleTransitionTimingFunction.ResolveProperty();
             private static readonly bool s_readable = Array.TrueForAll(
-                new MemberInfo?[] { s_style, s_hash, s_tryGet, s_opacity, s_property, s_duration, s_delay, s_curve }, m => m != null);
-
-            private static readonly object?[] s_args = new object?[2];
+                new MemberInfo?[] { s_opacity, s_property, s_duration, s_delay, s_curve }, m => m != null);
 
             // Takes the element's cascaded opacity and the transition it runs opacity by into the drawing: the rules'
             // transition-property with the inline duration, delay and curve lists wherever the element holds them, as
@@ -314,9 +312,7 @@ namespace Velvet
                 // Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_Then_ItsOwnIsCarriedOnThatTransition
                 // fails where one does not.
                 if (!s_readable) return null;
-                s_args[0] = s_hash!.GetValue(s_style!.GetValue(element));
-                s_args[1] = null;
-                return s_tryGet!.Invoke(null, s_args) is true ? s_args[1] : null;
+                return StyleCascade.Of(element);
             }
         }
     }

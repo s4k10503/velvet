@@ -1238,9 +1238,57 @@ namespace Velvet
         /// where <paramref name="deps"/> restarts the sequence, so a later <c>controls.Pause()</c> is not fought
         /// by a re-render that keeps passing <c>autoplay: true</c>.</param>
         /// <param name="loop">When true, the cursor wraps to step 0 after the last step's hold elapses and
-        /// <see cref="AnimationSequenceState.IsComplete"/> never latches.</param>
+        /// <see cref="AnimationSequenceState.IsComplete"/> latches only for an empty <paramref name="steps"/>
+        /// list.</param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay = true, bool loop = false)
+            => PlayAnimationSequence(steps, deps, autoplay, loop ? (int?)null : 1, 0f);
+
+        /// <summary>
+        /// Plays <paramref name="steps"/> as the overload taking <c>loop</c> does, a fixed number of times: the
+        /// Web Animations API's <c>iterations</c> and CSS's <c>animation-iteration-count</c>. Each pass after the
+        /// first starts at step 0 once the last step's hold elapses, and
+        /// <see cref="AnimationSequenceState.IsComplete"/> latches when the last pass's last hold elapses, with
+        /// that pass's last step still current. A gap between passes is <paramref name="repeatDelaySec"/>, Framer
+        /// Motion's <c>repeatDelay</c>; under <c>loop</c> a trailing <see cref="AnimationSequenceStep.Wait"/> step
+        /// is the same gap, since no completion waits behind it.
+        /// </summary>
+        /// <param name="steps">The ordered sequence. Must not be null.</param>
+        /// <param name="deps">As on the overload taking <c>loop</c>. A restart, from a changed entry here or
+        /// from <c>controls.Restart()</c>, plays every pass again.</param>
+        /// <param name="iterations">The number of passes, counting the first: Framer Motion's <c>repeat: n</c>
+        /// is <c>n + 1</c> here. Zero plays no pass, so no step commits and the sequence reads complete from its
+        /// mount render on. A count a re-render changes applies to the sequence as it plays, as the Web
+        /// Animations API's <c>updateTiming</c> does: a count no higher than the passes already finished completes
+        /// the sequence at the next frame, showing the end state a normal completion holds (the last step
+        /// current, no skipped <c>Call</c> run), and a count above them
+        /// resumes a completed sequence after the repeat gap, at the next pass's step 0. Throws
+        /// <see cref="ArgumentOutOfRangeException"/> when negative.</param>
+        /// <param name="autoplay">As on the overload taking <c>loop</c>.</param>
+        /// <param name="repeatDelaySec">Seconds the cursor waits on the last step between one pass and the next,
+        /// read as each gap begins. It follows no last pass, so it never delays completion. Throws
+        /// <see cref="ArgumentOutOfRangeException"/> when negative or not finite.</param>
+        public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, int iterations, bool autoplay = true,
+            float repeatDelaySec = 0f)
+        {
+            if (iterations < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(iterations), iterations,
+                    "A sequence plays zero or more passes; the overload taking loop plays it without end.");
+            }
+            if (float.IsNaN(repeatDelaySec) || float.IsInfinity(repeatDelaySec) || repeatDelaySec < 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(repeatDelaySec), repeatDelaySec,
+                    "A gap between passes is a finite number of seconds, zero or more.");
+            }
+            return PlayAnimationSequence(steps, deps, autoplay, iterations, repeatDelaySec);
+        }
+
+        // A null iterations plays without end.
+        private static (AnimationSequenceState state, AnimationSequenceControls controls) PlayAnimationSequence(
+            IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay, int? iterations,
+            float repeatDelaySec)
         {
             if (steps == null) throw new ArgumentNullException(nameof(steps));
             var fiber = Resolve("UseAnimationSequence");
@@ -1258,6 +1306,9 @@ namespace Velvet
             if (!IsStrictDiagnosticPass(fiber))
             {
                 latestSteps.Set(steps);
+                // Under the same latest-render rule: the walker reads both on its next Advance or reseed.
+                walker.Current.Iterations = iterations;
+                walker.Current.RepeatDelaySec = repeatDelaySec;
             }
 
             UseEffect(() =>
@@ -1271,13 +1322,14 @@ namespace Velvet
 
             UseFrame(dt =>
             {
-                if (walker.Current.IsPaused || walker.Current.IsComplete)
+                if (walker.Current.IsPaused)
                 {
                     return;
                 }
                 var beforeGeneration = walker.Current.Generation;
-                walker.Current.Advance(dt, loop);
-                if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete)
+                var wasComplete = walker.Current.IsComplete;
+                walker.Current.Advance(dt);
+                if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete != wasComplete)
                 {
                     Rerender();
                 }
@@ -1297,7 +1349,12 @@ namespace Velvet
                 },
                 walker: walker.Current!);
 
-            return (walker.Current.ToState(), controls);
+            // Before the mount effect's first reseed the walker has seen no steps, so it would read a sequence
+            // that plays nothing as not yet complete for the whole mount render.
+            var state = !walker.Current.HasReseeded && (iterations == 0 || steps.Count == 0)
+                ? new AnimationSequenceState(null, null, 0, true)
+                : walker.Current.ToState();
+            return (state, controls);
         }
 
         #endregion
@@ -2221,6 +2278,65 @@ namespace Velvet
 
         #endregion
 
+        #region UseQuery
+
+        /// <summary>
+        /// TanStack Query's <c>useQuery</c>. Reads the entry <paramref name="options"/>' key names in a
+        /// <see cref="QueryClient"/>, fetches it with the options' query function when it has no data or its
+        /// data is stale, and re-renders the component when a property of the result it reads changes.
+        /// Components reading one key share one entry and one request in flight, and the entry keeps its
+        /// result after they unmount, so a component mounting over it later renders that result at once.
+        /// </summary>
+        /// <remarks>
+        /// Not a Suspense hook: a query with no data yet returns <see cref="QueryStatus.Pending"/> rather than
+        /// suspending, as <c>useQuery</c> does. <see cref="Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/>
+        /// stays the cache-less <c>use()</c>.
+        /// <para/>
+        /// The component subscribes in a passive effect, as <c>useQuery</c> does, and a fetch that mounting
+        /// starts begins there. A change of key moves the subscription to the new key's entry: the result
+        /// shows that entry's data, or none, and nothing the old key's request delivers afterwards.
+        /// <para/>
+        /// A failed request runs again up to <see cref="QueryOptions{T}.Retry"/> times before the failure is
+        /// the entry's error, and a request that lands is shared structurally with the data the entry held
+        /// (<see cref="QueryOptions{T}.StructuralSharing"/>), as <c>useQuery</c> does.
+        /// </remarks>
+        /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
+        /// <param name="options">The key, the query function, and optionally the stale and garbage-collection
+        /// times, the retry policy, the structural sharing and the result properties that re-render.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static QueryResult<T> UseQuery<T>(QueryOptions<T> options, QueryClient? client = null)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (options.QueryKey == null) throw new ArgumentException("QueryOptions.QueryKey must not be null.", nameof(options));
+            if (options.QueryFn == null) throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
+            // Surface "UseQuery" in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve("UseQuery");
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                "UseQuery found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                "above the caller, or pass the client to UseQuery.");
+            var (_, setVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent, arithmetic): any step makes a value the slot does not hold, which is all the re-render asks.
+            var observer = UseMutableRef<QueryObserver<T>>(() => new QueryObserver<T>(() => setVersion.Invoke(v => v + 1))).Current;
+            var staleTime = QueryClient.RequireNonNegative(
+                options.StaleTime ?? queryClient.DefaultStaleTime, nameof(QueryOptions<T>.StaleTime));
+            var gcTime = QueryClient.RequireNonNegative(
+                options.GcTime ?? queryClient.DefaultGcTime, nameof(QueryOptions<T>.GcTime));
+
+            UseEffect(observer.UnmountEffect, Array.Empty<object?>());
+            UseEffect((Func<Action?>)(() =>
+            {
+                observer.Sync(queryClient, options, staleTime, gcTime);
+                return null;
+            }));
+
+            return observer.Read(queryClient.Peek<T>(options.QueryKey), staleTime);
+        }
+
+        #endregion
+
         #region UseDeferredValue
 
         /// <summary>
@@ -2328,21 +2444,36 @@ namespace Velvet
         #region UseOptimistic
 
         /// <summary>
-        /// Returns the optimistic state and an
-        /// <c>addOptimistic</c> action. Normally the returned state equals <paramref name="passthroughState"/>.
-        /// When <c>addOptimistic(action)</c> is invoked, <paramref name="applyOptimistic"/> derives an
-        /// optimistic state that is shown immediately (a re-render is requested) while the real update is in
-        /// flight; once <paramref name="passthroughState"/> changes (the real update lands), the optimistic
-        /// override is discarded and the pass-through state is shown again.
+        /// Returns the optimistic state and an <c>addOptimistic</c> action. With no optimistic update
+        /// outstanding the returned state is <paramref name="passthroughState"/>. Each
+        /// <c>addOptimistic(action)</c> records an entry and requests a render, and every render returns
+        /// <paramref name="passthroughState"/> folded through the outstanding entries by
+        /// <paramref name="applyOptimistic"/>, in the order they were added — so an entry lands on whatever
+        /// the authoritative state has become while it is outstanding. An entry added inside a
+        /// <c>startTransition</c> callback belongs to the innermost transition open there whose
+        /// <c>isPending</c> is lit, and is discarded when that transition settles (or, with an async action in
+        /// flight, when none is left), whether or not
+        /// <paramref name="passthroughState"/> changed and whether the action succeeded or faulted; one
+        /// transition settling leaves another's entries in place. An entry added where no such transition is
+        /// open, while an async action is in flight, belongs to the actions in flight together. As in React,
+        /// the actions in flight are entangled: a transition that settles while any is in flight hands its
+        /// entries to them, so they are discarded once none is left. An action counts from its start
+        /// until its task completes, whether or not the component that started it is still mounted, so one
+        /// awaiting a task that never completes holds every later entry. A component rendered by the
+        /// Transition-lane drain that lands the last work a transition queued leaves that transition's
+        /// entries out of that render. An entry no
+        /// render has shown when its owner settles is shown once first. An entry nothing owns is discarded by
+        /// the component's next Transition-lane render.
         /// </summary>
         /// <typeparam name="TState">Optimistic state type.</typeparam>
         /// <typeparam name="TAction">Action / payload type passed to <paramref name="applyOptimistic"/>.</typeparam>
         /// <param name="passthroughState">The authoritative state. Shown when no optimistic update is outstanding.</param>
-        /// <param name="applyOptimistic">Pure reducer <c>(currentState, action) =&gt; optimisticState</c>. Must not be null.</param>
+        /// <param name="applyOptimistic">Pure reducer <c>(currentState, action) =&gt; optimisticState</c>, run during render. Must not be null.</param>
         /// <returns>
         /// 2-tuple:
-        /// - <c>optimisticState</c>: the optimistic state while an update is outstanding, otherwise the pass-through state.
-        /// - <c>addOptimistic</c>: applies an optimistic action; the override is cleared when the pass-through state changes.
+        /// - <c>optimisticState</c>: the pass-through state folded through the outstanding entries.
+        /// - <c>addOptimistic</c>: records an entry owned by the transition whose callback is running, or by the
+        ///   async actions in flight, if either.
         /// </returns>
         public static (TState optimisticState, Action<TAction> addOptimistic) UseOptimistic<TState, TAction>(
             TState passthroughState, Func<TState, TAction, TState> applyOptimistic)
@@ -2353,39 +2484,38 @@ namespace Velvet
             var index = fiber.Indices.OptimisticHookIndex++;
             HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
+            HookOptimisticSlot<TState, TAction> slot;
             if (index >= fiber.OptimisticSlots.Count)
             {
-                var slot = new HookOptimisticSlot<TState, TAction>
-                {
-                    Base = passthroughState,
-                    OptimisticState = passthroughState,
-                    HasOptimistic = false,
-                    Apply = applyOptimistic,
-                };
+                slot = new HookOptimisticSlot<TState, TAction> { Fiber = fiber };
                 slot.Add = CreateOptimisticAdd(slot, fiber);
                 fiber.OptimisticSlots.Add(slot);
-                return (slot.OptimisticState, slot.Add);
             }
-
-            if (fiber.OptimisticSlots[index] is not HookOptimisticSlot<TState, TAction> typed)
+            else if (fiber.OptimisticSlots[index] is HookOptimisticSlot<TState, TAction> typed)
+            {
+                slot = typed;
+                if (FiberWorkLoop.IsRenderingTransitionLane)
+                {
+                    slot.DropUnownedEntries();
+                }
+            }
+            else
             {
                 throw HookSlotTypeMismatch(fiber, "UseOptimistic", fiber.OptimisticSlots[index].GetType(),
                     $"HookOptimisticSlot<{typeof(TState).Name}, {typeof(TAction).Name}>", index);
             }
 
-            // Refresh the apply function (it may capture the latest render's scope).
-            typed.Apply = applyOptimistic;
-
-            if (!ObjectIs.AreEqual(typed.Base, passthroughState))
+            // Refreshed every render, since the fold below runs it and it may capture this render's scope.
+            slot.Apply = applyOptimistic;
+            var optimisticState = slot.Fold(passthroughState, FiberWorkLoop.TransitionDrainFiber);
+            // Asked again by every render that leaves an unowned entry standing, as UseDeferredValue asks for
+            // its lane: a parent's pass that subsumes this component keeps only the lanes its render asked
+            // for, so a request made once, when the entry was added, is dropped there.
+            if (slot.HasUnownedEntry)
             {
-                // The authoritative state changed (the real update landed): adopt it and drop the optimistic
-                // override, resetting the optimistic state once the update completes.
-                typed.Base = passthroughState;
-                typed.OptimisticState = passthroughState;
-                typed.HasOptimistic = false;
+                FiberWorkLoop.RequestTransitionRerender(fiber);
             }
-
-            return (typed.HasOptimistic ? typed.OptimisticState : typed.Base, typed.Add);
+            return (optimisticState, slot.Add);
         }
 
         private static Action<TAction> CreateOptimisticAdd<TState, TAction>(
@@ -2394,11 +2524,25 @@ namespace Velvet
             return action =>
             {
                 if (fiber.IsDisposed) return;
-                // Layer onto the already-optimistic value so multiple addOptimistic calls compose.
-                var current = slot.HasOptimistic ? slot.OptimisticState : slot.Base;
-                slot.OptimisticState = slot.Apply(current, action);
-                slot.HasOptimistic = true;
-                RequestRender(fiber);
+                var owner = FiberWorkLoop.CurrentOptimisticOwner;
+                slot.Entries.Add(new OptimisticEntry<TAction> { Action = action, Owner = owner });
+                FiberWorkLoop.RequestOptimisticRender(fiber);
+                if (owner != null)
+                {
+                    owner.EnrolOptimisticDependent(slot);
+                    return;
+                }
+#if UNITY_EDITOR
+                // A callback a starter runs after its component unmounted is still a transition, owning
+                // nothing only because nothing is left to clear its isPending.
+                if (!FiberWorkLoop.IsInTransitionScope)
+                {
+                    FiberLogger.LogWarning("UseOptimistic",
+                        "An optimistic update was added outside every transition while no async action is in " +
+                        "flight, so it is discarded at the component's next Transition-lane render. Call " +
+                        "addOptimistic inside startTransition to keep it until that transition settles.");
+                }
+#endif
             };
         }
 

@@ -90,15 +90,110 @@ namespace Velvet
         public bool HasPending;
     }
 
-    internal abstract class HookOptimisticSlot { }
+    internal abstract class HookOptimisticSlot
+    {
+        public ComponentFiber Fiber = null!;
+
+        // A settle renders nobody on its own, so a retirement asks for the render that drops the entries.
+        // Reached only from a transition this slot enrolled on, which leaves it holding an entry of that
+        // transition's until this removes or disowns them all.
+        internal void RetireEntriesOwnedBy(HookTransitionSlot owner)
+        {
+            Retire(owner);
+            ComponentFiber.RequestRenderForSettledTransition(Fiber);
+        }
+
+        internal abstract void Retire(HookTransitionSlot owner);
+
+        internal abstract void Reown(HookTransitionSlot from, HookTransitionSlot to);
+
+        // For a fiber whose slot list is being dropped: a transition settling afterwards would otherwise ask
+        // that fiber, reused or not, for a render on behalf of a slot it no longer holds.
+        internal abstract void DetachFromOwners();
+    }
+
+    internal sealed class OptimisticEntry<TAction>
+    {
+        public TAction Action = default!;
+        // Null for an entry no transition owns (FiberWorkLoop.CurrentOptimisticOwner read null), which the
+        // component's next Transition-lane render drops.
+        public HookTransitionSlot? Owner;
+        // An entry its transition settles before any render folded it is disowned rather than dropped, so the
+        // render addOptimistic requested still shows it once.
+        public bool Rendered;
+    }
 
     internal sealed class HookOptimisticSlot<TState, TAction> : HookOptimisticSlot
     {
-        public TState Base = default!;
-        public TState OptimisticState = default!;
-        public bool HasOptimistic;
+        // The actions rather than the state they produced, in the order addOptimistic received them, so a
+        // render folds them over the pass-through state it is handed and an entry still pending lands on
+        // whatever the authoritative state has become.
+        public readonly List<OptimisticEntry<TAction>> Entries = new();
         public Func<TState, TAction, TState> Apply = null!;
         public Action<TAction> Add = null!;
+
+        // drainingFiber: FiberWorkLoop.TransitionDrainFiber, null outside a Transition-lane drain. An entry whose
+        // owner settles with that fiber's commit is left out of this render, so the commit that lands the
+        // transition's work shows it already gone. Nothing is removed here, since the render may never commit:
+        // Retire does that at the settle.
+        internal TState Fold(TState passthroughState, ComponentFiber? drainingFiber)
+        {
+            var state = passthroughState;
+            foreach (var entry in Entries)
+            {
+                entry.Rendered = true;
+                if (drainingFiber != null && entry.Owner?.SettlesWithCommitOf(drainingFiber) == true)
+                {
+                    continue;
+                }
+                state = Apply(state, entry.Action);
+            }
+            return state;
+        }
+
+        // Static lambdas, since both run during renders and a capturing one would allocate at each.
+        internal bool HasUnownedEntry => Entries.Exists(static entry => entry.Owner == null);
+
+        internal void DropUnownedEntries() => Entries.RemoveAll(static entry => entry.Owner == null);
+
+        internal override void Retire(HookTransitionSlot owner)
+        {
+            for (var i = Entries.Count - 1; i >= 0; i--)
+            {
+                var entry = Entries[i];
+                if (!ReferenceEquals(entry.Owner, owner))
+                {
+                    continue;
+                }
+                if (entry.Rendered)
+                {
+                    Entries.RemoveAt(i);
+                }
+                else
+                {
+                    entry.Owner = null;
+                }
+            }
+        }
+
+        internal override void Reown(HookTransitionSlot from, HookTransitionSlot to)
+        {
+            foreach (var entry in Entries)
+            {
+                if (ReferenceEquals(entry.Owner, from))
+                {
+                    entry.Owner = to;
+                }
+            }
+        }
+
+        internal override void DetachFromOwners()
+        {
+            foreach (var entry in Entries)
+            {
+                entry.Owner?.OptimisticDependents?.Remove(this);
+            }
+        }
     }
 
     internal sealed class HookEffectSlot
@@ -118,7 +213,73 @@ namespace Velvet
 
     internal sealed class HookTransitionSlot
     {
-        public bool IsPending;
+        // Every clear retires the optimistic entries this transition owns, the release an unmount forces
+        // included: the task that would have settled it no longer can, so nothing else would retire them.
+        public bool IsPending
+        {
+            get => _isPending;
+            set
+            {
+                var settled = _isPending && !value;
+                _isPending = value;
+                if (settled)
+                {
+                    RetireOptimisticEntries();
+                }
+            }
+        }
+        private bool _isPending;
+        // The optimistic slots holding an entry made while FiberWorkLoop.CurrentOptimisticOwner named this slot.
+        public List<HookOptimisticSlot>? OptimisticDependents;
+
+        internal void EnrolOptimisticDependent(HookOptimisticSlot slot)
+        {
+            OptimisticDependents ??= new List<HookOptimisticSlot>();
+            if (!OptimisticDependents.Contains(slot))
+            {
+                OptimisticDependents.Add(slot);
+            }
+        }
+
+        // True where this transition's last outstanding work is the commit of drainingFiber's Transition-lane
+        // drain, which is when the settle clears this slot. The conditions are the ones
+        // ComponentFiber.SettleIfNothingOutstanding clears on, plus that no async action is in flight, since
+        // RetireOptimisticEntries holds the entries behind one.
+        internal bool SettlesWithCommitOf(ComponentFiber drainingFiber)
+            => !HasActiveOwner
+                && !IsAsyncInFlight
+                && !FiberWorkLoop.AsyncActionsInFlight.IsPending
+                && EnrolledFibers is { Count: 1 }
+                && ReferenceEquals(EnrolledFibers[0], drainingFiber);
+
+        private void RetireOptimisticEntries()
+        {
+            if (OptimisticDependents == null)
+            {
+                return;
+            }
+            // The in-flight slot's own clear reaches here with its flag already false, so this is never it.
+            // A transition settling while any async action is in flight keeps its entries until none is left:
+            // the settle is not the last thing the entries wait for, so they move to the slot that stands for
+            // the actions in flight and no render is asked for here.
+            var inFlight = FiberWorkLoop.AsyncActionsInFlight;
+            if (inFlight.IsPending)
+            {
+                foreach (var slot in OptimisticDependents)
+                {
+                    slot.Reown(this, inFlight);
+                    inFlight.EnrolOptimisticDependent(slot);
+                }
+                OptimisticDependents.Clear();
+                return;
+            }
+            foreach (var slot in OptimisticDependents)
+            {
+                slot.RetireEntriesOwnedBy(this);
+            }
+            OptimisticDependents.Clear();
+        }
+
         // An awaiting async StartTransition may hold IsPending=true on a fiber with NO pending lane (its
         // setState calls come after the await), and a drain callback armed earlier can legitimately fire
         // on that clean fiber — the settle-time sweep (SettleTransitionPending) must not read the absence of
