@@ -198,46 +198,11 @@ namespace Velvet
             {
                 percent = 100f;
             }
-            else if (!TryParseFractionPercent(suffix, out percent))
+            else if (!StyleArbitraryValueResolver.TryParseFractionPercent(suffix, out percent))
             {
                 return TryParseSpacing(property, suffix, negate, allowAuto: true, out result);
             }
             result = new ArbitraryStyle(property, negate ? -percent : percent, LengthUnit.Percent);
-            return true;
-        }
-
-        // Digits only with no sign or leading zero, as Tailwind reads a fraction's halves; a zero denominator
-        // stands for no percent.
-        private static bool TryParseFractionPercent(string text, out float percent)
-        {
-            percent = 0f;
-            var slash = text.IndexOf('/');
-            if (slash < 0
-                || !TryParseFractionPart(text.Substring(0, slash), out var numerator)
-                || !TryParseFractionPart(text.Substring(slash + 1), out var denominator)
-                || denominator == 0)
-            {
-                return false;
-            }
-            percent = 100f * numerator / denominator;
-            return true;
-        }
-
-        private static bool TryParseFractionPart(string text, out int value)
-        {
-            value = 0;
-            if (text.Length == 0 || text.Length > 9 || (text.Length > 1 && text[0] == '0'))
-            {
-                return false;
-            }
-            foreach (var digit in text)
-            {
-                if (digit < '0' || digit > '9')
-                {
-                    return false;
-                }
-                value = value * 10 + (digit - '0');
-            }
             return true;
         }
 

@@ -23,7 +23,7 @@ namespace Velvet
     /// bracket form <see cref="StyleArbitraryValueResolver.TryParse"/> already resolves onto one of those
     /// properties. Deliberately NOT recognized, each because the class alone cannot yield a number to
     /// interpolate: semantic theme tokens (<c>bg-primary</c>, <c>text-current</c>) have no C# mirror of their
-    /// <c>--color-*</c> value; keyword lengths (<c>w-auto</c>, <c>w-full</c>, <c>basis-auto</c>) are not
+    /// <c>--color-*</c> value; keyword lengths (<c>w-auto</c>, <c>w-full</c>, <c>basis-auto</c>, <c>top-auto</c>) are not
     /// magnitudes; <c>rounded-full</c> is a saturating radius sentinel; preset font sizes (<c>text-lg</c>) resolve
     /// through <c>--text-*</c> tokens with no C# mirror, so only the bracket form (<c>text-[20px]</c>) is
     /// claimed. An unrecognized class is simply skipped — it still applies as a plain class, it just is not
