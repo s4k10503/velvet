@@ -75,6 +75,7 @@
 [Velvet] ctor Velvet.MotionVariant.ctor(System.String?, Velvet.StyleTransitionConfig?): System.Void
 [Velvet] ctor Velvet.MountOptions.ctor(System.Action`2[System.Exception, Velvet.ErrorInfo]?): System.Void
 [Velvet] ctor Velvet.MutableRef`1[T].ctor(T): System.Void
+[Velvet] ctor Velvet.MutateOptions`2[TVariables, TData].ctor(): System.Void
 [Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action?, System.Action`1[System.Exception]?): System.Void
 [Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
 [Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
@@ -396,9 +397,13 @@
 [Velvet] method Velvet.IStoreWriter`1[TState].SetState(System.Func`2[TState, TState]): System.Boolean
 [Velvet] method Velvet.MountedTree.Dispose(): System.Void
 [Velvet] method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData]): Velvet.VelvetTask`1[TData]
+[Velvet] method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData], Velvet.MutateOptions`2[Velvet.Unit, TData]?): Velvet.VelvetTask`1[TData]
 [Velvet] method Velvet.MutationResultExtensions.Mutate`1(Velvet.MutationResult`2[Velvet.Unit, TData]): System.Void
+[Velvet] method Velvet.MutationResultExtensions.Mutate`1(Velvet.MutationResult`2[Velvet.Unit, TData], Velvet.MutateOptions`2[Velvet.Unit, TData]?): System.Void
 [Velvet] method Velvet.MutationResult`2[TVariables, TData].Mutate(TVariables): System.Void
+[Velvet] method Velvet.MutationResult`2[TVariables, TData].Mutate(TVariables, Velvet.MutateOptions`2[TVariables, TData]?): System.Void
 [Velvet] method Velvet.MutationResult`2[TVariables, TData].MutateAsync(TVariables): Velvet.VelvetTask`1[TData]
+[Velvet] method Velvet.MutationResult`2[TVariables, TData].MutateAsync(TVariables, Velvet.MutateOptions`2[TVariables, TData]?): Velvet.VelvetTask`1[TData]
 [Velvet] method Velvet.MutationResult`2[TVariables, TData].Reset(): System.Void
 [Velvet] method Velvet.NullStoreLogger.Log(System.String): System.Void
 [Velvet] method Velvet.NullStoreLogger.LogError(System.String): System.Void
@@ -864,6 +869,9 @@
 [Velvet] property Velvet.MotionVariant.Transition: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.MountOptions.OnCaughtError: System.Action`2[System.Exception, Velvet.ErrorInfo]?
 [Velvet] property Velvet.MutableRef`1[T].Current: T
+[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnError: System.Action`3[System.Exception, TVariables, System.Object?]?
+[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSettled: System.Action`4[TData?, System.Exception?, TVariables, System.Object?]?
+[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSuccess: System.Action`3[TData, TVariables, System.Object?]?
 [Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
 [Velvet] property Velvet.MutationOptions.OnError: System.Action`1[System.Exception]?
 [Velvet] property Velvet.MutationOptions.OnSettled: System.Action`1[System.Exception?]?
@@ -1140,6 +1148,7 @@
 [Velvet] type Velvet.MountOptions
 [Velvet] type Velvet.MountedTree
 [Velvet] type Velvet.MutableRef`1[T]
+[Velvet] type Velvet.MutateOptions`2[TVariables, TData]
 [Velvet] type Velvet.MutationOptions
 [Velvet] type Velvet.MutationOptions`1[TVariables]
 [Velvet] type Velvet.MutationOptions`2[TVariables, TData]

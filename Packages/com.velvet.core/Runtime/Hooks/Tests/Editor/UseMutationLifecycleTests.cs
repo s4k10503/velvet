@@ -26,7 +26,9 @@ namespace Velvet.Tests
     /// settles again with that exception.</item>
     /// <item>Overlapping calls each hand their callbacks their own context.</item>
     /// <item>A call whose component unmounts while it is in flight still runs its callbacks, with the cancellation
-    /// where the mutation function honours its token.</item>
+    /// where the mutation function honours its token, and its <c>MutateAsync</c> rejects with that cancellation.</item>
+    /// <item>Per-call callbacks run after the options' own, once the outcome is on the handle, and only for the call
+    /// the handle still follows: a newer call, <c>Reset</c> and an unmount each drop them.</item>
     /// </list>
     /// <see cref="UseMutationHookTests"/> owns the lifecycle the handle reports, an unmounted call's included.
     /// </summary>
@@ -51,6 +53,7 @@ namespace Velvet.Tests
             s_onErrorThrows = null;
             s_settledThrowsOnSuccess = null;
             s_settledThrowsOnFailure = null;
+            s_callSuccessThrows = null;
         }
 
         [UnityTest]
@@ -336,13 +339,213 @@ namespace Velvet.Tests
 
             // Act
             mounted.Dispose();
-            await inFlight;
+            try { await inFlight; } catch (OperationCanceledException) { }
 
             // Assert
             Assert.That(Read(e => e.Kind is "error" or "settled", e => $"{e.Kind} {e.Cancelled} {e.Context}"),
                 Is.EqualTo("error True ctx7,settled True ctx7"),
                 "A call the unmount cancelled hands OnError and OnSettled the cancellation and its context, so a " +
                 "write OnMutate made can be rolled back");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AMutationHonouringItsToken_When_TheComponentUnmounts_Then_MutateAsyncRejectsWithTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-rejects"));
+            var inFlight = s_captured!.MutateAsync(7);
+            Exception? rejection = null;
+
+            // Act
+            mounted.Dispose();
+            try { await inFlight; } catch (Exception caught) { rejection = caught; }
+
+            // Assert
+            Assert.That(rejection, Is.InstanceOf<OperationCanceledException>(),
+                "A call the unmount cancelled rejects its MutateAsync, as a failure does, rather than resolving default data");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnUnmountedComponent_When_MutateAsyncIsCalled_Then_ItRejectsWithTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "late-call-rejects"));
+            var handle = s_captured!;
+            mounted.Dispose();
+            Exception? rejection = null;
+
+            // Act
+            try { await handle.MutateAsync(7); } catch (Exception caught) { rejection = caught; }
+
+            // Assert
+            Assert.That(rejection, Is.InstanceOf<OperationCanceledException>(),
+                "A call made after the unmount never runs, and its MutateAsync says so rather than resolving default data");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_PerCallCallbacks_When_TheCallSucceeds_Then_TheyRunAfterTheHookOptionsCallbacks() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-order"));
+
+            // Act
+            await s_captured!.MutateAsync(21, CallOptions());
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled,call-success,call-settled"),
+                "Per-call callbacks follow the options' OnSuccess and OnSettled, as TanStack's observer notifies after the mutation ran its own");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_PerCallCallbacks_When_TheCallSucceeds_Then_TheyReceiveTheDataVariablesAndContext() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-success-args"));
+
+            // Act
+            await s_captured!.MutateAsync(21, CallOptions());
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind.StartsWith("call-"), e => $"{e.Kind} {e.Data} {e.Error} {e.Variables} {e.Context}"),
+                Is.EqualTo("call-success 42 none 21 ctx21,call-settled 42 none 21 ctx21"),
+                "Per-call OnSuccess and OnSettled receive the data, a null exception, the variables and the OnMutate context");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_PerCallCallbacks_When_TheCallFails_Then_TheyReceiveTheErrorVariablesAndContext() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_mutationFn = (_, _) => throw new InvalidOperationException("boom");
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-error-args"));
+
+            // Act
+            try { await s_captured!.MutateAsync(3, CallOptions()); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind.StartsWith("call-"), e => $"{e.Kind} {e.Data} {e.Error} {e.Variables} {e.Context}"),
+                Is.EqualTo("call-error 0 boom 3 ctx3,call-settled 0 boom 3 ctx3"),
+                "Per-call OnError and OnSettled receive the exception, default data, the variables and the OnMutate context");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_PerCallCallbacks_When_TheyRun_Then_TheHandleAlreadyShowsTheCallsOutcome() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-sees-outcome"));
+
+            // Act
+            await s_captured!.MutateAsync(21, CallOptions());
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "call-success", e => e.Status.ToString()), Is.EqualTo("Success"),
+                "Per-call callbacks run once the outcome is on the handle, where the options' callbacks run before it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_PerCallCallbacksOnFireAndForgetMutate_When_TheCallSucceeds_Then_TheyRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-mutate"));
+            s_captured!.Mutate(5, CallOptions());
+
+            // Act
+            gate.TrySetResult(10);
+            await VelvetTask.Yield();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind.StartsWith("call-"), e => e.Kind), Is.EqualTo("call-success,call-settled"),
+                "Mutate takes per-call callbacks as MutateAsync does");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_TwoOverlappingCallsWithPerCallCallbacks_When_TheFirstSettlesLast_Then_OnlyTheNewestCallsRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — TanStack's observer detaches from the previous mutation when a new one starts, so
+            // the older call's per-call callbacks are dropped.
+            var first = new VelvetTaskCompletionSource<int>();
+            var second = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (v, _) => v == 1 ? first.Task : second.Task;
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-superseded"));
+            var firstCall = s_captured!.MutateAsync(1, CallOptions());
+            var secondCall = s_captured.MutateAsync(2, CallOptions());
+
+            // Act
+            second.TrySetResult(20);
+            await secondCall;
+            first.TrySetResult(10);
+            await firstCall;
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(e => e.Kind == "call-success", e => e.Variables.ToString()), Is.EqualTo("2"),
+                "A call a newer one superseded still runs the options' callbacks, but not its per-call ones");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallWithPerCallCallbacks_When_ItIsResetOutOfBeforeItSettles_Then_ThePerCallCallbacksDoNotRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — Reset detaches the observer in TanStack, and the call goes on to run the options' callbacks.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-reset"));
+            var inFlight = s_captured!.MutateAsync(1, CallOptions());
+            s_captured.Reset();
+
+            // Act
+            gate.TrySetResult(10);
+            await inFlight;
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
+                "A reset call delivers the options' callbacks and drops its per-call ones");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallWithPerCallCallbacks_When_TheComponentUnmountsBeforeItSettles_Then_ThePerCallCallbacksDoNotRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the function ignores its token, so the call completes after the unmount.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-unmount"));
+            var inFlight = s_captured!.MutateAsync(1, CallOptions());
+
+            // Act
+            mounted.Dispose();
+            gate.TrySetResult(10);
+            await inFlight;
+
+            // Assert
+            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
+                "A call whose component unmounted delivers the options' callbacks and drops its per-call ones, " +
+                "as TanStack skips them once the observer has no listener");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_APerCallOnSuccessThatThrows_When_TheCallSucceeds_Then_OnSettledStillRunsAndTheCallStaysASuccess() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_callSuccessThrows = new InvalidOperationException("call onSuccess threw");
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-throws"));
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: call onSuccess threw"));
+
+            // Act
+            await s_captured!.MutateAsync(21, CallOptions());
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((Read(e => e.Kind == "call-settled", e => e.Kind), s_captured.Status),
+                Is.EqualTo(("call-settled", MutationStatus.Success)),
+                "A throwing per-call callback is reported on its own and costs neither the next one nor the outcome");
         });
 
         [UnityTest]
@@ -455,6 +658,17 @@ namespace Velvet.Tests
             return V.Label(text: "ok");
         }
 
+        private static MutateOptions<int, int> CallOptions() => new()
+        {
+            OnSuccess = (data, v, context) =>
+            {
+                Record("call-success", data, null, v, context as string);
+                if (s_callSuccessThrows != null) throw s_callSuccessThrows;
+            },
+            OnError = (error, v, context) => Record("call-error", 0, error, v, context as string),
+            OnSettled = (data, error, v, context) => Record("call-settled", data, error, v, context as string),
+        };
+
         // The handle's status and variables are read when the entry is written, which is what a callback
         // reading the handle would see at that point.
         private static void Record(string kind, int data, Exception? error, int variables, string? context) =>
@@ -493,6 +707,7 @@ namespace Velvet.Tests
         private static Func<int, CancellationToken, VelvetTask<int>> s_mutationFn = (v, _) => VelvetTask.FromResult(v * 2);
         private static Func<int, CancellationToken, VelvetTask> s_voidMutationFn = (_, _) => VelvetTask.CompletedTask;
         private static Exception? s_onMutateThrows;
+        private static Exception? s_callSuccessThrows;
         private static Exception? s_onErrorThrows;
         private static Exception? s_settledThrowsOnSuccess;
         private static Exception? s_settledThrowsOnFailure;

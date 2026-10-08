@@ -5,4 +5,6 @@
   token the unmount cancels ends in the `OperationCanceledException`, and `OnError` receives it — a request
   that may already have been applied, so a handler that rolls back should tell it apart by type; one that
   ignores the token runs `OnSuccess` or `OnError` when it completes. Neither writes the handle or re-renders
-  the component, and `MutateAsync` still completes with default data on the cancellation.
+  the component. `MutateAsync` rejects with the `OperationCanceledException` where it used to complete with
+  default data, and a `MutateAsync` called after the unmount rejects with one instead of completing with
+  default data.

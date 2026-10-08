@@ -2048,8 +2048,10 @@ namespace Velvet
             ComponentFiber fiber,
             HookMutationSlot<TVariables, TData, TContext> slot)
         {
-            slot.Result.MutateAction = variables => RunMutationAsync(fiber, slot, variables, rethrowOnFailure: false).Forget();
-            slot.Result.MutateAsyncFunc = variables => RunMutationAsync(fiber, slot, variables, rethrowOnFailure: true);
+            slot.Result.MutateAction = (variables, callOptions) =>
+                RunMutationAsync(fiber, slot, variables, callOptions, rethrowOnFailure: false).Forget();
+            slot.Result.MutateAsyncFunc = (variables, callOptions) =>
+                RunMutationAsync(fiber, slot, variables, callOptions, rethrowOnFailure: true);
             slot.Result.ResetAction = () => ResetMutation(fiber, slot);
             fiber.MutationSlots!.Add(slot);
             return slot.Result;
@@ -2063,9 +2065,15 @@ namespace Velvet
             ComponentFiber fiber,
             HookMutationSlot<TVariables, TData, TContext> slot,
             TVariables variables,
+            MutateOptions<TVariables, TData>? callOptions,
             bool rethrowOnFailure)
         {
-            if (fiber.IsDisposed) return default!;
+            if (fiber.IsDisposed)
+            {
+                // A resolved task would hand mutateAsync's caller data no call produced.
+                if (rethrowOnFailure) throw new OperationCanceledException("The component unmounted before the mutation started.");
+                return default!;
+            }
 
             // Two calls run side by side rather than the second aborting the first, as in TanStack, which
             // hands a mutation no signal at all. Cancelling on re-entry dropped the first call's OnSuccess,
@@ -2077,7 +2085,8 @@ namespace Velvet
             // Ownership is by generation now, not by holding the slot's only token: a superseded call still
             // runs its callbacks, which is what TanStack's Mutation.execute does — it awaits them itself and
             // consults no observer list. What detaching an observer suppresses there is the per-call form,
-            // mutate(vars, { onSuccess }), which has no equivalent here.
+            // mutate(vars, { onSuccess }), so callOptions is delivered only to the call that still owns
+            // the generation, the one CommitOutcome writes for.
             var mine = ++slot.Generation;
 
             slot.Result.MarkPending(variables);
@@ -2099,21 +2108,29 @@ namespace Velvet
                 // a throwing OnSettled included, as TanStack's catch does.
                 slot.InvokeOnSuccess(data, variables, context);
                 slot.InvokeOnSettled(data, null, variables, context);
-                CommitOutcome(fiber, slot, mine, data, error: null);
+                if (CommitOutcome(fiber, slot, mine, data, error: null))
+                {
+                    callOptions?.Deliver(data, null, variables, slot.BoxContext(context));
+                }
                 return data;
             }
             catch (OperationCanceledException cancelled) when (cts.IsCancellationRequested)
             {
                 // Only an unmount cancels this source. The handlers still run, so a write OnMutate made
                 // optimistically is rolled back from OnError although the request it stood for was cancelled.
+                // The caller's await rejects as well, where it would otherwise read default data as a result.
                 DeliverFailure(slot, cancelled, variables, context);
+                if (rethrowOnFailure) throw;
                 return default!;
             }
             catch (Exception ex)
             {
                 DeliverFailure(slot, ex, variables, context);
                 // Committed after the handlers for the same reason as a success.
-                CommitOutcome(fiber, slot, mine, default!, ex);
+                if (CommitOutcome(fiber, slot, mine, default!, ex))
+                {
+                    callOptions?.Deliver(default, ex, variables, slot.BoxContext(context));
+                }
                 if (rethrowOnFailure) throw;
                 return default!;
             }
@@ -2154,20 +2171,24 @@ namespace Velvet
 
         // The handlers above run whether or not the component is still mounted, as TanStack's option
         // callbacks outlive the observer; only the handle and the render belong to the mounted component.
-        private static void CommitOutcome<TVariables, TData, TContext>(
+        // Returns whether this call's outcome is the one the handle shows, which is also when its per-call
+        // callbacks are due.
+        private static bool CommitOutcome<TVariables, TData, TContext>(
             ComponentFiber fiber,
             HookMutationSlot<TVariables, TData, TContext> slot,
             long generation,
             TData data,
             Exception? error)
         {
-            if (fiber.IsDisposed) return;
-            if (generation == slot.Generation)
+            if (fiber.IsDisposed) return false;
+            var owns = generation == slot.Generation;
+            if (owns)
             {
                 if (error == null) slot.Result.MarkSuccess(data);
                 else slot.Result.MarkFailed(error);
             }
             RequestRender(fiber);
+            return owns;
         }
 
         private static void ResetMutation<TVariables, TData, TContext>(

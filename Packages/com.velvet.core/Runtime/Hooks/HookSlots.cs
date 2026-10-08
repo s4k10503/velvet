@@ -203,6 +203,8 @@ namespace Velvet
 
         public abstract VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token);
         public abstract TContext InvokeOnMutate(TVariables variables);
+        // What a per-call callback receives as the context, which the context-free slot declines to box.
+        public virtual object? BoxContext(TContext context) => context;
         public abstract void InvokeOnSuccess(TData data, TVariables variables, TContext context);
         public abstract void InvokeOnError(Exception error, TVariables variables, TContext context);
         public abstract void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context);
@@ -241,6 +243,8 @@ namespace Velvet
             Options.MutationFn(variables, token);
 
         public override Unit InvokeOnMutate(TVariables variables) => Unit.Default;
+
+        public override object? BoxContext(Unit context) => null;
 
         public override void InvokeOnSuccess(TData data, TVariables variables, Unit context) =>
             Options.OnSuccess?.Invoke(data, variables);

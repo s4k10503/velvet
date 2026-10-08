@@ -48,6 +48,14 @@ namespace Velvet.Tests
         private static MutationResult<int, int>? s_captured;
         private static Func<int, CancellationToken, VelvetTask<int>> s_mutationFn = (v, _) => VelvetTask.FromResult(v * 2);
 
+        // The unmount cancels each call's token, so a call whose function honours it rejects with the
+        // cancellation; these cases read the unmount itself and only need the call to have settled.
+        private static async VelvetTask Settled(VelvetTask<int> call)
+        {
+            try { await call; }
+            catch (OperationCanceledException) { }
+        }
+
         [SetUp]
         public void SetUp()
         {
@@ -401,6 +409,7 @@ namespace Velvet.Tests
                 "Every call delivers its own success, whether or not a later one has already settled");
         });
 
+        // GREEN_ON_BASE(characterization): the base unmounts two calls in flight without throwing too; the change only has the trailing awaits tolerate the cancellation they now reject with.
         [UnityTest]
         public IEnumerator Given_TwoMutationsInFlight_When_TheComponentUnmounts_Then_TheUnmountCompletes() => VelvetTask.ToCoroutine(async () =>
         {
@@ -430,10 +439,11 @@ namespace Velvet.Tests
             // Assert — the first term keeps the reading load-bearing: with fewer than two calls in flight
             // the disposal order this pins is never exercised.
             Assert.That((bothStarted, thrown), Is.EqualTo((2, (Exception?)null)));
-            await firstCall;
-            await secondCall;
+            await Settled(firstCall);
+            await Settled(secondCall);
         });
 
+        // GREEN_ON_BASE(characterization): the base cancels and releases the second source after a throwing callback too; the change only has the trailing awaits tolerate the cancellation they now reject with.
         [UnityTest]
         public IEnumerator Given_TwoMutationsInFlight_When_TheFirstTokensCallbackThrows_Then_TheSecondSourceIsCancelledAndReleased() => VelvetTask.ToCoroutine(async () =>
         {
@@ -470,10 +480,11 @@ namespace Velvet.Tests
                 $"{escaped?.GetType().Name ?? "none"} {secondToken.IsCancellationRequested} {CancellationTokenStateProbe.ReadTokenState(secondToken)}",
                 Is.EqualTo("none True released"),
                 "A cancellation callback belonging to one call must not cost the next call its cancellation or its release");
-            await firstCall;
-            await secondCall;
+            await Settled(firstCall);
+            await Settled(secondCall);
         });
 
+        // GREEN_ON_BASE(characterization): the base unmounts a call in flight without throwing too; the change only has the trailing await tolerate the cancellation it now rejects with.
         [UnityTest]
         public IEnumerator Given_AMutationInFlight_When_TheComponentUnmounts_Then_TheUnmountCompletes() => VelvetTask.ToCoroutine(async () =>
         {
@@ -495,7 +506,7 @@ namespace Velvet.Tests
             // exception out of here aborts the enclosing reconcile, not just this hook.
             Assert.That((startedPending, thrown),
                 Is.EqualTo((MutationStatus.Pending, (Exception?)null)));
-            await inFlight;
+            await Settled(inFlight);
         });
 
         [UnityTest]

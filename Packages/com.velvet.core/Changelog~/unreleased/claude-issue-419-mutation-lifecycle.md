@@ -13,3 +13,9 @@
   is committed. A throwing `OnSettled` on the success path fails the call, which then runs `OnError` and
   `OnSettled` with that exception, as v5 does; on the failure path it is logged and the outcome stays the
   mutation's own, as it does after a throwing `OnError`, which does not cost the call its `OnSettled`.
+
+- `MutationResult.Mutate` and `MutationResult.MutateAsync` take a `MutateOptions<TVariables, TData>` with
+  per-call `OnSuccess`, `OnError` and `OnSettled`, TanStack Query's `mutate(variables, { onSuccess, onError,
+  onSettled })`. They run after the hook options' callbacks, once the outcome is on the handle, and are
+  dropped when the component unmounts, a newer call starts or `Reset` is called, as v5 drops them when the
+  observer detaches. Each receives the call's `OnMutate` result as an `object?`.

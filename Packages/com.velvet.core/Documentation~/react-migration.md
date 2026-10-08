@@ -101,7 +101,7 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 | `useMutation({ mutationFn, onMutate, onSuccess, onError, onSettled })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData, TContext>(MutationFn: ..., OnMutate: ..., OnSuccess: ..., OnError: ..., OnSettled: ...))` |
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
-| `mutate(variables, { onSuccess, onError, onSettled })` | No equivalent: callbacks are declared on the options only |
+| `mutate(variables, { onSuccess, onError, onSettled })` | `mutation.Mutate(variables, new MutateOptions<TVariables, TData> { OnSuccess = ..., OnError = ..., OnSettled = ... })`; `MutateAsync` takes the same second argument |
 
 **Lifecycle callbacks.** `OnMutate` runs when the call starts — after the handle has turned `Pending`
 with the call's `Variables`, before `MutationFn` — and what it returns is the context that call's
@@ -137,12 +137,21 @@ var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
     OnSettled: (_, _, _, _) => setBusy.Invoke(false)));
 ```
 
+**Per-call callbacks.** `Mutate` and `MutateAsync` take a `MutateOptions<TVariables, TData>` whose
+`OnSuccess`, `OnError` and `OnSettled` run after the hook options' own, once the call's outcome is on the
+handle, so they read `Status` / `Data` / `Error` as the call left them. As in v5, only the call the handle
+follows delivers them: a newer call, `Reset` and the component unmounting each drop them, while the hook
+options' callbacks still run. A throwing per-call callback is logged and costs neither the next one nor the
+outcome. Each receives the call's `OnMutate` result as an `object?`, null for the context-free option
+records, since the handle's type does not carry `TContext`.
+
 **Unmounting.** The callbacks of a call in flight still run after its component unmounts, as v5's
 option callbacks outlive the observer; only the handle is no longer written and the component no longer
 re-rendered. Unlike v5, which never cancels, Velvet cancels the call's `CancellationToken` on unmount. A
 `MutationFn` that honours it ends in the `OperationCanceledException`, which `OnError` and then
-`OnSettled` receive with the call's context; `MutateAsync` then completes with default data rather than
-rejecting. One that ignores it completes as usual and runs `OnSuccess` or `OnError`, then `OnSettled`.
+`OnSettled` receive with the call's context, and `MutateAsync` rejects with that exception. One that
+ignores it completes as usual and runs `OnSuccess` or `OnError`, then `OnSettled`. A `MutateAsync`
+called after the unmount never starts and rejects with an `OperationCanceledException` too.
 A cancelled request may already have reached the server and been applied, so a cancellation does not say
 the write failed: rolling the optimistic value back on it can undo a write the server kept. Branch on
 `error is OperationCanceledException` in `OnError`, as the sample does, and reload the authoritative state
