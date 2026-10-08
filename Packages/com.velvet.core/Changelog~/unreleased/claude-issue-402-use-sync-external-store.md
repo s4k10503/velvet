@@ -7,8 +7,8 @@
   new snapshot per read re-renders until the update-depth limit drops the update. A `subscribe` that is
   not equal to the previous render's re-subscribes, and unmounting unsubscribes. The change callback
   must be invoked on the main thread, and readers with equal `getSnapshot` delegates share one snapshot
-  within a batch drain wave, as `Hooks.UseStore` readers of one store do. A time-sliced pass resumed
-  with such a re-render pending flushes it before its next slice.
+  within a batch drain wave, as `Hooks.UseStore` readers of one store do. The scheduler's resume of a
+  parked time-sliced pass flushes such a re-render first.
 
 ### Changed
 

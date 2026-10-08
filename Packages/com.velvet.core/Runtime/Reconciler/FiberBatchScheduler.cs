@@ -36,10 +36,10 @@ namespace Velvet
         private bool _immediateScheduled;
         private bool _delayedScheduled;
 
-        // Set by a UseSyncExternalStore re-render entering the immediate tier and cleared by the drain that
-        // empties it; _externalStoreFlushPosted is the one posted flush in flight. See OweExternalStoreFlush.
+        // Set by a UseSyncExternalStore re-render entering the immediate tier and cleared once the tier is
+        // empty, by the drain or by Remove. It is also the one posted flush in flight: a post the main thread
+        // discards leaves it set only until then. See OweExternalStoreFlush.
         private bool _externalStoreRenderQueued;
-        private bool _externalStoreFlushPosted;
 
         // Guards against re-entering a drain. FlushImmediate runs at the end of a discrete event handler; when
         // such an event is dispatched SYNCHRONOUSLY while a drain is already in progress (e.g. focus loss when a
@@ -151,19 +151,12 @@ namespace Velvet
         // frame-boundary callback ScheduleImmediate registered still commits it when neither has.
         internal void OweExternalStoreFlush()
         {
+            if (_externalStoreRenderQueued) return;
+            VelvetMainThread.Post(static scheduler => ((FiberBatchScheduler)scheduler!).FlushOwedExternalStoreRenders(), this);
             _externalStoreRenderQueued = true;
-            if (_externalStoreFlushPosted) return;
-            _externalStoreFlushPosted = true;
-            VelvetMainThread.Post(static scheduler => ((FiberBatchScheduler)scheduler!).FlushPostedExternalStoreRenders(), this);
         }
 
-        private void FlushPostedExternalStoreRenders()
-        {
-            _externalStoreFlushPosted = false;
-            FlushOwedExternalStoreRenders();
-        }
-
-        // Called before a parked time-sliced pass resumes, so the readers it committed in earlier slices have
+        // Called by the posted flush and before FiberWorkLoop.ContinueReconcile resumes a parked time-sliced pass, so the readers it committed in earlier slices have
         // re-rendered the changed snapshot before a later slice's readers render it.
         internal void FlushOwedExternalStoreRenders()
         {
@@ -433,6 +426,7 @@ namespace Velvet
         {
             if (_immediateSet.Remove(fiber)) _immediateOrder.Remove(fiber);
             if (_delayedSet.Remove(fiber)) _delayedOrder.Remove(fiber);
+            if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
         }
 
         // Drops every pending fiber and resets the scheduled flags and anchor. Called from the owning

@@ -254,9 +254,9 @@ It follows React's `useSyncExternalStore`:
   past the pin renders the pin, then asks for that re-render itself once the render commits. Readers
   holding different closures are not pinned to each other. A render outside a drain — the initial
   mount, a synchronous flush, or a time-sliced render resumed after its drain returned — reads the
-  live snapshot, and so does a render whose `subscribe` raises a change while it runs. A time-sliced
-  pass that resumes with such a re-render pending flushes it before its next slice, so readers the pass
-  committed in an earlier slice show the changed snapshot before a later slice renders it.
+  live snapshot, and so does a render whose `subscribe` raises a change while it runs. The scheduler's
+  resume of a parked time-sliced pass flushes such a re-render first, so readers the pass committed in an
+  earlier slice show the changed snapshot before the next slice renders it.
 
 For a Velvet `Store<T>`, `Hooks.UseStore` stays the shorter form, with a selector and a comparer.
 

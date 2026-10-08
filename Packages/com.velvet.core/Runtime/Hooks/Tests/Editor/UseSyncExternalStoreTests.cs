@@ -406,35 +406,35 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_GetSnapshotBuildingANewValuePerRead_When_RenderedTwice_Then_LogsTheCachingErrorOnce()
+        public void Given_GetSnapshotBuildingANewValuePerRead_When_ReRendered_Then_LogsTheCachingErrorOnce()
         {
-            // Arrange
+            // Arrange — the mount's own re-render loop runs to the update-depth limit, so both errors are logged
+            // here, the caching error first
             LogAssert.Expect(LogType.Error, new Regex("getSnapshot returned a different value on two consecutive reads"));
+            LogAssert.Expect(LogType.Error, new Regex("Maximum update depth exceeded"));
             s_uncached = new ExternalSource<int>(0);
             using var mounted = V.Mount(_root, V.Component(UncachedRender, key: "uncached"));
 
-            // Act — every snapshot differs from the last, so the notification re-renders
+            // Act — the slot has rendered many times already; one more render must not log the caching error again
             s_uncached.Notify();
             mounted.FlushStateForTest();
 
-            // Assert — LogAssert.Expect takes the one error; a second fails the case as an unexpected log
+            // Assert — LogAssert.Expect takes one of each; a third log fails the case as an unexpected one
         }
 
         [Test]
-        public void Given_GetSnapshotBuildingANewValuePerRead_When_TheImmediateTierDrains_Then_ItRerendersPastTheUpdateDepthLimit()
+        public void Given_GetSnapshotBuildingANewValuePerRead_When_Mounted_Then_ItRerendersPastTheUpdateDepthLimit()
         {
             // Arrange
             LogAssert.Expect(LogType.Error, new Regex("getSnapshot returned a different value on two consecutive reads"));
             LogAssert.Expect(LogType.Error, new Regex("Maximum update depth exceeded"));
             s_uncached = new ExternalSource<int>(0);
-            using var mounted = V.Mount(_root, V.Component(UncachedRender, key: "uncached"));
-            s_uncached.Notify();
 
-            // Act
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            // Act — the mount ends in a flush of the immediate tier, which the commit check keeps refilling
+            using var mounted = V.Mount(_root, V.Component(UncachedRender, key: "uncached"));
 
             // Assert — more renders than the drain's nested-update cap, which only the limit ends; a reader
-            // that stopped after the render its notification asked for would leave this at two
+            // that stopped after the render its first commit check asked for would leave this at two
             Assert.That(s_uncachedRenders, Is.GreaterThan(50));
         }
 

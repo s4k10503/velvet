@@ -266,9 +266,9 @@ namespace Velvet
         /// <see cref="InvalidOperationException"/> to its invoker and schedules nothing. The re-render it schedules
         /// takes the Urgent lane and never the Transition lane, including when the store is mutated inside
         /// <c>startTransition</c>, and the scheduler flushes it from the main thread's posted work instead of waiting
-        /// for its next frame-boundary callback. A time-sliced pass resumed with such a re-render pending flushes it
-        /// first, so readers the pass committed in an earlier slice show the changed snapshot before a later slice
-        /// renders it.
+        /// for its next frame-boundary callback. The scheduler's resume of a parked time-sliced pass flushes such a
+        /// re-render first, so readers the pass committed in an earlier slice show the changed snapshot before the next
+        /// slice renders it.
         /// </para>
         /// <para>
         /// Within one batch drain wave — an immediate drain and the delayed drain continuing it — readers passing
