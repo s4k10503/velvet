@@ -196,10 +196,13 @@ namespace Velvet
         // dashed / dotted divider reserves the same gutter width, masks the native color with the sentinel, and
         // paints the stroke on the child's own generateVisualContent (DivideDashChildBinding). A divide-{color}
         // colors all four edges of a divided child, as Tailwind's `border-color` does. Tailwind writes all of it
-        // at zero specificity, so a width or color the child's own classes set on an edge wins there.
+        // at zero specificity, so a width or color the child's own classes set on an edge wins there, unless the
+        // divide's own token is important.
         private void ApplyToChild(VisualElement child, DivideEdge edge, bool isDivider)
         {
-            var divides = isDivider && !StyleArbitraryValueResolver.DeclaresOwn(child, WidthSlot(edge));
+            var divides = isDivider
+                && ((_spec.Important & DivideImportance.Width) != 0
+                    || !StyleArbitraryValueResolver.DeclaresOwn(child, WidthSlot(edge)));
             // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
             // dashed divider on the same child would fight it — route it through the solid path (documented known
             // limitation). Gates on EITHER owner, mirroring the element-level border-dashed gate.
@@ -215,8 +218,7 @@ namespace Velvet
                 DetachDash(child);
                 if (divides)
                 {
-                    StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
-                    StyleArbitraryValueResolver.Yield(child, WidthSlot(edge));
+                    HoldWidth(child, edge);
                 }
                 else
                 {
@@ -236,8 +238,7 @@ namespace Velvet
 
             // Reserve the same gutter as a solid divider (real width) but mask the native border color so only
             // the dashed / dotted paint shows.
-            StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
-            StyleArbitraryValueResolver.Yield(child, WidthSlot(edge));
+            HoldWidth(child, edge);
             StyleArbitraryValueResolver.Hold(child, ColorSlot(edge), new StyleColor(SilhouetteFace.SuppressedColor));
             WriteColors(child, edge, isDivider);
 
@@ -251,10 +252,21 @@ namespace Velvet
             }
         }
 
+        // An important width stays held over the child's own arbitrary border width, where an ordinary one yields.
+        private void HoldWidth(VisualElement child, DivideEdge edge)
+        {
+            StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
+            if ((_spec.Important & DivideImportance.Width) == 0)
+            {
+                StyleArbitraryValueResolver.Yield(child, WidthSlot(edge));
+            }
+        }
+
         // Holds the divide-{color} on every edge of a divided child but skip, where the child's own classes set
         // no color of their own, and hands back the edges this manipulator holds and no longer colors.
         private void WriteColors(VisualElement child, DivideEdge? skip, bool isDivider)
         {
+            var colorImportant = (_spec.Important & DivideImportance.Color) != 0;
             foreach (var edge in s_edges)
             {
                 if (edge == skip)
@@ -262,10 +274,14 @@ namespace Velvet
                     continue;
                 }
                 var slot = ColorSlot(edge);
-                if (isDivider && _spec.HasColor && !StyleArbitraryValueResolver.DeclaresOwn(child, slot))
+                if (isDivider && _spec.HasColor
+                    && (colorImportant || !StyleArbitraryValueResolver.DeclaresOwn(child, slot)))
                 {
                     StyleArbitraryValueResolver.Hold(child, slot, new StyleColor(_spec.Color));
-                    StyleArbitraryValueResolver.Yield(child, slot);
+                    if (!colorImportant)
+                    {
+                        StyleArbitraryValueResolver.Yield(child, slot);
+                    }
                 }
                 else
                 {
@@ -475,6 +491,7 @@ namespace Velvet
                 hash = hash * 31 + (_spec.HasColor ? _spec.Color.GetHashCode() : 0);
                 hash = hash * 31 + (int)edge;
                 hash = hash * 31 + (int)_spec.Style;
+                hash = hash * 31 + (int)_spec.Important;
                 var count = container.childCount;
                 hash = hash * 31 + count;
                 hash = StyleOutOfFlowChild.HashChildSequence(hash, container);

@@ -288,6 +288,41 @@ namespace Velvet.Tests
             Assert.That(spec.Style, Is.EqualTo(BorderLineStyle.Dashed));
         }
 
+        [TestCase("divide-x-4 divide-gray-200", DivideImportance.None)]
+        [TestCase("!divide-x-4 divide-x-2 divide-gray-200", DivideImportance.Width)]
+        [TestCase("divide-x-4 divide-gray-200!", DivideImportance.Color)]
+        [TestCase("!divide-x-4 !divide-gray-200", DivideImportance.Width | DivideImportance.Color)]
+        [TestCase("divide-x-4 !divide-dashed", DivideImportance.None)]
+        public void Given_DivideTokens_When_Extracted_Then_TheSpecCarriesTheImportanceOfTheWinningWidthAndColor(
+            string className, DivideImportance expected)
+        {
+            // Act
+            StyleDivideClass.TryExtract(className.Split(' '), out var spec);
+
+            // Assert
+            Assert.That(spec.Important, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ImportantReverseMarker_When_Extracted_Then_ItReversesAndMarksNothingImportant()
+        {
+            // Act
+            StyleDivideClass.TryExtract(new[] { "!divide-x-reverse", "divide-x-2" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Reverse, spec.Important), Is.EqualTo((true, DivideImportance.None)));
+        }
+
+        [Test]
+        public void Given_AWidthWithALeadingAndATrailingBang_When_Extracted_Then_Declines()
+        {
+            // Act — only one modifier is stripped, so the trailing bang is left on a width that is not on the scale.
+            var ok = StyleDivideClass.TryExtract(new[] { "!divide-x-4!" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
         [Test]
         public void Given_OnlyAnImportantDivideClass_When_HasDivideClassProbed_Then_GateReturnsTrue()
         {
@@ -359,6 +394,118 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((atRest, whileHover, afterLeave), Is.EqualTo((2f, hoveredWidth, 2f)));
+        }
+
+        [TestCase("flex flex-row !divide-x-4", "border-r-2")]
+        [TestCase("flex flex-row divide-x-4!", "border-r-2")]
+        [TestCase("flex flex-row !divide-x-4", "border-r-[3px]")]
+        public void Given_AnImportantDivideWidth_When_ADividedChildCarriesItsOwnBorderWidth_Then_TheDivideWins(
+            string className, string childBorderClass)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild(className, childBorderClass) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightWidth.value, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_APlainDivideWidth_When_ADividedChildCarriesItsOwnBorderWidthClass_Then_TheChildKeepsIt()
+        {
+            // Arrange — the control for the important case above: the same row without the bang.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x-4", "border-r-2") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [TestCase("flex flex-row divide-x !divide-gray-200")]
+        [TestCase("flex flex-row divide-x divide-gray-200!")]
+        public void Given_AnImportantDivideColor_When_ADividedChildCarriesItsOwnBorderColor_Then_TheDivideWins(
+            string className)
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild(className, "border-[#ff0000]") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert — every edge, as for the plain divide-{color}.
+            var style = scope.Root[0][1].style;
+            Assert.That((style.borderTopColor.value, style.borderRightColor.value, style.borderBottomColor.value,
+                    style.borderLeftColor.value),
+                Is.EqualTo((gray200, gray200, gray200, gray200)));
+        }
+
+        [TestCase("flex flex-row divide-x divide-gray-200 hover:divide-red-500", false)]
+        [TestCase("flex flex-row divide-x !divide-gray-200 hover:divide-red-500", true)]
+        [TestCase("flex flex-row divide-x !divide-gray-200 hover:!divide-red-500", false)]
+        public void Given_AVariantDivideColor_When_HoverStartsAndEnds_Then_TheWinningColorAppliesAndRestores(
+            string className, bool staysGray)
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            VelvetPalette.TryResolveColorToken("red-500", out var red500);
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row(className, 2) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = scope.Root[0];
+            var atRest = container[0].style.borderRightColor.value;
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                container.SimulateEvent(over);
+            }
+            var whileHover = container[0].style.borderRightColor.value;
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                container.SimulateEvent(leave);
+            }
+            var afterLeave = container[0].style.borderRightColor.value;
+
+            // Assert
+            Assert.That((atRest, whileHover, afterLeave), Is.EqualTo((gray200, staysGray ? gray200 : red500, gray200)));
+        }
+
+        [TestCase("flex flex-row divide-x divide-dashed hover:divide-solid", false)]
+        [TestCase("flex flex-row divide-x !divide-dashed hover:divide-solid", true)]
+        [TestCase("flex flex-row divide-x divide-dashed hover:!divide-solid", false)]
+        public void Given_AVariantDivideStyle_When_HoverStartsAndEnds_Then_TheWinningStyleAppliesAndRestores(
+            string className, bool staysDashed)
+        {
+            // Arrange — a dashed divider masks the native border colour, a solid one leaves it unset.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row(className, 2) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = scope.Root[0];
+            bool Masked() => container[0].style.borderRightColor.value == SilhouetteFace.SuppressedColor;
+            var atRest = Masked();
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                container.SimulateEvent(over);
+            }
+            var whileHover = Masked();
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                container.SimulateEvent(leave);
+            }
+            var afterLeave = Masked();
+
+            // Assert
+            Assert.That((atRest, whileHover, afterLeave), Is.EqualTo((true, staysDashed, true)));
         }
 
         [Test]

@@ -26,6 +26,17 @@ namespace Velvet
         Bottom,
     }
 
+    // The slots of a divide whose winning token carries the important modifier. An important slot is written
+    // over the divided child's own border width or colour instead of giving way to it, as Tailwind's
+    // `!important` divide declaration does. The line style has no bit: nothing in the child competes for it.
+    [Flags]
+    internal enum DivideImportance
+    {
+        None = 0,
+        Width = 1,
+        Color = 2,
+    }
+
     // A resolved divide-* utility: the axis + width of the inter-child border, an optional color, the line
     // style, and whether the divider is reversed onto the axis's start edge. A divide is only active when
     // an axis class (divide-x / divide-y / divide-x-N / divide-x-[..]) is present — a lone divide-{color},
@@ -37,6 +48,7 @@ namespace Velvet
         public readonly bool HasColor;
         public readonly Color Color;
         public readonly BorderLineStyle Style;
+        public readonly DivideImportance Important;
 
         // The divide-x-reverse / divide-y-reverse marker FOR THE AXIS THIS SPEC RESOLVED TO. A divide always
         // names its axis in the class itself, so the cross-axis marker can never become relevant later and is
@@ -44,14 +56,16 @@ namespace Velvet
         // reversed.
         public readonly bool Reverse;
 
-        public DivideSpec(DivideAxis axis, float width, bool hasColor, Color color, BorderLineStyle style, bool reverse)
+        public DivideSpec(DivideAxis axis, float width, Color? color, BorderLineStyle style, bool reverse,
+            DivideImportance important)
         {
             Axis = axis;
             Width = width;
-            HasColor = hasColor;
-            Color = color;
+            HasColor = color.HasValue;
+            Color = color.GetValueOrDefault();
             Style = style;
             Reverse = reverse;
+            Important = important;
         }
     }
 
@@ -65,8 +79,8 @@ namespace Velvet
     //   - divide-dashed / divide-dotted have no UI Toolkit border-style, so they are painted by
     //     DivideDashPainter on each divided child's own generateVisualContent (the manipulator still writes
     //     the real gutter width and masks the color with the sentinel). divide-double is still unsupported.
-    //   - A single element resolves ONE axis (last axis class wins, CSS-cascade order); divide-x and
-    //     divide-y are not combined onto the same element.
+    //   - A single element resolves ONE axis (an important axis class first, then the last one, CSS-cascade
+    //     order); divide-x and divide-y are not combined onto the same element.
     internal static class StyleDivideClass
     {
         // Divide width scale: divide-x-0/2/4/8; the bare divide-x is 1px.
@@ -85,7 +99,8 @@ namespace Velvet
                 && StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("divide-", StringComparison.Ordinal);
 
         // Cheap early-out gate: true when ANY class belongs to the divide family, important tokens included.
-        // Allocates only for a token that carries a bang — used to skip the full TryExtract scan on the ~99% of elements with no divide class.
+        // Allocates only for a token that carries a bang. Used to skip the full TryExtract scan on the ~99%
+        // of elements with no divide class.
         public static bool HasDivideClass(string[] classNames)
         {
             if (classNames == null)
@@ -184,7 +199,9 @@ namespace Velvet
             // The marker on the OTHER axis is discarded here: the axis is final by now, and a marker that
             // does not name it can never apply.
             var reverse = axis == DivideAxis.Horizontal ? xReverse : yReverse;
-            spec = new DivideSpec(axis, width, hasColor, color, style, reverse);
+            var important = (axisImportant ? DivideImportance.Width : DivideImportance.None)
+                | (hasColor && colorImportant ? DivideImportance.Color : DivideImportance.None);
+            spec = new DivideSpec(axis, width, hasColor ? color : null, style, reverse, important);
             return true;
         }
 
