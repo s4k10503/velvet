@@ -51,11 +51,9 @@ namespace Velvet.Tests
             ["StyleClipPathClass.IsClipPathClass"] = "clip-path-[circle(40%)]",
             ["StyleFontClass.IsArbitraryFontClass"] = "font-[550]",
             ["StyleTextEffectClass.IsArbitraryLeadingClass"] = "leading-[3px]",
-            ["StyleTextBalanceClass.IsWidthDeclaringToken"] = "w-40",
             ["StyleGapClass.IsGapToken"] = "gap-4",
             ["StyleGridClass.IsGridToken"] = "grid-cols-2",
             ["StyleDivideClass.IsDivideToken"] = "divide-y",
-            ["StyleTextBalanceClass.IsTextBalanceToken"] = "text-balance",
             ["StyleSkewClass.IsSkewClass"] = "skew-x-6",
             ["StyleShadowClass.IsShadowClass"] = "shadow-lg",
             ["StyleGradientClass.IsGradientClass"] = "bg-gradient-to-r from-red-500 to-blue-500",
@@ -69,7 +67,7 @@ namespace Velvet.Tests
         // A ratchet on the declaration, because the two-directional check alone is satisfied by deleting a
         // family from the dispatcher AND its representative here — one plausible cleanup edit that removes a
         // family's coverage with both tests green.
-        private const int FamilyFloor = 17;
+        private const int FamilyFloor = 15;
 
         /// <summary>The variants posed, with what opens each one's gate.</summary>
         /// <remarks>
@@ -276,17 +274,16 @@ namespace Velvet.Tests
             try
             {
                 // Two carriers under a group, because a family's payload can require one shape or the other:
-                // the spacing and paint families need an element with children, text-balance stands down on
-                // anything that is not a text element, and a relational payload needs a group ancestor. All
-                // three are rendered for every family so the choice stays out of the declarations.
+                // the spacing and paint families need an element with children, the text families need a text
+                // element, and a relational payload needs a group ancestor. All three are rendered for every
+                // family so the choice stays out of the declarations.
                 using var mounted = V.Mount(host, V.Div(className: "group", children: new VNode?[]
                 {
                     V.Div(className: className,
                         children: new VNode?[] { V.Label(text: "a"), V.Label(text: "b") }),
                     V.Div(className: "w-[160px]", children: new VNode?[]
                     {
-                        // Narrow enough that the sentence wraps, which is the only state text-balance has
-                        // anything to do in.
+                        // Narrow enough that the sentence wraps, which is the state a text family acts in.
                         V.Label(className: className, text: "the quick brown fox jumps over the lazy dog"),
                     }),
                 }));
@@ -390,8 +387,7 @@ namespace Velvet.Tests
         /// <summary>Which of the reconciler's per-element registries hold each element.</summary>
         /// <remarks>
         /// A family whose whole effect at this layer is that a manipulator got attached shows nothing in a
-        /// reading of styles: text-balance moved not one style here, and reported inert, while the variant
-        /// path was in fact reaching it. Membership is generic — one term derived from whatever registries
+        /// reading of styles, and would be reported inert while the variant path was in fact reaching it. Membership is generic — one term derived from whatever registries
         /// the context declares — so a family added later is covered without a term written for it.
         /// </remarks>
         private static Dictionary<VisualElement, string> Registries(MountedTree mounted)

@@ -26,8 +26,8 @@ namespace Velvet.Tests
     /// branch its own arguments never take, and whether the assertion under a verdict measures that reader
     /// at all. Neither is mechanical, and both stay a reviewer's to check, as does the residual below.
     /// The roster quantifies over GetClasses() call sites, so a reading that takes the ARRAY LiveClasses
-    /// returns rather than an element sits outside it — which is seven of the nine values below. Cases pin
-    /// those seven, but no roster obliges one: the case listing what the layout dispatcher hands that array
+    /// returns rather than an element sits outside it, as the readings the dispatcher below hands the array to
+    /// do. Cases pin those, but no roster obliges one: the case listing what the layout dispatcher hands that array
     /// on to reddens when a reading joins that callee set, and a reading taking the array anywhere else
     /// costs nothing here, including inside one of those callees, beside the dispatcher call in the re-sync
     /// that binds the array, and at a second call site of LiveClasses.
@@ -56,9 +56,6 @@ namespace Velvet.Tests
             + "UnityEngine.UIElements.VisualElement, Velvet.ClipPathSpec&)";
         private const string ClipWrapperMirrorReader =
             "System.Void Velvet.ClipPathLayoutBox.SyncClasses(UnityEngine.UIElements.VisualElement)";
-        private const string BalanceWidthReader =
-            "System.Boolean Velvet.StyleTextBalanceClass.DeclaresWidthClass("
-            + "UnityEngine.UIElements.VisualElement)";
         private const string OwnSlotReader =
             "System.Boolean Velvet.StyleArbitraryValueResolver.DeclaresOwn("
             + "UnityEngine.UIElements.VisualElement, Velvet.HeldSlot)";
@@ -113,8 +110,6 @@ namespace Velvet.Tests
             "System.Void Velvet.FiberNodePatcher.ApplyGapManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[], System.Boolean)",
             "System.Void Velvet.FiberNodePatcher.ApplyGridManipulator("
-                + "UnityEngine.UIElements.VisualElement, System.String[])",
-            "System.Void Velvet.FiberNodePatcher.ApplyTextBalanceManipulator("
                 + "UnityEngine.UIElements.VisualElement, System.String[])",
         };
 
@@ -320,16 +315,16 @@ namespace Velvet.Tests
                 + "live-class-list stand-in stops being confined to the layout gates");
         }
 
-        // GREEN_ON_BASE(characterization): the base already hands the array to these five and no others.
+        // GREEN_ON_BASE(characterization): the base already hands the array to these four and no others.
         // What shows the case can fail is a fifth applier beside them — measured with an
         // `ApplyRingManipulator` driving `StyleRingClass.TryExtract`, whose last-wins `ring-*` reading then
         // rides on the stand-in array with every other case in this fixture still green.
         [Test]
         public void Given_TheDispatcherTheReSyncHandsItsStandInClassArrayTo_When_ItsCalleesAreReadFromTheIL_Then_TheyAreTheReadingsListedHere()
         {
-            // Arrange — the roster above quantifies over GetClasses() call sites, and seven of the nine
-            // values below resolve from the ARRAY this dispatcher hands on rather than from an element, so
-            // the roster obliges no case for them. The set rather than the call sequence: which of gap and
+            // Arrange — the roster above quantifies over GetClasses() call sites, and the values below
+            // resolve from the ARRAY this dispatcher hands on rather than from an element, so the roster
+            // obliges no case for them. The set rather than the call sequence: which of gap and
             // grid runs first is the departing manipulator's handoff, which the dispatcher's own comment
             // owns.
             using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
@@ -612,27 +607,6 @@ namespace Velvet.Tests
             string Sorted(VisualElement wrapper) => string.Join(" ", wrapper.GetClasses().OrderBy(c => c, StringComparer.Ordinal));
             Assert.That((Sorted(addedWrapper), Sorted(reversedWrapper)), Is.EqualTo(("self-end w-32", "self-end w-32")),
                 "the wrapper mirrors the set of the element's classes, whatever order they arrived in");
-        }
-
-        // GREEN_ON_BASE(characterization): the base already answers this from the set, not the order.
-        // What shows the case can fail is trading the `return true` in DeclaresWidthClass for an
-        // assignment that keeps scanning: measured, the arrangement ending on w-auto then answers false.
-        [Test]
-        [ReaderVerdict(BalanceWidthReader)]
-        public void Given_AWidthTokenBesideTheAutoToken_When_TheOrderTheyWereAddedInIsReversed_Then_TheBalanceVerdictIsTheSameBothWays()
-        {
-            // Arrange — w-auto declares nothing to stand down for, so a reading that took the last matching
-            // token rather than any of them answers differently depending on which arrived second.
-            var added = Carrying("w-32", "w-auto");
-            var reversed = Carrying("w-auto", "w-32");
-
-            // Act
-            var fromAdded = StyleTextBalanceClass.DeclaresWidthClass(added);
-            var fromReversed = StyleTextBalanceClass.DeclaresWidthClass(reversed);
-
-            // Assert — both true rather than merely equal: two falses would agree while measuring nothing.
-            Assert.That((fromAdded, fromReversed), Is.EqualTo((true, true)),
-                "the balance manipulator stands down for a declared width wherever it sits in the list");
         }
 
         // What shows the case can fail is trading the `return true` in DeclaresOwn for an answer each class

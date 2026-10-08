@@ -8,19 +8,16 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the <c>text-balance</c> classifier + <see cref="StyleTextBalanceManipulator"/> lifecycle
-    /// contract: the manipulator attaches exactly when the class is present, detaches when the class is
-    /// removed (clearing any inline <c>width</c> it may have written), and a pooled <see cref="Label"/>
-    /// carries neither a ghost manipulator nor a ghost <c>width</c> value into its next consumer.
+    /// Specifies the <see cref="StyleTextBalanceManipulator"/> lifecycle contract: a text leaf gets one
+    /// exactly when its resolved text-wrap-style is balance or pretty, wherever in the tree the class was
+    /// written, loses it when the class goes, and a pooled <see cref="Label"/> carries neither a ghost
+    /// manipulator nor a ghost white-space into its next consumer.
     /// </summary>
     /// <remarks>
-    /// EditMode has no resolved layout (<c>ReconcilerScope.Root</c> is never attached to a panel), so
-    /// <see cref="StyleTextBalanceManipulator"/>'s own <c>Apply</c> always defers (no resolved parent
-    /// width to measure against) — exactly like <see cref="StyleGridManipulator"/>'s off-panel column
-    /// width. These tests therefore pin the wiring (attach / detach / pool hygiene) only; the actual
-    /// measure-and-narrow behavior needs a real panel and is covered by the PlayMode spec
-    /// (<c>TextBalancePlaybackTests</c>). A stale <c>width</c> is seeded by hand where a test needs one,
-    /// standing in for what a prior LIVE computation would have written.
+    /// EditMode has no resolved layout (<c>ReconcilerScope.Root</c> is never attached to a panel), so the
+    /// manipulator never has a width to break in. These tests therefore pin the wiring only; where the
+    /// lines break is covered by <see cref="TextLineBreakerTests"/> over the choice and by the PlayMode
+    /// spec (<c>TextBalancePlaybackTests</c>) over a laid-out panel.
     /// </remarks>
     [TestFixture]
     internal sealed class TextBalanceParityTests
@@ -80,62 +77,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TextBalanceManipulator_When_ClassPatchedAway_Then_InlineWidthCleared()
-        {
-            // Arrange
-            using var scope = new ReconcilerScope();
-            var tree1 = new VNode[] { V.Label(className: "text-balance", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            var label = scope.Root.Q<Label>();
-            Assume.That(label, Is.Not.Null, "Precondition: the label mounted");
-            // Off-panel Apply() defers (no resolved parent width to measure against), so seed the value a
-            // LIVE computation would have written, pinning the detach path independently of layout.
-            label.style.width = new StyleLength(50f);
-
-            // Act — patch the same label without the text-balance class.
-            var tree2 = new VNode[] { V.Label(text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
-
-            // Assert
-            Assert.That(label.style.width.keyword, Is.EqualTo(StyleKeyword.Null));
-        }
-
-        // Pins the END-TO-END pool-reuse pipeline, not the manipulator's OWN Clear() in isolation: a full
-        // removal also runs FiberElementPoolReset's generic width null (applied to every pooled
-        // element regardless of text-balance), so a green result here does not by itself prove the
-        // manipulator's own Clear() ran at all — the generic reset alone would produce the same outcome.
-        // Given_TextBalanceManipulator_When_ClassPatchedAway_Then_InlineWidthCleared above is the
-        // manipulator-specific pin: a same-element class-removal PATCH never returns the element to the
-        // pool, so it isolates Clear() from the generic reset.
-        [Test]
-        public void Given_ATextBalanceLabelWithAStaleWidth_When_RemovedAndPooledThenRecreated_Then_NoStaleWidthGhosts()
-        {
-            // Arrange
-            using var scope = new ReconcilerScope();
-            var tree1 = new VNode[] { V.Label(className: "text-balance", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            var original = scope.Root.Q<Label>();
-            Assume.That(original, Is.Not.Null, "Precondition: the label mounted");
-            // Simulate a prior LIVE balance computation's result (off-panel Apply() never writes one itself).
-            original.style.width = new StyleLength(42f);
-
-            // Act — remove (returns the label to the pool with the stale width still on it), then
-            // recreate a text-balance label at the same position, renting the SAME pooled instance back.
-            scope.Reconciler.Reconcile(scope.Root, tree1, System.Array.Empty<VNode>());
-            var pooledCount = VNodePoolTestAccess.LabelPoolCountForTest;
-            var tree3 = new VNode[] { V.Label(className: "text-balance", text: "world") };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree3);
-            var recreated = scope.Root.Q<Label>();
-
-            // Assert — the pool round-trip is asserted alongside the width because a fresh Label carries no
-            // width either: with the round-trip merely assumed, a reconciler that stopped pooling the label
-            // would satisfy the width on its own.
-            Assert.That(
-                (pooledCount, ReferenceEquals(original, recreated), recreated.style.width.keyword),
-                Is.EqualTo((1, true, StyleKeyword.Null)));
-        }
-
-        [Test]
         public void Given_ATextBalanceLabel_When_RemovedAndPooledThenRecreated_Then_ExactlyOneManipulatorRegistered()
         {
             // Arrange
@@ -158,9 +99,9 @@ namespace Velvet.Tests
         public void Given_ATextBalanceClassOnAMotionsOwnElement_When_Reconciled_Then_RegistersOneTextBalanceManipulator()
         {
             // Arrange — elementType: typeof(Label) makes the Motion's OWN underlying element a Label, so
-            // this exercises FiberNodeFactory's Motion-creation call to ApplyTextBalanceManipulator (a
-            // call site distinct from the plain-ElementNode one every other test in this fixture goes
-            // through, since a Div/Label wrapped BY a Motion is created via that Motion path instead).
+            // this exercises the Motion-creation path of the text-effect pass (a call site distinct from
+            // the plain-ElementNode one every other test in this fixture goes through, since a Div/Label
+            // wrapped BY a Motion is created via that Motion path instead).
             using var scope = new ReconcilerScope();
             var tree = new VNode[]
             {
@@ -176,50 +117,49 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ATextBalanceLabelWithACoPresentWidthUtility_When_TextBalanceClassPatchedAway_Then_TheUtilitysWidthIsRestored()
+        public void Given_TextBalanceOnAContainer_When_Reconciled_Then_ItsTextLeafGetsAManipulator()
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var tree1 = new VNode[] { V.Label(className: "text-balance w-[50px]", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            var label = scope.Root.Q<Label>();
-            Assume.That(label, Is.Not.Null, "Precondition: the label mounted");
-            Assume.That(label.style.width.value.value, Is.EqualTo(50f),
-                "Precondition: the co-present w-[50px] utility resolved its own value at mount");
-            var attached = GetManipulatorCount(scope.Reconciler);
+            var tree = new VNode[] { V.Div(className: "text-balance", V.Label(text: "hello")) };
 
-            // Act — patch away JUST the text-balance token; the w-[50px] utility stays in the class list.
-            var tree2 = new VNode[] { V.Label(className: "w-[50px]", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
 
-            // Assert — the utility's own value survives text-balance's teardown instead of being left
-            // cleared by it (StyleTextBalanceManipulator.Clear unconditionally nulls the width first; the
-            // reconciler must restore the co-present utility's value right after). The attachment rides
-            // along because a reconciler that never attached anything clears no width either, and the
-            // surviving value alone cannot tell that apart from a restore.
-            Assert.That((attached, label.style.width.value.value), Is.EqualTo((1, 50f)));
+            // Assert — the leaf carries no class of its own, so the style reached it by inheritance.
+            Assert.That(
+                scope.Reconciler.Context.TextBalanceManipulators.ContainsKey(scope.Root.Q<Label>()), Is.True);
         }
 
         [Test]
-        public void Given_ATextBalanceLabelWithACoPresentSizeShorthand_When_TextBalanceClassPatchedAway_Then_TheShorthandsWidthIsRestored()
+        public void Given_TextBalanceOnAContainer_When_ClassPatchedAway_Then_TheLeafLosesItsManipulator()
         {
-            // Arrange — the teardown restore has the same shape as the manipulator's own release, so it
-            // owes `size-[..]` the same treatment: its layer is keyed Size while the slot cleared is width.
+            // Arrange
             using var scope = new ReconcilerScope();
-            var tree1 = new VNode[] { V.Label(className: "text-balance size-[40px]", text: "hello") };
+            var tree1 = new VNode[] { V.Div(className: "text-balance", V.Label(text: "hello")) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            var label = scope.Root.Q<Label>();
-            Assume.That(label.style.width.value.value, Is.EqualTo(40f),
-                "Precondition: the co-present size-[40px] utility resolved its own width at mount");
             var attached = GetManipulatorCount(scope.Reconciler);
 
             // Act
-            var tree2 = new VNode[] { V.Label(className: "size-[40px]", text: "hello") };
+            var tree2 = new VNode[] { V.Div(className: "", V.Label(text: "hello")) };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert — the attachment rides along because a reconciler that never attached anything clears
-            // no width either, and the surviving value alone cannot tell that apart from a restore.
-            Assert.That((attached, label.style.width.value.value), Is.EqualTo((1, 40f)));
+            // Assert — the attachment rides along: a reconciler that attached nothing removes nothing.
+            Assert.That((attached, GetManipulatorCount(scope.Reconciler)), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_TextBalanceOnAContainerAndTextWrapOnTheLeaf_When_Reconciled_Then_TheLeafHasNoManipulator()
+        {
+            // Arrange — text-wrap resets text-wrap-style, as it does in CSS.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "text-balance", V.Label(className: "text-wrap", text: "hello")) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(GetManipulatorCount(scope.Reconciler), Is.EqualTo(0));
         }
 
         private static int GetManipulatorCount(Reconciler reconciler)

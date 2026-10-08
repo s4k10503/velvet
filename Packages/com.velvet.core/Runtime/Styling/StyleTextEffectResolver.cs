@@ -36,6 +36,12 @@ namespace Velvet
     // white-space that pairs their wrap mode with the inherited collapse (see ResolveEffective), for the
     // same reason and under the same ownership as PreLine's below.
     //
+    // text-balance and text-pretty also inherit their line breaking (CSS's text-wrap-style), so the same
+    // walk gives every text leaf under the class a StyleTextBalanceManipulator, tracked in
+    // TextBalanceManipulators, which supplies the newlines of the displayed string once the leaf has a width.
+    // That leaf is then written pre-wrap whatever its collapse, over a string StyleTextEffectClass.Apply
+    // collapsed itself.
+    //
     // PreLine ALSO drives an inline `white-space: pre-wrap` write, so the preserved newlines render as
     // breaks and wrapping still works. That write happens in ApplyToElement (below), on EVERY text leaf
     // whose EFFECTIVE (cascade-resolved) axis is PreLine — the same call, off the same resolved value, that
@@ -160,8 +166,16 @@ namespace Velvet
         {
             if (element is TextElement te && ctx.TextRawText.TryGetValue(te, out var raw))
             {
-                var (transform, decoration, whitespace, leading, write) = ResolveEffective(ctx, te);
-                te.text = StyleTextEffectClass.Apply(raw, transform, decoration, whitespace, leading);
+                var effect = ResolveEffective(ctx, te);
+                var breaker = SyncBalance(ctx, te, effect.WrapStyle);
+                TextBreakRequest? breaks = breaker != null && breaker.CanBreak
+                    ? new TextBreakRequest(breaker, effect.Preserves)
+                    : null;
+                te.text = StyleTextEffectClass.Apply(
+                    raw, effect.Transform, effect.Decoration, effect.Whitespace, effect.Leading, breaks);
+                var decoration = effect.Decoration;
+                // The leaf is written pre-wrap over a string StyleTextEffectClass.Apply already collapsed.
+                var write = breaks != null ? WhiteSpace.PreWrap : effect.Write;
                 // Per-leaf inline white-space write, off the SAME resolved values that just drove the string
                 // collapse above, so the two can never disagree for this leaf. Ownership-gated (see the type
                 // comment / TextWhitespaceOwned): a write marks; a resolve that writes nothing clears ONLY
@@ -246,8 +260,7 @@ namespace Velvet
         // text-wrap / text-nowrap / text-balance / text-pretty set the mode nearer the text than any
         // white-space class does, the value written pairs that mode with the collapse inherited from above
         // it. A white-space class on the same element as one of the four decides on its own.
-        private static (TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading, WhiteSpace? write) ResolveEffective(
-            ReconcilerContext ctx, VisualElement element)
+        private static ResolvedEffect ResolveEffective(ReconcilerContext ctx, VisualElement element)
         {
             TextTransformKind? transform = null;
             TextDecorationKind? decoration = null;
@@ -257,6 +270,8 @@ namespace Velvet
             bool? wraps = null;
             var modeDecided = false;
             WhiteSpace? collapseClass = null;
+            WhiteSpace? deciderClass = null;
+            TextWrapStyle? wrapStyle = null;
             for (var e = element; e != null; e = e.hierarchy.parent)
             {
                 if (!ctx.TextEffects.TryGetValue(e, out var eff))
@@ -267,6 +282,7 @@ namespace Velvet
                 decoration ??= eff.Decoration;
                 whitespace ??= eff.Whitespace;
                 collapseClass ??= eff.WhiteSpaceClass;
+                wrapStyle ??= eff.WrapStyle;
                 if (leading == null)
                 {
                     leading = eff.Leading;
@@ -275,6 +291,7 @@ namespace Velvet
                 if (!modeDecided)
                 {
                     wraps = eff.Whitespace == null ? eff.Wraps : null;
+                    deciderClass = eff.Whitespace != null ? eff.WhiteSpaceClass : null;
                     modeDecided = eff.Whitespace != null || eff.Wraps != null;
                 }
             }
@@ -284,18 +301,29 @@ namespace Velvet
             }
             var preserves = whitespace == WhitespaceCollapseKind.PreLine
                 || collapseClass == WhiteSpace.Pre || collapseClass == WhiteSpace.PreWrap;
-            WhiteSpace? write = null;
+            var write = ResolveWrite(wraps, whitespace, preserves);
+            return new ResolvedEffect(
+                transform, decoration, whitespace, leading, write, preserves,
+                ResolveBalance(write ?? deciderClass, wrapStyle));
+        }
+
+        private static WhiteSpace? ResolveWrite(bool? wraps, WhitespaceCollapseKind? whitespace, bool preserves)
+        {
             if (wraps != null)
             {
-                write = wraps.Value
+                return wraps.Value
                     ? preserves ? WhiteSpace.PreWrap : WhiteSpace.Normal
                     : preserves ? WhiteSpace.Pre : WhiteSpace.NoWrap;
             }
-            else if (whitespace == WhitespaceCollapseKind.PreLine)
-            {
-                write = WhiteSpace.PreWrap;
-            }
-            return (transform, decoration, whitespace, leading, write);
+            return whitespace == WhitespaceCollapseKind.PreLine ? WhiteSpace.PreWrap : null;
+        }
+
+        // Balancing needs lines to break: the wrap mode written for the leaf, or else the white-space class
+        // that decided it.
+        private static TextWrapStyle ResolveBalance(WhiteSpace? lineWrapping, TextWrapStyle? wrapStyle)
+        {
+            var wraps = lineWrapping == WhiteSpace.Normal || lineWrapping == WhiteSpace.PreWrap;
+            return wraps && wrapStyle != null ? wrapStyle.Value : TextWrapStyle.None;
         }
 
         // CSS computes an em or percentage line-height to a length on the element that declares it, from
@@ -314,11 +342,69 @@ namespace Velvet
             return new LeadingValue(LeadingUnit.Pixel, leading.Value * probe.FontSize);
         }
 
+        // Attaches the line-breaking manipulator to a leaf whose resolved text-wrap-style asks for one and
+        // takes it off one whose no longer does. Null when the leaf has none.
+        private static StyleTextBalanceManipulator? SyncBalance(ReconcilerContext ctx, TextElement element, TextWrapStyle style)
+        {
+            ctx.TextBalanceManipulators.TryGetValue(element, out var existing);
+            if (style == TextWrapStyle.None)
+            {
+                if (existing != null)
+                {
+                    element.RemoveManipulator(existing);
+                    ctx.TextBalanceManipulators.Remove(element);
+                }
+                return null;
+            }
+            if (existing != null)
+            {
+                existing.SetStyle(style);
+                return existing;
+            }
+            var created = new StyleTextBalanceManipulator(ctx, style);
+            ctx.TextBalanceManipulators[element] = created;
+            element.AddManipulator(created);
+            return created;
+        }
+
+        // Re-resolves one text leaf, for the manipulator that reacts to its width.
+        internal static void ReapplyElement(ReconcilerContext ctx, VisualElement element)
+        {
+            ApplyToElement(ctx, element);
+        }
+
         // Re-resolves the element and every text under it, for LeadingLengthProbe.
         internal static void Reapply(ReconcilerContext ctx, VisualElement element)
         {
             ApplyToElement(ctx, element);
             ApplyToDescendants(ctx, element);
+        }
+
+        private readonly struct ResolvedEffect
+        {
+            public readonly TextTransformKind? Transform;
+            public readonly TextDecorationKind? Decoration;
+            public readonly WhitespaceCollapseKind? Whitespace;
+            public readonly LeadingValue? Leading;
+            // The inline white-space the leaf gets, or null to leave its own cascade alone.
+            public readonly WhiteSpace? Write;
+            // Whether the white-space the text inherits keeps its spaces and newlines.
+            public readonly bool Preserves;
+            // The text-wrap-style to realise on this leaf; None when it is auto or the leaf does not wrap.
+            public readonly TextWrapStyle WrapStyle;
+
+            public ResolvedEffect(
+                TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace,
+                LeadingValue? leading, WhiteSpace? write, bool preserves, TextWrapStyle wrapStyle)
+            {
+                Transform = transform;
+                Decoration = decoration;
+                Whitespace = whitespace;
+                Leading = leading;
+                Write = write;
+                Preserves = preserves;
+                WrapStyle = wrapStyle;
+            }
         }
     }
 }

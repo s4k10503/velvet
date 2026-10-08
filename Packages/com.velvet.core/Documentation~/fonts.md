@@ -235,46 +235,44 @@ ancestor's `leading-*` overrides a farther one's). It has no reset utility, unli
 axes: Tailwind defines no `leading-auto` below `leading-none`, and every preset — `leading-none`'s
 multiplier of 1 included — is already a real value, so there is nothing to reset back to.
 
-**`text-balance`** approximates CSS `text-wrap: balance` even though UI Toolkit's text engine
-exposes no line-break hook. `StyleTextBalanceManipulator` narrows the box instead: it
-binary-searches `TextElement.MeasureTextSize` — the same method the engine's own autosize pass
-calls — for the narrowest width that still measures the height a normal, unbalanced layout would
-take at the available width. Comparing heights stands in for comparing line counts, since font
-metrics are constant across candidates. The search runs over the width the text gets, and the
-element's own horizontal padding and border are added back to the inline **`width`** it writes,
-since a `width` in UI Toolkit covers them.
+**`text-balance` and `text-pretty`** realise CSS `text-wrap: balance` and `text-wrap: pretty` by writing
+line breaks into the text a leaf *displays*, the way text-transform rewrites it. The box keeps the
+width its classes and its parent give it, so `w-full text-balance` balances, as do a `max-w-*`, padding
+and a border. Velvet keeps the text it was given and rebuilds the displayed string from it, so a state value, a
+prop or an `onChange` payload carries no newline Velvet added; the text read off the element itself is
+the displayed string, as it is under `uppercase`.
 
-**What it honours.** `text-balance` writes the element's inline `width` and never its `max-width`:
+Both inherit, as CSS's `text-wrap-style` does. Put the class on a container and every text leaf under it
+breaks its lines; a nearer `text-wrap` or `text-nowrap` resets it, and the nearest of the four
+classes decides. A leaf that cannot wrap (`text-nowrap`, `whitespace-nowrap`, `truncate`) is left
+alone.
 
-- **A declared `max-width` is a ceiling it balances inside.** Every spelling counts —
-  `max-w-[120px]`, a variant's `dark:max-w-[80px]`, the USS scale forms (`max-w-32`, `max-w-full`),
-  and percentages — and all of them apply on every pass. `max-w-0` leaves nothing to redistribute,
-  so the box is released and the ceiling applies on its own.
-- **A declared `width` turns `text-balance` off for that element.** Balance works by narrowing the
-  box, so a declared width leaves nothing to narrow. Any `w-*` or `size-*` class does it, in every
-  spelling: scale, bracket, fraction, `!`-important, and one a variant supplies. `w-auto` does not,
-  since `width: auto` is the default and declares nothing. **`w-full text-balance` therefore does
-  not balance**; a column child already fills its parent, so drop the `w-full`. The same applies to
-  a child of a `grid` container, whose width the grid itself writes. A class added imperatively
-  (`element.AddToClassList("w-40")`) is not observed, so a width added that way while balance holds
-  a value is ignored until something unrelated forces a derive.
+Where the lines break is Chromium's score line breaker (`score_line_breaker.cc`): the cheapest division
+by the squared slack of every line, with a penalty on breaking before the last word and a penalty per
+line, measured with `TextElement.MeasureTextSize`. Its limits carry over: nothing is changed below four
+words, a division with another number of lines than the greedy one is dropped, `text-balance` acts on
+paragraphs of up to six lines and `text-pretty` on up to four, and `text-pretty` acts when the
+last line is one word narrower than a third of the line (Chromium's other trigger, consecutive
+hyphenated lines, has no counterpart here). Text between newlines is a paragraph and a
+word is a run between spaces. Text with no spaces (CJK), and a paragraph holding any white space other
+than the space, has nothing to break and is left to the engine's own wrapping.
 
-Two deviations from CSS:
+A leaf is broken once it has a width, and again whenever the width its text is laid out in, its font
+or its text changes. Before its first layout it shows the text unbroken.
 
-- **The box can shrink.** Real `text-wrap: balance` never resizes the element — only where its
-  lines break — so anything sized from this box (a background, alignment relative to it) reads
-  against a smaller box than an unbalanced sibling would have. Only when the text wraps to 2+ lines
-  (see below).
-- **The search measures against the PARENT's content width**, since the element's own is this
-  feature's output. That is exact for a sole / stretch-to-fill child, and an over-estimate when
-  siblings share the row: the balanced box plus those siblings can exceed the row, so it overflows
-  slightly and flex-shrink shares the loss across every box in it — a sibling can end up a pixel
-  or so under its declared width. Keep a balanced label out of a tight row if that matters. A
-  **hug-width parent** (auto width, e.g. an `items-start` row) defeats the indirection entirely:
-  the parent's width follows the element's, so the search input narrows every pass. With a fixed
-  ceiling it converges, settling narrower than one pass would give; with a percentage ceiling
-  (`max-w-[50%]`) it oscillates — the bound decays until the box is released, the release
-  re-widens the parent, and the next pass starts over. Give such a parent a definite width.
+A leaf under the style is written `white-space: pre-wrap` over a string whose white space Velvet has
+collapsed itself, as `white-space: normal` would, because the breaks it writes are newlines; text that
+inherits a preserving white-space keeps its spaces and newlines, and `text-balance` then balances each
+newline-separated paragraph.
+
+Deviations from CSS:
+
+- **A box UI Toolkit sizes from its text can be narrower.** A leaf with auto width in a row is measured
+  from the lines it displays, so it can end up narrower than the unbalanced text would make it, and it
+  does not re-break when only an ancestor widens: the input is the leaf's own width.
+- **Breaks fall at spaces only**, as above, where CSS also breaks between CJK characters and after
+  hyphens.
+- **`text-balance` stops at six lines and `text-pretty` at four**, the limits Chromium applies.
 
 **Wrapping:** `text-wrap`, `text-nowrap`, `text-balance` and `text-pretty` are CSS's `text-wrap`
 shorthand, which sets the wrap mode (`wrap`, or `nowrap` for `text-nowrap`) and leaves the collapse
@@ -284,30 +282,8 @@ while other text collapses as `normal` or `nowrap`. A white-space class (`whites
 `truncate`, whose `white-space: nowrap` resets the collapse as the CSS shorthand does) on the same
 element or on one nearer the text keeps its own value. Velvet writes this per text leaf as an inline
 `white-space`, the way it writes `whitespace-pre-line`. When several of the four meet on one element,
-the later class wins, as they set the same CSS properties; the later of them decides whether the box
-is balanced, narrowed by `text-pretty`, or left alone.
-
-**Single-line gate:** CSS balance is a no-op on one line, and this approximation shrinks the box,
-so a width is written only when the text wraps at the width the text actually gets — the
-ceiling-clamped available width less the element's own horizontal padding and border. Otherwise —
-empty text included — the slot goes back to the element's own cascade, dropping a previously
-balanced width and restoring a co-present `w-*` value. An element a `whitespace-*` class keeps from
-wrapping reaches the same verdict through the same comparison.
-
-**Staleness:** the manipulator re-derives on attach; on its own `GeometryChangedEvent`; on a
-listener on the PARENT's `GeometryChangedEvent` (needed because the manipulator's own `width` write
-pins the element's resolved size, so an ancestor WIDENING never changes the element's own rect and
-would otherwise never re-fire the search — listening on the parent directly, the same element the
-available width is read from, closes that gap); and on the `ChangeEvent<string>` UI Toolkit raises
-whenever `.text` is reassigned on a live element (covers a text swap that happens to keep the same
-wrapped box size, and therefore raises no geometry event, from going stale).
-
-**`text-pretty`** avoids a short last line the way Chromium does: when the last line would hold a
-single word narrower than a third of the line, the same manipulator narrows the box until a word from
-the line above joins it, keeping the line count. It uses the trigger of Chromium's score line breaker
-(a last line with no break opportunity and under a third of the available width);
-where Chromium then re-breaks the last lines, Velvet narrows the box, as `text-balance` does. A word
-here is a run between whitespace.
+the later class wins, as they set the same CSS properties; the later of them decides which line
+breaking the text gets.
 
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**
 

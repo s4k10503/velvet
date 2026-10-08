@@ -1111,36 +1111,6 @@ namespace Velvet
             }
         }
 
-        // Re-asserts the winning layer for ONE property, without mutating the map — the single-property
-        // form of ReapplyLayeredValues above.
-        //
-        // For a manipulator that borrows a shared inline slot and nulls it outright on detach
-        // (StyleTextBalanceManipulator and width): the authored value it clobbered is still recorded
-        // here, so re-resolving the one slot restores exactly what the cascade says it should hold — and
-        // does so regardless of how that value got there. A restore driven by re-scanning the element's
-        // class list is only as complete as that list: it cannot see a layer a VARIANT registered
-        // (dark:w-[80px]), whose payload is not a token of the element's own.
-        //
-        // A property with no surviving layer clears the inline value — the same fallback Clear itself takes
-        // once it removes the last layer.
-        //
-        // No filter-family exemption, unlike the whole-map form: this re-resolves whatever property it is
-        // handed, so a filter one would recompose the filter list and restart an in-flight transition tween.
-        // Today's only caller passes a width; a caller that wants a filter property has to weigh that.
-        internal static void ReapplyLayeredValue(VisualElement element, ArbitraryProperty property)
-        {
-            if (element == null || !s_layers.TryGetValue(element, out var map))
-            {
-                return;
-            }
-            ResolveAndApply(element, property, map);
-        }
-
-        // Re-asserts every layer that writes the inline WIDTH slot, for a caller handing that slot back after
-        // borrowing it. Re-resolving Width settles the Size layer with it (see ResolveSharedLonghands).
-        internal static void ReapplyWidthSlot(VisualElement element)
-            => ReapplyLayeredValue(element, ArbitraryProperty.Width);
-
         // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — HasLayer and the class
         // projection see none of it — but every layer resolve that writes a held slot writes the held value
         // back after it, so a layer that changes once the manipulator has written — a [&>*]: payload turned
