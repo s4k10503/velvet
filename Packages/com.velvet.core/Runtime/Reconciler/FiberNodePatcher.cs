@@ -1866,15 +1866,17 @@ namespace Velvet
                 FiberPropApplier.ApplyDelegatesFocus(element, newProps.DelegatesFocus);
             }
 
-            if (!Equals(oldProps.FieldValue, newProps.FieldValue))
+            var fieldValueChanged = !Equals(oldProps.FieldValue, newProps.FieldValue);
+            if (oldProps.Slider != newProps.Slider)
+            {
+                FiberPropApplier.ApplySlider(
+                    element, oldProps.Slider, newProps.Slider, fieldValueChanged ? newProps.FieldValue : null);
+            }
+
+            if (fieldValueChanged)
             {
                 FiberPropApplier.ApplyFieldValue(element, newProps.FieldValue);
                 RaiseCheckedSignal(element);
-            }
-
-            if (oldProps.Slider != newProps.Slider)
-            {
-                FiberPropApplier.ApplySlider(element, newProps.Slider);
             }
 
             if (oldProps.ScrollView != newProps.ScrollView)

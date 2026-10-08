@@ -7,15 +7,15 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests.Performance
 {
     /// <summary>
-    /// Pins each of the seven enum-argument refusals on the <c>V.*</c> factories to no allocation of its
+    /// Pins each of the eight enum-argument refusals on the <c>V.*</c> factories to no allocation of its
     /// own: <c>layer:</c> and <c>focusOrder:</c> on <c>V.Portal</c>, <c>focusOrder:</c> on
     /// <c>V.WorldSpace</c>, <c>playOn:</c> on <c>V.Particles</c>, <c>movement:</c> on
-    /// <c>V.Draggable</c>, <c>mode:</c> on <c>V.AnimatePresence</c> and <c>loaderMode:</c> on
-    /// <c>V.Route</c>. <see cref="VNodePoolZeroAllocTests"/> names an accidental boxing as what it
-    /// exists to catch, but it measures <see cref="VNodePool"/>; a factory allocates its node by design,
-    /// so a bare zero-allocation assertion cannot be made about one. Each case here measures the factory
-    /// against building the same node directly and pins the difference at zero, which is the refusal's
-    /// own cost and nothing else.
+    /// <c>V.Draggable</c>, <c>mode:</c> on <c>V.AnimatePresence</c>, <c>loaderMode:</c> on
+    /// <c>V.Route</c> and <c>direction:</c> on <c>V.Slider</c>. <see cref="VNodePoolZeroAllocTests"/>
+    /// names an accidental boxing as what it exists to catch, but it measures <see cref="VNodePool"/>; a
+    /// factory allocates its node by design, so a bare zero-allocation assertion cannot be made about one.
+    /// Each case here measures the factory against building the same node directly and pins the
+    /// difference at zero, which is the refusal's own cost and nothing else.
     /// </summary>
     /// <remarks>
     /// <c>Enum.IsDefined(Type, object)</c> boxes its argument, and netstandard 2.1 — this project's API
@@ -76,8 +76,8 @@ namespace Velvet.Tests.Performance
 
         #region delegates that also rent a props bag
 
-        // V.Particles and V.Draggable rent from VNodePool, so both sides of their pairs return the bag.
-        // Renting without returning would leave the pool empty at every call and grow the rented set
+        // V.Particles, V.Draggable and V.Slider rent from VNodePool, so both sides of their pairs return the
+        // bag. Renting without returning would leave the pool empty at every call and grow the rented set
         // across the two measurements, and a set that resizes between them charges one side and not
         // the other.
         private static readonly Action ParticlesViaFactory = () =>
@@ -108,6 +108,24 @@ namespace Velvet.Tests.Performance
             GC.KeepAlive(new ElementNode
             {
                 ElementType = typeof(VisualElement),
+                ClassNames = Array.Empty<string>(),
+                Props = props,
+                Children = NoChildren,
+                Events = Array.Empty<FiberEventBinding>(),
+            });
+            VNodePool.ReturnProps(props);
+        };
+
+        private static readonly Action SliderViaFactory = () =>
+            VNodePool.ReturnProps(V.Slider(direction: SliderDirection.Vertical).Props);
+
+        private static readonly Action SliderViaInit = () =>
+        {
+            var props = VNodePool.RentProps();
+            props.Slider = new SliderSettings(null, null, SliderDirection.Vertical, null);
+            GC.KeepAlive(new ElementNode
+            {
+                ElementType = typeof(Slider),
                 ClassNames = Array.Empty<string>(),
                 Props = props,
                 Children = NoChildren,
@@ -197,6 +215,16 @@ namespace Velvet.Tests.Performance
         {
             // Arrange + Act
             var cost = RefusalCost(RouteViaFactory, RouteViaInit);
+
+            // Assert
+            Assert.That(cost, Is.EqualTo((0, true)));
+        }
+
+        [Test]
+        public void Given_ANamedDirection_When_VSliderIsCalled_Then_ItsRefusalAllocatesNothing()
+        {
+            // Arrange + Act
+            var cost = RefusalCost(SliderViaFactory, SliderViaInit);
 
             // Assert
             Assert.That(cost, Is.EqualTo((0, true)));

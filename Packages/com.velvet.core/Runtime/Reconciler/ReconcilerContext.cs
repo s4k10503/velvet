@@ -877,8 +877,9 @@ namespace Velvet
         // Active gradient background per element (bg-gradient-to-* + from/via/to). Keyed by the element
         // itself — the gradient is baked to a texture set as the element's own background-image, no
         // wrapper. The stored spec lets the patch path skip a redundant re-bake, and cleanup clears the
-        // background-image so a pooled element cannot ghost a prior gradient.
-        public Dictionary<VisualElement, GradientSpec> GradientBackgrounds { get; } = new();
+        // background-image so a pooled element cannot ghost a prior gradient. The binding also holds the
+        // geometry watch a gradient laid out over the box's proportions needs, which cleanup removes.
+        public Dictionary<VisualElement, GradientBinding> GradientBackgrounds { get; } = new();
 
         // Per-element animate-* motion (animate-gradient / -shimmer / -hue). Keyed by the element itself — the
         // motion drives the element's own inline style (a background-position pan or a hue-rotate filter) with
@@ -2232,6 +2233,8 @@ namespace Velvet
         // (_storeSnapshotWaveActive); outside one — on mount or a synchronous whole-tree flush — reads return
         // the live store.Current and nothing is pinned. Pinning is reference-keyed, so distinct stores never
         // collide, and the pins are dropped when the wave ends.
+        // Hooks.UseSyncExternalStore pins here too, keyed by its getSnapshot delegate under Delegate.Equals
+        // rather than by a Store, since an external store has no Velvet object to key on.
         private readonly Dictionary<object, object?> _pinnedStoreSnapshots = new();
         private bool _storeSnapshotWaveActive;
 
@@ -2249,9 +2252,10 @@ namespace Velvet
         internal TStore PinStoreSnapshot<TStore>(object store, TStore liveSnapshot)
         {
             if (!_storeSnapshotWaveActive) return liveSnapshot;
-            if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned) && pinned is TStore typed)
+            // A cast rather than a type test, which a pinned null fails.
+            if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned))
             {
-                return typed;
+                return (TStore)pinned!;
             }
             _pinnedStoreSnapshots[store] = liveSnapshot;
             return liveSnapshot;

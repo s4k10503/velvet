@@ -496,4 +496,115 @@ namespace Velvet
             Subscription = null;
         }
     }
+
+    // Holds no snapshot of its own beyond Value, the one the last render returned; the store stays the
+    // authority, and a notification compares against a fresh GetSnapshot read.
+    internal sealed class HookExternalStoreSlot<T> : HookStoreSlot
+    {
+        public ComponentFiber Fiber = null!;
+        public Func<T> GetSnapshot = null!;
+        public T Value = default!;
+        // Null until a subscribe call has returned, so one that threw is called again by the next render.
+        public Func<Action, Action>? Subscribe;
+#if UNITY_EDITOR
+        public bool ReportedUncachedSnapshot;
+#endif
+        // Set by a render that subscribes or that returns a snapshot other than the previous render's, and
+        // cleared by the commit check it queues. A render can return a wave pin the store has already moved
+        // past, and a subscription made after that move is never notified of it, so every render until the
+        // check commits queues it: a render-phase re-run discards the queue of the attempt that set it.
+        public bool AwaitsCommitCheck;
+        private HookEffectSlot? _commitCheck;
+        private Action? _unsubscribe;
+        private bool _subscribing;
+
+        // Queued on the fiber's pending layout effects rather than run from the render: requested there, the
+        // re-render is a render-phase update, which re-runs the body against the same wave pin.
+        public HookEffectSlot CommitCheck => _commitCheck ??= new HookEffectSlot { EffectFactory = RunCommitCheck };
+
+        // React re-checks the snapshot at commit after a render that changed it, so a getSnapshot building a
+        // new value per read fails the check after every render. The update-depth test in
+        // UseSyncExternalStoreTests pins where that ends.
+        public void Record(Func<T> getSnapshot, T value)
+        {
+            if (!ObjectIs.AreEqual(Value, value)) AwaitsCommitCheck = true;
+            GetSnapshot = getSnapshot;
+            Value = value;
+        }
+
+        // A notification raised while subscribe runs is dropped here: the render that called this reads the
+        // snapshot again once it returns.
+        // The previous unsubscribe runs uncontained here: a throw from it is a throw from the render.
+        public void Resubscribe(Func<Action, Action> subscribe)
+        {
+            Detach()?.Invoke();
+            _subscribing = true;
+            try
+            {
+                _unsubscribe = subscribe(OnStoreChange);
+            }
+            finally
+            {
+                _subscribing = false;
+            }
+            Subscribe = subscribe;
+            AwaitsCommitCheck = true;
+        }
+
+        private Action? RunCommitCheck()
+        {
+            AwaitsCommitCheck = false;
+            if (SnapshotChanged()) FiberWorkLoop.RequestExternalStoreRender(Fiber);
+            return null;
+        }
+
+        private void OnStoreChange()
+        {
+            if (!VelvetMainThread.IsCurrent)
+            {
+                throw new InvalidOperationException(
+                    "UseSyncExternalStore: the store-change callback passed to subscribe was invoked off the Unity" +
+                    " main thread. Marshal the notification to the main thread before invoking it.");
+            }
+            if (_subscribing || !SnapshotChanged()) return;
+            FiberWorkLoop.RequestExternalStoreRender(Fiber);
+        }
+
+        // A throwing GetSnapshot counts as a change, so the render repeats the call and its exception reaches
+        // the error boundary, as UseStore does for a throwing selector.
+        private bool SnapshotChanged()
+        {
+            try
+            {
+                return !ObjectIs.AreEqual(Value, GetSnapshot());
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        // Contained as HookEffectExecutor.RunCleanups contains a throwing effect cleanup, so an unmount still
+        // reaches the fiber's other slots.
+        public override void Dispose()
+        {
+            var unsubscribe = Detach();
+            try
+            {
+                unsubscribe?.Invoke();
+            }
+            catch (Exception exception)
+            {
+                ComponentBoundarySearch.PropagateException(Fiber, exception);
+            }
+        }
+
+        private Action? Detach()
+        {
+            var unsubscribe = _unsubscribe;
+            _unsubscribe = null;
+            Subscribe = null;
+            return unsubscribe;
+        }
+    }
 }

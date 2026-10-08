@@ -480,7 +480,8 @@ interval is eased by the timing function its keyframe names, as a CSS animation 
 
 `animate-none` cancels, and the last *recognised* `animate-*` in the class list wins — an unclaimed
 name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
-`animate-hue-[5s]`. The two gradient modes are inert without a `bg-gradient-*` to pan.
+`animate-hue-[5s]`. The two gradient modes are inert without a gradient
+([styling-gradients.md](styling-gradients.md)) to pan.
 
 Tailwind's keyframes leave some frames unnamed, and a CSS animation fills those from the element's own value.
 The loops do the same, so `opacity-75 animate-pulse` runs between 0.75 and 0.5, `rotate-45 animate-spin` turns on

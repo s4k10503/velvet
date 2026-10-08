@@ -422,6 +422,15 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="direction">Axis the slider runs along, written to <c>Slider.direction</c>.
+        /// Null leaves it undeclared rather than horizontal: a direction no render has declared is not written,
+        /// and one a later render drops goes back to what the element carried before any render declared it.</param>
+        /// <param name="inverted">When true, swaps the ends the low and high values sit at, written to
+        /// <c>Slider.inverted</c>. Null is undeclared, as for <paramref name="direction"/>.</param>
+        /// <param name="step">Distance one arrow key moves the value, and the grid Home, End and the paging keys
+        /// land on, counted from <paramref name="lowValue"/>. Null is Radix's default of 1.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="direction"/> names no member of
+        /// <see cref="SliderDirection"/>, or <paramref name="step"/> is not above zero and finite.</exception>
         /// <returns>The created <see cref="ElementNode"/> representing this slider.</returns>
         public static ElementNode Slider(
             string? className = null,
@@ -438,19 +447,36 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            SliderDirection? direction = null,
+            bool? inverted = null,
+            float? step = null)
         {
             VNode.RequireKey(key);
+            // Above both rents below, so a refusal here strands no event array or bag this factory rented.
+            if (direction is not (null or SliderDirection.Horizontal or SliderDirection.Vertical))
+            {
+                throw new ArgumentOutOfRangeException(nameof(direction), direction,
+                    "V.Slider takes a member of SliderDirection as its direction.");
+            }
+
+            if (step is { } stepValue && !(stepValue > 0f && float.IsFinite(stepValue)))
+            {
+                throw new ArgumentOutOfRangeException(nameof(step), step,
+                    "V.Slider takes a step above zero and finite.");
+            }
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<float> { Handler = onValueChanged } : null);
 
             FiberElementProps? props = null;
-            if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue)
+            if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue
+                || direction.HasValue || inverted.HasValue || step.HasValue)
             {
                 props = VNodePool.RentProps();
                 props.FieldValue = value;
                 props.Enabled = enabled;
-                props.Slider = (lowValue.HasValue || highValue.HasValue)
-                    ? new SliderSettings(lowValue, highValue)
+                props.Slider = (lowValue.HasValue || highValue.HasValue || direction.HasValue || inverted.HasValue
+                        || step.HasValue)
+                    ? new SliderSettings(lowValue, highValue, direction, inverted, step)
                     : null;
             }
             props = WithAttributes(props, data, aria);

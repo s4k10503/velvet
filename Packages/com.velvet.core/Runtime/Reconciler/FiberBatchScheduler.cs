@@ -68,6 +68,11 @@ namespace Velvet
         // than registering a second.
         private bool _inImmediateCallback;
 
+        // Set by a UseSyncExternalStore re-render entering the immediate tier and cleared once the tier is
+        // empty, by the drain or by Remove. It is also the one posted flush in flight: a post the main thread
+        // discards leaves it set only until then. See OweExternalStoreFlush.
+        private bool _externalStoreRenderQueued;
+
         // Guards against re-entering a drain. FlushImmediate runs at the end of a discrete event handler; when
         // such an event is dispatched SYNCHRONOUSLY while a drain is already in progress (e.g. focus loss when a
         // focused element is removed during a commit), re-entering would (1) re-enter the reconciler while an
@@ -160,6 +165,25 @@ namespace Velvet
             if (_draining) _immediateWorkArrivedMidDrain = true;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
             ArmImmediateDrain();
+        }
+
+        // A UseSyncExternalStore re-render is React's sync-lane update, which React flushes in a microtask once
+        // the code that raised the notification has returned. The immediate tier is flushed from the main
+        // thread's posted work, which is also where FiberWorkLoop.ScheduleDeferredAwaitContinuations posts
+        // what it defers, and ahead of a time-sliced pass's next slice (FlushOwedExternalStoreRenders). The
+        // frame-boundary callback ScheduleImmediate registered still commits it when neither has.
+        internal void OweExternalStoreFlush()
+        {
+            if (_externalStoreRenderQueued) return;
+            VelvetMainThread.Post(static scheduler => ((FiberBatchScheduler)scheduler!).FlushOwedExternalStoreRenders(), this);
+            _externalStoreRenderQueued = true;
+        }
+
+        // Called by the posted flush and before FiberWorkLoop.ContinueReconcile resumes a parked time-sliced pass, so the readers it committed in earlier slices have
+        // re-rendered the changed snapshot before a later slice's readers render it.
+        internal void FlushOwedExternalStoreRenders()
+        {
+            if (_externalStoreRenderQueued && _immediateOrder.Count > 0) FlushImmediate();
         }
 
         private void ArmImmediateDrain()
@@ -341,6 +365,7 @@ namespace Velvet
                 Drain(_immediateOrder, _immediateSet, immediateTier: true);
             }
             if (_inImmediateCallback) _immediateScheduled = false;
+            if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
             // Only the drop path can leave the loop above with intake queued, and a settle it runs can request
             // a render — the loop that would otherwise consume that request being the one it abandons.
             // MUTANT_SURVIVES(unreachable): the guard is true only after that drop path re-queues, and the one fixture reaching the cap asserts that queue empty instead.
@@ -533,6 +558,7 @@ namespace Velvet
         {
             if (_immediateSet.Remove(fiber)) _immediateOrder.Remove(fiber);
             if (_delayedEntries.Remove(fiber)) _delayedOrder.Remove(fiber);
+            if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
         }
 
         // Drops every pending fiber and resets the scheduled flags and anchor. Called from the owning
@@ -546,6 +572,7 @@ namespace Velvet
             _unadmitted = null;
             _admittedForNextPass = null;
             _immediateWorkArrivedMidDrain = false;
+            _externalStoreRenderQueued = false;
             _immediateScheduled = false;
             _anchor = null;
             _onDrainBegin = null;

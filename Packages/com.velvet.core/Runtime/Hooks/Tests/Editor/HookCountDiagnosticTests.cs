@@ -47,6 +47,7 @@ namespace Velvet.Tests
             ["UseReducer"] = () => Hooks.UseReducer<int, int>((state, action) => state + action, 0),
             ["UseReducer with init"] = () => Hooks.UseReducer<int, int, int>((state, action) => state + action, 0, arg => arg),
             ["UseStore"] = () => Hooks.UseStore(s_store, value => value),
+            ["UseSyncExternalStore"] = () => Hooks.UseSyncExternalStore(onStoreChange => () => { }, () => 0),
             ["UseImperativeHandle"] = () => Hooks.UseImperativeHandle(s_handle, () => new object()),
             ["UseImperativeHandle with deps"] = () => Hooks.UseImperativeHandle(s_handle, () => new object(), 1),
             ["UseRef"] = () => Hooks.UseRef<object>(),
@@ -62,14 +63,19 @@ namespace Velvet.Tests
             ["Use"] = () => Hooks.Use(() => VelvetTask.FromResult(1), resourceKey: "sheet"),
         };
 
-        // Each counts in s_slotStarts every call of its lazy initializer, reducer init, store selector or Use
-        // factory, which the refused call past the count makes only if it goes on to its slot.
+        // Each counts in s_slotStarts every call of its lazy initializer, reducer init, store selector, external-store
+        // subscribe or Use factory, which the refused call past the count makes only if it goes on to its slot.
         private static readonly Dictionary<string, Action> s_countingSheetHooks = new()
         {
             ["UseState"] = () => Hooks.UseState(() => ++s_slotStarts),
             ["UseReducer with init"] = () => Hooks.UseReducer<int, int, int>(
                 (state, action) => state + action, 0, arg => ++s_slotStarts),
             ["UseStore"] = () => Hooks.UseStore(s_store, value => ++s_slotStarts),
+            ["UseSyncExternalStore"] = () => Hooks.UseSyncExternalStore(onStoreChange =>
+            {
+                ++s_slotStarts;
+                return () => { };
+            }, () => 0),
             ["Use"] = () => Hooks.Use(() => VelvetTask.FromResult(++s_slotStarts), resourceKey: "sheet"),
         };
 
@@ -223,7 +229,8 @@ namespace Velvet.Tests
         [TestCase("UseState", "UseState / UseReducer", 1, 2)]
         [TestCase("UseReducer", "UseState / UseReducer", 1, 2)]
         [TestCase("UseReducer with init", "UseState / UseReducer", 1, 2)]
-        [TestCase("UseStore", "UseStore", 0, 1)]
+        [TestCase("UseStore", "UseStore / UseSyncExternalStore", 0, 1)]
+        [TestCase("UseSyncExternalStore", "UseStore / UseSyncExternalStore", 0, 1)]
         [TestCase("UseImperativeHandle", "UseImperativeHandle", 0, 1)]
         [TestCase("UseImperativeHandle with deps", "UseImperativeHandle", 0, 1)]
         [TestCase("UseRef", "UseRef / UseMutableRef", 0, 1)]
@@ -259,7 +266,8 @@ namespace Velvet.Tests
         [TestCase("UseInsertionEffect", "UseInsertionEffect", 1, 0)]
         [TestCase("UseEffect", "UseEffect", 1, 0)]
         [TestCase("UseState", "UseState / UseReducer", 2, 1)]
-        [TestCase("UseStore", "UseStore", 1, 0)]
+        [TestCase("UseStore", "UseStore / UseSyncExternalStore", 1, 0)]
+        [TestCase("UseSyncExternalStore", "UseStore / UseSyncExternalStore", 1, 0)]
         [TestCase("UseImperativeHandle", "UseImperativeHandle", 1, 0)]
         [TestCase("UseRef", "UseRef / UseMutableRef", 1, 0)]
         [TestCase("UseMemo", "UseMemo", 1, 0)]
@@ -289,6 +297,7 @@ namespace Velvet.Tests
         [TestCase("UseState")]
         [TestCase("UseReducer with init")]
         [TestCase("UseStore")]
+        [TestCase("UseSyncExternalStore")]
         [TestCase("Use")]
         public void Given_AHookOnlyAnOpenRenderCalls_When_Opened_Then_TheRefusedCallStartsNoSlot(string hook)
         {

@@ -13,7 +13,7 @@ namespace Velvet
         private static readonly string[] s_kindNames =
         {
             "UseCallback", "UseBlocker", "UseLayoutEffect", "UseInsertionEffect", "UseEffect",
-            "UseState / UseReducer", "UseStore", "UseImperativeHandle", "UseRef / UseMutableRef", "UseMemo",
+            "UseState / UseReducer", "UseStore / UseSyncExternalStore", "UseImperativeHandle", "UseRef / UseMutableRef", "UseMemo",
             "UseId", "UseDeferredValue", "UseOptimistic", "UseMutation", "UseTransition", "Use",
         };
 

@@ -92,6 +92,24 @@ namespace Velvet.Tests
             Assert.That(Card.style.backgroundSize.value.x.value, Is.EqualTo(200f));
         }
 
+        // GREEN_ON_BASE(characterization): the base already pans a to-right gradient horizontally; this pins that the reworked direction parsing keeps it so.
+        [Test]
+        public void Given_APanOnAToRightGradient_When_Mounted_Then_ItPansHorizontally()
+        {
+            Mount(_ => GradientBase + " animate-gradient");
+
+            Assert.That(Binding.PanVertical, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already pans a to-bottom gradient vertically; this pins that the reworked direction parsing keeps it so.
+        [Test]
+        public void Given_APanOnAToBottomGradient_When_Mounted_Then_ItPansVertically()
+        {
+            Mount(_ => "w-[100px] h-[40px] bg-gradient-to-b to-blue-500 animate-gradient");
+
+            Assert.That(Binding.PanVertical, Is.True);
+        }
+
         [Test]
         public void Given_ModeChangedOnPatch_When_Drained_Then_BindingRestartsWithNewMode()
         {

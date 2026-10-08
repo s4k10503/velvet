@@ -103,8 +103,8 @@ namespace Velvet
         private static readonly ConditionalWeakTable<VisualElement, Recorded<bool>> s_delegatesFocusDefaults = new();
 
         // A record is the applier's claim on a member: while one stands, dropping the prop writes the
-        // recorded value back, and for a TextField so does redeclaring a neighbour, since the bag's presence
-        // is what admits the members this render left undeclared. Recording is idempotent, so the next
+        // recorded value back, and for a TextField or a Slider so does redeclaring a neighbour, since the
+        // bag's presence is what admits the members this render left undeclared. Recording is idempotent, so the next
         // tenancy's first declared write leaves a record the previous tenancy took — and the restore then
         // puts that tenancy's reading over whatever this one wrote. Called from
         // FiberElementCleaner.ReturnToPool, which is the single gate every poolable type passes through.
@@ -120,6 +120,11 @@ namespace Velvet
                 // keeps one from staying on a pooled element.
                 textField.UnregisterCallback(s_reassertTouchKeyboard, TrickleDown.TrickleDown);
                 s_textFieldDefaults.Remove(textField);
+            }
+            else if (element is Slider slider)
+            {
+                s_sliderDefaults.Remove(slider);
+                FiberSliderKeyboard.ForgetStep(slider);
             }
         }
 
@@ -191,16 +196,88 @@ namespace Velvet
             FiberElementFactory.ApplyFieldValue(element, value);
         }
 
-        public static void ApplySlider(VisualElement element, SliderSettings? settings)
+        // The range keeps the rule it had while it was the record's only content: both bounds written, a null
+        // one as 0 or 10, whenever either bound's declaration changed and at no other time. Writing them on
+        // every call would rewrite a range a refCallback set each time a render changes only the direction
+        // or the flag. Those two take ApplyTextField's recorded-default shape, for the reason given there.
+        // SliderDirectionPropTests measures both.
+        //
+        // A declared value that arrives with a range change is written in between: the range widens to hold
+        // both ranges, the value is placed inside the new one without a notification, and only then do the
+        // bounds narrow, so the value neither falls to the old range nor reports a clamp the render never asked
+        // for. SliderDirectionPropTests measures both.
+        public static void ApplySlider(
+            VisualElement element, SliderSettings? previous, SliderSettings? settings, object? declaredValue = null)
         {
             if (element is not Slider sliderEl)
             {
                 return;
             }
 
-            sliderEl.lowValue = Resolve(settings?.LowValue, 0f);
-            sliderEl.highValue = Resolve(settings?.HighValue, 10f);
+            FiberSliderKeyboard.SetStep(sliderEl, settings?.Step);
+            if (previous?.LowValue != settings?.LowValue || previous?.HighValue != settings?.HighValue)
+            {
+                var low = Resolve(settings?.LowValue, 0f);
+                var high = Resolve(settings?.HighValue, 10f);
+                if (declaredValue is float value)
+                {
+                    sliderEl.lowValue = UnityEngine.Mathf.Min(sliderEl.lowValue, low);
+                    sliderEl.highValue = UnityEngine.Mathf.Max(sliderEl.highValue, high);
+                    sliderEl.SetValueWithoutNotify(UnityEngine.Mathf.Clamp(value, low, high));
+                }
+
+                sliderEl.lowValue = low;
+                sliderEl.highValue = high;
+            }
+
+            if (!s_sliderDefaults.TryGetValue(sliderEl, out var built))
+            {
+                if (settings?.Direction == null && settings?.Inverted == null)
+                {
+                    return;
+                }
+
+                built = new SliderDefaults();
+                s_sliderDefaults.Add(sliderEl, built);
+            }
+
+            ApplyDirection(sliderEl, settings?.Direction, built);
+            ApplyInverted(sliderEl, settings?.Inverted, built);
         }
+
+        private static void ApplyDirection(Slider slider, SliderDirection? declared, SliderDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.Direction ??= new Recorded<SliderDirection>(slider.direction);
+                slider.direction = value;
+            }
+            else if (built.Direction != null)
+            {
+                slider.direction = built.Direction.Value;
+            }
+        }
+
+        private static void ApplyInverted(Slider slider, bool? declared, SliderDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.Inverted ??= new Recorded<bool>(slider.inverted);
+                slider.inverted = value;
+            }
+            else if (built.Inverted != null)
+            {
+                slider.inverted = built.Inverted.Value;
+            }
+        }
+
+        private sealed class SliderDefaults
+        {
+            public Recorded<SliderDirection>? Direction;
+            public Recorded<bool>? Inverted;
+        }
+
+        private static readonly ConditionalWeakTable<Slider, SliderDefaults> s_sliderDefaults = new();
 
         public static void ApplyScrollView(VisualElement element, ScrollViewSettings? settings)
         {
