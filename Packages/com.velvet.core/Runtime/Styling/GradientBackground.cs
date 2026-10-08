@@ -373,7 +373,7 @@ namespace Velvet
                 {
                     var u = col / (float)(Resolution - 1);
                     var t = ComputeT(spec, u, v, in frame);
-                    pixels[row * Resolution + col] = ColorAt(stops, t, spec.Type, spec.Interp);
+                    pixels[row * Resolution + col] = ColorAt(stops, t, spec.Type, spec.Interp, spec.Hue);
                 }
             }
 
@@ -547,7 +547,7 @@ namespace Velvet
         // settles a stop at the very start or end of the line the way CSS does: where stops share a position
         // the later one starts there, and a hard stop at 100% of a box-long line never shows its later
         // colour. The skew silhouette shader evaluates the same walk.
-        private static Color ColorAt(ResolvedStops stops, float t, GradientType type, GradientInterp interp)
+        private static Color ColorAt(ResolvedStops stops, float t, GradientType type, GradientInterp interp, HueMethod method)
         {
             t = type == GradientType.Radial ? Mathf.Max(t, 0f) : Mathf.Clamp(t, 0f, MaxParameter);
             var positions = stops.Positions;
@@ -566,7 +566,7 @@ namespace Velvet
             }
             var span = positions[i] - positions[i - 1];
             var weight = ApplyHint((t - positions[i - 1]) / span, stops.Hints[i - 1], positions[i - 1], span);
-            return Lerp(stops.Colors[i - 1], stops.Colors[i], weight, interp);
+            return Lerp(stops.Colors[i - 1], stops.Colors[i], weight, interp, method);
         }
 
         // The interpolation weight with the colour hint written between two stops: the weight is raised to the
@@ -586,42 +586,162 @@ namespace Velvet
             return at >= 1f ? 0f : Mathf.Pow(weight, Mathf.Log(0.5f) / Mathf.Log(at));
         }
 
-        // Lerps two stops in the gradient's interpolation space — plain sRGB channels, or the
-        // perceptually-uniform OKLab (sRGB → linear → OKLab, lerp, back) when /oklch|/oklab was set — with
-        // the colour components weighted by alpha, as CSS interpolates, so a stop fading to transparent
-        // keeps its colour instead of darkening toward the transparent colour's channels. Where the
-        // result is fully transparent its colour is unweighted, which nothing paints.
-        private static Color Lerp(Color a, Color b, float t, GradientInterp interp)
+        // Lerps two stops in the gradient's interpolation space, with the colour components weighted by alpha
+        // as CSS interpolates, so a stop fading to transparent keeps its colour instead of darkening toward
+        // the transparent colour's channels. A polar space's hue is not weighted and is interpolated along
+        // the arc the hue method picks; a colour with no chroma has no hue of its own and takes the other's.
+        // Where the result is fully transparent its colour is unweighted, which nothing paints.
+        private static Color Lerp(Color a, Color b, float t, GradientInterp interp, HueMethod method)
         {
-            var oklab = interp == GradientInterp.Oklab;
-            Vector3 ca = oklab ? (Vector3)ToOklab(a) : new Vector3(a.r, a.g, a.b);
-            Vector3 cb = oklab ? (Vector3)ToOklab(b) : new Vector3(b.r, b.g, b.b);
+            var ca = ToSpace(a, interp);
+            var cb = ToSpace(b, interp);
             var alpha = Mathf.Lerp(a.a, b.a, t);
             var mixed = alpha > 0f
                 ? Vector3.Lerp(ca * a.a, cb * b.a, t) / alpha
                 : Vector3.Lerp(ca, cb, t);
-            return oklab
-                ? FromOklab(new Vector4(mixed.x, mixed.y, mixed.z, alpha))
-                : new Color(mixed.x, mixed.y, mixed.z, alpha);
+            if (GradientSpec.IsPolarSpace(interp))
+            {
+                // The hue is the third component in every polar space and is interpolated on its own.
+                mixed.z = LerpHue(ca, cb, t, interp, method);
+            }
+            return FromSpace(mixed, alpha, interp);
         }
 
-        // sRGB Color → OKLab (xyz) + alpha (w), per Björn Ottosson's matrices (operating on LINEAR rgb).
-        private static Vector4 ToOklab(Color c)
+        // Whether a colour in a polar space has no hue: its chroma (saturation for hsl) is nil.
+        private static bool HueMissing(Vector3 c, GradientInterp interp)
+        {
+            switch (interp)
+            {
+                case GradientInterp.Hsl: return c.x < 1e-4f;
+                case GradientInterp.Lch: return c.y < 0.01f;
+                default: return c.y < 2e-4f;
+            }
+        }
+
+        // Interpolates the hue of two colours along the arc the method names, in degrees in [0, 360).
+        private static float LerpHue(Vector3 ca, Vector3 cb, float t, GradientInterp interp, HueMethod method)
+        {
+            var missingA = HueMissing(ca, interp);
+            var missingB = HueMissing(cb, interp);
+            var from = missingA ? (missingB ? 0f : cb.z) : ca.z;
+            var to = missingB ? (missingA ? 0f : ca.z) : cb.z;
+            var delta = to - from;
+            switch (method)
+            {
+                case HueMethod.Longer:
+                    if (delta > 0f && delta < 180f)
+                    {
+                        from += 360f;
+                    }
+                    else if (delta > -180f && delta <= 0f)
+                    {
+                        to += 360f;
+                    }
+                    break;
+                case HueMethod.Increasing:
+                    if (delta < 0f)
+                    {
+                        to += 360f;
+                    }
+                    break;
+                case HueMethod.Decreasing:
+                    if (delta > 0f)
+                    {
+                        from += 360f;
+                    }
+                    break;
+                default:
+                    if (delta > 180f)
+                    {
+                        from += 360f;
+                    }
+                    else if (delta < -180f)
+                    {
+                        to += 360f;
+                    }
+                    break;
+            }
+            return Mathf.Repeat(Mathf.LerpUnclamped(from, to, t), 360f);
+        }
+
+        // sRGB Color → the interpolation space's three components. A polar space is (c0, c1, hue in degrees):
+        // (lightness, chroma, hue) for lch and oklch, (saturation, lightness, hue) for hsl.
+        private static Vector3 ToSpace(Color c, GradientInterp interp)
+        {
+            switch (interp)
+            {
+                case GradientInterp.SrgbLinear:
+                    return new Vector3(SrgbToLinear(c.r), SrgbToLinear(c.g), SrgbToLinear(c.b));
+                case GradientInterp.Oklab:
+                    return ToOklab(c);
+                case GradientInterp.Oklch:
+                    return ToPolar(ToOklab(c));
+                case GradientInterp.Lab:
+                    return ToLab(c);
+                case GradientInterp.Lch:
+                    return ToPolar(ToLab(c));
+                case GradientInterp.Hsl:
+                    return ToHsl(c);
+                default:
+                    return new Vector3(c.r, c.g, c.b);
+            }
+        }
+
+        // The interpolation space's components → an sRGB Color, clipped to the gamut.
+        private static Color FromSpace(Vector3 v, float alpha, GradientInterp interp)
+        {
+            Vector3 rgb;
+            switch (interp)
+            {
+                case GradientInterp.SrgbLinear:
+                    rgb = new Vector3(LinearToSrgb(v.x), LinearToSrgb(v.y), LinearToSrgb(v.z));
+                    break;
+                case GradientInterp.Oklab:
+                    rgb = FromOklab(v);
+                    break;
+                case GradientInterp.Oklch:
+                    rgb = FromOklab(FromPolar(v));
+                    break;
+                case GradientInterp.Lab:
+                    rgb = FromLab(v);
+                    break;
+                case GradientInterp.Lch:
+                    rgb = FromLab(FromPolar(v));
+                    break;
+                case GradientInterp.Hsl:
+                    rgb = FromHsl(v);
+                    break;
+                default:
+                    rgb = v;
+                    break;
+            }
+            return new Color(Mathf.Clamp01(rgb.x), Mathf.Clamp01(rgb.y), Mathf.Clamp01(rgb.z), alpha);
+        }
+
+        // (a, b) → (chroma, hue in degrees); the first component stays.
+        private static Vector3 ToPolar(Vector3 lab)
+            => new(lab.x, Mathf.Sqrt((lab.y * lab.y) + (lab.z * lab.z)),
+                Mathf.Repeat(Mathf.Atan2(lab.z, lab.y) * Mathf.Rad2Deg, 360f));
+
+        private static Vector3 FromPolar(Vector3 lch)
+            => new(lch.x, lch.y * Mathf.Cos(lch.z * Mathf.Deg2Rad), lch.y * Mathf.Sin(lch.z * Mathf.Deg2Rad));
+
+        // sRGB Color → OKLab, per Björn Ottosson's matrices (operating on LINEAR rgb).
+        private static Vector3 ToOklab(Color c)
         {
             float lr = SrgbToLinear(c.r), lg = SrgbToLinear(c.g), lb = SrgbToLinear(c.b);
             var l = (0.4122214708f * lr) + (0.5363325363f * lg) + (0.0514459929f * lb);
             var m = (0.2119034982f * lr) + (0.6806995451f * lg) + (0.1073969566f * lb);
             var s = (0.0883024619f * lr) + (0.2817188376f * lg) + (0.6299787005f * lb);
             float l_ = Cbrt(l), m_ = Cbrt(m), s_ = Cbrt(s);
-            return new Vector4(
+            return new Vector3(
                 (0.2104542553f * l_) + (0.7936177850f * m_) - (0.0040720468f * s_),
                 (1.9779984951f * l_) - (2.4285922050f * m_) + (0.4505937099f * s_),
-                (0.0259040371f * l_) + (0.7827717662f * m_) - (0.8086757660f * s_),
-                c.a);
+                (0.0259040371f * l_) + (0.7827717662f * m_) - (0.8086757660f * s_));
         }
 
-        // OKLab (xyz) + alpha (w) → sRGB Color.
-        private static Color FromOklab(Vector4 lab)
+        // OKLab → sRGB components, unclipped.
+        private static Vector3 FromOklab(Vector3 lab)
         {
             var l_ = lab.x + (0.3963377774f * lab.y) + (0.2158037573f * lab.z);
             var m_ = lab.x - (0.1055613458f * lab.y) - (0.0638541728f * lab.z);
@@ -630,17 +750,109 @@ namespace Velvet
             var lr = (4.0767416621f * l) - (3.3077115913f * m) + (0.2309699292f * s);
             var lg = (-1.2684380046f * l) + (2.6097574011f * m) - (0.3413193965f * s);
             var lb = (-0.0041960863f * l) - (0.7034186147f * m) + (1.7076147010f * s);
-            return new Color(
-                Mathf.Clamp01(LinearToSrgb(lr)),
-                Mathf.Clamp01(LinearToSrgb(lg)),
-                Mathf.Clamp01(LinearToSrgb(lb)),
-                lab.w);
+            return new Vector3(LinearToSrgb(lr), LinearToSrgb(lg), LinearToSrgb(lb));
+        }
+
+        // CIE Lab with a D50 white, as CSS Color 4 defines lab(): linear sRGB through the Bradford-adapted
+        // matrix to XYZ. The constants match the shader's copy.
+        private static Vector3 ToLab(Color c)
+        {
+            float lr = SrgbToLinear(c.r), lg = SrgbToLinear(c.g), lb = SrgbToLinear(c.b);
+            var x = ((0.4360747f * lr) + (0.3850649f * lg) + (0.1430804f * lb)) / 0.9642957f;
+            var y = (0.2225045f * lr) + (0.7168786f * lg) + (0.0606169f * lb);
+            var z = ((0.0139322f * lr) + (0.0971045f * lg) + (0.7141733f * lb)) / 0.8251046f;
+            float fx = LabF(x), fy = LabF(y), fz = LabF(z);
+            return new Vector3((116f * fy) - 16f, 500f * (fx - fy), 200f * (fy - fz));
+        }
+
+        private static Vector3 FromLab(Vector3 lab)
+        {
+            var fy = (lab.x + 16f) / 116f;
+            var fx = (lab.y / 500f) + fy;
+            var fz = fy - (lab.z / 200f);
+            var x = LabFInverse(fx) * 0.9642957f;
+            var y = lab.x > 8f ? fy * fy * fy : lab.x / 903.2963f;
+            var z = LabFInverse(fz) * 0.8251046f;
+            var lr = (3.1338561f * x) - (1.6168667f * y) - (0.4906146f * z);
+            var lg = (-0.9787684f * x) + (1.9161415f * y) + (0.0334540f * z);
+            var lb = (0.0719453f * x) - (0.2289914f * y) + (1.4052427f * z);
+            return new Vector3(LinearToSrgb(lr), LinearToSrgb(lg), LinearToSrgb(lb));
+        }
+
+        private static float LabF(float t) => t > 0.008856452f ? Cbrt(t) : ((903.2963f * t) + 16f) / 116f;
+
+        private static float LabFInverse(float f)
+        {
+            var cubed = f * f * f;
+            return cubed > 0.008856452f ? cubed : ((116f * f) - 16f) / 903.2963f;
+        }
+
+        // sRGB → (saturation, lightness, hue in degrees).
+        private static Vector3 ToHsl(Color c)
+        {
+            var max = Mathf.Max(c.r, Mathf.Max(c.g, c.b));
+            var min = Mathf.Min(c.r, Mathf.Min(c.g, c.b));
+            var d = max - min;
+            var l = (max + min) * 0.5f;
+            var s = d < 1e-6f ? 0f : d / (1f - Mathf.Abs((2f * l) - 1f));
+            float h;
+            if (d < 1e-6f)
+            {
+                h = 0f;
+            }
+            else if (max == c.r)
+            {
+                h = Mathf.Repeat((c.g - c.b) / d, 6f) * 60f;
+            }
+            else if (max == c.g)
+            {
+                h = (((c.b - c.r) / d) + 2f) * 60f;
+            }
+            else
+            {
+                h = (((c.r - c.g) / d) + 4f) * 60f;
+            }
+            return new Vector3(s, l, h);
+        }
+
+        private static Vector3 FromHsl(Vector3 v)
+        {
+            var chroma = (1f - Mathf.Abs((2f * v.y) - 1f)) * v.x;
+            var h = Mathf.Repeat(v.z, 360f) / 60f;
+            var x = chroma * (1f - Mathf.Abs(Mathf.Repeat(h, 2f) - 1f));
+            var m = v.y - (chroma * 0.5f);
+            Vector3 rgb;
+            if (h < 1f)
+            {
+                rgb = new Vector3(chroma, x, 0f);
+            }
+            else if (h < 2f)
+            {
+                rgb = new Vector3(x, chroma, 0f);
+            }
+            else if (h < 3f)
+            {
+                rgb = new Vector3(0f, chroma, x);
+            }
+            else if (h < 4f)
+            {
+                rgb = new Vector3(0f, x, chroma);
+            }
+            else if (h < 5f)
+            {
+                rgb = new Vector3(x, 0f, chroma);
+            }
+            else
+            {
+                rgb = new Vector3(chroma, 0f, x);
+            }
+            return rgb + new Vector3(m, m, m);
         }
 
         // The exact IEC 61966-2-1 sRGB transfer, hand-rolled (NOT Color.linear / Mathf.GammaToLinearSpace)
-        // on purpose: OKLab is defined on this specific curve regardless of the project's active color
-        // space, and these constants must match the shader's HLSL copy bit-for-bit so the skew and non-skew
-        // bakes agree.
+        // on purpose: the spaces here are defined on this specific curve regardless of the project's active
+        // color space, and these constants must match the shader's HLSL copy bit-for-bit so the skew and
+        // non-skew bakes agree.
         private static float SrgbToLinear(float c) => c <= 0.04045f ? c / 12.92f : Mathf.Pow((c + 0.055f) / 1.055f, 2.4f);
         private static float LinearToSrgb(float c) => c <= 0.0031308f ? c * 12.92f : (1.055f * Mathf.Pow(c, 1f / 2.4f)) - 0.055f;
         private static float Cbrt(float x) => x < 0f ? -Mathf.Pow(-x, 1f / 3f) : Mathf.Pow(x, 1f / 3f);

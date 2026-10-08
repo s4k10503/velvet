@@ -16,14 +16,29 @@ namespace Velvet
         Conic,
     }
 
-    // The colour space the stops interpolate in. Srgb is a plain channel lerp; Oklab is the
-    // perceptually-uniform OKLab lerp (avoids the muddy midpoint of opposing sRGB hues). Velvet defaults to
-    // Srgb deliberately, even though the common CSS default for gradients is OKLab — this default preserves
-    // existing visuals; opt into OKLab with the /oklch or /oklab modifier.
+    // The colour space the stops interpolate in. Srgb is a plain channel lerp, SrgbLinear the same on linear
+    // light, Oklab and Lab the perceptually-uniform lerps (avoiding the muddy midpoint of opposing sRGB
+    // hues), and Oklch, Lch and Hsl the polar forms, whose hue travels along the arc a HueMethod picks.
+    // Velvet defaults to Srgb deliberately, even though Tailwind's utilities name OKLab — this default
+    // preserves existing visuals; opt into another with the /oklab, /oklch, … modifier.
     internal enum GradientInterp
     {
         Srgb,
         Oklab,
+        SrgbLinear,
+        Oklch,
+        Lab,
+        Lch,
+        Hsl,
+    }
+
+    // Which way round the hue circle a polar interpolation goes.
+    internal enum HueMethod
+    {
+        Shorter,
+        Longer,
+        Increasing,
+        Decreasing,
     }
 
     // How far a radial gradient reaches: the extent keywords CSS names, or sizes given explicitly.
@@ -109,6 +124,7 @@ namespace Velvet
         public float CenterX { get; init; }
         public float CenterY { get; init; }
         public GradientInterp Interp { get; init; }
+        public HueMethod Hue { get; init; }
         public GradientStop[] Stops { get; init; }
 
         // 8-bit RGBA key. Equality AND hashing both go through this so the Equals/GetHashCode contract holds
@@ -134,6 +150,10 @@ namespace Velvet
             {
                 return false;
             }
+            if (IsPolarSpace(Interp) && Hue != other.Hue)
+            {
+                return false;
+            }
             if (Type != GradientType.Radial && AngleKey(AngleDeg) != AngleKey(other.AngleDeg))
             {
                 return false;
@@ -153,6 +173,10 @@ namespace Velvet
             }
             return StopsEqual(Stops ?? Array.Empty<GradientStop>(), other.Stops ?? Array.Empty<GradientStop>());
         }
+
+        // Whether the space has a hue, which travels along an arc rather than being averaged.
+        internal static bool IsPolarSpace(GradientInterp interp)
+            => interp == GradientInterp.Oklch || interp == GradientInterp.Lch || interp == GradientInterp.Hsl;
 
         private static bool StopsEqual(GradientStop[] a, GradientStop[] b)
         {
@@ -191,6 +215,7 @@ namespace Velvet
                 var h = 17;
                 h = h * 31 + (int)Type;
                 h = h * 31 + (int)Interp;
+                h = h * 31 + (IsPolarSpace(Interp) ? (int)Hue : 0);
                 h = h * 31 + (Type != GradientType.Radial ? AngleKey(AngleDeg) : 0);
                 h = h * 31 + (Type == GradientType.Linear && ToCorner ? 1 : 0);
                 h = h * 31 + (Type == GradientType.Radial ? Radial.GetHashCode() : 0);
@@ -252,6 +277,7 @@ namespace Velvet
             public float CenterX;
             public float CenterY;
             public GradientInterp Interp;
+            public HueMethod Hue;
             public GradientStop[]? Stops;
             public GradientStop[]? Raw;
         }
@@ -433,6 +459,7 @@ namespace Velvet
                 CenterX = shape.CenterX,
                 CenterY = shape.CenterY,
                 Interp = shape.Interp,
+                Hue = shape.Hue,
                 Stops = stops,
             };
             return true;
@@ -517,15 +544,43 @@ namespace Velvet
             }
         }
 
+        // A /modifier as Tailwind reads it: an interpolation space, or a hue method alone, which is oklch's.
+        private static bool TryParseModifier(string modifier, out GradientInterp interp, out HueMethod hue)
+        {
+            if (TryParseHueMethod(modifier, out hue))
+            {
+                interp = GradientInterp.Oklch;
+                return true;
+            }
+            hue = HueMethod.Shorter;
+            return TryParseInterp(modifier, out interp);
+        }
+
         // An interpolation space as the /modifier and a list's in_{space} both name it.
         private static bool TryParseInterp(string space, out GradientInterp interp)
         {
             switch (space)
             {
-                case "oklch":
-                case "oklab": interp = GradientInterp.Oklab; return true;
                 case "srgb": interp = GradientInterp.Srgb; return true;
+                case "srgb-linear": interp = GradientInterp.SrgbLinear; return true;
+                case "oklab": interp = GradientInterp.Oklab; return true;
+                case "oklch": interp = GradientInterp.Oklch; return true;
+                case "lab": interp = GradientInterp.Lab; return true;
+                case "lch": interp = GradientInterp.Lch; return true;
+                case "hsl": interp = GradientInterp.Hsl; return true;
                 default: interp = GradientInterp.Srgb; return false;
+            }
+        }
+
+        private static bool TryParseHueMethod(string token, out HueMethod hue)
+        {
+            switch (token)
+            {
+                case "shorter": hue = HueMethod.Shorter; return true;
+                case "longer": hue = HueMethod.Longer; return true;
+                case "increasing": hue = HueMethod.Increasing; return true;
+                case "decreasing": hue = HueMethod.Decreasing; return true;
+                default: hue = HueMethod.Shorter; return false;
             }
         }
 
@@ -562,7 +617,7 @@ namespace Velvet
             var slash = ModifierSlash(cls);
             if (slash >= 0)
             {
-                if (!TryParseInterp(cls.Substring(slash + 1), out shape.Interp))
+                if (!TryParseModifier(cls.Substring(slash + 1), out shape.Interp, out shape.Hue))
                 {
                     return false; // unknown modifier → not a valid activator
                 }
@@ -791,8 +846,9 @@ namespace Velvet
             return StyleColorValueParser.TryParseColor(token, out color);
         }
 
-        // The leading line argument: an angle or to_{side}[_{side}] for linear, at_{position} for radial,
-        // from_{angle} and/or at_{position} for conic, each optionally led or followed by in_{space}.
+        // The leading line argument: an angle or to_{side}[_{side}] for linear, a shape, size and at_{position} for
+        // radial, from_{angle} and/or at_{position} for conic, each optionally led or followed by
+        // in_{space}[_{method}_hue].
         private static bool TryParseLine(string arg, ref Shape shape)
         {
             var tokens = arg.Split('_');
@@ -801,12 +857,28 @@ namespace Velvet
             {
                 return TryParseShapeLine(arg, ref shape);
             }
-            if (at + 1 >= tokens.Length || (at != 0 && at != tokens.Length - 2)
-                || !TryParseInterp(tokens[at + 1], out shape.Interp))
+            if (at + 1 >= tokens.Length || !TryParseInterp(tokens[at + 1], out shape.Interp))
             {
                 return false;
             }
-            var line = at == 0 ? string.Join("_", tokens, 2, tokens.Length - 2) : string.Join("_", tokens, 0, at);
+            // The space, and the hue method that may follow a polar one.
+            var length = 2;
+            shape.Hue = HueMethod.Shorter;
+            if (at + 3 < tokens.Length && tokens[at + 3] == "hue")
+            {
+                if (!GradientSpec.IsPolarSpace(shape.Interp) || !TryParseHueMethod(tokens[at + 2], out shape.Hue))
+                {
+                    return false;
+                }
+                length = 4;
+            }
+            if (at != 0 && at + length != tokens.Length)
+            {
+                return false;
+            }
+            var line = at == 0
+                ? string.Join("_", tokens, length, tokens.Length - length)
+                : string.Join("_", tokens, 0, at);
             return line.Length == 0 || TryParseShapeLine(line, ref shape);
         }
 

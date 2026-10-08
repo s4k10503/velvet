@@ -36,8 +36,10 @@ Shader "Velvet/GradientSilhouette"
         _ConicStart("Conic Start (deg)", Float) = 0
         // A radial's radii in the box's pixels, from GradientBackground.RadialRadii.
         _RadialRadii("Radial Radii (px)", Vector) = (1, 1, 0, 0)
-        // Interpolation space: 0 = sRGB, 1 = OKLab.
+        // Interpolation space (0 = sRGB, 1 = OKLab, 2 = sRGB-linear, 3 = OKLCH, 4 = Lab, 5 = LCH, 6 = HSL) and
+        // the hue method of a polar one (0 = shorter, 1 = longer, 2 = increasing, 3 = decreasing).
         _Interp("Interp", Float) = 0
+        _HueMethod("Hue Method", Float) = 0
     }
 
     SubShader
@@ -98,6 +100,7 @@ Shader "Velvet/GradientSilhouette"
             float _ConicStart;
             float4 _RadialRadii;
             float _Interp;
+            float _HueMethod;
 
             Varyings vert(Attributes input)
             {
@@ -114,14 +117,27 @@ Shader "Velvet/GradientSilhouette"
                 return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
             }
 
-            // OKLab interpolation (Björn Ottosson) — mirrors GradientBackground's C# path so the skew bake
-            // and the non-skew bake agree. Operates on LINEAR rgb, so sRGB is decoded/encoded around it.
+            // The interpolation spaces — mirrors GradientBackground's C# path so the skew bake and the non-skew
+            // bake agree, constants included. Each works on LINEAR rgb where it needs light, so sRGB is
+            // decoded and encoded around it. _Interp numbers them as GradientInterp does: 0 sRGB, 1 OKLab,
+            // 2 sRGB-linear, 3 OKLCH, 4 Lab, 5 LCH, 6 HSL. A polar space is (c0, c1, hue in degrees).
             float v_srgbToLinear(float c) { return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }
             float v_linearToSrgb(float c) { return c <= 0.0031308 ? c * 12.92 : (1.055 * pow(c, 1.0 / 2.4)) - 0.055; }
+            float v_cbrt(float x) { return sign(x) * pow(abs(x), 1.0 / 3.0); }
+
+            float3 v_toLinear(float3 c)
+            {
+                return float3(v_srgbToLinear(c.r), v_srgbToLinear(c.g), v_srgbToLinear(c.b));
+            }
+
+            float3 v_fromLinear(float3 c)
+            {
+                return float3(v_linearToSrgb(c.r), v_linearToSrgb(c.g), v_linearToSrgb(c.b));
+            }
 
             float3 v_toOklab(float3 c)
             {
-                float3 lin = float3(v_srgbToLinear(c.r), v_srgbToLinear(c.g), v_srgbToLinear(c.b));
+                float3 lin = v_toLinear(c);
                 float l = dot(lin, float3(0.4122214708, 0.5363325363, 0.0514459929));
                 float m = dot(lin, float3(0.2119034982, 0.6806995451, 0.1073969566));
                 float s = dot(lin, float3(0.0883024619, 0.2817188376, 0.6299787005));
@@ -142,20 +158,180 @@ Shader "Velvet/GradientSilhouette"
                 float lr = dot(lms, float3(4.0767416621, -3.3077115913, 0.2309699292));
                 float lg = dot(lms, float3(-1.2684380046, 2.6097574011, -0.3413193965));
                 float lb = dot(lms, float3(-0.0041960863, -0.7034186147, 1.7076147010));
-                return saturate(float3(v_linearToSrgb(lr), v_linearToSrgb(lg), v_linearToSrgb(lb)));
+                return v_fromLinear(float3(lr, lg, lb));
             }
 
-            // Lerp two stops in the gradient's interpolation space (sRGB channels or OKLab), the colour
-            // weighted by alpha as GradientBackground.Lerp weights it; a fully transparent result keeps the
-            // unweighted colour.
+            float v_labF(float t) { return t > 0.008856452 ? v_cbrt(t) : ((903.2963 * t) + 16.0) / 116.0; }
+
+            float v_labFInverse(float f)
+            {
+                float cubed = f * f * f;
+                return cubed > 0.008856452 ? cubed : ((116.0 * f) - 16.0) / 903.2963;
+            }
+
+            // CIE Lab with a D50 white, as CSS Color 4 defines lab().
+            float3 v_toLab(float3 c)
+            {
+                float3 lin = v_toLinear(c);
+                float x = dot(lin, float3(0.4360747, 0.3850649, 0.1430804)) / 0.9642957;
+                float y = dot(lin, float3(0.2225045, 0.7168786, 0.0606169));
+                float z = dot(lin, float3(0.0139322, 0.0971045, 0.7141733)) / 0.8251046;
+                float fx = v_labF(x);
+                float fy = v_labF(y);
+                float fz = v_labF(z);
+                return float3((116.0 * fy) - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz));
+            }
+
+            float3 v_fromLab(float3 lab)
+            {
+                float fy = (lab.x + 16.0) / 116.0;
+                float fx = (lab.y / 500.0) + fy;
+                float fz = fy - (lab.z / 200.0);
+                float x = v_labFInverse(fx) * 0.9642957;
+                float y = lab.x > 8.0 ? fy * fy * fy : lab.x / 903.2963;
+                float z = v_labFInverse(fz) * 0.8251046;
+                float lr = (3.1338561 * x) - (1.6168667 * y) - (0.4906146 * z);
+                float lg = (-0.9787684 * x) + (1.9161415 * y) + (0.0334540 * z);
+                float lb = (0.0719453 * x) - (0.2289914 * y) + (1.4052427 * z);
+                return v_fromLinear(float3(lr, lg, lb));
+            }
+
+            float3 v_toPolar(float3 lab)
+            {
+                float hue = degrees(atan2(lab.z, lab.y));
+                return float3(lab.x, length(lab.yz), hue - 360.0 * floor(hue / 360.0));
+            }
+
+            float3 v_fromPolar(float3 lch)
+            {
+                float hue = radians(lch.z);
+                return float3(lch.x, lch.y * cos(hue), lch.y * sin(hue));
+            }
+
+            // sRGB → (saturation, lightness, hue in degrees).
+            float3 v_toHsl(float3 c)
+            {
+                float mx = max(c.r, max(c.g, c.b));
+                float mn = min(c.r, min(c.g, c.b));
+                float d = mx - mn;
+                float l = (mx + mn) * 0.5;
+                float s = d < 1e-6 ? 0.0 : d / (1.0 - abs((2.0 * l) - 1.0));
+                float h = 0.0;
+                if (d >= 1e-6)
+                {
+                    if (mx == c.r)
+                    {
+                        float k = (c.g - c.b) / d;
+                        h = (k - 6.0 * floor(k / 6.0)) * 60.0;
+                    }
+                    else if (mx == c.g)
+                    {
+                        h = (((c.b - c.r) / d) + 2.0) * 60.0;
+                    }
+                    else
+                    {
+                        h = (((c.r - c.g) / d) + 4.0) * 60.0;
+                    }
+                }
+                return float3(s, l, h);
+            }
+
+            float3 v_fromHsl(float3 v)
+            {
+                float chroma = (1.0 - abs((2.0 * v.y) - 1.0)) * v.x;
+                float h = (v.z - 360.0 * floor(v.z / 360.0)) / 60.0;
+                float k = h - 2.0 * floor(h / 2.0);
+                float x = chroma * (1.0 - abs(k - 1.0));
+                float m = v.y - (chroma * 0.5);
+                float3 rgb;
+                if (h < 1.0) rgb = float3(chroma, x, 0.0);
+                else if (h < 2.0) rgb = float3(x, chroma, 0.0);
+                else if (h < 3.0) rgb = float3(0.0, chroma, x);
+                else if (h < 4.0) rgb = float3(0.0, x, chroma);
+                else if (h < 5.0) rgb = float3(x, 0.0, chroma);
+                else rgb = float3(chroma, 0.0, x);
+                return rgb + m;
+            }
+
+            bool v_isPolar(int space) { return space == 3 || space == 5 || space == 6; }
+
+            float3 v_toSpace(float3 c, int space)
+            {
+                if (space == 1) return v_toOklab(c);
+                if (space == 2) return v_toLinear(c);
+                if (space == 3) return v_toPolar(v_toOklab(c));
+                if (space == 4) return v_toLab(c);
+                if (space == 5) return v_toPolar(v_toLab(c));
+                if (space == 6) return v_toHsl(c);
+                return c;
+            }
+
+            float3 v_fromSpace(float3 v, int space)
+            {
+                float3 rgb = v;
+                if (space == 1) rgb = v_fromOklab(v);
+                else if (space == 2) rgb = v_fromLinear(v);
+                else if (space == 3) rgb = v_fromOklab(v_fromPolar(v));
+                else if (space == 4) rgb = v_fromLab(v);
+                else if (space == 5) rgb = v_fromLab(v_fromPolar(v));
+                else if (space == 6) rgb = v_fromHsl(v);
+                return saturate(rgb);
+            }
+
+            // Whether a colour in a polar space has no hue: its chroma (saturation for hsl) is nil.
+            bool v_hueMissing(float3 c, int space)
+            {
+                if (space == 6) return c.x < 1e-4;
+                if (space == 5) return c.y < 0.01;
+                return c.y < 2e-4;
+            }
+
+            // The hue between two colours along the arc _HueMethod names: 0 shorter, 1 longer, 2 increasing,
+            // 3 decreasing; a colour with no chroma takes the other's hue.
+            float v_lerpHue(float3 ca, float3 cb, float t, int space)
+            {
+                bool missA = v_hueMissing(ca, space);
+                bool missB = v_hueMissing(cb, space);
+                float from = missA ? (missB ? 0.0 : cb.z) : ca.z;
+                float to = missB ? (missA ? 0.0 : ca.z) : cb.z;
+                float delta = to - from;
+                int method = (int)(_HueMethod + 0.5);
+                if (method == 1)
+                {
+                    if (delta > 0.0 && delta < 180.0) from += 360.0;
+                    else if (delta > -180.0 && delta <= 0.0) to += 360.0;
+                }
+                else if (method == 2)
+                {
+                    if (delta < 0.0) to += 360.0;
+                }
+                else if (method == 3)
+                {
+                    if (delta > 0.0) from += 360.0;
+                }
+                else
+                {
+                    if (delta > 180.0) from += 360.0;
+                    else if (delta < -180.0) to += 360.0;
+                }
+                float h = lerp(from, to, t);
+                return h - 360.0 * floor(h / 360.0);
+            }
+
+            // Lerp two stops in the gradient's interpolation space, the colour weighted by alpha as
+            // GradientBackground.Lerp weights it; a fully transparent result keeps the unweighted colour.
             float4 v_gradLerp(float4 a, float4 b, float t)
             {
-                bool oklab = _Interp > 0.5;
-                float3 ca = oklab ? v_toOklab(a.rgb) : a.rgb;
-                float3 cb = oklab ? v_toOklab(b.rgb) : b.rgb;
+                int space = (int)(_Interp + 0.5);
+                float3 ca = v_toSpace(a.rgb, space);
+                float3 cb = v_toSpace(b.rgb, space);
                 float alpha = lerp(a.a, b.a, t);
                 float3 mixed = alpha > 0.0 ? lerp(ca * a.a, cb * b.a, t) / alpha : lerp(ca, cb, t);
-                return float4(oklab ? v_fromOklab(mixed) : mixed, alpha);
+                if (v_isPolar(space))
+                {
+                    mixed.z = v_lerpHue(ca, cb, t, space);
+                }
+                return float4(v_fromSpace(mixed, space), alpha);
             }
 
             half4 frag(Varyings input) : SV_Target

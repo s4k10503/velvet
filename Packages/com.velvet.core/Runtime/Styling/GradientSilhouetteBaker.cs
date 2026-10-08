@@ -49,6 +49,7 @@ namespace Velvet
         private static readonly int RadialRadiiId = Shader.PropertyToID("_RadialRadii");
         private static readonly int ConicStartId = Shader.PropertyToID("_ConicStart");
         private static readonly int InterpId = Shader.PropertyToID("_Interp");
+        private static readonly int HueMethodId = Shader.PropertyToID("_HueMethod");
         private static readonly int AxisDirId = Shader.PropertyToID("_AxisDir");
         private static readonly int ElementSizeId = Shader.PropertyToID("_ElementSize");
         private static readonly int QuadSizeId = Shader.PropertyToID("_QuadSize");
@@ -127,7 +128,8 @@ namespace Velvet
             m.SetFloat(ConicStartId, spec.AngleDeg); // used only for conic
             var radialRadii = GradientBackground.RadialRadii(spec, w, h);
             m.SetVector(RadialRadiiId, new Vector4(radialRadii.x, radialRadii.y, 0f, 0f)); // used only for radial
-            m.SetFloat(InterpId, spec.Interp == GradientInterp.Oklab ? 1f : 0f);
+            m.SetFloat(InterpId, (float)(int)spec.Interp);
+            m.SetFloat(HueMethodId, (float)(int)spec.Hue);
             // The line's direction, then the box proportions it is laid out over: those of the element, or a
             // square for a corner direction (see GradientBackground.Bake).
             var axis = GradientBackground.LinearDirection(spec.AngleDeg);

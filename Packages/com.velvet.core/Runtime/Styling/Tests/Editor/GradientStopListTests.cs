@@ -309,7 +309,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-linear-[in_oklch_45deg,#ff0000,#0000ff]" }, out var spec);
 
             // Assert
-            Assert.That((spec.AngleDeg, spec.Interp), Is.EqualTo((45f, GradientInterp.Oklab)));
+            Assert.That((spec.AngleDeg, spec.Interp), Is.EqualTo((45f, GradientInterp.Oklch)));
         }
 
         [Test]
@@ -1262,6 +1262,222 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(equal, Is.False);
+        }
+
+        #endregion
+
+        #region Interpolation spaces
+
+        [Test]
+        public void Given_AnOklchModifier_When_Extracted_Then_TheSpaceIsOklchNotOklab()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/oklch", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklch));
+        }
+
+        [Test]
+        public void Given_ALinearLightModifier_When_Extracted_Then_TheSpaceIsSrgbLinear()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/srgb-linear", "from-[#000000]", "to-[#ffffff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.SrgbLinear));
+        }
+
+        [Test]
+        public void Given_AHslModifier_When_Extracted_Then_TheSpaceIsHsl()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/hsl", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Hsl));
+        }
+
+        [Test]
+        public void Given_ALabModifier_When_Extracted_Then_TheSpaceIsLab()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/lab", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Lab));
+        }
+
+        [Test]
+        public void Given_ALchModifier_When_Extracted_Then_TheSpaceIsLch()
+        {
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/lch", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Lch));
+        }
+
+        [Test]
+        public void Given_AHueMethodModifier_When_Extracted_Then_ItIsOklchWithThatMethod()
+        {
+            // Act — Tailwind reads /longer as in oklch longer hue.
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/longer", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.Interp, spec.Hue), Is.EqualTo((GradientInterp.Oklch, HueMethod.Longer)));
+        }
+
+        [Test]
+        public void Given_ASpaceAndHueMethodInAList_When_Extracted_Then_BothAreRead()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-[to_right_in_hsl_longer_hue,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.AngleDeg, spec.Interp, spec.Hue), Is.EqualTo((90f, GradientInterp.Hsl, HueMethod.Longer)));
+        }
+
+        [Test]
+        public void Given_ASpaceAndHueMethodLeadingAList_When_Extracted_Then_BothAreRead()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-[in_oklch_decreasing_hue_to_right,#ff0000,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That((spec.AngleDeg, spec.Interp, spec.Hue), Is.EqualTo((90f, GradientInterp.Oklch, HueMethod.Decreasing)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no comma in a linear or conic bracket, so this one is inert there too.
+        [Test]
+        public void Given_AHueMethodOnARectangularSpaceAfterAPlainActivator_When_Extracted_Then_ThePlainActivatorStillWins()
+        {
+            // Act — a hue method belongs to a polar space.
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "bg-linear-[to_left_in_oklab_longer_hue,#00ff00,#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.AngleDeg, Is.EqualTo(90f));
+        }
+
+        [Test]
+        public void Given_ListsOfAPolarSpaceDifferingInTheHueMethod_When_Compared_Then_TheyAreNotEqual()
+        {
+            // Arrange
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[in_hsl,#ff0000,#0000ff]" }, out var shorter);
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[in_hsl_longer_hue,#ff0000,#0000ff]" }, out var longer);
+
+            // Act
+            var equal = shorter.Equals(longer);
+
+            // Assert
+            Assert.That(equal, Is.False);
+        }
+
+        [Test]
+        public void Given_ListsOfARectangularSpaceDifferingInTheHueMethod_When_Compared_Then_TheyAreEqual()
+        {
+            // Arrange — the method only reaches a polar space, so a modifier naming one on oklab changes nothing.
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/oklab", "from-[#ff0000]", "to-[#0000ff]" }, out var a);
+            StyleGradientClass.TryExtract(new[] { "bg-linear-to-r/oklab", "from-[#ff0000]", "to-[#0000ff]" }, out var b);
+
+            // Act
+            var equal = a.Equals(b);
+
+            // Assert
+            Assert.That(equal, Is.True);
+        }
+
+        [Test]
+        public void Given_RedToBlueInOklch_When_Baked_Then_TheMidpointFollowsTheHueArc()
+        {
+            // Act — clipped to the gamut, the arc through magenta stays bright red.
+            var middle = SampleAcross(new[] { "bg-linear-[to_right_in_oklch,#ff0000,#0000ff]" }, 0.5f);
+
+            // Assert
+            Assert.That(middle.r, Is.EqualTo(0.726f).Within(0.03f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInLch_When_Baked_Then_TheMidpointFollowsTheHueArc()
+        {
+            // Act
+            var middle = SampleAcross(new[] { "bg-linear-[to_right_in_lch,#ff0000,#0000ff]" }, 0.5f);
+
+            // Assert
+            Assert.That(middle.r, Is.EqualTo(0.958f).Within(0.03f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInLab_When_Baked_Then_TheMidpointIsTheMeanInLab()
+        {
+            // Act
+            var middle = SampleAcross(new[] { "bg-linear-[to_right_in_lab,#ff0000,#0000ff]" }, 0.5f);
+
+            // Assert
+            Assert.That(middle.r, Is.EqualTo(0.754f).Within(0.03f));
+        }
+
+        [Test]
+        public void Given_BlackToWhiteInLinearLight_When_Baked_Then_TheMidpointIsBrighterThanInSrgb()
+        {
+            // Act
+            var middle = SampleAcross(new[] { "bg-linear-[to_right_in_srgb-linear,#000000,#ffffff]" }, 0.5f);
+
+            // Assert
+            Assert.That(middle.r, Is.EqualTo(0.738f).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInHsl_When_Baked_Then_TheShorterArcPassesThroughMagenta()
+        {
+            // Act
+            var middle = SampleAcross(new[] { "bg-linear-[to_right_in_hsl,#ff0000,#0000ff]" }, 0.5f);
+
+            // Assert
+            Assert.That(middle.r - middle.g, Is.GreaterThan(0.9f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInHslTheLongWay_When_Baked_Then_TheMidpointIsGreen()
+        {
+            // Act
+            var middle = SampleAcross(new[] { "bg-linear-[to_right_in_hsl_longer_hue,#ff0000,#0000ff]" }, 0.5f);
+
+            // Assert
+            Assert.That(middle.g, Is.GreaterThan(0.95f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInHslByIncreasingHue_When_Baked_Then_TheMidpointIsGreen()
+        {
+            // Act — red is hue 0 and blue 240: increasing goes through yellow and green.
+            var middle = SampleAcross(new[] { "bg-linear-[to_right_in_hsl_increasing_hue,#ff0000,#0000ff]" }, 0.5f);
+
+            // Assert
+            Assert.That(middle.g, Is.GreaterThan(0.95f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInHslByDecreasingHue_When_Baked_Then_TheMidpointIsMagenta()
+        {
+            // Act — decreasing goes from 360 down to 240, through magenta.
+            var middle = SampleAcross(new[] { "bg-linear-[to_right_in_hsl_decreasing_hue,#ff0000,#0000ff]" }, 0.5f);
+
+            // Assert
+            Assert.That(middle.g, Is.LessThan(0.05f));
+        }
+
+        [Test]
+        public void Given_GreyToBlueInHsl_When_Baked_Then_TheGreyTakesTheBluesHue()
+        {
+            // Act — grey has no hue, so the mix is a desaturated blue, not a trip through magenta.
+            var middle = SampleAcross(new[] { "bg-linear-[to_right_in_hsl,#808080,#0000ff]" }, 0.5f);
+
+            // Assert
+            Assert.That(Mathf.Abs(middle.r - middle.g), Is.LessThan(0.02f));
         }
 
         #endregion

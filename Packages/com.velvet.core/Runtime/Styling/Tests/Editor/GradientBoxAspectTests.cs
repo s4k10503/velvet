@@ -537,6 +537,123 @@ namespace Velvet.Tests
             Assert.That(red ?? float.NaN, Is.EqualTo(0.883f).Within(0.03f));
         }
 
+
+        private static Color? SilhouettePixelOf(GradientSpec spec, float boxX, float boxY)
+        {
+            var tex = GradientSilhouetteBaker.Bake(spec, 128f, 64f, 0f, 0f, Vector4.zero);
+            if (tex == null)
+            {
+                return null;
+            }
+            var pixel = tex.GetPixel(2 + Mathf.FloorToInt(boxX), tex.height - 1 - (2 + Mathf.FloorToInt(boxY)));
+            Object.DestroyImmediate(tex);
+            return pixel;
+        }
+
+        [Test]
+        public void Given_RedToBlueInHsl_When_SilhouetteBaked_Then_TheMidpointIsMagenta()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_hsl,#ff0000,#0000ff]" }, out var spec);
+            var middle = SilhouettePixelOf(spec, 64f, 32f);
+
+            // Assert
+            Assert.That(middle.HasValue ? middle.Value.r - middle.Value.g : float.NaN, Is.GreaterThan(0.9f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInHslTheLongWay_When_SilhouetteBaked_Then_TheMidpointIsGreen()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_hsl_longer_hue,#ff0000,#0000ff]" }, out var spec);
+            var middle = SilhouettePixelOf(spec, 64f, 32f);
+
+            // Assert
+            Assert.That(middle.HasValue ? middle.Value.g : float.NaN, Is.GreaterThan(0.95f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInOklch_When_SilhouetteBaked_Then_TheMidpointIsTheArcsBrightRed()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_oklch,#ff0000,#0000ff]" }, out var spec);
+            var middle = SilhouettePixelOf(spec, 64f, 32f);
+
+            // Assert
+            Assert.That(middle.HasValue ? middle.Value.r : float.NaN, Is.EqualTo(0.726f).Within(0.04f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInLch_When_SilhouetteBaked_Then_TheMidpointIsTheArcsBrightRed()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_lch,#ff0000,#0000ff]" }, out var spec);
+            var middle = SilhouettePixelOf(spec, 64f, 32f);
+
+            // Assert
+            Assert.That(middle.HasValue ? middle.Value.r : float.NaN, Is.EqualTo(0.958f).Within(0.04f));
+        }
+
+        [Test]
+        public void Given_RedToBlueInLab_When_SilhouetteBaked_Then_TheMidpointIsTheMeanInLab()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_lab,#ff0000,#0000ff]" }, out var spec);
+            var middle = SilhouettePixelOf(spec, 64f, 32f);
+
+            // Assert
+            Assert.That(middle.HasValue ? middle.Value.r : float.NaN, Is.EqualTo(0.754f).Within(0.04f));
+        }
+
+        [Test]
+        public void Given_BlackToWhiteInLinearLight_When_SilhouetteBaked_Then_TheMidpointIsBrighterThanInSrgb()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right_in_srgb-linear,#000000,#ffffff]" }, out var spec);
+            var middle = SilhouettePixelOf(spec, 64f, 32f);
+
+            // Assert
+            Assert.That(middle.HasValue ? middle.Value.r : float.NaN, Is.EqualTo(0.738f).Within(0.03f));
+        }
+
+        [Test]
+        public void Given_AColourHint_When_SilhouetteBaked_Then_TheMidMixIsAtTheHint()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act — pixel 32 of 128 is at 0.254 of the way along; the hint is at 25%.
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000,25%,#ffffff]" }, out var spec);
+            var pixel = SilhouettePixelOf(spec, 32f, 32f);
+
+            // Assert
+            Assert.That(pixel.HasValue ? pixel.Value.r : float.NaN, Is.EqualTo(0.5f).Within(0.04f));
+        }
+
+        [Test]
+        public void Given_StopsInPixels_When_SilhouetteBakedForTheElementsSize_Then_TheyAreFractionsOfTheLine()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Act — the line is 128px: a stop at 64px is half way, so pixel 32 is half way to it.
+            StyleGradientClass.TryExtract(new[] { "bg-linear-[to_right,#000000_0px,#ffffff_64px]" }, out var spec);
+            var pixel = SilhouettePixelOf(spec, 32f, 32f);
+
+            // Assert
+            Assert.That(pixel.HasValue ? pixel.Value.r : float.NaN, Is.EqualTo(0.504f).Within(0.04f));
+        }
+
         #endregion
     }
 }

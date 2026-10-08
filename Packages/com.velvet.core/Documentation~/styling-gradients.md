@@ -23,8 +23,10 @@ twice-as-large background the pan slides across.
 | `bg-conic` / `bg-conic-{n}` / `bg-conic-[from_{n}deg]` | conic, sweeping clockwise from a start angle |
 
 A position is keywords (`top`, `left`, `center`, …) or percentages, which may lie outside the box, x before y: `at_top_left`,
-`at_25%_75%`. A trailing `/srgb` (the default), `/oklab` or `/oklch` on the shape picks the space the
-colours are interpolated in; `/oklch` interpolates in OKLab rather than along the OKLCH hue arc.
+`at_25%_75%`. A trailing `/srgb` (the default), `/srgb-linear`, `/oklab`, `/oklch`, `/lab`, `/lch` or `/hsl`
+on the shape picks the space the colours are interpolated in. In the polar spaces (`oklch`, `lch`, `hsl`) the
+hue travels the shorter way round the circle; `/longer`, `/increasing` and `/decreasing` (and `/shorter`)
+pick the way, and name `oklch` by themselves. A colour with no chroma has no hue and takes the other's.
 
 The last shape utility in the class list wins, and a stop utility with no shape utility is inert.
 
@@ -52,8 +54,9 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
 - **The optional first argument** sets the shape: an angle (`90deg`) or `to_{side}` / `to_{side}_{side}`
   for linear; a shape, a size and `at_{position}` for radial; `from_{n}deg`, `at_{position}`, or `from_{n}deg_at_{position}`
   for conic. Without one, a linear list runs to bottom, a radial one from the middle and a conic one
-  from 0deg, as in CSS. An `in_srgb`, `in_oklab` or `in_oklch` at the start or end of it picks the
-  interpolation space (`to_right_in_oklab`, or `in_oklab` alone). An angle is a number with a `deg`,
+  from 0deg, as in CSS. An `in_{space}` at the start or end of it picks the
+  interpolation space, with the hue method after a polar one (`to_right_in_oklab`, `in_hsl_longer_hue`, or
+  `in_oklab` alone). An angle is a number with a `deg`,
   `grad`, `rad` or `turn` unit, or a bare `0`.
 - **Each stop** is a colour, then none, one or two positions. The colour is a palette name
   (`slate-900`), a bracketed value, or anything the arbitrary `bg-[…]` value takes: `#0f172a`,
@@ -96,6 +99,7 @@ both.
 
 ## Where this differs from CSS and Tailwind
 
-- `in_{space}` takes only the three spaces above, and no hue-interpolation method (`longer_hue`).
+- Colours interpolate in sRGB unless a space is named, which CSS does for colours written in legacy syntax and
+  Tailwind's `bg-linear-*`, `bg-radial` and `bg-conic` utilities do not: they name OKLab.
 - The gradient is a 128 by 128 texture stretched to the box, so a hard edge or a narrow band is as sharp
   as 1/128 of the box along each axis allows.

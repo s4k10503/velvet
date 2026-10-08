@@ -21,3 +21,5 @@
   not know and draw a centred or positioned radial; it now leaves the class inert, as an invalid CSS gradient
   paints nothing. A radial's rings also run on past its radius where the box does not end, instead of
   holding the last colour at the radius, and a position may lie outside the box.
+- The `/oklch` modifier interpolates along the OKLCH hue arc, as CSS does. It interpolated in OKLab before,
+  which has no hue arc, so a gradient between hues now takes the arc through the intermediate hues.

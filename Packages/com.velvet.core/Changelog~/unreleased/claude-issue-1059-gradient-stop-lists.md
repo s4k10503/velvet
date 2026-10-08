@@ -15,3 +15,5 @@
   positions may lie outside 0%–100%, and `via-` alone fades in from and out to its own transparent colour.
   A stop may sit at a length in pixels, or on a conic at an angle, and a bare position between two stops is a
   colour hint that moves the half-way mix of the pair.
+  The interpolation space may also be `srgb-linear`, `lab`, `lch` or `hsl`, with a hue method
+  (`longer`, `shorter`, `increasing`, `decreasing`) for the polar ones.

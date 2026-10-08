@@ -292,12 +292,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OklchModifier_When_Extracted_Then_InterpIsOklab()
+        public void Given_OklchModifier_When_Extracted_Then_InterpIsOklch()
         {
             var ok = StyleGradientClass.TryExtract(
                 new[] { "bg-linear-to-r/oklch", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
             Assume.That(ok, Is.True);
-            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklab));
+            Assert.That(spec.Interp, Is.EqualTo(GradientInterp.Oklch));
         }
 
         [Test]
