@@ -357,6 +357,8 @@ namespace Velvet.Tests
                 Is.EqualTo((16f, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base resolves no ms- class, so ml-8 holds the edge there too.
+        // What shows the case can fail is the hover ms-4 writing its inline margin-left over the ml-8 class.
         [Test]
         public void Given_AHoverMlAndAHoverMs_When_Hovered_Then_TheMlClassWinsTheEdge()
         {
@@ -371,6 +373,8 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Null, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base resolves no ms- class, so ml-8 holds the edge there too.
+        // What shows the case can fail is the hover ms-4 writing its inline margin-left over the ml-8 class.
         [Test]
         public void Given_AHoverMlAndAHoverMsWrittenTheOtherWayRound_When_Hovered_Then_TheMlClassStillWinsTheEdge()
         {
