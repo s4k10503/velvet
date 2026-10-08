@@ -1,6 +1,8 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 
 namespace Velvet
 {
@@ -31,6 +33,9 @@ namespace Velvet
         private int _generation;
         private bool _isArriving;
         private IReadOnlyList<AnimationSequenceStep>? _pendingResetSteps;
+        // Non-null only while the cursor is held on an Await step, whose hold reads as unbounded until Advance
+        // releases it.
+        private AwaitHold? _await;
 
         // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is simply never called while
         // true (the caller gates it), so there is nothing more for this flag to do here.
@@ -70,6 +75,16 @@ namespace Velvet
             {
                 return _stepIndex;
             }
+            if (_await != null)
+            {
+                if (!_await.IsSettled)
+                {
+                    return _stepIndex;
+                }
+                // Time left over from before the await counts toward no hold after it; this frame's does.
+                _elapsedInStepSec = 0f;
+                ReleaseAwait();
+            }
 
             _elapsedInStepSec += dt;
             var guard = _steps.Count + 1;
@@ -108,6 +123,7 @@ namespace Velvet
         // decides its own next step (ArriveAtStart(0) vs break) without duplicating the reset itself.
         private bool ApplyStepsReset(IReadOnlyList<AnimationSequenceStep> steps)
         {
+            AbandonAwait();
             _steps = steps;
             _stepIndex = 0;
             _elapsedInStepSec = 0f;
@@ -132,7 +148,7 @@ namespace Velvet
                 if (step.Kind == AnimationSequenceStepKind.To && step.Label == null)
                 {
                     FiberLogger.LogWarning("AnimationSequence",
-                        $"steps[{i}] is a default(AnimationSequenceStep), not one built through To/Wait/Call "
+                        $"steps[{i}] is a default(AnimationSequenceStep), not one built through To/Wait/Call/Await "
                         + "(a likely unfilled array slot). Treating it as a no-op Wait(0) instead of a To step "
                         + "with a null label.");
                 }
@@ -212,6 +228,97 @@ namespace Velvet
                     _currentHoldSec = 0f;
                     step.Callback?.Invoke();
                     break;
+                case AnimationSequenceStepKind.Await:
+                    _currentHoldSec = 0f;
+                    BeginAwait(step.AwaitFactory!);
+                    break;
+            }
+        }
+
+        // Hooks.UseAnimationSequence calls this on unmount; a reseed calls it itself. A task still pending has its
+        // token cancelled.
+        public void AbandonAwait()
+        {
+            var hold = _await;
+            _await = null;
+            hold?.Abandon();
+        }
+
+        // A factory that throws propagates as a throwing Call callback does. The continuation is registered as an
+        // await registers it, so where it runs inline the step is released here and crossed in the same Advance
+        // as a Call step.
+        private void BeginAwait(Func<CancellationToken, VelvetTask> taskFactory)
+        {
+            var hold = new AwaitHold();
+            var task = taskFactory(hold.Token);
+            task.GetAwaiter().OnCompleted(() => hold.Settle(VelvetTaskOutcome.Consume(task)));
+            _await = hold;
+            if (hold.IsSettled)
+            {
+                ReleaseAwait();
+            }
+            else
+            {
+                // Stops Advance's loop on this step until a later frame reads the settle.
+                _currentHoldSec = float.PositiveInfinity;
+            }
+        }
+
+        // Rethrows the task's fault, or a cancellation the walker did not cause, the way a throwing Call callback
+        // propagates, with the cursor already free to move on.
+        private void ReleaseAwait()
+        {
+            var hold = _await!;
+            _await = null;
+            _currentHoldSec = 0f;
+            hold.ThrowIfFailed();
+        }
+
+        // One per arrival at an Await step, so a continuation from an earlier arrival writes only to a hold the
+        // walker has already dropped and cannot release the step the cursor is on now.
+        private sealed class AwaitHold
+        {
+            private readonly CancellationTokenSource _cancellation = new();
+            private VelvetTaskOutcome<AsyncUnit> _outcome;
+            private bool _abandoned;
+
+            public bool IsSettled { get; private set; }
+
+            public CancellationToken Token => _cancellation.Token;
+
+            public void Settle(VelvetTaskOutcome<AsyncUnit> outcome)
+            {
+                _outcome = outcome;
+                IsSettled = true;
+                if (_abandoned)
+                {
+                    VelvetTaskScheduler.PublishUnobservedFaults(outcome.Faults);
+                }
+            }
+
+            // A fault that settled before the walker read it, or that arrives later, is logged as Forget() logs
+            // one; the cancellation this causes is not.
+            public void Abandon()
+            {
+                _abandoned = true;
+                if (IsSettled)
+                {
+                    VelvetTaskScheduler.PublishUnobservedFaults(_outcome.Faults);
+                    return;
+                }
+                _cancellation.Cancel();
+            }
+
+            public void ThrowIfFailed()
+            {
+                if (_outcome.Faults != null)
+                {
+                    _outcome.Faults[0].Throw();
+                }
+                if (_outcome.Cancellation != null)
+                {
+                    ExceptionDispatchInfo.Capture(_outcome.Cancellation).Throw();
+                }
             }
         }
 

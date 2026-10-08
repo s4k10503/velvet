@@ -1270,6 +1270,10 @@ namespace Velvet
                 }
             });
 
+            // Not the reset effect's cleanup, which would also run on every deps restart: a restart already
+            // abandons the wait in the walker's own reseed, so this one is for unmount.
+            UseEffect(() => walker.Current.AbandonAwait, Array.Empty<object>());
+
             var controls = new AnimationSequenceControls(
                 play: () => walker.Current.IsPaused = false,
                 pause: () => walker.Current.IsPaused = true,
