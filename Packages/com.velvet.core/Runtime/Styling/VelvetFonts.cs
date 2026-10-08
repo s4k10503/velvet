@@ -60,11 +60,10 @@ namespace Velvet
         public static event Action? FontsChanged;
 
         /// <summary>
-        /// Family applied to elements that specify a weight/style but no explicit <c>font-&lt;name&gt;</c>.
-        /// An element with no font class at all is not reached and keeps the font its stylesheets and
-        /// ancestors give it, so a tree-wide default needs the family's class on the root
-        /// (Documentation~/fonts.md, "What DefaultFamily reaches"). Null or empty leaves a
-        /// weight/style-only element on that font too.
+        /// Family applied to elements that specify a weight/style but no explicit <c>font-&lt;name&gt;</c>;
+        /// their descendants inherit the asset written there. A label with no font class and no ancestor
+        /// carrying one is not reached (Documentation~/fonts.md, "What DefaultFamily reaches"). Null or
+        /// empty leaves a weight/style-only element on the font its stylesheets and ancestors give it.
         /// </summary>
         public static string? DefaultFamily
         {

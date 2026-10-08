@@ -86,27 +86,32 @@ With the `Bold` entry registered, `font-bold` renders a **true** bold asset rath
 
 ### What `DefaultFamily` reaches
 
-`DefaultFamily` supplies the family only to an element that has a weight or italic class
-(`font-normal`, `font-bold`, `italic`, …) and no `font-<name>`. **A label with no font class gets no
-font from Velvet**: it keeps the font its stylesheets and ancestors give it, which without a family
-class on an ancestor is the panel theme's. Registering a default family therefore does not, by
-itself, change unadorned text.
+`DefaultFamily` supplies the family to an element that has a weight or italic class (`font-normal`,
+`font-bold`, `italic`, …) and no `font-<name>`, and Velvet writes the resolved asset inline on that
+element. Its descendants inherit that asset like any other. **A label with no font class, and no
+ancestor carrying one, gets no font from Velvet**: it keeps whatever font its stylesheets, ancestors
+and the panel's text settings give it.
 
-To have every label start from the registered family, put that family's class on the root of the
-mounted tree and register the same family as the default:
+To have every label under the mounted root start from the registered family, put a font class on that
+root. Either kind works:
 
 ```csharp
 VelvetFonts.Register(families, defaultFamily: "sans");
-V.Mount(root, V.Div("font-sans", app));
+V.Mount(root, V.Div("font-sans", app));    // names the family
+V.Mount(root, V.Div("font-normal", app));  // follows DefaultFamily
 ```
 
 A label under that root inherits the root's asset unless the label, or an element between them, is
-assigned another one, or a stylesheet sets a font on the label itself. `DefaultFamilyScopePanelTests`
-pins this inheritance and the scope above. Registering the default as well matters for the
-descendants that do carry a weight or italic class: those resolve their family from `DefaultFamily`,
-never from an ancestor's class. Without it, `font-bold` under a `font-sans` root
-writes `-unity-font-style: bold` over the asset the root resolved instead of selecting the registered
-`Bold` entry.
+assigned another one, or a stylesheet sets a font on the label itself. Content a portal renders
+(`V.Portal`, `V.WorldSpace`, see [portals.md](portals.md)) attaches under its target rather than
+under this root, so the target, layer root or world-space panel root needs the class too.
+`DefaultFamilyScopePanelTests` pins the scope and both kinds of root on a panel with no theme
+stylesheet.
+
+With a family-class root, register the same family as the default as well. Descendants that carry a
+weight or italic class resolve their family from `DefaultFamily`, never from an ancestor's class, so
+without it `font-bold` under a `font-sans` root writes `-unity-font-style: bold` over the asset the
+root resolved instead of selecting the registered `Bold` entry.
 
 That is also where Velvet deviates from CSS: in CSS a weight class keeps the family it inherits, so
 `font-bold` inside a `font-serif` container is a bold serif. Velvet resolves it against

@@ -8,9 +8,10 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies how far a registered family reaches a label that carries no font class, read through
-    /// <c>resolvedStyle</c> on a real panel so inheritance takes part: <see cref="VelvetFonts.DefaultFamily"/>
-    /// reaches only an element with a weight or style class, and a <c>font-&lt;name&gt;</c> class on a
-    /// container is what reaches the unadorned labels under it. GWT, one assert per case.
+    /// <c>resolvedStyle</c> on a panel with no theme stylesheet so inheritance takes part:
+    /// <see cref="VelvetFonts.DefaultFamily"/> is written on an element with a weight or style class, and
+    /// an unadorned label resolves a registered family by inheriting it from a container whose
+    /// family or weight class wrote one. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class DefaultFamilyScopePanelTests
@@ -37,7 +38,26 @@ namespace Velvet.Tests
             _host?.Dispose();
             _host = null;
             VelvetFonts.Clear();
+            if (_sans == null)
+            {
+                return;
+            }
+
+            foreach (var atlas in _sans.atlasTextures ?? System.Array.Empty<Texture2D>())
+            {
+                if (atlas != null)
+                {
+                    Object.DestroyImmediate(atlas);
+                }
+            }
+
+            if (_sans.material != null)
+            {
+                Object.DestroyImmediate(_sans.material);
+            }
+
             Object.DestroyImmediate(_sans);
+            _sans = null;
         }
 
         private bool ResolvesSans(string name) =>
@@ -72,6 +92,25 @@ namespace Velvet.Tests
             _mounted = V.Mount(_host.Root, V.Div(children: new VNode[]
             {
                 V.Div(className: "font-sans", children: new VNode[] { V.Label(text: "inside", name: "inside") }),
+                V.Label(text: "outside", name: "outside"),
+            }));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That((ResolvesSans("inside"), ResolvesSans("outside")), Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): the weight-class root the setup guide offers as following DefaultFamily.
+        [Test]
+        public void Given_ADefaultFamilyAndAWeightClassOnAContainer_When_AnUnadornedLabelMountsInsideIt_Then_TheLabelResolvesTheDefaultFamily()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+
+            // Act
+            _mounted = V.Mount(_host.Root, V.Div(children: new VNode[]
+            {
+                V.Div(className: "font-normal", children: new VNode[] { V.Label(text: "inside", name: "inside") }),
                 V.Label(text: "outside", name: "outside"),
             }));
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
