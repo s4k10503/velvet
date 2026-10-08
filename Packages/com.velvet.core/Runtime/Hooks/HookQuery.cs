@@ -68,7 +68,8 @@ namespace Velvet
         /// <summary>The last request's failure, under <see cref="QueryStatus.Error"/>; null otherwise.</summary>
         public Exception? Error { get; }
         /// <summary>True while a request for the entry is in flight, or is about to start because this
-        /// component is mounting over an entry with no data or stale data.</summary>
+        /// component is mounting over, or has just changed its key to, an entry with no data or stale
+        /// data.</summary>
         public bool IsFetching { get; }
         /// <summary>True when the entry has no data, has been invalidated, or holds data at least as old as the
         /// query's stale time.</summary>
@@ -122,8 +123,14 @@ namespace Velvet
             var current = Entry;
             if (current != null && !current.IsRemoved && ReferenceEquals(current.Client, client) && current.Key.Equals(key))
             {
+#if UNITY_EDITOR
+                _reprintedKeyCommits = 0;
+#endif
                 return;
             }
+#if UNITY_EDITOR
+            WarnOnReprintedKey(current, key);
+#endif
 
             Unsubscribe();
             var entry = client.Build<T>(key, gcTime);
@@ -135,6 +142,28 @@ namespace Velvet
                 OnChange();
             }
         }
+
+#if UNITY_EDITOR
+        private int _reprintedKeyCommits;
+        private bool _warnedReprintedKey;
+
+        // One change to a key that prints the same can be a real change between two values that print alike;
+        // the second commit running such a change is what a key rebuilt unequal on every render produces.
+        private void WarnOnReprintedKey(QueryEntry<T>? previous, QueryKey key)
+        {
+            if (previous == null || previous.Key.Equals(key) || previous.Key.ToString() != key.ToString())
+            {
+                _reprintedKeyCommits = 0;
+                return;
+            }
+            if (++_reprintedKeyCommits < 2 || _warnedReprintedKey) return;
+            _warnedReprintedKey = true;
+            FiberLogger.LogWarning("UseQuery",
+                $"UseQuery<{typeof(T).Name}>: query key {key} is not equal to the previous commit's though it prints " +
+                "the same, so each commit reads a new entry and fetches it. A record or tuple compares a collection " +
+                "it holds by reference; give the collection a key part of its own (react-migration.md §1-2b).");
+        }
+#endif
 
         private void Unsubscribe()
         {

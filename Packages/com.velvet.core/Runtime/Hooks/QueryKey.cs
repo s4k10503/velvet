@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace Velvet
@@ -9,15 +10,18 @@ namespace Velvet
     /// Identifies an entry in a <see cref="QueryClient"/>'s cache: TanStack Query's <c>queryKey</c> array.
     /// Two keys are equal when they hold the same number of parts and each pair of parts is equal under
     /// <see cref="object.Equals(object, object)"/>, so a key rebuilt every render with equal parts names the
-    /// same entry, and a record, a tuple, a string or a boxed number compares by content. A part that is
-    /// itself a <see cref="QueryKey"/> compares the same way, and a part that is a sequence other than a
-    /// string — an array or a list — compares element by element, in order, as v5's structural hash
-    /// compares an array.
+    /// same entry, and a string, a boxed number or a record or tuple of such values compares by content. A
+    /// part that is itself a <see cref="QueryKey"/> compares the same way. A part that is a sequence whose type
+    /// keeps <see cref="object"/>'s own <c>Equals</c> — an array, a list, a set, a dictionary — compares
+    /// element by element, in order, as v5's structural hash compares an array; a sequence type that defines
+    /// its own equality keeps it.
     /// </summary>
     /// <remarks>
     /// The parts are copied when the key is built, so editing the array passed in afterwards does not move
     /// the key. A part whose equality or hash code changes after the key is built — a mutable collection,
-    /// for instance — is outside that guarantee. <b>Deviation:</b> a dictionary is a sequence too and compares
+    /// for instance — is outside that guarantee. A record or a tuple compares by its members' own
+    /// <c>Equals</c>, so a collection held inside one compares by reference and names a new entry whenever it
+    /// is rebuilt: give the collection a key part of its own. <b>Deviation:</b> a dictionary or a set compares
     /// in its enumeration order, where v5 sorts an object's keys before hashing it. A sequence part is
     /// enumerated when the key is built and again on every comparison, so pass a materialised collection
     /// rather than a lazy query.
@@ -41,10 +45,19 @@ namespace Velvet
             _hashCode = hash;
         }
 
+        // Per type: whether it keeps object.Equals. Only such a sequence is compared by its elements; one whose
+        // type declares its own equality keeps it.
+        private static readonly ConcurrentDictionary<Type, bool> s_comparedByElement = new();
+
+        private static bool IsComparedByElement(object? part)
+            => part is IEnumerable && s_comparedByElement.GetOrAdd(part.GetType(),
+                type => type.GetMethod(nameof(Equals), new[] { typeof(object) })!.DeclaringType == typeof(object));
+
         private static int HashOf(object? part)
         {
-            if (part is IEnumerable sequence and not string)
+            if (IsComparedByElement(part))
             {
+                var sequence = (IEnumerable)part!;
                 var hash = 19;
                 foreach (var item in sequence)
                 {
@@ -57,8 +70,8 @@ namespace Velvet
         }
 
         private static bool PartEquals(object? left, object? right)
-            => left is IEnumerable leftSequence and not string && right is IEnumerable rightSequence and not string
-                ? SequenceEquals(leftSequence, rightSequence)
+            => IsComparedByElement(left) && IsComparedByElement(right)
+                ? SequenceEquals((IEnumerable)left!, (IEnumerable)right!)
                 : object.Equals(left, right);
 
         private static bool SequenceEquals(IEnumerable left, IEnumerable right)
@@ -115,9 +128,29 @@ namespace Velvet
             for (var i = 0; i < _parts.Length; i++)
             {
                 if (i > 0) builder.Append(", ");
-                builder.Append(_parts[i]?.ToString() ?? "null");
+                AppendPart(builder, _parts[i]);
             }
             return builder.Append(']').ToString();
+        }
+
+        // A sequence compared by its elements prints them rather than its type name, so keys differing in
+        // such a part's elements print differently wherever those elements do.
+        private static void AppendPart(StringBuilder builder, object? part)
+        {
+            if (!IsComparedByElement(part))
+            {
+                builder.Append(part?.ToString() ?? "null");
+                return;
+            }
+            builder.Append('[');
+            var first = true;
+            foreach (var item in (IEnumerable)part!)
+            {
+                if (!first) builder.Append(", ");
+                first = false;
+                AppendPart(builder, item);
+            }
+            builder.Append(']');
         }
     }
 }

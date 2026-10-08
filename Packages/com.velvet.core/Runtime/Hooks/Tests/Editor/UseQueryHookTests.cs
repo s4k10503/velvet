@@ -28,7 +28,8 @@ namespace Velvet.Tests
     /// a query asked for, by the next sweep — an invalidation or a subscription — and removing it cancels its
     /// request. An entry something reads again, or still reads, is not removed, and a new entry for a key
     /// whose old entry was removed is not swept with it. An expired entry reads as absent before the sweep,
-    /// and a reader mounting over it subscribes to a new entry.</item>
+    /// and a reader mounting over it subscribes to a new entry, while one left by a reader in the commit that
+    /// brings the next reader is handed over, whatever its gcTime.</item>
     /// <item>A key change requests the new key and releases the old key's entry, and the old key's request
     /// landing is never shown as the new key's data. Until the commit's effect moves the subscription, the
     /// old entry keeps the old key's query function. A change of client moves the query to the new one.</item>
@@ -36,6 +37,9 @@ namespace Velvet.Tests
     /// flight and joins a first request, and fetches nothing for an entry nobody reads; <c>Refetch</c> fetches again and starts over a refetch in flight;
     /// <c>Clear</c> makes a mounted query fetch into a new entry; a request started over that completes on
     /// another thread does not land; a cancellation callback that throws is logged rather than raised.</item>
+    /// <item>The Editor warns once when a key that prints the same is unequal on two commits running, as one
+    /// holding an array inside a record is, and not after a single such commit, nor for keys that print
+    /// differently or stay equal.</item>
     /// <item>The client is read from <see cref="QueryClientContext.Ref"/> when none is passed, and a query
     /// with neither, or with null options, key or function, throws.</item>
     /// </list>
@@ -77,6 +81,10 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_setShowA;
         private static StateUpdater<int> s_setPage;
         private static StateUpdater<QueryClient> s_setClient;
+        private static StateUpdater<int> s_setGeneration;
+        private static StateUpdater<int> s_setTick;
+
+        private sealed record Filter(string Status, string[] Ids);
 
         [SetUp]
         public void SetUp()
@@ -97,6 +105,8 @@ namespace Velvet.Tests
             s_setShowA = default;
             s_setPage = default;
             s_setClient = default;
+            s_setGeneration = default;
+            s_setTick = default;
         }
 
         #region Sharing one entry
@@ -475,6 +485,29 @@ namespace Velvet.Tests
             // Assert
             Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Data), Is.EqualTo((QueryStatus.Pending, 0)),
                 "Subscribing sweeps before it looks the key up, so the expired entry is not handed back");
+        }
+
+        [Test]
+        public void Given_AZeroGcTime_When_ItsReaderIsRemountedUnderANewKey_Then_TheNewReaderTakesTheEntryOver()
+        {
+            // Arrange — the old reader leaves and the new one arrives in the effects of one commit.
+            s_client = NewClient(TimeSpan.Zero);
+            s_staleTime = TimeSpan.FromMinutes(1);
+            using var mounted = V.Mount(_root, V.Component(Remounter, key: "remounter"));
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setGeneration.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_fetched.Count, Last(s_rendersA).Status, Last(s_rendersA).Data),
+                Is.EqualTo((1, QueryStatus.Success, 7)),
+                "An entry left in the commit that brings its next reader is kept, as v5's addObserver clears the gc timeout");
         }
 
         [Test]
@@ -857,6 +890,91 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region A key rebuilt unequal on every render
+
+        [Test]
+        public void Given_AKeyHoldingAnArrayInARecord_When_TwoCommitsRebuildIt_Then_TheEditorWarns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RecordKeyReader, key: "record"));
+            mounted.FlushEffectsForTest();
+            LogAssert.Expect(LogType.Warning, new Regex("though it prints the same"));
+
+            // Act
+            Rerender(mounted);
+            Rerender(mounted);
+
+            // Assert — LogAssert.Expect verifies the warning was logged
+        }
+
+        [Test]
+        public void Given_AKeyHoldingAnArrayInARecord_When_OneCommitRebuildsIt_Then_NothingIsLogged()
+        {
+            // Arrange — one change between keys printing alike can be a real change.
+            using var mounted = V.Mount(_root, V.Component(RecordKeyReader, key: "record"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Rerender(mounted);
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Given_AWarnedRebuiltKey_When_MoreCommitsRebuildIt_Then_TheWarningIsNotRepeated()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RecordKeyReader, key: "record"));
+            mounted.FlushEffectsForTest();
+            LogAssert.Expect(LogType.Warning, new Regex("though it prints the same"));
+
+            // Act
+            Rerender(mounted);
+            Rerender(mounted);
+            Rerender(mounted);
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Given_AKeyChangingBetweenKeysThatPrintDifferently_When_TwoCommitsChangeIt_Then_NothingIsLogged()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Pager, key: "pager"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            TurnPage(mounted);
+            s_setPage.Invoke(3);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Given_AnEqualKeyMovedToANewEntry_When_TwoClearsRunInARow_Then_NothingIsLogged()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+
+            // Act
+            s_client.Clear();
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            s_client.Clear();
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        #endregion
+
         #region Finding the client and checking the options
 
         [Test]
@@ -928,8 +1046,17 @@ namespace Velvet.Tests
 
         #region Components and helpers
 
-        private static QueryClient NewClient()
-            => new(new QueryClientOptions { GcTime = GcTime, Clock = () => s_now });
+        private static QueryClient NewClient() => NewClient(GcTime);
+
+        private static QueryClient NewClient(TimeSpan gcTime)
+            => new(new QueryClientOptions { GcTime = gcTime, Clock = () => s_now });
+
+        private static void Rerender(MountedTree mounted)
+        {
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+        }
 
         private static QueryOptions<int> Options(params object[] parts)
         {
@@ -1051,6 +1178,23 @@ namespace Velvet.Tests
         {
             s_rendersA.Add(Hooks.UseQuery(s_badOptions!, s_client));
             return V.Label(text: "bad");
+        }
+
+        [Component]
+        private static VNode Remounter()
+        {
+            var (generation, setGeneration) = Hooks.UseState(0);
+            s_setGeneration = setGeneration;
+            return V.Div(children: new VNode[] { V.Component(ReaderA, key: "a" + generation) });
+        }
+
+        [Component]
+        private static VNode RecordKeyReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            s_rendersA.Add(Hooks.UseQuery(Options("todos", new Filter("open", new[] { "a" })), s_client));
+            return V.Label(text: "record");
         }
 
         [Component]

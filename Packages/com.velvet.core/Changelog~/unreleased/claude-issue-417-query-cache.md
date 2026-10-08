@@ -7,4 +7,6 @@
   result is fetched again and when an unread entry is dropped, `QueryClient.InvalidateQueries` marks the
   entries a key prefix matches stale and fetches again those a mounted query reads — the step a
   `UseMutation` `OnSuccess` takes — and `QueryResult.Refetch` fetches one again. The client is provided through `QueryClientContext.Ref` or passed to the hook.
+  In the Editor, a key that is unequal on two commits running while printing the same — an array inside a
+  record, which compares by reference — logs a warning, since each such commit fetches a new entry.
   `Hooks.Use` is unchanged and stays cache-less, as React's `use()` is.

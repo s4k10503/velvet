@@ -152,9 +152,14 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `queryClient.clear()` | `client.Clear()` |
 
 **One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
-under `object.Equals`, so a key rebuilt every render, a record, a tuple and a boxed number all compare by
-content. A part that is a sequence other than a string — an array or a list — compares element by element,
-in order, as v5's structural hash compares an array. Components reading one key share one entry and one request: the first to mount starts it and
+under `object.Equals`, so a key rebuilt every render names the same entry, and a string, a boxed number,
+or a record or tuple of such values compares by content. A part that is a sequence whose type keeps
+`object`'s own `Equals` — an array, a list, a set, a dictionary — compares element by element, in order,
+as v5's structural hash compares an array; a sequence type that defines its own equality keeps it. A record
+or a tuple compares by its members' own `Equals`, so a collection held inside one compares by reference
+and names a new entry every time it is rebuilt — a fetch on every render. Give the collection a key part of
+its own. The Editor warns when a query's key changes on two commits running while printing the same.
+Components reading one key share one entry and one request: the first to mount starts it and
 the rest join it. A component unmounting takes nothing from the others — the request belongs to the
 entry and runs on for them. The entry keeps its result after its last reader unmounts, so navigating
 back renders that result on the first render instead of the pending state.
@@ -190,7 +195,8 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 - Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
   absent from then on, and is removed the next time a query subscribes to the client or
   `InvalidateQueries` runs; removing it cancels the request it still has in flight.
-- A dictionary part compares in its enumeration order, where v5 sorts an object's keys before hashing.
+- A dictionary or set part compares in its enumeration order, where v5 sorts an object's keys before
+  hashing. A sequence part is enumerated on every comparison, so pass a materialised collection.
 - No structural sharing: each successful request replaces `Data` with the instance it returned, where v5
   keeps the previous instance, or the unchanged parts of it, when the new result is deeply equal.
 - A request going into flight and a request landing each re-render every component reading the entry,

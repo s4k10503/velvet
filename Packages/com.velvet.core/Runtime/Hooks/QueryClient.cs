@@ -67,6 +67,9 @@ namespace Velvet
         private readonly Dictionary<QueryKey, QueryEntry> _entries = new();
         private readonly List<QueryEntry> _inactive = new();
         private readonly Func<TimeSpan> _clock;
+        // Advanced by every render that reads this client, so an entry whose last reader left under the current
+        // value left after the render whose effects are subscribing now.
+        private int _readEpoch;
 
         /// <summary>Creates an empty client.</summary>
         /// <param name="options">Defaults and clock; null takes <see cref="QueryClientOptions"/>' own.</param>
@@ -133,13 +136,23 @@ namespace Velvet
         // An expired entry reads as absent before a sweep removes it, so a render never shows an entry that had
         // already expired and that a sibling's subscription in the same commit would sweep.
         internal QueryEntry<T>? Peek<T>(QueryKey key)
-            => _entries.TryGetValue(key, out var entry) && !IsExpired(entry, Now) ? Typed<T>(entry) : null;
+        {
+            _readEpoch++;
+            return _entries.TryGetValue(key, out var entry) && !IsExpired(entry, Now) ? Typed<T>(entry) : null;
+        }
 
         internal QueryEntry<T> Build<T>(QueryKey key, TimeSpan gcTime)
         {
-            // Before the lookup, so an expired entry is replaced rather than handed back.
+            // A reader leaving in this commit's effects hands its entry to the reader arriving in them — a
+            // keyed remount, two readers swapped — however short its gcTime, as v5's addObserver clears the
+            // removal timeout. Taken back before the sweep, which otherwise replaces an expired entry rather
+            // than handing it back.
+            if (_entries.TryGetValue(key, out var existing) && existing.InactiveEpoch == _readEpoch)
+            {
+                MarkActive(existing);
+            }
             CollectGarbage();
-            if (_entries.TryGetValue(key, out var existing))
+            if (_entries.TryGetValue(key, out existing))
             {
                 var typed = Typed<T>(existing);
                 typed.RaiseGcTime(gcTime);
@@ -154,6 +167,7 @@ namespace Velvet
         internal void MarkInactive(QueryEntry entry)
         {
             entry.InactiveSince = Now;
+            entry.InactiveEpoch = _readEpoch;
             _inactive.Add(entry);
         }
 
@@ -211,6 +225,7 @@ namespace Velvet
         internal QueryKey Key { get; }
         internal TimeSpan GcTime { get; private set; }
         internal TimeSpan? InactiveSince { get; set; }
+        internal int InactiveEpoch { get; set; }
         internal abstract Type DataType { get; }
 
         // The longest any query asked for, as TanStack's updateGcTime keeps.

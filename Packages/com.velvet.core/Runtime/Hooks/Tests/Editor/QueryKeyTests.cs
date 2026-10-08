@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using NUnit.Framework;
 
@@ -14,7 +15,8 @@ namespace Velvet.Tests
     /// codes collide.</item>
     /// <item>A sequence part other than a string compares element by element: rebuilt with equal elements, as
     /// another kind of sequence included, it is equal and hashes alike; with an element differing or one more
-    /// element it does not match. A string is matched and hashed whole, not as its characters.</item>
+    /// element it does not match. A string is matched and hashed whole, not as its characters, and a
+    /// sequence type declaring its own equality keeps it.</item>
     /// <item>Editing the array a key was built from does not move the key, and a null array is refused.</item>
     /// <item>No key equals null or a key under the object overload that differs from it.</item>
     /// <item>A key starts with each of its leading runs and not with a longer key.</item>
@@ -127,6 +129,46 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(reading, Is.EqualTo((false, false)), "A string is one value, not a sequence of characters");
+        }
+
+        [Test]
+        public void Given_AKeyWithASequencePart_When_Printed_Then_ItsElementsArePrinted()
+        {
+            // Act
+            var printed = new QueryKey("todos", new[] { 1, 2 }).ToString();
+
+            // Assert
+            Assert.That(printed, Is.EqualTo("[todos, [1, 2]]"),
+                "A part compared by its elements prints them, so keys differing in them print differently");
+        }
+
+        [Test]
+        public void Given_ASequencePartDeclaringItsOwnEquality_When_Compared_Then_ItsEqualityDecides()
+        {
+            // Act
+            var equal = new QueryKey(new IdSequence(1, 1, 2)).Equals(new QueryKey(new IdSequence(1, 3)));
+
+            // Assert
+            Assert.That(equal, Is.True, "A sequence type that overrides Equals is compared by it, not by its elements");
+        }
+
+        // Equal by id, whatever it enumerates.
+        private sealed class IdSequence : IEnumerable
+        {
+            private readonly int _id;
+            private readonly int[] _items;
+
+            public IdSequence(int id, params int[] items)
+            {
+                _id = id;
+                _items = items;
+            }
+
+            public IEnumerator GetEnumerator() => _items.GetEnumerator();
+
+            public override bool Equals(object? obj) => obj is IdSequence other && other._id == _id;
+
+            public override int GetHashCode() => _id;
         }
 
         [Test]
