@@ -16,14 +16,15 @@ namespace Velvet
     // into a layer container is reached with the rest: the container is a child of the element's own parent.
     //
     // A context's scopes are walked again at the end of each of its top-level reconcile passes, or once at the end
-    // of a batch drain for all of the drain's passes (OnPassEnd, OnDrainEnd), which is what enrols an element
+    // of a batch drain for all of the drain's passes (OnPassEnd, OnDrainEnd), and at once where a variant toggle or
+    // a VirtualList range render changes the tree outside any pass (RequestSyncAll), which is what enrols an element
     // mounted into the subtree since and lets go of one that has left it; an element that left by teardown is let
     // go of earlier, by FiberElementCleaner, before the pool can hand it to anyone else.
     //
     // The roots and the holders are kept across every context rather than on one, because a tree can be mounted
-    // inside another tree's element: the outer scope's walk has to stop at an inner tree's root, the inner tree's
-    // passes have to walk the outer scope they insert into (SyncEnclosing), and the inner tree's cleaner has to let
-    // go of a hold the outer tree took.
+    // inside another tree's element, or reach one through a Portal: the outer scope's walk has to stop at the inner
+    // tree's scope roots, the inner tree's passes and toggles have to walk the outer scope they insert into
+    // (SyncEnclosing), and the inner tree's cleaner has to let go of a hold the outer tree took.
     //
     // Not a Manipulator: it registers no callback. Nor does it ask StyleChildOwnership before letting go, as the
     // per-child manipulators do: PickingHold counts the holds, so letting go of one hands back no mode while another
@@ -50,46 +51,71 @@ namespace Velvet
         // Setting it takes and drops nothing: Sync does that.
         public PointerEventsMode Mode { get; set; }
 
-        // Inside a pass the pass's own end (OnPassEnd) walks the scopes, by which point every element the pass mounts
-        // is in place.
+        // Outside a pass — a variant toggle, a VirtualList range render — the walk runs now; inside one, the pass's
+        // own end (OnPassEnd) runs it, by which point every element the pass mounts is in place. The tree's mount
+        // target and its Portal targets are walked up from too: an enclosing scope another tree owns is walked by
+        // that tree's passes, and none of them sees this tree change.
         internal static void RequestSyncAll(ReconcilerContext ctx)
         {
             if (ctx.SharedReconcileDepth > 0)
             {
                 return;
             }
-            SyncAll(ctx);
+            if (ctx.MainPanelRoot != null)
+            {
+                NoteReconciledInto(ctx, ctx.MainPanelRoot);
+            }
+            foreach (var slot in ctx.PortalState.Values)
+            {
+                if (slot.Target != null)
+                {
+                    NoteReconciledInto(ctx, slot.Target);
+                }
+            }
+            WalkAll(ctx);
+        }
+
+        // An element this context reconciled children into: the end of the pass, or of the drain it belongs to,
+        // walks every scope enclosing it. The pass's own top-level element arrives through OnPassEnd; a Portal's
+        // target, whose children are reconciled nested inside the pass, is noted where that happens.
+        internal static void NoteReconciledInto(ReconcilerContext ctx, VisualElement element)
+        {
+            if (s_liveScopes != 0)
+            {
+                ctx.PointerEventsAnchors.Add(element);
+            }
         }
 
         // The end of a top-level pass (Reconciler.FinishTopLevelPass). Inside a batch drain the drain's end does the
-        // walking instead, once for all of its passes, so the element the pass reconciled into is put aside for it.
+        // walking instead (OnDrainEnd), once for all of its passes.
         internal static void OnPassEnd(ReconcilerContext ctx, VisualElement? reconciledInto)
         {
+            if (reconciledInto != null)
+            {
+                NoteReconciledInto(ctx, reconciledInto);
+            }
             if (s_liveScopes == 0)
             {
                 return;
             }
             if (ctx.DeferDrainLayoutEffects)
             {
-                if (reconciledInto != null)
-                {
-                    ctx.PointerEventsAnchors.Add(reconciledInto);
-                }
                 return;
             }
-            SyncAll(ctx);
-            SyncEnclosing(ctx, reconciledInto);
+            WalkAll(ctx);
         }
 
-        internal static void OnDrainEnd(ReconcilerContext ctx)
+        internal static void OnDrainEnd(ReconcilerContext ctx) => WalkAll(ctx);
+
+        private static void WalkAll(ReconcilerContext ctx)
         {
             SyncAll(ctx);
             foreach (var anchor in ctx.PointerEventsAnchors)
             {
                 SyncEnclosing(ctx, anchor);
             }
-            // MUTANT_SURVIVES(equivalent): an anchor kept past its drain is walked again at the next one, and walking
-            // a scope over an unchanged tree takes and drops nothing; clearing only stops the set holding elements.
+            // MUTANT_SURVIVES(equivalent): an anchor kept is walked again at the next walk, and walking a scope over
+            // an unchanged tree takes and drops nothing; clearing only stops the set holding elements.
             ctx.PointerEventsAnchors.Clear();
         }
 

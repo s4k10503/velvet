@@ -448,7 +448,13 @@ namespace Velvet
 
         void IReconcilerBridge.DrainRefAttachesForController() => _ctx.DrainRefAttaches();
 
-        void IReconcilerBridge.CommitStrandedLayoutWorkForController() => FiberEffects.CommitStrandedLayoutWork(_ctx);
+        // Every range render ends here, and one run from a geometry or scroll callback has no pass whose end would
+        // walk the pointer-events scopes; ahead of the layout work, which reads the rows it placed.
+        void IReconcilerBridge.CommitStrandedLayoutWorkForController()
+        {
+            PointerEventsScope.RequestSyncAll(_ctx);
+            FiberEffects.CommitStrandedLayoutWork(_ctx);
+        }
 
         VisualElement IReconcilerBridge.PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode)
         {

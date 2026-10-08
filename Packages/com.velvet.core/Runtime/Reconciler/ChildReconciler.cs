@@ -435,6 +435,7 @@ namespace Velvet
                 {
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
                         slotStart: slotStart);
+                    PointerEventsScope.NoteReconciledInto(_ctx, resolvedTarget);
                 }
                 finally
                 {

@@ -1270,6 +1270,7 @@ namespace Velvet
             try
             {
                 _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
+                PointerEventsScope.NoteReconciledInto(_ctx, target);
             }
             finally
             {

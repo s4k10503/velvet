@@ -26,8 +26,8 @@ namespace Velvet.Tests
     /// branch its own arguments never take, and whether the assertion under a verdict measures that reader
     /// at all. Neither is mechanical, and both stay a reviewer's to check, as does the residual below.
     /// The roster quantifies over GetClasses() call sites, so a reading that takes the ARRAY LiveClasses
-    /// returns rather than an element sits outside it — which is seven of the nine values below. Cases pin
-    /// those seven, but no roster obliges one: the case listing what the layout dispatcher hands that array
+    /// returns rather than an element sits outside it — which is eight of the ten values below. Cases pin
+    /// those eight, but no roster obliges one: the case listing what the layout dispatcher hands that array
     /// on to reddens when a reading joins that callee set, and a reading taking the array anywhere else
     /// costs nothing here, including inside one of those callees, beside the dispatcher call in the re-sync
     /// that binds the array, and at a second call site of LiveClasses.
@@ -334,7 +334,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TheDispatcherTheReSyncHandsItsStandInClassArrayTo_When_ItsCalleesAreReadFromTheIL_Then_TheyAreTheReadingsListedHere()
         {
-            // Arrange — the roster above quantifies over GetClasses() call sites, and seven of the nine
+            // Arrange — the roster above quantifies over GetClasses() call sites, and eight of the ten
             // values below resolve from the ARRAY this dispatcher hands on rather than from an element, so
             // the roster obliges no case for them. The set rather than the call sequence: which of gap and
             // grid runs first is the departing manipulator's handoff, which the dispatcher's own comment

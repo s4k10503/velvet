@@ -60,7 +60,8 @@ An element that joins the subtree later takes the mode at the end of the reconci
 or, for a render inside a batched update, at the end of that batch, before its layout effects run. That
 holds for a tree mounted with `V.Mount`, or reached through a `V.Portal`, into an element of another
 tree's subtree: the inserting tree's pass takes care of it, and the tree that owns the utility does not
-have to render again. A part a control creates on its own between renders joins at whichever pass comes
+have to render again. Rows a `V.VirtualList` renders as it is resized or scrolled join when the render
+that places them ends. A part a control creates on its own between renders joins at whichever pass comes
 next. An element moved out of the subtree by app code (a `refCallback` reparenting it) gets its own mode
 back at the tree's next reconcile pass; an element that unmounts gets it back as it is torn down.
 
@@ -69,7 +70,7 @@ back at the tree's next reconcile pass; an element that unmounts gets it back as
 Both utilities are re-derived on every toggle, like the other utilities Velvet realises itself
 ([styling-variants.md](styling-variants.md#payloads-velvet-realises-itself)), so `dark:pointer-events-none`,
 `md:pointer-events-auto` and `group-hover:pointer-events-auto` take effect on the element as the gate opens
-and come off as it shuts.
+and come off as it shuts — on an element of a tree mounted or portalled into another tree's subtree too.
 
 ## Limits
 
