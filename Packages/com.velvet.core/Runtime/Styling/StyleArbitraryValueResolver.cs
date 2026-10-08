@@ -67,6 +67,11 @@ namespace Velvet
                 return false;
             }
 
+            if (StyleLogicalUtilities.TryParse(className, out result))
+            {
+                return true;
+            }
+
             // Color opacity modifier: {bg|text|border}-<color>/<N> applies alpha N% to the resolved base
             // color (bg-red-500/50, text-black/75, border-white/10, bg-[#fff]/50). Detected before the
             // bracket parsing below because the palette form carries no '[' at all. A leading '-' never
@@ -274,7 +279,8 @@ namespace Velvet
             {
                 return true;
             }
-            if (IsFractionToken(cls))
+            // Logical-direction utilities (ms-4, start-1/2, rounded-ss-lg) have no USS class at all.
+            if (IsFractionToken(cls) || StyleLogicalUtilities.TryParse(cls, out _))
             {
                 return true;
             }
@@ -602,7 +608,7 @@ namespace Velvet
         }
 
         // A zero denominator does not parse: no percent stands for it.
-        private static bool TryParseFractionPercent(string frac, out float percent)
+        internal static bool TryParseFractionPercent(string frac, out float percent)
         {
             percent = 0f;
             var slash = frac.IndexOf('/');
@@ -1177,8 +1183,8 @@ namespace Velvet
             }
         }
 
-        // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — the class projection
-        // sees none of it — but every layer resolve that writes a held slot writes the held value
+        // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — HasLayer and the class
+        // projection see none of it — but every layer resolve that writes a held slot writes the held value
         // back after it, so a layer that changes once the manipulator has written — a [&>*]: payload turned
         // off — cannot take the slot from it. Yield makes the exception.
         internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value)
@@ -1403,6 +1409,14 @@ namespace Velvet
             }
             return found;
         }
+
+        // Whether any layer is registered for property. Uncontaminated for a caller asking about a slot it
+        // writes directly rather than through Apply — no manipulator registers a layer.
+        internal static bool HasLayer(VisualElement element, ArbitraryProperty property)
+            => element != null
+                && s_layers.TryGetValue(element, out var map)
+                && map.TryGetValue(property, out var layers)
+                && layers.Count > 0;
 
         // Drops all arbitrary-value layers tracked for element. Called when the element is
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.

@@ -83,6 +83,7 @@ namespace Velvet
         private float _decisionWidth;
 
         internal StyleTextBalanceManipulator(ReconcilerContext ctx, TextWrapStyle style)
+            : base(ctx)
         {
             _ctx = ctx;
             _style = style;

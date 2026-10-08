@@ -22,8 +22,11 @@ namespace Velvet.Tests
             var comment = new Regex(@"/\*.*?\*/", RegexOptions.Singleline);
             var rule = new Regex(@"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}");
             var declaration = new Regex(@"(?:^|[;\s])white-space\s*:\s*([a-z-]+)");
-            var expected = StyleTextEffectClass.WhiteSpaceClassesInSheetOrder
-                .Select(pair => "_typography.uss " + pair.Key + " " + UssKeyword(pair.Value))
+            // The preflight sheet sorts first. Its two rules hand white-space to the parent and are no class a
+            // className names, so the mirror does not carry them.
+            var expected = new[] { "_preflight.uss velvet-label unset", "_preflight.uss velvet-button unset" }
+                .Concat(StyleTextEffectClass.WhiteSpaceClassesInSheetOrder
+                    .Select(pair => "_typography.uss " + pair.Key + " " + UssKeyword(pair.Value)))
                 .ToArray();
 
             // Act

@@ -169,7 +169,7 @@ class is the later one on a margin `space-*` holds or a border `divide-*` holds;
 the second consequence above describes. The order is first by their variants' values (`data-[side=left]:`
 before `data-[state=open]:`, `group-hover:` before `group-hover/card:`, `[&:first-child]:` before
 `[&:nth-child(1)]:`), then by the first property they differ on in Tailwind's property order
-(`hover:m-[4px]` before `hover:mt-[8px]`), then by the candidate itself, digits read as numbers
+(`hover:m-[4px]` before `hover:ms-[4px]` before `hover:mt-[8px]`), then by the candidate itself, digits read as numbers
 (`hover:w-[10px]` before `hover:w-[20px]`).
 
 | | Specificity | Layer |

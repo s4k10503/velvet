@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace Velvet
 {
     // Finds where a paragraph may break across lines, for every consumer that needs line breaking: the
-    // balance and pretty breaker today and a min-content width (a run is an item). An item is the text between
+    // balance and pretty breaker (Find) and a min-content width (CollectRuns). An item is the text between
     // two opportunities; the gap between neighbouring items is the white space that separates them, or empty
     // where the break falls between two characters.
     //
@@ -151,6 +151,22 @@ namespace Velvet
                 return false;
             }
             return IsIdeographic(previous) || IsCjkClosing(previous) || IsIdeographic(next) || IsCjkOpening(next);
+        }
+
+        // The runs of text a line may not be broken inside, in order, for a min-content width: each item
+        // Find reports, with the soft hyphens it honours.
+        public static void CollectRuns(string text, List<string> runs)
+        {
+            var starts = new List<int>();
+            var ends = new List<int>();
+            if (!Find(text, starts, ends, softHyphens: true))
+            {
+                return;
+            }
+            for (var i = 0; i < starts.Count; i++)
+            {
+                runs.Add(text.Substring(starts[i], ends[i] - starts[i]));
+            }
         }
 
         private static bool IsHyphenOfClassBa(int cp) => cp == 0x2010 || cp == 0x2012 || cp == 0x2013;

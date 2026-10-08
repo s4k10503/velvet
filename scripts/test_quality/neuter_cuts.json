@@ -71,7 +71,7 @@
     {
       "name": "balance-attach",
       "mechanism": "balance",
-      "summary": "the balance manipulator subscribes to nothing on its target",
+      "summary": "the text-item manipulators, balance among them, subscribe to nothing on their target",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextItemManipulator.cs",
