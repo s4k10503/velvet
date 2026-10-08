@@ -21,7 +21,10 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class RetryPolicyTests
     {
-        private static readonly RetryPolicy s_noDelay = new() { RetryDelay = (_, _) => TimeSpan.Zero };
+        // Both signals supplied, so no case reads the Application's own focus or connectivity.
+        private static readonly RetryPolicy s_ready = new() { IsOnline = () => true, IsFocused = () => true };
+
+        private static readonly RetryPolicy s_noDelay = s_ready with { RetryDelay = TimeSpan.Zero };
 
         // Ten failures and then a result, rather than failing forever: a policy that lost its bound then
         // returns, which the case reads as red, instead of retrying until the runner's timeout.
@@ -76,7 +79,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var waits = new List<TimeSpan>();
-            var policy = new RetryPolicy
+            var policy = s_ready with
             {
                 Wait = (delay, _) =>
                 {
@@ -109,10 +112,10 @@ namespace Velvet.Tests
         {
             // Arrange
             var waits = new List<TimeSpan>();
-            var policy = new RetryPolicy
+            var policy = s_ready with
             {
                 Retry = 2,
-                RetryDelay = (failureCount, _) => TimeSpan.FromMilliseconds(10 * (failureCount + 1)),
+                RetryDelay = RetryDelayRule.By((failureCount, _) => TimeSpan.FromMilliseconds(10 * (failureCount + 1))),
                 Wait = (delay, _) =>
                 {
                     waits.Add(delay);
@@ -269,26 +272,107 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_AnOperationThatThrowsItsOwnCancellation_When_Run_Then_ItIsNotRetried() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AnOperationThatThrowsCancellationOnce_When_TheTokenIsNotCancelled_Then_ItIsRetried() => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — the operation's cancellation is its own: the token the policy hands it is never
-            // cancelled, so only the exception's type can decline the retry.
+            // Arrange — the cancellation is the operation's own: the token the policy hands it is never
+            // cancelled, so the exception is a failure like any other, as TanStack retries an AbortError the
+            // function throws.
+            var attempts = 0;
+            VelvetTask<int> Operation(CancellationToken _) =>
+                ++attempts == 1 ? throw new OperationCanceledException("aborted by the operation's own source") : VelvetTask.FromResult(attempts);
+
+            // Act
+            var result = await s_noDelay.RunAsync(Operation);
+
+            // Assert
+            Assert.That((result, attempts), Is.EqualTo((2, 2)), "An OperationCanceledException from the operation is retried while the caller's token is live");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ATokenCancelledByTheCaller_When_TheOperationThrowsCancellation_Then_ItIsNotRetried() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var cts = new CancellationTokenSource();
             var attempts = 0;
 
             // Act
             try
             {
-                await s_noDelay.RunAsync<int>(_ =>
+                await s_noDelay.RunAsync<int>(token =>
                 {
                     attempts++;
-                    throw new OperationCanceledException("aborted by the caller's own source");
-                });
+                    cts.Cancel();
+                    token.ThrowIfCancellationRequested();
+                    return VelvetTask.FromResult(0);
+                }, cts.Token);
             }
             catch (OperationCanceledException) { }
 
             // Assert
-            Assert.That(attempts, Is.EqualTo(1), "An OperationCanceledException ends the operation at its first attempt");
+            Assert.That(attempts, Is.EqualTo(1), "A caller who has cancelled gets no further attempt");
         });
+
+        [UnityTest]
+        public IEnumerator Given_AConstantRetryDelay_When_AnOperationFailsTenTimes_Then_EveryRetryWaitsForIt() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var waits = new List<TimeSpan>();
+            var policy = s_ready with
+            {
+                RetryDelay = TimeSpan.FromSeconds(5),
+                Wait = (delay, _) =>
+                {
+                    waits.Add(delay);
+                    return VelvetTask.CompletedTask;
+                },
+            };
+
+            // Act
+            try { await policy.RunAsync(FailingTenTimes(new List<Exception>())); }
+            catch (InvalidOperationException) { }
+
+            // Assert
+            Assert.That(string.Join(",", waits), Is.EqualTo("00:00:05,00:00:05,00:00:05"),
+                "A TimeSpan is TanStack's constant retryDelay: the same wait before each of the default three retries");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARetryDelayAndAWhen_When_AnOperationFailsOnce_Then_TheDelayIsAskedBeforeTheDecision() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the function declines, so the delay is asked for a retry that never happens, as the
+            // retryer computes it before consulting retry.
+            var asked = new List<string>();
+            var policy = s_ready with
+            {
+                RetryDelay = RetryDelayRule.By((_, _) =>
+                {
+                    asked.Add("delay");
+                    return TimeSpan.Zero;
+                }),
+                Retry = RetryRule.When((_, _) =>
+                {
+                    asked.Add("retry");
+                    return false;
+                }),
+            };
+
+            // Act
+            try { await policy.RunAsync(FailingTenTimes(new List<Exception>())); }
+            catch (InvalidOperationException) { }
+
+            // Assert
+            Assert.That(string.Join(",", asked), Is.EqualTo("delay,retry"), "retryDelay(failureCount, error) is evaluated first, then retry(failureCount, error)");
+        });
+
+        [Test]
+        public void Given_ANullFunction_When_RetryDelayRuleByIsCalled_Then_ItThrows()
+        {
+            // Act
+            TestDelegate create = () => RetryDelayRule.By(null!);
+
+            // Assert
+            Assert.That(create, Throws.ArgumentNullException, "A rule with no function is refused where it is made");
+        }
 
         [UnityTest]
         public IEnumerator Given_AWaitThatIgnoresTheToken_When_CancelledDuringIt_Then_NoFurtherAttemptStarts() => VelvetTask.ToCoroutine(async () =>
@@ -297,7 +381,7 @@ namespace Velvet.Tests
             using var cts = new CancellationTokenSource();
             var gate = new VelvetTaskCompletionSource();
             var attempts = 0;
-            var policy = new RetryPolicy { Wait = (_, _) => gate.Task };
+            var policy = s_ready with { Wait = (_, _) => gate.Task };
             var running = policy.RunAsync<int>(_ =>
             {
                 attempts++;
@@ -364,7 +448,7 @@ namespace Velvet.Tests
             // Arrange
             using var cts = new CancellationTokenSource();
             var attempts = 0;
-            var policy = new RetryPolicy { RetryDelay = (_, _) => TimeSpan.FromHours(1) };
+            var policy = s_ready with { RetryDelay = TimeSpan.FromHours(1) };
             _ = policy.RunAsync<int>(_ =>
             {
                 attempts++;
@@ -382,12 +466,143 @@ namespace Velvet.Tests
             Assert.That(attemptsAfterFrames, Is.EqualTo(1), "Two frames into an hour's delay, the retry has not run");
         }
 
+        private static void DrainFrames()
+        {
+            for (var frame = 0; frame < 5; frame++)
+            {
+                DrainEditorUpdateForTest();
+            }
+        }
+
+        [Test]
+        public void Given_NetworkModeOnline_When_TheDeviceIsOfflineAtTheStart_Then_NoAttemptRunsUntilItIsOnline()
+        {
+            // Arrange
+            var online = false;
+            var attempts = 0;
+            var policy = s_ready with { IsOnline = () => online };
+            _ = policy.RunAsync(_ => VelvetTask.FromResult(++attempts));
+
+            // Act
+            DrainFrames();
+            var attemptsOffline = attempts;
+            online = true;
+            DrainFrames();
+
+            // Assert
+            Assert.That((attemptsOffline, attempts), Is.EqualTo((0, 1)), "The first attempt waits for a connection, then runs");
+        }
+
+        [Test]
+        public void Given_NetworkModeAlways_When_TheDeviceIsOffline_Then_TheFirstAttemptRunsAtOnce()
+        {
+            // Arrange
+            var attempts = 0;
+            var policy = s_ready with { NetworkMode = NetworkMode.Always, IsOnline = () => false };
+
+            // Act
+            _ = policy.RunAsync(_ => VelvetTask.FromResult(++attempts));
+
+            // Assert
+            Assert.That(attempts, Is.EqualTo(1), "Always never waits for a connection");
+        }
+
+        [Test]
+        public void Given_NetworkModeOfflineFirst_When_TheDeviceIsOffline_Then_TheFirstAttemptRunsAndTheRetryWaitsForAConnection()
+        {
+            // Arrange
+            var online = false;
+            var attempts = 0;
+            var policy = s_noDelay with { NetworkMode = NetworkMode.OfflineFirst, IsOnline = () => online };
+            _ = policy.RunAsync<int>(_ =>
+            {
+                attempts++;
+                throw new InvalidOperationException("down");
+            });
+
+            // Act
+            DrainFrames();
+            var attemptsOffline = attempts;
+            online = true;
+            DrainFrames();
+
+            // Assert
+            Assert.That((attemptsOffline, attempts > 1), Is.EqualTo((1, true)), "The first attempt does not wait and the retry does");
+        }
+
+        [Test]
+        public void Given_ARetryDueWhileOffline_When_TheDeviceComesBackOnline_Then_TheRetryRuns()
+        {
+            // Arrange
+            var online = true;
+            var attempts = 0;
+            var policy = s_noDelay with { IsOnline = () => online };
+            var running = policy.RunAsync(_ =>
+            {
+                online = false;
+                return ++attempts == 1 ? throw new InvalidOperationException("transient") : VelvetTask.FromResult(attempts);
+            });
+
+            // Act
+            DrainFrames();
+            var attemptsOffline = attempts;
+            online = true;
+            DrainFrames();
+
+            // Assert
+            Assert.That((attemptsOffline, running.Status), Is.EqualTo((1, VelvetTaskStatus.Succeeded)),
+                "A retry that comes due offline waits for the connection");
+        }
+
+        [Test]
+        public void Given_ARetryDueWhileUnfocused_When_TheApplicationRegainsFocus_Then_TheRetryRuns()
+        {
+            // Arrange — Always, so only focus can be what holds the retry.
+            var focused = false;
+            var attempts = 0;
+            var policy = s_noDelay with { NetworkMode = NetworkMode.Always, IsFocused = () => focused };
+            var running = policy.RunAsync(_ =>
+                ++attempts == 1 ? throw new InvalidOperationException("transient") : VelvetTask.FromResult(attempts));
+
+            // Act
+            DrainFrames();
+            var attemptsUnfocused = attempts;
+            focused = true;
+            DrainFrames();
+
+            // Assert
+            Assert.That((attemptsUnfocused, running.Status), Is.EqualTo((1, VelvetTaskStatus.Succeeded)),
+                "A retry waits for focus in every network mode");
+        }
+
+        [Test]
+        public void Given_ARetryPausedOffline_When_TheCallerCancels_Then_TheRunRejectsAsCancelled()
+        {
+            // Arrange
+            using var cts = new CancellationTokenSource();
+            var online = true;
+            var policy = s_noDelay with { IsOnline = () => online };
+            var running = policy.RunAsync<int>(_ =>
+            {
+                online = false;
+                throw new InvalidOperationException("down");
+            }, cts.Token);
+            DrainFrames();
+
+            // Act
+            cts.Cancel();
+            DrainFrames();
+
+            // Assert
+            Assert.That(running.Status, Is.EqualTo(VelvetTaskStatus.Canceled), "A pause ends when its caller leaves");
+        }
+
         [Test]
         public void Given_TheDefaultWait_When_CancelledDuringIt_Then_TheRunRejectsAsCancelledOnceFramesPass()
         {
             // Arrange — an hour, so the wait cannot end on its own while the frames below are drained.
             using var cts = new CancellationTokenSource();
-            var policy = new RetryPolicy { RetryDelay = (_, _) => TimeSpan.FromHours(1) };
+            var policy = s_ready with { RetryDelay = TimeSpan.FromHours(1) };
             var running = policy.RunAsync<int>(_ => throw new InvalidOperationException("down"), cts.Token);
 
             // Act

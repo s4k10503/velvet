@@ -91,6 +91,22 @@ namespace Velvet
         public Exception? Error { get; private set; }
         /// <summary>Variables passed to the most recent mutation invocation, or default.</summary>
         public TVariables? Variables { get; private set; }
+        /// <summary>
+        /// How many attempts of the most recent call have failed, as TanStack's <c>failureCount</c>: zero when a
+        /// call starts or succeeds, one more for each failed attempt a <see cref="MutationOptions{TVariables, TData}.Retry"/>
+        /// retries, and one more again when the call fails for good.
+        /// </summary>
+        public int FailureCount { get; private set; }
+        /// <summary>
+        /// The exception of the most recent failed attempt of the call, as TanStack's <c>failureReason</c>: null
+        /// when a call starts or succeeds, and still the last attempt's failure while the call waits to retry.
+        /// </summary>
+        public Exception? FailureReason { get; private set; }
+        /// <summary>
+        /// True while the call waits for a connection or for the application to regain focus, as TanStack's
+        /// <c>isPaused</c>. See <see cref="RetryPolicy.NetworkMode"/>.
+        /// </summary>
+        public bool IsPaused { get; private set; }
 
         // Each of these writes a whole outcome rather than the field it is named for: Data belongs to
         // a call that succeeded and Error to one that failed, so no sequence of them leaves either
@@ -102,6 +118,9 @@ namespace Velvet
             Status = MutationStatus.Pending;
             Variables = variables;
             Error = null;
+            FailureCount = 0;
+            FailureReason = null;
+            IsPaused = false;
             // The handle follows the newest call, and the previous call's result reads as this one's
             // while this one is still pending.
             Data = default;
@@ -111,6 +130,9 @@ namespace Velvet
         {
             Data = data;
             Error = null;
+            FailureCount = 0;
+            FailureReason = null;
+            IsPaused = false;
             Status = MutationStatus.Success;
         }
 
@@ -118,8 +140,23 @@ namespace Velvet
         {
             Data = default;
             Error = error;
+            FailureCount++;
+            FailureReason = error;
+            IsPaused = false;
             Status = MutationStatus.Error;
         }
+
+        // The count is the handle's own, one per attempt that failed under a call that still owns it: a
+        // pending call starts it at zero, so a call that lost the handle to a newer one never reaches here.
+        internal void MarkRetrying(Exception error)
+        {
+            FailureCount++;
+            FailureReason = error;
+        }
+
+        internal void MarkPaused() => IsPaused = true;
+
+        internal void MarkContinued() => IsPaused = false;
 
         internal void MarkIdle()
         {
@@ -127,6 +164,9 @@ namespace Velvet
             Data = default;
             Error = null;
             Variables = default;
+            FailureCount = 0;
+            FailureReason = null;
+            IsPaused = false;
         }
 
         internal Action<TVariables>? MutateAction;

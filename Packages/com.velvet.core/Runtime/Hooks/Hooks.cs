@@ -2048,7 +2048,13 @@ namespace Velvet
                 var data = await (slot.Retry is { } retry
                     ? retry.RunWithStateAsync(
                         static (call, token) => call.Slot.MutationFn(call.Variables, token),
-                        (Slot: slot, Variables: variables),
+                        new MutationCall<TVariables, TData>(fiber, slot, variables, mine),
+                        new RetryCallbacks<MutationCall<TVariables, TData>>
+                        {
+                            OnFail = static (call, error) => call.ShowIfOwned(result => result.MarkRetrying(error)),
+                            OnPause = static call => call.ShowIfOwned(static result => result.MarkPaused()),
+                            OnContinue = static call => call.ShowIfOwned(static result => result.MarkContinued()),
+                        },
                         cts.Token)
                     : slot.MutationFn(variables, cts.Token));
                 if (fiber.IsDisposed) return data;
@@ -2094,6 +2100,34 @@ namespace Velvet
                 // one's cancellation settles reaches here with its source already gone, and disposing
                 // it here would leave that loop cancelling a source this finally had already disposed.
                 if (slot.Live.Remove(cts)) cts.Dispose();
+            }
+        }
+
+        private readonly struct MutationCall<TVariables, TData>
+        {
+            public ComponentFiber Fiber { get; }
+            public HookMutationSlot<TVariables, TData> Slot { get; }
+            public TVariables Variables { get; }
+            public long Generation { get; }
+
+            public MutationCall(
+                ComponentFiber fiber,
+                HookMutationSlot<TVariables, TData> slot,
+                TVariables variables,
+                long generation)
+            {
+                Fiber = fiber;
+                Slot = slot;
+                Variables = variables;
+                Generation = generation;
+            }
+
+            // A call writes the handle only while it still holds the current generation, as at its outcome.
+            public void ShowIfOwned(Action<MutationResult<TVariables, TData>> write)
+            {
+                if (Fiber.IsDisposed || Generation != Slot.Generation) return;
+                write(Slot.Result);
+                RequestRender(Fiber);
             }
         }
 

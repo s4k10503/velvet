@@ -140,14 +140,26 @@ render's `MutationFn`, as v5's retryer reads `mutationFn` on every run, and gets
 | `retry: 3` | `Retry = 3` (the default once a policy is given) |
 | `retry: true` / `retry: false` | `Retry = true` retries every failure without end; `Retry = false` retries none |
 | `retry: (failureCount, error) => …` | `Retry = RetryRule.When((failureCount, error) => …)`, which replaces the count: the function alone ends the retries |
-| `retryDelay: (failureCount, error) => ms` | `RetryDelay = (failureCount, error) => TimeSpan`, defaulting to v5's 1 s doubled per retry and capped at 30 s |
+| `retryDelay: (failureCount, error) => ms` / `retryDelay: ms` | `RetryDelay = RetryDelayRule.By((failureCount, error) => TimeSpan)` / `RetryDelay = TimeSpan`, defaulting to v5's 1 s doubled per retry and capped at 30 s |
+| `networkMode: 'online' \| 'always' \| 'offlineFirst'` | `NetworkMode = NetworkMode.Online` (the default) `\| Always \| OfflineFirst` |
 
-Where v5 differs: an `OperationCanceledException` is never retried, and no further attempt starts once the
-token is cancelled. The handle has no `failureCount` / `failureReason`, so the failures before the last
-attempt are visible only to a `RetryRule.When` function and `RetryDelay`. The default wait is wall-clock time
-on the main thread, checked once per frame and lasting at least one frame as v5's zero-delay timer does,
-unaffected by `Time.timeScale`; it does not pause while the device is offline or the window unfocused as v5 does —
-supply `Wait` to wait on game time or on connectivity.
+`retryDelay` is asked before `retry` at every failure, the last one included, as the retryer asks them. An
+`OperationCanceledException` the attempt throws is a failure like any other, retried while the call's own
+token is live; once that token is cancelled, by an unmount or by the caller, no further attempt starts.
+
+Pausing follows the retryer. Under `Online` a call started offline waits for a connection before its first
+attempt; under `OfflineFirst` it does not. Every retry that comes due waits until the application has focus
+and, outside `Always`, a connection. `IsOnline` and `IsFocused` default to
+`Application.internetReachability` and `Application.isFocused`, are polled once per frame and can be
+supplied; supply them to decide by something other than the Application's own reading. While a
+call waits this way `MutationResult.IsPaused` is true, and `FailureCount` / `FailureReason` follow v5's
+reducer: zero and null when a call starts or succeeds, one more count and the failure for each failed attempt,
+the final failure included.
+
+Where v5 differs: the pause applies only to a call whose options carry a `Retry`, whereas v5's retryer
+pauses a mutation started offline with no retry set as well. The default wait is wall-clock time on the main
+thread, checked once per frame and lasting at least one frame as v5's zero-delay timer does, unaffected by
+`Time.timeScale`; supply `Wait` to wait on game time.
 
 **Callback error semantics** (TanStack Query v5 parity):
 

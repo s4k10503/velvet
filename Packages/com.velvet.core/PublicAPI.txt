@@ -185,6 +185,9 @@
 [Velvet] field Velvet.NavigationResult.Error: Velvet.NavigationResult
 [Velvet] field Velvet.NavigationResult.NotFound: Velvet.NavigationResult
 [Velvet] field Velvet.NavigationResult.Success: Velvet.NavigationResult
+[Velvet] field Velvet.NetworkMode.Always: Velvet.NetworkMode
+[Velvet] field Velvet.NetworkMode.OfflineFirst: Velvet.NetworkMode
+[Velvet] field Velvet.NetworkMode.Online: Velvet.NetworkMode
 [Velvet] field Velvet.PanelFocusOrder.Chained: Velvet.PanelFocusOrder
 [Velvet] field Velvet.PanelFocusOrder.Isolated: Velvet.PanelFocusOrder
 [Velvet] field Velvet.PlayTrigger.Manual: Velvet.PlayTrigger
@@ -405,6 +408,8 @@
 [Velvet] method Velvet.ParticlesElement.Play(): System.Void
 [Velvet] method Velvet.ParticlesElement.Stop(): System.Void
 [Velvet] method Velvet.Ref`1[T].Set(T?): System.Void
+[Velvet] method Velvet.RetryDelayRule.By(System.Func`3[System.Int32, System.Exception, System.TimeSpan]): Velvet.RetryDelayRule
+[Velvet] method Velvet.RetryDelayRule.Constant(System.TimeSpan): Velvet.RetryDelayRule
 [Velvet] method Velvet.RetryPolicy.RunAsync`1(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]], System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.RetryRule.Times(System.Int32): Velvet.RetryRule
 [Velvet] method Velvet.RetryRule.When(System.Func`3[System.Int32, System.Exception, System.Boolean]): Velvet.RetryRule
@@ -880,8 +885,11 @@
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].Retry: Velvet.RetryPolicy?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Data: TData?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Error: System.Exception?
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].FailureCount: System.Int32
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].FailureReason: System.Exception?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsError: System.Boolean
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsIdle: System.Boolean
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].IsPaused: System.Boolean
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsPending: System.Boolean
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsSuccess: System.Boolean
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Status: Velvet.MutationStatus
@@ -911,8 +919,11 @@
 [Velvet] property Velvet.PortalNode.TargetId: System.String?
 [Velvet] property Velvet.Ref`1[T].Current: T?
 [Velvet] property Velvet.Ref`1[T].SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
+[Velvet] property Velvet.RetryPolicy.IsFocused: System.Func`1[System.Boolean]?
+[Velvet] property Velvet.RetryPolicy.IsOnline: System.Func`1[System.Boolean]?
+[Velvet] property Velvet.RetryPolicy.NetworkMode: Velvet.NetworkMode
 [Velvet] property Velvet.RetryPolicy.Retry: Velvet.RetryRule
-[Velvet] property Velvet.RetryPolicy.RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
+[Velvet] property Velvet.RetryPolicy.RetryDelay: Velvet.RetryDelayRule
 [Velvet] property Velvet.RetryPolicy.Wait: System.Func`3[System.TimeSpan, System.Threading.CancellationToken, Velvet.VelvetTask]?
 [Velvet] property Velvet.RouteActionContext.FormData: System.Object?
 [Velvet] property Velvet.RouteActionContext.Method: System.String
@@ -1150,6 +1161,7 @@
 [Velvet] type Velvet.NavigationMode
 [Velvet] type Velvet.NavigationResult
 [Velvet] type Velvet.NavigationState
+[Velvet] type Velvet.NetworkMode
 [Velvet] type Velvet.NullStoreLogger
 [Velvet] type Velvet.PanelFocusOrder
 [Velvet] type Velvet.ParticlesElement
@@ -1163,6 +1175,7 @@
 [Velvet] type Velvet.PortalNode
 [Velvet] type Velvet.Ref`1[T]
 [Velvet] type Velvet.ResolvedFont
+[Velvet] type Velvet.RetryDelayRule
 [Velvet] type Velvet.RetryPolicy
 [Velvet] type Velvet.RetryRule
 [Velvet] type Velvet.RouteActionContext
