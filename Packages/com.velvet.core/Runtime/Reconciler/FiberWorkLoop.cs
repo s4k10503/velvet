@@ -525,7 +525,7 @@ namespace Velvet
 
                 if (fiber.Reconciler.HasPendingWork)
                 {
-                    mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(fiber, ContinueReconcile));
+                    mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(mountPoint, fiber, ContinueReconcile));
                 }
                 else
                 {

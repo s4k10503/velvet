@@ -826,7 +826,7 @@ namespace Velvet
             if (fiber.IsRendering)
             {
                 fiber.MountPoint?.schedule.Execute(
-                    () => PanelSchedulerCallback.Run(fiber, NotifyAsyncResourceCompleted));
+                    () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, NotifyAsyncResourceCompleted));
                 return;
             }
             // Searched from the parent, as React takes the nearest Suspense above the component that suspended: a

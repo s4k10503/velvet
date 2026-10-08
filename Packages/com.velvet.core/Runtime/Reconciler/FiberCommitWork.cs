@@ -448,7 +448,7 @@ namespace Velvet
                 // paused pass keeps diffing against it across frames.
                 reconciler.Context.ParkedBaselineFibers.Add(fiber);
                 fiber.MountPoint?.schedule.Execute(
-                    () => PanelSchedulerCallback.Run(fiber, FiberWorkLoop.ContinueReconcile));
+                    () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, FiberWorkLoop.ContinueReconcile));
             }
             else
             {

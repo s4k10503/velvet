@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -12,13 +11,12 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies when <c>FiberBatchScheduler</c>'s Transition tier renders, on a simulated panel whose clock
-    /// only moves when a test advances it. A frame runs a second scheduler pass when the element hierarchy changed
-    /// after its first; the cases here change only text after mounting, so each <c>FrameUpdateMs</c> is one
-    /// pass.
+    /// only moves when a test advances it, one <c>FrameUpdateMs</c> at a time.
     /// <list type="bullet">
     /// <item>Transition work commits in a later pass than the urgent render that requested it: a request made
-    /// inside a scheduler callback drains on the next pass, one made outside every callback — a discrete
-    /// handler's flush, a call from outside the panel — on the pass after that.</item>
+    /// inside a Velvet callback its own panel's scheduler is running drains on the next pass, one made anywhere
+    /// else — a discrete handler's flush, another panel's callback, a call from outside every panel — on the pass
+    /// after that.</item>
     /// <item>An urgent update reaching a component whose deferred value is already queued for the coming pass
     /// commits in that pass without the deferred value, which moves to the pass after — until it has moved as
     /// often as FiberWorkLoop's starvation bound, after which it stays and commits.</item>
@@ -151,10 +149,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_EveryKindOfSchedulerCallbackHasRun_When_AClickChangesTheDeferredInputAndOneFramePasses_Then_TheDeferredValueHasNotCommitted()
+        public void Given_EveryKindOfSchedulerCallbackHasRun_When_AClickChangesTheDeferredInputAndTwoFramesPass_Then_ItCommitsOnTheSecondOnly()
         {
             // Arrange — a first click and two passes run an immediate callback, an admission, a Transition drain
-            // and a passive-effect drain, so a marker any of them left behind would be in place for the second
+            // and a passive-effect drain, so a marker or admission any of them left behind would be in place for
+            // the second click
             using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredRender, key: "deferred"));
             var button = _sim.rootVisualElement.Q<Button>("set-input");
             button.SimulateClick();
@@ -164,10 +163,32 @@ namespace Velvet.Tests
 
             // Act
             _sim.FrameUpdateMs(FrameMs);
+            var afterOnePass = (Text("input"), Text("deferred"));
+            _sim.FrameUpdateMs(FrameMs);
 
             // Assert — the first value rides along to show the earlier passes did commit it
-            Assert.That((Text("input"), Text("deferred")), Is.EqualTo(("2", "1")),
-                "A request from a click is outside every pass whatever callbacks ran before it");
+            Assert.That((afterOnePass.Item1, afterOnePass.Item2, Text("deferred")), Is.EqualTo(("2", "1", "2")),
+                "A request from a click is outside every pass whatever callbacks ran before it, and still commits");
+        }
+
+        [Test]
+        public void Given_ATransitionOnOnePanelStartedByAnotherPanelsCallback_When_TheFirstPanelTicksTwice_Then_ItCommitsOnTheSecondOnly()
+        {
+            // Arrange — the second panel's passive-effect drain starts a transition on the first panel's tree, so
+            // the request is made inside a scheduler callback, but not one the first panel's scheduler is running
+            using var other = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
+            using var mounted = V.Mount(_sim.rootVisualElement, V.Component(TransitionRender, key: "transition"));
+            using var starter = V.Mount(other.rootVisualElement, V.Component(CrossPanelStarterRender, key: "starter"));
+            other.FrameUpdateMs(FrameMs);
+
+            // Act
+            _sim.FrameUpdateMs(FrameMs);
+            var afterOnePass = Text("value");
+            _sim.FrameUpdateMs(FrameMs);
+
+            // Assert
+            Assert.That((afterOnePass, Text("value")), Is.EqualTo(("0", "1")),
+                "A request from another panel's pass waits for an admission on this panel's next pass");
         }
 
         [Test]
@@ -287,7 +308,7 @@ namespace Velvet.Tests
             // move that reaches the bound is the one on frame bound + 1, and the request on frame bound + 2
             // leaves the entry on the drain that runs in that same pass
             using var mounted = V.Mount(_sim.rootVisualElement, V.Component(DeferredParentRender, key: "parent"));
-            var frames = StarvationThreshold() + 1;
+            var frames = StarvationThreshold.Read() + 1;
             for (var i = 0; i < frames; i++)
             {
                 s_setTick.Invoke(v => v + 1);
@@ -383,12 +404,6 @@ namespace Velvet.Tests
 
         private string Text(string name) => _sim.rootVisualElement.Q<Label>(name).text;
 
-        // Reflected rather than named, so this fixture compiles against a tree that keeps the field private.
-        private static int StarvationThreshold()
-            => (int)typeof(FiberWorkLoop)
-                .GetField("TransitionStarvationThreshold", BindingFlags.Static | BindingFlags.NonPublic)
-                .GetValue(null);
-
         private MountedTree MountLanePair()
             => V.Mount(_sim.rootVisualElement, V.Div(children: new VNode[]
             {
@@ -404,6 +419,17 @@ namespace Velvet.Tests
             var (_, start) = Hooks.UseTransition();
             s_start = start;
             return V.Label(name: "value", text: value.ToString());
+        }
+
+        [Component(Compiler = false)]
+        private static VNode CrossPanelStarterRender()
+        {
+            Hooks.UseEffect((Func<Action>)(() =>
+            {
+                s_start.Invoke(() => s_setValue.Invoke(1));
+                return null;
+            }), Array.Empty<object>());
+            return V.Label();
         }
 
         [Component(Compiler = false)]

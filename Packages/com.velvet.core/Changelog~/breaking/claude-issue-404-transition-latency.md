@@ -3,10 +3,11 @@
 - Transition-lane work — an update a `startTransition` callback schedules, and a `UseDeferredValue`
   derivation — no longer waits 100 ms after it was scheduled. It renders in a later panel scheduler pass than
   the urgent render that asked for it; Velvet holds it to a later pass, not to a later frame. A request made
-  while one of Velvet's own scheduler callbacks runs — an urgent render that callback commits, a `UseEffect`,
-  a `UseFrame` callback — renders on the next pass. A request made anywhere else — a discrete event handler,
-  including the urgent render its synchronous flush commits, or code outside the panel — renders on the pass
-  after that, so a search box's `UseDeferredValue` list catches up two passes after the keystroke, and
+  inside Velvet's render drains, its scheduled `UseEffect` drain, a time-sliced render's resume, the notification
+  of a resource that resolved while its reader was rendering, or a `UseFrame` callback, run by the panel the requesting tree is mounted on, renders on the
+  next pass. A request made anywhere else — a discrete event handler, including the urgent render its
+  synchronous flush commits, another panel's callbacks, Velvet's other scheduled work, or code outside every
+  panel — renders on the pass after that, so a search box's `UseDeferredValue` list catches up two passes after the keystroke, and
   `isPending` reads true until then rather than for at least 100 ms. Normal- and Urgent-lane updates still
   queued when a transition drains commit first, in the same pass, and an urgent update to a component whose
   deferred value was queued for that pass moves the deferred value to a later one, up to

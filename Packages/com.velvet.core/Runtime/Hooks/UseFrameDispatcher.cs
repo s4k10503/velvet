@@ -89,7 +89,7 @@ namespace Velvet
             {
                 // Bracketed inline rather than through PanelSchedulerCallback.Run, which would allocate a
                 // delegate on every tick.
-                var outer = PanelSchedulerCallback.Enter();
+                var outer = PanelSchedulerCallback.Enter(_panel);
                 try
                 {
                     Tick(ts);

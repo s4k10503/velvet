@@ -51,7 +51,7 @@ namespace Velvet
         }
 
         // One registered Transition-tier callback. RegisteredIn is the PanelSchedulerCallback it was registered
-        // from, or 0 for the admission a request made outside every such callback waits in.
+        // from, or 0 for the admission a request made outside this panel's passes waits in.
         private sealed class DelayedAdmission
         {
             internal readonly int RegisteredIn;
@@ -172,7 +172,7 @@ namespace Velvet
 
         private void RunImmediateCallback()
         {
-            var outer = PanelSchedulerCallback.Enter();
+            var outer = PanelSchedulerCallback.Enter(_anchor?.panel);
             _inImmediateCallback = true;
             try
             {
@@ -188,11 +188,12 @@ namespace Velvet
         // Short of the bound below, a Transition request does not join a drain the panel can run in the
         // scheduler pass the request was made in, so the render that asked for it — an urgent render reaching
         // UseDeferredValue, the urgent flush that re-enrols a surviving Transition lane — commits in an earlier
-        // pass than the transition. Made inside a PanelSchedulerCallback, the request waits for a drain
-        // registered from that callback, which the panel runs on a later pass rather than the current one.
-        // Made anywhere else, nothing places it relative to a pass, so it waits one pass more: for an
-        // admission the next pass runs, which registers the drain for a pass after that.
-        // TransitionFrameSchedulingTests holds the later-pass behaviour both rely on.
+        // pass than the transition. Made inside a PanelSchedulerCallback that this scheduler's own panel is
+        // running, the request waits for a drain registered from that callback, which that panel's scheduler
+        // holds back to a later pass. Made anywhere else — including a callback another panel is running,
+        // whose pass does not hold back a registration on this one — nothing places it relative to this
+        // panel's passes, so it waits one pass more: for an admission this panel's next pass runs, which
+        // registers the drain for a pass after that. TransitionFrameSchedulingTests holds both.
         // The bound: a queued fiber moves to the admission its latest request chose, so an urgent update
         // arriving every frame would keep it moving indefinitely. FiberWorkLoop's starvation promotion stops
         // that only for a fiber whose own flush the update preempts, not for one an ancestor's render
@@ -202,7 +203,7 @@ namespace Velvet
             if (fiber?.MountPoint == null) return;
             var queued = _delayedEntries.TryGetValue(fiber, out var entry);
             if (queued && entry.Deferrals >= FiberWorkLoop.TransitionStarvationThreshold) return;
-            var admission = PanelSchedulerCallback.Current != 0 ? AdmissionForNextPass() : Unadmitted();
+            var admission = PanelSchedulerCallback.InPassOf(_anchor) ? AdmissionForNextPass() : Unadmitted();
             if (!queued)
             {
                 _delayedOrder.Add(fiber);
@@ -243,7 +244,7 @@ namespace Velvet
 
         private void RunAdmitCallback(DelayedAdmission admission)
         {
-            var outer = PanelSchedulerCallback.Enter();
+            var outer = PanelSchedulerCallback.Enter(_anchor?.panel);
             try
             {
                 if (_unadmitted == admission) _unadmitted = null;
@@ -265,7 +266,7 @@ namespace Velvet
 
         private void RunDelayedCallback(DelayedAdmission admission)
         {
-            var outer = PanelSchedulerCallback.Enter();
+            var outer = PanelSchedulerCallback.Enter(_anchor?.panel);
             try
             {
                 DrainDelayedTier(admission);

@@ -25,8 +25,6 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class TransitionTierGateTests
     {
-        private const int TransitionStarvationThreshold = 30;
-
         private VisualElement _root;
 
         private static StateUpdater<string> s_setQuery;
@@ -182,7 +180,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(StarvedRender, key: "starved"));
             var scheduler = mounted.GetSchedulerForTest();
             s_starvedStart.Invoke(() => s_starvedSetValue.Invoke("transition"));
-            for (var i = 0; i < TransitionStarvationThreshold - 1; i++)
+            for (var i = 0; i < StarvationThreshold.Read() - 1; i++)
             {
                 s_starvedSetValue.Invoke($"normal-{i}");
                 scheduler.DrainImmediateForTest();
