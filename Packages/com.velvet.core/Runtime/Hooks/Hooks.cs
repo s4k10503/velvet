@@ -1296,7 +1296,6 @@ namespace Velvet
                     walker.Current.Cancel();
                     Rerender();
                 },
-                setSpeed: speed => walker.Current.SetSpeed(speed),
                 walker: walker.Current!);
 
             return (walker.Current.ToState(), controls);

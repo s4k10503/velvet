@@ -1013,9 +1013,8 @@ namespace Velvet
             return t.Type == TransitionType.Spring
                 ? StyleAnimationScheduler.ValidateSpringParameters(t.Stiffness, t.Damping, t.Mass)
                 : t.Type == TransitionType.Bezier
-                    ? StyleAnimationScheduler.ValidateBezierParameters(t.BezierX1, t.BezierY1, t.BezierX2, t.BezierY2,
-                        t.DurationSec, StyleAnimationScheduler.DurationCap(t))
-                    : StyleAnimationScheduler.ValidateDuration(t.DurationSec, StyleAnimationScheduler.DurationCap(t), null);
+                    ? StyleAnimationScheduler.ValidateBezierParameters(t.BezierX1, t.BezierY1, t.BezierX2, t.BezierY2, t.DurationSec)
+                    : StyleAnimationScheduler.ValidateDuration(t.DurationSec, null);
         }
 
         // travel: the farthest an edge moves, in pixels, which scales a spring's rest threshold. fades: the progress

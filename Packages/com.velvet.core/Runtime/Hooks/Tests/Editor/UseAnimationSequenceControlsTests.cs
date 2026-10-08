@@ -5,7 +5,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins <c>AnimationSequenceControls</c>' <c>Cancel</c>, <c>SetSpeed</c>, <c>Speed</c> and <c>TimeSec</c> on the
+    /// Pins <c>AnimationSequenceControls</c>' <c>Cancel</c> and <c>TimeSec</c> on the
     /// fake clock <see cref="UseAnimationSequenceTests"/> walks the steps on. Every tick is 16ms.
     /// </summary>
     internal sealed class UseAnimationSequenceControlsTests
@@ -259,85 +259,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASpeedOfTwo_When_LessThanTheFirstHoldButMoreThanHalfOfItElapses_Then_TheSecondStepIsCurrent()
-        {
-            // Arrange — 240ms of clock against a 400ms hold.
-            s_steps = new[] { To("a", 0.4f), To("b", 0.4f) };
-            Mount();
-            s_controls.SetSpeed(2f);
-
-            // Act
-            AdvanceTicks(15);
-
-            // Assert
-            Assert.That(s_state.CurrentLabel, Is.EqualTo("b"));
-        }
-
-        [Test]
-        public void Given_ASpeedOfTwo_When_TheSequenceRestarts_Then_TheFirstStepsTransitionIsHandedOutAtHalfItsDuration()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.4f), To("b", 0.4f) };
-            Mount();
-            s_controls.SetSpeed(2f);
-
-            // Act
-            s_controls.Restart();
-            _mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(s_state.CurrentTransition.DurationSec, Is.EqualTo(0.2f).Within(1e-6f));
-        }
-
-        [Test]
-        public void Given_ASpeedSet_When_SpeedIsRead_Then_ItIsTheRateSet()
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.4f) };
-            Mount();
-
-            // Act
-            s_controls.SetSpeed(2.5f);
-
-            // Assert
-            Assert.That(s_controls.Speed, Is.EqualTo(2.5f));
-        }
-
-        [TestCase(0f)]
-        [TestCase(-1f)]
-        [TestCase(float.NaN)]
-        [TestCase(float.PositiveInfinity)]
-        [TestCase(0.0009f)]
-        [TestCase(1000.1f)]
-        public void Given_ARateOutsideAThousandthToAThousand_When_SetAsTheSpeed_Then_ItIsRefused(float rate)
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.4f) };
-            Mount();
-
-            // Act
-            TestDelegate setSpeed = () => s_controls.SetSpeed(rate);
-
-            // Assert
-            Assert.That(setSpeed, Throws.TypeOf<ArgumentOutOfRangeException>());
-        }
-
-        [TestCase(0.001f)]
-        [TestCase(1000f)]
-        public void Given_ARateAtAnEndOfAThousandthToAThousand_When_SetAsTheSpeed_Then_ItIsTaken(float rate)
-        {
-            // Arrange
-            s_steps = new[] { To("a", 0.4f) };
-            Mount();
-
-            // Act
-            TestDelegate setSpeed = () => s_controls.SetSpeed(rate);
-
-            // Assert
-            Assert.That(setSpeed, Throws.Nothing);
-        }
-
-        [Test]
         public void Given_ASequenceTenTicksIntoItsFirstHold_When_TimeSecIsRead_Then_ItIsTheTimeElapsed()
         {
             // Arrange
@@ -392,41 +313,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_controls.TimeSec, Is.EqualTo(0.24f).Within(1e-4f));
-        }
-
-        [Test]
-        public void Given_ALoopRunAtAHundredTimesItsSpeed_When_TheSpeedDropsToOne_Then_TheNextFrameCrossesNoStep()
-        {
-            // Arrange — each 16ms frame at 100 owes 1.6s, far more than the three steps one frame's walk crosses.
-            s_steps = new[] { To("a", 0.1f), To("b", 0.1f) };
-            s_loop = true;
-            Mount();
-            s_controls.SetSpeed(100f);
-            AdvanceTicks(10);
-            s_controls.SetSpeed(1f);
-            var indexBefore = s_state.StepIndex;
-
-            // Act — 16ms, short of either 100ms hold.
-            AdvanceTicks(1);
-
-            // Assert
-            Assert.That(s_state.StepIndex, Is.EqualTo(indexBefore));
-        }
-
-        [Test]
-        public void Given_ALoopFrameCrossingAsManyStepsAsTheGuardAllows_When_TimeSecIsRead_Then_ItKeepsThePartialHold()
-        {
-            // Arrange — one 16ms frame at 21.875 owes 0.35s: three 100ms holds crossed, 50ms into the fourth.
-            s_steps = new[] { To("a", 0.1f), To("b", 0.1f) };
-            s_loop = true;
-            Mount();
-            s_controls.SetSpeed(21.875f);
-
-            // Act
-            AdvanceTicks(1);
-
-            // Assert
-            Assert.That(s_controls.TimeSec, Is.EqualTo(0.35f).Within(1e-3f));
         }
 
         [Test]

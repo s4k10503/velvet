@@ -192,10 +192,6 @@ namespace Velvet
         /// </summary>
         internal bool HasExitAnimation => Type == TransitionType.Spring || DurationSec > 0f;
 
-        // The rate ScaledBy played an authored config at, so StyleAnimationScheduler.DurationCap can hold the
-        // authored duration to its cap rather than the scaled one. 1 for a config nothing scaled.
-        internal float PlaybackRate { get; init; } = 1f;
-
         // Parsed class-name array caches (lazily initialized).
         private string[]? _enterFromClasses;
         private string[]? _enterToClasses;
@@ -237,8 +233,6 @@ namespace Velvet
                 Easing = easing ?? Easing,
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
-                // A duration given here is read at face, as an authored one is.
-                PlaybackRate = durationSec == null ? PlaybackRate : 1f,
                 // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
                 // the child-orchestration knobs, the spring model, or the transition a layoutId move takes.
                 PropertyOverrides = PropertyOverrides,
@@ -262,66 +256,6 @@ namespace Velvet
             };
         }
 
-        // The same transition played `rate` times as fast: every span in seconds divided by it, and the spring's
-        // stiffness and damping multiplied by its square and by it, which replays the spring's trajectory at
-        // that rate with its mass unchanged (pinned by StyleTransitionConfigScaledByTests).
-        internal StyleTransitionConfig ScaledBy(float rate)
-        {
-            if (rate == 1f)
-            {
-                return this;
-            }
-            return new StyleTransitionConfig
-            {
-                EnterFromClass = EnterFromClass,
-                EnterToClass = EnterToClass,
-                ExitFromClass = ExitFromClass,
-                ExitToClass = ExitToClass,
-                // Divided rather than multiplied by a reciprocal: StyleAnimationScheduler.DurationCap divides the cap
-                // by the same rate, so an authored duration exactly at the cap stays exactly at it.
-                DurationSec = DurationSec / rate,
-                Easing = Easing,
-                ExitEasing = ExitEasing,
-                DelaySec = DelaySec / rate,
-                PropertyOverrides = ScaleOverrides(PropertyOverrides, rate),
-                Layout = Layout?.ScaledBy(rate),
-                StaggerChildrenSec = StaggerChildrenSec / rate,
-                DelayChildrenSec = DelayChildrenSec / rate,
-                PlaybackRate = PlaybackRate * rate,
-                When = When,
-                Type = Type,
-                Stiffness = Stiffness * rate * rate,
-                Damping = Damping * rate,
-                Mass = Mass,
-                BezierX1 = BezierX1,
-                BezierY1 = BezierY1,
-                BezierX2 = BezierX2,
-                BezierY2 = BezierY2,
-                _enterFromClasses = _enterFromClasses,
-                _enterToClasses = _enterToClasses,
-                _exitFromClasses = _exitFromClasses,
-                _exitToClasses = _exitToClasses,
-            };
-        }
-
-        // A null override field stays null, so it keeps falling back to the scaled top-level value.
-        private static IReadOnlyList<StylePropertyTransition>? ScaleOverrides(
-            IReadOnlyList<StylePropertyTransition>? overrides, float rate)
-        {
-            if (overrides == null)
-            {
-                return null;
-            }
-            var scaled = new StylePropertyTransition[overrides.Count];
-            for (var i = 0; i < overrides.Count; i++)
-            {
-                var o = overrides[i];
-                scaled[i] = new StylePropertyTransition(o.Property, o.DurationSec / rate, o.Easing,
-                    o.DelaySec / rate);
-            }
-            return scaled;
-        }
-
         /// <summary>
         /// Builds a new StyleTransitionConfig for a variant `exit` (see
         /// <see cref="Velvet.MotionNode.Exit"/>): copies every timing / spring / per-property-override knob
@@ -343,7 +277,6 @@ namespace Velvet
                 Easing = Easing,
                 ExitEasing = ExitEasing,
                 DelaySec = DelaySec,
-                PlaybackRate = PlaybackRate,
                 PropertyOverrides = PropertyOverrides,
                 Type = Type,
                 Stiffness = Stiffness,

@@ -21,12 +21,6 @@ namespace Velvet
         // drains pending reentrant resets in a plain loop, so the call stack never grows past a constant depth.
         private const int MaxReentrantResets = 64;
 
-        // A rate within these has a square, which ScaledBy multiplies a spring's stiffness by, that is neither 0
-        // nor infinite, and grows a span ScaledBy divides by it at most a thousandfold. Documentation~/motion.md
-        // states both numbers.
-        public const float MinSpeed = 1e-3f;
-        public const float MaxSpeed = 1e3f;
-
         private IReadOnlyList<AnimationSequenceStep> _steps = Array.Empty<AnimationSequenceStep>();
         private int _stepIndex;
         private float _elapsedInStepSec;
@@ -36,11 +30,7 @@ namespace Velvet
         // sequence plays.
         private double _timeBeforeStepSec;
         private string? _currentLabel;
-        // _currentTransition is the authored one a later step with no transition of its own inherits;
-        // _playedTransition is that one at the speed in force when the step was arrived at, which is what
-        // ToState hands to the Motion.
         private StyleTransitionConfig? _currentTransition;
-        private StyleTransitionConfig? _playedTransition;
         private bool _isComplete;
         private bool _isCancelled;
         private int _generation;
@@ -56,8 +46,6 @@ namespace Velvet
         public int StepIndex => _stepIndex;
 
         public bool IsCancelled => _isCancelled;
-
-        public float Speed { get; private set; } = 1f;
 
         public float TimeSec => (float)(_timeBeforeStepSec + _elapsedInStepSec);
 
@@ -80,17 +68,6 @@ namespace Velvet
             ResetImmediate(steps);
         }
 
-        public void SetSpeed(float speed)
-        {
-            // Written so NaN, which every comparison refuses, is refused too.
-            if (!(speed >= MinSpeed && speed <= MaxSpeed))
-            {
-                throw new ArgumentOutOfRangeException(nameof(speed), speed,
-                    $"A sequence's speed must lie between {MinSpeed} and {MaxSpeed}; Pause stops it.");
-            }
-            Speed = speed;
-        }
-
         // A pending reentrant Reset is dropped: a Call callback that restarts and then cancels asked for the
         // cancel last.
         public void Cancel()
@@ -100,13 +77,13 @@ namespace Velvet
             _elapsedInStepSec = 0f;
             _timeBeforeStepSec = 0f;
             _currentLabel = null;
-            _playedTransition = null;
+            _currentTransition = null;
             _isComplete = false;
             _isCancelled = true;
             IsPaused = true;
         }
 
-        // Advances the cursor by dt seconds of clock at Speed, committing every step whose hold elapses along the way (a
+        // Advances the cursor by dt seconds, committing every step whose hold elapses along the way (a
         // zero-hold Wait/Call chain can cross several steps within one call). Returns the committed step
         // index so the caller can diff it against its own re-render trigger. The iteration count is bounded to
         // _steps.Count + 1 so an all-zero-hold loop (with loop: true) cannot spin forever inside one call — it
@@ -118,7 +95,7 @@ namespace Velvet
                 return _stepIndex;
             }
 
-            _elapsedInStepSec += dt * Speed;
+            _elapsedInStepSec += dt;
             var guard = _steps.Count + 1;
             while (!_isComplete && _elapsedInStepSec >= _currentHoldSec && guard-- > 0)
             {
@@ -144,17 +121,10 @@ namespace Velvet
                     break;
                 }
             }
-            // The guard ran out with time still owed: a loop at a high speed can owe more than one frame's walk
-            // crosses, and carried over, that backlog would keep flipping steps for seconds after the speed drops.
-            // It is dropped, so TimeSec counts only the holds the walk crossed.
-            if (guard < 0)
-            {
-                _elapsedInStepSec = 0f;
-            }
             return _stepIndex;
         }
 
-        public AnimationSequenceState ToState() => new(_currentLabel, _playedTransition, _stepIndex, _isComplete);
+        public AnimationSequenceState ToState() => new(_currentLabel, _currentTransition, _stepIndex, _isComplete);
 
         private void ResetImmediate(IReadOnlyList<AnimationSequenceStep>? steps)
         {
@@ -178,7 +148,6 @@ namespace Velvet
             _timeBeforeStepSec = 0f;
             _currentLabel = null;
             _currentTransition = null;
-            _playedTransition = null;
             _isComplete = _steps.Count == 0;
             _isCancelled = false;
             WarnAboutUnvalidatedToSteps();
@@ -269,7 +238,6 @@ namespace Velvet
                 case AnimationSequenceStepKind.To:
                     _currentLabel = step.Label;
                     _currentTransition = step.Transition ?? _currentTransition ?? StyleTransition.Fade;
-                    _playedTransition = _currentTransition.ScaledBy(Speed);
                     _currentHoldSec = Math.Max(0f, step.HoldSec ?? ResolveHoldFromTransition(_currentTransition));
                     break;
                 case AnimationSequenceStepKind.Wait:

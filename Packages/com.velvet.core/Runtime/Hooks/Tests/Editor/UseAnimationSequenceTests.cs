@@ -261,7 +261,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already reads no transition after a restart onto a Wait.
-        // Leaving the transition the walker hands out unreset in `ApplyStepsReset` is what reddens it.
+        // Leaving the walker's transition unreset in `ApplyStepsReset` is what reddens it.
         [Test]
         public void Given_ASequenceOnAToStepAfterAWait_When_Restarted_Then_CurrentTransitionIsNull()
         {

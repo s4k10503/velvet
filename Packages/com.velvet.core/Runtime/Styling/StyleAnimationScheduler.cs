@@ -14,12 +14,8 @@ namespace Velvet
         // 60fps (16ms) - 30fps (33ms) frame delay.
         private const long AnimationGraceMs = 50;
         // Far above any legitimate UI transition length; catches a sec/ms unit mixup (an order-of-magnitude
-        // mistake) rather than acting as a real cap. It bounds the duration a caller authored: a config played
-        // slower through StyleTransitionConfig.ScaledBy is held to it before the scaling (DurationCap).
+        // mistake) rather than acting as a real cap.
         private const float MaxDurationSec = 10f;
-
-        // The longest duration a play on this config may take, in the config's own seconds.
-        internal static float DurationCap(StyleTransitionConfig config) => MaxDurationSec / config.PlaybackRate;
 
         // EasingMode values are finite, so caching is safe.
         private static readonly Dictionary<EasingMode, List<EasingFunction>> s_easingCache = new();
@@ -47,9 +43,6 @@ namespace Velvet
             internal Action? OnSwap { get; init; }
             internal float DelaySec { get; init; }
             internal float AdditionalDelaySec { get; init; }
-            // See DurationCap. Zero, the default, admits no duration at all, so a play built without it lands
-            // at once rather than escaping the cap.
-            internal float DurationCapSec { get; init; }
             // Selects both the exit-shaped self-cancel and which bookkeeping map the play registers into — a
             // separate map field would only ever repeat that same choice.
             internal bool IsExit { get; init; }
@@ -85,7 +78,7 @@ namespace Velvet
             if (config.Type == TransitionType.Bezier)
             {
                 ValidateBezierParameters(config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2,
-                    config.DurationSec, DurationCap(config));
+                    config.DurationSec);
                 onComplete?.Invoke();
                 return;
             }
@@ -101,7 +94,6 @@ namespace Velvet
                 OnComplete = onComplete,
                 DelaySec = config.DelaySec,
                 AdditionalDelaySec = additionalDelaySec,
-                DurationCapSec = DurationCap(config),
                 IsExit = false,
             };
 
@@ -126,8 +118,7 @@ namespace Velvet
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
                 config.Type, config.Stiffness, config.Damping, config.Mass,
-                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses,
-                DurationCap(config));
+                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses);
         }
 
         internal static bool RunsOnSwap(StyleTransitionConfig config)
@@ -136,12 +127,12 @@ namespace Velvet
                 || TweensOnSwap(config);
 
         internal static bool TweensOnSwap(StyleTransitionConfig config)
-            => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec, DurationCap(config));
+            => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
 
         // A swap on such a config plays nothing: it lands the properties its pose names (LandNamedProperties) and
         // moves no classes. A bezier's zero duration is its None; a spring has no duration.
         internal static bool LandsAtOnce(StyleTransitionConfig config)
-            => config.Type == TransitionType.Tween ? !IsPlayableDuration(config.DurationSec, DurationCap(config))
+            => config.Type == TransitionType.Tween ? !IsPlayableDuration(config.DurationSec)
                 : config.Type == TransitionType.Bezier && config.DurationSec == 0f;
 
         internal bool IsSwapPending(VisualElement element, Action onSwap)
@@ -167,7 +158,7 @@ namespace Velvet
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
             TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f,
             float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
-            Action? onSwap = null, string[]? appliedClasses = null, float durationCapSec = MaxDurationSec)
+            Action? onSwap = null, string[]? appliedClasses = null)
         {
             if (element == null)
             {
@@ -186,7 +177,6 @@ namespace Velvet
                 OnSwap = onSwap,
                 DelaySec = delaySec,
                 AdditionalDelaySec = additionalDelaySec,
-                DurationCapSec = durationCapSec,
                 IsExit = false,
             };
 
@@ -202,7 +192,7 @@ namespace Velvet
                 return;
             }
 
-            if (!IsPlayableDuration(durationSec, durationCapSec))
+            if (!IsPlayableDuration(durationSec))
             {
                 CancelSwapAhead(element, resolvedTo, appliedClasses ?? resolvedTo);
                 RestPendingAt(element, resolvedTo, appliedClasses ?? resolvedTo);
@@ -220,7 +210,7 @@ namespace Velvet
 
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
-            if (!ValidateDuration(durationSec, play.DurationCapSec, onComplete))
+            if (!ValidateDuration(durationSec, onComplete))
             {
                 return;
             }
@@ -411,7 +401,6 @@ namespace Velvet
                 OnSwap = onSwap,
                 DelaySec = config.DelaySec,
                 AdditionalDelaySec = additionalDelaySec,
-                DurationCapSec = DurationCap(config),
                 IsExit = true,
             };
 
@@ -434,7 +423,7 @@ namespace Velvet
             }
 
             // StyleTransitionConfig.None (DurationSec=0): complete immediately (no warning).
-            if (!ValidateDuration(config.DurationSec, DurationCap(config), onComplete))
+            if (!ValidateDuration(config.DurationSec, onComplete))
             {
                 return;
             }
@@ -753,7 +742,7 @@ namespace Velvet
             // An invalid configuration (see ValidateBezierParameters) degrades exactly like an empty plan below:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
-            var state = ValidateBezierParameters(x1, y1, x2, y2, durationSec, play.DurationCapSec)
+            var state = ValidateBezierParameters(x1, y1, x2, y2, durationSec)
                 ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec)
                 : null;
 
@@ -1293,22 +1282,22 @@ namespace Velvet
             onSwap?.Invoke();
         }
 
-        private static bool IsPlayableDuration(float durationSec, float durationCapSec)
-            // MUTANT_SURVIVES(equivalent, boundary): durationSec != 0f already rules out both zeros, the only
-            // values where durationSec < 0f and durationSec <= 0f disagree.
-            => durationSec != 0f && !(durationSec < 0f || durationSec > durationCapSec);
+        private static bool IsPlayableDuration(float durationSec)
+            // MUTANT_SURVIVES(equivalent, boundary): durationSec != 0f already rules out both zeros.
+            // They are the only values where durationSec < 0f and durationSec <= 0f disagree.
+            => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
 
-        internal static bool ValidateDuration(float durationSec, float durationCapSec, Action? onComplete)
+        internal static bool ValidateDuration(float durationSec, Action? onComplete)
         {
             if (durationSec == 0f)
             {
                 onComplete?.Invoke();
                 return false;
             }
-            if (!IsPlayableDuration(durationSec, durationCapSec))
+            if (!IsPlayableDuration(durationSec))
             {
                 UnityEngine.Debug.LogWarning(
-                    $"[StyleAnimationScheduler] Invalid DurationSec: {durationSec}. Expected 0 < duration <= {durationCapSec}.");
+                    $"[StyleAnimationScheduler] Invalid DurationSec: {durationSec}. Expected 0 < duration <= {MaxDurationSec}.");
                 onComplete?.Invoke();
                 return false;
             }
@@ -1345,8 +1334,7 @@ namespace Velvet
         // ghost — would never fire. The control points' x range ([0,1], a monotone timing function) is validated
         // downstream in CubicBezierEvaluator instead: it degrades an out-of-range value to the default curve
         // rather than the forever-tick failure mode this method exists to catch, so it is not re-checked here.
-        internal static bool ValidateBezierParameters(float x1, float y1, float x2, float y2, float durationSec,
-            float durationCapSec)
+        internal static bool ValidateBezierParameters(float x1, float y1, float x2, float y2, float durationSec)
         {
             if (durationSec == 0f)
             {
@@ -1354,16 +1342,14 @@ namespace Velvet
             }
 
             if (float.IsFinite(x1) && float.IsFinite(y1) && float.IsFinite(x2) && float.IsFinite(y2)
-                // MUTANT_SURVIVES(equivalent, boundary): `>=` differs from `>` only at a zero duration, which the
-                // early return above has already turned away.
-                && durationSec > 0f && durationSec <= durationCapSec)
+                && durationSec > 0f && durationSec <= MaxDurationSec)
             {
                 return true;
             }
 
             FiberLogger.LogWarning("Bezier",
                 $"Invalid bezier parameters (x1={x1}, y1={y1}, x2={x2}, y2={y2}, duration={durationSec}). " +
-                $"Expected finite control points and 0 < duration <= {durationCapSec}. " +
+                $"Expected finite control points and 0 < duration <= {MaxDurationSec}. " +
                 "Completing immediately instead of ticking forever.");
             return false;
         }

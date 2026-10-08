@@ -508,7 +508,7 @@ firing a `Call` step 0's callback again) without implicitly resuming a paused se
 
 `controls` drive the sequence's own timeline -- its step cursor and its clock -- and not a Motion play a
 step's label has already started: `controls.Pause()` freezes the cursor, and the transition the current
-step handed out runs on to its end. Alongside `Play`, `Pause` and `Restart`, the handle carries three of the
+step handed out runs on to its end. Alongside `Play`, `Pause` and `Restart`, the handle carries two of the
 Web Animations API's playback members:
 
 - **`controls.Cancel()`** -- `cancel()`. Stops the sequence and returns `state` to how it reads before
@@ -519,28 +519,18 @@ Web Animations API's playback members:
   `Cancel` itself causes, so there step 0 commits again at once, playing under `autoplay: true` and
   paused under `autoplay: false`. A `Call` step's own callback may cancel, and no step after it runs in
   that frame.
-- **`controls.SetSpeed(rate)`** and **`controls.Speed`** -- `playbackRate`, Framer Motion's `speed`. The
-  sequence's clock runs at `rate` from the next frame on, without moving `TimeSec`, and each `To` step that
-  commits afterwards hands its Motion its transition at that rate: its duration and delay, its
-  per-property overrides' durations and delays, its `StaggerChildrenSec` and `DelayChildrenSec`, and its
-  `Layout` transition's, divided by `rate`; and a spring's stiffness multiplied by the square of `rate`
-  and its damping by `rate`, which plays the same spring on a faster clock. A transition slowed this way
-  plays, at that rate, wherever its authored duration would have played. A Motion play already running
-  keeps the rate it started at. The rate must lie between 0.001 and 1000, and it carries across
-  `Restart`, `Cancel` and a `deps` restart. One frame crosses at most one step more than the sequence
-  holds; a looping sequence fast enough to owe more than that drops the excess rather than working it off
-  on later frames.
 - **`controls.TimeSec`** -- `currentTime`, read-only, and Framer Motion's `time`: seconds into the
-  timeline, counting each hold at its authored length whatever the speed. As `currentTime` does, it keeps
-  growing across a loop's passes rather than starting from 0 on each, though not by the excess a frame
-  drops (see `SetSpeed`); a completed sequence reads its full length, and a reseed reads 0. It is read
-  live from the handle, where `state` is a per-render snapshot.
+  timeline, counting each hold at its authored length. As `currentTime` does, it keeps growing across a
+  loop's passes rather than starting from 0 on each; a completed sequence reads its full length, and a
+  reseed reads 0. It is read live from the handle, where `state` is a per-render snapshot.
 
-Seek (a settable `time`, the Web Animations API's `currentTime`) and reverse (`reverse()`, a negative
-`playbackRate`) are not offered. A timeline of labels cannot sample the interpolated motion between two
-of them, and running it backwards across a `Call` step has no settled answer to whether the callback fires
-again, so either would be a jump between labels presented as scrubbing. To reverse a transition a label
-started, flip that Motion's `animate` label back: see "Springs" for what an interrupted spring keeps.
+A playback rate (`playbackRate`, Framer Motion's `speed`), seek (a settable `time`, the Web Animations
+API's `currentTime`) and reverse (`reverse()`, a negative `playbackRate`) are not offered. Each acts on the
+animation already running, and the sequence only hands a label's Motion its transition: it holds no handle
+on the play that starts, so none of them could reach it. A timeline of labels also cannot sample the
+interpolated motion between two of them, and running it backwards across a `Call` step has no settled
+answer to whether the callback fires again. To reverse a transition a label started, flip that Motion's
+`animate` label back: see "Springs" for what an interrupted spring keeps.
 
 Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
 outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`

@@ -144,30 +144,18 @@ namespace Velvet
         public Action Cancel { get; }
 
         /// <summary>
-        /// Sets the rate the sequence's clock runs at — 2 plays it twice as fast — and the rate each <c>To</c> step
-        /// committed afterwards plays its transition at: the Web Animations API's <c>playbackRate</c>. The motion
-        /// guide's Timelines section owns what that does to a transition. Throws
-        /// <see cref="ArgumentOutOfRangeException"/> for a rate outside 0.001 to 1000.
-        /// </summary>
-        public Action<float> SetSpeed { get; }
-
-        /// <summary>The rate <see cref="SetSpeed"/> last set; 1 until it is called. Read live, not per render.</summary>
-        public float Speed => _walker.Speed;
-
-        /// <summary>
-        /// Seconds into the sequence's timeline, counting each step's hold at its authored length whatever the
-        /// speed. Read live, not per render; the motion guide's Timelines section owns the rest.
+        /// Seconds into the sequence's timeline, counting each step's hold at its authored length. Read live, not
+        /// per render; the motion guide's Timelines section owns the rest.
         /// </summary>
         public float TimeSec => _walker.TimeSec;
 
         internal AnimationSequenceControls(Action play, Action pause, Action restart, Action cancel,
-            Action<float> setSpeed, SequenceWalker walker)
+            SequenceWalker walker)
         {
             Play = play;
             Pause = pause;
             Restart = restart;
             Cancel = cancel;
-            SetSpeed = setSpeed;
             _walker = walker;
         }
     }

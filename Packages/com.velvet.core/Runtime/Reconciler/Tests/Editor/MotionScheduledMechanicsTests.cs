@@ -1918,27 +1918,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALayoutIdMotionOnAThreeSecondTweenPlayedAtAQuarterOfItsSpeed_When_ItMoves_Then_ItHoldsTheOldBox()
-        {
-            // Arrange / Act — twelve seconds at face, past the cap an authored duration is held to.
-            var element = MoveOn(new StyleTransitionConfig { DurationSec = 3f }.ScaledBy(0.25f));
-
-            // Assert
-            Assert.That(TranslateX(element), Is.LessThan(-150f));
-        }
-
-        [Test]
-        public void Given_ALayoutIdMotionOnAThreeSecondBezierPlayedAtAQuarterOfItsSpeed_When_ItMoves_Then_ItHoldsTheOldBox()
-        {
-            // Arrange / Act
-            var element = MoveOn(new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 3f }
-                .ScaledBy(0.25f));
-
-            // Assert
-            Assert.That(TranslateX(element), Is.LessThan(-150f));
-        }
-
-        [Test]
         public void Given_ALayoutIdMotionWithNoTransition_When_FramersDefaultDurationHasPassed_Then_TheTweenHasEnded()
         {
             // Arrange
