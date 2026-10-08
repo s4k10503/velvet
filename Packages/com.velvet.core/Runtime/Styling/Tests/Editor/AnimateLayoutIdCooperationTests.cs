@@ -47,13 +47,29 @@ namespace Velvet.Tests
                     transition: s_transition),
             });
 
-        private (VisualElement element, StyleAnimateBinding binding) MountRow(string className)
+        private StyleAnimateBinding _attached;
+        private VisualElement _attachedTo;
+
+        // Mounts the row and attaches the loop to the card directly, so the case names the mode it measures and the
+        // reconciler, which does not know this loop, leaves it alone. Teardown detaches it.
+        private (VisualElement element, StyleAnimateBinding binding) MountRow(string className, AnimateMode mode)
         {
             _mounted = V.Mount(_window.rootVisualElement, Row(0, className));
             var element = _window.rootVisualElement.Q<VisualElement>("card");
             ForcePanelUpdate(element.panel);
-            _mounted.Root.Reconciler.Context.AnimationBindings.TryGetValue(element, out var binding);
-            return (element, binding);
+            _attachedTo = element;
+            _attached = StyleAnimateDriver.Attach(element, new AnimateSpec(mode, 1f), panVertical: false);
+            return (element, _attached);
+        }
+
+        public override void TearDown()
+        {
+            if (_attached != null)
+            {
+                StyleAnimateDriver.Detach(_attachedTo, _attached);
+                _attached = null;
+            }
+            base.TearDown();
         }
 
         private bool MoveRuns(VisualElement element)
@@ -80,8 +96,8 @@ namespace Velvet.Tests
         public void Given_ABounceLiftedWhenALayoutIdMoveStarts_When_TheMoveEnds_Then_TheNextBounceFrameIsAtTheElementsOwnTranslate()
         {
             // Arrange — the bounce is at the top of its lift as the move starts.
-            const string classes = "w-[40px] h-[40px] bg-red-500 animate-bounce";
-            var (element, binding) = MountRow(classes);
+            const string classes = "w-[40px] h-[40px] bg-red-500";
+            var (element, binding) = MountRow(classes, AnimateMode.Bounce);
             binding.StartTime = Time.realtimeSinceStartupAsDouble;
             Patch(200, classes, classes);
             var (started, ended) = PlayOutTheMove(element);
@@ -99,9 +115,9 @@ namespace Velvet.Tests
         public void Given_APingScaledWhenALayoutIdMoveStarts_When_TheMoveEnds_Then_TheNextPingFrameIsAtTheElementsOwnScale()
         {
             // Arrange — the ping is about halfway through its growth as the move, which resizes the card, starts.
-            const string before = "w-[40px] h-[40px] bg-red-500 animate-ping";
-            const string after = "w-[80px] h-[40px] bg-red-500 animate-ping";
-            var (element, binding) = MountRow(before);
+            const string before = "w-[40px] h-[40px] bg-red-500";
+            const string after = "w-[80px] h-[40px] bg-red-500";
+            var (element, binding) = MountRow(before, AnimateMode.Ping);
             binding.StartTime = Time.realtimeSinceStartupAsDouble - 0.5;
             Patch(200, before, after);
             var (started, ended) = PlayOutTheMove(element);
@@ -118,8 +134,8 @@ namespace Velvet.Tests
         public void Given_ABounceOnACardMidMove_When_TheLoopIsAtTheTopOfItsLiftThenAtTheBottom_Then_TheCardIsHigherAtTheTop()
         {
             // Arrange — the move is a spring along the row, so the card's y is the bounce's alone.
-            const string classes = "w-[40px] h-[40px] bg-red-500 animate-bounce";
-            var (element, binding) = MountRow(classes);
+            const string classes = "w-[40px] h-[40px] bg-red-500";
+            var (element, binding) = MountRow(classes, AnimateMode.Bounce);
             Patch(200, classes, classes);
             for (var i = 0; i < 3; i++) Frame();
 
