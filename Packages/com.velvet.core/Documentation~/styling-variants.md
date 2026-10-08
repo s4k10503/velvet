@@ -440,8 +440,8 @@ only an element's own class pass records.
 A `className` on a UI Toolkit control lands on the control's outer element, not on the parts the
 control builds inside it. `V.TextField`'s input box — the `#unity-text-input` element the text is
 typed into — is one of those parts, so `V.TextField(className: "bg-slate-800")` colours the outer field
-and leaves the box as it was. This differs from `<input className="…">`, where the class lands on the
-box itself.
+and leaves the box's background as it was. This differs from `<input className="…">`, where the class
+lands on the box itself.
 
 Style the box with `[&>*]:` instead. On a composite it lands on the control's own parts: the walk is
 over whatever the container redirects its children into. A `V.ScrollView` redirects, so the payload
@@ -449,16 +449,18 @@ reaches the children reconciled into it. Controls that redirect nothing answer w
 walk finds the parts the control built for itself, and `V.TextField`'s input box is a direct child:
 
 ```csharp
-V.TextField(className: "w-64 [&>*]:bg-slate-800");
+V.TextField(className: "w-64 [&>*]:bg-slate-800 [&>*]:text-white");
 ```
 
 How far the payload gets differs per control because `& > *` stops after one level. A declared `label:`
-seats the label element ahead of the input, and it takes the payload as well, so `[&>*]:text-red-500`
-on a labelled field colours both.
+seats the label element ahead of the input, and it takes the payload as well, so on a labelled field
+`[&>*]:text-red-500` puts the `text-red-500` class on both the label and the box.
 
 The payload paints the box only where it outranks the theme's own rule for the same property.
-`ChildVariantCompositeReachPanelTests` pins that a utility class and an arbitrary value both do on a
-resting field under the editor's theme; a focused or hovered field is outside what it measures.
+`ChildVariantCompositeReachPanelTests` pins a background, as a utility class and as an arbitrary value,
+doing so on a resting field under the editor's theme, and pins that the field's own `className`
+background leaves the box's unchanged. It measures no other property, and no focused or hovered
+field.
 
 ## Container queries — `@container`
 
