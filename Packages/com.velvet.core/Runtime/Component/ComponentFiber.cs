@@ -445,9 +445,15 @@ namespace Velvet
         /// the indicator on screen without this.
         /// </summary>
         internal static void RequestRenderForClearedPending(HookTransitionSlot slot)
+            => RequestRenderForSettledTransition(slot.DeclaringFiber);
+
+        /// <summary>
+        /// Shared by the two things a transition's settle leaves on screen with no render behind them: the
+        /// declaring component's lit <c>isPending</c>, and the optimistic entries the transition owned.
+        /// </summary>
+        internal static void RequestRenderForSettledTransition(ComponentFiber fiber)
         {
-            var declaring = slot.DeclaringFiber;
-            if (declaring is not { IsMounted: true, IsDisposed: false })
+            if (fiber is not { IsMounted: true, IsDisposed: false })
             {
                 return;
             }
@@ -456,7 +462,7 @@ namespace Velvet
             // though, even where this is reached inside an open transition scope — this render is what takes
             // the indicator down, and the delayed tier would hold it up until a later scheduler pass.
             FiberWorkLoop.ScheduleRerender(
-                declaring,
+                fiber,
                 FiberWorkLoop.IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
         }
 
@@ -555,6 +561,19 @@ namespace Velvet
                 slot.IsPending = false;
                 slot.PendingError = null;
             }
+        }
+
+        internal void ClearOptimisticSlots()
+        {
+            if (OptimisticSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in OptimisticSlots)
+            {
+                slot.DetachFromOwners();
+            }
+            OptimisticSlots.Clear();
         }
 
         // Unwinds both sides of the enrolment record, so no fiber is left holding a slot that has stopped
