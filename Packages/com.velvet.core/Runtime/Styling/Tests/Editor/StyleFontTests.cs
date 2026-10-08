@@ -526,6 +526,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base picks the upright face of an entry that has one the same way; the
+        // italic-only fallback must leave that request alone.
         [Test]
         public void Given_AnEntryWithBothFaces_When_RegularUprightResolved_Then_TheUprightFaceIsSelected()
         {
