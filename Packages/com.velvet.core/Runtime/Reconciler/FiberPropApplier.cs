@@ -111,6 +111,10 @@ namespace Velvet
             s_delegatesFocusDefaults.Remove(element);
             if (element is TextField textField)
             {
+                // MUTANT_SURVIVES(equivalent, line removed): a callback left behind writes only what a later
+                // tenancy's record declares, which that tenancy's own registration writes as well; the line
+                // keeps one from staying on a pooled element.
+                textField.UnregisterCallback(s_reassertTouchKeyboard, TrickleDown.TrickleDown);
                 s_textFieldDefaults.Remove(textField);
             }
         }
@@ -236,6 +240,150 @@ namespace Velvet
             ApplyMaxLength(tfEl, settings?.MaxLength, built);
             ApplyReadOnlyFlag(tfEl, settings?.IsReadOnly, built);
             ApplyDelayedFlag(tfEl, settings?.IsDelayed, built);
+            // Ordering: after the delayed flag, so a render releasing that flag commits the typed text while
+            // its line breaks are still there, before multiline coming off in the same render reaches it.
+            // TextFieldMultilineKeyboardPropTests holds the break across that render, and
+            // TextFieldMultilineEngineTests pins the engine dropping it as multiline comes off.
+            ApplyMultilineFlag(tfEl, settings?.Multiline, built);
+            ApplyKeyboardType(tfEl, settings?.KeyboardType, built);
+            ApplyAutoCorrectionFlag(tfEl, settings?.AutoCorrection, built);
+            SyncTouchKeyboardReassert(tfEl, settings, built);
+        }
+
+        private static void ApplyMultilineFlag(TextField field, bool? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.Multiline ??= new Recorded<bool>(field.multiline);
+                WriteMultiline(field, value);
+            }
+            else if (built.Multiline != null)
+            {
+                WriteMultiline(field, built.Multiline.Value);
+            }
+        }
+
+        // Turning multiline on puts the field's value back on screen, which on a delayed field holding an
+        // uncommitted edit replaces the typed text with the value it has not received yet. So the shown text
+        // is carried across the write when it differs from SingleLineDisplay — and only then, since the value
+        // is what brings back line breaks and characters the single-line display left out.
+        // SingleLineDisplay is what ApplyFieldValue's silent value write leaves on a single-line field. A
+        // write that changes the limit leaves the value cut with its breaks still in it instead: where a break
+        // survives the cut, that differs and is carried, and it is the text the restore would have written.
+        // TextFieldMultilineEngineTests pins the limit write's form, and TextFieldMultilineKeyboardPropTests
+        // the value write's and the restore.
+        // The silent setter, because the carried text is not a new edit.
+        private static void WriteMultiline(TextField field, bool value)
+        {
+            if (!value || !field.isDelayed)
+            {
+                field.multiline = value;
+                return;
+            }
+
+            var shown = field.text;
+            var uncommitted = shown != SingleLineDisplay(field);
+            field.multiline = true;
+            if (uncommitted)
+            {
+                ((INotifyValueChanged<string>)(TextElement)field.textEdition).SetValueWithoutNotify(shown);
+            }
+        }
+
+        private static string SingleLineDisplay(TextField field)
+        {
+            var display = (field.value ?? string.Empty).Replace("\n", string.Empty);
+            // MUTANT_SURVIVES(equivalent, boundary): a cut to the display's own length returns it unchanged,
+            // and a field limited to no characters shows nothing whether its display is cut or carried.
+            return field.maxLength >= 0 && display.Length > field.maxLength
+                ? display.Substring(0, field.maxLength)
+                : display;
+        }
+
+        // The engine writes keyboardType back to Default and autoCorrection back to false when the field
+        // hands focus from its input back to itself (Enter, Shift+Enter in multiline, Escape), and a render
+        // repeating the same settings writes nothing, so a declaration would stay lost from then on. While
+        // one stands, it is written again as focus comes back in, registered for the trickle-down pass so the
+        // field sees the event before the input inside it. TextFieldTouchKeyboardReassertTests pins the
+        // engine's write and the rewrite for Enter.
+        // Registered once and unregistered when the last declaration goes or the element returns to the
+        // pool (ForgetRecordedDefaults); the callback reads the declarations off the record rather than
+        // capturing them, so it is one static delegate for every field.
+        private static void SyncTouchKeyboardReassert(
+            TextField field, TextFieldSettings? settings, TextFieldDefaults built)
+        {
+            built.DeclaredKeyboardType = settings?.KeyboardType;
+            built.DeclaredAutoCorrection = settings?.AutoCorrection;
+            var reasserts = built.DeclaredKeyboardType.HasValue || built.DeclaredAutoCorrection.HasValue;
+            if (reasserts == built.ReassertsOnFocusIn)
+            {
+                return;
+            }
+
+            if (reasserts)
+            {
+                field.RegisterCallback(s_reassertTouchKeyboard, TrickleDown.TrickleDown);
+            }
+            else
+            {
+                // MUTANT_SURVIVES(equivalent, line removed): the declarations above are already null, so a
+                // callback left registered writes nothing; the line keeps it from running for nothing.
+                field.UnregisterCallback(s_reassertTouchKeyboard, TrickleDown.TrickleDown);
+            }
+
+            built.ReassertsOnFocusIn = reasserts;
+        }
+
+        private static void ReassertTouchKeyboard(FocusInEvent evt)
+        {
+            if (evt.currentTarget is not TextField field)
+            {
+                return;
+            }
+
+            if (!s_textFieldDefaults.TryGetValue(field, out var built))
+            {
+                return;
+            }
+
+            if (built.DeclaredKeyboardType is { } keyboardType)
+            {
+                field.keyboardType = keyboardType;
+            }
+
+            if (built.DeclaredAutoCorrection is { } autoCorrection)
+            {
+                field.autoCorrection = autoCorrection;
+            }
+        }
+
+        private static readonly EventCallback<FocusInEvent> s_reassertTouchKeyboard = ReassertTouchKeyboard;
+
+        private static void ApplyKeyboardType(
+            TextField field, UnityEngine.TouchScreenKeyboardType? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.KeyboardType ??= new Recorded<UnityEngine.TouchScreenKeyboardType>(field.keyboardType);
+                field.keyboardType = value;
+            }
+            else if (built.KeyboardType != null)
+            {
+                field.keyboardType = built.KeyboardType.Value;
+            }
+        }
+
+        private static void ApplyAutoCorrectionFlag(TextField field, bool? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.AutoCorrection ??= new Recorded<bool>(field.autoCorrection);
+                field.autoCorrection = value;
+            }
+            else if (built.AutoCorrection != null)
+            {
+                field.autoCorrection = built.AutoCorrection.Value;
+            }
         }
 
         private static void ApplyPasswordFlag(TextField field, bool? declared, TextFieldDefaults built)
@@ -329,7 +477,10 @@ namespace Velvet
                    || settings.Placeholder != null
                    || settings.MaxLength.HasValue
                    || settings.IsReadOnly.HasValue
-                   || settings.IsDelayed.HasValue);
+                   || settings.IsDelayed.HasValue
+                   || settings.Multiline.HasValue
+                   || settings.KeyboardType.HasValue
+                   || settings.AutoCorrection.HasValue);
 
         private sealed class TextFieldDefaults
         {
@@ -338,6 +489,15 @@ namespace Velvet
             public Recorded<int>? MaxLength;
             public Recorded<bool>? IsReadOnly;
             public Recorded<bool>? IsDelayed;
+            public Recorded<bool>? Multiline;
+            public Recorded<UnityEngine.TouchScreenKeyboardType>? KeyboardType;
+            public Recorded<bool>? AutoCorrection;
+
+            // What the last render declared, which the focus-in rewrite reads; the records above hold what a
+            // drop restores instead.
+            public UnityEngine.TouchScreenKeyboardType? DeclaredKeyboardType;
+            public bool? DeclaredAutoCorrection;
+            public bool ReassertsOnFocusIn;
         }
 
         private static readonly ConditionalWeakTable<TextField, TextFieldDefaults> s_textFieldDefaults = new();

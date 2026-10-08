@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Threading;
 
 namespace Velvet
 {
@@ -10,12 +11,13 @@ namespace Velvet
         To,
         Wait,
         Call,
+        Await,
     }
 
     /// <summary>
     /// One step in an animation sequence played by <see cref="Hooks.UseAnimationSequence"/>. A step is
-    /// exactly one of: a variant-label change (<see cref="To"/>), a pure timing gap (<see cref="Wait"/>), or a
-    /// synchronous C# callback (<see cref="Call"/>).
+    /// exactly one of: a variant-label change (<see cref="To"/>), a pure timing gap (<see cref="Wait"/>), a
+    /// synchronous C# callback (<see cref="Call"/>), or a wait on a task (<see cref="Await"/>).
     /// </summary>
     public readonly struct AnimationSequenceStep
     {
@@ -38,21 +40,27 @@ namespace Velvet
         /// <see cref="TransitionType.Tween"/> or <see cref="TransitionType.Bezier"/>, both fixed-duration); a
         /// <see cref="TransitionType.Spring"/>-typed <see cref="To"/> step holds for its <c>DelaySec</c> plus the
         /// duration Framer Motion's sequence gives the same spring — see the motion guide's Timelines section.
-        /// Required on <see cref="Wait"/> (negative values clamp to 0). Always 0 on <see cref="Call"/>.
+        /// Required on <see cref="Wait"/> (negative values clamp to 0). Always 0 on <see cref="Call"/> and
+        /// <see cref="Await"/>.
         /// </summary>
         public float? HoldSec { get; }
 
         /// <summary>The callback to invoke. Non-null only on a <see cref="Call"/> step.</summary>
         public Action? Callback { get; }
 
+        /// <summary>The function whose task the step waits on. Non-null only on an <see cref="Await"/> step.</summary>
+        public Func<CancellationToken, VelvetTask>? AwaitFactory { get; }
+
         private AnimationSequenceStep(AnimationSequenceStepKind kind, string? label,
-            StyleTransitionConfig? transition, float? holdSec, Action? callback)
+            StyleTransitionConfig? transition, float? holdSec, Action? callback,
+            Func<CancellationToken, VelvetTask>? awaitFactory = null)
         {
             Kind = kind;
             Label = label;
             Transition = transition;
             HoldSec = holdSec;
             Callback = callback;
+            AwaitFactory = awaitFactory;
         }
 
         /// <summary>
@@ -87,6 +95,19 @@ namespace Velvet
         {
             if (callback == null) throw new ArgumentNullException(nameof(callback));
             return new AnimationSequenceStep(AnimationSequenceStepKind.Call, null, null, 0f, callback);
+        }
+
+        /// <summary>
+        /// Calls <paramref name="taskFactory"/> on arrival and holds the cursor until the task it returns
+        /// settles — an <c>await</c> between the animations of Framer Motion's <c>useAnimate</c>. A restart, a
+        /// <c>deps</c> change or unmount that leaves the step with the task still pending cancels the token. The
+        /// motion guide's Timelines section owns what a settle, a fault and a pause do.
+        /// </summary>
+        /// <param name="taskFactory">Returns the task to wait on. Must not be null.</param>
+        public static AnimationSequenceStep Await(Func<CancellationToken, VelvetTask> taskFactory)
+        {
+            if (taskFactory == null) throw new ArgumentNullException(nameof(taskFactory));
+            return new AnimationSequenceStep(AnimationSequenceStepKind.Await, null, null, 0f, null, taskFactory);
         }
     }
 

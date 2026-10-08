@@ -346,22 +346,30 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<div className="x">` | `V.Div(className: "x")` | Unity has no HTML elements. Produces a `VisualElement` |
 | `<span>text</span>` | `V.Text("text")` | A run of text, materialized as a `Label`. A `<span>` styling part of a sentence is a rich-text tag inside the one `V.Text`, as in `V.Text("a <b>bold</b> word")`. A `<span>` grouping other elements in a line is a `V.Div(className: "flex-row flex-wrap")` |
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
-| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it |
+| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it. `inputmode` / `autocorrect` are `keyboardType:` (a `TouchScreenKeyboardType`) / `autoCorrection:`, written to the field's own `keyboardType` / `autoCorrection` |
+| `<textarea>` | `V.TextField(multiline: true)` | A render toggling `multiline:` patches the same element, where React swapping `<input>` for `<textarea>` remounts it. Declaring `isPasswordField:` beside it leaves both flags on, a multi-line password field that HTML has no control for |
 | `<input type="checkbox">` | `V.Toggle()` | |
 | `<input type="range">` | `V.Slider()` | |
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
 | `<>{a}{b}</>` | `V.Fragment(a, b)` | `V.Fragment(children, key: "k")` is `<Fragment key="k">` |
 
-`V.TextField`'s `placeholder:`, `maxLength:`, `isReadOnly:` and `isDelayed:` are **undeclared** when
-null, not reset: null is not `placeholder=""`, not `maxLength: -1` and not `isReadOnly: false`. A
-member no render has declared is left wherever a `refCallback:` put it, and one a render declared and
-a later render dropped goes back to the value the field carried before any render declared it. The
-three focus props follow the same rule — [focus.md](focus.md) states it for those.
+`V.TextField`'s `placeholder:`, `maxLength:`, `isReadOnly:`, `isDelayed:`, `multiline:`, `keyboardType:`
+and `autoCorrection:` are **undeclared** when null, not reset: null is not `placeholder=""`, not
+`maxLength: -1`, not `isReadOnly: false` and not `multiline: false`. A member no render has declared
+is left wherever a `refCallback:` put it, and one a render declared and a later render dropped goes
+back to the value the field carried before any render declared it. The three focus props follow the
+same rule — [focus.md](focus.md) states it for those.
 
 A field holding `isDelayed:` releases the typed text into its value on Enter, on losing focus, and on
 a render taking the flag off — that third one whether the render declares `isDelayed: false` or drops
 the parameter. The render-driven release reports through `onValueChanged:`, so a component that turns
-the flag off mid-edit receives the pending text rather than stranding it on screen.
+the flag off mid-edit receives the pending text rather than stranding it on screen. A render turning
+`multiline:` on leaves that pending text on screen too, still unreleased.
+
+UI Toolkit puts a field's `keyboardType` back to `Default` and its `autoCorrection` back to false when
+the field hands focus from its input back to itself (Enter, Shift+Enter in multiline, Escape). A
+declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
+field; one written from `refCallback:` is not.
 
 ### 2-2. Conditionals and Lists
 
