@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -689,8 +690,7 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_AnOverlayJoinedAtActivation_When_AnotherOverlayMountsAndThePointerMoves_Then_EachJoinedExactlyOnce()
         {
-            // Arrange — the second overlay's mount makes the next move walk every binding again, the
-            // first one included.
+            // Arrange — every move walks the bindings again, the joined one included.
             s_earlyOverlay = true;
             _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
                 V.Component(LateOverlayScene, key: "root"));
@@ -708,9 +708,9 @@ namespace Velvet.Tests
 
             // Assert
             var drag = _mounted.Root.Reconciler.Context.ActiveDrag;
-            var joined = (System.Collections.ICollection)typeof(DndActiveDrag)
-                .GetField("_overlays", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                .GetValue(drag);
+            var joined = (ICollection)typeof(DndActiveDrag)
+                .GetField("_overlays", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(drag)!;
             Assert.That(joined.Count, Is.EqualTo(2));
         }
 

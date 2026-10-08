@@ -85,8 +85,6 @@ namespace Velvet
         private string[]? _appliedOverClasses;
         private readonly List<(VisualElement Element, string[] Classes)> _appliedActiveClasses = new();
         private readonly List<(VisualElement Positioner, DndOverlayBinding Binding)> _overlays = new();
-        // Set when an overlay attaches, so the per-move join walks the bindings only after one has.
-        private bool _overlaysDirty;
         private EventCallback<PointerMoveEvent>? _onDragMove;
         private EventCallback<PointerUpEvent>? _onDragUp;
         private EventCallback<PointerDownEvent>? _onDragDown;
@@ -343,7 +341,7 @@ namespace Velvet
             FireDiscrete(() => _scope.Settings.OnDragStart?.Invoke(args));
             // The start callback's commit can mount an overlay (the activeId recipe), which no earlier
             // join saw.
-            if (!_closed && _overlaysDirty)
+            if (!_closed)
             {
                 JoinMountedOverlays();
                 SyncOverlays();
@@ -428,11 +426,10 @@ namespace Velvet
 
         // Every overlay mounted under this session's scope shows the preview, as every dnd-kit
         // DragOverlay renders its children while its own context's drag is active. Runs at activation,
-        // after the start callback's commit and on the next move after an overlay attaches, so an
-        // overlay that mounts mid-drag joins; a positioner already joined is skipped.
+        // after the start callback's commit and on every move, so an overlay that mounts mid-drag
+        // joins; a positioner already joined is skipped.
         private void JoinMountedOverlays()
         {
-            _overlaysDirty = false;
             foreach (var (positioner, binding) in _ctx.DragOverlayBindings)
             {
                 if (HasJoinedOverlay(positioner))
@@ -537,10 +534,7 @@ namespace Velvet
             {
                 _source.style.translate = new Translate(_baseTranslate.x + _delta.x, _baseTranslate.y + _delta.y);
             }
-            if (_overlaysDirty)
-            {
-                JoinMountedOverlays();
-            }
+            JoinMountedOverlays();
             SyncOverlays();
             UpdateCollision();
             evt.StopPropagation();
@@ -793,8 +787,6 @@ namespace Velvet
         // user intent, so the focus layer must not record it (roving-stop memory, restore capture).
         internal bool IsAnchorFocus(VisualElement element)
             => _anchoredFocus && (element == _source || _source.Contains(element));
-
-        internal void OnOverlayMounted() => _overlaysDirty = true;
 
         internal void OnOverlayInvalidated(VisualElement positioner)
             => _overlays.RemoveAll(overlay => ReferenceEquals(overlay.Positioner, positioner));
