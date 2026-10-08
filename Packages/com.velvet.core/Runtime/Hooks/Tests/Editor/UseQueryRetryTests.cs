@@ -23,8 +23,9 @@ namespace Velvet.Tests
     /// <item>While a retry waits, the query stays pending and fetching and reports the failure beside its
     /// <c>FailureCount</c>; a retry that succeeds leaves no failure behind. A query function that throws
     /// before returning is retried like one returning a faulted task.</item>
-    /// <item>With its last reader gone a request in flight is not retried, and a reader mounting before the
-    /// wait is over lets it be.</item>
+    /// <item>With its last reader gone a request in flight is not retried and stops waiting out its delay, and
+    /// a reader mounting before the wait is over lets it be. A delay function that throws fails the
+    /// request.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -47,6 +48,7 @@ namespace Velvet.Tests
         private static Func<int, Exception, TimeSpan>? s_retryDelay;
         private static bool s_throwsSynchronously;
         private static int s_calls;
+        private static int s_clockReads;
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
         private static readonly List<QueryResult<int>> s_renders = new();
         private static StateUpdater<bool> s_setShow;
@@ -60,6 +62,7 @@ namespace Velvet.Tests
             s_retryDelay = null;
             s_throwsSynchronously = false;
             s_calls = 0;
+            s_clockReads = 0;
             s_client = NewClient(retry: 3);
             s_sources.Clear();
             s_renders.Clear();
@@ -345,6 +348,44 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_AFailedRequestWaitingToRetry_When_ItsOnlyReaderUnmounts_Then_ItStopsWaitingOutTheDelay()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+            Hide(mounted);
+            await Pass(TimeSpan.Zero);
+            var readsAfterTheFirstFrames = s_clockReads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_clockReads, Is.EqualTo(readsAfterTheFirstFrames),
+                "The wait is over once nothing will retry, whatever is left of its delay");
+        });
+
+        [Test]
+        public void Given_ARetryDelayThatThrows_When_TheRequestFails_Then_TheQueryReportsThatErrorAndStopsFetching()
+        {
+            // Arrange
+            s_retryDelay = (_, _) => throw new InvalidOperationException("delay-failed");
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((Last().Status, Last().Error?.Message, Last().IsFetching),
+                Is.EqualTo((QueryStatus.Error, "delay-failed", false)),
+                "A delay function that fails ends the request rather than leaving it in flight");
+        }
+
+        [UnityTest]
         public IEnumerator Given_AFailedRequestWaitingToRetry_When_AReaderMountsBeforeTheDelayPasses_Then_TheRetryRuns()
             => VelvetTask.ToCoroutine(async () =>
         {
@@ -363,7 +404,15 @@ namespace Velvet.Tests
         });
 
         private static QueryClient NewClient(int retry)
-            => new(new QueryClientOptions { Retry = retry, Clock = () => s_now });
+            => new(new QueryClientOptions
+            {
+                Retry = retry,
+                Clock = () =>
+                {
+                    s_clockReads++;
+                    return s_now;
+                },
+            });
 
         private static QueryResult<int> Last() => s_renders[s_renders.Count - 1];
 

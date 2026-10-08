@@ -289,6 +289,8 @@ namespace Velvet
         internal bool IsRemoved { get; private set; }
         internal bool IsFetching => _inFlight != null;
 
+        internal TimeSpan DataUpdatedAt => _dataUpdatedAt;
+
         internal bool IsStaleFor(TimeSpan staleTime)
             => !HasData || IsInvalidated || Client.Now - _dataUpdatedAt >= staleTime;
 
@@ -386,8 +388,19 @@ namespace Velvet
                     return;
                 }
 
+                TimeSpan delay;
+                try
+                {
+                    delay = retryDelay(failures, failure);
+                }
+                catch (Exception delayFailure)
+                {
+                    Fail(request, delayFailure, failures);
+                    return;
+                }
+
                 RecordFailure(request, failures + 1, failure);
-                await WaitFor(retryDelay(failures, failure), request);
+                await WaitFor(delay, request);
                 if (request.IsCancellationRequested) return;
                 if (_retriesStopped)
                 {
@@ -411,7 +424,8 @@ namespace Velvet
             }
         }
 
-        // At least one frame, as v5 sleeps through a timer even for a zero delay.
+        // At least one frame, as v5 sleeps through a timer even for a zero delay. With the retries stopped the
+        // wait ends early, since its only outcome is the failure.
         private async VelvetTask WaitFor(TimeSpan delay, CancellationTokenSource request)
         {
             var start = Client.Now;
@@ -419,7 +433,7 @@ namespace Velvet
             {
                 await VelvetTask.Yield();
             }
-            while (!request.IsCancellationRequested && Client.Now - start < delay);
+            while (!request.IsCancellationRequested && !_retriesStopped && Client.Now - start < delay);
         }
 
         private void Succeed(CancellationTokenSource request, T data, Func<T?, T, T>? sharing, int failures)
@@ -492,7 +506,7 @@ namespace Velvet
             CancelInFlight();
             foreach (var observer in _observers.ToArray())
             {
-                observer.OnChange();
+                observer.OnRemoved();
             }
         }
 

@@ -174,7 +174,10 @@ back renders that result on the first render instead of the pending state.
 renders it and fetches again in the background, with `IsFetching` true and `Status` still `Success`. A
 result is stale once its age reaches `StaleTime`, and `TimeSpan.MaxValue` keeps it fresh until it is
 invalidated. `Data` is the last successful result and stays through a later failure and through a
-refetch; a failed request marks it stale, so the next component to mount over it fetches again. `QueryClientOptions.Clock` replaces the client's stopwatch, for game time that pauses or a
+refetch; a failed request marks it stale, so the next component to mount over it fetches again. Data
+that turns stale by age re-renders a component that reads `IsStale`, when its age reaches `StaleTime`:
+the wait is polled once a frame on the client's `Clock`, as a retry's is, and ends when the component
+unmounts, the data is replaced or the client is cleared. `QueryClientOptions.Clock` replaces the client's stopwatch, for game time that pauses or a
 test that advances time by hand.
 
 **Retries.** A request that fails runs again up to `Retry` times before the failure becomes the entry's
@@ -185,8 +188,8 @@ failure and capped at thirty seconds, as in v5. The wait is measured on the clie
 once a frame, and lasts at least one frame. While a retry waits, the request is still in flight:
 `IsFetching` stays true, `Status` and `Error` stay what they were, which is `Pending` and none for an entry
 with no data, and `FailureCount` and `FailureReason` report the failures so far; a request that lands
-resets both. A query function that throws before it returns a task fails the request as one returning a
-faulted task does. With its last reader gone a request in flight finishes but is not retried, and a
+resets both. A query function that throws before it returns a task, or a `RetryDelay` that throws,
+fails the request as one returning a faulted task does. With its last reader gone a request in flight finishes but is not retried, and a
 reader that mounts and joins it lets its retries go on, as in v5.
 
 **Re-rendering.** A component re-renders when a property of the result that it has read changes, as
@@ -194,7 +197,7 @@ reader that mounts and joins it lets its retries go on, as in v5.
 lands the value it already held. Until the component has read any property, every change to the result
 re-renders it. `NotifyOnChangeProps` replaces what was read with a list — `QueryProperties.All` re-renders
 at every change to the result, `QueryProperties.None` never. A property changes when its value does; `Data` is compared by
-instance where it is a class and by value where it is a struct. Clearing the client re-renders every
+value where it is a struct or a string and by instance where it is any other class. Clearing the client re-renders every
 component reading it, whatever it has read.
 
 **Sharing data between results.** When a request lands, `Data` keeps the instance the entry already held

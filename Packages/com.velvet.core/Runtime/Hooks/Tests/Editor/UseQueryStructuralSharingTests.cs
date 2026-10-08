@@ -22,7 +22,9 @@ namespace Velvet.Tests
     /// chooses the data instead and is handed none the first time, and a function that throws makes the
     /// request fail.</item>
     /// <item>A component reading <c>Data</c> re-renders when a class equal by its own <c>Equals</c> lands as a
-    /// new instance, since a result property changes when its instance does.</item>
+    /// new instance, since a result property changes when its instance does, and does not when equal text
+    /// lands as a new string. Descent stops at depth 500, and collections of unmanaged elements compare
+    /// without sharing parts.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -301,6 +303,62 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_EqualListsNestedFiveHundredAndFiveHundredAndOneDeep_When_Replaced_Then_OnlyTheShallowerKeepsTheHeldInstance()
+        {
+            // Arrange — the string at the bottom is a new instance each time, so it is the descent that keeps it.
+            // The shallower chain ends at depth 500 and the deeper at 501, where the descent stops.
+            var heldShallow = Chain(500);
+            var heldDeep = Chain(501);
+
+            // Act
+            var shallow = QueryStructuralSharing.Replace(heldShallow, Chain(500));
+            var deep = QueryStructuralSharing.Replace(heldDeep, Chain(501));
+
+            // Assert
+            Assert.That((ReferenceEquals(shallow, heldShallow), ReferenceEquals(deep, heldDeep)), Is.EqualTo((true, false)),
+                "Sharing stops descending at the depth v5 stops at and takes the new data there");
+        }
+
+        [Test]
+        public void Given_EqualListsOfIntegers_When_Replaced_Then_TheHeldListIsKept()
+        {
+            // Arrange
+            var held = new List<int> { 1, 2 };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, new List<int> { 1, 2 });
+
+            // Assert
+            Assert.That(ReferenceEquals(result, held), Is.True);
+        }
+
+        [Test]
+        public void Given_ListsOfIntegersDifferingInAnElement_When_Replaced_Then_TheNewListIsTaken()
+        {
+            // Arrange
+            var arrived = new List<int> { 1, 3 };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(new List<int> { 1, 2 }, arrived);
+
+            // Assert
+            Assert.That(ReferenceEquals(result, arrived), Is.True);
+        }
+
+        [Test]
+        public void Given_ArraysOfIntegersDifferingInLength_When_Replaced_Then_TheNewArrayIsTaken()
+        {
+            // Arrange
+            var arrived = new[] { 1, 2, 3 };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(new[] { 1, 2 }, arrived);
+
+            // Assert
+            Assert.That(ReferenceEquals(result, arrived), Is.True);
+        }
+
+        [Test]
         public void Given_AResolvedQuery_When_ARefetchLandsAnEqualList_Then_DataKeepsTheEarlierInstance()
         {
             // Arrange
@@ -414,6 +472,37 @@ namespace Velvet.Tests
                 "Data is a different instance, which is a change to a property the component read");
         }
 
+        // Lists nested to the given depth around a string held by a new instance on every call.
+        private static List<object> Chain(int depth)
+        {
+            object inner = new string('x', 1);
+            for (var level = 0; level < depth; level++)
+            {
+                inner = new List<object> { inner };
+            }
+            return (List<object>)inner;
+        }
+
+        [Test]
+        public void Given_AComponentReadingData_When_EqualTextLandsAsANewInstance_Then_ItDoesNotRerender()
+        {
+            // Arrange
+            s_sharing = (_, arrived) => arrived;
+            using var mounted = V.Mount(_root, V.Component(DataReader, key: "reader"));
+            mounted.FlushEffectsForTest();
+            Land(0, new string('a', 3));
+            mounted.FlushStateForTest();
+            var rendersBefore = s_renderCount;
+            s_renders[s_renders.Count - 1].Refetch();
+
+            // Act
+            Land(1, new string('a', 3));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_renderCount, Is.EqualTo(rendersBefore), "v5 compares a string by value, so equal text is no change");
+        }
+
         private MountedTree MountResolved(object data)
         {
             var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
@@ -452,7 +541,7 @@ namespace Velvet.Tests
         private static VNode DataReader()
         {
             var result = Hooks.UseQuery(
-                new QueryOptions<object>(new QueryKey("todos"), Fetch) { Retry = 0 },
+                new QueryOptions<object>(new QueryKey("todos"), Fetch) { Retry = 0, StructuralSharing = s_sharing },
                 s_client);
             s_renderCount++;
             s_renders.Add(result);

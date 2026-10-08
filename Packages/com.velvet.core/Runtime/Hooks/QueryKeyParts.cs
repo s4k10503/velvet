@@ -86,10 +86,9 @@ namespace Velvet
             var entries = dictionary.GetEnumerator();
             while (entries.MoveNext())
             {
-                // MUTANT_SURVIVES(equivalent, arithmetic): equal dictionaries still fold to one value, and Equals compares their entries.
                 sum = unchecked(sum + HashOf(entries.Key) * 31 + HashOf(entries.Value));
             }
-            return unchecked(23 * 31 + sum);
+            return sum;
         }
 
         private static int SetHash(IEnumerable set)
@@ -100,7 +99,7 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent, arithmetic): equal sets still fold to one value, and Equals compares their elements.
                 sum = unchecked(sum + HashOf(item));
             }
-            return unchecked(29 * 31 + sum);
+            return sum;
         }
 
         // partial is partialMatchKey: the filter may be shorter than the part where it is a sequence, and may

@@ -168,7 +168,7 @@ namespace Velvet
         internal Exception? FailureReason { get; init; }
 
         // v5 compares result properties with !==, so data is compared by instance where it is a class and
-        // by value where it is a struct.
+        // by value where it is a struct or a string.
         internal QueryProperties DifferencesFrom(in QuerySnapshot<T> other)
         {
             var changed = QueryProperties.None;
@@ -186,7 +186,10 @@ namespace Velvet
         }
 
         private static bool SameData(T? left, T? right)
-            => typeof(T).IsValueType ? System.Collections.Generic.EqualityComparer<T>.Default.Equals(left!, right!) : ReferenceEquals(left, right);
+        {
+            if (typeof(T).IsValueType) return System.Collections.Generic.EqualityComparer<T>.Default.Equals(left!, right!);
+            return ReferenceEquals(left, right) || (left is string leftText && right is string rightText && leftText == rightText);
+        }
     }
 
     // The per-component half of UseQuery, TanStack's QueryObserver: the options of the latest committed render,
@@ -215,6 +218,8 @@ namespace Velvet
 
         internal QueryEntry<T>? Entry { get; private set; }
 
+        private CancellationTokenSource? _staleWait;
+        private (TimeSpan UpdatedAt, TimeSpan StaleTime)? _staleFor;
         private QuerySnapshot<T> _current;
         private bool _hasCurrent;
         private QueryProperties _tracked;
@@ -244,6 +249,7 @@ namespace Velvet
 #if UNITY_EDITOR
                 _reprintedKeyCommits = 0;
 #endif
+                ScheduleStale();
                 return;
             }
 #if UNITY_EDITOR
@@ -282,10 +288,18 @@ namespace Velvet
 
         private void Unsubscribe()
         {
+            CancelStaleWait();
             var entry = Entry;
             if (entry == null) return;
             Entry = null;
             entry.Unsubscribe(this);
+        }
+
+        // The entry this observer reads was removed, which no snapshot carries.
+        internal void OnRemoved()
+        {
+            CancelStaleWait();
+            OnChange();
         }
 
         // TanStack's updateResult: the entry changed, and the component re-renders if a property it has read
@@ -294,11 +308,62 @@ namespace Velvet
         {
             var next = Snapshot(Entry, StaleTime);
             var changed = _hasCurrent ? _current.DifferencesFrom(next) : QueryProperties.All;
-            if (changed == QueryProperties.None) return;
-            var first = !_hasCurrent;
-            _current = next;
-            _hasCurrent = true;
-            if (first || Notifies(changed)) OnChange();
+            if (changed != QueryProperties.None)
+            {
+                var first = !_hasCurrent;
+                _current = next;
+                _hasCurrent = true;
+                if (first || Notifies(changed)) OnChange();
+            }
+
+            ScheduleStale();
+        }
+
+        // TanStack's #updateStaleTimeout: fresh data turns stale when its age reaches the stale time, and a
+        // component watching IsStale re-renders then. The wait is polled once a frame on the client's clock,
+        // as a retry's is, and is scheduled only for a component that would be told, since Update decides
+        // that again when the wait ends.
+        private void ScheduleStale()
+        {
+            var entry = Entry;
+            if (entry == null || StaleTime == TimeSpan.MaxValue || entry.IsStaleFor(StaleTime)
+                || !Notifies(QueryProperties.IsStale))
+            {
+                CancelStaleWait();
+                return;
+            }
+
+            // MUTANT_SURVIVES(equivalent, guard removed): a wait started again for the same data ends at the same moment.
+            if (Equals(_staleFor, (entry.DataUpdatedAt, StaleTime))) return;
+            CancelStaleWait();
+            var wait = new CancellationTokenSource();
+            _staleWait = wait;
+            _staleFor = (entry.DataUpdatedAt, StaleTime);
+            WaitStale(entry.Client, wait, entry.DataUpdatedAt, StaleTime).Forget();
+        }
+
+        private async VelvetTask WaitStale(QueryClient client, CancellationTokenSource wait, TimeSpan updatedAt, TimeSpan staleTime)
+        {
+            do
+            {
+                await VelvetTask.Yield();
+            }
+            while (!wait.IsCancellationRequested && client.Now - updatedAt < staleTime);
+            if (wait.IsCancellationRequested) return;
+            _staleWait = null;
+            _staleFor = null;
+            wait.Dispose();
+            Update();
+        }
+
+        private void CancelStaleWait()
+        {
+            var wait = _staleWait;
+            if (wait == null) return;
+            _staleWait = null;
+            _staleFor = null;
+            wait.Cancel();
+            wait.Dispose();
         }
 
         private bool Notifies(QueryProperties changed)

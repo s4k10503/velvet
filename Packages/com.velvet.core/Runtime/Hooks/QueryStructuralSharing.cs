@@ -81,8 +81,42 @@ namespace Velvet
         private static bool IsRecord(Type type)
             => type.GetMethod("<Clone>$", BindingFlags.Public | BindingFlags.Instance) != null;
 
+        // Elements of these types hold nothing to share, so two collections of them are the held one or the new
+        // one without boxing an element.
+        // MUTANT_SURVIVES(equivalent, clause removed): a type left to the general path reaches the same instance, boxing each element.
+        private static bool TryCompareUnmanaged(object previous, object next, out bool equal)
+            => TryCompare<int>(previous, next, out equal) || TryCompare<float>(previous, next, out equal)
+                || TryCompare<double>(previous, next, out equal) || TryCompare<long>(previous, next, out equal)
+                || TryCompare<byte>(previous, next, out equal) || TryCompare<bool>(previous, next, out equal)
+                || TryCompare<char>(previous, next, out equal);
+
+        private static bool TryCompare<TItem>(object previous, object next, out bool equal) where TItem : unmanaged
+        {
+            if (previous is IList<TItem> held && next is IList<TItem> arrived)
+            {
+                equal = SameItems(held, arrived);
+                // MUTANT_SURVIVES(equivalent, literal): the general path reaches the same instance, boxing each element.
+                return true;
+            }
+
+            // MUTANT_SURVIVES(equivalent, literal): the value is read only where the method returned true.
+            equal = false;
+            return false;
+        }
+
+        private static bool SameItems<TItem>(IList<TItem> held, IList<TItem> arrived)
+        {
+            if (held.Count != arrived.Count) return false;
+            for (var i = 0; i < held.Count; i++)
+            {
+                if (!EqualityComparer<TItem>.Default.Equals(held[i], arrived[i])) return false;
+            }
+            return true;
+        }
+
         private static object ReplaceArray(Array previous, Array next, int depth)
         {
+            if (TryCompareUnmanaged(previous, next, out var same)) return same ? previous : next;
             switch (ShareItems(previous, next, depth, out var items))
             {
                 case Outcome.Previous:
@@ -101,6 +135,7 @@ namespace Velvet
 
         private static object ReplaceList(IList previous, IList next, int depth)
         {
+            if (TryCompareUnmanaged(previous, next, out var same)) return same ? previous : next;
             switch (ShareItems(previous, next, depth, out var items))
             {
                 case Outcome.Previous:
@@ -160,12 +195,10 @@ namespace Velvet
             return replaced == 0 ? next : CopyDictionary(next, keys, items);
         }
 
-        // The copy is made the way the dictionary that arrived was, comparer included. A dictionary whose
-        // comparer cannot be read is taken as it arrived.
+        // The copy is made the way the dictionary that arrived was, comparer included.
         private static object CopyDictionary(IDictionary next, object[] keys, object?[] items)
         {
-            var comparer = next.GetType().GetProperty("Comparer")?.GetValue(next);
-            if (comparer == null) return next;
+            var comparer = next.GetType().GetProperty("Comparer")!.GetValue(next);
             var copy = (IDictionary)Activator.CreateInstance(next.GetType(), keys.Length, comparer)!;
             for (var i = 0; i < keys.Length; i++)
             {
