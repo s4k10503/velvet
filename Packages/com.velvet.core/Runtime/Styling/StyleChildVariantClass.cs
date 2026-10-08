@@ -24,16 +24,28 @@ namespace Velvet
     // CONTAINER a nested [&>*]: would walk, so the inner wrap has nothing to apply to and must not silently
     // degrade into applying the leaf directly.
     //
-    // This recognizes only the literal [&>*]: direct-child scope, not a general child-combinator family.
+    // This recognizes the literal [&>*]: direct-child scope and one narrower scope, [&>#unity-text-input]:, the
+    // text-input box of a TextField-shaped control. V.TextField and V.IntegerField write that second form
+    // themselves (StyleTextInputSurface) so a field's surface utilities land on the box; it carries the same
+    // payload rules as the first and differs only in which child the walk hands the payload to. This is not a
+    // general child-combinator family.
     internal static class StyleChildVariantClass
     {
         private const string Prefix = "[&>*]:";
 
-        // True when cls is a [&>*]: token — the cheap routing gate the class-list sites check before their
-        // inline-resolved branch, so the combinator token (which starts with '[' and would otherwise look
-        // inline-resolvable) never enters the CONTAINER's own class list.
+        // The scope prefix naming the one child whose element name is TextField.textInputUssName.
+        internal const string TextInputPrefix = "[&>#" + TextInputName + "]:";
+
+        // A literal so the prefix above can be a constant; TextInputSurfaceTests pins it to the engine's name.
+        internal const string TextInputName = "unity-text-input";
+
+        // True when cls is a [&>*]: token (or the text-input scope) — the cheap routing gate the class-list
+        // sites check before their inline-resolved branch, so the combinator token (which starts with '[' and
+        // would otherwise look inline-resolvable) never enters the CONTAINER's own class list.
         public static bool IsChildVariant(string? cls)
-            => !string.IsNullOrEmpty(cls) && cls.StartsWith(Prefix, StringComparison.Ordinal);
+            => !string.IsNullOrEmpty(cls)
+               && (cls.StartsWith(Prefix, StringComparison.Ordinal)
+                   || cls.StartsWith(TextInputPrefix, StringComparison.Ordinal));
 
         // Cheap early-out gate: true when ANY class is a [&>*]: token. Skips the full TryExtract scan on the
         // ~99% of elements that carry no child-combinator variant.
@@ -59,17 +71,24 @@ namespace Velvet
         // attribute- / supports- / (self-nested) child-variant, which would only become a dead token. A state
         // variant (hover:, dark:hover:, group-hover:) IS accepted: it composes through GateStackedVariant.
         public static bool TryParse(string? cls, out string payload)
+            => TryParse(cls, out payload, out _);
+
+        // As above, also reporting whether the token is the text-input scope rather than every child.
+        public static bool TryParse(string? cls, out string payload, out bool textInputOnly)
         {
             payload = string.Empty;
+            textInputOnly = false;
             if (!IsChildVariant(cls))
             {
                 return false;
             }
-            var inner = cls!.Substring(Prefix.Length);
+            var scoped = cls!.StartsWith(TextInputPrefix, StringComparison.Ordinal);
+            var inner = cls.Substring(scoped ? TextInputPrefix.Length : Prefix.Length);
             if (inner.Length == 0 || NestsUngatedVariant(inner))
             {
                 return false;
             }
+            textInputOnly = scoped;
             payload = inner;
             return true;
         }
@@ -115,9 +134,14 @@ namespace Velvet
         // As above, with each payload's rule place among the container's rules (StyleRuleOrder), aligned with
         // payloads.
         public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations)
+            => TryExtract(classNames, out payloads, out declarations, out _);
+
+        // As above, with a flag per payload saying it belongs to the text-input scope, aligned with payloads.
+        public static bool TryExtract(string[] classNames, out string[] payloads, out int[] declarations, out bool[] inputOnly)
         {
             payloads = Array.Empty<string>();
             declarations = Array.Empty<int>();
+            inputOnly = Array.Empty<bool>();
             if (classNames == null)
             {
                 return false;
@@ -125,12 +149,14 @@ namespace Velvet
 
             List<string>? collected = null;
             List<int>? places = null;
+            List<bool>? scopes = null;
             for (var i = 0; i < classNames.Length; i++)
             {
-                if (TryParse(classNames[i], out var payload))
+                if (TryParse(classNames[i], out var payload, out var onlyInput))
                 {
                     (collected ??= new List<string>()).Add(payload);
                     (places ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
+                    (scopes ??= new List<bool>()).Add(onlyInput);
                 }
             }
 
@@ -140,6 +166,7 @@ namespace Velvet
             }
             payloads = collected.ToArray();
             declarations = places!.ToArray();
+            inputOnly = scopes!.ToArray();
             return true;
         }
     }

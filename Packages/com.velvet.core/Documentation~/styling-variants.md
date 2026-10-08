@@ -424,6 +424,23 @@ child and is reached. How far the payload gets differs per control because `& > 
 A declared `label:` seats the label element ahead of the input, and it takes the payload as well, so
 `[&>*]:text-red-500` on a labelled field colours both.
 
+**A text field's own background, border, radius and padding utilities paint its input box.** On an
+`<input>` the class lands on the box the text is typed into; UI Toolkit draws `V.TextField` and
+`V.IntegerField` as an outer control around a child box (`#unity-text-input`) that the theme dresses.
+Those two factories therefore send `bg-*`, `border` / `border-*`, `rounded` / `rounded-*` and the `p-*`
+padding family to the box, written as `[&>#unity-text-input]:` payloads, so a state, theme or responsive
+variant on one (`focus:border-blue-500`, `dark:bg-slate-800`) goes with it. `V.TextField(className:
+"w-64 bg-slate-800 rounded-lg px-3")` sizes the outer control and paints the box; a declared `label:` is
+left unpainted, unlike under `[&>*]:`. The box is the only part they reach, and this applies to those two
+factories only.
+
+Everything else stays on the outer control. So do four utilities that would be box utilities on an
+`<input>`: the gradient backgrounds (`bg-linear-*`, `bg-gradient-*`, `bg-radial-*`, `bg-conic-*`), the
+`border-solid` / `border-dashed` / `border-dotted` line style, `shadow-*` and `ring-*` / `outline-*`, which paint the outer control.
+A variant the child combinator refuses (`first:`, `has-[…]:`, `data-[…]:`, `supports-[…]:`) is declined with
+them. `TextInputSurfaceTests` pins each routed and each declined spelling; `ChildVariantCompositeReachPanelTests`
+pins the background against the theme's own, on a resting field, and nothing else about the theme.
+
 **`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
 spelled on the *container* rather than on the element it lands on, and a child is fully built before
 the container applies it. The layout utilities still re-derive at mount, so `[&>*]:gap-2` spaces
