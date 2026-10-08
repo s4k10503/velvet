@@ -266,11 +266,15 @@ namespace Velvet
         // Turning multiline on puts the field's value back on screen, which on a delayed field holding an
         // uncommitted edit replaces the typed text with the value it has not received yet. So the shown text
         // is carried across the write when it is not the value as a single-line field shows it — and only
-        // then, since the value is what brings back line breaks the single-line display left out.
-        // TextFieldMultilineKeyboardPropTests holds both halves.
+        // then, since the value is what brings back line breaks and characters the single-line display left
+        // out. That display drops the breaks and then cuts to maxLength; TextFieldMultilineKeyboardPropTests
+        // holds the carry, the breaks and the cut.
         // The silent setter, because the carried text is not a new edit.
         private static void WriteMultiline(TextField field, bool value)
         {
+            // MUTANT_SURVIVES(equivalent, clause removed): a field that is not delayed puts each edit into
+            // its value as it is made, so its shown text is the single-line display of that value and the
+            // comparison below finds nothing to carry.
             if (!value || !field.isDelayed)
             {
                 field.multiline = value;
@@ -278,7 +282,7 @@ namespace Velvet
             }
 
             var shown = field.text;
-            var uncommitted = shown != (field.value ?? string.Empty).Replace("\n", string.Empty);
+            var uncommitted = shown != SingleLineDisplay(field);
             field.multiline = true;
             if (uncommitted)
             {
@@ -286,11 +290,22 @@ namespace Velvet
             }
         }
 
-        // The engine writes keyboardType back to Default and autoCorrection back to false when Enter hands
-        // focus from the input to the field, and a render repeating the same settings writes nothing, so a
-        // declaration would stay lost from then on. While one stands, it is written again as focus comes back
-        // in, registered for the trickle-down pass so the field sees the event before the input inside it.
-        // TextFieldTouchKeyboardReassertTests pins the engine's write and the rewrite.
+        private static string SingleLineDisplay(TextField field)
+        {
+            var display = (field.value ?? string.Empty).Replace("\n", string.Empty);
+            // MUTANT_SURVIVES(equivalent, boundary): a cut to the display's own length returns it unchanged,
+            // and a field limited to no characters shows nothing whether its display is cut or carried.
+            return field.maxLength >= 0 && display.Length > field.maxLength
+                ? display.Substring(0, field.maxLength)
+                : display;
+        }
+
+        // The engine writes keyboardType back to Default and autoCorrection back to false when the field
+        // hands focus from its input back to itself (Enter, Shift+Enter in multiline, Escape), and a render
+        // repeating the same settings writes nothing, so a declaration would stay lost from then on. While
+        // one stands, it is written again as focus comes back in, registered for the trickle-down pass so the
+        // field sees the event before the input inside it. TextFieldTouchKeyboardReassertTests pins the
+        // engine's write and the rewrite for Enter.
         // Registered once and unregistered when the last declaration goes or the element returns to the
         // pool (ForgetRecordedDefaults); the callback reads the declarations off the record rather than
         // capturing them, so it is one static delegate for every field.

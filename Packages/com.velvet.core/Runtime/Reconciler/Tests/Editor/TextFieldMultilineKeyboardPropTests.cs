@@ -314,30 +314,60 @@ namespace Velvet.Tests
             Assert.That(((TextElement)element.textEdition).text, Is.EqualTo("first\nsecond"));
         }
 
-        // A length limit narrower than the value leaves the shown text short of the value on a field that is
-        // not delayed, so the shown text and the value disagree with no edit pending. The control is a
-        // bare field given the same writes in the order the reconciler makes them, so the case asks only
-        // that turning multiline on does nothing to a field that is not delayed beyond what the engine does.
         [Test]
-        public void Given_AFieldThatIsNotDelayedShowingAClippedValue_When_ALaterRenderTurnsMultilineOn_Then_ItShowsWhatABareFieldWould()
+        public void Given_ADelayedFieldWithNoEditWhoseValueIsCutByItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheValueUpToTheLimit()
         {
-            // Arrange
-            var oldTree = new VNode[] { V.TextField(value: "abcdefgh", maxLength: 3) };
-            var newTree = new VNode[] { V.TextField(value: "abcdefgh", maxLength: 3, multiline: true) };
+            // Arrange — the single-line display drops the break and then cuts to three characters, so it shows
+            // "abc" with no edit pending, and the multi-line one keeps the break inside those three.
+            var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true) };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
+            };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
-            var bare = new TextField();
-            bare.SetValueWithoutNotify("abcdefgh");
-            bare.maxLength = 3;
+            var whileSingleLine = ((TextElement)element.textEdition).text;
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
-            bare.multiline = true;
+
+            // Assert — the single-line reading is folded in because the case is about what that display showed.
+            Assert.That(
+                (whileSingleLine, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("abc", "a\nb")));
+        }
+
+        [Test]
+        public void Given_ADelayedFieldWithNoEditWhoseValueFitsItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheBreak()
+        {
+            // Arrange — a limit longer than the value, so the single-line display is not cut at all.
+            var oldTree = new VNode[] { V.TextField(value: "first\nsecond", maxLength: 20, isDelayed: true) };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: "first\nsecond", maxLength: 20, isDelayed: true, multiline: true),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
-            Assert.That(
-                ((TextElement)element.textEdition).text,
-                Is.EqualTo(((TextElement)bare.textEdition).text));
+            Assert.That(((TextElement)element.textEdition).text, Is.EqualTo("first\nsecond"));
+        }
+
+        [Test]
+        public void Given_AFieldDeclaredPasswordAndMultiline_When_ItIsReconciled_Then_ItCarriesBoth()
+        {
+            // Arrange
+            var tree = new VNode[] { V.TextField(isPasswordField: true, multiline: true) };
+
+            // Act
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            var element = (TextField)Root!.ElementAt(0);
+            Assert.That((element.isPasswordField, element.multiline), Is.EqualTo((true, true)));
         }
 
         [Test]

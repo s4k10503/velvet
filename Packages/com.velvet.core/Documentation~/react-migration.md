@@ -226,7 +226,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<span>text</span>` | `V.Text("text")` | A run of text, materialized as a `Label`. A `<span>` styling part of a sentence is a rich-text tag inside the one `V.Text`, as in `V.Text("a <b>bold</b> word")`. A `<span>` grouping other elements in a line is a `V.Div(className: "flex-row flex-wrap")` |
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
 | `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it. `inputmode` / `autocorrect` are `keyboardType:` (a `TouchScreenKeyboardType`) / `autoCorrection:`, written to the field's own `keyboardType` / `autoCorrection` |
-| `<textarea>` | `V.TextField(multiline: true)` | A render toggling `multiline:` patches the same element, where React swapping `<input>` for `<textarea>` remounts it |
+| `<textarea>` | `V.TextField(multiline: true)` | A render toggling `multiline:` patches the same element, where React swapping `<input>` for `<textarea>` remounts it. Declaring `isPasswordField:` beside it leaves both flags on, a multi-line password field that HTML has no control for |
 | `<input type="checkbox">` | `V.Toggle()` | |
 | `<input type="range">` | `V.Slider()` | |
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
@@ -246,8 +246,9 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 `multiline:` on leaves that pending text on screen too, still unreleased.
 
 UI Toolkit puts a field's `keyboardType` back to `Default` and its `autoCorrection` back to false when
-Enter leaves a single-line field. A declared `keyboardType:` or `autoCorrection:` is written again
-each time focus comes back into the field; one written from `refCallback:` is not.
+the field hands focus from its input back to itself (Enter, Shift+Enter in multiline, Escape). A
+declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
+field; one written from `refCallback:` is not.
 
 ### 2-2. Conditionals and Lists
 
