@@ -169,6 +169,34 @@ namespace Velvet
 
         private void DrainImmediate()
         {
+            bool openedWave;
+            try
+            {
+                openedWave = DrainImmediatePasses();
+            }
+            finally
+            {
+                // In a finally because an exception leaves a drain too (DrainExceptionRecoveryTests throws one from
+                // an imperative-handle factory), and a flag left raised has ArmImmediateDrain register nothing for a
+                // later request until a synchronous drain lowers it. Intake still queued here was requested by a settle on the drop path
+                // below, or enqueued before the exception, and the loop that would have consumed it has exited.
+                _immediateScheduled = false;
+                if (_immediateOrder.Count > 0) ArmImmediateDrain();
+            }
+            // A delayed drain already pending after this immediate drain CONTINUES this wave (it should reuse the
+            // pins this drain just established). A delayed drain that arrives later, with no immediate drain to pin
+            // first, is a separate wave and must open fresh. Only hand off when this drain actually opened a wave —
+            // and an EMPTY run (a callback whose work an earlier synchronous drain already consumed) must not
+            // clobber a hand-off that earlier drain established.
+            if (openedWave)
+            {
+                _delayedContinuesWave = _delayedScheduled;
+            }
+        }
+
+        // Returns whether any pass ran, which is whether the drain opened a tearing-guard wave.
+        private bool DrainImmediatePasses()
+        {
             // Commit-phase state writes (a callback ref invoked during the patch, an event
             // dispatched from a detach) re-enqueue their fiber mid-drain. Keep draining until the
             // queue is quiet so the follow-up render commits before this frame callback yields —
@@ -232,20 +260,7 @@ namespace Velvet
                 openedWave = true;
                 Drain(_immediateOrder, _immediateSet, resetWave: true);
             }
-            _immediateScheduled = false;
-            // Only the drop path can leave the loop above with intake queued, and a settle it runs can request
-            // a render — the loop that would otherwise consume that request being the one it abandons.
-            // MUTANT_SURVIVES(unreachable): the guard is true only after that drop path re-queues, and the one fixture reaching the cap asserts that queue empty instead.
-            if (_immediateOrder.Count > 0) ArmImmediateDrain();
-            // A delayed drain already pending after this immediate drain CONTINUES this wave (it should reuse the
-            // pins this drain just established). A delayed drain that arrives later, with no immediate drain to pin
-            // first, is a separate wave and must open fresh. Only hand off when this drain actually opened a wave —
-            // and an EMPTY run (a callback whose work an earlier synchronous drain already consumed) must not
-            // clobber a hand-off that earlier drain established.
-            if (openedWave)
-            {
-                _delayedContinuesWave = _delayedScheduled;
-            }
+            return openedWave;
         }
 
         internal void DrainDelayed()
