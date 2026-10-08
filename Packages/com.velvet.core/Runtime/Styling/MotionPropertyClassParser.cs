@@ -81,7 +81,8 @@ namespace Velvet
             // Bracket forms, the color-opacity modifier, negative margins and sizing fractions all already
             // resolve through the arbitrary-value dispatch; only the in-scope subset of its properties is
             // claimed here, so an opacity/transform/filter token stays with its own owner.
-            if (StyleArbitraryValueResolver.TryParse(core, out var arbitrary) && IsDrivable(arbitrary.Property))
+            if (StyleArbitraryValueResolver.TryParse(core, out var arbitrary) && !arbitrary.Auto
+                && IsDrivable(arbitrary.Property))
             {
                 style = arbitrary;
                 return true;

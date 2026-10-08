@@ -67,6 +67,11 @@ namespace Velvet
                 return false;
             }
 
+            if (StyleLogicalUtilities.TryParse(className, out result))
+            {
+                return true;
+            }
+
             // Color opacity modifier: {bg|text|border}-<color>/<N> applies alpha N% to the resolved base
             // color (bg-red-500/50, text-black/75, border-white/10, bg-[#fff]/50). Detected before the
             // bracket parsing below because the palette form carries no '[' at all. A leading '-' never
@@ -280,6 +285,11 @@ namespace Velvet
             // Named filter presets (blur-sm, contrast-125, hue-rotate-90, ...) are non-bracket resolver tokens
             // too, so the one dispatch gate also claims them (incl. the negated -hue-rotate-N).
             if (StyleFilterValueParser.IsFilterPreset(cls))
+            {
+                return true;
+            }
+            // Logical-direction utilities (ms-4, start-1/2, rounded-ss-lg) have no USS class at all.
+            if (StyleLogicalUtilities.TryParse(cls, out _))
             {
                 return true;
             }
@@ -1975,7 +1985,7 @@ namespace Velvet
                 return;
             }
 
-            var length = new StyleLength(new Length(style.Value, style.Unit));
+            var length = style.ToStyleLength();
             var s = ClipPathLayoutBox.StyleFor(element, style.Property);
             foreach (var setter in setters)
             {

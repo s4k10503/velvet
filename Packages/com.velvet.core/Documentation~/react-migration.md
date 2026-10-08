@@ -373,6 +373,40 @@ It excludes hand-written UXML/USS from its design and expresses all styles with 
 | Stacked variants (`dark:hover:`) | Same syntax, order-independent | Applies only when every gate holds |
 | CSS container queries (`@container` / `container-type: inline-size`) | `@container` (apply via `VelvetResponsive.ContainerClass`) | Re-points descendants' `sm:`/`md:`/… at the marked element's width. See [styling-variants.md](styling-variants.md) |
 
+### 4-1a. Logical-direction utilities
+
+Tailwind's logical utilities resolve against the element's inline and block axes. UI Toolkit lays out one
+writing mode, left to right and top to bottom, and has no `direction` or `writing-mode`, so Velvet reads
+inline-start as left, inline-end as right, block-start as top and block-end as bottom: each utility is the
+physical one it equals there, and nothing flips under a right-to-left language.
+
+| Tailwind | Resolves as |
+|----------|-------------|
+| `ms-*` `me-*` `mbs-*` `mbe-*` | `ml-*` `mr-*` `mt-*` `mb-*` |
+| `ps-*` `pe-*` `pbs-*` `pbe-*` | `pl-*` `pr-*` `pt-*` `pb-*` |
+| `start-*` or `inset-s-*`, `end-*` or `inset-e-*`, `inset-bs-*`, `inset-be-*` | `left-*` `right-*` `top-*` `bottom-*` |
+| `border-s` `border-e` `border-bs` `border-be`, each with `-0` `-2` `-4` `-8` | `border-l` `border-r` `border-t` `border-b` |
+| `rounded-s-*` `rounded-e-*` | `rounded-l-*` `rounded-r-*` |
+| `rounded-ss-*` `rounded-se-*` `rounded-es-*` `rounded-ee-*` | `rounded-tl-*` `rounded-tr-*` `rounded-bl-*` `rounded-br-*` |
+
+Each takes the values its physical utility takes in Velvet: the spacing scale (`ms-4`, `ms-px`), a bracket value
+(`ps-[12px]`), `auto` on a margin or an inset, `full` and the fractions on an inset (`start-1/2`), the radius scale
+including the bare `rounded-e`, and a minus sign on a margin or an inset (`-ms-4`, `-start-1/2`). A step the physical
+utility lacks, such as `ms-13` or `border-s-3`, is left unresolved as it is there; `border-s-0` is the exception,
+resolving to a zero width though the stylesheet declares no `border-l-0`. Variants and the `!` modifier apply
+as they do to the physical utility. A logical utility resolves as inline style, so its scale comes from C#
+mirrors of `--space-*`, `--radius-*` and the `border-l` widths rather than from the stylesheet: a custom
+stylesheet that redefines `--space-4` moves `ml-4` and leaves `ms-4` where it was.
+
+- **Ranking.** Two rules of one variant rank order by the property Tailwind sorts them by: a shorthand
+  (`m-4`, `px-4`, `inset-0`, `rounded-lg`, `border-2`) first, then the logical property, then the edge, so
+  `hover:m-4 hover:ms-2` leaves `ms-2` on the start edge and `hover:ml-8 hover:ms-4` leaves `ml-8` there. Two base
+  utilities on one edge still tie as [styling-variants.md](styling-variants.md) describes, and an inline-resolved
+  one outranks a stylesheet class: `ml-8 ms-4` gives the edge to `ms-4`, where Tailwind gives it to `ml-8`.
+- **Not resolved.** `scroll-ms-*` and the other `scroll-m*` / `scroll-p*` utilities, because UI Toolkit has no
+  scroll-margin or scroll-padding and the physical `scroll-ml-*` is not resolved either; and
+  `border-s-` followed by a color, as the physical per-side border colors are not.
+
 ### 4-2. Styling Conventions (Important)
 
 A core principle of Velvet styling is to **not create new `.uss` files**.  
