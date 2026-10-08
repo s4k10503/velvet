@@ -24,7 +24,7 @@ namespace Velvet.Tests
         private static readonly RetryPolicy s_noDelay = new() { RetryDelay = (_, _) => TimeSpan.Zero };
 
         // Ten failures and then a result, rather than failing forever: a policy that lost its bound then
-        // returns, which the case reads as red, instead of retrying without end on a wait that completes at once.
+        // returns, which the case reads as red, instead of retrying until the runner's timeout.
         private static Func<CancellationToken, VelvetTask<int>> FailingTenTimes(List<Exception> thrown) => _ =>
         {
             if (thrown.Count == 10)
@@ -222,7 +222,73 @@ namespace Velvet.Tests
                 "A caller cancelled during the wait gets no second attempt, and its run rejects as cancelled");
         });
 
+        [UnityTest]
+        public IEnumerator Given_ATokenCancelledBeforeAFailure_When_TheOperationFails_Then_TheFailurePropagatesAsItself() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the operation cancels its caller's token and then fails with an error of its own, so
+            // the failure is neither an OperationCanceledException nor a cancellation the wait could report.
+            using var cts = new CancellationTokenSource();
+            var failure = new InvalidOperationException("failed after the caller left");
+            Exception? caught = null;
+
+            // Act
+            try
+            {
+                await s_noDelay.RunAsync<int>(_ =>
+                {
+                    cts.Cancel();
+                    throw failure;
+                }, cts.Token);
+            }
+            catch (Exception propagated) { caught = propagated; }
+
+            // Assert
+            Assert.That(caught, Is.SameAs(failure),
+                "A failure arriving once the caller has cancelled is not retried and reaches the caller as it is");
+        });
+
 #if UNITY_EDITOR
+        [Test]
+        public void Given_AZeroDelay_When_AnOperationFailsSynchronously_Then_TheRetryWaitsForAFrame()
+        {
+            // Arrange
+            var attempts = 0;
+            var running = s_noDelay.RunAsync<int>(_ =>
+                ++attempts == 1 ? throw new InvalidOperationException("transient") : VelvetTask.FromResult(attempts));
+            var attemptsBeforeAFrame = attempts;
+
+            // Act
+            DrainEditorUpdateForTest();
+
+            // Assert
+            Assert.That((attemptsBeforeAFrame, running.Status), Is.EqualTo((1, VelvetTaskStatus.Succeeded)),
+                "The retry runs at the next frame rather than on the stack of the failure it follows");
+        }
+
+        [Test]
+        public void Given_TheDefaultWait_When_FramesPassBeforeTheDelay_Then_NoRetryHasStarted()
+        {
+            // Arrange
+            using var cts = new CancellationTokenSource();
+            var attempts = 0;
+            var policy = new RetryPolicy { RetryDelay = (_, _) => TimeSpan.FromHours(1) };
+            _ = policy.RunAsync<int>(_ =>
+            {
+                attempts++;
+                throw new InvalidOperationException("down");
+            }, cts.Token);
+
+            // Act — the cancel afterwards ends the hour's polling rather than leaving it running.
+            DrainEditorUpdateForTest();
+            DrainEditorUpdateForTest();
+            var attemptsAfterFrames = attempts;
+            cts.Cancel();
+            DrainEditorUpdateForTest();
+
+            // Assert
+            Assert.That(attemptsAfterFrames, Is.EqualTo(1), "Two frames into an hour's delay, the retry has not run");
+        }
+
         [Test]
         public void Given_TheDefaultWait_When_CancelledDuringIt_Then_TheRunRejectsAsCancelledOnceFramesPass()
         {

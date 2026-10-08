@@ -43,8 +43,9 @@ namespace Velvet
 
         /// <summary>
         /// Waits out a <see cref="RetryDelay"/>, and is handed the token passed to <see cref="RunAsync{T}"/>.
-        /// When null, wall-clock time measured by <see cref="Stopwatch"/>, checked once per frame, which
-        /// <c>Time.timeScale</c> does not slow. Supply one to wait on game time, or until the network is back.
+        /// When null, wall-clock time measured by <see cref="Stopwatch"/> on the main thread, checked once per
+        /// frame and for at least one frame, which <c>Time.timeScale</c> does not slow. Supply one to wait on
+        /// game time, or until the network is back.
         /// </summary>
         public Func<TimeSpan, CancellationToken, VelvetTask>? Wait { get; init; }
 
@@ -96,14 +97,21 @@ namespace Velvet
 
         private static async VelvetTask WaitRealtime(TimeSpan delay, CancellationToken cancellationToken)
         {
+            // Off the main thread a yield resumes as Task.Yield does (OffMainThreadYieldVelvetTaskSource)
+            // rather than at the next frame, so polling there would spin.
+            await VelvetTask.SwitchToMainThread();
             var start = Stopwatch.GetTimestamp();
-            // MUTANT_SURVIVES(equivalent): `<=` differs only where the elapsed time equals the delay to the
-            // tick, and there it waits one frame more, within the frame this polled wait already overshoots by.
-            while (TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - start) / (double)Stopwatch.Frequency) < delay)
+            // At least one frame, a zero delay included, as v5 sleeps through a timer even for zero: a retry
+            // that started on the failing attempt's own stack would let a synchronously failing operation
+            // under a large MaxRetries hold the main thread for every attempt.
+            do
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 await VelvetTask.Yield();
             }
+            // MUTANT_SURVIVES(equivalent): `<=` differs only where the elapsed time equals the delay exactly,
+            // and there it waits one frame more, within the frame this polled wait already overshoots by.
+            while (TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - start) / (double)Stopwatch.Frequency) < delay);
         }
     }
 }

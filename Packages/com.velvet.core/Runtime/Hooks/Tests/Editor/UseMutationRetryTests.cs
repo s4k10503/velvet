@@ -12,8 +12,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies <see cref="MutationOptions{TVariables, TData}.Retry"/> on a mounted
     /// <see cref="Hooks.UseMutation{TVariables, TData}"/>: retries stay inside one call, so the call commits
-    /// and delivers one outcome; a retry waits on the token unmount cancels; and a call still retrying does not
-    /// publish over a newer one. <see cref="RetryPolicyTests"/> owns the policy's own schedule.
+    /// and delivers one outcome; a retry waits on the token unmount cancels; a call still retrying does not
+    /// publish over a newer one; and the latest render's <c>Retry</c> and <c>MutationFn</c> are the ones used.
+    /// <see cref="RetryPolicyTests"/> owns the policy's own schedule.
     /// </summary>
     [TestFixture]
     internal sealed class UseMutationRetryTests
@@ -130,6 +131,46 @@ namespace Velvet.Tests
             Assert.That((string.Join(",", s_delivered), s_captured.Data, s_captured.Variables),
                 Is.EqualTo(("4,2", 4, 2)),
                 "The older call's retried success is delivered to its own OnSuccess and not to the handle");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARetryPolicyGivenOnAReRender_When_MutationFnFailsOnce_Then_TheCallRetries() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — mounted without a policy, so only the re-render's options can supply one.
+            var attempts = 0;
+            s_mutationFn = (v, _) =>
+                ++attempts == 1 ? throw new InvalidOperationException("transient") : VelvetTask.FromResult(v * 2);
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "retry-rerender"));
+            s_retry = s_noDelay;
+            mounted.Render(V.Component(CaptureMutationRender, key: "retry-rerender"));
+
+            // Act
+            await s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_captured.Status, Is.EqualTo(MutationStatus.Success),
+                "A Retry the latest render passed is the one the next call uses");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AReRenderDuringARetryWait_When_TheRetryRuns_Then_ItCallsTheNewMutationFn() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the first render's function always fails, so only the re-render's can succeed.
+            var gate = new VelvetTaskCompletionSource();
+            s_retry = new RetryPolicy { Wait = (_, _) => gate.Task };
+            s_mutationFn = (_, _) => throw new InvalidOperationException("the first render's function");
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "retry-latest-fn"));
+            var call = s_captured!.MutateAsync(1);
+            s_mutationFn = (v, _) => VelvetTask.FromResult(v * 100);
+            mounted.Render(V.Component(CaptureMutationRender, key: "retry-latest-fn"));
+
+            // Act
+            gate.TrySetResult();
+            var result = await call;
+
+            // Assert
+            Assert.That(result, Is.EqualTo(100), "The retry calls the MutationFn of the latest render, as v5 does");
         });
 
         [UnityTest]

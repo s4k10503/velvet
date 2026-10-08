@@ -131,8 +131,9 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 **Retries.** Off unless `Retry` is set, as v5's mutations default to `retry: 0`. A `RetryPolicy` runs
 `MutationFn` again inside the same call, so between attempts the call stays pending, `OnSuccess` /
 `OnError` run once for the last attempt's outcome, and a call a newer one has superseded writes nothing
-to the handle when its retry lands, as under **Concurrent calls** above. Each attempt gets the call's `CancellationToken`, so an unmount ends the
-retries along with the attempt. The policy itself:
+to the handle when its retry lands, as under **Concurrent calls** above. Each attempt calls the latest
+render's `MutationFn`, as v5's retryer reads `mutationFn` on every run, and gets the call's
+`CancellationToken`, so an unmount ends the retries along with the attempt. The policy itself:
 
 | v5 | `RetryPolicy` |
 |----|---------------|
@@ -141,9 +142,11 @@ retries along with the attempt. The policy itself:
 | `retryDelay: (failureCount, error) => ms` | `RetryDelay = (failureCount, error) => TimeSpan`, defaulting to v5's 1 s doubled per retry and capped at 30 s |
 
 Where v5 differs: an `OperationCanceledException` is never retried, and no further attempt starts once the
-token is cancelled. The default wait is wall-clock time checked once per frame, unaffected by
-`Time.timeScale`, and it does not pause while the device is offline as v5's `networkMode` does — supply
-`Wait` to wait on game time or on connectivity.
+token is cancelled. The handle has no `failureCount` / `failureReason`, so the failures before the last
+attempt are visible only to `ShouldRetry` and `RetryDelay`. The default wait is wall-clock time on the main
+thread, checked once per frame and lasting at least one frame as v5's zero-delay timer does, unaffected by
+`Time.timeScale`; it does not pause while the device is offline or the window unfocused as v5 does —
+supply `Wait` to wait on game time or on connectivity.
 
 **Callback error semantics** (TanStack Query v5 parity):
 

@@ -2043,8 +2043,13 @@ namespace Velvet
 
             try
             {
+                // Each attempt reads the slot's MutationFn, the latest render's, as v5's retryer reads
+                // options.mutationFn on every run.
                 var data = await (slot.Retry is { } retry
-                    ? retry.RunWithStateAsync(slot.MutationFn, variables, cts.Token)
+                    ? retry.RunWithStateAsync(
+                        static (call, token) => call.Slot.MutationFn(call.Variables, token),
+                        (Slot: slot, Variables: variables),
+                        cts.Token)
                     : slot.MutationFn(variables, cts.Token));
                 if (fiber.IsDisposed) return data;
                 // The handler runs before this call's outcome is committed, which is where TanStack
