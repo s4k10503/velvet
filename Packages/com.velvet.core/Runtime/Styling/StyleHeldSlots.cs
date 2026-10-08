@@ -45,7 +45,6 @@ namespace Velvet
             (_lengths ??= new StyleLength[HeldSlotGroups.SlotCount])[(int)slot] = value;
             _mask |= Bit(slot);
             _yieldMask &= ~Bit(slot);
-            _importantOnlyMask &= ~Bit(slot);
         }
 
         public void Set(HeldSlot slot, StyleFloat value)
@@ -53,7 +52,6 @@ namespace Velvet
             (_floats ??= new StyleFloat[HeldSlotGroups.SlotCount])[(int)slot] = value;
             _mask |= Bit(slot);
             _yieldMask &= ~Bit(slot);
-            _importantOnlyMask &= ~Bit(slot);
         }
 
         public void Set(HeldSlot slot, StyleColor value)
@@ -61,7 +59,6 @@ namespace Velvet
             (_colors ??= new StyleColor[HeldSlotGroups.SlotCount])[(int)slot] = value;
             _mask |= Bit(slot);
             _yieldMask &= ~Bit(slot);
-            _importantOnlyMask &= ~Bit(slot);
         }
 
         public void Drop(HeldSlot slot) => _mask &= ~Bit(slot);

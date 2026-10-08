@@ -536,6 +536,66 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantDivideColor_When_ADividedChildCarriesAnImportantBorderColorClass_Then_TheChildWins()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x !divide-gray-200", "!border-gray-300") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderRightColor.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AnImportantDivideWidth_When_TheChildsImportantBorderClassComesAndGoes_Then_TheWidthFollows()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var plain = new VNode[] { DividerRowWithColoredChild("flex flex-row !divide-x-4", "") };
+            var owned = new VNode[] { DividerRowWithColoredChild("flex flex-row !divide-x-4", "!border-r-2") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), plain);
+            var before = scope.Root[0][1].style.borderRightWidth.value;
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, plain, owned);
+            var whileOwned = scope.Root[0][1].style.borderRightWidth.keyword;
+            scope.Reconciler.Reconcile(scope.Root, owned, plain);
+
+            // Assert
+            Assert.That((before, whileOwned, scope.Root[0][1].style.borderRightWidth.value),
+                Is.EqualTo((4f, StyleKeyword.Null, 4f)));
+        }
+
+        [Test]
+        public void Given_AnImportantDivideWidth_When_ADividedChildsImportantHoverBorderStartsAndEnds_Then_TheChildsWidthAppliesAndRestores()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { DividerRowWithColoredChild("flex flex-row !divide-x-4", "hover:!border-r-[3px]") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var child = scope.Root[0][1];
+            var atRest = child.style.borderRightWidth.value;
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                child.SimulateEvent(over);
+            }
+            var whileHover = child.style.borderRightWidth.value;
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                child.SimulateEvent(leave);
+            }
+            var afterLeave = child.style.borderRightWidth.value;
+
+            // Assert
+            Assert.That((atRest, whileHover, afterLeave), Is.EqualTo((4f, 3f, 4f)));
+        }
+
+        [Test]
         public void Given_AnImportantDivideWidth_When_PatchedToAPlainOne_Then_TheChildsOwnBorderWidthReturns()
         {
             // Arrange

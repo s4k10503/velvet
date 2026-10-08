@@ -1247,13 +1247,15 @@ namespace Velvet
             }
         }
 
-        // Whether a utility on element's class list sets slot through an ungated bundled USS rule. Tailwind
-        // writes space and divide at zero specificity, so such a class of the element's own wins over them
-        // there; an arbitrary value's layer does the same through a yielding Hold.
+        // Whether the highest priority an ungated class of the element's own claims on slot's longhand lies in
+        // the important band. Inline layers are not consulted.
         internal static bool DeclaresImportantOwn(VisualElement element, HeldSlot slot)
             => TryGetProjection(element) is { } model
                 && (model.ClaimOf(HeldSlotGroups.LonghandOf(slot)) & StyleLayerPriority.Important) != 0;
 
+        // Whether a utility on element's class list sets slot through an ungated bundled USS rule. Tailwind
+        // writes space and divide at zero specificity, so such a class of the element's own wins over them
+        // there; an arbitrary value's layer does the same through a yielding Hold.
         internal static bool DeclaresOwn(VisualElement element, HeldSlot slot)
         {
             var longhand = HeldSlotGroups.LonghandOf(slot);
