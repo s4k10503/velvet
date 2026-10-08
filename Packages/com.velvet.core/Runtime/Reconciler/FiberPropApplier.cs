@@ -236,6 +236,52 @@ namespace Velvet
             ApplyMaxLength(tfEl, settings?.MaxLength, built);
             ApplyReadOnlyFlag(tfEl, settings?.IsReadOnly, built);
             ApplyDelayedFlag(tfEl, settings?.IsDelayed, built);
+            // Ordering: after the delayed flag, so a render releasing that flag commits the typed text while
+            // its line breaks are still there, before multiline coming off in the same render reaches it.
+            // TextFieldMultilineKeyboardPropTests holds the break across that render.
+            ApplyMultilineFlag(tfEl, settings?.Multiline, built);
+            ApplyKeyboardType(tfEl, settings?.KeyboardType, built);
+            ApplyAutoCorrectionFlag(tfEl, settings?.AutoCorrection, built);
+        }
+
+        private static void ApplyMultilineFlag(TextField field, bool? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.Multiline ??= new Recorded<bool>(field.multiline);
+                field.multiline = value;
+            }
+            else if (built.Multiline != null)
+            {
+                field.multiline = built.Multiline.Value;
+            }
+        }
+
+        private static void ApplyKeyboardType(
+            TextField field, UnityEngine.TouchScreenKeyboardType? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.KeyboardType ??= new Recorded<UnityEngine.TouchScreenKeyboardType>(field.keyboardType);
+                field.keyboardType = value;
+            }
+            else if (built.KeyboardType != null)
+            {
+                field.keyboardType = built.KeyboardType.Value;
+            }
+        }
+
+        private static void ApplyAutoCorrectionFlag(TextField field, bool? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.AutoCorrection ??= new Recorded<bool>(field.autoCorrection);
+                field.autoCorrection = value;
+            }
+            else if (built.AutoCorrection != null)
+            {
+                field.autoCorrection = built.AutoCorrection.Value;
+            }
         }
 
         private static void ApplyPasswordFlag(TextField field, bool? declared, TextFieldDefaults built)
@@ -329,7 +375,10 @@ namespace Velvet
                    || settings.Placeholder != null
                    || settings.MaxLength.HasValue
                    || settings.IsReadOnly.HasValue
-                   || settings.IsDelayed.HasValue);
+                   || settings.IsDelayed.HasValue
+                   || settings.Multiline.HasValue
+                   || settings.KeyboardType.HasValue
+                   || settings.AutoCorrection.HasValue);
 
         private sealed class TextFieldDefaults
         {
@@ -338,6 +387,9 @@ namespace Velvet
             public Recorded<int>? MaxLength;
             public Recorded<bool>? IsReadOnly;
             public Recorded<bool>? IsDelayed;
+            public Recorded<bool>? Multiline;
+            public Recorded<UnityEngine.TouchScreenKeyboardType>? KeyboardType;
+            public Recorded<bool>? AutoCorrection;
         }
 
         private static readonly ConditionalWeakTable<TextField, TextFieldDefaults> s_textFieldDefaults = new();
