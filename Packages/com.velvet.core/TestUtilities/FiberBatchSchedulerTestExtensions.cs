@@ -12,11 +12,6 @@ namespace Velvet.TestUtilities
     /// Throwing is the point: a caller drains to observe the re-render a queued fiber produces, so a drain
     /// that quietly reached nothing would leave it asserting on the tree as it stood before the update.
     /// </para>
-    /// <para>
-    /// An exception escaping a drain arrives wrapped in <see cref="System.Reflection.TargetInvocationException"/>,
-    /// which no caller observes today because none wraps a drain in <c>Assert.Throws</c>. The first one that
-    /// does wants <c>BindingFlags.DoNotWrapExceptions</c> added below rather than an unwrap at the call site.
-    /// </para>
     /// </summary>
     internal static class FiberBatchSchedulerTestExtensions
     {
@@ -43,7 +38,9 @@ namespace Velvet.TestUtilities
             {
                 throw new MissingMethodException(typeof(FiberBatchScheduler).FullName, methodName);
             }
-            method.Invoke(scheduler, null);
+            // DoNotWrapExceptions, so a caller catching what a drain throws catches that exception itself rather
+            // than unwrapping a TargetInvocationException at every call site.
+            method.Invoke(scheduler, BindingFlags.DoNotWrapExceptions, null, null, null);
         }
     }
 }
