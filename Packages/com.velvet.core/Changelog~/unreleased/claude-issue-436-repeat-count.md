@@ -5,7 +5,7 @@
   count includes the first pass. The sequence completes once the last pass's last hold elapses, a restart
   plays every pass again, and `iterations: 0` plays none, committing no step. A count a re-render changes applies
   as the Web Animations API's `updateTiming` applies it: lowered to the passes already finished it completes the
-  sequence at the next frame, and raised it resumes a completed one. `repeatDelaySec` is Framer Motion's
+  sequence at the next frame with the end state a normal completion holds, no skipped `Call` run, and raised it resumes a completed one. `repeatDelaySec` is Framer Motion's
   `repeatDelay`, a gap between passes that never delays completion. The overload taking `loop` is unchanged.
   An alternate direction is not offered; the motion guide's Timelines section says why, and where the count
   differs from the Web Animations API's.

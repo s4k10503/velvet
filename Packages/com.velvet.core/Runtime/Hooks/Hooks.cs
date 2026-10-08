@@ -1251,7 +1251,8 @@ namespace Velvet
         /// is <c>n + 1</c> here. Zero plays no pass, so no step commits and the sequence reads complete from its
         /// mount render on. A count a re-render changes applies to the sequence as it plays, as the Web
         /// Animations API's <c>updateTiming</c> does: a count no higher than the passes already finished completes
-        /// the sequence at the next frame, the cursor staying on the step it was on, and a count above them
+        /// the sequence at the next frame, showing the end state a normal completion holds (the last step
+        /// current, no skipped <c>Call</c> run), and a count above them
         /// resumes a completed sequence at the next pass's step 0. Throws
         /// <see cref="ArgumentOutOfRangeException"/> when negative.</param>
         /// <param name="autoplay">As on the overload taking <c>loop</c>.</param>

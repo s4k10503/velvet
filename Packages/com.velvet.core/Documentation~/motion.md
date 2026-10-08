@@ -521,7 +521,9 @@ plays every pass again.
 
 A count changed by a re-render applies to the sequence as it plays, as the Web Animations API's
 `updateTiming` does: a count no higher than the passes already finished completes the sequence at the next
-frame, the cursor staying on the step it was on, and a count above them resumes a completed sequence at the
+frame with the end state a normal completion holds, as `animation-fill-mode: forwards` shows the end keyframe: the
+last step current and its label and transition adopted, with no skipped `Call` callback run. A count of zero commits
+nothing, as it does at a mount. A count above the finished passes resumes a completed sequence at the
 next pass's step 0.
 
 `repeatDelaySec` is Framer Motion's `repeatDelay`: seconds the cursor waits on the last step between one
@@ -529,9 +531,9 @@ pass and the next, never after the last, so it does not delay completion. It thr
 `ArgumentOutOfRangeException` when negative or not finite. Under `loop`, a trailing `Wait` step is the same
 gap, since no completion waits behind it.
 
-Where this differs from the Web Animations API and CSS: the count is a whole number, where both accept a
-fraction such as `2.5`; and a finished sequence keeps its last step current, as `animation-fill-mode:
-forwards` would, while `iterations: 0` commits nothing, as the default `animation-fill-mode: none` would.
+A finished sequence keeps its last step current, as `animation-fill-mode: forwards` would, while `iterations: 0`
+commits nothing, as the default `animation-fill-mode: none` would. Where this differs from the Web Animations API
+and CSS: the count is a whole number, where both accept a fraction such as `2.5`.
 
 An alternate direction (CSS's `animation-direction: alternate`, Framer Motion's `repeatType: "reverse"`)
 is not offered: playing a `Call` step backwards has no settled answer to whether its callback fires

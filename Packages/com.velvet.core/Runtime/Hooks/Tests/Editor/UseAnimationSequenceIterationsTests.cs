@@ -221,9 +221,9 @@ namespace Velvet.Tests
 
         // Three passes of TwoLabels, run to the second pass's first hold (0.272s of ticks, the pass spanning 0.2s
         // to 0.4s), then the count set and a render forced so the walker reads it.
-        private void LowerDuringSecondPass(int lowered)
+        private void LowerDuringSecondPass(int lowered, AnimationSequenceStep[] steps = null)
         {
-            s_steps = TwoLabels();
+            s_steps = steps ?? TwoLabels();
             s_iterations = 3;
             Mount();
             AdvancePast(0.25f);
@@ -243,6 +243,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_state.IsComplete, Is.True);
+        }
+
+        [Test]
+        public void Given_ThreeIterationsLoweredToOneDuringTheSecondPass_When_TheNextFramesTick_Then_TheEndStateIsShownAndTheSkippedCallDidNotFire()
+        {
+            // Arrange — the Call sits between the labels, so the second pass is lowered before it is reached.
+            LowerDuringSecondPass(1, new[]
+            {
+                AnimationSequenceStep.To("a", holdSec: 0.1f),
+                AnimationSequenceStep.Call(() => s_callCount++),
+                AnimationSequenceStep.To("b", holdSec: 0.1f),
+            });
+
+            // Act
+            AdvancePast(0f);
+
+            // Assert — one Call from the first pass, and the label a normal completion would hold.
+            Assert.That((s_state.CurrentLabel, s_state.StepIndex, s_callCount, s_state.IsComplete), Is.EqualTo(("b", 2, 1, true)));
         }
 
         [Test]

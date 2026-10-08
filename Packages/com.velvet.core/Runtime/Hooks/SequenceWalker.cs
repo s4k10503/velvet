@@ -90,6 +90,7 @@ namespace Velvet
             }
             if (!PassesRemain)
             {
+                AdoptEndState();
                 _isComplete = true;
                 return _stepIndex;
             }
@@ -129,6 +130,30 @@ namespace Velvet
 
         // A null Iterations plays without end.
         private bool PassesRemain => Iterations == null || _passesCompleted < Iterations;
+
+        // A count lowered mid-pass shows the state a normal completion holds: the cursor on the last step and the
+        // label and transition the To steps leave, folded as Arrive folds them. No Call callback runs. A count of
+        // zero commits nothing, as a reseed at zero does, so the cursor stays where it is.
+        private void AdoptEndState()
+        {
+            if (Iterations == 0)
+            {
+                return;
+            }
+            string? label = null;
+            StyleTransitionConfig? transition = null;
+            for (var i = 0; i < _steps.Count; i++)
+            {
+                if (_steps[i].Kind == AnimationSequenceStepKind.To)
+                {
+                    label = _steps[i].Label;
+                    transition = _steps[i].Transition ?? transition ?? StyleTransition.Fade;
+                }
+            }
+            _stepIndex = _steps.Count - 1;
+            _currentLabel = label;
+            _currentTransition = transition;
+        }
 
         // The frame after a raised count, not the render that raised it: the next pass starts at step 0, and
         // the time since the sequence completed does not count toward it.
