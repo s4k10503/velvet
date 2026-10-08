@@ -226,10 +226,13 @@ It follows React's `useSyncExternalStore`:
 - **Snapshots are compared with `Object.is` and must be cached.** A notification re-renders the
   component when `getSnapshot` then returns a value that is not `Object.is`-equal to the one it last
   rendered, or throws (the render repeats the call, so the exception reaches the error boundary). So
-  `getSnapshot` returns the same instance until the store changes: one that builds a new snapshot on
-  every read re-renders on every notification, and in the Editor the hook logs an error the first time
-  two consecutive reads in one render differ. A `getSnapshot` that projects a field
+  `getSnapshot` returns the same instance until the store changes, and in the Editor the hook logs an
+  error the first time two consecutive reads in one render differ. A `getSnapshot` that projects a field
   (`() => model.Current.Count`) re-renders when that field changes, not when another one does.
+  **Velvet deviation:** a `getSnapshot` that builds a new snapshot on every read re-renders the
+  component on every notification, and once more after each new subscription, where React re-renders
+  until its update-depth limit stops it. Paired with a `subscribe` that changes every render, it keeps
+  re-rendering here as well.
 - **`subscribe` is called on mount and whenever its identity changes.** The hook compares it with the
   previous render's using delegate equality, so a method group on the same instance
   (`inventory.Subscribe`) keeps one subscription across renders, while a lambda capturing a local is a
@@ -242,15 +245,21 @@ It follows React's `useSyncExternalStore`:
 - **The change callback must be invoked on the Unity main thread.** Invoked from another thread it
   throws `InvalidOperationException` back to the invoker and schedules nothing; marshal the
   notification to the main thread first. The re-render it schedules never takes the Transition lane,
-  including when the store is mutated inside `startTransition`.
+  including when the store is mutated inside `startTransition`. **Velvet deviation:** it takes the
+  Normal lane (Urgent inside a discrete event handler) and renders with the next batch drain, where
+  React gives a store update its sync lane.
 - **Readers in one drain wave see one snapshot.** A wave is a frame's immediate drain and the delayed
   drain that continues it. Within it, readers passing equal `getSnapshot` delegates — the same method
   group on the same instance — read the snapshot the wave's first read pinned, even when the store
   changes between the two drains, the same guarantee `Hooks.UseStore` gives readers of one `Store<T>`;
-  the change re-renders them in the next wave. Readers holding different closures are not pinned to
-  each other. A render outside a drain — the initial mount, a synchronous flush, or a time-sliced
-  render resumed after its drain returned — reads the live snapshot, and so does a render whose
-  `subscribe` raises a change while it runs.
+  the change re-renders them in the next wave. A reader that first subscribes after the store moved
+  past the pin renders the pin, then asks for that re-render itself once the render commits. Readers
+  holding different closures are not pinned to each other. A render outside a drain — the initial
+  mount, a synchronous flush, or a time-sliced render resumed after its drain returned — reads the
+  live snapshot, and so does a render whose `subscribe` raises a change while it runs. **Velvet
+  deviation:** a resumed time-sliced render can therefore show a newer snapshot than readers the drain
+  already rendered, until the change's re-render reaches them; React re-renders a torn tree
+  synchronously before it commits.
 
 For a Velvet `Store<T>`, `Hooks.UseStore` stays the shorter form, with a selector and a comparer.
 

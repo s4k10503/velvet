@@ -140,7 +140,7 @@ React's primary hooks, exposed in C# PascalCase. A representative sample — see
 [react-migration.md §1](Packages/com.velvet.core/Documentation~/react-migration.md#1-hooks-mapping)
 for the complete hook-by-hook mapping (all of `UseReducer` / `UseLayoutEffect` /
 `UseInsertionEffect` / `UseMemo` / `UseTransition` / `UseDeferredValue` / `UseOptimistic` /
-`UseId` / `UseImperativeHandle`, plus semantic-difference notes):
+`UseId` / `UseImperativeHandle` / `UseSyncExternalStore`, plus semantic-difference notes):
 
 | React | Velvet |
 |-------|--------|

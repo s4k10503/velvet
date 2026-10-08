@@ -253,10 +253,11 @@ namespace Velvet
         /// <paramref name="subscribe"/> receives the callback to invoke when the store changes and returns the action
         /// that unsubscribes it. It is called on the first render, and again, after the previous subscription is
         /// removed, by a render passing a <paramref name="subscribe"/> that is not <see cref="Delegate.Equals(object)"/>
-        /// to the previous one; the StrictMode diagnostic render never calls it. A method group on the same instance
-        /// compares equal across renders; a lambda capturing a local is a new closure each render and re-subscribes on
-        /// each later render, as an inline subscribe function does in React. Unmounting removes the subscription. A
-        /// change the store raises while <paramref name="subscribe"/> runs is returned by the render that subscribed.
+        /// to the previous one, or by the render after one whose call threw; the StrictMode diagnostic render never
+        /// calls it. A method group on the same instance compares equal across renders; a lambda capturing a local is
+        /// a new closure each render and re-subscribes on each later render, as an inline subscribe function does in
+        /// React. Unmounting removes the subscription. A change the store raises while <paramref name="subscribe"/>
+        /// runs is returned by the render that subscribed.
         /// </para>
         /// <para>
         /// The callback must be invoked on the Unity main thread: invoked from another thread, it throws
@@ -267,7 +268,8 @@ namespace Velvet
         /// Within one batch drain wave — an immediate drain and the delayed drain continuing it — readers passing
         /// equal <paramref name="getSnapshot"/> delegates observe the snapshot the wave's first read pinned, as
         /// readers of one store do through <see cref="UseStore{TStore,TSel}"/>. A render outside a drain reads the
-        /// live snapshot, and so does a render whose <paramref name="subscribe"/> raises a change while it runs.
+        /// live snapshot, and so does a render whose <paramref name="subscribe"/> raises a change while it runs. A
+        /// render that subscribes and returns a pin the store has moved past asks for a re-render once it commits.
         /// </para>
         /// </remarks>
         /// <typeparam name="T">Snapshot type.</typeparam>
@@ -321,6 +323,12 @@ namespace Velvet
                 slot.Resubscribe(subscribe);
                 var latest = getSnapshot();
                 if (!ObjectIs.AreEqual(live, latest)) slot.Value = latest;
+            }
+
+            // MUTANT_SURVIVES(equivalent, clause removed): the diagnostic render finds the flag cleared by a commit check that already ran, or queues a second one beside it in the same commit, whose request coalesces with the first.
+            if (slot.AwaitsCommitCheck && !IsStrictDiagnosticPass(fiber))
+            {
+                (fiber.PendingLayoutEffects ??= new List<HookEffectSlot>()).Add(slot.CommitCheck);
             }
 
             return slot.Value;

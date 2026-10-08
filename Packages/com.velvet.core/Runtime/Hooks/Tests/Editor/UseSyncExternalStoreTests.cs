@@ -35,6 +35,7 @@ namespace Velvet.Tests
             ResetTearing();
             ResetUncached();
             ResetNullArgument();
+            ResetLateMount();
         }
 
         [TearDown]
@@ -375,6 +376,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ReaderMountedInTheDelayedDrainAfterAChange_When_TheWaveEnds_Then_ItRendersTheLatestSnapshot()
+        {
+            // Arrange — the ancestor pins 0 in the immediate drain; the host mounts the reader in the delayed drain
+            s_lateSource = new ExternalSource<int>(0);
+            using var mounted = V.Mount(_root, V.Div(name: "late", children: new VNode[]
+            {
+                V.Component(LateAncestorRender, key: "ancestor"),
+                V.Component(LateHostRender, key: "host"),
+            }));
+            s_lateAncestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_lateHostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+
+            // Act — the change lands before the reader exists to subscribe to it
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_showLateReader = true;
+            s_lateSource.Set(1);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — it first rendered the wave's pin, then the store's value
+            Assert.AreEqual("first 0, last 1", $"first {s_lateReaderFirstValue}, last {s_lateReaderValue}");
+        }
+
+        [Test]
         public void Given_StoreChangedMidWave_When_TheNextWaveDrains_Then_BothReadersRenderTheLatestSnapshot()
         {
             // Arrange
@@ -683,6 +708,50 @@ namespace Velvet.Tests
             s_descendantRenders++;
             s_descendantValue = Hooks.UseSyncExternalStore(s_tearSource.Subscribe, s_tearSource.GetSnapshot);
             return V.Label(text: s_descendantValue.ToString());
+        }
+
+        #endregion
+
+        #region LateMount components (a reader the delayed drain mounts)
+
+        private static ExternalSource<int> s_lateSource;
+        private static bool s_showLateReader;
+        private static ComponentFiber s_lateAncestorFiber;
+        private static ComponentFiber s_lateHostFiber;
+        private static int? s_lateReaderFirstValue;
+        private static int s_lateReaderValue;
+
+        private static void ResetLateMount()
+        {
+            s_lateSource = null;
+            s_showLateReader = false;
+            s_lateAncestorFiber = null;
+            s_lateHostFiber = null;
+            s_lateReaderFirstValue = null;
+            s_lateReaderValue = 0;
+        }
+
+        [Component]
+        private static VNode LateAncestorRender()
+        {
+            s_lateAncestorFiber = FiberAmbientStack.Current;
+            var value = Hooks.UseSyncExternalStore(s_lateSource.Subscribe, s_lateSource.GetSnapshot);
+            return V.Label(text: value.ToString());
+        }
+
+        [Component]
+        private static VNode LateHostRender()
+        {
+            s_lateHostFiber = FiberAmbientStack.Current;
+            return s_showLateReader ? V.Component(LateReaderRender, key: "reader") : V.Label(text: "empty");
+        }
+
+        [Component]
+        private static VNode LateReaderRender()
+        {
+            s_lateReaderValue = Hooks.UseSyncExternalStore(s_lateSource.Subscribe, s_lateSource.GetSnapshot);
+            s_lateReaderFirstValue ??= s_lateReaderValue;
+            return V.Label(text: s_lateReaderValue.ToString());
         }
 
         #endregion

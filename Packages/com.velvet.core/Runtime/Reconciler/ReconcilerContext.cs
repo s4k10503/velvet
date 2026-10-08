@@ -2115,8 +2115,7 @@ namespace Velvet
         internal TStore PinStoreSnapshot<TStore>(object store, TStore liveSnapshot)
         {
             if (!_storeSnapshotWaveActive) return liveSnapshot;
-            // A cast rather than a type test, so a pinned null is a pin like any other value: a read sharing a key
-            // asks for the type the pin was taken as, or one that type converts to by reference.
+            // A cast rather than a type test, which a pinned null fails.
             if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned))
             {
                 return (TStore)pinned!;
