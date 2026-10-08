@@ -329,3 +329,28 @@ spells it, and the percent form especially would otherwise read as a factor of f
 
 `basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
 two divide what is left over after every sibling's basis is taken.
+
+## A `Label` in a centred box: the theme's margin, padding and shrink
+
+Tailwind v4's preflight zeroes every element's margin and padding, so text centred in a card brings no
+spacing of its own. Velvet ships no equivalent for a label: its sheets set a `Label`'s margin, padding or
+`flex-shrink` only through a utility class on it, so a `V.Label` or a `V.Text` without one takes those
+three from UI Toolkit's defaults and whatever the panel's theme declares for `.unity-label`, the class a
+`Label` is constructed with (`Label.ussClassName`). Where centred text sits off its card's centre, reset
+them in a stylesheet of your own:
+
+```css
+.unity-label { margin: 0; padding: 0; flex-shrink: 0; }
+```
+
+`flex-shrink: 0` keeps a label taller than its card from being shrunk to fit it; leave it out where
+the theme's shrink should stand.
+
+The reset must not take precedence over a `p-*`, `m-*` or `shrink-*` on a label, and nothing in the
+selectors stops it: `.unity-label` and a utility class have the same specificity. Attach the reset before
+Velvet's sheet, the reverse of a token override in
+[styling-variants.md](styling-variants.md#theme-the-dark-variant-and-the-token-set-beside-it): add it to
+the root's `styleSheets` before `VelvetStyleUtilities.AttachTo` runs there, since attaching Velvet's
+sheet again does not move it ([setup.md](setup.md#the-supported-path)). Then check that a label carrying
+`p-2` still has its padding. A bracket value such as `p-[8px]` is inline style
+([setup.md](setup.md)) and is not part of that tie.
