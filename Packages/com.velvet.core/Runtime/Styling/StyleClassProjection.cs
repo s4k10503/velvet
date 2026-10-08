@@ -86,6 +86,10 @@ namespace Velvet
         internal static bool SuppressesDeclared(VisualElement element, string cls)
             => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesDeclared(cls) == true;
 
+        // Whether cls sits on element's live class list only because a variant payload put it there.
+        internal static bool IsHeldOnlyByPayload(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.HeldOnlyByPayload(cls) == true;
+
         // Called by StyleArbitraryValueResolver, because an inline layer both outranks the classes below it
         // and can itself be outranked by a class above it.
         internal static void OnInlineLayersChanged(VisualElement element, Model model) => model.Recompute(element);
@@ -379,6 +383,11 @@ namespace Velvet
                 => _suppressed?.Contains(cls) == true
                     && (IndexOf(cls, StyleLayerPriority.Base) >= 0
                         || IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) >= 0);
+
+            public bool HeldOnlyByPayload(string cls)
+                => Holds(cls)
+                    && IndexOf(cls, StyleLayerPriority.Base) < 0
+                    && IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) < 0;
 
             private int FirstIndexOf(string cls)
             {
