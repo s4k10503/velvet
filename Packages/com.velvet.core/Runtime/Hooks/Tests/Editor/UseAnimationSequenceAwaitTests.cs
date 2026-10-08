@@ -354,6 +354,61 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeftWaitWhoseTokenCallbackThrows_When_ARestartWhoseArrivalAlsoThrows_Then_TheArrivalsExceptionLeavesTheRestart()
+        {
+            // Arrange — the first arrival's wait carries the throwing callback; the restarted arrival's factory
+            // throws. The callback's exception is logged instead.
+            s_steps = new[]
+            {
+                AnimationSequenceStep.Await(token =>
+                {
+                    s_tokens.Add(token);
+                    if (s_tokens.Count > 1)
+                    {
+                        throw new InvalidOperationException("arrival probe");
+                    }
+                    token.Register(() => throw new InvalidOperationException("token probe"));
+                    return new VelvetTaskCompletionSource().Task;
+                }),
+            };
+            Mount(SequenceHost);
+            LogAssert.Expect(LogType.Exception, new Regex("AggregateException"));
+
+            // Act
+            TestDelegate restart = () => s_controls.Restart();
+
+            // Assert
+            Assert.That(restart, Throws.InvalidOperationException.With.Message.EqualTo("arrival probe"));
+        }
+
+        [Test]
+        public void Given_AFactoryThatRestartsFromInsideItselfLeavingAThrowingTokenCallback_When_TheDrainsArrivalThrows_Then_TheBoundaryCatchesTheArrivalsException()
+        {
+            // Arrange — the restart is deferred to the walker's drain, whose arrival's factory throws.
+            s_steps = new[]
+            {
+                AnimationSequenceStep.Await(token =>
+                {
+                    s_tokens.Add(token);
+                    if (s_tokens.Count > 1)
+                    {
+                        throw new InvalidOperationException("arrival probe");
+                    }
+                    token.Register(() => throw new InvalidOperationException("token probe"));
+                    s_controls.Restart();
+                    return new VelvetTaskCompletionSource().Task;
+                }),
+            };
+            LogAssert.Expect(LogType.Exception, new Regex("AggregateException"));
+
+            // Act
+            Mount(Boundary, CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(s_caught?.Message, Is.EqualTo("arrival probe"));
+        }
+
+        [Test]
         public void Given_ALeftWaitWhoseTokenCallbackRestartsTheSequence_When_ControlsRestart_Then_EveryWaitButTheLastIsCancelled()
         {
             // Arrange — the callback's restart lands after the outer restart has installed the second wait.

@@ -111,6 +111,7 @@ namespace Velvet
         // The wait a reseed leaves is abandoned only after the reseed has arrived, here and in ArriveAtStart's
         // drain: its token's callbacks are user code, so one that throws must find the walker reseeded rather
         // than halfway through, and a restart from one must find the new wait installed to abandon in turn.
+        // Where the arrival itself threw, its exception stays the one that propagates.
         private void ResetImmediate(IReadOnlyList<AnimationSequenceStep>? steps)
         {
             var left = DetachAwait();
@@ -122,9 +123,23 @@ namespace Velvet
                     ArriveAtStart(0);
                 }
             }
-            finally
+            catch
+            {
+                AbandonLoggingAnyThrow(left);
+                throw;
+            }
+            left?.Abandon();
+        }
+
+        private static void AbandonLoggingAnyThrow(AwaitHold? left)
+        {
+            try
             {
                 left?.Abandon();
+            }
+            catch (Exception exception)
+            {
+                UnityEngine.Debug.LogException(exception);
             }
         }
 
@@ -187,26 +202,32 @@ namespace Velvet
                 var pending = _pendingResetSteps;
                 _pendingResetSteps = null;
                 var left = DetachAwait();
+                bool isComplete;
                 try
                 {
-                    var isComplete = ApplyStepsReset(pending);
-                    if (isComplete)
+                    isComplete = ApplyStepsReset(pending);
+                    if (!isComplete)
                     {
-                        break;
-                    }
-                    _isArriving = true;
-                    try
-                    {
-                        Arrive(0);
-                    }
-                    finally
-                    {
-                        _isArriving = false;
+                        _isArriving = true;
+                        try
+                        {
+                            Arrive(0);
+                        }
+                        finally
+                        {
+                            _isArriving = false;
+                        }
                     }
                 }
-                finally
+                catch
                 {
-                    left?.Abandon();
+                    AbandonLoggingAnyThrow(left);
+                    throw;
+                }
+                left?.Abandon();
+                if (isComplete)
+                {
+                    break;
                 }
             }
             if (_pendingResetSteps != null)
