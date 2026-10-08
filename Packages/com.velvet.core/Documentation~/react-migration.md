@@ -100,24 +100,84 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 
 | React Query | Velvet |
 |-------------|--------|
-| `useMutation({ mutationFn, onSuccess, onError })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData>(MutationFn: ..., OnSuccess: ..., OnError: ...))` |
+| `useMutation({ mutationFn, onSuccess, onError, onSettled })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData>(MutationFn: ..., OnSuccess: ..., OnError: ...) { OnSettled = ... })` |
+| `useMutation({ mutationFn, onMutate, onSuccess, onError, onSettled })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData, TContext>(MutationFn: ..., OnMutate: ..., OnSuccess: ..., OnError: ..., OnSettled: ...))` |
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
+| `mutate(variables, { onSuccess, onError, onSettled })` | `mutation.Mutate(variables, new MutateOptions<TVariables, TData> { OnSuccess = ..., OnError = ..., OnSettled = ... })`; `MutateAsync` takes the same second argument |
+
+**Lifecycle callbacks.** `OnMutate` runs when the call starts — after the handle has turned `Pending`
+with the call's `Variables`, before `MutationFn` — and what it returns is the context that call's
+`OnSuccess`, `OnError` and `OnSettled` receive. `OnSettled` runs on both paths, after `OnSuccess` or
+`OnError`: with the data and a null exception on success, with default data and the exception on
+failure. That is v5's order, and with it v5's optimistic-update recipe: snapshot and write the
+optimistic value in `OnMutate`, roll it back from the context in `OnError`, finish in `OnSettled`.
+Each call's context is its own, so overlapping calls never see each other's. The context-free option
+records carry `OnSettled` too, as an init-only property set in an object initializer; `OnMutate` and the
+context are only on `MutationOptions<TVariables, TData, TContext>`, which has no void form: a void
+mutation takes `Unit` as `TData` there and returns `Unit.Default`.
+
+```csharp
+// Loadout is a class, so a context OnMutate never returned arrives as null.
+var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
+    MutationFn: async (item, ct) =>
+    {
+        await inventoryApi.EquipAsync(item, ct);    // a VelvetTask
+        return Unit.Default;
+    },
+    OnMutate: item =>
+    {
+        var previous = inventory.Current.Loadout;   // snapshot
+        inventory.Equip(item);                      // optimistic write through a Store action
+        return previous;
+    },
+    OnError: (error, _, previous) =>
+    {
+        // An unmount cancelled the request: the server may have applied it, so reload rather than guess.
+        if (error is OperationCanceledException) { inventory.Reload(); return; }
+        if (previous != null) inventory.RestoreLoadout(previous);   // null when OnMutate threw
+    },
+    OnSettled: (_, _, _, _) => setBusy.Invoke(false)));
+```
+
+**Per-call callbacks.** `Mutate` and `MutateAsync` take a `MutateOptions<TVariables, TData>` whose
+`OnSuccess`, `OnError` and `OnSettled` run after the hook options' own, once the call's outcome is on the
+handle, so they read `Status` / `Data` / `Error` as the call left them. As in v5, only the call the handle
+follows delivers them: a newer call, `Reset` and the component unmounting each drop them, while the hook
+options' callbacks still run. A throwing per-call callback is logged and costs neither the next one nor the
+outcome. Each receives the call's `OnMutate` result as an `object?`, null for the context-free option
+records, since the handle's type does not carry `TContext`.
+
+**Unmounting.** The callbacks of a call in flight still run after its component unmounts, as v5's
+option callbacks outlive the observer; only the handle is no longer written and the component no longer
+re-rendered. Unlike v5, which never cancels, Velvet cancels the call's `CancellationToken` on unmount. A
+`MutationFn` that honours it ends in the `OperationCanceledException`, which `OnError` and then
+`OnSettled` receive with the call's context, and `MutateAsync` rejects with that exception. One that
+ignores it completes as usual and runs `OnSuccess` or `OnError`, then `OnSettled`. A `MutateAsync`
+called after the unmount never starts and rejects with an `OperationCanceledException` too.
+A cancelled request may already have reached the server and been applied, so a cancellation does not say
+the write failed: rolling the optimistic value back on it can undo a write the server kept. Branch on
+`error is OperationCanceledException` in `OnError`, as the sample does, and reload the authoritative state
+there instead of restoring the snapshot.
+
+`OnMutate` returns the context itself where v5 awaits a returned promise, as every callback here is
+synchronous.
 
 **Concurrent calls.** Calling `Mutate` twice starts two runs, neither cancels the other, each
-delivers its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Error` / `Variables` are one
+delivers its own callbacks with its own context, and `Status` / `Data` / `Error` / `Variables` are one
 snapshot following the newest — so a double-tapped button does not lose the first call's follow-up
 write. Starting a call resets all four to that call's own — `Data` included, so a pending call never
 shows the previous one's result. Not cancelling on re-entry, following the newest, and clearing
 `Data` when a call starts are all v5's behaviour.
 
 The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
-only its variables. It is cancelled when the component unmounts, which is what a Unity web request
-wants, and it is never cancelled by a later call.
+its variables and a context of the query client, the mutation's `meta` and its `mutationKey`, with no
+cancellation signal. It is cancelled when the component unmounts (see **Unmounting** above), which is what
+a Unity web request wants, and it is never cancelled by a later call.
 
 **`Reset`.** Puts the handle back to `Idle` and abandons whatever is in flight, as v5's `reset()`
 detaches the observer from the mutation. The abandoned call is not cancelled: it runs to completion
-and still delivers its own `OnSuccess` / `OnError`, but neither its result nor its failure reaches the
+and still delivers its own callbacks, but neither its result nor its failure reaches the
 handle, so resetting a save while it is in flight leaves the handle idle when the save lands.
 
 **When the outcome is committed.** After the handlers, which is when v5 dispatches it. A handler
@@ -133,7 +193,9 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 **Callback error semantics** (TanStack Query v5 parity):
 
 - A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws, so `Data` is left empty as well.
-- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()` as a fault, which logs it with `Debug.LogException`, an `OperationCanceledException` included. `MutateAsync` still rethrows the **mutation** exception, not the handler's.
+- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()` as a fault, which logs it with `Debug.LogException`, an `OperationCanceledException` included. `MutateAsync` still rethrows the **mutation** exception, not the handler's, and `onSettled` still runs.
+- A throwing **`onMutate`** fails the call with its exception before `MutationFn` runs; `onError` and `onSettled` receive it with a default context.
+- A throwing **`onSettled`** follows the path it ran on. On success it fails the call as a throwing `onSuccess` does, so `onError` runs with its exception and `onSettled` runs a second time, with it — v5's order, since both handlers sit in the block its failure path catches. On failure it is logged as a throwing `onError` is, and the outcome stays the mutation's own.
 
 ### 1-3. State Management (React + Zustand)
 
