@@ -557,6 +557,7 @@ namespace Velvet
             _ctx.StyleAnimationScheduler.CancelAll();
             _ctx.EventManager.Clear();
             _ctx.ComponentRegistry.Dispose();
+            _ctx.PendingCaughtErrorReports.Clear();
             _ctx.FiberMemoCache.DisposeAndReturnCachedTrees();
             _ctx.WrapperToInnerMap.Clear();
             // Hosts go last: destroying a layer or world-space host takes its runtime-created panel with

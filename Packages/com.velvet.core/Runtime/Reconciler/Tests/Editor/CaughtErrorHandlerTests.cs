@@ -631,11 +631,32 @@ namespace Velvet.Tests
             return field == null ? -1 : (long)field.GetValue(_mounted.Root.Reconciler.Context);
         }
 
-        private int ReportsKept()
+        private int ReportsKept() => ReportsKept(_mounted.Root.Reconciler.Context);
+
+        private static int ReportsKept(ReconcilerContext context)
         {
             var field = typeof(ReconcilerContext)
                 .GetField("PendingCaughtErrorReports", BindingFlags.NonPublic | BindingFlags.Instance);
-            return field == null ? -1 : ((ICollection)field.GetValue(_mounted.Root.Reconciler.Context)).Count;
+            return field == null ? -1 : ((ICollection)field.GetValue(context)).Count;
+        }
+
+        [Test]
+        public void Given_AReportStillPendingForABoundary_When_TheRootIsDisposed_Then_TheContextKeepsNoReport()
+        {
+            // Arrange — recorded directly, because the commit that would deliver it is the one a disposal races.
+            _mounted = V.Mount(_root, V.Label(text: "ok"), CaughtErrors.Unlogged);
+            var context = _mounted.Root.Reconciler.Context;
+            FiberErrorBoundary.RecordCatch(context, new ComponentFiber(), new InvalidOperationException("boom"), new ErrorInfo(""));
+            var keptBefore = ReportsKept(context);
+
+            // Act
+            _mounted.Dispose();
+
+            // Assert — the count before is read beside the count after, because a record that never landed
+            // leaves nothing to clear either.
+            Assert.That(
+                $"{keptBefore} kept before | {ReportsKept(context)} kept after",
+                Is.EqualTo("1 kept before | 0 kept after"));
         }
 
         [Test]
