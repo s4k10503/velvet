@@ -44,15 +44,8 @@ namespace Velvet
 
         private static bool IsInInputField(VisualElement? target, Slider slider)
         {
-            for (var element = target; element != null && element != slider; element = element.parent)
-            {
-                if (element.ClassListContains(Slider.textFieldClassName))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            var field = slider.Q(className: Slider.textFieldClassName);
+            return field != null && target != null && field.Contains(target);
         }
     }
 }
