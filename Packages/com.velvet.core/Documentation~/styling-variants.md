@@ -126,7 +126,8 @@ Four consequences worth knowing:
   one member.
 - **`has-[.foo]:` still sees a class that lost.** A `.foo` written in a descendant's `className`
   matches while Velvet keeps it off that descendant's class list, as `:has(.foo)` matches on the web
-  however the cascade ranks `.foo`'s declarations.
+  however the cascade ranks `.foo`'s declarations. A `.foo` that only a variant payload puts on the
+  descendant (`hover:foo`) does not match, as `:has(.foo)` does not match a class the author never wrote.
 
 An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style rather
 than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority class stands
