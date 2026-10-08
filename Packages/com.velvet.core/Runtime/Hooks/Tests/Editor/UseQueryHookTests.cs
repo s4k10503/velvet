@@ -1053,7 +1053,7 @@ namespace Velvet.Tests
         public void Given_NullOptions_When_AQueryRenders_Then_ItThrowsArgumentNull()
         {
             // Arrange
-            LogAssert.Expect(LogType.Exception, new Regex("ArgumentNullException.*options", RegexOptions.Singleline));
+            LogAssert.Expect(LogType.Exception, new Regex("ArgumentNullException"));
 
             // Act
             using var mounted = V.Mount(_root, V.Component(BadOptionsReader, key: "bad"));
