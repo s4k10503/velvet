@@ -1048,9 +1048,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFlexRowGapContainer_When_AnInlineReverseDirectionIsSet_Then_TheInlineDirectionOutranksTheClass()
+        {
+            // Arrange — the flex-row class alone would put the gap on the leading edge.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row gap-x-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexDirection = FlexDirection.RowReverse;
+
+            // Act — a fourth child changes the child set, which re-applies the spacing.
+            var tree2 = new VNode[] { Row("flex flex-row gap-x-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — a reversed row puts the gap on the trailing edge.
+            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_AFlexRowGapContainerWithAnInlineDirection_When_TheInlineDirectionIsCleared_Then_TheClassDirectionReturns()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row gap-x-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexDirection = FlexDirection.RowReverse;
+            var tree2 = new VNode[] { Row("flex flex-row gap-x-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+            container.style.flexDirection = StyleKeyword.Null;
+
+            // Act
+            var tree3 = new VNode[] { Row("flex flex-row gap-x-4", 5) };
+            scope.Reconciler.Reconcile(scope.Root, tree2, tree3);
+
+            // Assert — a row puts the gap on the leading edge.
+            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
         public void Given_AGapRowWithAnInlineDirection_When_EveryDirectionClassIsRemoved_Then_TheInlineDirectionIsRead()
         {
-            // Arrange — flex-direction set outside the class list, which the classes outranked until they left.
+            // Arrange — flex-direction set outside the class list, which the classes no longer cover once they have left.
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row gap-x-4", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);

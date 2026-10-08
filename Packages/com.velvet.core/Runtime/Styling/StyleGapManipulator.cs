@@ -478,26 +478,32 @@ namespace Velvet
             }
         }
 
-        // The class verdict first (StyleFlexDirectionResolver). Once every direction/display class has left the
-        // class list, the fallback is not taken until the next GeometryChangedEvent — for the reason IsWrap
-        // gives — and the verdict is the inline flex-direction, whose unset slot reads Column, the direction
-        // an element carrying none of those classes lays out in.
+        // An inline flex-direction first, as the cascade ranks it over any class rule, then the class verdict
+        // (StyleFlexDirectionResolver). Once every direction/display class has left the class list, the
+        // fallback is not taken until the next GeometryChangedEvent — for the reason IsWrap gives — and the
+        // verdict is the inline flex-direction, whose unset slot reads Column, the direction an element
+        // carrying none of those classes lays out in.
         private FlexDirection DirectionOf(VisualElement container)
         {
             var fromClass = StyleFlexDirectionResolver.FromClasses(container);
             var hadClass = _directionFromClass;
             _directionFromClass = fromClass != null;
+            if (hadClass && fromClass == null)
+            {
+                _directionClassLeft = true;
+            }
+            var inline = container.style.flexDirection;
+            if (inline.keyword != StyleKeyword.Null)
+            {
+                return inline.value;
+            }
             if (fromClass != null)
             {
                 return fromClass.Value;
             }
-            if (hadClass)
-            {
-                _directionClassLeft = true;
-            }
             if (_directionClassLeft)
             {
-                return container.style.flexDirection.value;
+                return inline.value;
             }
             return StyleFlexDirectionResolver.ResolveWithoutClasses(container, !ReferenceEquals(container, target));
         }

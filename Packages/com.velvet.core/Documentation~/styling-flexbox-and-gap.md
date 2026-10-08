@@ -223,17 +223,18 @@ the container itself never resizes) fires no `GeometryChangedEvent` to trigger a
 manipulator that trusted `resolvedStyle` here could converge on the *first* toggle and then never
 converge on a later toggle back, leaving a gap margin wrong indefinitely.
 
-One consequence: a Velvet direction class, when present, **outranks** `flex-direction` set some
-other way (a custom stylesheet rule, an inline style) on the SAME element rather than composing with
-it. `resolvedStyle` is read only as the fallback for the case no class can cover: `flex-direction`
-set that other way with *none* of the five direction/display classes present on the element at all.
-That fallback case still needs a live panel (`AttachToPanelEvent` above) and still cannot
+An inline `flex-direction` outranks every class, as an inline declaration outranks a rule in CSS, and
+a direction class outranks `flex-direction` set by a custom stylesheet rule on the SAME element rather
+than composing with it. `resolvedStyle` is read only as the fallback for the case neither can cover: a
+stylesheet-set `flex-direction` with *none* of the five direction/display classes present on the element
+at all. That fallback case still needs a live panel (`AttachToPanelEvent` above) and still cannot
 self-correct on a same-rect toggle with no intervening reconcile pass, since nothing would tell the
-manipulator to look again. Once every direction/display class leaves the element, the verdict until the
-next `GeometryChangedEvent` is the inline `flex-direction`, or the engine's column when none is set,
-rather than a `resolvedStyle` that can still hold the removed class — the same rule the wrap verdict
-below follows. With no direction class AND no panel to resolve against (EditMode,
-pre-attach), the default is **row** — the one place this deliberately disagrees with the raw engine,
+manipulator to look again. An inline `flex-direction` written outside Velvet raises no event either, so
+the spacing follows it at the container's next reconcile pass. Once every direction/display class leaves
+the element, the verdict until the next `GeometryChangedEvent` is the inline `flex-direction`, or the
+engine's column when none is set, rather than a `resolvedStyle` that can still hold the removed class —
+the same rule the wrap verdict below follows. With no direction class AND no panel to resolve against
+(EditMode, pre-attach), the default is **row** — the one place this deliberately disagrees with the raw engine,
 whose own unstyled default is column (see "Without `.flex`, children stack vertically" above).
 
 ## `flex-wrap` and `grid`: both axes are spaced (half-margin hybrid)
