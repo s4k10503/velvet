@@ -8,7 +8,8 @@ namespace Velvet
     // background-position (no per-frame texture work — the texture is baked once, only its offset moves);
     // Hue continuously rotates the hue-rotate filter angle (color cycling, works on any element, not just a
     // gradient); Pulse oscillates opacity (the attention/skeleton pulse, works on any element); Spin turns
-    // the element (the loading spinner). None is the explicit cancel (animate-none).
+    // the element (the loading spinner); Ping grows the element while it fades out;
+    // Bounce lifts it and drops it back. None is the explicit cancel (animate-none).
     internal enum AnimateMode
     {
         None,
@@ -26,6 +27,11 @@ namespace Velvet
         // Rotates a full turn over the loop, linearly — the loading spinner. Owns the rotate slot on the terms
         // Hue owns the filter slot.
         Spin,
+        // Scales the element to twice its size while fading it out over the first three quarters of the loop, then
+        // holds that for the last quarter.
+        Ping,
+        // Lifts the element a quarter of its height and drops it back, each half on its own curve.
+        Bounce,
     }
 
     // A resolved animate-* utility: the motion mode and its loop duration (seconds). Value-equal (duration
@@ -56,7 +62,7 @@ namespace Velvet
     // recognized animate-* token wins, so animate-gradient animate-none resolves to no animation.
     //
     // The per-frame cost is always a cheap inline-style write (a background-position offset, a hue-rotate
-    // filter angle, an opacity, or a rotation) — the gradient texture is baked once and never re-baked while animating.
+    // filter angle, an opacity, a rotation, a scale or a translation) — the gradient texture is baked once and never re-baked while animating.
     // Unrecognized animate-* tokens are not claimed, leaving the namespace open.
     internal static class StyleAnimateClass
     {
@@ -69,6 +75,9 @@ namespace Velvet
         private const float DefaultPulseSec = 2f;
         // Tailwind's animate-spin: one turn a second, linear, forever.
         private const float DefaultSpinSec = 1f;
+        // Tailwind's animate-ping and animate-bounce: one second, forever.
+        private const float DefaultPingSec = 1f;
+        private const float DefaultBounceSec = 1f;
 
         // True when cls is an animate-* utility this layer owns. Covers the unrecognized names too (a future
         // mode): the namespace is claimed as a whole so a variant payload naming one routes here rather than
@@ -146,6 +155,8 @@ namespace Velvet
                 case "hue": mode = AnimateMode.Hue; durationSec = overrideSec ?? DefaultHueSec; return true;
                 case "pulse": mode = AnimateMode.Pulse; durationSec = overrideSec ?? DefaultPulseSec; return true;
                 case "spin": mode = AnimateMode.Spin; durationSec = overrideSec ?? DefaultSpinSec; return true;
+                case "ping": mode = AnimateMode.Ping; durationSec = overrideSec ?? DefaultPingSec; return true;
+                case "bounce": mode = AnimateMode.Bounce; durationSec = overrideSec ?? DefaultBounceSec; return true;
                 default: return false;
             }
         }

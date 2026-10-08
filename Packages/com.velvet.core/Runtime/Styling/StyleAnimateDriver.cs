@@ -5,6 +5,36 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
+    // What a loop knows of a slot it writes that its element's classes also give: the element's own inline value, which
+    // a keyframe's implicit first and last frame start from, and the value the loop last left there. An inline value
+    // that differs from the one the loop left was written by something else since, and is the element's own from then
+    // on; one that matches is the loop's frame and is not.
+    internal struct LoopSlot<TStyle> where TStyle : struct, System.IEquatable<TStyle>
+    {
+        private TStyle _own;
+        private TStyle _written;
+        private bool _hasWritten;
+
+        public void Seed(TStyle inline) => _own = inline;
+
+        // adopt is false for a write the caller knows is not the element's own (a Motion driver's frame, a
+        // crossfade's), which leaves the inline value out of the element's own.
+        public TStyle Own(TStyle inline, bool adopt)
+        {
+            if (adopt && (!_hasWritten || !inline.Equals(_written)))
+            {
+                _own = inline;
+            }
+            return _own;
+        }
+
+        public void Wrote(TStyle inline)
+        {
+            _written = inline;
+            _hasWritten = true;
+        }
+    }
+
     // Per-element state for a running animate-* motion. Holds the recurring scheduled tick (paused on
     // teardown), the loop start time, and the pan-axis decision (pan modes only).
     internal sealed class StyleAnimateBinding
@@ -23,13 +53,19 @@ namespace Velvet
         // For an attach that happened off-panel: the deferred-scheduling callback, unregistered on teardown
         // if it never fired (so it does not linger on the element across pool reuse).
         public EventCallback<AttachToPanelEvent>? PendingAttach;
+        // The slots the non-pan modes write over what the element's classes give them. A mode uses the ones it writes.
+        public LoopSlot<StyleFloat> Opacity;
+        public LoopSlot<StyleRotate> Rotation;
+        public LoopSlot<StyleScale> Scale;
+        public LoopSlot<StyleTranslate> Translation;
     }
 
     // Drives the animate-* motions. The texture is baked ONCE (the static gradient path); this only writes a
     // cheap inline style per frame — a background-position offset (Gradient/Shimmer), a hue-rotate filter
-    // angle (Hue), an opacity (Pulse), or a rotation (Spin) — so a continuously-animating gradient costs no
-    // per-frame texture work. The phase math is pure (PanOffsetPx / HueAngleDeg / PulseOpacity / SpinAngleDeg /
-    // Phase) and unit-tested directly; the scheduler wiring is exercised at runtime (the EditMode PlayerLoop
+    // angle (Hue), an opacity (Pulse), a rotation (Spin), an opacity and scale (Ping) or a translation (Bounce) — so
+    // a continuously-animating gradient costs no per-frame texture work. The phase math is pure (PanOffsetPx /
+    // HueAngleDeg / PulseOpacityOver / SpinAngleDeg / PingProgress / BounceLift / BounceOffsetPx / Phase) and
+    // unit-tested directly; the scheduler wiring is exercised at runtime (the EditMode PlayerLoop
     // does not tick, so tests drive ApplyFrame at explicit phases instead).
     internal static class StyleAnimateDriver
     {
@@ -44,6 +80,10 @@ namespace Velvet
         // Pulse opacity bounds: oscillates between full and half (matches the conventional attention pulse).
         private const float PulseMinOpacity = 0.5f;
         private const float PulseMaxOpacity = 1f;
+        // Ping reaches its end values at three quarters of the loop. Bounce lifts by a quarter of the element's height.
+        private const float PingEndPhase = 0.75f;
+        private const float PingEndScale = 2f;
+        private const float BounceLiftFraction = 0.25f;
 
         // The loop each element runs, for ReassertLoop.
         private static readonly ConditionalWeakTable<VisualElement, StyleAnimateBinding> s_running = new();
@@ -94,25 +134,28 @@ namespace Velvet
         {
             if (s_running.TryGetValue(element, out var binding))
             {
-                ApplyCurrentFrame(element, binding);
+                ApplyCurrentFrame(element, binding, driverWrote: true);
             }
         }
 
-        private static void ApplyCurrentFrame(VisualElement element, StyleAnimateBinding binding)
+        // driverWrote is true when a Motion driver wrote the slots just before this frame, which leaves what it wrote
+        // out of the element's own values (LoopSlot).
+        private static void ApplyCurrentFrame(VisualElement element, StyleAnimateBinding binding, bool driverWrote)
         {
+            var free = GuardedSlots(binding.Spec.Mode);
             if (s_held.TryGetValue(element, out var held))
             {
-                var slot = GuardedSlots(binding.Spec.Mode);
                 foreach (var slots in held.Values)
                 {
-                    if ((slots & slot) != MotionTransitionSlots.None)
-                    {
-                        return;
-                    }
+                    free &= ~slots;
                 }
             }
+            if (free == MotionTransitionSlots.None)
+            {
+                return;
+            }
             var elapsed = Time.realtimeSinceStartupAsDouble - binding.StartTime;
-            ApplyFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec));
+            WriteFrame(element, binding, Phase(elapsed, binding.Spec.DurationSec), free, driverWrote);
         }
 
         // Attaches a motion to an element whose gradient (the pan modes) is already applied. Sets the
@@ -136,10 +179,22 @@ namespace Velvet
                 ApplyPanSizing(element, spec.Mode, panVertical);
             }
 
+            SeedOwnValues(element, binding);
             SyncTransitionSuspension(element, binding);
             ScheduleOrDefer(element, binding);
             s_running.AddOrUpdate(element, binding);
             return binding;
+        }
+
+        // The inline values the element holds when the loop attaches are its own, which a keyframe's implicit first and
+        // last frame start from.
+        private static void SeedOwnValues(VisualElement element, StyleAnimateBinding binding)
+        {
+            var style = element.style;
+            binding.Opacity.Seed(style.opacity);
+            binding.Rotation.Seed(style.rotate);
+            binding.Scale.Seed(style.scale);
+            binding.Translation.Seed(style.translate);
         }
 
         /// <summary>
@@ -159,6 +214,8 @@ namespace Velvet
             AnimateMode.Spin => MotionTransitionSlots.Rotate,
             AnimateMode.Pulse => MotionTransitionSlots.Opacity,
             AnimateMode.Hue => MotionTransitionSlots.Filter,
+            AnimateMode.Ping => MotionTransitionSlots.Opacity | MotionTransitionSlots.Scale,
+            AnimateMode.Bounce => MotionTransitionSlots.Translate,
             AnimateMode.Gradient or AnimateMode.Shimmer => MotionTransitionSlots.BackgroundPosition,
             AnimateMode.None => MotionTransitionSlots.None,
         };
@@ -209,6 +266,17 @@ namespace Velvet
                 // returns it to no-inline-opacity; a surviving class-driven opacity is re-asserted by the
                 // reconciler right after Detach (a NAMED opacity-* re-resolves, an opacity-[.x] is re-applied).
                 MotionOpacity.Write(element, StyleKeyword.Null);
+            }
+            else if (binding.Spec.Mode == AnimateMode.Ping)
+            {
+                // Same ownership rule as the Pulse and Spin branches, over the opacity and scale slots.
+                MotionOpacity.Write(element, StyleKeyword.Null);
+                element.style.scale = StyleKeyword.Null;
+            }
+            else if (binding.Spec.Mode == AnimateMode.Bounce)
+            {
+                // Same ownership rule as the Spin branch, over the translate slot.
+                element.style.translate = StyleKeyword.Null;
             }
         }
 
@@ -265,23 +333,56 @@ namespace Velvet
         // as a stutter at the wrap because the loop restarts at full speed.
         public static float SpinAngleDeg(float t) => 360f * t;
 
+        // Tailwind's pulse over an element at full opacity.
+        public static float PulseOpacity(float t) => PulseOpacityOver(PulseMaxOpacity, t);
+
         // Tailwind's pulse: opacity at half by the loop's midpoint, each half eased with
-        // cubic-bezier(0.4, 0, 0.6, 1), since a keyframe animation applies its timing function per interval.
-        public static float PulseOpacity(float t)
+        // cubic-bezier(0.4, 0, 0.6, 1), since a keyframe animation applies its timing function per interval. The
+        // keyframes name no opacity at 0% and 100%, so those take the element's own.
+        public static float PulseOpacityOver(float ownOpacity, float t)
         {
             // MUTANT_SURVIVES(equivalent): at t = 0.5 the falling half ends and the rising half starts on the same
             // half opacity, so `<=` changes nothing.
             var falling = t < 0.5f;
             var progress = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.6f, 1f, falling ? t * 2f : (t * 2f) - 1f);
             return falling
-                ? Mathf.LerpUnclamped(PulseMaxOpacity, PulseMinOpacity, progress)
-                : Mathf.LerpUnclamped(PulseMinOpacity, PulseMaxOpacity, progress);
+                ? Mathf.LerpUnclamped(ownOpacity, PulseMinOpacity, progress)
+                : Mathf.LerpUnclamped(PulseMinOpacity, ownOpacity, progress);
+        }
+
+        // Tailwind's ping: scale(2) and opacity 0 are reached at 75% and held to 100%, the first three quarters eased
+        // with cubic-bezier(0, 0, 0.2, 1). The keyframes name neither at 0%, so that frame is the element's own.
+        // Returns the share of the way from the element's own values.
+        public static float PingProgress(float t)
+            => t >= PingEndPhase ? 1f : CubicBezierEvaluator.Evaluate(0f, 0f, 0.2f, 1f, t / PingEndPhase);
+
+        // Tailwind's bounce: translateY(-25%) at 0% and 100%, none at 50%, the first half eased with
+        // cubic-bezier(0.8, 0, 1, 1) and the second with cubic-bezier(0, 0, 0.2, 1). Returns the share of that
+        // quarter-height lift the element stands at.
+        public static float BounceLift(float t)
+            => t < 0.5f
+                ? 1f - CubicBezierEvaluator.Evaluate(0.8f, 0f, 1f, 1f, t * 2f)
+                : CubicBezierEvaluator.Evaluate(0f, 0f, 0.2f, 1f, (t * 2f) - 1f);
+
+        // Where a bounce at the given lift moves an element of the given height, in the parent's pixels. The keyframes'
+        // transform applies innermost, beneath the element's own scale and rotate, so the lift is scaled and turned by
+        // them.
+        public static Vector2 BounceOffsetPx(float lift, float height, float ownRotateDeg, float ownScaleY)
+        {
+            var lifted = -BounceLiftFraction * height * lift * ownScaleY;
+            var radians = ownRotateDeg * Mathf.Deg2Rad;
+            return new Vector2(-lifted * Mathf.Sin(radians), lifted * Mathf.Cos(radians));
         }
 
         // Applies one frame at loop position t. Pan modes read the element's resolved box (so they need a
         // laid-out element); Hue is geometry-independent. Public so tests drive specific phases without the
         // runtime scheduler (which the EditMode PlayerLoop does not tick).
         public static void ApplyFrame(VisualElement element, StyleAnimateBinding binding, float t)
+            => WriteFrame(element, binding, t, GuardedSlots(binding.Spec.Mode), driverWrote: false);
+
+        // free names the slots no Motion driver is holding against the loop (HoldAgainstLoop).
+        private static void WriteFrame(VisualElement element, StyleAnimateBinding binding, float t,
+            MotionTransitionSlots free, bool driverWrote)
         {
             switch (binding.Spec.Mode)
             {
@@ -319,20 +420,125 @@ namespace Velvet
                     break;
                 }
                 case AnimateMode.Pulse:
-                {
                     // Geometry-free: opacity is a value-compared float, so writing it each frame dirties the
                     // element correctly (no reference-list pitfall like the filter slot above).
-                    MotionOpacity.Write(element, PulseOpacity(t));
+                    WriteOpacity(element, binding, PulseOpacityOver(OwnOpacity(element, binding, driverWrote), t));
                     break;
-                }
                 case AnimateMode.Spin:
-                {
                     // Geometry-free, and a value-compared struct like opacity rather than a list like filter.
-                    element.style.rotate = new Rotate(Angle.Degrees(SpinAngleDeg(t)));
+                    WriteRotation(element, binding, driverWrote, t);
                     break;
-                }
+                case AnimateMode.Ping:
+                    ApplyPing(element, binding, t, free, driverWrote);
+                    break;
+                case AnimateMode.Bounce:
+                    ApplyBounce(element, binding, t, driverWrote);
+                    break;
             }
         }
+
+        // The value each Own* helper returns is the element's own, ahead of what its classes cascade to, ahead of the
+        // slot's initial value.
+        private static float OwnOpacity(VisualElement element, StyleAnimateBinding binding, bool driverWrote)
+        {
+            // A crossfade's frame sits in the slot while one draws the element, and is not the element's own.
+            var own = binding.Opacity.Own(element.style.opacity, adopt: !driverWrote && !MotionOpacity.Draws(element));
+            if (own.keyword == StyleKeyword.Undefined)
+            {
+                return own.value;
+            }
+            return StyleCascade.TryReadOpacity(element, out var cascaded) ? cascaded : 1f;
+        }
+
+        private static float OwnRotationDeg(VisualElement element, StyleAnimateBinding binding, bool driverWrote)
+        {
+            var own = binding.Rotation.Own(element.style.rotate, adopt: !driverWrote);
+            return ReadRotationDeg(element, own);
+        }
+
+        private static float ReadRotationDeg(VisualElement element, StyleRotate own)
+        {
+            if (own.keyword == StyleKeyword.Undefined)
+            {
+                return own.value.angle.ToDegrees();
+            }
+            return StyleCascade.TryReadRotate(element, out var cascaded) ? cascaded.angle.ToDegrees() : 0f;
+        }
+
+        private static Vector3 ReadScale(VisualElement element, StyleScale own)
+        {
+            if (own.keyword == StyleKeyword.Undefined)
+            {
+                return own.value.value;
+            }
+            return StyleCascade.TryReadScale(element, out var cascaded) ? cascaded.value : Vector3.one;
+        }
+
+        private static Translate ReadTranslate(VisualElement element, StyleTranslate own)
+        {
+            if (own.keyword == StyleKeyword.Undefined)
+            {
+                return own.value;
+            }
+            return StyleCascade.TryReadTranslate(element, out var cascaded) ? cascaded : default;
+        }
+
+        // MotionOpacity.Write rather than the style: a layoutId crossfade holds the slot through it.
+        private static void WriteOpacity(VisualElement element, StyleAnimateBinding binding, float opacity)
+        {
+            MotionOpacity.Write(element, opacity);
+            binding.Opacity.Wrote(element.style.opacity);
+        }
+
+        // The turn adds to the element's own rotation, as the keyframes' transform composes with `rotate`.
+        private static void WriteRotation(VisualElement element, StyleAnimateBinding binding, bool driverWrote, float t)
+        {
+            var turn = OwnRotationDeg(element, binding, driverWrote) + SpinAngleDeg(t);
+            element.style.rotate = new Rotate(Angle.Degrees(turn));
+            binding.Rotation.Wrote(element.style.rotate);
+        }
+
+        private static void ApplyPing(VisualElement element, StyleAnimateBinding binding, float t,
+            MotionTransitionSlots free, bool driverWrote)
+        {
+            var progress = PingProgress(t);
+            if ((free & MotionTransitionSlots.Opacity) != MotionTransitionSlots.None)
+            {
+                WriteOpacity(element, binding, Mathf.LerpUnclamped(OwnOpacity(element, binding, driverWrote), 0f, progress));
+            }
+            if ((free & MotionTransitionSlots.Scale) != MotionTransitionSlots.None)
+            {
+                // The keyframes' scale(2) multiplies the element's own `scale` rather than replacing it.
+                var own = ReadScale(element, binding.Scale.Own(element.style.scale, adopt: !driverWrote));
+                var factor = Mathf.LerpUnclamped(1f, PingEndScale, progress);
+                element.style.scale = new Scale(new Vector3(own.x * factor, own.y * factor, own.z));
+                binding.Scale.Wrote(element.style.scale);
+            }
+        }
+
+        private static void ApplyBounce(VisualElement element, StyleAnimateBinding binding, float t, bool driverWrote)
+        {
+            var width = element.resolvedStyle.width;
+            var height = element.resolvedStyle.height;
+            // Pre-layout the resolved box is NaN / 0, and a lift of a quarter of it has nothing to measure; the pan
+            // modes skip the same frame.
+            if (float.IsNaN(width) || float.IsNaN(height) || height <= 0f)
+            {
+                return;
+            }
+            var own = ReadTranslate(element, binding.Translation.Own(element.style.translate, adopt: !driverWrote));
+            var turn = ReadRotationDeg(element, element.style.rotate);
+            var scale = ReadScale(element, element.style.scale);
+            var lift = BounceOffsetPx(BounceLift(t), height, turn, scale.y);
+            var x = LengthPx(own.x, width) + lift.x;
+            var y = LengthPx(own.y, height) + lift.y;
+            element.style.translate = new Translate(new Length(x), new Length(y), own.z);
+            binding.Translation.Wrote(element.style.translate);
+        }
+
+        // A translate component in pixels; a percentage is of the element's own extent along that axis.
+        private static float LengthPx(Length length, float extent)
+            => length.unit == LengthUnit.Percent ? length.value / 100f * extent : length.value;
 
         private static void ApplyPanSizing(VisualElement element, AnimateMode mode, bool panVertical)
         {
@@ -380,7 +586,7 @@ namespace Velvet
             var host = element.panel.visualTree;
             binding.Scheduled = host.schedule.Execute(() =>
             {
-                ApplyCurrentFrame(element, binding);
+                ApplyCurrentFrame(element, binding, driverWrote: false);
             }).Every(TickMs);
         }
     }
