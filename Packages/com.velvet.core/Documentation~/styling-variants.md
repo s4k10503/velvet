@@ -409,15 +409,6 @@ the first paragraph above versus everything else, not as whole categories: `gap-
 `skew-x-6` is a transform, yet both are in that list and neither works here. A `V.Motion`'s resting
 `variants` classes go through the reconciler and are unaffected.
 
-**`[&>*]:` on a UI Toolkit composite lands on the control's own parts.** The walk is over whatever the
-container redirects its children into. A `V.ScrollView` redirects, so the payload reaches the children
-reconciled into it. Controls that redirect nothing answer with themselves, so the walk finds the parts the
-control built for itself. On `V.TextField`, for example, the input box (`#unity-text-input`) is a direct
-child and is reached. How far the payload gets differs per control because `& > *` stops after one level.
-
-A declared `label:` seats the label element ahead of the input, and it takes the payload as well, so
-`[&>*]:text-red-500` on a labelled field colours both.
-
 **`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
 spelled on the *container* rather than on the element it lands on, and a child is fully built before
 the container applies it. The layout utilities still re-derive at mount, so `[&>*]:gap-2` spaces
@@ -443,6 +434,31 @@ an element that declares none, mount is what neither reaches — one that must c
 transform on its first frame declares it itself, or declares a variant of its own, the same escape
 the paints take. The paints reach a `V.Text` child at no render at all: they run behind a verdict
 only an element's own class pass records.
+
+### Styling a control's own parts
+
+A `className` on a UI Toolkit control lands on the control's outer element, not on the parts the
+control builds inside it. `V.TextField`'s input box — the `#unity-text-input` element the text is
+typed into — is one of those parts, so `V.TextField(className: "bg-slate-800")` colours the outer field
+and leaves the box as it was. This differs from `<input className="…">`, where the class lands on the
+box itself.
+
+Style the box with `[&>*]:` instead. On a composite it lands on the control's own parts: the walk is
+over whatever the container redirects its children into. A `V.ScrollView` redirects, so the payload
+reaches the children reconciled into it. Controls that redirect nothing answer with themselves, so the
+walk finds the parts the control built for itself, and `V.TextField`'s input box is a direct child:
+
+```csharp
+V.TextField(className: "w-64 [&>*]:bg-slate-800");
+```
+
+How far the payload gets differs per control because `& > *` stops after one level. A declared `label:`
+seats the label element ahead of the input, and it takes the payload as well, so `[&>*]:text-red-500`
+on a labelled field colours both.
+
+The payload paints the box only where it outranks the theme's own rule for the same property.
+`ChildVariantCompositeReachPanelTests` pins that a utility class and an arbitrary value both do on a
+resting field under the editor's theme; a focused or hovered field is outside what it measures.
 
 ## Container queries — `@container`
 

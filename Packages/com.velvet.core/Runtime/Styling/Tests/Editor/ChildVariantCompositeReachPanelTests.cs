@@ -15,8 +15,8 @@ namespace Velvet.Tests
     /// <c>#unity-text-input</c>: the control redirects nothing, so the walk's children are its own parts.
     /// Reaching a part and painting it are separate questions once a theme has an opinion about the same
     /// property. Each case reads the theme's own answer off a bare field in the same tree rather than standing
-    /// a literal in for it, and covers one of the two forms a payload resolves into: a class and an inline
-    /// write.
+    /// a literal in for it. The payload cases cover the two forms a payload resolves into, a class and an inline
+    /// write; the last case is the control, the same class written as the field's own className.
     /// </remarks>
     internal sealed class ChildVariantCompositeReachPanelTests : PanelTestBase
     {
@@ -71,6 +71,35 @@ namespace Velvet.Tests
                 (payloaded.resolvedStyle.backgroundColor == Color.red,
                     payloaded.resolvedStyle.backgroundColor == bare.resolvedStyle.backgroundColor),
                 Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lands a TextField's className on the outer element, not the box.
+        // No production code changes here; the case pins the split the styling guide tells callers to cross
+        // with [&>*]:, and reddens the day className starts reaching the input box.
+        [Test]
+        public void Given_APlainClassNameOnTheField_When_Mounted_Then_OnlyTheOuterElementChanges()
+        {
+            // Arrange / Act — the same utility the payload cases use, written as the field's own className.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(children: new VNode?[]
+                {
+                    V.TextField(name: "styled", className: "bg-red-500"),
+                    V.TextField(name: "bare"),
+                }));
+            var root = _window.rootVisualElement;
+            ForcePanelUpdate(root.panel);
+            var styled = root.Q<VisualElement>("styled");
+            var bare = root.Q<VisualElement>("bare");
+            var styledInput = styled.Q<VisualElement>(TextField.textInputUssName);
+            var bareInput = bare.Q<VisualElement>(TextField.textInputUssName);
+
+            // Assert — the outer element moves off the bare field's colour while its input box keeps the bare
+            // input's. The outer half is what shows the class applied at all: without it the input half holds
+            // on a field nothing styled.
+            Assert.That(
+                (styled.resolvedStyle.backgroundColor == bare.resolvedStyle.backgroundColor,
+                    styledInput.resolvedStyle.backgroundColor == bareInput.resolvedStyle.backgroundColor),
+                Is.EqualTo((false, true)));
         }
     }
 }

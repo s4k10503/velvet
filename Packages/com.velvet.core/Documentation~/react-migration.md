@@ -242,6 +242,10 @@ a render taking the flag off — that third one whether the render declares `isD
 the parameter. The render-driven release reports through `onValueChanged:`, so a component that turns
 the flag off mid-edit receives the pending text rather than stranding it on screen.
 
+A `V.TextField`'s `className` styles the outer field, not the box the text is typed into, unlike an
+`<input>`'s — [styling a control's own parts](styling-variants.md#styling-a-controls-own-parts) gives
+the `[&>*]:` form that reaches the box.
+
 ### 2-2. Conditionals and Lists
 
 | React | Velvet | Notes |
