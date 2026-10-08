@@ -45,7 +45,7 @@ System is the right tool for UI-scale effects:
   A sub-emitter that is not a child of the effect is cloned under the host too, so the clone's
   particles are the ones drawn. The clone sits at the host origin with its own local scale; its
   authored offset from the parent system is not kept. Collision and Trigger sub-emitters stay
-  non-functional, since the parked host has no colliders.
+  non-functional.
 - ❌ Renderer-module features: trails, mesh particles, texture-sheet animation, stretched
   billboards. One texture per system.
 
