@@ -1613,6 +1613,9 @@ namespace Velvet
             // from a scroll callback — hands its entries to the enclosing pass's own boundary, which is
             // the point where every removal of that pass is behind them.
             if (SharedReconcileDepth > 0) return;
+            // A virtual-list range render in progress hands every entry to its own end, where its rows are in
+            // the list (FiberVirtualListController.RenderRange); a row's mount would otherwise attach them first.
+            if (HeldRowLayoutEffects.Count > 0) return;
             // A setup that re-enters a top-level pass leaves its own entries to the loop below, which
             // re-reads the count and takes them as a batch of their own; draining them from inside would
             // run the ones already run a second time.

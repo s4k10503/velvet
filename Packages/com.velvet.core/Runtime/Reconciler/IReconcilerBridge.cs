@@ -9,18 +9,14 @@ namespace Velvet
         VisualElement CreateElementForController(VNode node);
         void CleanupElementForController(VisualElement element);
 
-        // Runs the ref setups the item loop above queued. An item's ref attaches at the end of the
-        // render range rather than where the item was created, for the reason
-        // Reconciler.FinishTopLevelPass gives — and this is the seam that reaches it, because the
-        // item loop also runs outside any reconcile pass (BeginDetachedItemScope names when). Which of
-        // the queued entries a call runs, and when it runs none of them, is
-        // ReconcilerContext.DrainRefAttaches's own.
-        void DrainRefAttachesForController();
-
-        // A row the item loop creates or patches commits its layout work once the controller has placed it in the
-        // list. Hold opens a list of its own for one range render, which Commit closes and commits; a row the range
-        // discarded, because the range threw or the list was disposed while it rendered, is unmounted by then and
-        // runs nothing. Inside a drain the rows' work is the drain's, which commits it at the drain's end.
+        // A row the item loop creates or patches attaches its refs and commits its layout work once the controller
+        // has placed it in the list, rather than where the row was created, for the reason
+        // Reconciler.FinishTopLevelPass gives — and this is the seam that reaches it, because the item loop also
+        // runs outside any reconcile pass (BeginDetachedItemScope names when). Hold opens a list of its own for one
+        // range render, which Commit closes, running the queued ref setups and then the held commits; a row the
+        // range discarded, because the range threw or the list was disposed while it rendered, is unmounted by then
+        // and runs nothing. Which queued ref entries run, and when none do, is ReconcilerContext.DrainRefAttaches's
+        // own, and inside a drain the rows' layout work is the drain's, which commits it at the drain's end.
         void HoldRowLayoutEffects();
         void CommitHeldRowLayoutEffects();
 

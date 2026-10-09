@@ -76,10 +76,20 @@ namespace Velvet
             CommitDeferred(ctx, ctx.PendingDrainLayoutEffects);
         }
 
-        // Runs the effect commits of the rows the innermost range render held, once it has placed them, as one
-        // commit in the same way. A row a failed or disposed range discarded is unmounted and runs nothing.
-        internal static void CommitHeldRowLayoutEffects(ReconcilerContext ctx)
-            => CommitDeferred(ctx, ctx.HeldRowLayoutEffects.Pop());
+        // Runs the effect commits a range render held, once it has placed its rows. Each is scoped to its row, as
+        // the commit of the row's own mount was: the pass that renders the list can hold fibers of its own whose
+        // refs it has not attached yet. A row a failed or disposed range discarded is unmounted and runs nothing.
+        internal static void CommitHeldRowLayoutEffects(
+            ReconcilerContext ctx, List<(ComponentFiber fiber, bool mountDoubleInvoke)> held)
+        {
+            for (var i = 0; i < held.Count; i++)
+            {
+                var (fiber, isMount) = held[i];
+                if (!fiber.IsMounted) continue;
+                CommitLayoutBatch(ctx, fiber, new List<(ComponentFiber Fiber, bool IsMount)>(1) { (fiber, isMount) });
+            }
+            CommitStrandedLayoutWork(ctx);
+        }
 
         private static void CommitDeferred(ReconcilerContext ctx, List<(ComponentFiber fiber, bool mountDoubleInvoke)> pending)
         {
