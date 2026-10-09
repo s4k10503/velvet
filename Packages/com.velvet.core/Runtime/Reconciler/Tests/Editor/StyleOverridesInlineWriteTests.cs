@@ -137,7 +137,6 @@ namespace Velvet.Tests
         private static readonly string[] s_keywordBlindSlots =
             { nameof(StyleOverrides.BackgroundImage), nameof(StyleOverrides.BackgroundRepeat) };
 
-        // GREEN_ON_BASE(characterization): pins the engine's own getters, which this change does not touch.
         [Test]
         public void Given_AKeywordWrittenToTheImageAndRepeatSlots_When_ReadBack_Then_NeitherReportsIt()
         {
