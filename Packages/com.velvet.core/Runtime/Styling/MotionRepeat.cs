@@ -34,37 +34,33 @@ namespace Velvet
         /// Framer's <c>getFinalKeyframe</c>: an odd number of <see cref="TransitionRepeatType.Reverse"/> or
         /// <see cref="TransitionRepeatType.Mirror"/> repeats ends on the from-values.
         /// </summary>
-        public bool EndsAtFrom => Type != TransitionRepeatType.Loop && !IsEndless && Count % 2f == 1f;
-
-        /// <summary>Framer's <c>totalDuration</c>: every pass, and a delay between each two of them.</summary>
-        public double TotalSec(float passSec)
-            => Count == 0f ? passSec : ((double)passSec + DelaySec) * ((double)Count + 1.0) - DelaySec;
+        public bool EndsAtFrom => Type != TransitionRepeatType.Loop && Count % 2f == 1f;
 
         /// <summary>
-        /// The fraction of its curve's time a pass shows <paramref name="elapsedSec"/> after the play started, and
-        /// whether that pass runs the curve from the to-values back to the from-values (a mirrored pass).
+        /// Framer's <c>totalDuration</c>: every pass, and a delay between each two of them. Infinite for an endless
+        /// repeat.
+        /// </summary>
+        public double TotalSec(float passSec) => ((double)passSec + DelaySec) * ((double)Count + 1.0) - DelaySec;
+
+        /// <summary>
+        /// The fraction of its curve's time a pass shows <paramref name="elapsedSec"/> after the play started, for a
+        /// time short of <see cref="TotalSec"/>, and whether that pass runs the curve from the to-values back to the
+        /// from-values (a mirrored pass). A delay between passes reads above 1, or below 0 after a reversed pass,
+        /// where the curve holds its end.
         /// </summary>
         public double PassProgress(double elapsedSec, float passSec, out bool mirrored)
         {
             mirrored = false;
-            if (Count == 0f)
-            {
-                return Clamp01(elapsedSec / passSec);
-            }
             var resolved = (double)passSec + DelaySec;
-            var progress = Math.Min(elapsedSec, TotalSec(passSec)) / resolved;
+            var progress = elapsedSec / resolved;
             var iteration = Math.Floor(progress);
             var iterationProgress = progress % 1.0;
             // A time on a pass boundary belongs to the pass it ends, not to the one it starts.
             if (iterationProgress == 0.0 && progress >= 1.0)
             {
                 iterationProgress = 1.0;
-            }
-            if (iterationProgress == 1.0)
-            {
                 iteration--;
             }
-            iteration = Math.Min(iteration, (double)Count + 1.0);
             if (iteration % 2.0 == 1.0)
             {
                 if (Type == TransitionRepeatType.Reverse)
@@ -76,12 +72,14 @@ namespace Velvet
                     mirrored = true;
                 }
             }
-            return Clamp01(Clamp01(iterationProgress) * resolved / passSec);
+            return iterationProgress * resolved / passSec;
         }
 
         /// <summary>
-        /// Takes two whole passes and their delays off an endless repeat's elapsed time once it is past them, which
-        /// shows the same frame, so a clock that keeps counting a looping play never runs out of float precision.
+        /// Takes whole cycles of two passes and their delays off an endless repeat's elapsed time, which shows the
+        /// same frame, so a float clock under a play that never ends stays within one cycle however long it runs. A
+        /// time on a whole number of cycles keeps one cycle, the end of a second pass, so the time has to be past the
+        /// start.
         /// </summary>
         public float Fold(float elapsedSec, float passSec)
         {
@@ -90,10 +88,8 @@ namespace Velvet
                 return elapsedSec;
             }
             var cycle = 2.0 * ((double)passSec + DelaySec);
-            // Strictly past: at exactly two passes the time ends the second pass, where a fold would start the first.
-            return elapsedSec > cycle ? (float)(elapsedSec % cycle) : elapsedSec;
+            var folded = elapsedSec % cycle;
+            return (float)(folded == 0.0 ? cycle : folded);
         }
-
-        private static double Clamp01(double value) => value < 0.0 ? 0.0 : value > 1.0 ? 1.0 : value;
     }
 }

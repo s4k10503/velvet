@@ -86,6 +86,45 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALoopRepeat_When_ExactlyOnePassHasElapsed_Then_ItShowsTheEndOfThatPass()
+        {
+            // Arrange
+            var repeat = new MotionRepeat(1f, TransitionRepeatType.Loop, 0f);
+
+            // Act
+            var (_, opacity) = Play(repeat, PassSec);
+
+            // Assert — the boundary belongs to the pass it ends, not to the start of the next one (opacity 0).
+            Assert.That(opacity, Is.EqualTo(1f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AReverseRepeat_When_ExactlyOnePassHasElapsed_Then_ItShowsTheTurnaroundAtTheToValue()
+        {
+            // Arrange
+            var repeat = new MotionRepeat(1f, TransitionRepeatType.Reverse, 0f);
+
+            // Act
+            var (_, opacity) = Play(repeat, PassSec);
+
+            // Assert — the end of the forward pass, not the end of the reversed one (opacity 0).
+            Assert.That(opacity, Is.EqualTo(1f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AnEndlessLoop_When_FourPassesElapseInOneStep_Then_ItShowsTheEndOfTheFourthPass()
+        {
+            // Arrange
+            var repeat = new MotionRepeat(float.PositiveInfinity, TransitionRepeatType.Loop, 0f);
+
+            // Act — four passes is two whole cycles of the folded clock.
+            var (_, opacity) = Play(repeat, 4f * PassSec);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(1f).Within(1e-5f));
+        }
+
+        [Test]
         public void Given_ALoopRepeatWithADelay_When_TheDelayIsRunning_Then_ItHoldsTheValueThePassEndedOn()
         {
             // Arrange
@@ -112,10 +151,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoRepeats_When_TheThirdPassIsAboutToEndAndThenEnds_Then_OnlyTheEndReportsDone()
+        public void Given_TwoRepeatsWithADelay_When_TheThirdPassIsAboutToEndAndThenEnds_Then_OnlyTheEndReportsDone()
         {
-            // Arrange
-            var repeat = new MotionRepeat(2f, TransitionRepeatType.Loop, 0f);
+            // Arrange — three passes and the two waits between them: 3.5 s, with no wait after the last.
+            var repeat = new MotionRepeat(2f, TransitionRepeatType.Loop, 0.25f);
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, PassSec, repeat);
@@ -125,7 +164,7 @@ namespace Velvet.Tests
             var atEnd = false;
             if (state != null)
             {
-                beforeEnd = BezierTweenDriver.Step(element, state, 2.75f);
+                beforeEnd = BezierTweenDriver.Step(element, state, 3.25f);
                 atEnd = BezierTweenDriver.Step(element, state, 0.25f);
             }
 
@@ -160,6 +199,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOddLoopRepeat_When_ItsLastPassEnds_Then_ItEndsOnTheToValue()
+        {
+            // Arrange
+            var repeat = new MotionRepeat(1f, TransitionRepeatType.Loop, 0f);
+
+            // Act
+            var result = Play(repeat, 2.5f);
+
+            // Assert
+            Assert.That(result, Is.EqualTo((true, 1f)));
+        }
+
+        [Test]
         public void Given_AnEvenReverseRepeat_When_ItsLastPassEnds_Then_ItEndsOnTheToValue()
         {
             // Arrange
@@ -188,8 +240,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnEndlessRepeat_When_TenSecondsPass_Then_ItsClockStaysWithinTwoPasses()
         {
-            // Arrange
-            var repeat = new MotionRepeat(float.PositiveInfinity, TransitionRepeatType.Loop, 0f);
+            // Arrange — a cycle of two passes and their waits is 3 s.
+            var repeat = new MotionRepeat(float.PositiveInfinity, TransitionRepeatType.Loop, 0.5f);
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, PassSec, repeat);
@@ -202,8 +254,29 @@ namespace Velvet.Tests
                 elapsed = state.ElapsedSec;
             }
 
-            // Assert — 10.25 s folds to 0.25 s, the same frame, an even number of passes earlier.
-            Assert.That(elapsed, Is.EqualTo(0.25f).Within(1e-5f));
+            // Assert — 10.25 s folds to 1.25 s, the same frame, three cycles earlier.
+            Assert.That(elapsed, Is.EqualTo(1.25f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AZeroDurationStateWithARepeatDelay_When_ItIsFirstWritten_Then_ItShowsTheEnd()
+        {
+            // Arrange — the scheduler builds no such state; a direct driver caller can.
+            var repeat = new MotionRepeat(1f, TransitionRepeatType.Loop, 0.5f);
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, durationSec: 0f, repeat);
+
+            // Act — NaN for a plan that resolved no channel.
+            var opacity = float.NaN;
+            if (state != null)
+            {
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+                opacity = element.style.opacity.value;
+            }
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(1f));
         }
 
         [Test]
@@ -349,6 +422,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(played, Is.EqualTo(0.5f));
+        }
+
+        [Test]
+        public void Given_AZeroDurationRepeatingBezierConfig_When_ItsPlayedDurationIsRead_Then_ItIsZero()
+        {
+            // Arrange — a zero-duration bezier lands at once, so its repeat delay never runs.
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 0f, Repeat = 2f, RepeatDelaySec = 0.25f,
+            };
+
+            // Act
+            var played = config.PlayedDurationSec;
+
+            // Assert
+            Assert.That(played, Is.EqualTo(0f));
         }
 
         [Test]

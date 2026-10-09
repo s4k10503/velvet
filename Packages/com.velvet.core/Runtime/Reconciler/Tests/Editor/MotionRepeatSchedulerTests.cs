@@ -132,6 +132,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ATweenWithNoRepeat_When_AnEnterPlays_Then_NoRepeatWarningIsLogged()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var element = OnPanel();
+            var tween = new StyleTransitionConfig { DurationSec = 0.2f };
+
+            // Act
+            var warnings = RepeatWarnings(() =>
+                _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, tween));
+
+            // Assert
+            Assert.That(warnings, Is.EqualTo(0));
+        }
+
+        [Test]
         public void Given_ARepeatingSpring_When_AnExitPlays_Then_AWarningSaysItPlaysOnce()
         {
             // Arrange

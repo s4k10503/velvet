@@ -409,18 +409,18 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
 - `RepeatDelaySec` holds the value a pass ended on for that many seconds before the next pass. No
   wait follows the last pass. A negative or non-finite value throws `ArgumentOutOfRangeException`.
 - A play of an odd `Repeat` under `Reverse` or `Mirror` ends on its from-pose, as Framer's does, and
-  holds it there although the element's classes are the to-pose's, until the next play, an exit, a
-  teardown or a zero-duration pose that names the property takes the value over. Every other finished
-  play hands its values back to the to-pose's classes, as a play that does not repeat does.
+  holds it there although the element's classes are the to-pose's, until a later play, an exit or a
+  teardown cancels it; a pose that lands at once takes over only the properties it names. Every other
+  finished play hands its values back to the to-pose's classes, as a play that does not repeat does.
 - The repeat covers enters, label changes and exits alike. An exit repeating without end never
-  completes, so its `AnimatePresence` keeps the element, as Framer's does.
+  completes, so its `AnimatePresence` keeps the element.
 - A cancelled exit's reversal plays once, whatever the exit repeated.
 - `When = BeforeChildren` and a `Hooks.UseAnimationSequence` `To` step deriving its hold wait for every
   pass and every wait between them. Under an endless repeat they wait one pass, where Framer's
   children never start.
 
-`Tween` and `Spring` do not play a repeat: a play on one with `Repeat` above zero plays once and logs a
-warning, once per mounted tree. A `layoutId` move plays once whatever its transition repeats.
+`Tween` and `Spring` do not play a repeat: a play on one with `Repeat` above zero plays once, and the
+first such play in a mounted tree logs a warning. A `layoutId` move plays once whatever its transition repeats.
 
 ## Shared-element layout animation (`layoutId`)
 

@@ -29,14 +29,14 @@ namespace Velvet.Tests
         [Test]
         public void Given_AToStepOnARepeatingBezier_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnOnlyAtTheEnd()
         {
-            // Arrange — three half-second passes with a quarter-second wait between each: 2 s in all.
+            // Arrange — a 0.1 s delay, then three half-second passes with a quarter-second wait between each: 2.1 s.
             var transition = new StyleTransitionConfig
             {
-                Type = TransitionType.Bezier, DurationSec = 0.5f, Repeat = 2f, RepeatDelaySec = 0.25f,
+                Type = TransitionType.Bezier, DurationSec = 0.5f, DelaySec = 0.1f, Repeat = 2f, RepeatDelaySec = 0.25f,
             };
 
             // Act
-            var indices = StepIndexAfter(transition, 1.9f, 0.2f);
+            var indices = StepIndexAfter(transition, 2f, 0.2f);
 
             // Assert
             Assert.That(indices, Is.EqualTo(new[] { 0, 1 }));

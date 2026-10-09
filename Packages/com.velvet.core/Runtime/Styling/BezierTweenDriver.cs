@@ -215,7 +215,7 @@ namespace Velvet
         public static bool EndsAtFrom(BezierTweenState state) => state.Repeat.EndsAtFrom;
 
         private static bool IsDone(BezierTweenState state)
-            => !state.Repeat.IsEndless && state.ElapsedSec >= state.Repeat.TotalSec(state.DurationSec);
+            => state.ElapsedSec >= state.Repeat.TotalSec(state.DurationSec);
 
         /// <summary>
         /// Releases every inline slot this state ever wrote — and the transition suspension

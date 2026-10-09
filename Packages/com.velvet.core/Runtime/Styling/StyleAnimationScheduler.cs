@@ -945,9 +945,9 @@ namespace Velvet
             state.Tick = null;
             if (BezierTweenDriver.EndsAtFrom(state))
             {
-                // The resting classes are the to-pose, so clearing the inline values would jump the element there.
-                // The play stays registered holding its from-values, its ring co-fade still sampling them, until a
-                // cancel releases them as it releases a running play's.
+                // The classes the play landed are its to-pose, so clearing the inline values would jump the element
+                // there. The play stays registered holding its from-values, its ring co-fade still sampling them,
+                // until a cancel releases them as it releases a running play's.
                 state.OnSettled?.Invoke();
                 return;
             }
