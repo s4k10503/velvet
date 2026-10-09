@@ -22,9 +22,11 @@ namespace Velvet
     // pass, where the engine writes a colour from --unity-cursor-color / --unity-selection-color, so a
     // utility written here wins over a theme's.
     //
-    // A colour a utility wrote and no utility asks for any more goes back to the theme's, which the engine
-    // has just written where the box or control declares one, or else to the colour a freshly built field
-    // carries. A colour written from a refCallback is left alone while no utility is involved.
+    // A colour a utility wrote and no utility asks for any more goes back to the theme's, read off the box's
+    // resolved custom style or else the control's, or else to the colour a freshly built field carries. It is
+    // written here rather than left to the engine, which was measured leaving a utility's colour in place
+    // when the theme sat on the control and the utility left the box; TextInputColorUtilityTests holds a
+    // theme on each. A colour written from a refCallback is left alone while no utility is involved.
     //
     // UI Toolkit draws the selection highlight over the glyphs (TextElement.OnGenerateTextOver), so while
     // either selection utility applies, SelectionTextOverlay draws the selected text again above it.
@@ -125,10 +127,7 @@ namespace Velvet
             }
 
             state.CaretWritten = false;
-            if (!Declares(box, s_cursorColor) && !Declares(control, s_cursorColor))
-            {
-                selection.cursorColor = FiberTextFieldPoolHelper.DefaultCursorColor;
-            }
+            selection.cursorColor = ThemeOr(box, control, s_cursorColor, FiberTextFieldPoolHelper.DefaultCursorColor);
         }
 
         private static void ApplySelection(State state, VisualElement box, VisualElement control, TextElement input,
@@ -144,10 +143,7 @@ namespace Velvet
             else if (state.SelectionWritten)
             {
                 state.SelectionWritten = false;
-                if (!Declares(box, s_selectionColor) && !Declares(control, s_selectionColor))
-                {
-                    selection.selectionColor = FiberTextFieldPoolHelper.DefaultSelectionColor;
-                }
+                selection.selectionColor = ThemeOr(box, control, s_selectionColor, FiberTextFieldPoolHelper.DefaultSelectionColor);
             }
 
             if (hasBackground || hasText)
@@ -281,7 +277,20 @@ namespace Velvet
             return element;
         }
 
-        private static bool Declares(VisualElement element, CustomStyleProperty<Color> property)
-            => element.customStyle.TryGetValue(property, out _);
+        private static Color ThemeOr(VisualElement box, VisualElement control, CustomStyleProperty<Color> property,
+            Color fallback)
+        {
+            if (box.customStyle.TryGetValue(property, out var fromBox))
+            {
+                return fromBox;
+            }
+
+            if (control.customStyle.TryGetValue(property, out var fromControl))
+            {
+                return fromControl;
+            }
+
+            return fallback;
+        }
     }
 }
