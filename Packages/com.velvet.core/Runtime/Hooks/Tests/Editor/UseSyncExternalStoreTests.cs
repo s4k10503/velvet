@@ -347,6 +347,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADrainThatEmptiedTheImmediateTier_When_TheStoreChangesAgain_Then_TheMainThreadsPostedWorkRendersIt()
+        {
+            // Arrange — the first change is committed by a drain, which is when the owed flush is settled
+            s_counter = new ExternalSource<int>(0);
+            using var mounted = V.Mount(_root, V.Component(ReaderRender, key: "reader"));
+            s_counter.Set(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            VelvetMainThread.RunHandoffs();
+
+            // Act
+            s_counter.Set(6);
+            VelvetMainThread.RunHandoffs();
+
+            // Assert
+            Assert.AreEqual(6, s_readerValue);
+        }
+
+        [Test]
         public void Given_StoreChangedWhileASliceIsParked_When_ThePassResumes_Then_ReadersItCommittedEarlierShowTheSnapshotALaterRowRenders()
         {
             // Arrange — the resume's first slice renders row 1; row 0 was committed by the slice before it
