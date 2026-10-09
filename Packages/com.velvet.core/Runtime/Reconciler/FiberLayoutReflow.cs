@@ -136,7 +136,6 @@ namespace Velvet
                 if ((bool)_applyingStyles.GetValue(_styleUpdater)) return;
                 _styles();
                 var node = _layoutNode.GetValue(_root);
-                // MUTANT_SURVIVES(equivalent): computing the layout of a clean tree moves no box.
                 if ((bool)_dirty.GetValue(node))
                 {
                     _calculate.Invoke(node, s_unbounded);
