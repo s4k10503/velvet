@@ -207,25 +207,26 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already holds the preflight reset and the automatic minimum, so
-        // this passes there; what reddens it is either going away, which leaves the text below the card's centre.
+        // GREEN_ON_BASE(characterization): the base already holds StyleFlexMinSizeManipulator's minimum, so this
+        // passes there; what reddens it is that write going away.
         [Test]
         public void Given_ALargeLabelInAShorterFixedHeightCenteredCard_When_Resolved_Then_TheTextIsCenteredOnTheCard()
         {
-            // Arrange — the label is taller than the 20px card, so a label allowed to shrink to the card keeps
-            // its box centred while its text hangs below it.
+            // Arrange
             var label = MountLabel("flex flex-col items-center justify-center h-[20px] w-[200px]", "text-[40px]", "Title");
             var card = label.parent;
             var contentWidth = label.resolvedStyle.width - HorizontalFrame(label);
             var textHeight = MeasuredHeight(label, "Title", contentWidth);
 
-            // Act — text is laid out from the top of the label's content box.
+            // Act
             var textTop = label.worldBound.yMin + label.resolvedStyle.borderTopWidth + label.resolvedStyle.paddingTop;
             var textCenter = textTop + textHeight / 2f;
 
-            // Assert — layout snaps each edge to a whole pixel, so a centre read off snapped edges can sit half a
-            // pixel from the declared one; the margin is 1f to cover the measured height being rounded up as well.
-            Assert.That(textCenter, Is.EqualTo(card.worldBound.center.y).Within(1f));
+            // Assert — the taller-than-card term is gated in as NaN, not folded into a tuple, so the tolerance
+            // still applies; a font size that stopped resolving would otherwise leave a label that fits the card.
+            // The 1f margin is a floating-point allowance between a measured height and a laid-out edge.
+            var gated = textHeight > card.resolvedStyle.height ? textCenter : float.NaN;
+            Assert.That(gated, Is.EqualTo(card.worldBound.center.y).Within(1f));
         }
 
         [Test]
