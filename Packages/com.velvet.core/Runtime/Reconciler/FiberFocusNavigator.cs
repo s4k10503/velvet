@@ -55,8 +55,9 @@ namespace Velvet
     /// Sequential (Next/Previous) <see cref="NavigationMoveEvent"/>s are intercepted on the verified engine
     /// contract pinned by <c>FocusNavigationInterceptionTests</c>: the default focus move runs post-dispatch,
     /// after every listener, and its only suppression is <see cref="FocusController.IgnoreEvent"/> — so a
-    /// TrickleDown listener deterministically preempts it. Spatial moves (Left/Right/Up/Down) are NEVER
-    /// intercepted: 2D arrow/dpad/stick navigation is the engine's own <c>GetNextFocusable2D</c>, which this
+    /// TrickleDown listener deterministically preempts it. Spatial moves (Left/Right/Up/Down) are not
+    /// intercepted, except an arrow on an axis a <c>singleTabStop</c> group's orientation excludes, which is
+    /// ignored before the engine moves focus: 2D arrow/dpad/stick navigation is the engine's own <c>GetNextFocusable2D</c>, which this
     /// layer composes with rather than reimplements. Sequential prediction and redirection use the public
     /// <see cref="VisualElementFocusRing"/> — the exact class the runtime ring delegates Next/Previous to
     /// (<c>NavigateFocusRing.m_Ring</c>), so predictions cannot drift from what the engine would have done.
@@ -281,10 +282,10 @@ namespace Velvet
 
         private static void OnNavigationMove(NavigationMoveEvent evt, VisualElement panelRoot, ReconcilerContext ctx)
         {
-            // Spatial moves always fall through to the engine's own 2D navigation.
             var forward = evt.direction == NavigationMoveEvent.Direction.Next;
             if (!forward && evt.direction != NavigationMoveEvent.Direction.Previous)
             {
+                IgnoreExcludedAxisMove(evt, panelRoot, ctx);
                 return;
             }
             var panel = panelRoot.panel;
@@ -813,6 +814,35 @@ namespace Velvet
             ScheduleRevertedLandingSettle(target, ctx);
             return true;
         }
+
+        // A move on the axis a group's orientation excludes is ignored before the focus controller acts on it,
+        // so no member receives focus events for it. The event still propagates, which leaves a slider or a
+        // text field inside the group its own use of the arrow.
+        private static void IgnoreExcludedAxisMove(NavigationMoveEvent evt, VisualElement panelRoot, ReconcilerContext ctx)
+        {
+            var controller = panelRoot.panel?.focusController;
+            if (controller?.focusedElement is not VisualElement focused)
+            {
+                return;
+            }
+            var groupRoot = FindOutermostSingleTabStopRoot(focused, ctx, out var binding);
+            if (groupRoot != null && ExcludesAxis(binding!.Settings.Orientation, evt.direction))
+            {
+                controller.IgnoreEvent(evt);
+            }
+        }
+
+        private static bool ExcludesAxis(FocusScopeOrientation orientation, NavigationMoveEvent.Direction direction)
+            => direction switch
+            {
+                NavigationMoveEvent.Direction.Left or NavigationMoveEvent.Direction.Right
+                    => orientation == FocusScopeOrientation.Vertical,
+                NavigationMoveEvent.Direction.Up or NavigationMoveEvent.Direction.Down
+                    => orientation == FocusScopeOrientation.Horizontal,
+                // MUTANT_SURVIVES(equivalent): OnNavigationMove returns Next and Previous before this call, and a
+                // None move travels nowhere either way; FocusScopeOrientationPlaybackTests holds the engine to that.
+                _ => false,
+            };
 
         // A spatial move reaches FocusIn under a direction that is neither sequential nor the unspecified
         // one a pointer press and a programmatic Focus() carry. FocusScopeSingleTabStopPlaybackTests holds

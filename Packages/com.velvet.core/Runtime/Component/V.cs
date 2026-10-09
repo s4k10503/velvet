@@ -1953,6 +1953,8 @@ namespace Velvet
         /// the scope's first focusable descendant.</param>
         /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
         /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
+        /// <param name="orientation">With <paramref name="singleTabStop"/>, the axis arrow/dpad moves travel;
+        /// a move on the other axis is ignored. Not read without <paramref name="singleTabStop"/>.</param>
         /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode FocusScope(
@@ -1972,11 +1974,15 @@ namespace Velvet
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null,
+            FocusScopeOrientation orientation = FocusScopeOrientation.Both,
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
-            mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop);
+            mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop)
+            {
+                Orientation = orientation,
+            };
 
             return new ElementNode
             {
