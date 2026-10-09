@@ -191,6 +191,13 @@ namespace Velvet
                 return false;
             }
 
+            // FloatSetters write a StyleFloat, which carries no unit, and none of their longhands takes a
+            // percentage in CSS.
+            if (unit == LengthUnit.Percent && FloatSetters.ContainsKey(property))
+            {
+                return false;
+            }
+
             if (negate)
             {
                 value = -value;
@@ -2256,7 +2263,8 @@ namespace Velvet
         // Parses a <length-percentage> token: a '%' suffix is percent; a 'px', 'rem', an absolute unit (in, cm,
         // mm, pt, pc, Q) or no suffix is pixel (bare numbers default to px, and rem is converted at the fixed
         // 1rem = 16px scale because UI Toolkit has no rem unit and no document root to resolve a relative font
-        // size against).
+        // size against). A calc() / min() / max() / clamp() is read when it comes to one pixel length or one
+        // percentage; one mixing the two is declined.
         // InvariantCulture, finite values only. Internal so other utility parsers (clip-path) share THE
         // length grammar instead of re-implementing it.
         internal static bool TryParseValue(ReadOnlySpan<char> valueStr, out float value, out LengthUnit unit)
@@ -2314,7 +2322,9 @@ namespace Velvet
                     valueStr,
                     NumberStyles.Float,
                     CultureInfo.InvariantCulture,
-                    out value);
+                    out value)
+                    || (valueStr.EndsWith(")".AsSpan()) && StyleLengthExpression.TryParse(valueStr, out var expression)
+                        && expression!.TryFoldConstant(out value, out unit));
             }
 
             return parsed && float.IsFinite(value);
@@ -2326,6 +2336,21 @@ namespace Velvet
         {
             ("in", 96f), ("cm", 96f / 2.54f), ("mm", 96f / 25.4f), ("pt", 96f / 72f), ("pc", 16f), ("Q", 96f / 101.6f),
         };
+
+        // The pixels in one of the absolute unit named exactly, for StyleLengthExpression's dimensions.
+        internal static bool TryGetAbsoluteUnitPixels(ReadOnlySpan<char> unit, out float pixels)
+        {
+            foreach (var (suffix, perUnit) in s_absoluteUnits)
+            {
+                if (unit.SequenceEqual(suffix.AsSpan()))
+                {
+                    pixels = perUnit;
+                    return true;
+                }
+            }
+            pixels = 0f;
+            return false;
+        }
 
         private static bool TryFindAbsoluteUnit(ReadOnlySpan<char> valueStr, out int length, out float pixels)
         {
