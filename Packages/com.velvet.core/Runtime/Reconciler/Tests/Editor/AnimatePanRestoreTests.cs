@@ -78,13 +78,15 @@ namespace Velvet.Tests
         [TestCase(true)]
         public void Given_AShimmerThatHasPannedItsAxis_When_TheShimmerStops_Then_ThatAxisIsBack(bool vertical)
         {
-            // Arrange — a laid-out box and one tick, so the loop writes its own position over the element's.
+            // Arrange — a laid-out box and the loop's first frame, so it writes its own position over the
+            // element's.
             var gradient = vertical ? "w-[100px] h-[40px] bg-gradient-to-b to-blue-500" : GradientBase;
             s_classFor = step => step == 1 ? gradient + " animate-shimmer" : gradient;
             _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderCard));
             Step(1);
             ForcePanelUpdate(Card.panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(Card.panel);
+            _mounted.Root.Reconciler.Context.AnimationBindings.TryGetValue(Card, out var binding);
+            StyleAnimateDriver.ApplyFrame(Card, binding, 0f);
             float Offset() => vertical
                 ? Card.style.backgroundPositionY.value.offset.value
                 : Card.style.backgroundPositionX.value.offset.value;

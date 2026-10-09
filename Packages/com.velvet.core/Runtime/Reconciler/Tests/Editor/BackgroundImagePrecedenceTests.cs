@@ -221,12 +221,12 @@ namespace Velvet.Tests
         public void Given_AnImageOverride_When_TheGradientIsResizedUnderItAndTheOverrideRemoved_Then_TheResizedBakeShows()
         {
             // Arrange — a box twice as wide bakes the gradient for a new aspect, through the geometry the panel
-            // reports, while the override covers it.
+            // reports, while the override covers it; a diagonal, since a gradient along an axis watches no box.
             Mount(step => step switch
             {
-                0 => ("w-[100px] h-[40px] bg-gradient-to-r to-blue-500", Poster),
-                1 => ("w-[200px] h-[40px] bg-gradient-to-r to-blue-500", Poster),
-                _ => ("w-[200px] h-[40px] bg-gradient-to-r to-blue-500", null),
+                0 => ("w-[100px] h-[40px] bg-linear-45 from-[#000000] to-[#ffffff]", Poster),
+                1 => ("w-[200px] h-[40px] bg-linear-45 from-[#000000] to-[#ffffff]", Poster),
+                _ => ("w-[200px] h-[40px] bg-linear-45 from-[#000000] to-[#ffffff]", null),
             });
             ForcePanelUpdate(Card.panel);
             var first = GradientBake;

@@ -112,10 +112,15 @@ namespace Velvet.Tests
             // Act
             reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Div(styles: overrides) });
 
-            // Assert
+            // Assert — the two members whose inline getters cannot report a keyword are read through the resolved
+            // style by the case below.
             var problems = new List<string>();
             foreach (var member in Members())
             {
+                if (Array.IndexOf(s_keywordBlindSlots, member.Name) >= 0)
+                {
+                    continue;
+                }
                 var slot = typeof(IStyle).GetProperty(char.ToLowerInvariant(member.Name[0]) + member.Name.Substring(1));
                 var actual = slot?.GetValue(root.ElementAt(0).style);
                 var keyword = actual?.GetType().GetProperty("keyword").GetValue(actual);
@@ -125,6 +130,40 @@ namespace Velvet.Tests
                 }
             }
             Assert.That(string.Join("; ", problems), Is.Empty);
+        }
+
+        // Read back through IStyle, a keyword-only background image is Null and a repeat keyword is its value
+        // alone, which the branch run of the case above measured; the 6000.3 getters return no keyword for them.
+        private static readonly string[] s_keywordBlindSlots =
+            { nameof(StyleOverrides.BackgroundImage), nameof(StyleOverrides.BackgroundRepeat) };
+
+        [Test]
+        public void Given_InitialImageAndRepeatOverridesOverAGradient_When_Mounted_Then_TheImageIsHiddenAndTheRepeatWritten()
+        {
+            // Arrange — a gradient under the image, so an image override that never landed leaves its bake showing.
+            // An initial repeat and the zero value its keyword arm would otherwise write resolve alike, so of the
+            // repeat this asks only that it was written.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var overrides = new StyleOverrides
+            {
+                BackgroundImage = new StyleBackground(StyleKeyword.Initial),
+                BackgroundRepeat = new StyleBackgroundRepeat(StyleKeyword.Initial),
+            };
+
+            // Act
+            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(className: "w-[100px] h-[40px] bg-gradient-to-r from-red-500 to-blue-500", styles: overrides),
+            });
+
+            // Assert — the bake exists, so a hidden image is the override's doing.
+            var element = root.ElementAt(0);
+            var baked = reconciler.Context.GradientBackgrounds.TryGetValue(element, out var gradient)
+                && gradient.Texture != null;
+            Assert.That((baked, element.resolvedStyle.backgroundImage.texture == null,
+                    element.style.backgroundRepeat.keyword != StyleKeyword.Null),
+                Is.EqualTo((true, true, true)));
         }
 
         [Test]

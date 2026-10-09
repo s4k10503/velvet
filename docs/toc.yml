@@ -25,6 +25,8 @@
       href: guides/styling-variants.md
     - name: Gradients
       href: guides/styling-gradients.md
+    - name: Backgrounds and nine-slice
+      href: guides/styling-backgrounds.md
     - name: Filters
       href: guides/styling-filters.md
     - name: Drag and drop
