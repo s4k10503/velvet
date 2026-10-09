@@ -555,6 +555,50 @@ namespace Velvet.Tests
             Assert.That((translate.x.value, translate.y.value), Is.EqualTo((20f, 5f)));
         }
 
+        // The payload writes the same inline slot the held play does, so without the held value written back the
+        // element would show 0.5 while the next play starts from 0.
+        [Test]
+        public void Given_APlayACancelHolds_When_AHoverPayloadWritesItsOpacityInline_Then_TheHeldOpacityIsWrittenBack()
+        {
+            // Arrange
+            var ctx = new ReconcilerContext();
+            var element = OnPanel("hovered");
+            var playback = new MotionPlayback();
+            ctx.StyleAnimationScheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+
+            // Act
+            StyleVariantPayload.Apply(element, new[] { "opacity-[.5]" }, true, StyleLayerPriority.Hover, ctx);
+
+            // Assert
+            var opacity = element.style.opacity;
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        // The second play takes translate alone, so the first stays held on opacity until the second is cancelled
+        // too, which releases it rather than leaving it listed with no entry on the element.
+        [Test]
+        public void Given_AHeldPlayAndALaterPlayOnAnotherPropertyOfItsElement_When_TheLaterPlayIsCancelled_Then_TheFirstPlaybackListsNothing()
+        {
+            // Arrange
+            var element = OnPanel("twice-held");
+            var first = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: first);
+            Ticks(5);
+            first.CancelPlays();
+            var second = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[10px]" },
+                Linear(), playback: second);
+            Ticks(2);
+
+            // Act
+            second.CancelPlays();
+
+            // Assert
+            Assert.That(ListedPlays(first), Is.Zero);
+        }
+
         // A held play the next play takes every channel from is released, and leaves its playback's list with it.
         [Test]
         public void Given_AColorAndWidthPlayACancelHolds_When_APlayOnTheSameColorAndWidthStarts_Then_ThePlaybackListsNothing()

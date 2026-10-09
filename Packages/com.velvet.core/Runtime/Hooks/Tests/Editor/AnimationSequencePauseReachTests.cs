@@ -100,6 +100,26 @@ namespace Velvet.Tests
             Assert.That(moving > 0f ? Opacity().value : float.NaN, Is.EqualTo(moving));
         }
 
+        // The walk to the toggler passes a Motion that does not enclose it and hands its children no playback; the
+        // walk has to take that playback back off before it goes on.
+        [Test]
+        public void Given_AChildMountedByItsOwnComponentsStateBehindASiblingMotion_When_PausedForFiveFrames_Then_ItsOpacityHolds()
+        {
+            // Arrange
+            MountBadgeSelfMount();
+            PlayIntoTheFade();
+            SetChildMounted.Invoke(true);
+            Frames(3);
+            var moving = Opacity().value;
+
+            // Act
+            Controls.Pause();
+            Frames(5);
+
+            // Assert
+            Assert.That(moving > 0f ? Opacity().value : float.NaN, Is.EqualTo(moving));
+        }
+
         [Test]
         public void Given_APresenceChildMountedByItsOwnComponentsStatePartWayThroughItsEnter_When_PausedForFiveFrames_Then_ItsOpacityHolds()
         {

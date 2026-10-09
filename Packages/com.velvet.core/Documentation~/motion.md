@@ -596,9 +596,10 @@ restarts it on every render, so a sequence that plays once per mount passes `Arr
 `useEffect(fn, [])` would. `controls.Restart()` returns to step 0 and re-commits its effect (including
 firing a `Call` step 0's callback again) without implicitly resuming a paused sequence.
 
-`controls` are Framer Motion's sequence playback controls. They drive the sequence's own timeline -- its
-step cursor and its clock -- and the `Spring` and `Bezier` plays its steps' labels start, as Framer Motion's
-controls reach every animation of a sequence. A play is the sequence's when it starts on a Motion
+`controls` carry part of Framer Motion's sequence playback controls: `play`, `pause`, `speed`, `cancel` and
+a read-only `time`. Framer's `stop`, `complete`, `duration` and `then` (its `finished` promise) are not
+offered. They drive the sequence's own timeline -- its step cursor and its clock -- and the `Spring` and
+`Bezier` plays its steps' labels start, as Framer Motion's controls reach every animation of a sequence. A play is the sequence's when it starts on a Motion
 handed `state.CurrentTransition`, or on a descendant taking its label from that Motion (see "Label
 inheritance" above), whichever transition the swap itself plays -- a descendant's mount enter, and a
 presence child's enter, included when it mounts part-way through. `state.CurrentTransition` is a copy of
@@ -613,14 +614,15 @@ the step's transition for that reason: equal to it in every setting, but not the
   infinite value throws `ArgumentOutOfRangeException`: reverse is not offered (see below).
 - `controls.Cancel()` is Framer Motion's `cancel()`: the cursor stops where it is, and each of those plays
   returns to the values it started from and stops there, without its completion running, as a cancelled
-  Framer animation leaves its value at its start; the label stays the step's. The next `Spring` or `Bezier`
-  play on the element, an exit included, starts from those values on the channels its classes name, as
-  Framer's next animation starts from where the value sits, and the held values on the other channels stay
-  where they are, through that play's end too. Translate is one style for both axes: a play naming one axis
-  leaves the other held. A play of no duration, a `Tween` or a teardown takes the held values off instead.
-  `controls.Play()` after a cancel starts the sequence again from step 0, and
-  `controls.Restart()` reseeds it at step 0 still paused; the held values on an element whose label the
-  reseed leaves unchanged come off once it commits.
+  Framer animation leaves its value at its start; the label stays the step's. A `Spring` or `Bezier` play
+  the element starts from outside the sequence, an exit included, starts from those values on the channels
+  its classes name, as Framer's next animation starts from where the value sits, and the held values on the
+  other channels stay where they are, through that play's end too. Translate is one style for both axes: a
+  play naming one axis leaves the other held. A play of no duration, a `Tween` or a teardown takes the held
+  values off instead. Inside the sequence, `controls.Play()` after a cancel starts it again from step 0 and
+  `controls.Restart()` reseeds it at step 0 still paused: the plays the reseed starts begin from the held
+  values on the channels they name, and every value the cancel held that is still on, whatever its channel,
+  comes off once the reseed commits.
 
 A `Tween` play -- the default `Type`, and that of `StyleTransition.Fade`, which a sequence takes until a step
 names a transition -- is UI Toolkit's own transition, and none of the controls reaches it: it runs on to its end.

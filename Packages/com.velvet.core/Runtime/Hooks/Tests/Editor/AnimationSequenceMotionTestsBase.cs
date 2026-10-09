@@ -203,6 +203,25 @@ namespace Velvet.Tests
                 transition: state.CurrentTransition, children: new VNode[] { V.Component(PresenceToggler, key: "t") });
         }
 
+        // SelfMountHost with a Motion of its own label ahead of the toggler: an isolated render of the toggler walks
+        // through the badge, which does not enclose it, before reaching it. The badge controls its own label, so the
+        // playback it hands its own children is none.
+        [Component]
+        private static VNode BadgeSelfMountHost()
+        {
+            var (state, controls) = Hooks.UseAnimationSequence(Steps, deps: Array.Empty<object>());
+            State = state;
+            Controls = controls;
+            return V.Motion(key: "coordinator", name: "coordinator", initial: "hidden", animate: state.CurrentLabel,
+                transition: state.CurrentTransition, children: new VNode[]
+                {
+                    V.Motion(key: "badge", name: "badge", animate: "visible", variants: s_childFade),
+                    V.Component(ChildToggler, key: "t"),
+                });
+        }
+
+        protected void MountBadgeSelfMount() => Mount(BadgeSelfMountHost);
+
         protected void MountSelfMount() => Mount(SelfMountHost);
 
         protected void MountSelfPresence() => Mount(SelfPresenceHost);

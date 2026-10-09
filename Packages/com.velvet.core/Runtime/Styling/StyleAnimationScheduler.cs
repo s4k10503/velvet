@@ -1060,6 +1060,7 @@ namespace Velvet
 
         private void Finish(VisualElement element, PendingAnimation pending)
         {
+            pending.Playback!.Untrack(pending);
             if (pending.Spring != null)
             {
                 FinishSpring(element, pending, pending.Spring);
@@ -1069,11 +1070,6 @@ namespace Velvet
                 FinishBezier(element, pending, pending.Bezier!);
             }
         }
-
-        // Whether `play` is still the element's enter, running, or held by CancelPlay.
-        internal bool IsRunning(VisualElement element, object play)
-            => ReferenceEquals(_pendingEnters.GetValueOrDefault(element), play)
-                || ReferenceEquals(_held.GetValueOrDefault(element), play);
 
         // Framer Motion's cancel(): the play returns to its time-0 values, its starting ones, and stops there with
         // no completion. It leaves the enter map for _held, its inline values and its ring co-fade kept, so the
@@ -1092,6 +1088,9 @@ namespace Velvet
             if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
             pending.Spring?.Tick?.Pause();
             pending.Bezier?.Tick?.Pause();
+            // An element holds one play: an earlier held one, which this play took the channels it names from,
+            // gives up the rest too rather than staying on with no entry to release it by.
+            ReleaseHeld(element);
             SeekToStart(element, pending);
             _held[element] = pending;
         }
@@ -1271,6 +1270,14 @@ namespace Velvet
             }
             // The clear before this and the classes it re-applies can both reach a channel the element's held
             // play keeps, translate's other axis included.
+            ReassertHeld(element);
+        }
+
+        // Writes the element's held play's values back over whatever wrote the same inline slots since: a
+        // clear-and-reapply here, or a hover:, focus: or other variant payload (StyleVariantPayload.Apply), so
+        // the element shows what the next play will start from, as it does while a play runs.
+        internal void ReassertHeld(VisualElement element)
+        {
             if (_held.TryGetValue(element, out var held))
             {
                 SeekToStart(element, held);
@@ -1777,6 +1784,7 @@ namespace Velvet
         {
             if (map.Remove(element, out var pending))
             {
+                pending.Playback?.Untrack(pending);
                 // Written back onto the pending, since a reversal hand-off below carries it on and a later cancel
                 // of that reversal reads both again.
                 if (restingOverride != null && pending.RestingClasses != null)

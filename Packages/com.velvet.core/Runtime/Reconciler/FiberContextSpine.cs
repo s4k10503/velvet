@@ -434,9 +434,10 @@ namespace Velvet
                     return true;
                 }
             }
+            playbackProvider.PopContext(stack);
             initialProvider.PopContext(stack);
             motionProvider.PopContext(stack);
-            walk.Pushed.RemoveRange(walk.Pushed.Count - 2, 2);
+            walk.Pushed.RemoveRange(walk.Pushed.Count - 3, 3);
             return false;
         }
 
