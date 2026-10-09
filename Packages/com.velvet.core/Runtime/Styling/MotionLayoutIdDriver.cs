@@ -1074,7 +1074,7 @@ namespace Velvet
                 // not rest within 20 s.
                 var ended = active >= _springPassSec;
                 Value = ended ? 0f : 1f - MotionSpringDriver.SampleSpring(0f, ProgressTravel, 1f, 0f,
-                    System.Math.Max(active, 0f), _timing.Stiffness, _timing.Damping, _timing.Mass) / ProgressTravel;
+                    System.Math.Max(active, 0f), (_timing.Stiffness, _timing.Damping, _timing.Mass)) / ProgressTravel;
                 return ended;
             }
             var t = active / _timing.DurationSec;

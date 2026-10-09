@@ -185,10 +185,6 @@ namespace Velvet.Tests
             "nested" => V.Motion(key: key, variants: s_fade, animate: "visible",
                 children: new[] { TimedMotion(null) }),
             "toggled" => V.Component(ToggledMotionRender, key: key),
-            "coordinator" => V.Component(CoordinatorRender, key: key),
-            "coordinator-nested" => V.Component(NestedCoordinatorRender, key: key),
-            "coordinator-spring" => V.Component(SpringCoordinatorRender, key: key),
-            "coordinator-mixed" => V.Component(MixedCoordinatorRender, key: key),
             "inner-presence" => V.Div(key: key, children: new VNode[]
             {
                 V.AnimatePresence(key: "inner", children: new[] { TimedMotion("inner-item") }),
@@ -207,6 +203,16 @@ namespace Velvet.Tests
                 V.Div(className: "absolute z-10", children: new[] { TimedMotion(null) }),
             }),
             "portal" => V.Div(key: key, children: new VNode[] { V.Portal(s_portalTarget, new[] { TimedMotion(null) }) }),
+            _ => CoordinatorChild(key),
+        };
+
+        // The keyed child each "coordinator" wrapper names.
+        private static VNode CoordinatorChild(string key) => s_wrapper switch
+        {
+            "coordinator" => V.Component(CoordinatorRender, key: key),
+            "coordinator-nested" => V.Component(NestedCoordinatorRender, key: key),
+            "coordinator-spring" => V.Component(SpringCoordinatorRender, key: key),
+            "coordinator-mixed" => V.Component(MixedCoordinatorRender, key: key),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_wrapper), s_wrapper, null),
         };
 

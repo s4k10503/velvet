@@ -46,6 +46,8 @@ namespace Velvet
             // Selects both the exit-shaped self-cancel and which bookkeeping map the play registers into — a
             // separate map field would only ever repeat that same choice.
             internal bool IsExit { get; init; }
+            // How a bezier or spring play repeats; a tween does not read it.
+            internal MotionRepeat Repeat { get; init; }
         }
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
@@ -179,18 +181,19 @@ namespace Velvet
                 DelaySec = delaySec,
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = false,
+                Repeat = repeat,
             };
 
             WarnRepeatNotPlayed(type, repeat);
             if (type == TransitionType.Spring)
             {
-                StartSpringVariant(in play, stiffness, damping, mass, repeat);
+                StartSpringVariant(in play, stiffness, damping, mass);
                 return;
             }
 
             if (type == TransitionType.Bezier && durationSec != 0f)
             {
-                StartBezierVariant(in play, bezierX1, bezierY1, bezierX2, bezierY2, durationSec, repeat);
+                StartBezierVariant(in play, bezierX1, bezierY1, bezierX2, bezierY2, durationSec);
                 return;
             }
 
@@ -413,15 +416,16 @@ namespace Velvet
                 DelaySec = config.DelaySec,
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = true,
+                Repeat = MotionRepeat.Of(config),
             };
 
-            WarnRepeatNotPlayed(config.Type, MotionRepeat.Of(config));
+            WarnRepeatNotPlayed(config.Type, play.Repeat);
             if (config.Type == TransitionType.Spring)
             {
                 // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
                 // detached by a keyed reorder (see the tween exit's own ScheduleOnHost below) and this exit must
                 // still eventually complete so the reconciler's ghost-removal re-render fires.
-                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config));
+                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass);
                 return;
             }
 
@@ -430,7 +434,7 @@ namespace Velvet
                 // One curve drives both directions (no ExitBezier* fields — mirrors the spring reusing its single
                 // stiffness/damping/mass for the exit). Deferred-to-attach when off-panel, same as the spring exit.
                 StartBezierVariant(in play, config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2,
-                    config.DurationSec, MotionRepeat.Of(config));
+                    config.DurationSec);
                 return;
             }
 
@@ -613,8 +617,7 @@ namespace Velvet
         // during element creation (FiberNodeFactory), and a presence enter plays before the entering element is
         // placed into the tree (GeneralPathReconciler) — so BOTH, like a presence exit, can start while still
         // detached (see PlayExit's own ScheduleOnHost/AttachToPanelEvent for the same rationale on the exit side).
-        private void StartSpringVariant(in VariantPlay play, float stiffness, float damping, float mass,
-            MotionRepeat repeat)
+        private void StartSpringVariant(in VariantPlay play, float stiffness, float damping, float mass)
         {
             // Copied out because a local function cannot capture an `in` parameter.
             var element = play.Element;
@@ -638,7 +641,7 @@ namespace Velvet
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
             var state = ValidateSpringParameters(stiffness, damping, mass)
-                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, repeat)
+                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat)
                 : null;
             // A spring this one interrupts hands on its velocity, read before the cancel below ends it.
             var interrupted = map.GetValueOrDefault(element)?.Spring;
@@ -747,10 +750,10 @@ namespace Velvet
         // (StartBezierTick) drives the resolved channels via inline styles. The one difference from the spring is
         // its completion is a fixed duration (BezierTweenDriver.Step reports done once elapsed reaches it) rather
         // than a dynamic settle. x1/y1/x2/y2 are the CSS cubic-bezier control points; durationSec is the fixed
-        // length of one pass, which repeat plays again; VariantPlay owns the rest, and StartSpringVariant the
+        // length of one pass, which the play's Repeat plays again; VariantPlay owns the rest, and StartSpringVariant the
         // shared off-panel-defer contract.
         private void StartBezierVariant(in VariantPlay play, float x1, float y1, float x2, float y2,
-            float durationSec, MotionRepeat repeat)
+            float durationSec)
         {
             // Copied out because a local function cannot capture an `in` parameter.
             var element = play.Element;
@@ -771,7 +774,7 @@ namespace Velvet
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
             var state = ValidateBezierParameters(x1, y1, x2, y2, durationSec)
-                ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat)
+                ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, play.Repeat)
                 : null;
 
             CancelPending(map, element, animateReversal: play.IsExit);

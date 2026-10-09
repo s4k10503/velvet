@@ -381,15 +381,15 @@ namespace Velvet
 
         private static float SampleSpring(float from, float to, float scale, float velocity, double t,
             MotionSpringState state)
-            => SampleSpring(from, to, scale, velocity, t, state.Stiffness, state.Damping, state.Mass);
+            => SampleSpring(from, to, scale, velocity, t, (state.Stiffness, state.Damping, state.Mass));
 
         // Framer Motion's spring generator released at `from` toward `to` with `velocity` on the scaled travel: the
         // target once it rests.
         internal static float SampleSpring(float from, float to, float scale, float velocity, double t,
-            float stiffness, float damping, float mass)
+            (float Stiffness, float Damping, float Mass) spring)
         {
             var delta = (to - from) * scale;
-            var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, t, (stiffness, damping, mass));
+            var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, t, spring);
             return Rests(delta, displacement, speed) ? to : (float)(to + displacement / scale);
         }
 
