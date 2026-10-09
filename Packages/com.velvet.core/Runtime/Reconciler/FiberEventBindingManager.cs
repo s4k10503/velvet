@@ -30,6 +30,41 @@ namespace Velvet
             public ClickedEvent Current = new();
         }
 
+        // What a portal bridge carries in bubble at its anchor, run ahead of the anchor's own bubble
+        // bindings: the logical ancestors it adds sit below the anchor in React's return path. A prelude
+        // answers whether one of them stopped propagation, which keeps the anchor's own from running.
+        private readonly Dictionary<VisualElement, Func<EventBase, bool>> _bubblePreludes = new();
+
+        // What moves a bridge's capture listeners behind the anchor's own capture bindings once those are
+        // registered again.
+        private readonly Dictionary<VisualElement, Action> _rebound = new();
+
+        internal void SetBridge(VisualElement element, Func<EventBase, bool> bubblePrelude, Action rebound)
+        {
+            _bubblePreludes[element] = bubblePrelude;
+            _rebound[element] = rebound;
+        }
+
+        internal void ClearBridge(VisualElement element)
+        {
+            // MUTANT_SURVIVES(equivalent): a bridge detaches once no portal is left on its target, so an
+            // entry left behind carries no segment, and the next bridge on the element replaces it.
+            _bubblePreludes.Remove(element);
+            _rebound.Remove(element);
+        }
+
+        // Called once an element's bindings were registered again after UnbindAll.
+        internal void Rebound(VisualElement element)
+        {
+            if (_rebound.TryGetValue(element, out var rebound)) rebound();
+        }
+
+        private bool StoppedByBubblePrelude(VisualElement element, EventBase evt)
+        {
+            if (!_bubblePreludes.TryGetValue(element, out var prelude)) return false;
+            return prelude(evt);
+        }
+
         // The owning context's batch scheduler. Used to flush the immediate batch synchronously at the end of a
         // discrete event handler so the UI updates before the next frame. Null when constructed without one (isolated unit
         // tests of binding registration): the discrete flag is still bracketed, but no synchronous flush runs.
@@ -142,10 +177,10 @@ namespace Velvet
                 // Continuous events (a high-frequency stream such as pointer move): updates batch to the next frame like a
                 // Normal-lane render; no synchronous flush.
                 case PointerMoveBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
-                case PointerEnterBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
-                case PointerLeaveBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
+                case PointerEnterBinding b: BindBubbleCallback(actions, element, b.Handler); break;
+                case PointerLeaveBinding b: BindBubbleCallback(actions, element, b.Handler); break;
                 case WheelBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
-                case GeometryChangedBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
+                case GeometryChangedBinding b: BindBubbleCallback(actions, element, b.Handler); break;
             }
         }
 
@@ -384,13 +419,29 @@ namespace Velvet
             }
         }
 
-        private static void BindCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler,
+        private void BindCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler,
             bool capture)
             where T : EventBase<T>, new()
         {
-            var phase = capture ? TrickleDown.TrickleDown : TrickleDown.NoTrickleDown;
-            element.RegisterCallback(handler, phase);
-            actions.Add(() => element.UnregisterCallback(handler, phase));
+            if (!capture)
+            {
+                BindBubbleCallback(actions, element, handler);
+                return;
+            }
+            element.RegisterCallback(handler, TrickleDown.TrickleDown);
+            actions.Add(() => element.UnregisterCallback(handler, TrickleDown.TrickleDown));
+        }
+
+        private void BindBubbleCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)
+            where T : EventBase<T>, new()
+        {
+            EventCallback<T> wrapped = evt =>
+            {
+                if (StoppedByBubblePrelude(element, evt)) return;
+                handler?.Invoke(evt);
+            };
+            element.RegisterCallback(wrapped);
+            actions.Add(() => element.UnregisterCallback(wrapped));
         }
 
         // The callback registered first runs first on Button.clicked, so the one registered here ahead of
@@ -424,7 +475,11 @@ namespace Velvet
             where T : EventBase<T>, new()
         {
             var phase = capture ? TrickleDown.TrickleDown : TrickleDown.NoTrickleDown;
-            EventCallback<T> wrapped = evt => RunDiscrete(() => handler?.Invoke(evt));
+            EventCallback<T> wrapped = evt =>
+            {
+                if (!capture && StoppedByBubblePrelude(element, evt)) return;
+                RunDiscrete(() => handler?.Invoke(evt));
+            };
             element.RegisterCallback(wrapped, phase);
             actions.Add(() => element.UnregisterCallback(wrapped, phase));
         }

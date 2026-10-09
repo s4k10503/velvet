@@ -12,10 +12,10 @@ namespace Velvet
     // Two distinct mechanisms live in this one file because they are the two ends of the same pipe —
     // reading either without the other misses half of how a cross-panel event actually travels:
     //
-    //   FiberCrossPanelEventDispatcher: an event that ALREADY reached a portal/world-space boundary
-    //   (native dispatch bubbled it there) continues OUTWARD toward the logical ancestor chain — the
-    //   "exit" side. This is the ONLY mechanism V.Portal(targetId:) needs — there is no "entry" side
-    //   for it, since the event started in the same panel to begin with.
+    //   FiberCrossPanelEventDispatcher: an event that native dispatch carries through a portal/world-space
+    //   boundary also reaches the logical ancestor chain outside it — the "exit" side. This is the ONLY
+    //   mechanism V.Portal(targetId:) needs — there is no "entry" side for it, since the event started in
+    //   the same panel to begin with.
     //
     //   FiberCrossPanelPointerRouter: an event arriving at the MAIN panel is redirected INTO a
     //   higher-priority host panel FIRST, before the main panel's own dispatch processes it — the
@@ -26,10 +26,9 @@ namespace Velvet
     // FiberEventBindingManager.TryInvokeSynthetic (how a handler is invoked once the right element is
     // found) — see those for the rest of the mechanism this file builds on.
 
-    // Bridges a native UI Toolkit event that finished bubbling within one panel toward the logical
-    // ancestor chain OUTSIDE the Portal/WorldSpace boundary it just bubbled through. AttachBridge is
-    // called from two different kinds of place, distinguished by whether the returned unbind Action
-    // matters:
+    // Bridges a native UI Toolkit event crossing a Portal/WorldSpace boundary to the logical ancestor
+    // chain OUTSIDE that boundary. AttachBridge is called from two different kinds of place,
+    // distinguished by whether the returned unbind Action matters:
     //   - PanelHostFactory.CreateLayerHost/CreateWorldSpaceHost, ONCE per framework-owned host panel,
     //     on that host's rootVisualElement. A host panel has no physical parent for native bubbling to
     //     continue into (a wholly separate Panel/PanelSettings/UIDocument), so this is the only way
@@ -48,177 +47,208 @@ namespace Velvet
     // direct RegisterCallback<T> registrations on each element), which agrees with the logical tree
     // everywhere except at a portal boundary. The bridge supplies the rest: the logical ancestors of the
     // event's target that are not its physical ancestors, walked the way React walks a portal child's
-    // return path — a portal's child answers to the position its placeholder holds (see LogicalParent).
+    // return path — a portal's child answers to the position its placeholder holds (see LogicalParent) —
+    // in capture as the event trickles through the anchor, and in bubble as it comes back up.
     internal static class FiberCrossPanelEventDispatcher
     {
-        // Registers one BubbleUp listener per synthetic-bubbling-eligible event type, and a TrickleDown one
-        // for each event a capture binding answers, on bridgeAnchor —
-        // either a newly created host panel's root (called once, from PanelHostFactory) or a resolved
-        // same-panel target (once per target, from ReconcilerContext.BindPortalTarget, which owns the
-        // attach-once guard and which element it listens on).
-        // Each BubbleUp listener fires only after UI Toolkit's own native dispatch has already bubbled the event
-        // through every element AT OR BELOW bridgeAnchor (BubbleUp is the last phase to run on a given
-        // element), so nothing here duplicates a handler UI Toolkit's own dispatcher already invoked at
-        // or below that point. Matches the event set FiberEventBindingManager.TryInvokeSynthetic
-        // supports.
-        // Returns the delegate that undoes every registration below, for a caller that needs to detach
-        // it later (see the class comment above); a caller that never needs to (a framework-owned host
-        // root, destroyed wholesale) is free to discard it.
+        // Each event the bridge carries, registered on bridgeAnchor TrickleDown and, where it bubbles,
+        // BubbleUp. Matches the event set FiberEventBindingManager.TryInvokeSynthetic supports.
+        // FocusEvent/BlurEvent trickle down and do not bubble up, per Unity's own UIElements API docs;
+        // GeometryChangedEvent neither trickles nor bubbles, reaching only the element whose geometry
+        // changed, and is not carried.
+        private static readonly System.Action<VisualElement, Bridge, Registrations>[] Listeners =
+        {
+            TrickleAndBubble<PointerDownEvent>,
+            TrickleAndBubble<PointerUpEvent>,
+            TrickleAndBubble<PointerMoveEvent>,
+            TrickleAndBubble<PointerEnterEvent>,
+            TrickleAndBubble<PointerLeaveEvent>,
+            TrickleAndBubble<WheelEvent>,
+            TrickleAndBubble<KeyDownEvent>,
+            TrickleAndBubble<KeyUpEvent>,
+            TrickleAndBubble<FocusInEvent>,
+            TrickleAndBubble<FocusOutEvent>,
+            TrickleAndBubble<ClickEvent>,
+            TrickleAndBubble<ChangeEvent<float>>,
+            TrickleAndBubble<ChangeEvent<bool>>,
+            TrickleAndBubble<ChangeEvent<string>>,
+            TrickleAndBubble<ChangeEvent<int>>,
+            Trickle<FocusEvent>,
+            Trickle<BlurEvent>,
+        };
+
+        private sealed class Registrations
+        {
+            public readonly List<System.Action> Undo = new();
+            public readonly List<System.Action> Retrickle = new();
+        }
+
+        private static void Trickle<T>(VisualElement anchor, Bridge bridge, Registrations registrations)
+            where T : EventBase<T>, new()
+        {
+            EventCallback<T> capture = bridge.Capture;
+            anchor.RegisterCallback(capture, TrickleDown.TrickleDown);
+            registrations.Undo.Add(() => anchor.UnregisterCallback(capture, TrickleDown.TrickleDown));
+            registrations.Retrickle.Add(() =>
+            {
+                anchor.UnregisterCallback(capture, TrickleDown.TrickleDown);
+                anchor.RegisterCallback(capture, TrickleDown.TrickleDown);
+            });
+        }
+
+        private static void TrickleAndBubble<T>(VisualElement anchor, Bridge bridge, Registrations registrations)
+            where T : EventBase<T>, new()
+        {
+            Trickle<T>(anchor, bridge, registrations);
+            EventCallback<T> bubble = bridge.Bubble;
+            anchor.RegisterCallback(bubble);
+            registrations.Undo.Add(() => anchor.UnregisterCallback(bubble));
+        }
+
+        // Registers the listeners above on bridgeAnchor — either a newly created host panel's root (called
+        // once, from PanelHostFactory) or a resolved same-panel target (once per target, from
+        // ReconcilerContext.BindPortalTarget, which owns the attach-once guard and which element it listens
+        // on). Returns the delegate that undoes every registration, for a caller that needs to detach it
+        // later (see the class comment above); a caller that never needs to (a framework-owned host root,
+        // destroyed wholesale) is free to discard it.
         internal static System.Action AttachBridge(VisualElement bridgeAnchor, ReconcilerContext ctx)
         {
-            EventCallback<PointerDownEvent> onPointerDown = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<PointerUpEvent> onPointerUp = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<PointerMoveEvent> onPointerMove = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<PointerEnterEvent> onPointerEnter = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<PointerLeaveEvent> onPointerLeave = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<WheelEvent> onWheel = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<KeyDownEvent> onKeyDown = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<KeyUpEvent> onKeyUp = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<FocusInEvent> onFocusIn = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<FocusOutEvent> onFocusOut = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<ClickEvent> onClick = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<ChangeEvent<float>> onFloatChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<ChangeEvent<bool>> onBoolChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<ChangeEvent<string>> onStringChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<ChangeEvent<int>> onIntChange = evt => Continue(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            // FocusEvent/BlurEvent are deliberately NOT registered here, even though
-            // FiberEventBindingManager.TryInvokeSynthetic has a case for both (kept there for symmetry
-            // with the other binding kinds, and reachable if some other caller ever synthesizes one).
-            // Per Unity's own UIElements API docs, FocusEvent/BlurEvent "trickle down and do not bubble
-            // up" — target-only, unlike FocusInEvent/FocusOutEvent which explicitly "trickle down and
-            // bubble up". A BubbleUp listener registered HERE, on bridgeAnchor (an ancestor of the
-            // actual focused/blurred element in every real case — a host panel root or a registry
-            // target container is essentially never itself the focus target), would structurally never
-            // receive one raised on a descendant: the event simply never reaches bridgeAnchor. This
-            // mirrors FiberFocusNavigator.AttachToRoot's own choice of FocusIn/Out over Focus/Blur for
-            // its own panel-root-level tracking.
-            // GeometryChangedEvent is excluded for the same target-only reason, even though
-            // TryInvokeSynthetic has a case for it too: per Unity's own docs it does not bubble or
-            // trickle down, only ever dispatching to the element whose own geometry just changed, so a
-            // BubbleUp listener on bridgeAnchor could likewise never receive one raised on a descendant.
-            // The capture walk runs as the event trickles through the anchor, ahead of every element below
-            // it; ClickEvent and ChangeEvent are left out because no capture binding answers them.
-            EventCallback<PointerDownEvent> capturePointerDown = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<PointerUpEvent> capturePointerUp = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<PointerMoveEvent> capturePointerMove = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<PointerEnterEvent> capturePointerEnter = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<PointerLeaveEvent> capturePointerLeave = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<WheelEvent> captureWheel = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<KeyDownEvent> captureKeyDown = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<KeyUpEvent> captureKeyUp = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<FocusInEvent> captureFocusIn = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            EventCallback<FocusOutEvent> captureFocusOut = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
-            bridgeAnchor.RegisterCallback(capturePointerDown, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(capturePointerUp, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(capturePointerMove, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(capturePointerEnter, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(capturePointerLeave, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(captureWheel, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(captureKeyDown, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(captureKeyUp, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(captureFocusIn, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(captureFocusOut, TrickleDown.TrickleDown);
-            bridgeAnchor.RegisterCallback(onPointerDown);
-            bridgeAnchor.RegisterCallback(onPointerUp);
-            bridgeAnchor.RegisterCallback(onPointerMove);
-            bridgeAnchor.RegisterCallback(onPointerEnter);
-            bridgeAnchor.RegisterCallback(onPointerLeave);
-            bridgeAnchor.RegisterCallback(onWheel);
-            bridgeAnchor.RegisterCallback(onKeyDown);
-            bridgeAnchor.RegisterCallback(onKeyUp);
-            bridgeAnchor.RegisterCallback(onFocusIn);
-            bridgeAnchor.RegisterCallback(onFocusOut);
-            bridgeAnchor.RegisterCallback(onClick);
-            bridgeAnchor.RegisterCallback(onFloatChange);
-            bridgeAnchor.RegisterCallback(onBoolChange);
-            bridgeAnchor.RegisterCallback(onStringChange);
-            bridgeAnchor.RegisterCallback(onIntChange);
+            var bridge = new Bridge(bridgeAnchor, ctx);
+            var registrations = new Registrations();
+            foreach (var listen in Listeners) listen(bridgeAnchor, bridge, registrations);
+            // The capture segment runs after the anchor's own capture bindings because the listener is
+            // registered after them; a rebind of those bindings registers them again, and the listeners are
+            // moved back behind them then.
+            ctx.EventManager.SetBridge(bridgeAnchor, bridge.RunBubble, () =>
+            {
+                foreach (var retrickle in registrations.Retrickle) retrickle();
+            });
 
             return () =>
             {
-                bridgeAnchor.UnregisterCallback(onPointerDown);
-                bridgeAnchor.UnregisterCallback(onPointerUp);
-                bridgeAnchor.UnregisterCallback(onPointerMove);
-                bridgeAnchor.UnregisterCallback(onPointerEnter);
-                bridgeAnchor.UnregisterCallback(onPointerLeave);
-                bridgeAnchor.UnregisterCallback(onWheel);
-                bridgeAnchor.UnregisterCallback(onKeyDown);
-                bridgeAnchor.UnregisterCallback(onKeyUp);
-                bridgeAnchor.UnregisterCallback(onFocusIn);
-                bridgeAnchor.UnregisterCallback(onFocusOut);
-                bridgeAnchor.UnregisterCallback(onClick);
-                bridgeAnchor.UnregisterCallback(onFloatChange);
-                bridgeAnchor.UnregisterCallback(onBoolChange);
-                bridgeAnchor.UnregisterCallback(onStringChange);
-                bridgeAnchor.UnregisterCallback(onIntChange);
-                bridgeAnchor.UnregisterCallback(capturePointerDown, TrickleDown.TrickleDown);
-                bridgeAnchor.UnregisterCallback(capturePointerUp, TrickleDown.TrickleDown);
-                bridgeAnchor.UnregisterCallback(capturePointerMove, TrickleDown.TrickleDown);
-                bridgeAnchor.UnregisterCallback(capturePointerEnter, TrickleDown.TrickleDown);
-                bridgeAnchor.UnregisterCallback(capturePointerLeave, TrickleDown.TrickleDown);
-                bridgeAnchor.UnregisterCallback(captureWheel, TrickleDown.TrickleDown);
-                bridgeAnchor.UnregisterCallback(captureKeyDown, TrickleDown.TrickleDown);
-                bridgeAnchor.UnregisterCallback(captureKeyUp, TrickleDown.TrickleDown);
-                bridgeAnchor.UnregisterCallback(captureFocusIn, TrickleDown.TrickleDown);
-                bridgeAnchor.UnregisterCallback(captureFocusOut, TrickleDown.TrickleDown);
+                ctx.EventManager.ClearBridge(bridgeAnchor);
+                foreach (var unregister in registrations.Undo) unregister();
             };
         }
 
-        private static void Continue(EventBase evt, VisualElement? target, ReconcilerContext ctx, VisualElement bridgeAnchor)
+        // One anchor's share of a dispatch. Each anchor on the target's physical path carries the logical
+        // ancestors that sit between the portal content below it and the point where the logical chain
+        // rejoins the physical path, so every anchor on the path adds its own segment at the place native
+        // dispatch reaches it, and the segments of nested portals interleave with the physical elements the
+        // way the logical chain does.
+        private sealed class Bridge
         {
-            if (target == null) return;
-            // One dispatch reaches every bridge on its target's physical path, innermost first, and the walk
-            // below covers every boundary, so an outer bridge leaves the event to the inner one.
-            if (HasBridgeBelow(target, bridgeAnchor, ctx)) return;
+            private readonly VisualElement _anchor;
+            private readonly ReconcilerContext _ctx;
 
-            for (var current = LogicalParent(target, ctx); current != null; current = LogicalParent(current, ctx))
+            // The dispatch whose bubble segment already ran, and whether a handler in it stopped
+            // propagation. The anchor's own bubble bindings run that segment first through the prelude the
+            // manager calls, and the anchor's BubbleUp listener after them must not run it again; Capture
+            // clears it as each dispatch trickles through.
+            private EventBase? _bubbled;
+            private bool _stopped;
+
+            public Bridge(VisualElement anchor, ReconcilerContext ctx)
             {
-                // A synthetic handler may stop propagation, which ends this walk as it ends native bubbling.
-                if (evt.isPropagationStopped) break;
-                // Native dispatch reaches the target's physical ancestors itself.
-                if (IsPhysicalAncestorOrSelf(current, target)) continue;
-                ctx.EventManager.TryInvokeSynthetic(current, evt, capture: false);
+                _anchor = anchor;
+                _ctx = ctx;
             }
-        }
 
-        // The capture counterpart of Continue: the same logical ancestors, outermost first, before native
-        // dispatch reaches anything below the anchor. Native dispatch runs the physical ancestors' capture
-        // bindings itself, as it runs their bubble bindings for Continue.
-        private static void ContinueCapture(EventBase evt, VisualElement? target, ReconcilerContext ctx, VisualElement bridgeAnchor)
-        {
-            if (target == null) return;
-            if (HasBridgeBelow(target, bridgeAnchor, ctx)) return;
-
-            List<VisualElement>? chain = null;
-            for (var current = LogicalParent(target, ctx); current != null; current = LogicalParent(current, ctx))
+            // Outermost first, after the anchor's own capture bindings and before anything below the anchor.
+            public void Capture(EventBase evt)
             {
-                if (IsPhysicalAncestorOrSelf(current, target)) continue;
-                (chain ??= new List<VisualElement>()).Add(current);
+                _bubbled = null;
+                var target = evt.target as VisualElement;
+                var start = SegmentStart(target);
+                if (start != null) CaptureChain(start, target, evt, _ctx);
             }
-            if (chain == null) return;
 
-            for (var i = chain.Count - 1; i >= 0; i--)
+            public void Bubble(EventBase evt) => RunBubble(evt);
+
+            // Innermost first, after everything below the anchor and before the anchor's own bubble bindings.
+            public bool RunBubble(EventBase evt)
             {
-                if (evt.isPropagationStopped) break;
-                ctx.EventManager.TryInvokeSynthetic(chain[i], evt, capture: true);
+                if (ReferenceEquals(_bubbled, evt)) return _stopped;
+                _bubbled = evt;
+                var target = evt.target as VisualElement;
+                _stopped = BubbleChain(SegmentStart(target), target, evt, _ctx);
+                return _stopped;
             }
-        }
 
-        // Whether an element from target up to, but not including, bridgeAnchor carries a bridge of its own. A
-        // host panel's root, the other kind of anchor, is the root of its panel and so never below another.
-        private static bool HasBridgeBelow(VisualElement target, VisualElement bridgeAnchor, ReconcilerContext ctx)
-        {
-            for (var element = target; !ReferenceEquals(element, bridgeAnchor); element = element.hierarchy.parent!)
+            // The innermost logical ancestor this anchor carries: the logical parent, off the target's physical
+            // path, of the element nearest the anchor whose logical parent leaves that path. What lies below
+            // another anchor on the path is that anchor's to carry.
+            private VisualElement? SegmentStart(VisualElement? target)
             {
-                foreach (var bridge in ctx.SamePanelPortalBridges.Values)
+                VisualElement? start = null;
+                for (var element = target; !ReferenceEquals(element, _anchor); element = element.hierarchy.parent)
                 {
-                    if (ReferenceEquals(bridge.Anchor, element)) return true;
+                    // MUTANT_SURVIVES(unreachable, guard removed): a listener on the anchor, and the prelude its
+                    // own bindings call, run only for a target at or below the anchor.
+                    if (element == null) return null;
+                    if (IsOtherAnchor(element)) start = null;
+                    var logical = LogicalParent(element, _ctx);
+                    if (OffPath(logical, target)) start = logical;
                 }
+                return start;
+            }
+
+            private bool IsOtherAnchor(VisualElement element)
+            {
+                foreach (var bridge in _ctx.SamePanelPortalBridges.Values)
+                {
+                    if (ReferenceEquals(bridge.Anchor, element)) return !ReferenceEquals(element, _anchor);
+                }
+                return false;
+            }
+        }
+
+        // A pointer event the layer router took from the main panel reaches no native dispatch in the host
+        // panel, so every logical ancestor of the element it picked is run here: capture outermost first, the
+        // element itself, then bubble innermost first.
+        internal static void DispatchRerouted(VisualElement hit, EventBase evt, ReconcilerContext ctx)
+        {
+            var parent = LogicalParent(hit, ctx);
+            if (parent != null) CaptureChain(parent, null, evt, ctx);
+            if (evt.isPropagationStopped) return;
+            ctx.EventManager.TryInvokeSynthetic(hit, evt);
+            if (evt.isPropagationStopped) return;
+            BubbleChain(parent, null, evt, ctx);
+        }
+
+        // Whether a logical ancestor is one native dispatch does not reach: there is one, and it is not on
+        // the physical path of target, where a null target is a dispatch with no physical path at all.
+        private static bool OffPath(VisualElement? logical, VisualElement? target) =>
+            logical != null && !IsPhysicalAncestorOrSelf(logical, target);
+
+        // The chain from start up to where it rejoins target's physical path, outermost first. It is counted
+        // and then walked from start for each depth, which keeps a dispatch through an anchor from
+        // allocating.
+        private static void CaptureChain(VisualElement start, VisualElement? target, EventBase evt, ReconcilerContext ctx)
+        {
+            var length = 0;
+            for (var current = start; OffPath(current, target); current = LogicalParent(current!, ctx)) length++;
+            for (var depth = length - 1; depth >= 0; depth--)
+            {
+                if (evt.isPropagationStopped) return;
+                var ancestor = start;
+                for (var step = 0; step < depth; step++) ancestor = LogicalParent(ancestor, ctx)!;
+                ctx.EventManager.TryInvokeSynthetic(ancestor, evt, capture: true);
+            }
+        }
+
+        // The same chain innermost first; answers whether one of its handlers stopped propagation.
+        private static bool BubbleChain(VisualElement? start, VisualElement? target, EventBase evt, ReconcilerContext ctx)
+        {
+            for (var current = start; OffPath(current, target); current = LogicalParent(current!, ctx))
+            {
+                ctx.EventManager.TryInvokeSynthetic(current!, evt, capture: false);
+                if (evt.isPropagationStopped) return true;
             }
             return false;
         }
 
-        private static bool IsPhysicalAncestorOrSelf(VisualElement candidate, VisualElement target)
+        private static bool IsPhysicalAncestorOrSelf(VisualElement candidate, VisualElement? target)
         {
             for (var element = target; element != null; element = element.hierarchy.parent)
             {
@@ -307,7 +337,7 @@ namespace Velvet
                 // A higher-priority host panel actually has content at this screen position — it wins.
                 // The main panel's own dispatch for THIS event must not also process it (StopImmediate,
                 // not just Stop, so no sibling TrickleDown listener on this same element runs either).
-                ctx.EventManager.TryInvokeSynthetic(hit, evt);
+                FiberCrossPanelEventDispatcher.DispatchRerouted(hit, evt, ctx);
                 evt.StopImmediatePropagation();
                 return;
             }

@@ -466,6 +466,7 @@ namespace Velvet
                         _ctx.EventManager.Bind(element, evt);
                     }
                 }
+                _ctx.EventManager.Rebound(element);
             }
         }
 
