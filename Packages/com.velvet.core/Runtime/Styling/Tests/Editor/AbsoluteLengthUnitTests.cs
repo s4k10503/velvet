@@ -84,6 +84,7 @@ namespace Velvet.Tests
             Assert.That(spec.OffsetX, Is.EqualTo(96f).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(refactor): the same reading, now failing by assertion where the class is declined.
         [Test]
         public void Given_AnInchClipPathInset_When_Extracted_Then_ItIsNinetySixPixelsNotAPercentage()
         {
@@ -91,7 +92,8 @@ namespace Velvet.Tests
             StyleClipPathClass.TryExtract(new[] { "clip-path-[inset(1in)]" }, out var spec);
 
             // Assert
-            Assert.That((spec!.InsetTop.Value, spec.InsetTop.IsPercent), Is.EqualTo((96f, false)));
+            Assert.That((spec != null, spec?.InsetTop.Value, spec?.InsetTop.IsPercent),
+                Is.EqualTo((true, (float?)96f, (bool?)false)));
         }
 
         [Test]

@@ -618,14 +618,20 @@ namespace Velvet
         }
 
         // A stop position's length, with the unit StyleArbitraryValueResolver.TryParseValue reads (a bare
-        // number is no length) converted to pixels, and signed: a stop may sit before the start
-        // of the line, which the percentage forms allow too. A bare 0 is the start of the line.
+        // number is no length; a math function closes on a parenthesis) converted to pixels, and signed: a
+        // stop may sit before the start of the line, which the percentage forms allow too. A bare 0 is the
+        // start of the line.
         private static bool TryParseStopLength(string token, out float px)
         {
             px = 0f;
             if (token == "0")
             {
                 return true;
+            }
+            if (token.EndsWith(")", StringComparison.Ordinal))
+            {
+                return StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out px, out var folded)
+                    && folded == LengthUnit.Pixel;
             }
             return token.Length > 0 && char.IsLetter(token[token.Length - 1])
                 && StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out px, out var unit)
@@ -1080,7 +1086,8 @@ namespace Velvet
         // A non-negative length or percentage: pixels as written, a percentage as a fraction of the box.
         private static bool TryParseLengthPercentage(string token, out float value, out bool percent)
         {
-            percent = token.EndsWith("%", StringComparison.Ordinal);
+            percent = token.EndsWith("%", StringComparison.Ordinal)
+                || (token.EndsWith(")", StringComparison.Ordinal) && TryParsePercent(token, out _));
             if (percent)
             {
                 var ok = TryParsePercent(token, out value) && value >= 0f;

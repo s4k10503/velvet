@@ -23,6 +23,8 @@
       href: guides/styling-pointer-events.md
     - name: Variants
       href: guides/styling-variants.md
+    - name: Bracketed lengths
+      href: guides/styling-arbitrary-lengths.md
     - name: Gradients
       href: guides/styling-gradients.md
     - name: Filters
