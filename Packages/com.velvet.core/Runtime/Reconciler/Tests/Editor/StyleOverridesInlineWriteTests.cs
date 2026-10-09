@@ -95,7 +95,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): compares the type's members with what mounting writes for a keyword value.
-        // Deleting the `writeKeyword` call from the StyleInt overload of `StyleOverridesLayer.Write` reddens it.
+        // Writing `new StyleInt((int)value)` in place of `new StyleInt(style.Keyword)` in
+        // `StyleArbitraryValueResolver.SliceInset` reddens it.
         [Test]
         public void Given_EveryStyleOverridesMemberSetToAKeyword_When_Mounted_Then_EachSlotCarriesTheKeyword()
         {

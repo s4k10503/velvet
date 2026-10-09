@@ -26,6 +26,8 @@ namespace Velvet.Tests
         [TestCase("slice-[12_8_4]", "12,8,4,8")]
         [TestCase("slice-[12_8_4_2]", "12,8,4,2")]
         [TestCase("slice-[12px_8]", "12,8,12,8")]
+        [TestCase("slice-[12_8_fill]", "12,8,12,8")]
+        [TestCase("slice-[fill_12_8]", "12,8,12,8")]
         public void Given_ASliceInsetClass_When_Mounted_Then_ItWritesTheEdgesItNames(string className, string expected)
         {
             // Arrange
@@ -58,7 +60,6 @@ namespace Velvet.Tests
         [TestCase("slice-[12.5]", "slice-[12]")]
         [TestCase("slice-[-3]", "slice-[3]")]
         [TestCase("-slice-[3]", "slice-[3]")]
-        [TestCase("slice-[50%]", "slice-[50]")]
         [TestCase("slice-t-[2em]", "slice-t-[2px]")]
         [TestCase("slice-scale-[-1]", "slice-scale-[1]")]
         [TestCase("-slice-scale-[1]", "slice-scale-[1]")]
@@ -68,6 +69,12 @@ namespace Velvet.Tests
         [TestCase("slice-[1__2]", "slice-[1_2]")]
         [TestCase("slice-[12_8.5]", "slice-[12_8]")]
         [TestCase("slice-x-[1_2]", "slice-x-[1]")]
+        [TestCase("slice-[fill]", "slice-[12_fill]")]
+        [TestCase("slice-[12_fill_8]", "slice-[12_8_fill]")]
+        [TestCase("slice-[fill_12_fill]", "slice-[fill_12]")]
+        [TestCase("slice-t-[3_fill]", "slice-t-[3]")]
+        [TestCase("slice-[-5%]", "slice-[5%]")]
+        [TestCase("slice-[5%px]", "slice-[5%]")]
         public void Given_AnInvalidSliceValue_When_Parsed_Then_ItIsDeclinedWhereItsValidNeighbourParses(
             string invalid, string valid)
         {

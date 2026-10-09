@@ -60,6 +60,18 @@ namespace Velvet.Tests
             Assert.That((declared, type), Is.EqualTo((true, expected)));
         }
 
+        // GREEN_ON_BASE(characterization): pins the engine's two slice modes, which styling-backgrounds.md's note on
+        // `fill` rests on; a third mode here would be the one to map an empty centre onto.
+        [Test]
+        public void Given_TheEngineSliceType_When_ItsModesAreListed_Then_TheyAreSlicedAndTiledAlone()
+        {
+            // Act
+            var modes = string.Join(",", System.Enum.GetNames(typeof(SliceType)));
+
+            // Assert
+            Assert.That(modes, Is.EqualTo("Sliced,Tiled"));
+        }
+
         private VisualElement MountAndResolve(string className)
         {
             _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "leaf", className: className));

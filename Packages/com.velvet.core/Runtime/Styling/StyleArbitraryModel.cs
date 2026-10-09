@@ -316,6 +316,33 @@ namespace Velvet
         public CustomFilterValue? Custom { get; }
         // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
         public bool Auto { get; }
+        // A StyleOverrides member's keyword value (Initial, None, …), written as the keyword in place of the
+        // payload; Undefined for every result a class parses to.
+        public StyleKeyword Keyword { get; }
+        // The slice insets given as a percentage of the background image's size: bit 0 is Value (the top, or
+        // the one edge an edge property writes), bit 1 Value2, bit 2 Value3, bit 3 Value4, in the order Slice
+        // carries them. 0 for every other property.
+        public int PercentEdges { get; }
+
+        // A keyword value for property.
+        public ArbitraryStyle(ArbitraryProperty property, StyleKeyword keyword)
+        {
+            Property = property;
+            // MUTANT_SURVIVES(equivalent): a keyword result reaches neither reader of Auto.
+            // It comes from StyleOverridesLayer rather than a class, so MotionPropertyClassParser never sees it,
+            // and the colour, inset and factor writes it takes never call ToStyleLength.
+            Auto = false;
+            Keyword = keyword;
+            PercentEdges = 0;
+            Value = 0f;
+            Unit = LengthUnit.Pixel;
+            Value2 = 0f;
+            Unit2 = LengthUnit.Pixel;
+            Value3 = 0f;
+            Value4 = 0f;
+            Color = default;
+            Custom = null;
+        }
 
         // The `auto` keyword for a length property.
         public static ArbitraryStyle AutoLength(ArbitraryProperty property) => new ArbitraryStyle(property, true);
@@ -328,6 +355,8 @@ namespace Velvet
         {
             Property = property;
             Auto = auto;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Value = 0f;
             Unit = LengthUnit.Pixel;
             Value2 = 0f;
@@ -343,6 +372,8 @@ namespace Velvet
         {
             Property = property;
             Auto = false;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Value = value;
             Unit = unit;
             Value2 = 0f;
@@ -359,6 +390,8 @@ namespace Velvet
         {
             Property = property;
             Auto = false;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Value = value;
             Unit = unit;
             Value2 = value2;
@@ -369,14 +402,17 @@ namespace Velvet
             Custom = null;
         }
 
-        // Creates a four-edge result (Slice), top, right, bottom, left.
-        public ArbitraryStyle(ArbitraryProperty property, float top, float right, float bottom, float left)
+        // Creates a four-edge result (Slice, or one edge in top), with the edges percentEdges marks as percentages.
+        public ArbitraryStyle(ArbitraryProperty property, float top, float right, float bottom, float left,
+            int percentEdges = 0)
         {
             Property = property;
-            // MUTANT_SURVIVES(equivalent): nothing a four-edge result reaches reads Auto to a different end.
-            // Slice's write does not read it, MotionPropertyClassParser declines Slice as undrivable either way,
-            // and every four-edge result would carry the same flag into FiberNodePatcher.ValueKey.
+            // MUTANT_SURVIVES(equivalent): nothing a slice result reaches reads Auto to a different end.
+            // The slice writes do not read it, MotionPropertyClassParser declines the slice properties as
+            // undrivable either way, and every slice result would carry the same flag into FiberNodePatcher.ValueKey.
             Auto = false;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = percentEdges;
             Value = top;
             Unit = LengthUnit.Pixel;
             Value2 = right;
@@ -392,6 +428,8 @@ namespace Velvet
         {
             Property = property;
             Auto = false;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Color = color;
             Value = 0f;
             Unit = LengthUnit.Pixel;
@@ -407,6 +445,8 @@ namespace Velvet
         {
             Property = property;
             Auto = false;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Custom = custom;
             Value = 0f;
             Unit = LengthUnit.Pixel;

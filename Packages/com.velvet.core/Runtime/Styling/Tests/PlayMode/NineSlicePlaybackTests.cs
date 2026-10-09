@@ -142,5 +142,31 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, true, true)),
                 $"sliced {slicedSmall} -> {slicedLarge}, unsliced {plainSmallRun} -> {plainLargeRun}");
         }
+
+        // Pins the engine fact styling-backgrounds.md's note on `fill` rests on.
+        [UnityTest]
+        public IEnumerator Given_ASliceWithoutFill_When_UIToolkitPaintsIt_Then_TheCentreIsPainted()
+        {
+            // Arrange
+            var image = CornerImage();
+            _host = new RenderTexturePanelHost("NineSliceCentre", Width, Height);
+            VelvetStyleUtilities.AttachTo(_host.Root);
+
+            // Act
+            _mounted = V.Mount(_host.Root, V.Div(name: "frame", className: "w-[400px] h-[240px]", children: new[]
+            {
+                Box("sliced", "left-[10px] top-[10px] w-[150px] h-[120px]", "slice-[10]", image),
+            }));
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+            var pixels = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(0, 0, Width, Height));
+            var box = _host.Root.Q<VisualElement>("sliced").worldBound;
+
+            // Assert — the box is sliced (its corner is the image's 10 pixels, against the 50 a stretch gives)
+            // and the pixel at its centre is the image's blue rather than the panel's clear.
+            var corner = CornerRun(pixels, box).Across;
+            var centre = At(pixels, Mathf.RoundToInt(box.center.x), Mathf.RoundToInt(box.center.y));
+            Assert.That((2 * corner < box.width / 3f, centre.b > 140 && centre.r < 90 && centre.g < 90),
+                Is.EqualTo((true, true)), $"corner {corner}, centre {centre}");
+        }
     }
 }

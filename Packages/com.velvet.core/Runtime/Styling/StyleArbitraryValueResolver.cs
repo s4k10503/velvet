@@ -525,8 +525,7 @@ namespace Velvet
             ["slice-l-"] = ArbitraryProperty.SliceLeft,
         };
 
-        // An inset is spelled bare, as border-image-slice writes it, or with px. Null when prefix names neither
-        // family.
+        // Null when prefix names neither family.
         private static bool? TryParseSliceValue(
             string prefix, ReadOnlySpan<char> value, bool negate, out ArbitraryStyle result)
         {
@@ -552,21 +551,24 @@ namespace Velvet
             {
                 return TryParseSliceShorthand(value, out result);
             }
-            if (!TryParseSliceInset(value, out var inset))
+            if (!TryParseSliceInset(value, out var inset, out var percent))
             {
                 return false;
             }
-            result = new ArbitraryStyle(property, inset, LengthUnit.Pixel);
+            result = new ArbitraryStyle(property, inset, 0f, 0f, 0f, percent ? 1 : 0);
             return true;
         }
 
         // border-image-slice's one to four values, '_' standing for the space between them: one sets every edge,
         // two the vertical then the horizontal pair, three the top, the horizontal pair and the bottom, and four
-        // the top, right, bottom and left.
+        // the top, right, bottom and left. The fill keyword may stand before or after them; UI Toolkit draws a
+        // sliced background's centre whether or not it is given, so it is read and dropped.
         private static bool TryParseSliceShorthand(ReadOnlySpan<char> value, out ArbitraryStyle result)
         {
             result = default;
-            Span<int> insets = stackalloc int[4];
+            value = WithoutFill(value);
+            Span<float> insets = stackalloc float[4];
+            Span<bool> percents = stackalloc bool[4];
             var count = 0;
             while (true)
             {
@@ -574,7 +576,7 @@ namespace Velvet
                 // MUTANT_SURVIVES(equivalent, boundary): at a gap of 0 the part is empty or starts with '_', and
                 // neither parses as an inset.
                 var part = gap < 0 ? value : value.Slice(0, gap);
-                if (count == insets.Length || !TryParseSliceInset(part, out insets[count]))
+                if (count == insets.Length || !TryParseSliceInset(part, out insets[count], out percents[count]))
                 {
                     return false;
                 }
@@ -586,18 +588,39 @@ namespace Velvet
                 }
                 value = value.Slice(gap + 1);
             }
-            var top = insets[0];
-            var right = count > 1 ? insets[1] : top;
-            var bottom = count > 2 ? insets[2] : top;
-            var left = count > 3 ? insets[3] : right;
-            result = new ArbitraryStyle(ArbitraryProperty.Slice, top, right, bottom, left);
+            // The given value each of the right, bottom and left edges takes when fewer than four are given.
+            var right = count > 1 ? 1 : 0;
+            var bottom = count > 2 ? 2 : 0;
+            var left = count > 3 ? 3 : right;
+            var percentEdges = (percents[0] ? 1 : 0) | (percents[right] ? 2 : 0) | (percents[bottom] ? 4 : 0)
+                | (percents[left] ? 8 : 0);
+            result = new ArbitraryStyle(ArbitraryProperty.Slice, insets[0], insets[right], insets[bottom], insets[left],
+                percentEdges);
             return true;
         }
 
-        private static bool TryParseSliceInset(ReadOnlySpan<char> value, out int inset)
+        private static ReadOnlySpan<char> WithoutFill(ReadOnlySpan<char> value)
         {
+            if (value.StartsWith("fill_".AsSpan()))
+            {
+                return value.Slice("fill_".Length);
+            }
+            return value.EndsWith("_fill".AsSpan()) ? value.Slice(0, value.Length - "_fill".Length) : value;
+        }
+
+        // A whole, non-negative number of pixels, bare as border-image-slice writes it or with px, or a
+        // non-negative percentage of the image's size.
+        private static bool TryParseSliceInset(ReadOnlySpan<char> value, out float inset, out bool percent)
+        {
+            percent = value.EndsWith("%".AsSpan());
+            if (percent)
+            {
+                return TryParseFloat(value.Slice(0, value.Length - 1), out inset) && inset >= 0f;
+            }
             var digits = value.EndsWith("px".AsSpan()) ? value.Slice(0, value.Length - 2) : value;
-            return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out inset);
+            var whole = int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var pixels);
+            inset = pixels;
+            return whole;
         }
 
         // Parses a duration-[..] time value to SECONDS. Accepts "<n>ms" / "<n>s" (duration-[400ms] /
@@ -907,6 +930,10 @@ namespace Velvet
             // The containers that re-apply when a class of this element's own changes — see
             // StyleChildOwnership. Lazily allocated: only a claimed child gets one.
             public List<IChildClassWatcher>? Watchers;
+
+            // What each writer of the background image last asked for — see WriteBackgroundImage. Lazily
+            // allocated: only an element something writes a background image to gets one.
+            public BackgroundImageSources? BackgroundImage;
 
             private readonly Dictionary<(ArbitraryProperty Property, long Priority), long> _arrivals = new();
             private long _nextArrival;
@@ -1542,6 +1569,123 @@ namespace Velvet
                 && map.TryGetValue(property, out var layers)
                 && layers.Count > 0;
 
+        // The element's own writers of the background image: a StyleOverrides member and the utilities
+        // (bg-[addr:…] and the gradients, which coordinate between themselves). Neither is an ArbitraryProperty
+        // layer, since a StyleBackground is no ArbitraryStyle payload, so they are ranked here instead, as
+        // InlineStyle ranks the layers: the override wins unless the utility is important.
+        internal sealed class BackgroundImageSources
+        {
+            public StyleBackground? Override;
+            public StyleBackground? Utility;
+            public bool UtilityImportant;
+        }
+
+        // A StyleOverrides.BackgroundImage, or null when the node declares none.
+        internal static void WriteBackgroundImageOverride(VisualElement element, StyleBackground? value)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            var sources = map.BackgroundImage ??= new BackgroundImageSources();
+            sources.Override = value is { keyword: not StyleKeyword.Null } ? value : null;
+            ResolveBackgroundImage(element, map, sources);
+        }
+
+        // A utility's background image.
+        internal static void WriteBackgroundImageUtility(VisualElement element, StyleBackground value, bool important)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            var sources = map.BackgroundImage ??= new BackgroundImageSources();
+            sources.Utility = value;
+            sources.UtilityImportant = important;
+            ResolveBackgroundImage(element, map, sources);
+        }
+
+        // The utilities letting go of the background image.
+        internal static void ClearBackgroundImageUtility(VisualElement element)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            var sources = map.BackgroundImage ??= new BackgroundImageSources();
+            sources.Utility = null;
+            sources.UtilityImportant = false;
+            ResolveBackgroundImage(element, map, sources);
+        }
+
+        // The image the utilities last wrote, whether or not it is the one showing.
+        internal static StyleBackground UtilityBackgroundImage(VisualElement element)
+            => s_layers.TryGetValue(element, out var map) && map.BackgroundImage?.Utility is { } utility
+                ? utility
+                : new StyleBackground(StyleKeyword.Null);
+
+        private static void ResolveBackgroundImage(VisualElement element, LayerMap map, BackgroundImageSources sources)
+        {
+            var winner = sources.Override is { } own && !sources.UtilityImportant
+                ? own
+                : sources.Utility ?? new StyleBackground(StyleKeyword.Null);
+            SceneViewElement.WriteBackground(element, winner);
+            ReresolvePercentSlices(element, map);
+        }
+
+        // A percentage inset is of the background image's size, so the slice properties are written again once
+        // the image changes; one holding no percentage writes what it wrote before.
+        private static void ReresolvePercentSlices(VisualElement element, LayerMap map)
+        {
+            foreach (var property in s_sliceInsetProperties)
+            {
+                if (map.ContainsKey(property))
+                {
+                    ResolveAndApply(element, property, map);
+                }
+            }
+        }
+
+        // The single-value slice properties whose insets are of the image's width.
+        private static readonly HashSet<ArbitraryProperty> s_horizontalSlices = new()
+        {
+            ArbitraryProperty.SliceX, ArbitraryProperty.SliceLeft, ArbitraryProperty.SliceRight,
+        };
+
+        private static readonly ArbitraryProperty[] s_sliceInsetProperties =
+        {
+            ArbitraryProperty.Slice, ArbitraryProperty.SliceX, ArbitraryProperty.SliceY, ArbitraryProperty.SliceTop,
+            ArbitraryProperty.SliceRight, ArbitraryProperty.SliceBottom, ArbitraryProperty.SliceLeft,
+        };
+
+        // The background image's size in pixels, which a percentage inset is of: the inline image, else the
+        // resolved one. Zero when there is none, or when it is a vector image, which has no pixel size.
+        private static Vector2 BackgroundImagePixels(VisualElement element)
+        {
+            var image = element.style.backgroundImage.keyword == StyleKeyword.Undefined
+                ? element.style.backgroundImage.value
+                : element.resolvedStyle.backgroundImage;
+            if (image.texture != null)
+            {
+                return new Vector2(image.texture.width, image.texture.height);
+            }
+            if (image.sprite != null)
+            {
+                return image.sprite.rect.size;
+            }
+            return image.renderTexture != null
+                ? new Vector2(image.renderTexture.width, image.renderTexture.height)
+                : Vector2.zero;
+        }
+
+        // One inset as written: the keyword of a keyword value, else the value, resolved against the image's
+        // width (horizontal) or height when it is a percentage.
+        private static StyleInt SliceInset(VisualElement element, in ArbitraryStyle style, float value, int edge,
+            bool horizontal)
+        {
+            if (style.Keyword != StyleKeyword.Undefined)
+            {
+                return new StyleInt(style.Keyword);
+            }
+            if ((style.PercentEdges & (1 << edge)) == 0)
+            {
+                return new StyleInt((int)value);
+            }
+            var pixels = BackgroundImagePixels(element);
+            return new StyleInt(Mathf.RoundToInt(value / 100f * (horizontal ? pixels.x : pixels.y)));
+        }
+
         // Drops all arbitrary-value layers tracked for element. Called when the element is
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
@@ -1565,7 +1709,7 @@ namespace Velvet
             }
             else if (StyleBackgroundImageResolver.TryParse(core, out var texture))
             {
-                StyleBackgroundImageResolver.Apply(element, texture);
+                StyleBackgroundImageResolver.Apply(element, texture, (priority & StyleLayerPriority.Important) != 0);
             }
             else if (addToClassListFallback)
             {
@@ -2103,10 +2247,10 @@ namespace Velvet
                 case ArbitraryProperty.Slice:
                 {
                     var slices = element.style;
-                    slices.unitySliceTop = (int)style.Value;
-                    slices.unitySliceRight = (int)style.Value2;
-                    slices.unitySliceBottom = (int)style.Value3;
-                    slices.unitySliceLeft = (int)style.Value4;
+                    slices.unitySliceTop = SliceInset(element, style, style.Value, 0, horizontal: false);
+                    slices.unitySliceRight = SliceInset(element, style, style.Value2, 1, horizontal: true);
+                    slices.unitySliceBottom = SliceInset(element, style, style.Value3, 2, horizontal: false);
+                    slices.unitySliceLeft = SliceInset(element, style, style.Value4, 3, horizontal: true);
                     return;
                 }
                 case ArbitraryProperty.AspectRatio:
@@ -2119,7 +2263,9 @@ namespace Velvet
 
             if (ColorSetters.TryGetValue(style.Property, out var colorSetters))
             {
-                var color = new StyleColor(style.Color);
+                var color = style.Keyword == StyleKeyword.Undefined
+                    ? new StyleColor(style.Color)
+                    : new StyleColor(style.Keyword);
                 var cs = element.style;
                 foreach (var setter in colorSetters)
                 {
@@ -2130,7 +2276,7 @@ namespace Velvet
 
             if (IntSetters.TryGetValue(style.Property, out var intSetters))
             {
-                var inset = new StyleInt((int)style.Value);
+                var inset = SliceInset(element, style, style.Value, 0, s_horizontalSlices.Contains(style.Property));
                 var ins = element.style;
                 foreach (var setter in intSetters)
                 {
@@ -2141,7 +2287,9 @@ namespace Velvet
 
             if (FloatSetters.TryGetValue(style.Property, out var floatSetters))
             {
-                var width = new StyleFloat(style.Value);
+                var width = style.Keyword == StyleKeyword.Undefined
+                    ? new StyleFloat(style.Value)
+                    : new StyleFloat(style.Keyword);
                 var fs = ClipPathLayoutBox.StyleFor(element, style.Property);
                 foreach (var setter in floatSetters)
                 {

@@ -318,7 +318,7 @@ namespace Velvet
 
             if (styles.BackgroundImage.HasValue)
             {
-                element.style.backgroundImage = styles.BackgroundImage.Value;
+                StyleArbitraryValueResolver.WriteBackgroundImageOverride(element, styles.BackgroundImage);
             }
 
             if (styles.BackgroundRepeat.HasValue)
@@ -334,44 +334,37 @@ namespace Velvet
             // The members an arbitrary value can also write go through StyleOverridesLayer, which ranks them.
             if (styles.UnitySliceTop.HasValue)
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceTop, styles.UnitySliceTop,
-                    static (s, v) => s.unitySliceTop = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceTop, styles.UnitySliceTop);
             }
 
             if (styles.UnitySliceRight.HasValue)
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceRight, styles.UnitySliceRight,
-                    static (s, v) => s.unitySliceRight = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceRight, styles.UnitySliceRight);
             }
 
             if (styles.UnitySliceBottom.HasValue)
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceBottom, styles.UnitySliceBottom,
-                    static (s, v) => s.unitySliceBottom = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceBottom, styles.UnitySliceBottom);
             }
 
             if (styles.UnitySliceLeft.HasValue)
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceLeft, styles.UnitySliceLeft,
-                    static (s, v) => s.unitySliceLeft = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceLeft, styles.UnitySliceLeft);
             }
 
             if (styles.UnitySliceScale.HasValue)
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceScale, styles.UnitySliceScale,
-                    static (s, v) => s.unitySliceScale = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceScale, styles.UnitySliceScale);
             }
 
             if (styles.BackgroundColor.HasValue)
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.BackgroundColor, styles.BackgroundColor,
-                    static (s, v) => s.backgroundColor = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.BackgroundColor, styles.BackgroundColor);
             }
 
             if (styles.Color.HasValue)
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.TextColor, styles.Color,
-                    static (s, v) => s.color = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.TextColor, styles.Color);
             }
         }
 

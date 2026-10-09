@@ -1995,12 +1995,11 @@ namespace Velvet
             oldStyles ??= StyleOverrides.Empty;
             newStyles ??= StyleOverrides.Empty;
 
-            // Routed through the SceneView ownership gate: while a live camera texture owns the slot
-            // the poster is deferred (and restored on release); with no live texture — no camera yet,
-            // camera removed, plain elements — the write lands directly.
+            // Ranked against the utilities' image, then through the SceneView ownership gate: while a live camera
+            // texture owns the slot the poster is deferred (and restored on release).
             if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage))
             {
-                SceneViewElement.WriteBackground(element, newStyles.BackgroundImage ?? StyleKeyword.Null);
+                StyleArbitraryValueResolver.WriteBackgroundImageOverride(element, newStyles.BackgroundImage);
             }
 
             if (!Equals(oldStyles.BackgroundRepeat, newStyles.BackgroundRepeat))
@@ -2016,44 +2015,37 @@ namespace Velvet
             // The members an arbitrary value can also write go through StyleOverridesLayer, which ranks them.
             if (!Equals(oldStyles.BackgroundColor, newStyles.BackgroundColor))
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.BackgroundColor, newStyles.BackgroundColor,
-                    static (s, v) => s.backgroundColor = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.BackgroundColor, newStyles.BackgroundColor);
             }
 
             if (!Equals(oldStyles.Color, newStyles.Color))
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.TextColor, newStyles.Color,
-                    static (s, v) => s.color = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.TextColor, newStyles.Color);
             }
 
             if (!Equals(oldStyles.UnitySliceTop, newStyles.UnitySliceTop))
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceTop, newStyles.UnitySliceTop,
-                    static (s, v) => s.unitySliceTop = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceTop, newStyles.UnitySliceTop);
             }
 
             if (!Equals(oldStyles.UnitySliceRight, newStyles.UnitySliceRight))
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceRight, newStyles.UnitySliceRight,
-                    static (s, v) => s.unitySliceRight = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceRight, newStyles.UnitySliceRight);
             }
 
             if (!Equals(oldStyles.UnitySliceBottom, newStyles.UnitySliceBottom))
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceBottom, newStyles.UnitySliceBottom,
-                    static (s, v) => s.unitySliceBottom = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceBottom, newStyles.UnitySliceBottom);
             }
 
             if (!Equals(oldStyles.UnitySliceLeft, newStyles.UnitySliceLeft))
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceLeft, newStyles.UnitySliceLeft,
-                    static (s, v) => s.unitySliceLeft = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceLeft, newStyles.UnitySliceLeft);
             }
 
             if (!Equals(oldStyles.UnitySliceScale, newStyles.UnitySliceScale))
             {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceScale, newStyles.UnitySliceScale,
-                    static (s, v) => s.unitySliceScale = v);
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceScale, newStyles.UnitySliceScale);
             }
         }
 

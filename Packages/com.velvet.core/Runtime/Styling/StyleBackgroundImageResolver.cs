@@ -67,18 +67,19 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Sets the element's inline <c>backgroundImage</c> from the given Texture2D, through the
-        /// SceneView ownership gate (a live camera feed keeps the slot and defers this value).
+        /// Sets the element's inline <c>backgroundImage</c> from the given Texture2D, ranked below a
+        /// <see cref="StyleOverrides.BackgroundImage"/> and through the SceneView ownership gate (a live camera
+        /// feed keeps the slot and defers this value).
         /// </summary>
         public static void Apply(VisualElement element, Texture2D? texture)
-        {
-            SceneViewElement.WriteBackground(element, new StyleBackground(texture));
-        }
+            => Apply(element, texture, important: false);
+
+        // An important utility (!bg-[addr:…]) wins over a StyleOverrides.BackgroundImage.
+        internal static void Apply(VisualElement element, Texture2D? texture, bool important)
+            => StyleArbitraryValueResolver.WriteBackgroundImageUtility(element, new StyleBackground(texture), important);
 
         /// <summary>Reverts the inline background-image to the USS default (same gate as Apply).</summary>
         public static void Clear(VisualElement element)
-        {
-            SceneViewElement.WriteBackground(element, new StyleBackground(StyleKeyword.Null));
-        }
+            => StyleArbitraryValueResolver.ClearBackgroundImageUtility(element);
     }
 }

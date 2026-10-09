@@ -34,6 +34,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AKeywordBackgroundColorOverride_When_TheUtilityBesideItChanges_Then_TheKeywordStands()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var styles = new StyleOverrides { BackgroundColor = new StyleColor(StyleKeyword.Initial) };
+            var oldTree = new VNode[] { V.Div(className: "bg-[#ff0000]", styles: styles) };
+            var newTree = new VNode[] { V.Div(className: "bg-[#00ff00]", styles: styles) };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), oldTree);
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            Assert.That(root.ElementAt(0).style.backgroundColor.keyword, Is.EqualTo(StyleKeyword.Initial));
+        }
+
+        [Test]
         public void Given_ATextColorOverride_When_AHoverUtilityTurnsOn_Then_TheOverrideStillPaints()
         {
             // Arrange

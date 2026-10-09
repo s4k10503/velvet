@@ -36,11 +36,16 @@ no utility for either, so Velvet's family follows Tailwind's naming for an edge 
 | `slice-sliced` / `slice-tiled` | `-unity-slice-type` |
 
 An inset is a whole, non-negative number, written bare as `border-image-slice` writes it (`slice-[12]`) or
-in pixels (`slice-[12px]`); a fraction, a percentage, another unit or a negative number is declined.
+in pixels (`slice-[12px]`), or a non-negative percentage of the background image's size on that axis
+(`slice-[25%]`): its height for the top and bottom, its width for the left and right, rounded to a whole
+pixel. A percentage is resolved against the image the element shows — a `StyleOverrides.BackgroundImage`, a
+`bg-[addr:…]` image, a baked gradient, or else the one its stylesheet resolves — and again whenever Velvet
+writes a new one; a vector image has no pixel size, and a percentage of it is 0. A fraction of a pixel,
+another unit or a negative number is declined.
 `slice-[…]` also takes `border-image-slice`'s two, three and four values, with `_` for the space between
 them: `slice-[12_8]` sets the top and bottom to 12 and the right and left to 8, `slice-[12_8_4]` the top,
-the right and left, and the bottom, and `slice-[12_8_4_2]` the top, right, bottom and left. The edge
-classes take one value.
+the right and left, and the bottom, and `slice-[12_8_4_2]` the top, right, bottom and left. Pixels and
+percentages mix (`slice-[25%_8]`). The edge classes take one value.
 `slice-scale-[N]` takes a non-negative number with no unit and declines a negative one or one with a unit.
 A declined class writes nothing.
 
@@ -52,7 +57,12 @@ same edge of an earlier `slice-[N]` and gives it back when it is removed, as `pt
 On a field control the family goes to the input box with the other background utilities
 ([styling-variants.md](styling-variants.md)).
 
-`border-image-slice`'s percentages and its `fill` keyword have no spelling.
+`fill` is accepted before or after the values (`slice-[12_fill]`) and changes nothing, because UI Toolkit
+paints a sliced background's centre either way (`NineSlicePlaybackTests` pins it). So a slice **without**
+`fill` still paints the centre, where `border-image-slice` leaves it empty. No UI Toolkit property turns the
+centre off: the slice longhands are `-unity-slice-top`, `-right`, `-bottom`, `-left`, `-scale` and `-type`,
+and `SliceType` has two modes, `Sliced` and `Tiled` (`BackgroundRepeatAndSliceTypeUssTests` pins both). An
+empty centre would need Velvet to paint the background's eight outer pieces itself.
 
 ## `StyleOverrides`
 
@@ -65,14 +75,16 @@ cleared.
 against `className`: a member wins over a utility writing the same property whichever was written last,
 including a variant one (`hover:bg-[#…]`) — except an important one (`!bg-[#…]`), which wins as an
 `!important` rule wins over a `style` attribute. An override that goes away hands the property back to the
-utility. That holds for `BackgroundColor`, `Color`, the slice insets and `UnitySliceScale`, which arbitrary
-values also write; `BackgroundRepeat` and `UnitySliceType` meet only stylesheet rules (`bg-repeat-*`,
-`slice-tiled`) and are written inline over them. `BackgroundImage` is not ranked: `bg-[addr:…]` and the
-gradient utilities write that slot directly, so the last write stands there.
+utility. That holds for `BackgroundColor`, `Color`, the slice insets, `UnitySliceScale` and
+`BackgroundImage` (against `bg-[addr:…]`, which `!bg-[addr:…]` makes important, and the gradient
+utilities), a keyword value (`StyleKeyword.Initial`, …) included; `BackgroundRepeat` and `UnitySliceType`
+meet only stylesheet rules (`bg-repeat-*`, `slice-tiled`) and are written inline over them. A gradient keeps
+baking under an image override, so removing the override shows the gradient's current bake.
 
-An `animate-gradient` or `animate-shimmer` pan holds `background-repeat` at `no-repeat` while it runs; when
-it stops, the element's own value returns — the current `BackgroundRepeat` override, or
-none, which leaves the property to the `bg-repeat-*` classes.
+An `animate-gradient` or `animate-shimmer` pan holds `background-size`, `background-position` and
+`background-repeat` while it runs; when it stops, the element's own inline values return — the gradient's
+stretch-to-fill, whatever a `refCallback` wrote, and the current `BackgroundRepeat` override — or none,
+which leaves the properties to the classes.
 
 ```csharp
 V.Div(className: "w-64 h-32", styles: new StyleOverrides

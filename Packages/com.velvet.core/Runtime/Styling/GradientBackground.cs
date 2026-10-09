@@ -244,9 +244,9 @@ namespace Velvet
             binding.Spec = spec;
             binding.Box = KeysFor(spec, SizeOf(element, binding), binding.BoxScale);
             binding.Texture = Hold(binding);
-            // Through the SceneView ownership gate: a live camera feed keeps the slot and defers
-            // the gradient for its release; everywhere else this is a plain style write.
-            SceneViewElement.WriteBackground(element, new StyleBackground(binding.Texture));
+            // As a utility's image, ranked below a StyleOverrides.BackgroundImage and written through the SceneView
+            // ownership gate, which defers it while a live camera feed keeps the slot.
+            WriteImage(element, binding);
             // Stretch the baked texture to the full element box (no 9-slice); border-radius clips it.
             element.style.backgroundSize = new StyleBackgroundSize(
                 new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
@@ -280,17 +280,24 @@ namespace Velvet
                 return;
             }
             binding.Box = box;
-            // Only while the image is still the one this binding wrote: a className-driven image written
-            // since (bg-[addr:…]) owns the slot, and the patch that wrote it did not touch this binding.
+            // Only while the utilities' image is still the one this binding wrote: a className-driven image
+            // written since (bg-[addr:…]) owns it, and the patch that wrote it did not touch this binding. A
+            // StyleOverrides.BackgroundImage showing over it does not stop the re-bake.
             // A SceneViewElement's slot may be held by its camera, so it is always written.
-            if (element is not SceneViewElement && element.style.backgroundImage.value.texture != binding.Texture)
+            if (element is not SceneViewElement
+                && StyleArbitraryValueResolver.UtilityBackgroundImage(element).value.texture != binding.Texture)
             {
                 return;
             }
             // The image alone: backgroundSize is whatever Rebind or a pan mode last set.
             binding.Texture = Hold(binding);
-            SceneViewElement.WriteBackground(element, new StyleBackground(binding.Texture));
+            WriteImage(element, binding);
         }
+
+        // The bake, as the utilities' background image. A gradient has no important form.
+        private static void WriteImage(VisualElement element, GradientBinding binding)
+            => StyleArbitraryValueResolver.WriteBackgroundImageUtility(
+                element, new StyleBackground(binding.Texture), important: false);
 
         // Makes the binding hold the cache entry for its spec and box, baking it if absent, and lets go of
         // the entry it held before.
@@ -409,7 +416,7 @@ namespace Velvet
         // Full reset: clears the gradient's background-image AND the backgroundSize it set.
         public static void Clear(VisualElement element)
         {
-            SceneViewElement.WriteBackground(element, new StyleBackground(StyleKeyword.Null));
+            StyleArbitraryValueResolver.ClearBackgroundImageUtility(element);
             ClearSizeOnly(element);
         }
 
