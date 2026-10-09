@@ -48,9 +48,17 @@ namespace Velvet
     {
         /// <summary>No navigation is in flight.</summary>
         Idle,
-        /// <summary>A navigation has matched a route, and its guards or its loaders are running.</summary>
+        /// <summary>
+        /// A navigation has matched a route, and its guards or its loaders are running. A submission reports
+        /// this too unless it is one <see cref="Submitting"/> names.
+        /// </summary>
         Loading,
-        /// <summary>A submission other than <c>get</c> has matched a route, and its guards or its action are running.</summary>
+        /// <summary>
+        /// A <c>post</c>, <c>put</c>, <c>patch</c> or <c>delete</c> submission, the method compared without
+        /// regard to case, has matched a route, and its guards or its action are running. A <c>get</c>
+        /// submission and one whose method no form takes, <c>head</c> say, report
+        /// <see cref="Loading"/> instead.
+        /// </summary>
         Submitting,
     }
 

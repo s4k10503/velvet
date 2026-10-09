@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using NUnit.Framework;
@@ -183,6 +184,34 @@ namespace Velvet.Tests
                 Is.EqualTo("result=Success errors=late-failure"));
         });
 
+        [Test]
+        public void Given_ANavigationAwaitingItsLoader_When_ANewerNavigationTakesOver_Then_TheRouterGoesStraightFromOneToTheNext()
+        {
+            // The parked loader honours its token, so the attempt it holds unwinds inside the takeover's
+            // cancel, before the newer navigation has published itself. React Router's navigation goes from
+            // one loading navigation to the next with no idle between them.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("a", loader: (ctx, ct) =>
+                {
+                    var pending = new VelvetTaskCompletionSource<object>();
+                    ct.Register(() => pending.TrySetCanceled());
+                    return pending.Task;
+                }),
+                Route("b"));
+            var published = new List<string>();
+            router.OnNavigationChanged += navigation =>
+                published.Add($"{navigation.State}({navigation.Location?.Path})");
+            router.NavigateAsync("/a").Forget();
+
+            // Act
+            router.NavigateSync("/b");
+
+            // Assert
+            Assert.That(string.Join(",", published), Is.EqualTo("Loading(/a),Loading(/b),Idle()"));
+        }
+
         [UnityTest]
         public IEnumerator Given_ANavigationAwaitingItsLoader_When_ItsCallerCancelsIt_Then_NoNavigationIsLeftInFlight()
             => VelvetTask.ToCoroutine(async () =>
@@ -284,13 +313,14 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_AGuardThatNavigatesThenRedirectsToNoRoute_When_TheRedirectFailsToMatch_Then_TheNewerDestinationStands()
+        public IEnumerator Given_AGuardThatNavigatesThenRedirectsToNoRoute_When_TheRedirectIsTaken_Then_ItIsCancelledAndTheNewerDestinationStands()
             => VelvetTask.ToCoroutine(async () =>
         {
             // The two cases above withdraw the destination of an initiator that still holds the claim.
             // A guard delegate runs before its own attempt has awaited anything, so a navigation issued
             // from one takes the claim while the attempt that called it is still inside the guard — and
-            // the destination the refused hop would withdraw is then the newer attempt's.
+            // the attempt the redirect belongs to has then been superseded, as React Router's aborted
+            // navigation is, whatever the redirect's target.
             // Arrange
             var loader = new VelvetTaskCompletionSource<object>();
             Router router = null;
@@ -312,19 +342,19 @@ namespace Velvet.Tests
             // Act
             var guarded = await router.NavigateAsync("/guarded");
 
-            // Assert — the refused result rides along because a destination reading /users/7 is also what
-            // a guard that redirected nowhere at all would leave.
+            // Assert — the result rides along because a destination reading /users/7 is also what a guard
+            // that redirected nowhere at all would leave.
             Assert.That(
                 $"guarded={guarded} loading={router.Navigation.Location?.Path ?? "none"}",
-                Is.EqualTo("guarded=NotFound loading=/users/7"));
+                Is.EqualTo("guarded=Cancelled loading=/users/7"));
         });
 
         [UnityTest]
         public IEnumerator Given_AGuardThatNavigatesThenRedirectsToARoute_When_TheRedirectMatches_Then_TheNewerDestinationStands()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // The case above with a redirect that matches: the refused hop withdrew nothing there, and a
-            // matched one would publish its own destination over the newer attempt's.
+            // The case above with a redirect that matches, which would otherwise publish its own destination
+            // over the newer attempt's.
             // Arrange
             var loader = new VelvetTaskCompletionSource<object>();
             Router router = null;

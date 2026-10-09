@@ -125,7 +125,7 @@ namespace Velvet
                 catch (OperationCanceledException)
                 {
                     // A cancellation is not this route's load failure. What this loop leaves in
-                    // Errors is what Router.RunLoaderPhase hands to UseRouteError.
+                    // Errors is what the navigation's commit publishes for UseRouteError.
                 }
                 catch (Exception ex)
                 {

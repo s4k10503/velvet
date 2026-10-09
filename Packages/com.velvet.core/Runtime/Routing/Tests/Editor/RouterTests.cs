@@ -149,6 +149,59 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASubscriberNavigatingWhenACommitGoesIdle_When_ItsNavigationCommits_Then_ItsLocationIsTheLastAnnounced()
+        {
+            // The subscriber's navigation commits inside the outer commit's Idle event, so the outer one's
+            // location is announced, if at all, after it.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"), Route("x"));
+            var announced = new List<string>();
+            router.OnLocationChanged += location => announced.Add(location.Path);
+            var navigated = false;
+            router.OnNavigationChanged += navigation =>
+            {
+                if (navigation.State != NavigationLifecycle.Idle || navigated) return;
+                navigated = true;
+                router.NavigateSync("/x");
+            };
+
+            // Act
+            router.NavigateSync("/about");
+
+            // Assert
+            Assert.That(
+                $"current={router.CurrentLocation?.Path} last={(announced.Count == 0 ? "none" : announced[announced.Count - 1])}",
+                Is.EqualTo("current=/x last=/x"));
+        }
+
+        [Test]
+        public void Given_ASubscriberNavigatingWhenACommitGoesIdle_When_ItsNavigationIsStillLoading_Then_TheCommittedLocationIsAnnounced()
+        {
+            // The subscriber's navigation parks on its loader, so the location the outer commit landed is the
+            // one on show while it loads.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"),
+                Route("slow", loader: (ctx, ct) => new VelvetTaskCompletionSource<object>().Task));
+            var announced = new List<string>();
+            router.OnLocationChanged += location => announced.Add(location.Path);
+            var navigated = false;
+            router.OnNavigationChanged += navigation =>
+            {
+                if (navigation.State != NavigationLifecycle.Idle || navigated) return;
+                navigated = true;
+                router.NavigateAsync("/slow").Forget();
+            };
+
+            // Act
+            router.NavigateSync("/about");
+
+            // Assert
+            Assert.That(
+                $"announced={string.Join(",", announced)} loading={router.Navigation.Location?.Path ?? "none"}",
+                Is.EqualTo("announced=/about loading=/slow"));
+        }
+
+        [Test]
         public void Given_ADisposedRouter_When_NavigatingToAnUnmatchedPath_Then_ItIsCancelledWithoutPublishingANavigation()
         {
             // Arrange

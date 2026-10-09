@@ -512,6 +512,14 @@ namespace Velvet
                 return NavigationResult.Cancelled;
             }
 
+            // A redirect whose initiator a newer navigation took over from — one its Guard started, say — is
+            // part of an attempt that has been superseded, and ends as that attempt does, whatever its target:
+            // it has no claim left to end, and nothing of its own to publish over the newer navigation's.
+            if (initiator.HasValue && !StillCurrent(initiator.Value))
+            {
+                return NavigationResult.Cancelled;
+            }
+
             if (initiator?.Redirects >= MaxRedirects)
             {
                 EndInitiatorsNavigation(initiator);
@@ -548,12 +556,6 @@ namespace Velvet
                 // A redirect inherits its initiator's claim rather than taking one, so it does not dispossess
                 // the navigation it is part of, and it commits into the slot the initiator resolved.
                 pending = initiator.Value;
-                // An initiator a newer navigation took over from — one its Guard started, say — has lost the
-                // claim, and the redirect has nothing of its own to publish over the newer navigation's.
-                if (!StillCurrent(pending))
-                {
-                    return NavigationResult.Cancelled;
-                }
             }
             else
             {
@@ -561,6 +563,10 @@ namespace Velvet
                 // the match, and that is the point of taking the claim here: an attempt that matches no route
                 // must not dispossess one still under way in a guard or a loader, because that attempt is the
                 // only one able to put Navigation back and the only one its token belongs to.
+                // Taken before the predecessor is cancelled, as Dispose retires the claim before its Cancel: a
+                // predecessor that unwinds inside the cancel has lost the claim by then, so it does not end the
+                // navigation this one is about to publish in its place.
+                var sequence = ++_navigationSequence;
                 if (takeover != null)
                 {
                     // Installed before the predecessor is cancelled, as RouteLoaderRunner.BeginRound installs a
@@ -584,7 +590,7 @@ namespace Velvet
                         return NavigationResult.Cancelled;
                     }
                 }
-                pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), redirects: 0);
+                pending = new PendingNavigation(sequence, CommitIndexFor(mode), redirects: 0);
             }
 
             // Built here rather than at the commit so the phases below have a destination to publish while
@@ -669,11 +675,18 @@ namespace Velvet
             // round it replaces ends — up to this line that round's loaders were streaming into the route the
             // user was still looking at.
             _loaderRunner.Promote(round);
-            PublishNavigation(NavigationLifecycle.Idle, null, null);
-            // Before the notification, so a handler reading a Blocker off it sees one that has started over
+            // Before the notifications, so a handler reading a Blocker off either sees one that has started over
             // rather than one still holding the attempt this commit completed.
             _blockerManager.ResetAll();
-            OnLocationChanged?.Invoke(location);
+            PublishNavigation(NavigationLifecycle.Idle, null, null);
+            // A navigation a subscriber started from the Idle above, and that has committed already, announced
+            // its own location to every subscriber; this one's would arrive after it and leave them on a
+            // location the router has left. One still in flight has not, and this location is the one on show
+            // while it runs.
+            if (ReferenceEquals(CurrentLocation, location))
+            {
+                OnLocationChanged?.Invoke(location);
+            }
 
             return NavigationResult.Success;
         }
@@ -734,8 +747,6 @@ namespace Velvet
             }
         }
 
-        // Every part is written before the event is raised, so a subscriber reading the router reads the
-        // navigation it is told about.
         private void PublishNavigation(NavigationLifecycle phase, RouterLocation? location, Submission? submission)
         {
             if (_navigationPhase == phase && ReferenceEquals(_pendingLocation, location)
