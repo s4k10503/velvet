@@ -443,13 +443,17 @@ these to the box:
 **A text input's caret and selection colours follow CSS and Tailwind.**
 - **Values:** each utility takes a palette colour, `white`, `black`, `transparent`, a bracketed value
   (`caret-[#f00]`) or an opacity modifier (`caret-red-500/50`). `caret-current` follows the input's text
-  colour as it changes.
-- **Inheritance:** a field with none of a utility takes the nearest ancestor's, as `caret-color`
-  inherits and as Tailwind's `selection:` reaches a descendant's selection. `-inherit` passes the
-  question to the parent.
-- **Precedence:** on one element, the utility Tailwind emits last wins, whatever order the classes were
-  added in: `caret-red-500 caret-blue-500` and `caret-blue-500 caret-red-500` both give red, and
-  `caret-inherit` beats `caret-blue-500` either way. A value that does not parse is skipped.
+  colour as it changes, and `caret-current/50` takes it at half its alpha.
+- **Precedence:** where two utilities compete, the one Tailwind emits last wins, whatever order the
+  classes were added in: `caret-red-500 caret-blue-500` and `caret-blue-500 caret-red-500` both give
+  red, and `caret-inherit` beats `caret-blue-500` either way. A value that does not parse is skipped.
+- **`caret-*` inherits:** a field with none takes the nearest ancestor's, as `caret-color` inherits, so
+  only the classes of the nearest element carrying one compete. `caret-inherit` winning there passes
+  the question to that element's parent.
+- **`selection:*` reaches from every ancestor:** Tailwind writes it as `& *::selection, &::selection`,
+  so the field's and every ancestor's compete at one specificity, and an ancestor's
+  `selection:bg-red-500` beats the field's own `selection:bg-blue-500`. `selection:bg-inherit` winning
+  takes the parent's selection colour, which the classes from the next element up decide.
 - **Removal:** a colour a utility set goes back, when no utility asks for one any more, to the theme's
   colour if the theme declares one, or else to the colour the field was built with.
 

@@ -9,7 +9,11 @@ namespace Velvet
     // text it covers, and the engine has no colour for selected text at all.
     //
     // The drawing is a text element laid over the input's content box, holding the input's text with every
-    // run but the selected one at zero alpha. It is created the first time the input holds focus and a
+    // run but the selected one at zero alpha. It is the input's sibling rather than its child: a child
+    // would take the input's measure function away, and the input would stop sizing to its text
+    // (SelectionTextOverlayTests holds the input's height across the first selection). So it carries the
+    // input's classes and inline translate, and is re-placed when the input's box, its content box or that
+    // translate moves. It is created the first time the input holds focus and a
     // non-empty selection, and hidden whenever it does not, so a field nobody is selecting in lays out no
     // second copy of its text. The selection has no public change event, so while the input holds focus
     // each scheduler tick compares the selection, the shown text and the colours with what was last
@@ -25,13 +29,9 @@ namespace Velvet
         private TextElement? _drawing;
         private Color? _textColor;
 
-        // What the drawing was last composed from.
-        private string? _composedFrom;
-        private bool _composedMasked;
-        private int _composedStart;
-        private int _composedEnd;
-        private Color? _composedTextColor;
-        private float _composedBaseAlpha;
+        // Where the drawing was last placed from, and what it was last composed from.
+        private (Rect Layout, Rect Content, StyleTranslate Translate) _placed;
+        private (string Shown, bool Masked, int Start, int End, Color? TextColor, float BaseAlpha) _composed;
 
         internal SelectionTextOverlay(TextElement input)
         {
@@ -80,7 +80,7 @@ namespace Velvet
         {
             if (_drawing != null)
             {
-                FitToInput(_drawing);
+                Place(_drawing);
             }
         }
 
@@ -96,27 +96,25 @@ namespace Velvet
             }
 
             var drawing = _drawing ??= CreateDrawing();
-            var shown = _input.text ?? string.Empty;
-            var masked = ((ITextEdition)_input).isPassword;
-            var baseAlpha = _input.resolvedStyle.color.a;
+            if (drawing.hierarchy.parent != _input.hierarchy.parent || !Placement().Equals(_placed))
+            {
+                Place(drawing);
+            }
+
             if (drawing.style.display == DisplayStyle.None)
             {
                 drawing.style.display = StyleKeyword.Null;
             }
 
-            if (ReferenceEquals(shown, _composedFrom) && masked == _composedMasked && start == _composedStart && end == _composedEnd
-                && _textColor == _composedTextColor && baseAlpha == _composedBaseAlpha)
+            var composed = (_input.text ?? string.Empty, ((ITextEdition)_input).isPassword, start, end, _textColor,
+                _input.resolvedStyle.color.a);
+            if (composed.Equals(_composed))
             {
                 return;
             }
 
-            _composedFrom = shown;
-            _composedMasked = masked;
-            _composedStart = start;
-            _composedEnd = end;
-            _composedTextColor = _textColor;
-            _composedBaseAlpha = baseAlpha;
-            drawing.text = Compose(Displayed(_input), start, end, _textColor, baseAlpha);
+            _composed = composed;
+            drawing.text = Compose(Displayed(_input), start, end, _textColor, composed.Item6);
         }
 
         private void Hide()
@@ -134,20 +132,37 @@ namespace Velvet
             drawing.style.position = Position.Absolute;
             drawing.style.marginLeft = drawing.style.marginTop = drawing.style.marginRight = drawing.style.marginBottom = 0f;
             drawing.style.paddingLeft = drawing.style.paddingTop = drawing.style.paddingRight = drawing.style.paddingBottom = 0f;
-            _input.Add(drawing);
-            FitToInput(drawing);
+            Place(drawing);
             return drawing;
         }
 
-        // The input's content box, in the input's own space, which an absolute child is placed in.
-        private void FitToInput(TextElement drawing)
+        // Beside the input, over its content box in the parent's space; put back there whenever it is no
+        // longer the input's sibling.
+        private void Place(TextElement drawing)
         {
-            var content = _input.contentRect;
-            drawing.style.left = content.x;
-            drawing.style.top = content.y;
-            drawing.style.width = content.width;
-            drawing.style.height = content.height;
+            var parent = _input.hierarchy.parent;
+            if (parent != null && drawing.hierarchy.parent != parent)
+            {
+                parent.hierarchy.Insert(parent.hierarchy.IndexOf(_input) + 1, drawing);
+                foreach (var cls in _input.GetClasses())
+                {
+                    if (cls != StyleTextInputColors.InputTextClass)
+                    {
+                        drawing.AddToClassList(cls);
+                    }
+                }
+            }
+
+            _placed = Placement();
+            drawing.style.left = _placed.Layout.x + _placed.Content.x;
+            drawing.style.top = _placed.Layout.y + _placed.Content.y;
+            drawing.style.width = _placed.Content.width;
+            drawing.style.height = _placed.Content.height;
+            drawing.style.translate = _placed.Translate;
         }
+
+        private (Rect Layout, Rect Content, StyleTranslate Translate) Placement()
+            => (_input.layout, _input.contentRect, _input.style.translate);
 
         // What the input shows: its text, or the mask in its place for a password field.
         internal static string Displayed(TextElement input)

@@ -206,7 +206,7 @@ namespace Velvet
 
         // Parses the alpha portion of a color opacity modifier: an integer percent 0..100 (50 -> 0.5) or an
         // arbitrary bracketed 0..1 fraction ([0.32] -> 0.32). Returns false for any other / out-of-range form.
-        private static bool TryParseAlphaModifier(ReadOnlySpan<char> span, out float alpha)
+        internal static bool TryParseAlphaModifier(ReadOnlySpan<char> span, out float alpha)
         {
             alpha = 0f;
             if (span.Length == 0)

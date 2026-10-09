@@ -5,12 +5,16 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Realises caret-*, selection:bg-* and selection:text-* on a text input. None of them has a USS rule: each is
-    // read off the class lists of the input's box, its control and their ancestors, nearest first, as CSS
-    // inherits caret-color and as Tailwind's selection: reaches a descendant's selection. On one element the
-    // class Tailwind emits last wins, which for utilities of one property is the order
+    // read off the class lists of the input's box, its control and their ancestors. Among classes that
+    // compete, the one Tailwind emits last wins, which for utilities of one property is the order
     // StyleCandidateOrder.Compare gives, whatever order the classes were added in. A value that does not
-    // parse is skipped, as Tailwind emits no rule for it; `-inherit` competes like any value, and winning
-    // hands the question to the parent. `caret-current` takes the input's resolved text colour.
+    // parse is skipped, as Tailwind emits no rule for it, and `-inherit` competes like any value.
+    // - caret-color inherits, so the nearest element carrying a caret-* decides, among its own classes;
+    //   `-inherit` winning there passes the question to its parent.
+    // - selection:* is `& *::selection, &::selection`, which reaches the input's selection from every
+    //   element carrying one at one specificity, so all of them compete at once; `-inherit` winning takes
+    //   the parent's selection, which every element from the next one up reaches.
+    // `caret-current` takes the input's resolved text colour, scaled by an opacity modifier.
     //
     // It runs on the input text element's custom-style event, which the rule _text_input.uss keys on
     // InputTextClass keeps firing on every style pass, and a class change on the control or an ancestor
@@ -108,7 +112,7 @@ namespace Velvet
         private static void ApplyCaret(State state, VisualElement box, VisualElement control, TextElement input,
             ITextSelection selection)
         {
-            if (TryResolve(box, CaretPrefix, input, out var caret))
+            if (TryResolveCaret(box, input, out var caret))
             {
                 selection.cursorColor = caret;
                 state.CaretWritten = true;
@@ -130,8 +134,8 @@ namespace Velvet
         private static void ApplySelection(State state, VisualElement box, VisualElement control, TextElement input,
             ITextSelection selection)
         {
-            var hasBackground = TryResolve(box, SelectionBackgroundPrefix, input, out var background);
-            var hasText = TryResolve(box, SelectionTextPrefix, input, out var text);
+            var hasBackground = TryResolveSelection(box, SelectionBackgroundPrefix, input, out var background);
+            var hasText = TryResolveSelection(box, SelectionTextPrefix, input, out var text);
             if (hasBackground)
             {
                 selection.selectionColor = background;
@@ -158,26 +162,58 @@ namespace Velvet
         }
 #pragma warning restore CS0618
 
-        // The nearest element, from the box up, whose class list resolves the utility.
-        private static bool TryResolve(VisualElement box, string prefix, TextElement input, out Color color)
+        private struct Winner
         {
-            color = default;
-            var element = box;
-            while (element != null && !Read(element, prefix, input, out color))
-            {
-                element = element.hierarchy.parent;
-            }
-
-            return element != null;
+            public string? Class;
+            public Color Color;
+            public bool Inherits;
         }
 
-        // False for an element whose class list leaves the question to its parent: none of the utility, only
-        // values that do not parse, or `-inherit` winning among those that do.
-        private static bool Read(VisualElement element, string prefix, TextElement input, out Color color)
+        private static bool TryResolveCaret(VisualElement box, TextElement input, out Color color)
         {
+            for (var element = box; element != null; element = element.hierarchy.parent)
+            {
+                var winner = default(Winner);
+                Consider(element, CaretPrefix, input, ref winner);
+                if (winner.Class != null && !winner.Inherits)
+                {
+                    color = winner.Color;
+                    return true;
+                }
+            }
+
             color = default;
-            string? winner = null;
-            var inherits = false;
+            return false;
+        }
+
+        private static bool TryResolveSelection(VisualElement box, string prefix, TextElement input, out Color color)
+        {
+            for (var start = box; start != null; start = start.hierarchy.parent)
+            {
+                var winner = default(Winner);
+                for (var element = start; element != null; element = element.hierarchy.parent)
+                {
+                    Consider(element, prefix, input, ref winner);
+                }
+
+                if (winner.Class == null)
+                {
+                    break;
+                }
+
+                if (!winner.Inherits)
+                {
+                    color = winner.Color;
+                    return true;
+                }
+            }
+
+            color = default;
+            return false;
+        }
+
+        private static void Consider(VisualElement element, string prefix, TextElement input, ref Winner winner)
+        {
             foreach (var cls in element.GetClasses())
             {
                 if (!cls.StartsWith(prefix, System.StringComparison.Ordinal))
@@ -185,8 +221,8 @@ namespace Velvet
                     continue;
                 }
 
-                // MUTANT_SURVIVES(equivalent, boundary): a class list holds a class once, and only an identical class compares equal.
-                if (winner != null && StyleCandidateOrder.Compare(cls, winner) < 0)
+                // MUTANT_SURVIVES(equivalent, boundary): only an identical class compares equal, and it resolves to the same value.
+                if (winner.Class != null && StyleCandidateOrder.Compare(cls, winner.Class) < 0)
                 {
                     continue;
                 }
@@ -194,13 +230,11 @@ namespace Velvet
                 var suffix = cls.Substring(prefix.Length);
                 if (TryValue(suffix, input, out var value))
                 {
-                    winner = cls;
-                    color = value;
-                    inherits = suffix == Inherit;
+                    winner.Class = cls;
+                    winner.Color = value;
+                    winner.Inherits = suffix == Inherit;
                 }
             }
-
-            return winner != null && !inherits;
         }
 
         private static bool TryValue(string suffix, TextElement input, out Color color)
@@ -211,13 +245,29 @@ namespace Velvet
                 return true;
             }
 
-            if (suffix == Current)
+            if (!suffix.StartsWith(Current, System.StringComparison.Ordinal))
             {
-                color = input.resolvedStyle.color;
+                return StyleColorValueParser.TryParseColorSuffix(suffix, out color);
+            }
+
+            color = input.resolvedStyle.color;
+            if (suffix.Length == Current.Length)
+            {
                 return true;
             }
 
-            return StyleColorValueParser.TryParseColorSuffix(suffix, out color);
+            if (suffix[Current.Length] != '/')
+            {
+                return false;
+            }
+
+            if (!StyleColorValueParser.TryParseAlphaModifier(System.MemoryExtensions.AsSpan(suffix, Current.Length + 1), out var alpha))
+            {
+                return false;
+            }
+
+            color.a *= alpha;
+            return true;
         }
 
         private static VisualElement? BoxOf(TextElement input)

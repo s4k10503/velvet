@@ -114,6 +114,26 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode SingleLineHost() =>
+            V.TextField(name: "field", value: "hello", className: "selection:text-white");
+
+        [Component]
+        private static VNode MultilineHost() =>
+            V.TextField(name: "field", value: "hello\nworld", multiline: true, className: "selection:text-white");
+
+        // The overlay's scheduled poll, reached through the record StyleTextInputColors keeps per control.
+        private static IVisualElementScheduledItem Poll(TextField field)
+        {
+            var states = typeof(StyleTextInputColors).GetField("s_states", BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetValue(null);
+            var arguments = new object[] { field, null };
+            states.GetType().GetMethod("TryGetValue")!.Invoke(states, arguments);
+            var overlay = arguments[1].GetType().GetField("Overlay")!.GetValue(arguments[1]);
+            return (IVisualElementScheduledItem)typeof(SelectionTextOverlay)
+                .GetField("_poll", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(overlay);
+        }
+
+        [Component]
         private static VNode TranslucentTextHost() =>
             V.TextField(name: "field", value: "hello", className: "selection:bg-red-500 text-black/50");
 
@@ -135,6 +155,38 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(composed, Is.EqualTo("<alpha=#00><alpha=#FF>abc<alpha=#00>"));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AField_When_TextIsFirstSelected_Then_TheInputKeepsTheHeightItsTextGaveIt(bool multiline)
+        {
+            // Arrange
+            var field = Mount(multiline ? MultilineHost : SingleLineHost);
+            var before = Input(field).layout.height;
+
+            // Act
+            Select(field, 1, 3);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert — the drawing is read beside the height, so a selection that drew nothing cannot pass.
+            Assert.That((Showing(field), before > 0f, Input(field).layout.height), Is.EqualTo((true, true, before)));
+        }
+
+        [Test]
+        public void Given_ASelectionUtility_When_TheFieldGainsAndLosesFocus_Then_ItsPollRunsOnlyWhileFocused()
+        {
+            // Arrange
+            var field = Mount(FieldAndOtherHost);
+            var beforeFocus = Poll(field).isActive;
+
+            // Act
+            Input(field).Focus();
+            var whileFocused = Poll(field).isActive;
+            Input(_host.Root.Q<TextField>("other")).Focus();
+
+            // Assert
+            Assert.That((beforeFocus, whileFocused, Poll(field).isActive), Is.EqualTo((false, true, false)));
         }
 
         [Test]

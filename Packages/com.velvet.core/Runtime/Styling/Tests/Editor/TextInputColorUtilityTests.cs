@@ -200,6 +200,17 @@ namespace Velvet.Tests
             V.TextField(name: "field"),
         });
 
+        // Tailwind emits selection:bg-blue-500 before selection:bg-red-500, so the ancestor's red reaches the
+        // field's selection over the field's own blue.
+        [Component]
+        private static VNode SelectionAcrossElementsHost() => V.Div(className: "selection:bg-red-500", children: new VNode[]
+        {
+            Field("selection:bg-blue-500"),
+        });
+
+        [Component]
+        private static VNode CurrentOpacityHost() => Field("caret-current/50 text-blue-500");
+
         // Step 0 carries a caret utility, 1 drops it, 2 adds a radius utility in its place.
         [Component]
         private static VNode SteppingHost()
@@ -446,6 +457,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Selection(field), Is.EqualTo(Palette("red-500")));
+        }
+
+        [Test]
+        public void Given_SelectionColorsOnTheFieldAndAnAncestor_When_ItMounts_Then_TheOneTailwindEmitsLastWinsWhereverItSits()
+        {
+            // Arrange / Act
+            var field = Mount(SelectionAcrossElementsHost);
+
+            // Assert
+            Assert.That(Selection(field), Is.EqualTo(Palette("red-500")));
+        }
+
+        [Test]
+        public void Given_CaretCurrentWithAnOpacityModifier_When_ItMounts_Then_TheCaretTakesTheTextColorAtThatAlpha()
+        {
+            // Arrange / Act
+            var field = Mount(CurrentOpacityHost);
+
+            // Assert
+            Assert.That(Caret(field), Is.EqualTo(Palette("blue-500", 0.5f)));
         }
 
         [Test]

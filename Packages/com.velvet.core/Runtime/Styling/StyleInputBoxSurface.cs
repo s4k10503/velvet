@@ -150,8 +150,8 @@ namespace Velvet
                || StyleShadowClass.IsShadowClass(core)
                || StyleRingClass.IsRingClass(core)
                || StyleGradientClass.IsGradientClass(core)
-            || core.StartsWith("caret-", StringComparison.Ordinal)
-            || core.StartsWith("selection:", StringComparison.Ordinal);
+               || core.StartsWith("caret-", StringComparison.Ordinal)
+               || core.StartsWith("selection:", StringComparison.Ordinal);
 
         private static bool StartsWithAny(string text, string[] prefixes)
             => Array.Exists(prefixes, prefix => text.StartsWith(prefix, StringComparison.Ordinal));
