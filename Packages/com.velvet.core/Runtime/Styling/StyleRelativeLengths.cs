@@ -81,14 +81,15 @@ namespace Velvet
         private static UnityEngine.Rect ViewportOf(VisualElement element)
         {
             var root = element.panel.visualTree;
-            var top = element;
-            while (top.hierarchy.parent != root)
+            for (var top = element; ; top = top.hierarchy.parent!)
             {
-                top = top.hierarchy.parent;
+                if (top.hierarchy.parent == root)
+                {
+                    return element.panel.contextType == ContextType.Editor && top.resolvedStyle.position == Position.Absolute
+                        ? top.layout
+                        : root.layout;
+                }
             }
-            return element.panel.contextType == ContextType.Editor && top.resolvedStyle.position == Position.Absolute
-                ? top.layout
-                : root.layout;
         }
 
         // Whether box's size along the axis is one a percentage can be taken of — CSS's definite size. Read from
@@ -156,6 +157,7 @@ namespace Velvet
             var (kind, position) = (Declared.Nothing, -1);
             for (var i = 0; i < classes.Count; i++)
             {
+                // MUTANT_SURVIVES(equivalent, boundary): a tie needs two classes at one cascade position, and the table gives each class a position of its own (RelativeLengthDefinitenessTests' distinct-positions case).
                 if (StyleUtilityProperties.TryGet(classes[i], out var rule) && rule.Properties.Contains(longhand)
                     && rule.CascadePosition > position)
                 {

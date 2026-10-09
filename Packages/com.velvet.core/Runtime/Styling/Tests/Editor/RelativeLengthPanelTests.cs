@@ -137,6 +137,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEmWidthAsTheOnlyArbitraryValue_When_Settled_Then_ItIsTwentyFourPixelsWide()
+        {
+            // Act
+            Mount("text-[12px] w-[300px] h-[200px]", "w-[2em]");
+
+            // Assert
+            Assert.That(Child.layout.width, Is.EqualTo(24f).Within(0.01f));
+        }
+
+        [Test]
         public void Given_AnEmWidth_When_TheInheritedFontGrows_Then_ItIsRemeasured()
         {
             // Arrange
