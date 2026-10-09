@@ -247,8 +247,9 @@ namespace Velvet
 
         // A declared value that arrives with a range change is written in between: the range widens to hold
         // both ranges, the value is placed inside the new one without a notification, and only then do the
-        // bounds narrow, so the value neither falls to the old range nor reports a clamp the render never asked
-        // for. SliderDirectionPropTests measures both.
+        // bounds narrow, so narrowing them does not clamp the old value and report a change the render never
+        // asked for. SliderDirectionPanelTests and SliderIntPanelTests measure that on a panel, the only place
+        // the clamp notifies.
         private static void WriteRange<T, TNumber>(BaseSlider<T> slider, T low, T high, object? declaredValue, TNumber number)
             where T : struct, System.IComparable<T>
             where TNumber : struct, ISliderNumber<T>

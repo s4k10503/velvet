@@ -552,5 +552,35 @@ namespace Velvet.Tests
                 (whileMounted, reported.Count, slider.value, slider.direction, slider.inverted),
                 Is.EqualTo((0, 0, 7f, SliderDirection.Vertical, true)));
         }
+
+        // GREEN_ON_BASE(refactor): the base already places the value between widening and narrowing the range.
+        // This change moves that write into FiberPropApplier.WriteRange, and deleting its `declaredValue is T`
+        // block reddens this: narrowing the high bound then clamps 50 to 10 and reports it. It needs a panel
+        // because the slider's clamp notifies only on one.
+        [Test]
+        public void Given_AValueOutsideTheNewRange_When_ALaterRenderMovesTheRangeAndTheValueTogether_Then_OnValueChangedIsNotCalled()
+        {
+            // Arrange
+            var reported = new List<float>();
+            var oldTree = new VNode[]
+            {
+                V.Slider(value: 50f, lowValue: 0f, highValue: 100f, onValueChanged: Recorder(reported)),
+            };
+            var newTree = new VNode[]
+            {
+                V.Slider(value: 7f, lowValue: 5f, highValue: 10f, onValueChanged: Recorder(reported)),
+            };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+            var slider = (Slider)_root.ElementAt(0);
+            var whileMounted = reported.Count;
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, newTree);
+
+            // Assert
+            Assert.That(
+                (Reported(whileMounted, reported), slider.lowValue, slider.highValue, slider.value),
+                Is.EqualTo(("0:", 5f, 10f, 7f)));
+        }
     }
 }

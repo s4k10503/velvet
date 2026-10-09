@@ -28,8 +28,9 @@ namespace Velvet
         public float Clamp(float value, float low, float high) => Mathf.Clamp(value, low, high);
     }
 
-    // FromDouble is only handed a value Snap has already put on an integer grid line and inside the range,
-    // so the cast neither truncates nor overflows.
+    // FromDouble is only handed what Snap returns: a whole number inside the range, either a grid line counted
+    // from an integer low value in integer steps or the bound it was clamped to, so the cast neither truncates
+    // nor overflows.
     internal readonly struct IntSliderNumber : ISliderNumber<int>
     {
         public double ToDouble(int value) => value;
@@ -195,7 +196,7 @@ namespace Velvet
             private static bool IsInInputField(VisualElement? target, BaseSlider<T> slider)
             {
                 var field = slider.Q(className: BaseSlider<T>.textFieldClassName);
-                return field != null && target != null && (target == field || field.Contains(target));
+                return field != null && (target == field || field.Contains(target));
             }
 
             // Radix's updateValues: onto the step grid counted from the low value, then into the range.

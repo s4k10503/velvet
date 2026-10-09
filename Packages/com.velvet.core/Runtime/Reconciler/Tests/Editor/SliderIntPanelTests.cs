@@ -10,8 +10,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins that <c>V.SliderInt</c>'s keyboard is <c>V.Slider</c>'s on a real panel, reported through an
     /// <c>Action&lt;int&gt;</c>: Home and End on a vertical or inverted slider, the paging keys, the
-    /// <c>step:</c> an arrow moves by, the grid a written value lands on, and a pooled slider forgetting its
-    /// last tenancy's step. <c>SliderDirectionPanelTests</c> pins the rest of that keyboard on the float
+    /// <c>step:</c> an arrow moves by, the grid a written value lands on, a render moving the range past the
+    /// value reporting nothing, and a pooled slider forgetting its last tenancy's step. <c>SliderDirectionPanelTests</c> pins the rest of that keyboard on the float
     /// slider, which shares its implementation.
     /// </summary>
     /// <remarks>
@@ -155,6 +155,50 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((Reported(whileMounted, reported), slider.value), Is.EqualTo(("0:55", 55)));
+        }
+
+        // The order the next two pin is FiberPropApplier.WriteRange's. Each moves the range past the value in
+        // one direction, so the bound that has to widen first differs: the low one here, the high one below.
+        [Test]
+        public void Given_AValueAboveANewRange_When_ALaterRenderMovesTheRangeDownWithTheValue_Then_OnValueChangedIsNotCalled()
+        {
+            // Arrange
+            var reported = new List<int>();
+            Action<int> record = reported.Add;
+            var oldTree = new VNode[] { V.SliderInt(value: 60, lowValue: 50, highValue: 100, onValueChanged: record) };
+            var newTree = new VNode[] { V.SliderInt(value: 7, lowValue: 5, highValue: 10, onValueChanged: record) };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+            var slider = (SliderInt)_root.ElementAt(0);
+            var whileMounted = reported.Count;
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, newTree);
+
+            // Assert
+            Assert.That(
+                (Reported(whileMounted, reported), slider.lowValue, slider.highValue, slider.value),
+                Is.EqualTo(("0:", 5, 10, 7)));
+        }
+
+        [Test]
+        public void Given_AValueBelowANewRange_When_ALaterRenderMovesTheRangeUpWithTheValue_Then_OnValueChangedIsNotCalled()
+        {
+            // Arrange
+            var reported = new List<int>();
+            Action<int> record = reported.Add;
+            var oldTree = new VNode[] { V.SliderInt(value: 5, lowValue: 0, highValue: 10, onValueChanged: record) };
+            var newTree = new VNode[] { V.SliderInt(value: 70, lowValue: 50, highValue: 100, onValueChanged: record) };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldTree);
+            var slider = (SliderInt)_root.ElementAt(0);
+            var whileMounted = reported.Count;
+
+            // Act
+            _reconciler.Reconcile(_root, oldTree, newTree);
+
+            // Assert
+            Assert.That(
+                (Reported(whileMounted, reported), slider.lowValue, slider.highValue, slider.value),
+                Is.EqualTo(("0:", 50, 100, 70)));
         }
 
         [Test]

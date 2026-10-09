@@ -61,6 +61,9 @@ namespace Velvet.TestUtilities
         // Bypasses: nothing — it reads a static pool's depth.
         public static int TextFieldPoolCountForTest => Count(TextFieldPoolFieldName);
 
+        // Bypasses: nothing — it reads a static pool's depth.
+        public static int SliderIntPoolCountForTest => Count(SliderIntPoolFieldName);
+
         // For a case whose identity term has to tell a patch from a discard-and-recreate at a pooled slot.
         // ChildReconciler.PatchOrReplaceAtSlot removes the occupant before it creates the replacement and
         // the pools pop the last element pushed, so with room left the discard is rented straight back as
@@ -69,6 +72,11 @@ namespace Velvet.TestUtilities
         // Bypasses: FiberElementCleaner — it returns Labels no tree mounted, through ReturnLabel.
         public static bool SaturateLabelPoolForTest()
             => Saturate(LabelPoolFieldName, () => VNodePool.ReturnLabel(new Label()));
+
+        // Bypasses: FiberElementCleaner — it returns Sliders no tree mounted, through ReturnSlider. They are
+        // built by the pool's own factory, so a later rent gets the keyboard callbacks a pooled Slider carries.
+        public static bool SaturateSliderPoolForTest()
+            => Saturate(SliderPoolFieldName, () => VNodePool.ReturnSlider(FiberSliderKeyboard.Create()));
 
         // Bypasses: FiberElementCleaner — it returns TextFields no tree mounted, through ReturnTextField.
         public static bool SaturateTextFieldPoolForTest()

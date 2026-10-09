@@ -6,7 +6,7 @@ namespace Velvet.Tests
 {
     // SliderPoolAdmissionTests and CompositeFieldChildPoolReuseTests' slider case, over the SliderInt pool:
     // the same admission check and the same foreign-child detach, reached through the int slider's own
-    // pool and reset.
+    // pool and reset; and the paths that hand an int slider to the pool or drop it from there.
     internal sealed class SliderIntPoolTests
     {
         // The pool is process-wide, so a fixture that ran earlier can leave it at its cap, where a return
@@ -37,6 +37,45 @@ namespace Velvet.Tests
             Assert.That(
                 (built, ReferenceEquals(afterCarrying, carrying), ReferenceEquals(afterPlain, plain)),
                 Is.EqualTo((true, false, true)));
+        }
+
+        [Test]
+        public void Given_ASliderIntHoldingATextFieldClassOutsideItsInput_When_ItIsReturnedToThePool_Then_ItComesBack()
+        {
+            // Arrange — the class the admission check refuses on, carried by a foreign child's child rather
+            // than by the slider's own input field, which is the only place the check is about.
+            var returned = new SliderInt();
+            var foreign = new VisualElement();
+            var classed = new VisualElement();
+            classed.AddToClassList(BaseSlider<int>.textFieldClassName);
+            foreign.Add(classed);
+            returned.Insert(0, foreign);
+            var held = returned.Q(className: BaseSlider<int>.textFieldClassName) != null;
+
+            // Act
+            VNodePool.ReturnSliderInt(returned);
+            var rented = VNodePool.RentSliderInt();
+
+            // Assert
+            Assert.That((held, ReferenceEquals(rented, returned)), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_APooledSliderInt_When_TheDomainReloadResetRuns_Then_TheNextRentBuildsANewOne()
+        {
+            // Arrange — the reset is private and runs from a RuntimeInitializeOnLoadMethod, so the case reaches
+            // it by name.
+            var reset = typeof(VNodePool).GetMethod(
+                "ResetStaticFields", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var returned = new SliderInt();
+            VNodePool.ReturnSliderInt(returned);
+            var pooled = VNodePoolTestAccess.SliderIntPoolCountForTest;
+
+            // Act
+            reset!.Invoke(null, null);
+
+            // Assert
+            Assert.That((pooled, ReferenceEquals(VNodePool.RentSliderInt(), returned)), Is.EqualTo((1, false)));
         }
 
         [Test]

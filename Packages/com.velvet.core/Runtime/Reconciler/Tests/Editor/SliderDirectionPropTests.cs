@@ -69,6 +69,9 @@ namespace Velvet.Tests
             Assert.That(slider.inverted, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base already patches this slider in place, and this change fills
+        // the pool first so the identity term can tell a patch from a remount. Delete the `ApplySlider` call in
+        // `FiberNodePatcher.DiffProps` and this reddens.
         [Test]
         public void Given_ADeclaredVerticalDirection_When_ALaterRenderDeclaresHorizontal_Then_TheElementIsHorizontal()
         {
@@ -77,17 +80,23 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.Slider(direction: SliderDirection.Horizontal) };
             var slider = ReconcileAndGet(oldTree);
             var whileVertical = slider.direction;
+            var saturated = VNodePoolTestAccess.SaturateSliderPoolForTest();
 
             // Act
             Reconciler!.Reconcile(Root, oldTree, newTree);
 
             // Assert — the identity term separates a patch from a remount, which would satisfy the reading
-            // while the tree holds a different element.
+            // while the tree holds a different element. A pooled Slider makes that hold only with the pool
+            // full: a remount's discard is otherwise rented straight back as its replacement, which
+            // VNodePoolTestAccess.SaturateLabelPoolForTest states. The fill's own result is folded in, so a
+            // fill that stopped working fails the case.
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), slider), whileVertical, slider.direction),
-                Is.EqualTo((true, SliderDirection.Vertical, SliderDirection.Horizontal)));
+                (saturated, ReferenceEquals(Root!.ElementAt(0), slider), whileVertical, slider.direction),
+                Is.EqualTo((true, true, SliderDirection.Vertical, SliderDirection.Horizontal)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already patches this slider in place, and this change adds
+        // the fill. Delete the `ApplySlider` call in `FiberNodePatcher.DiffProps` and this reddens.
         [Test]
         public void Given_ADeclaredInvertedFlag_When_ALaterRenderDeclaresItFalse_Then_TheElementIsNotInverted()
         {
@@ -96,20 +105,24 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.Slider(inverted: false) };
             var slider = ReconcileAndGet(oldTree);
             var whileInverted = slider.inverted;
+            var saturated = VNodePoolTestAccess.SaturateSliderPoolForTest();
 
             // Act
             Reconciler!.Reconcile(Root, oldTree, newTree);
 
-            // Assert — same identity term, and for the same reason.
+            // Assert — same fill and identity term, and for the same reason.
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), slider), whileInverted, slider.inverted),
-                Is.EqualTo((true, true, false)));
+                (saturated, ReferenceEquals(Root!.ElementAt(0), slider), whileInverted, slider.inverted),
+                Is.EqualTo((true, true, true, false)));
         }
 
         #endregion
 
         #region removal
 
+        // GREEN_ON_BASE(characterization): the base already restores the dropped direction in place, and this
+        // change adds the fill. Delete the `else if (built.Direction != null)` restore in `ApplyDirection` and
+        // this reddens.
         [Test]
         public void Given_ADeclaredVerticalDirection_When_ALaterRenderDropsIt_Then_TheSliderIsHorizontalAgain()
         {
@@ -118,16 +131,20 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.Slider() };
             var slider = ReconcileAndGet(oldTree);
             var whileDeclared = slider.direction;
+            var saturated = VNodePoolTestAccess.SaturateSliderPoolForTest();
 
             // Act
             Reconciler!.Reconcile(Root, oldTree, newTree);
 
-            // Assert — same identity term, and for the same reason.
+            // Assert — same fill and identity term, and for the same reason.
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), slider), whileDeclared, slider.direction),
-                Is.EqualTo((true, SliderDirection.Vertical, SliderDirection.Horizontal)));
+                (saturated, ReferenceEquals(Root!.ElementAt(0), slider), whileDeclared, slider.direction),
+                Is.EqualTo((true, true, SliderDirection.Vertical, SliderDirection.Horizontal)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already restores the dropped flag in place, and this change
+        // adds the fill. Delete the `else if (built.Inverted != null)` restore in `ApplyInverted` and this
+        // reddens.
         [Test]
         public void Given_ADeclaredInvertedFlag_When_ALaterRenderDropsIt_Then_TheSliderIsNotInvertedAgain()
         {
@@ -136,14 +153,15 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.Slider() };
             var slider = ReconcileAndGet(oldTree);
             var whileDeclared = slider.inverted;
+            var saturated = VNodePoolTestAccess.SaturateSliderPoolForTest();
 
             // Act
             Reconciler!.Reconcile(Root, oldTree, newTree);
 
-            // Assert — same identity term, and for the same reason.
+            // Assert — same fill and identity term, and for the same reason.
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), slider), whileDeclared, slider.inverted),
-                Is.EqualTo((true, true, false)));
+                (saturated, ReferenceEquals(Root!.ElementAt(0), slider), whileDeclared, slider.inverted),
+                Is.EqualTo((true, true, true, false)));
         }
 
         [Test]
@@ -164,7 +182,8 @@ namespace Velvet.Tests
             // Act
             Reconciler!.Reconcile(Root, oldTree, newTree);
 
-            // Assert — same identity term, and for the same reason.
+            // Assert — the identity term separates a patch from a remount with no fill: a subclass is never
+            // pooled, so a remount builds a new element.
             Assert.That(
                 (ReferenceEquals(Root!.ElementAt(0), slider), whileDeclared, slider.direction),
                 Is.EqualTo((true, SliderDirection.Horizontal, SliderDirection.Vertical)));
@@ -188,7 +207,7 @@ namespace Velvet.Tests
             // Act
             Reconciler!.Reconcile(Root, oldTree, newTree);
 
-            // Assert — same identity term, and for the same reason.
+            // Assert — same identity term, and for the subclass's reason.
             Assert.That(
                 (ReferenceEquals(Root!.ElementAt(0), slider), whileDeclared, slider.inverted),
                 Is.EqualTo((true, false, true)));
@@ -223,6 +242,10 @@ namespace Velvet.Tests
         // The three below follow TextFieldInputPropTests' refCallback sequence, for the reasons it gives: a
         // render declares one member, the refCallback assigns another, and a second render changes only the
         // first.
+
+        // GREEN_ON_BASE(characterization): the base already leaves an undeclared direction alone, and this
+        // change adds the fill. Write `slider.direction` for an undeclared member in `ApplyDirection` and this
+        // reddens.
         [Test]
         public void Given_ADirectionWrittenFromARefCallback_When_ALaterRenderChangesTheFlag_Then_TheDirectionSurvives()
         {
@@ -235,16 +258,20 @@ namespace Velvet.Tests
             var oldTree = new VNode[] { V.Slider(inverted: true, refCallback: setDirection) };
             var newTree = new VNode[] { V.Slider(inverted: false, refCallback: setDirection) };
             var slider = ReconcileAndGet(oldTree);
+            var saturated = VNodePoolTestAccess.SaturateSliderPoolForTest();
 
             // Act
             Reconciler!.Reconcile(Root, oldTree, newTree);
 
-            // Assert
+            // Assert — the fill and identity term of the cases above, since a remount would rerun the
+            // refCallback and satisfy the reading on its own.
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), slider), slider.direction),
-                Is.EqualTo((true, SliderDirection.Vertical)));
+                (saturated, ReferenceEquals(Root!.ElementAt(0), slider), slider.direction),
+                Is.EqualTo((true, true, SliderDirection.Vertical)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already leaves an undeclared flag alone, and this change
+        // adds the fill. Write `slider.inverted` for an undeclared member in `ApplyInverted` and this reddens.
         [Test]
         public void Given_AFlagWrittenFromARefCallback_When_ALaterRenderChangesTheDirection_Then_TheFlagSurvives()
         {
@@ -257,16 +284,19 @@ namespace Velvet.Tests
             var oldTree = new VNode[] { V.Slider(direction: SliderDirection.Vertical, refCallback: setFlag) };
             var newTree = new VNode[] { V.Slider(direction: SliderDirection.Horizontal, refCallback: setFlag) };
             var slider = ReconcileAndGet(oldTree);
+            var saturated = VNodePoolTestAccess.SaturateSliderPoolForTest();
 
             // Act
             Reconciler!.Reconcile(Root, oldTree, newTree);
 
-            // Assert
+            // Assert — same fill and identity term, and for the same reason.
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), slider), slider.inverted),
-                Is.EqualTo((true, true)));
+                (saturated, ReferenceEquals(Root!.ElementAt(0), slider), slider.inverted),
+                Is.EqualTo((true, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already leaves a range it was not handed alone, and this
+        // change adds the fill. Write the range on every `ApplySlider` call and this reddens.
         [Test]
         public void Given_ARangeWrittenFromARefCallback_When_ALaterRenderChangesOnlyTheDirection_Then_TheRangeSurvives()
         {
@@ -281,14 +311,15 @@ namespace Velvet.Tests
             var oldTree = new VNode[] { V.Slider(direction: SliderDirection.Vertical, refCallback: setRange) };
             var newTree = new VNode[] { V.Slider(direction: SliderDirection.Horizontal, refCallback: setRange) };
             var slider = ReconcileAndGet(oldTree);
+            var saturated = VNodePoolTestAccess.SaturateSliderPoolForTest();
 
             // Act
             Reconciler!.Reconcile(Root, oldTree, newTree);
 
-            // Assert
+            // Assert — same fill and identity term, and for the same reason.
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), slider), slider.lowValue, slider.highValue),
-                Is.EqualTo((true, -5f, 5f)));
+                (saturated, ReferenceEquals(Root!.ElementAt(0), slider), slider.lowValue, slider.highValue),
+                Is.EqualTo((true, true, -5f, 5f)));
         }
 
         #endregion
@@ -417,41 +448,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((slider.highValue, slider.value), Is.EqualTo((100f, 50f)));
-        }
-
-        // GREEN_ON_BASE(characterization): the base writes the value first, so it reports nothing here either;
-        // this is what the range-first order must not start reporting, and replacing the in-between write with
-        // the plain bounds reddens it.
-        [Test]
-        public void Given_AValueOutsideTheNewRange_When_ALaterRenderMovesTheRangeAndTheValueTogether_Then_OnValueChangedIsNotCalled()
-        {
-            // Arrange
-            var reported = new System.Collections.Generic.List<float>();
-            Action<float> record = reported.Add;
-            var oldTree = new VNode[] { V.Slider(value: 50f, lowValue: 0f, highValue: 100f, onValueChanged: record) };
-            var newTree = new VNode[] { V.Slider(value: 7f, lowValue: 5f, highValue: 10f, onValueChanged: record) };
-            var slider = ReconcileAndGet(oldTree);
-
-            // Act
-            Reconciler!.Reconcile(Root, oldTree, newTree);
-
-            // Assert
-            Assert.That((string.Join("|", reported), slider.value), Is.EqualTo(("", 7f)));
-        }
-
-        // GREEN_ON_BASE(characterization): same reason as the case above, at mount.
-        [Test]
-        public void Given_AValueInsideARaisedLowValue_When_TheSliderIsMounted_Then_OnValueChangedIsNotCalled()
-        {
-            // Arrange
-            var reported = new System.Collections.Generic.List<float>();
-            var tree = new VNode[] { V.Slider(value: 7f, lowValue: 5f, onValueChanged: reported.Add) };
-
-            // Act
-            var slider = ReconcileAndGet(tree);
-
-            // Assert
-            Assert.That((string.Join("|", reported), slider.value), Is.EqualTo(("", 7f)));
         }
 
         #endregion

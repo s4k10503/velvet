@@ -155,27 +155,6 @@ namespace Velvet.Tests
                 Is.EqualTo((2, 4, 0, 10)));
         }
 
-        // The int counterpart of SliderDirectionPropTests' case of the same name, which is where the order it
-        // pins is stated.
-        [Test]
-        public void Given_AValueOutsideTheNewRange_When_ALaterRenderMovesTheRangeAndTheValueTogether_Then_OnValueChangedIsNotCalled()
-        {
-            // Arrange
-            var reported = new List<int>();
-            Action<int> record = reported.Add;
-            var oldTree = new VNode[] { V.SliderInt(value: 50, lowValue: 0, highValue: 100, onValueChanged: record) };
-            var newTree = new VNode[] { V.SliderInt(value: 7, lowValue: 5, highValue: 10, onValueChanged: record) };
-            var slider = ReconcileAndGet(oldTree);
-
-            // Act
-            Reconciler!.Reconcile(Root, oldTree, newTree);
-
-            // Assert
-            Assert.That(
-                (string.Join("|", reported), slider.lowValue, slider.highValue, slider.value),
-                Is.EqualTo(("", 5, 10, 7)));
-        }
-
         #endregion
 
         #region the step
