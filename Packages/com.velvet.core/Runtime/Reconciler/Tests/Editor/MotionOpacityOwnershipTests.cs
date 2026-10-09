@@ -402,7 +402,7 @@ namespace Velvet.Tests
 
         private static void EndProjectionFade(VisualElement element, LayoutIdProjection projection) =>
             typeof(MotionLayoutIdDriver).GetMethod("WriteOpacity", BindingFlags.Static | BindingFlags.NonPublic)
-                .Invoke(null, new object[] { element, projection, null });
+                .Invoke(null, new object[] { element, projection, null, new ReconcilerContext() });
 
         [Test]
         public void Given_AnEndedProjectionFade_When_AnInlineWritePrecedesItsNextPass_Then_TheTailAdoptsTheWrite()
