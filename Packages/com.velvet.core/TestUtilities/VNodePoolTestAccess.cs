@@ -73,8 +73,9 @@ namespace Velvet.TestUtilities
         public static bool SaturateLabelPoolForTest()
             => Saturate(LabelPoolFieldName, () => VNodePool.ReturnLabel(new Label()));
 
-        // Bypasses: FiberElementCleaner — it returns Sliders no tree mounted, through ReturnSlider. They are
-        // built by the pool's own factory, so a later rent gets the keyboard callbacks a pooled Slider carries.
+        // The Sliders are built by the pool's own factory, so a later rent gets the keyboard callbacks a pooled
+        // Slider carries.
+        // Bypasses: FiberElementCleaner — it returns Sliders no tree mounted, through ReturnSlider.
         public static bool SaturateSliderPoolForTest()
             => Saturate(SliderPoolFieldName, () => VNodePool.ReturnSlider(FiberSliderKeyboard.Create()));
 
