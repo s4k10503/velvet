@@ -539,6 +539,37 @@ namespace Velvet.Tests
                 $"{instr.Previous?.OpCode}<{instr.OpCode} {instr.Operand}>{instr.Next?.OpCode}"))
                + $"#{method.Body.Variables.Count}";
 
+        // What a weave left behind: its warnings, whether it reported a change, and what it threw if it threw. A
+        // weaver without per-method containment lets an exception out, which a case reads as a value to compare
+        // rather than as a failure of its own.
+        private sealed class WeaveOutcome
+        {
+            public WeaveOutcome(List<string> messages, bool changed, string threw)
+            {
+                Messages = messages;
+                Changed = changed;
+                Threw = threw;
+            }
+
+            public List<string> Messages { get; }
+            public bool Changed { get; }
+            public string Threw { get; }
+        }
+
+        private static WeaveOutcome WeaveWithoutLettingItThrow(ModuleDefinition module)
+        {
+            try
+            {
+                var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module, out var changed);
+                return new WeaveOutcome(messages, changed, string.Empty);
+            }
+            catch (TargetInvocationException exception)
+            {
+                return new WeaveOutcome(new List<string>(), false,
+                    $"{exception.InnerException?.GetType().Name}: {exception.InnerException?.Message}");
+            }
+        }
+
         [Test]
         public void Given_ABodyTheWeaverFailsOn_When_CompilerWeaverRuns_Then_ItIsWarnedAboutByNameAndExceptionType()
         {
@@ -546,13 +577,13 @@ namespace Velvet.Tests
             using var module = BuildContainmentModule(out _, out _);
 
             // Act
-            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+            var outcome = WeaveWithoutLettingItThrow(module);
 
             // Assert
             Assert.That(
-                messages.Count(message => message.Contains("Probe.Fixture::AnalysisFails")
-                    && message.Contains("NullReferenceException")),
-                Is.EqualTo(1), "A weaver defect is visible rather than silent");
+                (outcome.Threw, outcome.Messages.Count(message => message.Contains("Probe.Fixture::AnalysisFails")
+                    && message.Contains("NullReferenceException"))),
+                Is.EqualTo((string.Empty, 1)), "A weaver defect is visible rather than silent");
         }
 
         [Test]
@@ -563,12 +594,13 @@ namespace Velvet.Tests
             using var module = BuildContainmentModule(out _, out _);
 
             // Act
-            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+            var outcome = WeaveWithoutLettingItThrow(module);
 
             // Assert
             Assert.That(
-                (FailureWarnings(messages), messages.Count(message => message.Contains("NullReferenceException"))),
-                Is.EqualTo((6, 6)), "Every failure is the one the missing declaring type causes");
+                (outcome.Threw, FailureWarnings(outcome.Messages),
+                    outcome.Messages.Count(message => message.Contains("NullReferenceException"))),
+                Is.EqualTo((string.Empty, 6, 6)), "Every failure is the one the missing declaring type causes");
         }
 
         [Test]
@@ -579,10 +611,10 @@ namespace Velvet.Tests
             var before = Describe(injectFails);
 
             // Act
-            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+            var outcome = WeaveWithoutLettingItThrow(module);
 
             // Assert
-            Assert.That(Describe(injectFails), Is.EqualTo(before),
+            Assert.That((outcome.Threw, Describe(injectFails)), Is.EqualTo((string.Empty, before)),
                 "The instructions, their links and the variables are those the weave found");
         }
 
@@ -593,10 +625,11 @@ namespace Velvet.Tests
             using var module = BuildContainmentModule(out _, out _);
 
             // Act
-            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module, out var changed);
+            var outcome = WeaveWithoutLettingItThrow(module);
 
             // Assert
-            Assert.That(changed, Is.True, "The module was rewritten, so the post-processor has to write it");
+            Assert.That((outcome.Threw, outcome.Changed), Is.EqualTo((string.Empty, true)),
+                "The module was rewritten, so the post-processor has to write it");
         }
 
         // GREEN_ON_BASE(characterization): the base reports no change for a module it wove nothing in, as this does.
@@ -629,10 +662,10 @@ namespace Velvet.Tests
             using var module = BuildContainmentModule(out _, out var sibling);
 
             // Act
-            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+            var outcome = WeaveWithoutLettingItThrow(module);
 
             // Assert
-            Assert.That(BodyCallsTryGetMemoizedVNode(sibling), Is.True,
+            Assert.That((outcome.Threw, BodyCallsTryGetMemoizedVNode(sibling)), Is.EqualTo((string.Empty, true)),
                 "A failure costs its own component the memoization, and no other");
         }
 
