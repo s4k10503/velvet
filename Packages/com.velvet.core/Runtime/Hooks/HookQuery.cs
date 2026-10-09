@@ -415,6 +415,8 @@ namespace Velvet
 #if UNITY_EDITOR
                 _reprintedKeyCommits = 0;
 #endif
+                // v5's setOptions hands the entry this commit's options at every commit.
+                current.SetOptions(FetchOptions);
                 // TanStack's shouldFetchOptionally: a query turned on over stale data fetches it.
                 if (!wasEnabled && Enabled && current.IsStaleFor(StaleTime))
                 {
@@ -430,6 +432,7 @@ namespace Velvet
             Unsubscribe();
             var entry = client.Build<TQueryFnData>(key, settings.GcTime);
             Entry = entry;
+            entry.SetOptions(FetchOptions);
             entry.Subscribe(this);
             // A change that landed between the render and this subscription was delivered to no one here.
             Update();

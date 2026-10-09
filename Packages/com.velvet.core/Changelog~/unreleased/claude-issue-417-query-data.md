@@ -12,3 +12,10 @@
 - `QueryClient.GetQueryData` and `SetQueryData`, v5's `getQueryData` and `setQueryData`: a write lands as a
   request's result would, fresh and shared structurally with the data held, leaves a request in flight
   running, and creates the entry when there is none.
+
+### Fixed
+
+- `QueryClient.InvalidateQueries` refetches an entry with the options it was last handed — by the last query
+  to commit over it or start a request for it — as TanStack Query v5 refetches a query with its own options.
+  It used the first reader's, so where readers of one key pass different query functions, a different one
+  can run now.

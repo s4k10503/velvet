@@ -287,8 +287,8 @@ nothing cached renders `Pending`, or the placeholder below.
 **Turning a query off.** `Enabled = false` fetches nothing on its own: not on mount and not when its key
 is invalidated. It reports `IsStale` false and, with nothing cached, `Pending` without `IsFetching`;
 `Refetch` still fetches. Turning it on fetches when the entry's data is stale, joining a request in
-flight, and the render that turns it on already reports the fetch. Invalidating an entry read by a
-disabled and an enabled query fetches it with the enabled one's function.
+flight, and the render that turns it on already reports the fetch. Invalidating an entry that a
+disabled and an enabled query both read fetches it, since one of its readers is enabled.
 
 **Selecting.** `Select` turns the entry's data into the result's, so a component can read part of an
 entry, or another type through `QueryOptions<TQueryFnData, TData>`, which then needs a `Select`. The entry
@@ -331,6 +331,9 @@ included, must equal its counterpart whole. A matching entry a
 mounted component reads is fetched again; a request already in flight for it is cancelled and started
 over when the entry holds data, so a result fetched before the write does not land as current. An entry
 no enabled query reads is only marked stale, and is fetched by the next component that mounts over it.
+The refetch runs with the options the entry was last handed — by the last query to commit over it or to
+start a request for it — as v5 refetches a query with its own options: where its readers' query functions
+differ, that one's runs, a disabled reader's included.
 
 ```csharp
 var client = Hooks.UseContext(QueryClientContext.Ref)!;

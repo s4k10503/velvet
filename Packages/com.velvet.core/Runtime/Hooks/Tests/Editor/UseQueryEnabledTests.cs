@@ -14,7 +14,7 @@ namespace Velvet.Tests
     /// <item>A disabled query fetches nothing when it mounts and reports itself pending and idle with nothing
     /// cached, and not stale over stale data.</item>
     /// <item>Invalidating its key fetches nothing for it, and an entry read by a disabled and an enabled query is
-    /// fetched with the enabled one's function; <c>Refetch</c> still fetches.</item>
+    /// fetched with the options it was last handed; <c>Refetch</c> still fetches.</item>
     /// <item>Turning it on fetches stale data, joining a refetch in flight, and the render that turns it on
     /// already reports the fetch, while fresh data stays as it is.</item>
     /// </list>
@@ -119,7 +119,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", s_fetched), Is.EqualTo("enabled"),
-                "The entry is fetched for the query that is enabled, not the one that subscribed first");
+                "An enabled reader makes the entry active, and the options the entry was last handed are the enabled query's");
         }
 
         [Test]
