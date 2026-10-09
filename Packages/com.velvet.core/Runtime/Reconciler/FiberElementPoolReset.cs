@@ -135,6 +135,7 @@ namespace Velvet
             // A filter tween still ticking would write its frames and its target onto the next consumer.
             StyleFilterTransitionDriver.Release(element);
             ResetInlineStyle(element.style);
+            SuspenseHiddenElements.Release(element);
 
             element.userData = null;
             element.name = string.Empty;

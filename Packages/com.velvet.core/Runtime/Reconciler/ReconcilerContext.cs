@@ -1790,6 +1790,32 @@ namespace Velvet
             => _suspenseFallbackKeys.TryGetValue(boundary, out var keys)
                 && System.Linq.Enumerable.Any(keys.Values, record => record.HidesPrimary);
 
+        internal SuspenseFallbackRecord? SuspenseRecordAt(ComponentFiber? boundary, VisualElement? container,
+            VisualElement? portalScope, long positionKey)
+        {
+            var position = (container, portalScope, positionKey);
+            if (boundary == null)
+            {
+                return _rootlessSuspenseFallbackKeys.TryGetValue(position, out var rootless) ? rootless : null;
+            }
+            if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys)) return null;
+            return keys.TryGetValue(position, out var record) ? record : null;
+        }
+
+        // Puts back a record SuspenseRecordAt read, null being no fallback shown.
+        internal void RestoreSuspenseRecord(ComponentFiber? boundary, VisualElement? container,
+            VisualElement? portalScope, long positionKey, SuspenseFallbackRecord? record)
+        {
+            if (record is { } shown)
+            {
+                SetSuspenseFallbackShown(boundary, container, portalScope, positionKey, shown.Node, true, shown.HidesPrimary);
+                return;
+            }
+            var position = (container, portalScope, positionKey);
+            if (boundary == null) _rootlessSuspenseFallbackKeys.Remove(position);
+            else RemoveSuspenseFallback(boundary, position);
+        }
+
         internal bool IsSuspensePrimaryHidden(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope, long positionKey)
         {
             var position = (container, portalScope, positionKey);

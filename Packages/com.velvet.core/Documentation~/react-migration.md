@@ -609,9 +609,8 @@ inline `display: none` ahead of the fallback, as React hides them: their element
 created again, and the components in them keep their state, until the boundary reveals them by clearing that
 `display` again. A query over the tree finds those hidden elements too. Their layout effects and
 imperative handles are taken down in the commit that shows the fallback and set up again in the one that
-reveals them, while their passive effects stay connected, as React disconnects and reconnects them. A row of
-a `V.VirtualList` among those children that suspends as the same render mounts it is the exception: the
-boundary then discards its children as below. A boundary that has not
+reveals them, while their passive effects stay connected, as React disconnects and reconnects them. A
+`V.Anchored` element among them stays hidden while it tracks its target. A boundary that has not
 shown its children yet discards what the suspended render built: a component whose render suspended keeps
 its state meanwhile only where no host element sits between it and the Suspense — one inside such an element
 is disposed with it — and one first mounted under the fallback runs none of its effects, passive ones

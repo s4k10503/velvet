@@ -84,6 +84,9 @@ namespace Velvet
             // row, applied with OffscreenChanges and on the same terms. RollbackCommitTo drops those of the rows it
             // takes back, whose elements can be in the pool by the time this is applied.
             public List<(int Row, VisualElement Element, bool Hidden)>? DisplayChanges;
+            // The record each Suspense of this walk replaced, oldest first, put back where the walk throws.
+            public List<(ComponentFiber? Boundary, VisualElement? Container, VisualElement? PortalScope, long Position,
+                ReconcilerContext.SuspenseFallbackRecord? Before)>? RecordsBefore;
             // Every old-leaf lookup of this walk goes through it; LogicalSlotCursor owns what it saves and when
             // it falls back.
             public LogicalSlotCursor OldSlots;
@@ -198,6 +201,7 @@ namespace Velvet
                     // failure, or a suspend no Suspense span of this walk caught — leaves those elements to no
                     // caller: they go the way a suspended span's do.
                     RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
+                    RestoreSuspenseRecords(commit);
                     // A boundary above discards everything this walk rendered, so the components it mounted go
                     // too, where a suspended span keeps them for the retry.
                     if (exception is BoundaryCaughtSignal) DisposeFibersMountedBy(oldFibers, newFibers);
@@ -502,7 +506,8 @@ namespace Velvet
             {
                 foreach (var (fiber, _, _) in placements)
                 {
-                    if (fiber.IsOffscreen || fiber.Parent == null || !placed.Add(fiber)) continue;
+                    // A primary a Suspense keeps hidden keeps its rows, so its components take their order too.
+                    if (fiber.Parent == null || !placed.Add(fiber)) continue;
                     if (!byParent.TryGetValue(fiber.Parent, out var ordered))
                     {
                         ordered = pool.RentFiberList();
@@ -1353,8 +1358,6 @@ namespace Velvet
                 var retains = commit != null && (revealed || primaryWasHidden);
                 var preCount = commit != null ? commit.NewElements.Count : result!.Count;
                 var suspended = false;
-                // A suspend the primary did not hold left it part-committed, so it is rolled back rather than hidden.
-                var escaped = false;
                 bool hidesPrimary;
                 // Snapshot the fiber set so the post-expansion pending check can be scoped to THIS
                 // Suspense's own primary children (the fibers newly added during its expansion).
@@ -1370,10 +1373,11 @@ namespace Velvet
                         {
                             ExpandInlineRecursive(walk, suspense.Children, primaryPosition);
                         }
+                        // A retaining primary holds every suspend raised in it (HoldSuspendInPrimary), an inline
+                        // component's and a VirtualList row's, so one reaching here is a primary's that discards.
                         catch (FiberSuspendSignal)
                         {
                             suspended = true;
-                            escaped = true;
                         }
                         finally
                         {
@@ -1383,9 +1387,10 @@ namespace Velvet
                     var primaryEnd = commit != null ? commit.NewElements.Count : result!.Count;
                     if (!suspended)
                     {
-                        suspended = AnyPrimaryChildStillPending(newFibers, fibersBefore, boundaryFiber);
+                        suspended = AnyPrimaryChildStillPending(newFibers, fibersBefore, boundaryFiber)
+                            || AnyRowStillPending(commit!, preCount, primaryEnd, boundaryFiber);
                     }
-                    var hides = suspended && retains && !escaped;
+                    var hides = suspended && retains;
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
                     // their lane flush while suspended, to the render that reveals them. The
@@ -1426,6 +1431,12 @@ namespace Velvet
                 // reads the boundary-level answer derived from those keys, so a sibling Suspense expanded
                 // later in this same walk cannot clear it.
                 _ctx.MarkSuspenseReRendered(boundaryFiber, walk.Parent, portalScope, suspenseAt);
+                // A walk that throws puts the record back (ReconcileGeneral), since its removal pass never runs.
+                if (commit != null)
+                {
+                    (commit.RecordsBefore ??= new()).Add((boundaryFiber, walk.Parent, portalScope, suspenseAt,
+                        _ctx.SuspenseRecordAt(boundaryFiber, walk.Parent, portalScope, suspenseAt)));
+                }
                 _ctx.SetSuspenseFallbackShown(boundaryFiber, walk.Parent, portalScope, suspenseAt, suspense, suspended, hidesPrimary);
             }
             else if (ExpandCommittedSuspenseBranch(walk, suspense, boundaryFiber, suspenseAt, primaryPosition, fallbackPosition))
@@ -1522,7 +1533,44 @@ namespace Velvet
                     fiber.IsOffscreen = false;
                     fiber.HiddenUnder = null;
                     (commit.OffscreenChanges ??= new()).Add((fiber, false));
+                    // FlushState deferred this fiber's update while it was hidden and left nothing scheduled, and a
+                    // VirtualList row, the one HoldSuspendInPrimary held among them, is rendered by no walk.
+                    if (fiber.IsDirty)
+                    {
+                        fiber.IsDirty = false;
+                        FiberWorkLoop.RequestRenderFromHook(fiber);
+                    }
                 }
+            }
+        }
+
+        // A VirtualList row is rendered by no walk of the boundary, and HoldSuspendInPrimary leaves the one it held
+        // with no output, so a row under the primary's elements still waiting on a read is found here.
+        private bool AnyRowStillPending(GeneralCommitState commit, int from, int to, ComponentFiber? boundaryFiber)
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): with no wrapper-mounted fiber the collection finds none.
+            if (!_ctx.ComponentRegistry.HasWrapperMountedFibers) return false;
+            List<ComponentFiber>? rows = null;
+            _ctx.ComponentRegistry.CollectWrapperFibersUnder(ElementsIn(commit, from, to), ref rows);
+            if (rows == null) return false;
+            foreach (var row in rows)
+            {
+                // Searched from the parent, as SuspendPassOwner searches: a row rendering its own Suspense is caught
+                // by the boundary above it.
+                var nearest = ComponentBoundarySearch.FindNearestSuspenseBoundary(row.Parent!);
+                if (!ReferenceEquals(nearest, boundaryFiber)) continue;
+                if (ComponentBoundarySearch.HasPendingAsyncSlot(row)) return true;
+            }
+            return false;
+        }
+
+        private void RestoreSuspenseRecords(GeneralCommitState commit)
+        {
+            if (commit.RecordsBefore == null) return;
+            for (var i = commit.RecordsBefore.Count - 1; i >= 0; i--)
+            {
+                var (boundary, container, portalScope, position, before) = commit.RecordsBefore[i];
+                _ctx.RestoreSuspenseRecord(boundary, container, portalScope, position, before);
             }
         }
 
@@ -1554,8 +1602,8 @@ namespace Velvet
             {
                 foreach (var (_, element, hidden) in commit.DisplayChanges)
                 {
-                    if (hidden) element.style.display = DisplayStyle.None;
-                    else element.style.display = StyleKeyword.Null;
+                    if (hidden) SuspenseHiddenElements.Hide(element);
+                    else SuspenseHiddenElements.Reveal(element);
                 }
             }
             if (commit.OffscreenChanges == null) return;

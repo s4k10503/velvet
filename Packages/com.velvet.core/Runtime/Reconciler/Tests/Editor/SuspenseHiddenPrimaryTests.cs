@@ -1,6 +1,10 @@
 using System;
 using System.Linq;
+using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -53,6 +57,20 @@ namespace Velvet.Tests
             s_ghostThrows = false;
             s_setCatchTick = default;
             s_catchFactoryRuns = 0;
+            s_setSwapped = default;
+            s_reorderHost = null;
+            s_orderedFirst = null;
+            s_orderedSecond = null;
+            s_setListTick = default;
+            s_setListOther = default;
+            s_rowSource = null;
+            s_countingRenders = 0;
+            s_afterRenders = 0;
+            s_setAbandonTick = default;
+            s_setOwnSibling = default;
+            s_outsideSource = null;
+            s_rootlessSource = new VelvetTaskCompletionSource<int>();
+            s_bareListHost = null;
         }
 
         [Test]
@@ -361,6 +379,284 @@ namespace Velvet.Tests
                 "React reports a catch the boundary above took, whatever the Suspense below it does with its render");
         }
 
+        [Test]
+        public void Given_ABoundaryHidingItsPrimary_When_ItsHostSwapsTwoChildren_Then_TheirFibersTakeTheNewOrder()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "reorder-host"));
+            Resuspend(mounted);
+
+            // Act
+            s_setSwapped.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(OrderedChildren(), Is.EqualTo("second|first"),
+                "A primary kept hidden keeps its rows, so its components are ordered as their rows are");
+        }
+
+        [Test]
+        public void Given_ARevealedBoundary_When_AVirtualListRowItMountsSuspends_Then_ThePrimaryElementStaysInTheTree()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ListHostRender, key: "list-host"));
+            SeedViewport(mounted);
+            var primary = _root.Q<VisualElement>("primary");
+
+            // Act
+            MountSuspendingRow(mounted);
+
+            // Assert
+            Assert.That(primary.parent, Is.SameAs(_root.Q<VisualElement>("container")),
+                "React hides the children a boundary has shown whichever child suspends, a list row included");
+        }
+
+        [Test]
+        public void Given_ABoundaryHidingItsPrimaryForAVirtualListRow_When_TheRowsReadResolves_Then_TheRowShowsTheValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ListHostRender, key: "list-host"));
+            SeedViewport(mounted);
+            MountSuspendingRow(mounted);
+
+            // Act
+            s_rowSource.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("row")?.text, Is.EqualTo("row:5"),
+                "The row the boundary held renders its resolved read once the boundary reveals it");
+        }
+
+        [Test]
+        public void Given_ABoundaryHidingItsPrimaryForAVirtualListRowStillWaiting_When_ItsHostRendersAgain_Then_ThePrimaryStaysHidden()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ListHostRender, key: "list-host"));
+            SeedViewport(mounted);
+            var primary = _root.Q<VisualElement>("primary");
+            MountSuspendingRow(mounted);
+
+            // Act
+            s_setListOther.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(primary.style.display.value, Is.EqualTo(DisplayStyle.None),
+                "A row no walk renders is still waiting, so React keeps the boundary on its fallback");
+        }
+
+        // GREEN_ON_BASE(characterization): the base discards the inner children, and the outer boundary stays shown.
+        // What this pins is that a row the inner boundary waits on does not suspend the outer boundary too.
+        [Test]
+        public void Given_AVirtualListRowSuspendingUnderAnInnerBoundaryAnotherComponentRenders_When_TheOuterBoundaryRenders_Then_OnlyTheInnerShowsItsFallback()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OuterListHostRender, key: "outer-list-host"));
+            SeedViewport(mounted);
+
+            // Act
+            MountSuspendingRow(mounted);
+
+            // Assert
+            Assert.That(_root.DisplayedLabelTexts("|"), Is.EqualTo("outer-content|inner-loading"),
+                "A Suspense waits only for the rows its own boundary is the nearest one above");
+        }
+
+        // GREEN_ON_BASE(characterization): the base mounts the component again on reveal, which renders it once.
+        // What this pins is that a component the boundary kept hidden renders once for the reveal, not twice.
+        [Test]
+        public void Given_AComponentInsideAnElementOfAHiddenPrimary_When_TheBoundaryReveals_Then_ItRendersOnce()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(CountingHostRender, key: "counting-host"));
+            Resuspend(mounted);
+            var rendersBefore = s_countingRenders;
+
+            // Act
+            Resolve(mounted, 5);
+
+            // Assert
+            Assert.That(s_countingRenders - rendersBefore, Is.EqualTo(1),
+                "The reveal renders a hidden component it reaches once");
+        }
+
+        // GREEN_ON_BASE(characterization): the base stops a boundary's first render at the component that suspends.
+        // What this pins is that a boundary that has shown nothing does not hold the suspend to render on.
+        [Test]
+        public void Given_ABoundaryThatHasNotShownItsChildren_When_AChildSuspends_Then_TheSiblingAfterItIsNotRenderedInThatPass()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SiblingAfterHostRender, key: "sibling-after-host"));
+
+            // Assert
+            Assert.That(s_afterRenders, Is.EqualTo(0),
+                "A Suspense that discards its first render's children stops that render where it suspends");
+        }
+
+        [Test]
+        public void Given_ARevealedBoundaryWhosePassIsGivenUpByASuspendOutsideIt_When_AComponentInItsChildrenUpdates_Then_ItCommits()
+        {
+            // Arrange — the reader outside the Suspense has no boundary above, so the update's pass is given up
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(AbandonHostRender, key: "abandon-host"));
+            s_setAbandonTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setOwnSibling.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("own")?.text, Is.EqualTo("own:1"),
+                "A pass that is given up commits no fallback, so the children it left on screen go on updating");
+        }
+
+        [Test]
+        public void Given_ABoundaryHidingItsPrimaryWhoseRevealIsGivenUpByASuspendOutsideIt_When_TheOutsideReadResolves_Then_ItRevealsItsChildren()
+        {
+            // Arrange — the reader's resolve and the outside reader's suspend land in one pass, which is given up
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(AbandonHostRender, key: "abandon-host"));
+            var reader = _root.Q<Label>("reader");
+            Resuspend(mounted);
+            s_source.TrySetResult(5);
+            s_setAbandonTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_outsideSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the display is read with the text, since a reader patched while hidden reads 5 too
+            Assert.That((reader.parent != null, reader.text, reader.style.display.value),
+                Is.EqualTo((true, "reader:5", DisplayStyle.Flex)),
+                "The given-up pass revealed nothing, so the boundary still hides its children and reveals them now");
+        }
+
+        [Test]
+        public void Given_ARootlessRevealedBoundaryWhoseRenderIsGivenUpByASuspendOutsideIt_When_TheRenderThrows_Then_NoFallbackIsRecorded()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var shown = RootlessAbandonTree(waiting: false);
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), shown);
+
+            // Act — no Suspense is above the outside reader, so its suspend leaves the reconcile
+            try
+            {
+                scope.Reconciler.Reconcile(scope.Root, shown, RootlessAbandonTree(waiting: true));
+            }
+            catch (FiberSuspendSignal)
+            {
+            }
+
+            // Assert
+            Assert.That(RootlessFallbackCount(scope.Reconciler), Is.EqualTo(0),
+                "A render that is given up commits no fallback, so none is recorded");
+        }
+
+        [Test]
+        public void Given_ABoundaryThatRevealedItsPrimary_When_TheRevealCommits_Then_NoElementOfItIsRecordedHidden()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            var reader = _root.Q<Label>("reader");
+            Resuspend(mounted);
+
+            // Act
+            Resolve(mounted, 5);
+
+            // Assert
+            Assert.That(SuspenseHiddenElements.IsHidden(reader), Is.False,
+                "An element the boundary revealed is the anchoring's to show and hide again");
+        }
+
+        [Test]
+        public void Given_AnElementABoundaryHid_When_TheBoundaryIsRemovedAndTheElementGoesBackToThePool_Then_ItIsNoLongerRecordedHidden()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            var reader = _root.Q<Label>("reader");
+            Resuspend(mounted);
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(SuspenseHiddenElements.IsHidden(reader), Is.False,
+                "A pooled element's next consumer is shown and hidden by its own anchoring");
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives up every pass in which a mounting row suspends.
+        // What this pins is that only a Suspense keeping the children it showed holds a row's suspend.
+        [Test]
+        public void Given_AVirtualListRowWithNoSuspenseAbove_When_ItSuspendsAsItMounts_Then_TheHostsPassIsGivenUp()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(BareListHostRender, key: "bare-list-host"));
+            SeedViewport(mounted);
+
+            // Act
+            MountSuspendingRow(mounted);
+
+            // Assert
+            Assert.That(MarkedSuspended(s_bareListHost), Is.True,
+                "With no Suspense to hold it, a row's suspend gives up the pass that mounted it, as React's does");
+        }
+
+        [Test]
+        public void Given_ARootlessRevealedBoundary_When_ItsChildSuspends_Then_ThePrimaryElementIsDisplayedNone()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var shown = RootlessTree(waiting: false);
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), shown);
+            var primary = scope.Root.Q<Label>("rootless-primary");
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, shown, RootlessTree(waiting: true));
+
+            // Assert
+            Assert.That(primary.style.display.value, Is.EqualTo(DisplayStyle.None),
+                "A boundary no component renders hides the children it has shown as any other does");
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps no primary of a boundary that has not shown it.
+        // What this pins is that a rootless boundary on its first fallback is not read as hiding its children.
+        [Test]
+        public void Given_ARootlessBoundaryOnItsFirstFallback_When_TheReadResolvesAndItRendersAgain_Then_ItShowsItsChildren()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Suspense(V.Label(text: "loading"), new VNode[]
+                {
+                    V.Label(text: "first"),
+                    V.Component(RootlessReaderRender, key: "rootless-reader"),
+                }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Act
+            s_rootlessSource.TrySetResult(3);
+            scope.Reconciler.Reconcile(scope.Root, tree, tree);
+
+            // Assert
+            Assert.That(string.Join("|", scope.Root.Query<Label>().ToList().Select(label => label.text)),
+                Is.EqualTo("first|rootless:3"),
+                "React reveals what the boundary's render builds once nothing it reads is pending");
+        }
+
         private static void Resuspend(MountedTree mounted)
         {
             s_setOwn.Invoke(1);
@@ -662,6 +958,255 @@ namespace Velvet.Tests
                 return V.Label(text: "outer-fallback");
             });
             return V.Component(CatchHostRender, key: "host");
+        }
+
+        private static void SeedViewport(MountedTree mounted)
+        {
+            // The viewport height a geometry pass would leave, which a headless mount measures none of.
+            var scrollView = mounted.Root.Reconciler.Context.VirtualListControllers.Keys.First();
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[scrollView], 50f);
+        }
+
+        private static void MountSuspendingRow(MountedTree mounted)
+        {
+            s_setListTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+        }
+
+        private static string OrderedChildren()
+        {
+            var names = new System.Collections.Generic.List<string>();
+            for (var child = s_reorderHost.Child; child != null; child = child.Sibling)
+            {
+                if (child == s_orderedFirst) names.Add("first");
+                else if (child == s_orderedSecond) names.Add("second");
+            }
+            return string.Join("|", names);
+        }
+
+        private static VNode[] RootlessTree(bool waiting)
+            => new VNode[]
+            {
+                V.Suspense(V.Label(text: "loading"), waiting
+                    ? new VNode[] { V.Label(name: "rootless-primary", text: "shown"), V.Component(TickReaderRender, 1, key: "pending") }
+                    : new VNode[] { V.Label(name: "rootless-primary", text: "shown") }),
+            };
+
+        private static StateUpdater<bool> s_setSwapped;
+        private static ComponentFiber s_reorderHost;
+        private static ComponentFiber s_orderedFirst;
+        private static ComponentFiber s_orderedSecond;
+
+        [Component(Compiler = false)]
+        private static VNode OrderedRender(string name)
+        {
+            if (name == "first") s_orderedFirst = FiberAmbientStack.Current;
+            else s_orderedSecond = FiberAmbientStack.Current;
+            return V.Label(text: name);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ReorderHostRender()
+        {
+            var (swapped, setSwapped) = Hooks.UseState(false);
+            s_setSwapped = setSwapped;
+            s_reorderHost = FiberAmbientStack.Current;
+            var first = V.Component(OrderedRender, "first", key: "first");
+            var second = V.Component(OrderedRender, "second", key: "second");
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        swapped ? second : first,
+                        swapped ? first : second,
+                        V.Component(ReaderRender, key: "reader"),
+                    }),
+            });
+        }
+
+        private static StateUpdater<int> s_setListTick;
+        private static StateUpdater<int> s_setListOther;
+        private static VelvetTaskCompletionSource<int> s_rowSource;
+
+        [Component]
+        private static VNode RowReaderRender()
+        {
+            var value = Hooks.Use<int>(_ => (s_rowSource ??= new VelvetTaskCompletionSource<int>()).Task, "row");
+            return V.Label(name: "row", text: "row:" + value);
+        }
+
+        private static VNode RowList(int tick)
+            => V.VirtualList(
+                items: tick > 0 ? new[] { "a" } : Array.Empty<string>(),
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Component(RowReaderRender, key: item),
+                overscan: 0,
+                key: "list");
+
+        [Component]
+        private static VNode ListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            var (other, setOther) = Hooks.UseState(0);
+            s_setListTick = setTick;
+            s_setListOther = setOther;
+            return V.Div(name: "container", children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.Div(name: "primary", children: new VNode[] { V.Component(CounterRender, key: "counter") }),
+                        RowList(tick),
+                        V.Label(text: "other:" + other),
+                    }),
+            });
+        }
+
+        // Renders the inner Suspense itself, so it is that Suspense's boundary, not the outer host.
+        [Component]
+        private static VNode InnerListHostRender(int tick)
+            => V.Suspense(fallback: V.Label(text: "inner-loading"), children: new VNode[] { RowList(tick) });
+
+        [Component]
+        private static VNode OuterListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setListTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "outer-loading"),
+                    children: new VNode[]
+                    {
+                        V.Label(text: "outer-content"),
+                        V.Div(children: new VNode[] { V.Component(InnerListHostRender, tick, key: "inner") }),
+                    }),
+            });
+        }
+
+        private static int s_countingRenders;
+
+        [Component(Compiler = false)]
+        private static VNode CountingRender()
+        {
+            s_countingRenders++;
+            return V.Label(text: "counting");
+        }
+
+        [Component]
+        private static VNode CountingHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.Div(name: "primary", children: new VNode[] { V.Component(CountingRender, key: "counting") }),
+                        V.Component(ReaderRender, key: "reader"),
+                    }),
+            });
+
+        private static int s_afterRenders;
+
+        [Component(Compiler = false)]
+        private static VNode AfterRender()
+        {
+            s_afterRenders++;
+            return V.Label(text: "after");
+        }
+
+        [Component]
+        private static VNode SiblingAfterHostRender()
+            => V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[]
+                {
+                    V.Component(TickReaderRender, 1, key: "pending"),
+                    V.Component(AfterRender, key: "after"),
+                });
+
+        private static StateUpdater<int> s_setAbandonTick;
+        private static StateUpdater<int> s_setOwnSibling;
+        private static VelvetTaskCompletionSource<int> s_outsideSource;
+
+        [Component]
+        private static VNode OwnSiblingRender()
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_setOwnSibling = setOwn;
+            return V.Label(name: "own", text: "own:" + own);
+        }
+
+        [Component]
+        private static VNode OutsideReaderRender(int tick)
+        {
+            var value = Hooks.Use<int>(_ => tick == 0
+                ? VelvetTask.FromResult(0)
+                : (s_outsideSource ??= new VelvetTaskCompletionSource<int>()).Task, tick);
+            return V.Label(text: "outside:" + value);
+        }
+
+        // The Suspense and the reader outside it share one container, whose walk the outside reader stops.
+        [Component]
+        private static VNode AbandonHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setAbandonTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.Component(OwnSiblingRender, key: "own"),
+                        V.Component(ReaderRender, key: "reader"),
+                    }),
+                V.Component(OutsideReaderRender, tick, key: "outside"),
+            });
+        }
+
+        private static VelvetTaskCompletionSource<int> s_rootlessSource;
+
+        [Component]
+        private static VNode RootlessReaderRender()
+            => V.Label(text: "rootless:" + Hooks.Use<int>(_ => s_rootlessSource.Task, "rootless"));
+
+        private static VNode[] RootlessAbandonTree(bool waiting)
+            => new VNode[]
+            {
+                V.Suspense(V.Label(text: "loading"), new VNode[] { V.Component(TickReaderRender, waiting ? 1 : 0, key: "inside") }),
+                V.Component(TickReaderRender, waiting ? 1 : 0, key: "outside"),
+            };
+
+        private static int RootlessFallbackCount(Reconciler reconciler)
+        {
+            var entries = typeof(ReconcilerContext)
+                .GetField("_rootlessSuspenseFallbackKeys", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(reconciler.Context);
+            return (int)entries.GetType().GetProperty("Count")!.GetValue(entries);
+        }
+
+        // Read by name so this file still builds on a tree without the property, where the case fails instead.
+        private static bool MarkedSuspended(ComponentFiber fiber)
+            => typeof(ComponentFiber).GetProperty("SuspendedOn", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(fiber) != null;
+
+        private static ComponentFiber s_bareListHost;
+
+        [Component]
+        private static VNode BareListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setListTick = setTick;
+            s_bareListHost = FiberAmbientStack.Current;
+            return V.Div(children: new VNode[] { RowList(tick) });
         }
     }
 }

@@ -265,6 +265,15 @@ namespace Velvet
             catch (FiberSuspendSignal)
             {
                 RegisterFiber(in site, identity, fiber);
+                // A Suspense keeping its committed primary takes a VirtualList row's suspend here, as
+                // GeneralPathReconciler.ExpandComponentInline takes an inline one's: the row mounts with no output,
+                // and GeneralPathReconciler.SetPrimaryHidden asks for its render, as for any dirty fiber, when it
+                // reveals the row.
+                if (!isInline && _ctx.HoldSuspendInPrimary())
+                {
+                    fiber.IsDirty = true;
+                    return fiber;
+                }
                 // A pass the signal abandons has committed nothing of this fiber, so the next pass reaching it
                 // renders it rather than bailing on the props this mount was given. Under a Suspense that catches
                 // the signal, the boundary's reveal renders it instead — see ReconcileExistingFiber.
@@ -502,6 +511,15 @@ namespace Velvet
                 if (!IsInsideAny(fiber.MountPoint, roots)) continue;
                 (into ??= new List<ComponentFiber>()).Add(fiber);
             }
+            CollectWrapperFibersUnder(roots, ref into);
+        }
+
+        // MUTANT_SURVIVES(equivalent): a caller reading true over an empty table collects nothing from it.
+        internal bool HasWrapperMountedFibers => _wrapperFiberInfo.Count > 0;
+
+        // The wrapper-mounted part of CollectFibersUnder.
+        internal void CollectWrapperFibersUnder(HashSet<VisualElement> roots, ref List<ComponentFiber>? into)
+        {
             foreach (var entry in _wrapperFiberInfo)
             {
                 var fiber = entry.Key;
