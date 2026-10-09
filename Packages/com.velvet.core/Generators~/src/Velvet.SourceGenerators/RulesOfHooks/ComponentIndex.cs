@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Linq;
@@ -55,7 +56,7 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             && _callsHooks.GetOrAdd(method.OriginalDefinition, definition =>
                 definition.DeclaringSyntaxReferences.Any(reference =>
                     reference.GetSyntax(cancellationToken).DescendantNodes().OfType<InvocationExpressionSyntax>()
-                        .Any(call => RulesOfHooksAnalyzer.HookName(call) != null)));
+                        .Any(call => RulesOfHooksAnalyzer.HookName(call, null, cancellationToken) != null)));
 
         /// <summary>
         /// Whether <paramref name="argument"/> is the render body of a <c>V.Component</c> or <c>V.Memo</c> call: its
@@ -138,9 +139,8 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                     components.Add((EnclosingTypeName(local), local.Identifier.ValueText));
                     break;
                 case InvocationExpressionSyntax invocation when IsMountCall(invocation):
-                    foreach (var argument in invocation.ArgumentList.Arguments)
+                    foreach (var key in invocation.ArgumentList.Arguments.SelectMany(argument => MountedKeys(invocation, argument)))
                     {
-                        if (MountedKey(invocation, argument) is not { } key) continue;
                         mounted.Add(key);
                         components.Add(key);
                     }
@@ -148,18 +148,35 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             }
         }
 
-        // A method group handed as the render body, keyed by the type it is looked up in: the one enclosing the
-        // call for a bare name, the qualifier's last name for a qualified one.
-        private static (string Type, string Method)? MountedKey(InvocationExpressionSyntax invocation, ArgumentSyntax argument)
+        // A method group handed as the render body, through any parentheses and casts, keyed by the type it is
+        // looked up in: for a qualified name, the qualifier's last name; for a bare one, the innermost enclosing
+        // type declaring a method of that name here, or every enclosing type where none does, since the method is
+        // then a local function, declared in another part of a partial type, or inherited.
+        private static (string Type, string Method)[] MountedKeys(InvocationExpressionSyntax invocation, ArgumentSyntax argument)
         {
-            if (!IsComponentBodyArgument(argument)) return null;
-            return argument.Expression switch
+            if (!IsComponentBodyArgument(argument)) return Array.Empty<(string, string)>();
+            var expression = argument.Expression;
+            while (expression is ParenthesizedExpressionSyntax or CastExpressionSyntax)
             {
-                IdentifierNameSyntax id => (EnclosingTypeName(invocation), id.Identifier.ValueText),
-                MemberAccessExpressionSyntax member =>
-                    (LastSegment(member.Expression) ?? string.Empty, member.Name.Identifier.ValueText),
-                _ => null,
-            };
+                expression = expression is CastExpressionSyntax cast
+                    ? cast.Expression
+                    : ((ParenthesizedExpressionSyntax)expression).Expression;
+            }
+            switch (expression)
+            {
+                case MemberAccessExpressionSyntax member:
+                    return new[] { (LastSegment(member.Expression) ?? string.Empty, member.Name.Identifier.ValueText) };
+                case IdentifierNameSyntax id:
+                    var name = id.Identifier.ValueText;
+                    var types = invocation.Ancestors().OfType<TypeDeclarationSyntax>().ToArray();
+                    var declaring = types.FirstOrDefault(type =>
+                        type.Members.OfType<MethodDeclarationSyntax>().Any(method => method.Identifier.ValueText == name));
+                    return declaring != null
+                        ? new[] { (declaring.Identifier.ValueText, name) }
+                        : types.Select(type => (type.Identifier.ValueText, name)).ToArray();
+                default:
+                    return Array.Empty<(string, string)>();
+            }
         }
 
         private static string EnclosingTypeName(SyntaxNode node) =>

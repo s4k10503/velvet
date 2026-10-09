@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.Linq;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -60,38 +62,44 @@ namespace Velvet.SourceGenerators.RulesOfHooks
 
         /// <summary>
         /// The hook a call names, or null where it is not a hook call: eslint-plugin-react-hooks' <c>isHook</c>. A
-        /// bare name counts by its spelling alone; a member call only on a receiver whose last name starts with an
-        /// uppercase letter (<c>Hooks.UseState</c>, <c>global::Velvet.Hooks.UseState</c>), so <c>svc.UseDefaults()</c>
-        /// on a local, a field or <c>this</c> is an ordinary method call.
+        /// bare name counts by its spelling alone, and so does a member call on a receiver that is a single name
+        /// starting with an uppercase letter (<c>Hooks.UseState</c>). eslint takes no longer receiver; C# spells a
+        /// type through its namespace (<c>Velvet.Hooks.UseState</c>, <c>global::Velvet.Hooks.UseState</c>), so a
+        /// qualified receiver counts where <paramref name="model"/> binds it to a namespace or a type. Without a
+        /// model, a qualified receiver counts where every name in it starts with an uppercase letter.
         /// </summary>
-        internal static string? HookName(InvocationExpressionSyntax inv)
+        internal static string? HookName(
+            InvocationExpressionSyntax inv, SemanticModel? model, CancellationToken cancellationToken)
         {
             var name = CalleeName(inv);
             if (!IsHookLikeName(name)) return null;
             if (inv.Expression is not MemberAccessExpressionSyntax member) return name;
-            return ReceiverLastName(member.Expression) is { Length: > 0 } receiver && char.IsUpper(receiver[0]) ? name : null;
+            return member.Expression switch
+            {
+                IdentifierNameSyntax receiver => StartsUpper(receiver.Identifier.ValueText) ? name : null,
+                MemberAccessExpressionSyntax or AliasQualifiedNameSyntax when model != null =>
+                    model.GetSymbolInfo(member.Expression, cancellationToken).Symbol is INamespaceOrTypeSymbol ? name : null,
+                MemberAccessExpressionSyntax or AliasQualifiedNameSyntax =>
+                    IsUppercaseNameChain(member.Expression) ? name : null,
+                _ => null,
+            };
         }
 
-        private static string? ReceiverLastName(ExpressionSyntax receiver) => receiver switch
-        {
-            IdentifierNameSyntax id => id.Identifier.ValueText,
-            MemberAccessExpressionSyntax { Expression: var inner } member when IsNameChain(inner) =>
-                member.Name.Identifier.ValueText,
-            AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
-            _ => null,
-        };
+        private static bool StartsUpper(string text) => text.Length > 0 && char.IsUpper(text[0]);
 
-        private static bool IsNameChain(ExpressionSyntax expression) => expression switch
+        private static bool IsUppercaseNameChain(ExpressionSyntax expression) => expression switch
         {
-            IdentifierNameSyntax or AliasQualifiedNameSyntax => true,
-            MemberAccessExpressionSyntax member => IsNameChain(member.Expression),
+            IdentifierNameSyntax id => StartsUpper(id.Identifier.ValueText),
+            AliasQualifiedNameSyntax alias => StartsUpper(alias.Name.Identifier.ValueText),
+            MemberAccessExpressionSyntax member =>
+                StartsUpper(member.Name.Identifier.ValueText) && IsUppercaseNameChain(member.Expression),
             _ => false,
         };
 
         private static void AnalyzeInvocation(SyntaxNodeAnalysisContext ctx, ComponentIndex components)
         {
             if (ctx.Node is not InvocationExpressionSyntax inv) return;
-            var hookName = HookName(inv);
+            var hookName = HookName(inv, ctx.SemanticModel, ctx.CancellationToken);
             if (hookName == null)
             {
                 TryReportDirectComponentCall(ctx, inv, components);
@@ -101,6 +109,7 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             var host = EnclosingFunction(inv);
             if (host is AnonymousFunctionExpressionSyntax lambda
                 && !IsComponentBody(lambda)
+                && !IsHookLambda(lambda)
                 && !IsSomewhereInsideComponentOrHook(ctx, inv, components))
             {
                 // eslint reports a hook in a callback only where the callback sits inside a component or a hook.
@@ -121,15 +130,12 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             while (true)
             {
                 if (current.Parent is not { } parent) return;
+                var child = current;
                 current = parent;
                 // Method body boundaries — reached without a control-flow ancestor; OK. A lambda that is a
-                // component's render body is one too: it is the function the hook belongs to.
-                if (current is MethodDeclarationSyntax
-                    || current is LocalFunctionStatementSyntax
-                    || current is ConstructorDeclarationSyntax
-                    || current is PropertyDeclarationSyntax
-                    || current is AccessorDeclarationSyntax
-                    || IsComponentBody(current))
+                // component's render body, or that a hook-named variable holds, is one too: it is the function the
+                // hook belongs to.
+                if (IsFunctionBoundary(current))
                 {
                     // Not inside a control-flow construct — but a hook AFTER a conditional early return is still
                     // conditional. Detected via control-flow analysis (a syntax-ancestor walk cannot see it).
@@ -145,6 +151,9 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                     continue;
                 }
 
+                // What decides a branch runs whichever way it decides: eslint reports none of these.
+                if (IsEvaluatedFirst(current, child)) continue;
+
                 if (TryDescribeControlFlow(current, out var description))
                 {
                     ctx.ReportDiagnostic(Diagnostic.Create(
@@ -157,8 +166,52 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             }
         }
 
+        private static bool IsFunctionBoundary(SyntaxNode node) => node switch
+        {
+            MethodDeclarationSyntax or LocalFunctionStatementSyntax or ConstructorDeclarationSyntax
+                or PropertyDeclarationSyntax or AccessorDeclarationSyntax => true,
+            AnonymousFunctionExpressionSyntax lambda => IsComponentBody(lambda) || IsHookLambda(lambda),
+            _ => false,
+        };
+
+        // `child` is the operand a construct evaluates before choosing a branch: an if's condition, a conditional
+        // expression's condition, or the left operand of &&, || and ??.
+        private static bool IsEvaluatedFirst(SyntaxNode construct, SyntaxNode child) => construct switch
+        {
+            IfStatementSyntax ifStatement => ifStatement.Condition == child,
+            ConditionalExpressionSyntax conditional => conditional.Condition == child,
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.LogicalAndExpression)
+                || binary.IsKind(SyntaxKind.LogicalOrExpression)
+                || binary.IsKind(SyntaxKind.CoalesceExpression) => binary.Left == child,
+            _ => false,
+        };
+
+        // eslint's getFunctionName for a function expression: a lambda held by a variable or assigned to a name is
+        // a hook when that name is a hook's.
+        private static bool IsHookLambda(AnonymousFunctionExpressionSyntax lambda) =>
+            Unwrapped(lambda).Parent switch
+            {
+                EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator } =>
+                    IsHookHostName(declarator.Identifier.ValueText),
+                AssignmentExpressionSyntax { Left: IdentifierNameSyntax target } assignment
+                    when assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) =>
+                    IsHookHostName(target.Identifier.ValueText),
+                _ => false,
+            };
+
+        // The outermost of the parentheses and casts wrapped around an expression.
+        internal static ExpressionSyntax Unwrapped(ExpressionSyntax expression)
+        {
+            while (expression.Parent is ParenthesizedExpressionSyntax or CastExpressionSyntax)
+            {
+                expression = (ExpressionSyntax)expression.Parent;
+            }
+            return expression;
+        }
+
         private static bool IsComponentBody(SyntaxNode? node) =>
-            node is AnonymousFunctionExpressionSyntax { Parent: ArgumentSyntax argument }
+            node is AnonymousFunctionExpressionSyntax lambda
+            && Unwrapped(lambda).Parent is ArgumentSyntax argument
             && ComponentIndex.IsComponentBodyArgument(argument);
 
         // eslint's isSomewhereInsideComponentOrHook: some function enclosing the call is a component or a hook.
@@ -169,7 +222,7 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             {
                 switch (ancestor)
                 {
-                    case AnonymousFunctionExpressionSyntax lambda when IsComponentBody(lambda):
+                    case AnonymousFunctionExpressionSyntax lambda when IsComponentBody(lambda) || IsHookLambda(lambda):
                         return true;
                     case LocalFunctionStatementSyntax local
                         when NameUnlessComponentOrHook(ctx, local, local.Identifier.ValueText, components) == null:
@@ -192,7 +245,12 @@ namespace Velvet.SourceGenerators.RulesOfHooks
         private static void TryReportConditionalEarlyExit(
             SyntaxNodeAnalysisContext ctx, InvocationExpressionSyntax inv, string hookName)
         {
-            var stmt = inv.FirstAncestorOrSelf<StatementSyntax>();
+            // The statement holding the hook in its own function's body. An expression-bodied lambda, local function
+            // or member has no statement before the hook, and the statements around it belong to another function.
+            var stmt = inv.Ancestors()
+                .TakeWhile(node => node is not (AnonymousFunctionExpressionSyntax or ArrowExpressionClauseSyntax))
+                .OfType<StatementSyntax>()
+                .FirstOrDefault();
             if (stmt?.Parent is not BlockSyntax block) return;
             var index = block.Statements.IndexOf(stmt);
             if (index <= 0) return;
@@ -278,6 +336,12 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             _ => "this[]",
         };
 
+        private static ExpressionSyntax OutsideParentheses(ExpressionSyntax expression)
+        {
+            while (expression.Parent is ParenthesizedExpressionSyntax parenthesized) expression = parenthesized;
+            return expression;
+        }
+
         // A function eslint counts as a hook: one named like a hook call, or `use` itself, which Velvet spells `Use`.
         // A call to `Use` stays outside IsHookLikeName, as eslint exempts `use(...)` from the conditional checks.
         private static bool IsHookHostName(string name) => IsHookLikeName(name) || name == "Use";
@@ -295,7 +359,7 @@ namespace Velvet.SourceGenerators.RulesOfHooks
 
         // `V.Component(() => Sheet())`: the call is the whole of a render body, so the component the lambda mounts
         // is the callee's own render with nothing of the lambda's around it.
-        private static bool IsWholeRenderBody(InvocationExpressionSyntax inv) => inv.Parent switch
+        private static bool IsWholeRenderBody(InvocationExpressionSyntax inv) => OutsideParentheses(inv).Parent switch
         {
             AnonymousFunctionExpressionSyntax lambda => IsComponentBody(lambda),
             ReturnStatementSyntax { Parent: BlockSyntax { Statements.Count: 1, Parent: AnonymousFunctionExpressionSyntax lambda } } =>
@@ -315,7 +379,7 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             name != null
             && name.Length >= 4
             && name[0] == 'U' && name[1] == 's' && name[2] == 'e'
-            && name[3] >= 'A' && name[3] <= 'Z';
+            && (name[3] >= 'A' && name[3] <= 'Z' || name[3] >= '0' && name[3] <= '9');
 
         private static bool TryDescribeControlFlow(SyntaxNode node, out string description)
         {

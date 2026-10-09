@@ -8,8 +8,10 @@
   rename it to the custom-hook shape so VEL101 checks each call to it. A `#pragma warning disable` naming VEL102
   opts a test harness out.
 - VEL103 warns where a component whose declaration calls a hook is called directly as a plain method, whose hooks
-  then run as part of the caller. Mount it with `V.Component` instead. A call that is the whole render body of a
-  lambda handed to `V.Component`, as in V.Component(() => Sheet()), is not reported.
+  then run as part of the caller. Mount it with `V.Component` instead. It reads a call that names the component by
+  a bare name from within its declaring type or qualified by that type's simple name; a call through
+  `using static`, an alias, a base class or an instance is not reported, and nor is a call that is the whole
+  render body of a lambda handed to `V.Component`, as in V.Component(() => Sheet()).
 
 ### Changed
 
@@ -20,10 +22,16 @@
 - VEL101 reports a hook in any other lambda only where the lambda sits inside a component or a custom hook, as
   React's lint reports a hook in a callback. A hook in a lambda inside a plain helper or a field initializer is no
   longer reported.
-- A call on a member counts as a hook call only where the receiver's name starts with an uppercase letter, as in
-  React's lint: Hooks.UseState(...) is one, and a method named like a hook called on a local, a parameter, a field
-  or `this`, such as svc.UseDefaults(), is an ordinary call. VEL101 previously reported such a call inside a
-  condition.
+- A call on a member counts as a hook call only where the receiver is a single name starting with an uppercase
+  letter, as in React's lint, or a qualified name that binds to a namespace or a type, as in
+  Velvet.Hooks.UseState(...). A method named like a hook called on a local, a parameter, a field, a property or
+  `this`, such as svc.UseDefaults() or cfg.Logger.UseDefaults(), is an ordinary call. VEL101 previously reported
+  such a call inside a condition.
+- A hook in an if's condition, a conditional expression's condition, or the left operand of `&&`, `||` or `??`
+  is no longer reported by VEL101: it runs before the branch is chosen, and React's lint reports none of them.
+- A name of `Use` followed by a digit, such as Use2D, is a hook's, as React's lint reads `use` followed by a digit.
+- A lambda held by a variable, or assigned to a name, of a hook's name is a custom hook: VEL101 no longer reports
+  a hook in it as a nested lambda.
 
 ### Fixed
 

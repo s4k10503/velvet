@@ -86,7 +86,7 @@ namespace Velvet.SourceGenerators.Diagnostics
             "VEL101",
             "Hook call inside conditional control flow",
             "'{0}' must not be called inside {1}; hooks must be called unconditionally at the top level so the per-fiber hook index aligns across renders",
-            "Flags `Hooks.UseXxx` calls inside if/else, loops, short-circuit operators (&&/||/??), conditional expressions (?:), switch sections, or nested lambdas/anonymous methods. The runtime guards against silent corruption via the positional HookIndexTable (throws when hook counts differ across renders), but the static check surfaces the violation at edit time. As in eslint-plugin-react-hooks, a lambda counts only where it sits inside a component or a custom hook, a lambda that is a component's render body is the function the hook belongs to, and a member call is a hook call only on a receiver whose name starts with an uppercase letter.");
+            "Flags `Hooks.UseXxx` calls inside if/else, loops, short-circuit operators (&&/||/??), conditional expressions (?:), switch sections, or nested lambdas/anonymous methods. The runtime guards against silent corruption via the positional HookIndexTable (throws when hook counts differ across renders), but the static check surfaces the violation at edit time. As in eslint-plugin-react-hooks, a lambda counts only where it sits inside a component or a custom hook, a lambda that is a component's render body is the function the hook belongs to, and a member call is a hook call only on a receiver that is a single name starting with an uppercase letter, or a qualified name that binds to a namespace or a type. A hook in an if's condition, a conditional expression's condition or the left operand of &&, || or ?? is evaluated before the branch is chosen and is not reported.");
 
         public static readonly DiagnosticDescriptor Vel102HookOutsideComponentOrHook = HookWarn(
             "VEL102",
@@ -98,7 +98,7 @@ namespace Velvet.SourceGenerators.Diagnostics
             "VEL103",
             "Component called directly",
             "Component '{0}' calls hooks and is called here as a plain method, so its hooks run as part of the caller; mount it with V.Component instead",
-            "A component's hooks belong to the fiber that renders it. Called as a plain method, it renders no fiber of its own: its hooks run against the calling component's fiber, so calling it on some renders only changes the hooks that component calls, and its state is the caller's. Reported where the callee is a component this compilation declares and its declaration contains a hook call; a component that calls no hook, or one declared in another assembly, is not reported, and nor is a call that is the whole render body of a lambda handed to V.Component.");
+            "A component's hooks belong to the fiber that renders it. Called as a plain method, it renders no fiber of its own: its hooks run against the calling component's fiber, so calling it on some renders only changes the hooks that component calls, and its state is the caller's. Reported where the call names a component this compilation declares, by a bare name from within its declaring type or qualified by that type's simple name, and the component's declaration contains a hook call. A call that names it otherwise (through using static, an alias, a base class or an instance), a component declared in another assembly, one calling no hook, and a call that is the whole render body of a lambda handed to V.Component are not reported.");
 
     }
 }
