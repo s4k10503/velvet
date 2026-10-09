@@ -30,6 +30,8 @@ namespace Velvet.SourceGenerators.Shared
         public const string UseImperativeHandleMethodName = "UseImperativeHandle";
         public const string UseBlockerMethodName = "UseBlocker";
         public const string VMemoizedMethodName = "Memoized";
+        public const string VComponentMethodName = "Component";
+        public const string VMemoMethodName = "Memo";
         public const string VMemoizedWithKeyMethodName = "MemoizedWithKey";
 
         public const string UseStateMethodName = "UseState";

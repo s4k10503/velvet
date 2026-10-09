@@ -1,33 +1,31 @@
 using System.Collections.Immutable;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Velvet.SourceGenerators.Diagnostics;
-using Velvet.SourceGenerators.Shared;
 
 namespace Velvet.SourceGenerators.RulesOfHooks
 {
     /// <summary>
-    /// Compile-time hook-ordering analyzer. Enforces that hooks are called unconditionally at the top
-    /// level of a component by flagging any <c>Velvet.Hooks.UseXxx</c> invocation whose nearest enclosing syntax ancestor
-    /// is a control-flow construct (if / else / loop / switch / short-circuit operator / conditional
-    /// expression) or a nested lambda / anonymous method. The runtime positional HookIndexTable
-    /// throws when hook counts differ across renders, but this static check surfaces violations at
-    /// edit time without depending on runtime path coverage.
+    /// Compile-time rules-of-hooks analyzer, eslint-plugin-react-hooks' <c>rules-of-hooks</c> for Velvet. A hook is
+    /// a call named <c>Use</c> followed by an uppercase ASCII letter. Inside a component or a custom hook, VEL101
+    /// flags one whose nearest enclosing syntax ancestor is a control-flow construct (if / else / loop / switch /
+    /// short-circuit operator / conditional expression / try / catch) or a lambda that is not a component body.
+    /// VEL102 flags one whose nearest enclosing function is neither a component nor a custom hook, and VEL103 a
+    /// direct call of a component whose body calls a hook. The runtime positional HookIndexTable throws when hook
+    /// counts differ across renders, but this static check surfaces violations at edit time without depending on
+    /// runtime path coverage.
     /// </summary>
     /// <remarks>
-    /// Two passes: a syntax-ancestor walk flags hooks inside a control-flow construct, and a control-flow
-    /// analysis pass (<see cref="TryReportConditionalEarlyExit"/>) flags a hook that follows a conditional early
-    /// return (<c>if (x) return; UseState(...);</c>) — a case the syntax walk cannot see. A conditional
-    /// <c>throw</c> is not treated as a skip (it aborts the render rather than skipping the hook). Both passes
-    /// recognise a hook call by its name, so a helper not named like a hook hides the hooks it calls from them;
-    /// <see cref="TryReportHookOutsideComponentOrHook"/> (VEL102) reports the hook where it is written unless
-    /// that helper is a <c>[Component]</c> method. This
-    /// analyzer's naming-convention check is a syntax-only signal; the auto-memoization IL weaver
-    /// (CompilerWeaver, under CodeGen/) is what actually verifies a called method transitively composes
-    /// a hook.
+    /// VEL101 has two passes: a syntax-ancestor walk flags hooks inside a control-flow construct, and a
+    /// control-flow analysis pass (<see cref="TryReportConditionalEarlyExit"/>) flags a hook that follows a
+    /// conditional early return (<c>if (x) return; UseState(...);</c>) — a case the syntax walk cannot see. A
+    /// conditional <c>throw</c> is not treated as a skip (it aborts the render rather than skipping the hook).
+    /// As in eslint, a host that is neither a component nor a hook draws VEL102 alone: its hooks are wrong
+    /// wherever they sit in it, so the conditional checks are not asked there. This analyzer's
+    /// naming-convention check is a syntax-only signal; the auto-memoization IL weaver (CompilerWeaver, under
+    /// CodeGen/) is what actually verifies a called method transitively composes a hook.
     /// </remarks>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     internal sealed class RulesOfHooksAnalyzer : DiagnosticAnalyzer
@@ -35,63 +33,80 @@ namespace Velvet.SourceGenerators.RulesOfHooks
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
             ImmutableArray.Create(
                 MemoizeDiagnostics.Vel101HookInConditional,
-                MemoizeDiagnostics.Vel102HookOutsideComponentOrHook);
+                MemoizeDiagnostics.Vel102HookOutsideComponentOrHook,
+                MemoizeDiagnostics.Vel103ComponentCalledDirectly);
 
         public override void Initialize(AnalysisContext context)
         {
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
             context.EnableConcurrentExecution();
-            context.RegisterSyntaxNodeAction(AnalyzeInvocation, SyntaxKind.InvocationExpression);
+            context.RegisterCompilationStartAction(start =>
+            {
+                var components = new ComponentIndex(start.Compilation);
+                start.RegisterSyntaxNodeAction(
+                    ctx => AnalyzeInvocation(ctx, components), SyntaxKind.InvocationExpression);
+            });
         }
 
-        private static void AnalyzeInvocation(SyntaxNodeAnalysisContext ctx)
+        // Covers both call shapes: `Auth.UseCurrentUser()` (member access) and bare `UseFoo()` (identifier — a
+        // local function declared inside Render() or a static-imported hook).
+        internal static string? CalleeName(InvocationExpressionSyntax inv) => inv.Expression switch
+        {
+            MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText,
+            IdentifierNameSyntax id => id.Identifier.ValueText,
+            _ => null,
+        };
+
+        private static void AnalyzeInvocation(SyntaxNodeAnalysisContext ctx, ComponentIndex components)
         {
             if (ctx.Node is not InvocationExpressionSyntax inv) return;
-            // Cover both call shapes: `Auth.UseCurrentUser()` (member access) and bare `UseFoo()`
-            // (identifier — a local function declared inside Render() or a static-imported hook).
-            // The latter is the canonical pattern for in-method custom hooks and would silently
-            // bypass the analyzer otherwise.
-            var hookName = inv.Expression switch
-            {
-                MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText,
-                IdentifierNameSyntax id => id.Identifier.ValueText,
-                _ => null,
-            };
+            var hookName = CalleeName(inv);
             if (hookName == null) return;
-            // Naming convention: hooks are `Use` + uppercase
-            // ASCII letter + ... — covers Velvet.Hooks built-ins (UseEffect / UseState) AND
-            // user-defined custom hooks (Auth.UseCurrentUser / MyHooks.UseDebounced) that wrap
-            // built-ins internally. The uppercase-ASCII-4th-char check (PascalCase hook style)
-            // filters "Useless" / "Used" / non-Latin scripts.
-            if (!IsHookLikeName(hookName)) return;
+            if (!IsHookLikeName(hookName))
+            {
+                TryReportDirectComponentCall(ctx, inv, components);
+                return;
+            }
 
-            TryReportHookOutsideComponentOrHook(ctx, inv, hookName);
+            var host = ctx.SemanticModel.GetEnclosingSymbol(inv.SpanStart, ctx.CancellationToken);
+            if (TryNameNonHookHost(host, components) is { } hostName)
+            {
+                ctx.ReportDiagnostic(Diagnostic.Create(
+                    MemoizeDiagnostics.Vel102HookOutsideComponentOrHook, inv.GetLocation(), hookName, hostName));
+                return;
+            }
 
             // Walk ancestors from the invocation up to the enclosing method declaration / local
             // function. Stop at the first control-flow-altering ancestor and report it. Sequential
             // ancestors (Block, ExpressionStatement, Argument, VariableDeclarator, etc.) are
             // transparent for hook ordering and are skipped.
-            SyntaxNode current = inv;
+            SyntaxNode? current = inv;
             while (true)
             {
                 current = current.Parent;
                 if (current == null) return;
-                // Method body boundaries — reached without a control-flow ancestor; OK.
+                // Method body boundaries — reached without a control-flow ancestor; OK. A lambda that is a
+                // component's render body is one too: it is the function the hook belongs to.
                 if (current is MethodDeclarationSyntax
                     || current is LocalFunctionStatementSyntax
                     || current is ConstructorDeclarationSyntax
                     || current is PropertyDeclarationSyntax
-                    || current is AccessorDeclarationSyntax)
+                    || current is AccessorDeclarationSyntax
+                    || IsComponentBody(current, ctx))
                 {
                     // Not inside a control-flow construct — but a hook AFTER a conditional early return is still
                     // conditional. Detected via control-flow analysis (a syntax-ancestor walk cannot see it).
                     TryReportConditionalEarlyExit(ctx, inv, hookName);
                     return;
                 }
-                // FinallyClause runs unconditionally on every exit path so hook ordering is
-                // invariant. The enclosing TryStatement would otherwise trip the flag, so short-
-                // circuit here before TryDescribeControlFlow sees it.
-                if (current is FinallyClauseSyntax) return;
+                // A finally block runs on every exit path, so its own TryStatement does not make the hook
+                // conditional: step over that one statement and keep walking, since a construct around the
+                // try still can.
+                if (current is FinallyClauseSyntax)
+                {
+                    current = current.Parent;
+                    continue;
+                }
 
                 if (TryDescribeControlFlow(current, out var description))
                 {
@@ -104,6 +119,10 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                 }
             }
         }
+
+        private static bool IsComponentBody(SyntaxNode node, SyntaxNodeAnalysisContext ctx) =>
+            node is AnonymousFunctionExpressionSyntax { Parent: ArgumentSyntax argument }
+            && ComponentIndex.IsComponentBodyArgument(argument, ctx.SemanticModel, ctx.CancellationToken);
 
         /// <summary>
         /// Flags a hook that follows a CONDITIONAL early exit (e.g. <c>if (x) return; UseState(...);</c>) in its
@@ -132,33 +151,39 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             }
         }
 
-        /// <remarks>
-        /// A conditional hook in such a host draws this and VEL101 both, where eslint-plugin-react-hooks reports
-        /// only that the host is neither: renaming the host to <c>UseXxx</c> then clears this one and leaves
-        /// VEL101 on the conditional hook.
-        /// </remarks>
-        private static void TryReportHookOutsideComponentOrHook(
-            SyntaxNodeAnalysisContext ctx, InvocationExpressionSyntax inv, string hookName)
+        /// <summary>
+        /// The name VEL102 reports for a hook's nearest enclosing function or member, or null where that is a
+        /// component, a custom hook or a lambda. A lambda is VEL101's to judge, against the lambda itself unless it
+        /// is a component's render body.
+        /// </summary>
+        private static string? TryNameNonHookHost(ISymbol? host, ComponentIndex components)
         {
-            if (ctx.SemanticModel.GetEnclosingSymbol(inv.SpanStart, ctx.CancellationToken) is not IMethodSymbol host)
-                return;
-            if (host.MethodKind == MethodKind.AnonymousFunction) return;
-            if (IsHookLikeName(host.Name) || IsComponent(host)) return;
-
-            var hostName = host.AssociatedSymbol?.Name
-                ?? (host.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor
-                    ? host.ContainingType.Name
-                    : host.Name);
-            ctx.ReportDiagnostic(Diagnostic.Create(
-                MemoizeDiagnostics.Vel102HookOutsideComponentOrHook,
-                inv.GetLocation(),
-                hookName,
-                hostName));
+            switch (host)
+            {
+                case IMethodSymbol { MethodKind: MethodKind.AnonymousFunction }:
+                    return null;
+                case IMethodSymbol method:
+                    if (IsHookLikeName(method.Name) || components.IsComponent(method)) return null;
+                    return method.AssociatedSymbol?.Name
+                        ?? (method.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor
+                            ? method.ContainingType.Name
+                            : method.Name);
+                case IFieldSymbol field:
+                    // An auto-property initializer arrives as its backing field: Given_HookInPropertyInitializer_When_Analyzed_Then_ReportsVel102NamingTheProperty.
+                    return field.AssociatedSymbol?.Name ?? field.Name;
+                default:
+                    return null;
+            }
         }
 
-        private static bool IsComponent(IMethodSymbol method) =>
-            method.GetAttributes().Any(attribute =>
-                attribute.AttributeClass?.ToDisplayString() == VelvetWellKnownNames.ComponentAttributeFullName);
+        private static void TryReportDirectComponentCall(
+            SyntaxNodeAnalysisContext ctx, InvocationExpressionSyntax inv, ComponentIndex components)
+        {
+            if (ctx.SemanticModel.GetSymbolInfo(inv, ctx.CancellationToken).Symbol is not IMethodSymbol callee) return;
+            if (!components.IsComponentCallingHooks(callee)) return;
+            ctx.ReportDiagnostic(Diagnostic.Create(
+                MemoizeDiagnostics.Vel103ComponentCalledDirectly, inv.GetLocation(), callee.Name));
+        }
 
         /// <summary>
         /// `Use` + uppercase-letter naming convention check.
@@ -168,7 +193,7 @@ namespace Velvet.SourceGenerators.RulesOfHooks
         /// happen to follow the convention (e.g., a hypothetical <c>UseBuilder()</c> utility) are
         /// an accepted trade-off — users should rename such helpers.
         /// </summary>
-        private static bool IsHookLikeName(string name) =>
+        internal static bool IsHookLikeName(string? name) =>
             name != null
             && name.Length >= 4
             && name[0] == 'U' && name[1] == 's' && name[2] == 'e'

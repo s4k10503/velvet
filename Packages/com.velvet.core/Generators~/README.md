@@ -147,7 +147,7 @@ Generators~/
 │   ├── MemoizeMethodGenerator.cs             ([MemoizeMethod] → V.Memoized wrapper expansion)
 │   ├── AutoDeps/                             (VEL100 exhaustive-deps analyzer + its hook descriptor table,
 │   │                                          VEL012 [MemoizeMethod] _Impl instance-read analyzer)
-│   ├── RulesOfHooks/                         (VEL101 + VEL102 rules-of-hooks analyzer)
+│   ├── RulesOfHooks/                         (VEL101 + VEL102 + VEL103 rules-of-hooks analyzer)
 │   ├── CodeShape/                            (VEL500 depth + VEL501 branch-count + VEL502 parameter-count
 │   │                                          + VEL503 tolerance on a tuple comparison)
 │   ├── Diagnostics/MemoizeDiagnostics.cs     (diagnostic descriptors — see Documentation~/memoization.md)

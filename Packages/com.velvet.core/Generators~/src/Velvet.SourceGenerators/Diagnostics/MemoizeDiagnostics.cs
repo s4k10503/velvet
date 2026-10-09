@@ -8,7 +8,7 @@ namespace Velvet.SourceGenerators.Diagnostics
     internal static class MemoizeDiagnostics
     {
         private const string Category = DiagnosticCategories.Memoize;
-        // Per-analyzer category split: VEL100 / VEL101 / VEL102 are hook-rule diagnostics and must not be
+        // Per-analyzer category split: VEL100 to VEL103 are hook-rule diagnostics and must not be
         // silenced by a blanket Velvet.Memoize category suppression (e.g.
         // `dotnet_analyzer_diagnostic.category-Velvet.Memoize.severity = none`).
         private const string HookCategory = DiagnosticCategories.Hooks;
@@ -92,6 +92,13 @@ namespace Velvet.SourceGenerators.Diagnostics
             "VEL102",
             "Hook call in a method that is neither a component nor a custom hook",
             "'{0}' is called in '{1}', which is neither a [Component] method nor a custom hook; mark it [Component], or rename it Use followed by an uppercase letter so VEL101 checks where it is called",
-            "A hook called from a plain helper belongs to whichever component calls the helper, so a helper called on some renders only changes which hooks that component calls from one render to the next, and VEL101 reports nothing at that call because the helper is not named like a hook. Hooks belong in a [Component] method or in a method or local function named Use followed by an uppercase letter, the shape VEL101 checks at each call site. A hook whose nearest enclosing function is a lambda is not reported here.");
+            "A hook called from a plain helper belongs to whichever component calls the helper, so a helper called on some renders only changes which hooks that component calls from one render to the next, and VEL101 reports nothing at that call because the helper is not named like a hook. Hooks belong in a component — a [Component] method, or a method handed by name to V.Component or V.Memo in the same compilation — or in a method or local function named Use followed by an uppercase letter, the shape VEL101 checks at each call site. A hook in a field or property initializer is reported naming that member. A hook whose nearest enclosing function is a lambda is not reported here, and nor is VEL101 asked of a hook this reports.");
+
+        public static readonly DiagnosticDescriptor Vel103ComponentCalledDirectly = HookWarn(
+            "VEL103",
+            "Component called directly",
+            "Component '{0}' calls hooks and is called here as a plain method, so its hooks run as part of the caller; mount it with V.Component instead",
+            "A component's hooks belong to the fiber that renders it. Called as a plain method, it renders no fiber of its own: its hooks take positions in the calling component's hook sequence, so calling it on some renders only changes that sequence, and its state is the caller's. Reported where the callee is a component this compilation declares and its declaration contains a hook call; a component that calls no hook, or one declared in another assembly, is not reported.");
+
     }
 }

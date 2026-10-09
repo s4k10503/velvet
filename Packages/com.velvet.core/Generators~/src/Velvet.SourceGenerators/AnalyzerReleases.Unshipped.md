@@ -31,6 +31,7 @@ VEL012 | Velvet.Memoize | Warning | [MemoizeMethod] _Impl reads an instance memb
 VEL100 | Velvet.Hooks | Warning | Hook lambda captures a local that is not in the deps array (exhaustive-deps)
 VEL101 | Velvet.Hooks | Warning | Hook call inside conditional control flow (Rules of Hooks)
 VEL102 | Velvet.Hooks | Warning | Hook call in a method that is neither a component nor a custom hook (Rules of Hooks)
+VEL103 | Velvet.Hooks | Warning | Component that calls hooks called directly as a plain method (Rules of Hooks)
 VEL500 | Velvet.Shape | Error | Member body nests control flow more than 4 levels deep
 VEL501 | Velvet.Shape | Error | Member body makes more than 20 branching decisions
 VEL502 | Velvet.Shape | Error | Member demands more than 6 arguments from every caller

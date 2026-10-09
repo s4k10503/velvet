@@ -1020,11 +1020,11 @@ namespace Velvet
             _ = Resolve("UseLoaderData");
             _ = UseRouterOrThrow("UseLoaderData");
             var routeId = UseCurrentRouteId();
+            var data = UseContext(RouterContext.LoaderData);
             if (routeId == null)
             {
                 return default;
             }
-            var data = UseContext(RouterContext.LoaderData);
             return data != null && data.TryGetValue(routeId, out var value) && value is T typed ? typed : default;
         }
 

@@ -36,6 +36,7 @@ namespace Velvet.Tests
             DisplayNameProbeState.Reset();
         }
 
+        // GREEN_ON_BASE(refactor): renaming the shared helper to UseProbeBody leaves every hook this case counts in place.
         [Test]
         public void Given_ComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName()
         {
@@ -53,6 +54,7 @@ namespace Velvet.Tests
             // Assert — LogAssert.Expect verifies the message names the component by its DisplayName
         }
 
+        // GREEN_ON_BASE(refactor): renaming the shared helper to UseProbeBody leaves every hook this case counts in place.
         [Test]
         public void Given_ComponentWithEmptyDisplayName_When_HookTypeChanges_Then_MessageUsesDefaultName()
         {
@@ -70,6 +72,7 @@ namespace Velvet.Tests
             // Assert — LogAssert.Expect verifies the message falls back to DeclaringType.MethodName
         }
 
+        // GREEN_ON_BASE(refactor): renaming the shared helper to UseProbeBody leaves every hook this case counts in place.
         [Test]
         public void Given_PropsComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName()
         {
@@ -86,6 +89,7 @@ namespace Velvet.Tests
             // Assert — LogAssert.Expect verifies the message names the component by its DisplayName
         }
 
+        // GREEN_ON_BASE(refactor): renaming the shared helper to UseProbeBody leaves every hook this case counts in place.
         [Test]
         public void Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent()
         {
@@ -118,7 +122,7 @@ namespace Velvet.Tests
 
     internal static class DisplayNameProbeShared
     {
-        public static VNode ProbeBody(string label)
+        public static VNode UseProbeBody(string label)
         {
             var (_, setMode) = Hooks.UseState(false);
             DisplayNameProbeState.SetMode = setMode;
@@ -133,13 +137,13 @@ namespace Velvet.Tests
     internal static class CustomNamedComponent
     {
         [Component(DisplayName = "MyFancyName")]
-        public static VNode Render() => DisplayNameProbeShared.ProbeBody("named");
+        public static VNode Render() => DisplayNameProbeShared.UseProbeBody("named");
     }
 
     internal static class CustomNamedPropsComponent
     {
         [Component(DisplayName = "MyFancyPropsName")]
-        public static VNode Render(string label) => DisplayNameProbeShared.ProbeBody(label);
+        public static VNode Render(string label) => DisplayNameProbeShared.UseProbeBody(label);
     }
 
     internal static class RefHookPropsComponent
@@ -164,6 +168,6 @@ namespace Velvet.Tests
     internal static class EmptyDisplayNameComponent
     {
         [Component(DisplayName = "")]
-        public static VNode Render() => DisplayNameProbeShared.ProbeBody("empty");
+        public static VNode Render() => DisplayNameProbeShared.UseProbeBody("empty");
     }
 }
