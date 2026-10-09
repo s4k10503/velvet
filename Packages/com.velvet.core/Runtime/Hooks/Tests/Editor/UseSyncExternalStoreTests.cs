@@ -346,6 +346,8 @@ namespace Velvet.Tests
             Assert.AreEqual(5, s_readerValue);
         }
 
+        // GREEN_ON_BASE(characterization): the base's drain already settles the owed flush once the tier is empty.
+        // What this pins is that the line doing so survives its move into DrainImmediate's finally.
         [Test]
         public void Given_ADrainThatEmptiedTheImmediateTier_When_TheStoreChangesAgain_Then_TheMainThreadsPostedWorkRendersIt()
         {
