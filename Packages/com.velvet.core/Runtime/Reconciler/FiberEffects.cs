@@ -199,7 +199,7 @@ namespace Velvet
             (ComponentFiber Boundary, Exception Error, ErrorInfo Info, long Sequence) report,
             ComponentFiber? scope)
             => report.Boundary.IsMounted && !HasLayoutEffectsWaiting(ctx, report.Boundary)
-                && !ctx.FibersAwaitingLayout.Contains(report.Boundary) && IsInScope(report.Boundary, scope);
+                && IsInScope(report.Boundary, scope);
 
         // A boundary whose own entry still waits on the stack reports in the commit that takes the entry, after its
         // own layout effects: one a parked pass mounted or re-rendered, in the commit that completes the pass.
@@ -251,28 +251,7 @@ namespace Velvet
                     HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
                 }
                 // What the insertion effects and layout cleanups wrote is in the layout the setups read.
-                var waitOn = FiberLayoutReflow.LayOut(FiberLayoutReflow.PanelsReadIn(ordered));
-                if (waitOn != null)
-                {
-                    DeferSetupPass(ctx, waitOn, ordered, new List<(ComponentFiber Fiber, bool IsMount)>(roots), reportCutoff);
-                    return;
-                }
-                RunSetupPass(ctx, ordered, roots, reportCutoff);
-            }
-            finally
-            {
-                ctx.EffectCommitDepth--;
-            }
-        }
-
-        // Brackets itself as a commit as well, for the deferred pass, which runs outside CommitLayoutBatch.
-        private static void RunSetupPass(
-            ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered,
-            List<(ComponentFiber Fiber, bool IsMount)> roots, long reportCutoff)
-        {
-            ctx.EffectCommitDepth++;
-            try
-            {
+                FiberLayoutReflow.LayOut(FiberLayoutReflow.PanelsReadIn(ordered));
                 for (var i = 0; i < ordered.Count; i++)
                 {
                     var (fiber, isMount) = ordered[i];
@@ -295,29 +274,6 @@ namespace Velvet
             {
                 ctx.EffectCommitDepth--;
             }
-        }
-
-        // A commit inside a panel's layout pass runs its setups once the pass has laid it out. Until then a report
-        // one of its boundaries holds is not due, so CommitStrandedLayoutWork does not take that boundary into a
-        // follow-up commit ahead of its setups.
-        private static void DeferSetupPass(
-            ReconcilerContext ctx, UnityEngine.UIElements.IPanel panel, List<(ComponentFiber Fiber, bool IsMount)> ordered,
-            List<(ComponentFiber Fiber, bool IsMount)> roots, long reportCutoff)
-        {
-            for (var i = 0; i < ordered.Count; i++) ctx.FibersAwaitingLayout.Add(ordered[i].Fiber);
-            FiberLayoutReflow.RunAfterLayout(panel, () => RunDeferredSetupPass(ctx, ordered, roots, reportCutoff));
-        }
-
-        private static void RunDeferredSetupPass(
-            ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered,
-            List<(ComponentFiber Fiber, bool IsMount)> roots, long reportCutoff)
-        {
-            for (var i = 0; i < ordered.Count; i++) ctx.FibersAwaitingLayout.Remove(ordered[i].Fiber);
-            RunSetupPass(ctx, ordered, roots, reportCutoff);
-            CommitStrandedLayoutWork(ctx);
-            // A state update the setups made re-renders before the panel paints, as Mount's closing flush does for
-            // the layout effects of a mount.
-            ctx.BatchScheduler.FlushImmediate();
         }
 
         // Takes the batch off the stack and orders it. The stack was populated in DFS pre-order during reconcile

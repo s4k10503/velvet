@@ -7,4 +7,4 @@
   `refCallback:` now lays out the panel it is mounted on before running them, so a measurement stored in state
   re-renders before the frame is painted. A commit made inside the panel's own layout pass, such as the rows a
   `V.VirtualList` renders as its viewport is laid out or a tree mounted from a `GeometryChangedEvent` callback,
-  runs them once that pass has laid out what it changed.
+  lays the panel out again from inside that pass before running them.

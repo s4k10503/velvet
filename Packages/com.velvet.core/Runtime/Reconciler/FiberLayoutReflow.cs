@@ -1,39 +1,44 @@
+using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
+using System.Reflection;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
     // React reads layout synchronously in its layout phase: reading a box inside useLayoutEffect or a callback ref
     // forces the reflow the commit's mutations owe. A panel lays itself out later in its frame, so a commit about to
-    // run layout effects, build imperative handles or attach callback refs lays out the panels they live on first,
-    // through the layout validation IPanel.Pick runs before it picks. UseLayoutEffectLayoutReadTests fails when Pick
-    // stops laying the panel out.
+    // run layout effects, build imperative handles or attach callback refs runs the panel's style and layout updaters
+    // first. UseLayoutEffectLayoutReadTests fails when that stops laying the panel out.
     //
-    // A commit can also run inside a panel's layout pass, from a GeometryChangedEvent the pass dispatches: a virtual
-    // list rendering rows, or application code mounting there. A layout validation started there re-enters the pass
-    // the panel is iterating, so the commit's reads wait instead for the pass's next iteration, which lays out what the
-    // commit changed and dispatches the GeometryChangedEvent of a probe element this class keeps on the panel.
+    // The updaters are reached by reflection rather than through IPanel.Pick, whose layout validation is public: a
+    // commit can run inside the panel's own layout pass, from a GeometryChangedEvent the pass dispatches, and there
+    // Pick validates nothing where the pass came from ValidateLayout, and re-enters the layout updater where it came
+    // from UpdateForRepaint. The layout updater dispatches its events from two list fields it clears as a pass
+    // runs, so the nested pass is handed lists of its own and the dispatch it interrupted keeps iterating the
+    // lists it was given. UseLayoutEffectLayoutReadTests holds both outer passes.
     internal static class FiberLayoutReflow
     {
-        // The pick's result is discarded; a point this far off the panel ends it at the root.
-        private static readonly Vector2 s_offPanelPoint = new(-1e9f, -1e9f);
+        private const BindingFlags Instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-        // Null where this engine has no type by that name, which reads every commit as inside a layout pass.
-        private static readonly System.Type? s_layoutUpdaterType =
-            typeof(IPanel).Assembly.GetType("UnityEngine.UIElements.VisualTreeLayoutUpdater");
-
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPanel, LayoutProbe> s_probes =
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPanel, PanelUpdaters?> s_updaters =
             new();
 
-        // Returns null once every panel is laid out for reading, or the panel to hand the reads to with
-        // RunAfterLayout when the stack is inside a layout pass.
-        internal static IPanel? LayOut(List<IPanel>? panels)
+        // A panel whose updaters are not shaped as this class reads them is left alone, and commits on it read the
+        // layout it last computed.
+        internal static void LayOut(List<IPanel>? panels)
         {
-            if (panels == null) return null;
-            if (IsInsideLayoutPass()) return panels[0];
-            for (var i = 0; i < panels.Count; i++) _ = panels[i].Pick(s_offPanelPoint);
-            return null;
+            if (panels == null) return;
+            for (var i = 0; i < panels.Count; i++)
+            {
+                var panel = panels[i];
+                if (!s_updaters.TryGetValue(panel, out var updaters))
+                {
+                    updaters = PanelUpdaters.Resolve(panel);
+                    // MUTANT_SURVIVES(equivalent, line removed): resolving again finds the same updaters.
+                    s_updaters.Add(panel, updaters);
+                }
+                updaters?.Run();
+            }
         }
 
         // The panels of the batch's fibers that have a layout effect to run or a handle to build.
@@ -55,19 +60,6 @@ namespace Velvet
             if (!panels.Contains(panel)) panels.Add(panel);
         }
 
-        // Runs work once the panel's current layout pass has laid out what the commit changed: from the probe's
-        // GeometryChangedEvent in the pass's next iteration, or, where the pass stops iterating before that, from the
-        // panel's next scheduler tick after laying the panel out.
-        internal static void RunAfterLayout(IPanel panel, System.Action work)
-        {
-            if (!s_probes.TryGetValue(panel, out var probe))
-            {
-                probe = new LayoutProbe(panel);
-                s_probes.Add(panel, probe);
-            }
-            probe.Enqueue(work);
-        }
-
         private static bool ReadsLayout(ComponentFiber fiber)
         {
             if (fiber.PendingLayoutEffects is { Count: > 0 }) return true;
@@ -80,102 +72,98 @@ namespace Velvet
             return false;
         }
 
-        // Where the stack cannot be read, the commit is taken to be inside a pass: its reads then wait for the probe,
-        // which costs synchronous timing, where a validation started inside a pass would throw.
-        // A layout validation this class started is read the same way: its layout updater is on the stack too.
-        private static bool IsInsideLayoutPass()
+        private sealed class PanelUpdaters
         {
-            // MUTANT_SURVIVES(unreachable): the engine this package pins declares the type, which
-            // UseLayoutEffectLayoutReadTests would read as every commit sitting inside a pass were it missing.
-            if (s_layoutUpdaterType == null) return true;
-            // MUTANT_SURVIVES(equivalent, literal): capturing file names as well leaves each frame's method as it is.
-            var frames = new System.Diagnostics.StackTrace(false).GetFrames();
-            // MUTANT_SURVIVES(unreachable): the editor's runtime returns the frames it captured.
-            if (frames == null) return true;
-            // MUTANT_SURVIVES(equivalent, literal): the stack holds this method's own frame, which resolves, so the
-            // loop sets it whatever it starts as.
-            var resolved = false;
-            for (var i = 0; i < frames.Length; i++)
-            {
-                var type = frames[i].GetMethod()?.DeclaringType;
-                if (type == s_layoutUpdaterType) return true;
-                resolved |= type != null;
-            }
-            return !resolved;
-        }
+            private readonly System.Action _styles;
+            private readonly System.Action _layout;
+            private readonly object _layoutUpdater;
+            private readonly FieldInfo _changeEvents;
+            private readonly FieldInfo _missedHierarchyEvents;
+            // One pair per nesting depth: a pass this class runs can dispatch an event whose commit runs another.
+            private readonly List<(IList ChangeEvents, IList MissedHierarchyEvents)> _spares = new();
+            private int _depth;
 
-        private sealed class LayoutProbe
-        {
-            private readonly IPanel _panel;
-            private readonly VisualElement _element;
-            private readonly List<System.Action> _pending = new();
-            private bool _awaitingGeometry;
-            private bool _fallbackScheduled;
-            private bool _wide;
-
-            internal LayoutProbe(IPanel panel)
+            private PanelUpdaters(
+                System.Action styles, System.Action layout, object layoutUpdater, FieldInfo changeEvents,
+                FieldInfo missedHierarchyEvents)
             {
-                _panel = panel;
-                _element = new VisualElement { name = "velvet-layout-probe" };
-                // MUTANT_SURVIVES(equivalent, line removed): out of the root's flow, the probe takes no room from
-                // the panel's content; a heightless probe in a column root, as the tests' is, takes none either.
-                _element.style.position = Position.Absolute;
-                // MUTANT_SURVIVES(equivalent, line removed): an absolute element with no content is as wide.
-                _element.style.width = 0f;
-                _element.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+                _styles = styles;
+                _layout = layout;
+                _layoutUpdater = layoutUpdater;
+                _changeEvents = changeEvents;
+                _missedHierarchyEvents = missedHierarchyEvents;
             }
 
-            internal void Enqueue(System.Action work)
+            internal static PanelUpdaters? Resolve(IPanel panel)
             {
-                _pending.Add(work);
-                if (_element.panel != _panel) _panel.visualTree.Add(_element);
-                // A second toggle in the same iteration would hand the probe back the width it was laid out at.
-                if (!_awaitingGeometry)
+                var getUpdater = FindMethod(panel.GetType(), "GetUpdater");
+                var phases = typeof(IPanel).Assembly.GetType("UnityEngine.UIElements.VisualTreeUpdatePhase");
+                // MUTANT_SURVIVES(unreachable): the engine this package pins declares every member read here, and
+                // UseLayoutEffectLayoutReadTests fails where one is missing, since nothing is laid out then.
+                if (getUpdater == null || phases == null) return null;
+                var styles = getUpdater.Invoke(panel, new[] { System.Enum.Parse(phases, "Styles") });
+                var layout = getUpdater.Invoke(panel, new[] { System.Enum.Parse(phases, "Layout") });
+                // MUTANT_SURVIVES(unreachable): as above.
+                if (styles == null || layout == null) return null;
+                var changeEvents = layout.GetType().GetField("changeEventsList", Instance);
+                var missedHierarchyEvents = layout.GetType().GetField("missedHierarchyChangeEventsList", Instance);
+                var stylesUpdate = UpdateOf(styles);
+                var layoutUpdate = UpdateOf(layout);
+                // MUTANT_SURVIVES(unreachable): as above.
+                if (changeEvents == null || missedHierarchyEvents == null || stylesUpdate == null || layoutUpdate == null)
                 {
-                    _awaitingGeometry = true;
-                    _wide = !_wide;
-                    _element.style.width = _wide ? 1f : 0f;
+                    return null;
                 }
-                // MUTANT_SURVIVES(equivalent): a second scheduled run finds pending only what the first left, which
-                // it lays out and runs as the first would.
-                if (_fallbackScheduled) return;
-                // MUTANT_SURVIVES(equivalent): as above.
-                _fallbackScheduled = true;
-                _element.schedule.Execute(RunFromScheduler);
+                return new PanelUpdaters(stylesUpdate, layoutUpdate, layout, changeEvents, missedHierarchyEvents);
             }
 
-            private void OnGeometryChanged(GeometryChangedEvent evt)
+            internal void Run()
             {
-                _awaitingGeometry = false;
-                RunPending();
-            }
-
-            private void RunFromScheduler()
-            {
-                _fallbackScheduled = false;
-                // MUTANT_SURVIVES(equivalent, guard removed): with nothing pending, the validation below runs nothing.
-                if (_pending.Count == 0) return;
-                // A scheduler tick runs ahead of the panel's layout pass, so no stack reading is needed here. The
-                // validation lays out the width Enqueue toggled, whose GeometryChangedEvent runs what is pending.
-                _ = _panel.Pick(s_offPanelPoint);
-            }
-
-            // Work that commits again inside this pass enqueues behind what is being run, for the next iteration.
-            private void RunPending()
-            {
-                var batch = _pending.ToArray();
-                _pending.Clear();
-                for (var i = 0; i < batch.Length; i++)
+                if (_depth == _spares.Count)
                 {
-                    try
-                    {
-                        batch[i]();
-                    }
-                    catch (System.Exception exception)
-                    {
-                        Debug.LogException(exception);
-                    }
+                    _spares.Add((NewListLike(_changeEvents), NewListLike(_missedHierarchyEvents)));
                 }
+                var spare = _spares[_depth];
+                var changeEvents = _changeEvents.GetValue(_layoutUpdater);
+                var missedHierarchyEvents = _missedHierarchyEvents.GetValue(_layoutUpdater);
+                _changeEvents.SetValue(_layoutUpdater, spare.ChangeEvents);
+                _missedHierarchyEvents.SetValue(_layoutUpdater, spare.MissedHierarchyEvents);
+                _depth++;
+                try
+                {
+                    _styles();
+                    _layout();
+                }
+                finally
+                {
+                    _depth--;
+                    _changeEvents.SetValue(_layoutUpdater, changeEvents);
+                    _missedHierarchyEvents.SetValue(_layoutUpdater, missedHierarchyEvents);
+                    // MUTANT_SURVIVES(equivalent, line removed): the layout updater clears a list before it fills it;
+                    // this only lets go of the elements the pass left in it.
+                    spare.ChangeEvents.Clear();
+                    // MUTANT_SURVIVES(equivalent, line removed): as above.
+                    spare.MissedHierarchyEvents.Clear();
+                }
+            }
+
+            private static IList NewListLike(FieldInfo field) => (IList)System.Activator.CreateInstance(field.FieldType);
+
+            private static System.Action? UpdateOf(object updater)
+            {
+                var update = updater.GetType().GetMethod("Update", Instance, null, System.Type.EmptyTypes, null);
+                return update == null ? null : (System.Action)System.Delegate.CreateDelegate(typeof(System.Action), updater, update);
+            }
+
+            // The panel declares GetUpdater on an internal base the concrete panel type inherits.
+            private static MethodInfo? FindMethod(System.Type? type, string name)
+            {
+                for (; type != null; type = type.BaseType)
+                {
+                    var method = type.GetMethod(name, Instance | BindingFlags.DeclaredOnly);
+                    if (method != null) return method;
+                }
+                return null;
             }
         }
     }
