@@ -223,8 +223,11 @@ namespace Velvet
 
             // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
             // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
-            var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, out var timing, play.DelaySec,
-                allProperties: variantMode, propertyOverrides: propertyOverrides, delayOffsetSec: delayOffsetSec);
+            var (durationList, delayList) = ApplyTransitionStyles(element, new TweenSpec
+            {
+                DurationSec = durationSec, Easing = easing, DelaySec = play.DelaySec, DelayOffsetSec = delayOffsetSec,
+                AllProperties = variantMode, PropertyOverrides = propertyOverrides,
+            }, out var timing);
             if (variantMode)
             {
                 StyleAnimationClassUtils.RemoveClasses(element, toClasses);
@@ -442,10 +445,12 @@ namespace Velvet
             // transition-property is untouched).
             var (staggerDelayMs, delayOffsetSec) = SplitNativeDelay(config.DelaySec, additionalDelaySec,
                 restoreFromOnCancel ? config.PropertyOverrides : null);
-            var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing, out var timing,
-                config.DelaySec, allProperties: restoreFromOnCancel,
-                propertyOverrides: restoreFromOnCancel ? config.PropertyOverrides : null,
-                delayOffsetSec: delayOffsetSec);
+            var (durationList, delayList) = ApplyTransitionStyles(element, new TweenSpec
+            {
+                DurationSec = config.DurationSec, Easing = exitEasing, DelaySec = config.DelaySec,
+                DelayOffsetSec = delayOffsetSec, AllProperties = restoreFromOnCancel,
+                PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null,
+            }, out var timing);
             StyleAnimationClassUtils.AddClasses(element, fromClasses);
 
             // Step 2: swap classes on the next frame.
@@ -1369,11 +1374,23 @@ namespace Velvet
             return ((long)(swapDelaySec * 1000), additionalDelaySec - swapDelaySec);
         }
 
-        private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
-            VisualElement element, float durationSec, EasingMode easing, out MotionTweenTiming.Play timing,
-            float delaySec, bool allProperties, IReadOnlyList<StylePropertyTransition>? propertyOverrides,
-            float delayOffsetSec)
+        private readonly struct TweenSpec
         {
+            public float DurationSec { get; init; }
+            public EasingMode Easing { get; init; }
+            public float DelaySec { get; init; }
+            public float DelayOffsetSec { get; init; }
+            // A variant swap's: transition-property: all, and the per-property overrides that extend it.
+            public bool AllProperties { get; init; }
+            public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
+        }
+
+        private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
+            VisualElement element, TweenSpec spec, out MotionTweenTiming.Play timing)
+        {
+            var (durationSec, easing, delaySec, delayOffsetSec) =
+                (spec.DurationSec, spec.Easing, spec.DelaySec, spec.DelayOffsetSec);
+            var (allProperties, propertyOverrides) = (spec.AllProperties, spec.PropertyOverrides);
             timing = MotionTweenTiming.Begin(element);
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
