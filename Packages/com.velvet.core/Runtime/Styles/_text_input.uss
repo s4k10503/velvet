@@ -1,0 +1,10 @@
+/*
+ * Text input colours - caret-*, selection:bg-* and selection:text-* (StyleTextInputColors).
+ *
+ * The utilities are resolved from C#, from the class lists of a text input's own box and control and of
+ * their ancestors, whenever the input's text element finishes a style pass. A text element raises that
+ * pass's custom-style event only while it declares a custom property, so every one declares this one.
+ * TextInputColorUtilityTests pins each utility following the class lists it is read from.
+ */
+
+.unity-text-element { --velvet-text-input-colors: 1; }

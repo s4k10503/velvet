@@ -191,6 +191,11 @@ namespace Velvet
 
         private static TextField Defaults => s_freshDefaults ??= new TextField();
 
+        // What StyleTextInputColors restores, for the reason above.
+        internal static Color DefaultCursorColor => Defaults.textSelection.cursorColor;
+
+        internal static Color DefaultSelectionColor => Defaults.textSelection.selectionColor;
+
         public static void ResetTextFieldForReuse(TextField textField)
         {
             if (textField == null) return;
@@ -215,6 +220,7 @@ namespace Velvet
             textField.textEdition.hidePlaceholderOnFocus = defaults.textEdition.hidePlaceholderOnFocus;
             textField.textSelection.isSelectable = defaults.textSelection.isSelectable;
             textField.textSelection.cursorColor = defaults.textSelection.cursorColor;
+            StyleTextInputColors.Forget(textField);
             textField.textSelection.selectionColor = defaults.textSelection.selectionColor;
             textField.label = string.Empty;
             // Same variant, and the same reason, as FiberSliderPoolHelper.

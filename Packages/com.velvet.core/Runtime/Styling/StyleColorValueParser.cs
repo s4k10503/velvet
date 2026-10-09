@@ -179,6 +179,31 @@ namespace Velvet
             return true;
         }
 
+        // A colour as a utility's suffix spells it: a palette name or a bracketed value, optionally followed by
+        // an opacity modifier, on the terms TryParseColorOpacityModifier reads the same pair.
+        internal static bool TryParseColorSuffix(string suffix, out Color color)
+        {
+            var slash = ColorModifierSlashIndex(suffix, 0);
+            // MUTANT_SURVIVES(equivalent, boundary): a slash at zero leaves an empty base below, which resolves to no colour, as the whole suffix does above.
+            if (slash < 0)
+            {
+                return VelvetPalette.TryResolveColorToken(suffix, out color);
+            }
+
+            if (!VelvetPalette.TryResolveColorToken(suffix.Substring(0, slash), out color))
+            {
+                return false;
+            }
+
+            if (!TryParseAlphaModifier(suffix.AsSpan(slash + 1), out var alpha))
+            {
+                return false;
+            }
+
+            color.a = alpha;
+            return true;
+        }
+
         // Parses the alpha portion of a color opacity modifier: an integer percent 0..100 (50 -> 0.5) or an
         // arbitrary bracketed 0..1 fraction ([0.32] -> 0.32). Returns false for any other / out-of-range form.
         private static bool TryParseAlphaModifier(ReadOnlySpan<char> span, out float alpha)

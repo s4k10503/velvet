@@ -437,7 +437,24 @@ these to the box:
 - backgrounds, including the gradient utilities (`bg-*`, `bg-linear-*`, `from-*` / `via-*` / `to-*`);
 - borders, including the line style (`border`, `border-*`, `border-solid` / `-dashed` / `-dotted`);
 - radius (`rounded`, `rounded-*`) and padding (`p-*`, `px-*`, `py-*`, `pt-*` … `pe-*`);
-- `shadow-*`, `drop-shadow-*`, `ring-*` and `outline-*`.
+- `shadow-*`, `drop-shadow-*`, `ring-*` and `outline-*`;
+- the caret and selection colours, `caret-*`, `selection:bg-*` and `selection:text-*`.
+
+**A text input's caret and selection colours follow CSS and Tailwind.**
+- **Values:** each utility takes a palette colour, `white`, `black`, `transparent`, a bracketed value
+  (`caret-[#f00]`) or an opacity modifier (`caret-red-500/50`). `caret-current` follows the input's text
+  colour as it changes.
+- **Inheritance:** a field with none of a utility takes the nearest ancestor's, as `caret-color`
+  inherits and as Tailwind's `selection:` reaches a descendant's selection. `-inherit` passes the
+  question to the parent.
+- **Precedence:** on one element, the utility added last wins, and a value that does not parse is
+  skipped.
+- **Removal:** a colour a utility set goes back, when no utility asks for one any more, to the theme's
+  colour if the theme declares one, or else to the colour the field was built with.
+
+UI Toolkit paints the selection highlight over the selected glyphs. So while a selection utility applies,
+the selected text is drawn again above the highlight, in the `selection:text-*` colour or the field's
+own, which makes the highlight read as a background the way `::selection` does.
 
 `V.TextField(className: "w-64 bg-slate-800 rounded-lg px-3")` sizes the outer control and paints the box;
 layout, size and margin utilities, and every utility not listed, stay on the outer control. A declared

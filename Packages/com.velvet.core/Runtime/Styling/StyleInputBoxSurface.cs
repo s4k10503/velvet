@@ -71,6 +71,9 @@ namespace Velvet
             return definition == typeof(TextInputBaseField<>) || definition == typeof(BasePopupField<,>);
         }
 
+        public static bool IsTextInputControl(VisualElement element)
+            => element.ClassListContains(TextInputBaseField<string>.ussClassName);
+
         public static bool IsControl(VisualElement element)
             => element.ClassListContains(TextInputBaseField<string>.ussClassName)
                || element.ClassListContains(BasePopupField<string, string>.ussClassName);
@@ -146,7 +149,9 @@ namespace Velvet
                || StartsWithAny(core, s_paddings)
                || StyleShadowClass.IsShadowClass(core)
                || StyleRingClass.IsRingClass(core)
-               || StyleGradientClass.IsGradientClass(core);
+               || StyleGradientClass.IsGradientClass(core)
+            || core.StartsWith("caret-", StringComparison.Ordinal)
+            || core.StartsWith("selection:", StringComparison.Ordinal);
 
         private static bool StartsWithAny(string text, string[] prefixes)
             => Array.Exists(prefixes, prefix => text.StartsWith(prefix, StringComparison.Ordinal));
