@@ -534,15 +534,19 @@ field; one written from `refCallback:` is not.
 - `onFocus:` and `onBlur:` report focus entering the field from outside it and leaving it for outside
   it. The step where the field hands focus from its input to itself and back, described above, reports
   neither.
-- `onSubmit:` receives the field's value on the Enter that commits a single-line field, after a field
-  holding `isDelayed:` has released the typed text into it. Like the browser's implicit submission:
+- `onSubmit:` receives the field's value on each Enter in a single-line field, after a field holding
+  `isDelayed:` has released the typed text into it. Like the browser's implicit submission:
   - a read-only field submits;
+  - an Enter after the first submits again, although the field rather than its input holds focus by
+    then;
   - the Enter that arrives while an IME composition is open does not submit;
-  - the soft keyboard's Done submits.
+  - the soft keyboard's Done submits. This is read from the keyboard's status when it blurs the field,
+    and has not yet been verified on a device.
 
-  Enter with Ctrl (Command on macOS) held and Alt not held neither commits nor submits, as in Chrome,
-  where that key reaches the input as a line feed rather than the carriage return implicit submission
-  answers. A multi-line field never submits, as a `<textarea>` never submits its form.
+  Enter with Ctrl held and Alt not held submits nothing, as in Chrome, where that key reaches the input
+  as a line feed rather than the carriage return implicit submission answers. Command is held to the
+  same rule, on every platform. A multi-line field never submits, as a `<textarea>` never submits its
+  form.
 
 `onCreated:` runs once when the field element is created, as on `V.Slider` and `V.ScrollView`.
 

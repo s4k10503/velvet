@@ -6,11 +6,20 @@
   runs before the field takes the key, and stopping the event's propagation keeps the key out of it.
   `onFocus:` and `onBlur:` report focus entering and leaving the field as a whole, not the step where
   the field hands focus from its input to itself on Enter. `onSubmit:` receives the value on the Enter
-  that commits a single-line field, after a delayed field has released its text, as the browser's
-  implicit form submission does: a read-only field submits, the Enter arriving while an IME
-  composition is open does not, the soft keyboard's Done does, and a multi-line field never submits.
+  in a single-line field, after a delayed field has released its text, as the browser's implicit form
+  submission does: a read-only field submits, an Enter after the first submits again, the Enter
+  arriving while an IME composition is open does not, Enter with Ctrl or Command held and Alt not held
+  does not, and a multi-line field never submits. The soft keyboard's Done submits too, read from the
+  keyboard's status when it blurs the field; that reading has not yet been verified on a device.
   `Velvet.Experimental.VTextField` carries the five handlers as `OnKeyDown`, `OnKeyUp`, `OnFocus`,
   `OnBlur` and `OnSubmit`.
+
+### Changed
+
+- A `KeyDownBinding` or `KeyUpBinding` on a text-input element now runs on the element's trickle-down
+  pass rather than its bubble pass, so it runs before a callback the element or a child registered for
+  the bubble pass, and stopping propagation there keeps the key from the input. See Fixed below for
+  what the move repairs.
 
 ### Fixed
 

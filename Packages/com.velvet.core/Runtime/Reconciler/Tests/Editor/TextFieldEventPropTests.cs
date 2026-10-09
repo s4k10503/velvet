@@ -295,6 +295,45 @@ namespace Velvet.Tests
                 Is.EqualTo(((true, 0), "typed", "typed")));
         }
 
+        [TestCase(EventModifiers.Control)]
+        [TestCase(EventModifiers.Command)]
+        public void Given_AnOnSubmit_When_EnterIsPressedWithOneModifierAndThenAlone_Then_OnlyThePlainEnterSubmits(
+            EventModifiers modifier)
+        {
+            // Arrange — each modifier alone, since only one of the two is the command modifier on a given
+            // platform, and a gate reading that modifier passes the other.
+            Mount(DelayedSubmitHost);
+            var field = Q("field");
+
+            // Act
+            PressKey(field, '\n', KeyCode.Return, modifier);
+            var afterModifiedEnter = s_log.Count;
+            PressEnter(field);
+
+            // Assert — the plain Enter is the control showing the binding was live.
+            Assert.That((afterModifiedEnter, s_log.Count), Is.EqualTo((0, 1)));
+        }
+
+        [Test]
+        public void Given_AFieldThatSubmitted_When_EnterIsPressedAgainOnTheFieldHoldingFocus_Then_OnSubmitRunsAgain()
+        {
+            // Arrange
+            Mount(DelayedSubmitHost);
+            var field = Q("field");
+            TypeWithoutCommitting(field, "typed");
+            PressEnter(field);
+
+            // Act — the field itself holds focus after an Enter, so the next key lands on it.
+            using (var key = KeyDownEvent.GetPooled('\n', KeyCode.Return, EventModifiers.None))
+            {
+                key.target = field;
+                field.SendEvent(key);
+            }
+
+            // Assert
+            Assert.That(string.Join("|", s_log), Is.EqualTo("typed|typed"));
+        }
+
         [Test]
         public void Given_ADelayedFieldHoldingAnEdit_When_EnterArrivesAsACarriageReturn_Then_OnSubmitReceivesTheCommittedText()
         {

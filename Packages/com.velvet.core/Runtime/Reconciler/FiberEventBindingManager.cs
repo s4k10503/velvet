@@ -123,9 +123,11 @@ namespace Velvet
         // Enter, and back again later, and a DOM input has no such step, so a move whose other end is inside
         // the field is not reported.
         // Submit is read on the input's own bubble pass, after the input has handled the key, so the value it
-        // reads already holds what that Enter committed. Whether an IME composition was open is read on the
-        // field's trickle-down pass instead, before the input acts on the key, which is the moment a
-        // browser's isComposing describes.
+        // reads already holds what that Enter committed. After that Enter the field itself holds focus, and a
+        // browser submits again on a later Enter, so a key landing on the field is read on the field's own
+        // pass; a key the input let through reaches the field's callback too, which reads only its own target.
+        // Whether an IME composition was open is read on the field's trickle-down pass instead, before the
+        // input acts on the key, which is the moment a browser's isComposing describes.
         // The soft keyboard's Done reaches no key handler: the engine closes the keyboard and blurs the input.
         // So the keyboard is held from focus-in and its status read once the field has committed on the
         // focus-out that blur sends.
@@ -154,7 +156,7 @@ namespace Velvet
             EventCallback<KeyDownEvent> beforeInput = _ => composingAtKeyDown = IsComposing(input);
             EventCallback<KeyDownEvent> afterInput = evt =>
             {
-                if (evt.target == input && !composingAtKeyDown && IsSubmitKey(field, evt))
+                if (evt.target == evt.currentTarget && !composingAtKeyDown && IsSubmitKey(field, evt))
                 {
                     RunDiscrete(() => handler?.Invoke(field.value));
                 }
@@ -170,12 +172,14 @@ namespace Velvet
             };
             field.RegisterCallback(beforeInput, TrickleDown.TrickleDown);
             input.RegisterCallback(afterInput);
+            field.RegisterCallback(afterInput);
             field.RegisterCallback(keyboardOpened);
             field.RegisterCallback(keyboardClosed);
             actions.Add(() =>
             {
                 field.UnregisterCallback(beforeInput, TrickleDown.TrickleDown);
                 input.UnregisterCallback(afterInput);
+                field.UnregisterCallback(afterInput);
                 field.UnregisterCallback(keyboardOpened);
                 field.UnregisterCallback(keyboardClosed);
             });
@@ -237,13 +241,14 @@ namespace Velvet
             return element == field || field.Contains(element);
         }
 
-        // The Enter an editable single-line field commits on, so a submit reads the value that key committed:
-        // the command modifier held without Alt is the one that does not commit, and TextFieldEventPropTests
-        // pins it and Alt. In a multi-line field Enter submits nothing, as in a <textarea>.
+        // Control or Command held without Alt submits nothing on any platform, whichever of the two the
+        // platform treats as its command modifier: react-migration.md owns the browser comparison, and
+        // TextFieldEventPropTests pins each modifier alone and with Alt. In a multi-line field Enter submits
+        // nothing, as in a <textarea>.
         private static bool IsSubmitKey(TextField field, KeyDownEvent evt)
             => !field.multiline
                && (evt.character == '\n' || evt.character == '\r')
-               && !(evt.actionKey && !evt.altKey);
+               && !((evt.ctrlKey || evt.commandKey) && !evt.altKey);
 
         private void RegisterEventBinding(List<Action> actions, VisualElement element, FiberEventBinding binding)
         {

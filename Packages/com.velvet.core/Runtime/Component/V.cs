@@ -34,8 +34,7 @@ namespace Velvet
         }
 
         // V.TextField's handlers in a fixed order, which FiberEventBindingManager.HasSameBindings relies on to
-        // match one render's array against the last. One handler takes the pooled path SingleEvent does; two
-        // or more take an array of their own, which nothing pools.
+        // match one render's array against the last.
         private static FiberEventBinding[] TextFieldEvents(
             Action<string>? onValueChanged,
             Action<string>? onSubmit,
@@ -51,7 +50,7 @@ namespace Velvet
                 return EmptyEvents;
             }
 
-            var events = count == 1 ? VNodePool.RentSingleEventArray() : new FiberEventBinding[count];
+            var events = VNodePool.RentEventArray(count);
             var next = 0;
             if (onValueChanged != null) events[next++] = new ChangeEventBinding<string> { Handler = onValueChanged };
             if (onSubmit != null) events[next++] = new TextFieldSubmitBinding { Handler = onSubmit };
