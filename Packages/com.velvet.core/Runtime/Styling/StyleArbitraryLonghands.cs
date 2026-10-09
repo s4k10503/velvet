@@ -109,6 +109,16 @@ namespace Velvet
             Set(sets, ArbitraryProperty.AspectRatio, StyleLonghand.AspectRatio);
             Set(sets, ArbitraryProperty.TransitionDuration, StyleLonghand.TransitionDuration);
 
+            Set(sets, ArbitraryProperty.Slice, StyleLonghand.UnitySliceTop, StyleLonghand.UnitySliceRight,
+                StyleLonghand.UnitySliceBottom, StyleLonghand.UnitySliceLeft);
+            Set(sets, ArbitraryProperty.SliceX, StyleLonghand.UnitySliceLeft, StyleLonghand.UnitySliceRight);
+            Set(sets, ArbitraryProperty.SliceY, StyleLonghand.UnitySliceTop, StyleLonghand.UnitySliceBottom);
+            Set(sets, ArbitraryProperty.SliceTop, StyleLonghand.UnitySliceTop);
+            Set(sets, ArbitraryProperty.SliceRight, StyleLonghand.UnitySliceRight);
+            Set(sets, ArbitraryProperty.SliceBottom, StyleLonghand.UnitySliceBottom);
+            Set(sets, ArbitraryProperty.SliceLeft, StyleLonghand.UnitySliceLeft);
+            Set(sets, ArbitraryProperty.SliceScale, StyleLonghand.UnitySliceScale);
+
             return sets;
         }
 

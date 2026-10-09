@@ -273,6 +273,18 @@ namespace Velvet
 
         // Transition (StyleList<TimeValue>; handled out-of-band like the filter list)
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
+
+        #region Nine-slice (the background image's slice insets and their scale)
+        // The insets are written as StyleInt, so Value carries a whole number.
+        Slice,        // slice-[12]       -> -unity-slice-top/right/bottom/left
+        SliceX,       // slice-x-[12]     -> left + right
+        SliceY,       // slice-y-[12]     -> top + bottom
+        SliceTop,     // slice-t-[12]
+        SliceRight,   // slice-r-[12]
+        SliceBottom,  // slice-b-[12]
+        SliceLeft,    // slice-l-[12]
+        SliceScale,   // slice-scale-[2]  -> -unity-slice-scale (Value = unitless factor)
+        #endregion
     }
 
     // A parsed arbitrary-value result: the target Property plus its length payload

@@ -181,6 +181,11 @@ namespace Velvet
                 if (custom.HasValue) return custom.Value;
             }
 
+            {
+                var slice = TryParseSliceValue(prefix, valueSpan, negate, out result);
+                if (slice.HasValue) return slice.Value;
+            }
+
             if (!TryGetProperty(prefix, out var property))
             {
                 return false;
@@ -509,6 +514,45 @@ namespace Velvet
             return false;
         }
 
+        private static readonly Dictionary<string, ArbitraryProperty> s_sliceInsetPrefixes = new()
+        {
+            ["slice-"] = ArbitraryProperty.Slice,
+            ["slice-x-"] = ArbitraryProperty.SliceX,
+            ["slice-y-"] = ArbitraryProperty.SliceY,
+            ["slice-t-"] = ArbitraryProperty.SliceTop,
+            ["slice-r-"] = ArbitraryProperty.SliceRight,
+            ["slice-b-"] = ArbitraryProperty.SliceBottom,
+            ["slice-l-"] = ArbitraryProperty.SliceLeft,
+        };
+
+        // An inset is spelled bare, as border-image-slice writes it, or with px. Null when prefix names neither
+        // family.
+        private static bool? TryParseSliceValue(
+            string prefix, ReadOnlySpan<char> value, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (prefix == "slice-scale-")
+            {
+                if (negate || !TryParseFloat(value, out var factor) || factor < 0f)
+                {
+                    return false;
+                }
+                result = new ArbitraryStyle(ArbitraryProperty.SliceScale, factor, LengthUnit.Pixel);
+                return true;
+            }
+            if (!s_sliceInsetPrefixes.TryGetValue(prefix, out var property))
+            {
+                return null;
+            }
+            var digits = value.EndsWith("px".AsSpan()) ? value.Slice(0, value.Length - 2) : value;
+            if (negate || !int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var inset))
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(property, inset, LengthUnit.Pixel);
+            return true;
+        }
+
         // Parses a duration-[..] time value to SECONDS. Accepts "<n>ms" / "<n>s" (duration-[400ms] /
         // duration-[.4s]); a bare number is rejected (a unit is required on arbitrary durations).
         private static bool TryParseDurationSeconds(ReadOnlySpan<char> value, out float seconds)
@@ -751,6 +795,23 @@ namespace Velvet
             // grow-[..] / shrink-[..] are unitless factors.
             [ArbitraryProperty.FlexGrow] = new Action<IStyle, StyleFloat>[] { (s, v) => s.flexGrow = v },
             [ArbitraryProperty.FlexShrink] = new Action<IStyle, StyleFloat>[] { (s, v) => s.flexShrink = v },
+            [ArbitraryProperty.SliceScale] = new Action<IStyle, StyleFloat>[] { (s, v) => s.unitySliceScale = v },
+        };
+
+        // Integer-valued counterpart to PropertySetters: the nine-slice insets.
+        private static readonly Dictionary<ArbitraryProperty, Action<IStyle, StyleInt>[]> IntSetters = new()
+        {
+            [ArbitraryProperty.Slice] = new Action<IStyle, StyleInt>[]
+            {
+                (s, v) => s.unitySliceTop = v, (s, v) => s.unitySliceRight = v,
+                (s, v) => s.unitySliceBottom = v, (s, v) => s.unitySliceLeft = v,
+            },
+            [ArbitraryProperty.SliceX] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceLeft = v, (s, v) => s.unitySliceRight = v },
+            [ArbitraryProperty.SliceY] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceTop = v, (s, v) => s.unitySliceBottom = v },
+            [ArbitraryProperty.SliceTop] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceTop = v },
+            [ArbitraryProperty.SliceRight] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceRight = v },
+            [ArbitraryProperty.SliceBottom] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceBottom = v },
+            [ArbitraryProperty.SliceLeft] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceLeft = v },
         };
 
         #endregion
@@ -2010,6 +2071,17 @@ namespace Velvet
                 return;
             }
 
+            if (IntSetters.TryGetValue(style.Property, out var intSetters))
+            {
+                var inset = new StyleInt((int)style.Value);
+                var ins = element.style;
+                foreach (var setter in intSetters)
+                {
+                    setter(ins, inset);
+                }
+                return;
+            }
+
             if (FloatSetters.TryGetValue(style.Property, out var floatSetters))
             {
                 var width = new StyleFloat(style.Value);
@@ -2057,6 +2129,17 @@ namespace Velvet
                 foreach (var setter in colorSetters)
                 {
                     setter(cs, nullColor);
+                }
+                return;
+            }
+
+            if (IntSetters.TryGetValue(property, out var intSetters))
+            {
+                var nullInt = new StyleInt(StyleKeyword.Null);
+                var ins = element.style;
+                foreach (var setter in intSetters)
+                {
+                    setter(ins, nullInt);
                 }
                 return;
             }
