@@ -78,9 +78,7 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                     foreach (var argument in invocation.ArgumentList.Arguments)
                     {
                         if (argument.Expression is AnonymousFunctionExpressionSyntax) continue;
-#pragma warning disable RS1030 // The index answers for every tree, so it binds trees other than the one being analysed.
                         model ??= _compilation.GetSemanticModel(tree);
-#pragma warning restore RS1030
                         if (!IsComponentBodyArgument(argument, model, CancellationToken.None)) continue;
                         var info = model.GetSymbolInfo(argument.Expression);
                         if ((info.Symbol ?? info.CandidateSymbols.FirstOrDefault()) is IMethodSymbol method)

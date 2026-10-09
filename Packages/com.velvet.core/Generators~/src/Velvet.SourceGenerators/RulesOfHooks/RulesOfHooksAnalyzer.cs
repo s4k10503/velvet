@@ -9,8 +9,8 @@ namespace Velvet.SourceGenerators.RulesOfHooks
 {
     /// <summary>
     /// Compile-time rules-of-hooks analyzer, eslint-plugin-react-hooks' <c>rules-of-hooks</c> for Velvet. A hook is
-    /// a call named <c>Use</c> followed by an uppercase ASCII letter. Inside a component or a custom hook, VEL101
-    /// flags one whose nearest enclosing syntax ancestor is a control-flow construct (if / else / loop / switch /
+    /// a call named <c>Use</c> followed by an uppercase ASCII letter. VEL101 flags one VEL102 does not report whose
+    /// nearest enclosing syntax ancestor is a control-flow construct (if / else / loop / switch /
     /// short-circuit operator / conditional expression / try / catch) or a lambda that is not a component body.
     /// VEL102 flags one whose nearest enclosing function is neither a component nor a custom hook, and VEL103 a
     /// direct call of a component whose body calls a hook. The runtime positional HookIndexTable throws when hook
@@ -80,11 +80,11 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             // function. Stop at the first control-flow-altering ancestor and report it. Sequential
             // ancestors (Block, ExpressionStatement, Argument, VariableDeclarator, etc.) are
             // transparent for hook ordering and are skipped.
-            SyntaxNode? current = inv;
+            SyntaxNode current = inv;
             while (true)
             {
-                current = current.Parent;
-                if (current == null) return;
+                if (current.Parent is not { } parent) return;
+                current = parent;
                 // Method body boundaries — reached without a control-flow ancestor; OK. A lambda that is a
                 // component's render body is one too: it is the function the hook belongs to.
                 if (current is MethodDeclarationSyntax
@@ -102,9 +102,9 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                 // A finally block runs on every exit path, so its own TryStatement does not make the hook
                 // conditional: step over that one statement and keep walking, since a construct around the
                 // try still can.
-                if (current is FinallyClauseSyntax)
+                if (current is FinallyClauseSyntax { Parent: TryStatementSyntax tryStatement })
                 {
-                    current = current.Parent;
+                    current = tryStatement;
                     continue;
                 }
 

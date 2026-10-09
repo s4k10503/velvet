@@ -98,7 +98,7 @@ namespace Velvet.SourceGenerators.Diagnostics
             "VEL103",
             "Component called directly",
             "Component '{0}' calls hooks and is called here as a plain method, so its hooks run as part of the caller; mount it with V.Component instead",
-            "A component's hooks belong to the fiber that renders it. Called as a plain method, it renders no fiber of its own: its hooks take positions in the calling component's hook sequence, so calling it on some renders only changes that sequence, and its state is the caller's. Reported where the callee is a component this compilation declares and its declaration contains a hook call; a component that calls no hook, or one declared in another assembly, is not reported.");
+            "A component's hooks belong to the fiber that renders it. Called as a plain method, it renders no fiber of its own: its hooks run against the calling component's fiber, so calling it on some renders only changes the hooks that component calls, and its state is the caller's. Reported where the callee is a component this compilation declares and its declaration contains a hook call; a component that calls no hook, or one declared in another assembly, is not reported.");
 
     }
 }
