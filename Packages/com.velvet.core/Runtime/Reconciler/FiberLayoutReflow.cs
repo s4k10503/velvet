@@ -79,6 +79,8 @@ namespace Velvet
             if (!s_panels.TryGetValue(panel, out var layout))
             {
                 layout = PanelLayout.Resolve(panel);
+                // MUTANT_SURVIVES(equivalent): an uncached panel is resolved again on its next read, to the same members.
+                // A fresh resolution has no version recorded, so that read only runs the computation again.
                 s_panels.Add(panel, layout);
             }
             layout?.EnsureLaidOut();

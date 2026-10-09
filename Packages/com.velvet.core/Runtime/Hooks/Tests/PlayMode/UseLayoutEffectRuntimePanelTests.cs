@@ -14,7 +14,7 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>A layout effect reads the box the mount gave its element.</item>
     /// <item>A layout effect reads, on an update, the box the update gave an element its tree renders into a layer
-    /// panel, through a ref that update leaves in place.</item>
+    /// panel, through a ref that update leaves in place, and the same for a world-space panel.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -88,6 +88,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_widthRead, Is.EqualTo(UpdatedWidth).Within(0.01f));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AWorldSpaceElementTheLastFrameLaidOut_When_AnUpdateWidensIt_Then_TheDeclaringComponentsLayoutEffectReadsTheNewWidth()
+        {
+            // Arrange — the world-space host is created by the drain after the mount, and its frames lay the element
+            // out.
+            _mounted = V.Mount(Root, V.Component(WorldSpaceBoxRender, key: "world"));
+            yield return null;
+            yield return null;
+            s_setWidth.Invoke(UpdatedWidth);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_widthRead, Is.EqualTo(UpdatedWidth).Within(0.01f));
+        }
+
+        [Component]
+        private static VNode WorldSpaceBoxRender()
+        {
+            var (width, setWidth) = Hooks.UseState(MountWidth);
+            s_setWidth = setWidth;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_widthRead = s_layerBox.Current?.layout.width ?? float.NaN;
+                return null;
+            }), new object[] { width });
+            return V.Div(children: new VNode[]
+            {
+                V.WorldSpace(Vector3.zero, children: new VNode[]
+                {
+                    V.Div(className: $"w-[{width}px] h-[20px]", refCallback: s_layerBox.SetElement),
+                }),
+            });
         }
 
         [Component]

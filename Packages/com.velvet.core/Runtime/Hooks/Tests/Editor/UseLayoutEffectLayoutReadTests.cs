@@ -31,7 +31,12 @@ namespace Velvet.Tests
     /// next layout visit sends, so a callback that mounts a tree runs once and an element the commit laid out
     /// still receives its event. A control that settles from those events, a ScrollView showing its scroller,
     /// settles in that visit, after the commit.</item>
-    /// <item>The world position of an element an update moved is current in the commit's layout effects.</item>
+    /// <item>The world position of an element an update moved is current in the commit's layout effects, whether
+    /// its own styles moved it or a sibling's growth did.</item>
+    /// <item>A box a bundled stylesheet class sizes is laid out with that class's size.</item>
+    /// <item>A layout effect inside a portal into another panel reads its own element there and an element of the
+    /// panel the tree is mounted on.</item>
+    /// <item>A ref a hidden tree re-renders attaches without running that tree's insertion effects.</item>
     /// <item>A virtual list's row, and a component inside it, commit their layout effects once the list holds the
     /// row.</item>
     /// <item>A commit made from inside the style updater's traversal lays nothing out.</item>
@@ -75,6 +80,11 @@ namespace Velvet.Tests
             s_scrollView = null;
             s_scrollerDisplayInLayoutEffect = null;
             s_hiddenInsertionRuns = 0;
+            s_hiddenRefTick = -1;
+            s_setSuspended = default;
+            s_setHiddenTick = default;
+            s_setSiblingHeight = default;
+            s_otherRoot = null;
             s_neverResolves = new VelvetTaskCompletionSource<string>();
         }
 
@@ -83,7 +93,26 @@ namespace Velvet.Tests
             foreach (var mounted in _mountedFromLayoutPass) mounted.Dispose();
             _mountedFromLayoutPass.Clear();
             base.TearDown();
+            if (_otherWindow != null)
+            {
+                _otherWindow.Close();
+                UnityEngine.Object.DestroyImmediate(_otherWindow);
+                _otherWindow = null;
+            }
         }
+
+        private UnityEditor.EditorWindow _otherWindow;
+
+        // A second editor window, so a portal can render into a panel other than the one the tree is mounted on.
+        private UnityEditor.EditorWindow OpenOtherWindow()
+        {
+            _otherWindow = ScriptableObject.CreateInstance<OtherHostWindow>();
+            _otherWindow.position = new Rect(0, 0, 400, 300);
+            _otherWindow.Show();
+            return _otherWindow;
+        }
+
+        private sealed class OtherHostWindow : UnityEditor.EditorWindow { }
 
         [Test]
         public void Given_ALayoutEffectReadingItsElementsWidth_When_TheTreeMounts_Then_ItReadsTheWidthTheMountGaveTheElement()
@@ -204,24 +233,82 @@ namespace Velvet.Tests
             Assert.That(s_widthReadInRef, Is.EqualTo(UpdatedWidth).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): the base runs no insertion effect of a tree a Suspense hides on mount.
-        // The layout commit skips that tree; here a ref attached inside it runs its owners' insertion effects ahead
-        // of the commit, and dropping `fiber.LayoutEffectsHidden ||` from `RunInsertionEffectsAheadOfRef` runs them.
+        // GREEN_ON_BASE(characterization): the base runs no insertion effect of a tree a Suspense has hidden.
+        // The layout commit skips that tree; here a ref the hidden tree re-renders runs its owners' insertion effects
+        // ahead of the commit, and dropping the `fiber.LayoutEffectsHidden` check from
+        // `RunInsertionEffectsAheadOfRef` runs them. The ref's own reading is folded in, so the case fails where the
+        // hidden tree's ref never attaches.
         [Test]
-        public void Given_ATreeASuspenseHidesOnMount_When_ARefInsideItAttaches_Then_ItsInsertionEffectDoesNotRun()
+        public void Given_ATreeASuspenseHasHidden_When_ItReRendersARef_Then_TheRefAttachesAndItsInsertionEffectDoesNotRun()
         {
             // Arrange
-            var tree = V.Suspense(V.Label(text: "fallback"), new VNode[]
-            {
-                V.Component(HiddenInsertionRender, key: "hidden"),
-                V.Component(NeverResolvingRender, key: "suspends"),
-            });
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(SuspendingHostRender, key: "host"));
+            s_setSuspended.Invoke(true);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_hiddenInsertionRuns = 0;
+            s_setHiddenTick.Invoke(1);
 
             // Act
-            _mounted = V.Mount(_window.rootVisualElement, tree);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(s_hiddenInsertionRuns, Is.EqualTo(0));
+            Assert.That($"{s_hiddenRefTick} | {s_hiddenInsertionRuns}", Is.EqualTo("1 | 0"));
+        }
+
+        [Test]
+        public void Given_AnAnchorBelowASiblingTheLastFrameLaidOut_When_AnUpdateGrowsTheSibling_Then_TheLayoutEffectReadsTheAnchorsNewWorldPosition()
+        {
+            // Arrange — the anchor's own styles do not change, so only the computation's layout moves it.
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(GrowingSiblingRender, key: "sibling"));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            s_setSiblingHeight.Invoke(AnchorOffset);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_anchorWorldOffsetInLayoutEffect, Is.EqualTo(AnchorOffset).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALayoutEffectReadingAnElementSizedByAStylesheetClass_When_TheTreeMounts_Then_ItReadsTheWidthTheClassGivesIt()
+        {
+            // Arrange
+            var root = _window.rootVisualElement;
+            VelvetStyleUtilities.AttachTo(root);
+
+            // Act
+            _mounted = V.Mount(root, V.Component(SheetSizedBoxRender, key: "sheet"));
+            ForcePanelUpdate(root.panel);
+
+            // Assert
+            Assert.That(s_widthReadInLayoutEffect, Is.EqualTo(root.Q<VisualElement>("sheet-box").resolvedStyle.width).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALayoutEffectInsideAPortalIntoAnotherPanel_When_TheTreeMounts_Then_ItReadsTheWidthTheMountGaveItsElement()
+        {
+            // Arrange
+            s_otherRoot = OpenOtherWindow().rootVisualElement;
+
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(PortalIntoOtherPanelRender, key: "portal"));
+
+            // Assert
+            Assert.That(s_widthReadInLayoutEffect, Is.EqualTo(MountWidth).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALayoutEffectInsideAPortalIntoAnotherPanelReadingTheMountedPanel_When_TheTreeMounts_Then_ItReadsTheWidthTheMountGaveTheElement()
+        {
+            // Arrange — nothing on the mounted panel reads layout but the effect inside the portal.
+            s_otherRoot = OpenOtherWindow().rootVisualElement;
+
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(PortalReadingMountedPanelRender, key: "portal"));
+
+            // Assert
+            Assert.That(s_widthReadInLayoutEffect, Is.EqualTo(MountWidth).Within(0.01f));
         }
 
         // GREEN_ON_BASE(characterization): the base mounts from a CustomStyleResolvedEvent reading the box unlaid.
@@ -666,15 +753,113 @@ namespace Velvet.Tests
         private static int s_hiddenInsertionRuns;
         private static VelvetTaskCompletionSource<string> s_neverResolves;
 
+        private static StateUpdater<bool> s_setSuspended;
+        private static StateUpdater<int> s_setHiddenTick;
+        private static int s_hiddenRefTick;
+
+        [Component]
+        private static VNode SuspendingHostRender()
+        {
+            var (suspended, setSuspended) = Hooks.UseState(false);
+            s_setSuspended = setSuspended;
+            return V.Suspense(V.Label(text: "fallback"), new VNode[]
+            {
+                V.Component(HiddenInsertionRender, key: "hidden"),
+                suspended ? V.Component(NeverResolvingRender, key: "suspends") : null,
+            });
+        }
+
+        // Its ref is a new delegate on every render, so each render queues the ref's setup again.
         [Component]
         private static VNode HiddenInsertionRender()
         {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setHiddenTick = setTick;
             Hooks.UseInsertionEffect((Func<Action>)(() =>
             {
                 s_hiddenInsertionRuns++;
                 return null;
+            }), new object[] { tick });
+            return V.Div(name: "hidden-with-ref", refCallback: _ =>
+            {
+                s_hiddenRefTick = tick;
+                return null;
+            });
+        }
+
+        private static StateUpdater<float> s_setSiblingHeight;
+
+        [Component]
+        private static VNode GrowingSiblingRender()
+        {
+            var (height, setHeight) = Hooks.UseState(0f);
+            s_setSiblingHeight = setHeight;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                var anchor = s_root.Q<VisualElement>("still-anchor");
+                s_anchorWorldOffsetInLayoutEffect = anchor.worldBound.y - anchor.parent.worldBound.y;
+                return null;
+            }), new object[] { height });
+            return V.Div(children: new VNode[]
+            {
+                V.Div(className: $"h-[{height}px] w-[20px]"),
+                V.Div(className: "w-[20px] h-[20px]", name: "still-anchor"),
+            });
+        }
+
+        [Component]
+        private static VNode SheetSizedBoxRender()
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_widthReadInLayoutEffect = s_root.Q<VisualElement>("sheet-box").layout.width;
+                return null;
             }), Array.Empty<object>());
-            return V.Div(name: "hidden-with-ref", refCallback: s_measuringRef);
+            return V.Div(className: "w-8 h-[20px]", name: "sheet-box");
+        }
+
+        private static VisualElement s_otherRoot;
+
+        // The component inside the portal is mounted on the other panel and reads its own element there.
+        [Component]
+        private static VNode PortalIntoOtherPanelRender()
+            => V.Portal(s_otherRoot, children: new VNode[]
+            {
+                V.Div(children: new VNode[] { V.Component(OtherPanelBoxRender, key: "other") }),
+            });
+
+        [Component]
+        private static VNode OtherPanelBoxRender()
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_widthReadInLayoutEffect = s_otherRoot.Q<VisualElement>("other-box").layout.width;
+                return null;
+            }), Array.Empty<object>());
+            return V.Div(className: $"w-[{MountWidth}px] h-[20px]", name: "other-box");
+        }
+
+        // The component inside the portal is mounted on the other panel and reads an element of the mounted panel.
+        [Component]
+        private static VNode PortalReadingMountedPanelRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Div(className: $"w-[{MountWidth}px] h-[20px]", name: "mounted-box"),
+                V.Portal(s_otherRoot, children: new VNode[]
+                {
+                    V.Div(children: new VNode[] { V.Component(MountedPanelReaderRender, key: "reader") }),
+                }),
+            });
+
+        [Component]
+        private static VNode MountedPanelReaderRender()
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_widthReadInLayoutEffect = s_root.Q<VisualElement>("mounted-box").layout.width;
+                return null;
+            }), Array.Empty<object>());
+            return V.Div();
         }
 
         [Component]

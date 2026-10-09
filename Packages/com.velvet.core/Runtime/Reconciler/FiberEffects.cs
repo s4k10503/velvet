@@ -28,8 +28,7 @@ namespace Velvet
             for (var fiber = owner; fiber != null; fiber = fiber.Parent)
             {
                 // A tree a Suspense hides commits none of the layout work its render queued, as TakeBatch says.
-                // MUTANT_SURVIVES(equivalent, clause removed): a fiber with nothing pending runs nothing.
-                if (fiber.LayoutEffectsHidden || fiber.PendingInsertionEffects is not { Count: > 0 }) continue;
+                if (fiber.LayoutEffectsHidden) continue;
                 HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects);
             }
         }
@@ -78,17 +77,17 @@ namespace Velvet
 
         // Runs the effect commits a range render held, once it has placed its rows. Each is scoped to its row, as
         // the commit of the row's own mount was: the pass that renders the list can hold fibers of its own whose
-        // refs it has not attached yet. A row a failed or disposed range discarded is unmounted and runs nothing.
+        // refs it has not attached yet. A row a failed or disposed range discarded is unmounted, which cleared its
+        // pending lists, and CommitLayoutBatch runs no setup of an unmounted fiber, so it runs nothing. The range's
+        // caller commits the stranded work after.
         internal static void CommitHeldRowLayoutEffects(
             ReconcilerContext ctx, List<(ComponentFiber fiber, bool mountDoubleInvoke)> held)
         {
             for (var i = 0; i < held.Count; i++)
             {
                 var (fiber, isMount) = held[i];
-                if (!fiber.IsMounted) continue;
                 CommitLayoutBatch(ctx, fiber, new List<(ComponentFiber Fiber, bool IsMount)>(1) { (fiber, isMount) });
             }
-            CommitStrandedLayoutWork(ctx);
         }
 
         private static void CommitDeferred(ReconcilerContext ctx, List<(ComponentFiber fiber, bool mountDoubleInvoke)> pending)
