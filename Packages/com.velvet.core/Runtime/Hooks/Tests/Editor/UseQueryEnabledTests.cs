@@ -16,6 +16,7 @@ namespace Velvet.Tests
     /// <item>Invalidating its key fetches nothing for it, and an entry read by a disabled and an enabled query is
     /// fetched with the options it was last handed, which are a disabled query's where it mounted after the
     /// enabled one; <c>Refetch</c> still fetches.</item>
+    /// <item>A commit that leaves it off fetches nothing over stale data.</item>
     /// <item>Turning it on fetches stale data, joining a refetch in flight, and the render that turns it on
     /// already reports the fetch, while fresh data stays as it is.</item>
     /// </list>
@@ -39,6 +40,7 @@ namespace Velvet.Tests
         private static readonly List<CancellationToken> s_tokens = new();
         private static readonly List<QueryResult<int>> s_renders = new();
         private static StateUpdater<bool> s_setEnabled;
+        private static StateUpdater<int> s_setTick;
 
         [SetUp]
         public void SetUp()
@@ -53,6 +55,7 @@ namespace Velvet.Tests
             s_tokens.Clear();
             s_renders.Clear();
             s_setEnabled = default;
+            s_setTick = default;
         }
 
         [Test]
@@ -174,6 +177,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADisabledQueryOverStaleData_When_TheComponentRendersAgain_Then_NothingIsFetched()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 3);
+            s_now = TimeSpan.FromMinutes(1);
+            using var mounted = V.Mount(_root, V.Component(Toggled, key: "toggled"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_fetched, Is.Empty, "Stale data is fetched when the query is turned on, not by a commit that leaves it off");
+        }
+
+        [Test]
         public void Given_ADisabledQueryWithNothingCached_When_ItIsTurnedOn_Then_ItFetches()
         {
             // Arrange
@@ -275,6 +296,8 @@ namespace Velvet.Tests
         {
             var (enabled, setEnabled) = Hooks.UseState(false);
             s_setEnabled = setEnabled;
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
             s_renders.Add(Hooks.UseQuery(Options("toggled", enabled), s_client));
             return V.Label(text: "toggled");
         }

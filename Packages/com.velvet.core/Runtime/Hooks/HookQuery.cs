@@ -509,7 +509,6 @@ namespace Velvet
         private void ScheduleStale()
         {
             var entry = Entry;
-            // MUTANT_SURVIVES(equivalent, clause removed): a disabled query reports IsStale false, so the wait would end in no change to report.
             if (entry == null || !Enabled || StaleTime == TimeSpan.MaxValue || entry.IsStaleFor(StaleTime)
                 || !Notifies(QueryProperties.IsStale))
             {
@@ -604,6 +603,7 @@ namespace Velvet
                 }
             }
 
+            // MUTANT_SURVIVES(equivalent, literal): with no source and no placeholder `data` is still default, so Data reads default either way, and nothing reads the snapshot's HasData.
             var hasData = false;
             TData data = default!;
             if (hasSource) hasData = SelectData(source, settings, out data);
