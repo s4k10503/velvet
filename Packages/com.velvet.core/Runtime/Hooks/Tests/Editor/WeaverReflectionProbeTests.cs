@@ -547,12 +547,12 @@ namespace Velvet.Tests
             public WeaveOutcome(List<string> messages, bool changed, string threw)
             {
                 Messages = messages;
-                Changed = changed;
+                Rewrote = changed;
                 Threw = threw;
             }
 
             public List<string> Messages { get; }
-            public bool Changed { get; }
+            public bool Rewrote { get; }
             public string Threw { get; }
         }
 
@@ -628,7 +628,7 @@ namespace Velvet.Tests
             var outcome = WeaveWithoutLettingItThrow(module);
 
             // Assert
-            Assert.That((outcome.Threw, outcome.Changed), Is.EqualTo((string.Empty, true)),
+            Assert.That((outcome.Threw, outcome.Rewrote), Is.EqualTo((string.Empty, true)),
                 "The module was rewritten, so the post-processor has to write it");
         }
 
