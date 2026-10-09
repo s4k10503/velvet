@@ -1950,16 +1950,10 @@ namespace Velvet
                 }).Every(StyleAnimateDriver.TickMs);
             }
 
-            // Stops the co-fade tick of a play holding its from-values past its end, leaving the band at the opacity
-            // its element holds; the cancel that ends the hold releases it through EndRingCoFade.
+            // Stops the co-fade tick of a play holding its from-values past its end, which no longer moves the
+            // opacity it samples; the cancel that ends the hold releases the band through EndRingCoFade.
             internal static void HoldRingCoFade(StyleAnimationScheduler.PendingAnimation pending)
-            {
-                pending.RingTick?.Pause();
-                if (pending.RingOverlay != null && pending.AnimatingElement != null)
-                {
-                    pending.RingOverlay.style.opacity = UnityEngine.Mathf.Clamp01(MotionOpacity.Own(pending.AnimatingElement));
-                }
-            }
+                => pending.RingTick?.Pause();
 
             // Stops the co-fade tick and releases the band's inline opacity (null-safe; balanced one-for-one
             // with BindRing).
