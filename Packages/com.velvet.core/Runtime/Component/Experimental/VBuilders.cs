@@ -286,6 +286,21 @@ namespace Velvet.Experimental
         /// <summary>When false, disables user input.</summary>
         public bool? Enabled { get; set; }
 
+        /// <summary>Handler invoked with the value when Enter commits a single-line field.</summary>
+        public Action<string>? OnSubmit { get; set; }
+
+        /// <summary>Handler invoked for each key pressed while the field holds focus, before the field takes it.</summary>
+        public UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.KeyDownEvent>? OnKeyDown { get; set; }
+
+        /// <summary>Handler invoked for each key released while the field holds focus.</summary>
+        public UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.KeyUpEvent>? OnKeyUp { get; set; }
+
+        /// <summary>Handler invoked when focus enters the field from outside it.</summary>
+        public UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.FocusInEvent>? OnFocus { get; set; }
+
+        /// <summary>Handler invoked when focus leaves the field for somewhere outside it.</summary>
+        public UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.FocusOutEvent>? OnBlur { get; set; }
+
         /// <param name="className">Utility class string applied to the field.</param>
         public VTextField(string? className = null) : base(className) { }
 
@@ -294,7 +309,8 @@ namespace Velvet.Experimental
             V.TextField(className: Class, value: Value, onValueChanged: OnChange, key: Key, name: Name,
                 label: Label, isPasswordField: IsPasswordField, placeholder: Placeholder, maxLength: MaxLength,
                 isReadOnly: IsReadOnly, isDelayed: IsDelayed, multiline: Multiline, keyboardType: KeyboardType,
-                autoCorrection: AutoCorrection, enabled: Enabled);
+                autoCorrection: AutoCorrection, enabled: Enabled, onSubmit: OnSubmit, onKeyDown: OnKeyDown,
+                onKeyUp: OnKeyUp, onFocus: OnFocus, onBlur: OnBlur);
     }
 
     /// <summary>

@@ -526,6 +526,31 @@ the field hands focus from its input back to itself (Enter, Shift+Enter in multi
 declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
 field; one written from `refCallback:` is not.
 
+`V.TextField` takes `onKeyDown:`, `onKeyUp:`, `onFocus:` and `onBlur:` as an `<input>` does, and
+`onSubmit:` for what Enter in an `<input>` does to its form:
+
+- `onKeyDown:` runs before the field takes the key, and a handler calling `StopPropagation()` on the
+  event keeps the key out of the field, as `preventDefault()` does in React.
+- `onFocus:` and `onBlur:` report focus entering the field from outside it and leaving it for outside
+  it. The step where the field hands focus from its input to itself and back, described above, reports
+  neither.
+- `onSubmit:` receives the field's value on each Enter in a single-line field, after a field holding
+  `isDelayed:` has released the typed text into it. Like the browser's implicit submission:
+  - a read-only field submits;
+  - the input keeps focus and its caret across the submitting Enter, so typing goes on where it was,
+    where UI Toolkit alone hands focus to the field on Enter; an Enter that lands on the field itself
+    (after Escape, say) submits too;
+  - the Enter that arrives while an IME composition is open does not submit;
+  - the soft keyboard's Done submits. This is read from the keyboard's status when it blurs the field,
+    and has not yet been verified on a device.
+
+  Enter with Ctrl held and Alt not held submits nothing, as in Chrome, where that key reaches the input
+  as a line feed rather than the carriage return implicit submission answers. Command is held to the
+  same rule, on every platform. A multi-line field never submits, as a `<textarea>` never submits its
+  form.
+
+`onCreated:` runs once when the field element is created, as on `V.Slider` and `V.ScrollView`.
+
 A field's `className` background, border, radius, padding, shadow and ring utilities paint the box the value
 is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
 is listed with the `[&>*]:` composite notes.
