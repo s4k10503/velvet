@@ -19,3 +19,5 @@
   to commit over it or start a request for it — as TanStack Query v5 refetches a query with its own options.
   It used the first reader's, so where readers of one key pass different query functions, a different one
   can run now.
+- A request that lands shares its data with the `StructuralSharing` of the options its entry holds when it
+  lands, as v5's fetch does, rather than with those it started with.

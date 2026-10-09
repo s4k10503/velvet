@@ -340,6 +340,22 @@ namespace Velvet.Tests
                 "A write shares with the options the entry was last handed, as v5's setData uses the query's own");
         }
 
+        [Test]
+        public void Given_ARequestStartedByOneReader_When_AnotherSubscribesBeforeItLands_Then_TheLaterReadersFunctionSharesIt()
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            using var first = MountUnder(_root, AddingTen);
+            using var second = MountUnder(_secondRoot, AddingHundred);
+
+            // Act
+            s_sources[0].TrySetResult(1);
+
+            // Assert
+            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(101),
+                "A landing shares with the options the entry holds when it settles, as v5's fetch reads this.options then");
+        }
+
         #endregion
 
         #region Components and helpers
