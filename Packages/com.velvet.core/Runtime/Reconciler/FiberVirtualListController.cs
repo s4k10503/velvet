@@ -256,7 +256,15 @@ namespace Velvet
                 return;
             }
 
-            RenderRange(newFirst, newLast);
+            FiberLayoutReflow.EnterSuppressed();
+            try
+            {
+                RenderRange(newFirst, newLast);
+            }
+            finally
+            {
+                FiberLayoutReflow.ExitSuppressed();
+            }
         }
 
         private void RenderRange(int newFirst, int newLast)

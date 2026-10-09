@@ -250,6 +250,7 @@ namespace Velvet
                     RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
                     HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
                 }
+                FiberLayoutReflow.LayOutPanelsOf(ordered);
                 for (var i = 0; i < ordered.Count; i++)
                 {
                     var (fiber, isMount) = ordered[i];
