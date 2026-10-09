@@ -84,29 +84,26 @@ namespace Velvet.TestUtilities
 
         // Bypasses: nothing — it reads how many props bags, event arrays and node arrays are rented out.
         public static (int Props, int EventArrays, int NodeArrays) RentedOutCountsForTest()
-            => (Count(OwnedPropsFieldName), CountOf(OwnedEventArrays()), Count(OwnedNodeArraysFieldName));
+            => (Count(OwnedPropsFieldName), OwnedEventArrayCount(), Count(OwnedNodeArraysFieldName));
 
-        // The rented-out event-array set is the pool's one static HashSet<FiberEventBinding[]>, and is found
-        // by that type, so a fixture reading it does not name the field.
-        private static object OwnedEventArrays()
+        // The rented-out event arrays are every static HashSet<FiberEventBinding[]> the pool holds, found by
+        // that type and summed, so a fixture reading them names no field and reads the same however many
+        // sets the pool keeps them in.
+        private static int OwnedEventArrayCount()
         {
-            var fields = typeof(VNodePool).GetFields(BindingFlags.Static | BindingFlags.NonPublic);
-            FieldInfo? match = null;
-            foreach (var field in fields)
+            var sets = 0;
+            var count = 0;
+            foreach (var field in typeof(VNodePool).GetFields(BindingFlags.Static | BindingFlags.NonPublic))
             {
                 if (field.FieldType != typeof(HashSet<FiberEventBinding[]>)) continue;
-                if (match != null)
-                {
-                    throw new AmbiguousMatchException(
-                        typeof(VNodePool).FullName + " holds more than one HashSet<FiberEventBinding[]>.");
-                }
-                match = field;
+                sets++;
+                count += CountOf(field.GetValue(null)!);
             }
-            if (match == null)
+            if (sets == 0)
             {
                 throw new MissingFieldException(typeof(VNodePool).FullName, "HashSet<FiberEventBinding[]>");
             }
-            return match.GetValue(null)!;
+            return count;
         }
 
         // Bypasses: nothing — it reads whether the pool counts a props bag as rented out.

@@ -8,8 +8,8 @@ namespace Velvet.Tests
     /// <summary>
     /// The event-array pool at lengths above one, which an element factory rents when its own callback
     /// binding goes ahead of a caller's <c>events:</c> array. <see cref="VNodePoolTests"/> owns the
-    /// one-slot cases and what the pool does with an array it did not rent. Each case hands back what it
-    /// rents, so the rented-out set does not grow across fixtures.
+    /// one-slot cases, a returned array coming back cleared, and what the pool does with an array it did not
+    /// rent. Each case hands back what it rents, so the rented-out set does not grow across fixtures.
     /// </summary>
     [TestFixture]
     internal sealed class VNodePoolEventArrayTests
@@ -26,23 +26,8 @@ namespace Velvet.Tests
             return (int)field.GetValue(null)!;
         }
 
-        [Test]
-        public void Given_AReturnedFiveSlotArrayHoldingBindings_When_FiveSlotsAreRentedAgain_Then_TheSameArrayComesBackWithEverySlotCleared()
-        {
-            // Arrange — a length no other case rents, so no earlier case can have filled its stack.
-            var array = VNodePool.RentEventArray(5);
-            for (var i = 0; i < array.Length; i++) array[i] = new ClickedBinding { Handler = () => { } };
-            VNodePool.ReturnEventArray(array);
-
-            // Act
-            var reused = VNodePool.RentEventArray(5);
-            var observed = (ReferenceEquals(reused, array), reused.All(binding => binding == null));
-            VNodePool.ReturnEventArray(reused);
-
-            // Assert
-            Assert.That(observed, Is.EqualTo((true, true)));
-        }
-
+        // GREEN_ON_BASE(characterization): the base's multi-binding pool already caps each length's stack.
+        // Pooling every length in one table must keep that cap; pushing past it is what reddens this.
         [Test]
         public void Given_MoreFourSlotArraysReturnedThanThePoolKeeps_When_AsManyAreRentedBack_Then_TheOnesItTurnedAwayAreNewArrays()
         {
@@ -62,6 +47,8 @@ namespace Velvet.Tests
             Assert.That(fresh, Is.EqualTo(2));
         }
 
+        // GREEN_ON_BASE(characterization): the base's multi-binding pool already keeps one stack per length.
+        // Pooling every length in one table must keep them apart; one shared stack is what reddens this.
         [Test]
         public void Given_AReturnedThreeSlotArray_When_TwoSlotsAreRented_Then_TheArrayHandedOutHasTwoSlots()
         {

@@ -77,7 +77,7 @@ namespace Velvet.Tests
         #region A sibling of the boundary
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ASiblingAheadOfABoundaryInAnElement_When_TheBoundaryCatchesOnMount_Then_TheSiblingRendersBesideTheFallback()
         {
@@ -92,7 +92,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ASiblingBehindABoundaryInAnElement_When_TheBoundaryCatchesOnMount_Then_TheSiblingRendersBesideTheFallback()
         {
@@ -107,7 +107,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ASiblingAheadOfABoundaryInAFragment_When_TheBoundaryCatchesOnMount_Then_TheSiblingRendersBesideTheFallback()
         {
@@ -122,7 +122,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ASiblingWithAPassiveEffectAheadOfABoundary_When_TheBoundaryCatchesOnMount_Then_TheEffectRunsOnce()
         {
@@ -138,7 +138,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ASiblingBehindABoundaryTakingItsParentsState_When_TheBoundaryCatchesInTheParentsUpdate_Then_TheSiblingRendersTheUpdate()
         {
@@ -223,7 +223,7 @@ namespace Velvet.Tests
         #region What the failed output leaves
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base sweeps this component in the fallback's own reconcile.
         // The case pins that the catch taken inside the walk disposes a component the failed output mounted.
         [Test]
@@ -241,7 +241,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AComponentMountingAheadOfTheThrowInTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_ItsEffectNeverRuns()
         {
@@ -279,7 +279,7 @@ namespace Velvet.Tests
         private static VNode OwnUpdateHostRender() => V.Div(children: new VNode[] { V.Component(OwnUpdateBoundaryRender, key: "boundary") });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base sweeps this component in the fallback's own reconcile.
         // The case pins that the catch taken inside the walk hands an already mounted one to the pass's sweep.
         [Test]
@@ -300,7 +300,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base stops the pass before the observer renders again.
         // The case pins that the catch taken inside the walk leaves the cleanup to the commit, as React does.
         [Test]
@@ -320,7 +320,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryWithoutAFallbackInsideAnother_When_ItsChildThrowsOnMount_Then_TheOuterFallbackReplacesTheOutersWholeOutput()
         {
@@ -392,7 +392,7 @@ namespace Velvet.Tests
         #region The fallback and what it replaces
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base diffs the fallback against the failed output's rows.
         // The catch taken in the walk builds the fallback afresh instead, and that it writes the row's name is what this pins.
         [Test]
@@ -414,7 +414,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AFallbackRowAtThePositionOfARowTheFailedOutputPatched_When_TheBoundaryCatchesOnAnUpdate_Then_TheFallbackRowIsAnotherElement()
         {
@@ -434,7 +434,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base shows the fallback in a reconcile of its own, whose
         // key set holds none of the failed output's keys. What this pins is that the catch taken in the walk
         // takes the failed output's keys back before the fallback commits.
@@ -467,7 +467,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AFallbackRowKeyedLikeARowTheFailedOutputNeverReached_When_TheBoundaryCatchesOnAnUpdate_Then_TheFallbackRowIsAnotherElement()
         {
@@ -487,7 +487,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base stops the pass short of this sibling and leaves it alone.
         // The catch taken in the walk patches it in place, and that its element is kept is what this pins.
         [Test]
@@ -510,7 +510,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base retires the failed tree in the fallback's own reconcile.
         // The catch taken in the walk retires it there instead, which this pins.
         [Test]
@@ -534,7 +534,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryThatCaughtInItsParentsUpdate_When_TheParentUpdatesAgain_Then_TheBoundaryKeepsItsFallbackAndTheSiblingUpdates()
         {
@@ -644,7 +644,7 @@ namespace Velvet.Tests
         private static Action<int> s_setOwnerTick;
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AFallbackWhoseContentThrowsInsideABoundaryCatchingInTheWalk_When_ItsChildThrowsOnMount_Then_TheOuterFallbackShowsAndTheContentRendersOnce()
         {
@@ -659,7 +659,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base takes both errors on the aborting path to the same end.
         // The catch taken in the walk leaves the original error with the boundary the aborting path disposed, which this pins.
         [Test]
@@ -678,7 +678,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base logs both errors on the aborting path.
         // The catch taken in the walk passes the original error on after the fallback's own, which this pins.
         [Test]
@@ -747,7 +747,7 @@ namespace Velvet.Tests
         };
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ASuspenseInTheFailedOutputOfTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_NoSuspenseFallbackIsRecordedAsShown()
         {
@@ -766,7 +766,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_APresenceInTheFailedOutputOfTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_NoStateOfItIsKept()
         {
@@ -785,7 +785,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_APresenceTheHostRendersBesideTheBoundary_When_TheBoundarysOwnUpdateFailsAndIsCaught_Then_TheHostsPresenceKeepsItsState()
         {
@@ -804,7 +804,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryWithAPresenceWhoseOwnUpdateAddsASecondAndFails_When_TheBoundaryCatches_Then_TheFallbackReplacesTheFirstAndNeitherStateIsKept()
         {
@@ -823,7 +823,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryShowingItsOwnSuspensesFallback_When_ItsOwnUpdateThrows_Then_TheFallbackReplacesThoseRowsAndNothingIsRecordedAsShown()
         {
@@ -842,7 +842,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_APresenceInTheBoundarysOwnUpdate_When_TheBoundaryCatches_Then_ItsChildrenLeaveAndNoStateOfItIsKept()
         {
@@ -1013,7 +1013,7 @@ namespace Velvet.Tests
             });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base's catch in the walk prunes the presence's state too. The case
         // reads it on the mount alone because the boundary no longer renders its children on its parent's next
         // render, which the form it replaces went through.
@@ -1032,7 +1032,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base takes this catch on the aborting path, which drops the enters
         // the failed render queued too. What this pins is that the catch the boundary's own reconcile takes drops them.
         [Test]
@@ -1078,7 +1078,7 @@ namespace Velvet.Tests
             => V.Div(children: new VNode[] { V.Component(OwnUpdateEnterBoundaryRender, key: "boundary") });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base takes this catch on the aborting path. What this pins is
         // that the catch the boundary's own reconcile takes leaves the sibling on its own row as well.
         [Test]
@@ -1102,7 +1102,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base takes this catch on the aborting path. What this pins is
         // that the catch the boundary's own reconcile takes leaves the sibling on its own row as well.
         [Test]
@@ -1187,7 +1187,7 @@ namespace Velvet.Tests
             });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base records the Suspense this update suspends as well. What
         // this pins is that the catch armed on the boundary's own reconcile puts no record back when it caught nothing.
         [Test]
@@ -1223,7 +1223,7 @@ namespace Velvet.Tests
             => V.Div(children: new VNode[] { V.Component(SuspendingOwnUpdateBoundaryRender, key: "boundary") });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AnEnterWithNothingToPlayInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_ItsCompletionNeverRuns()
         {
@@ -1238,7 +1238,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base completes this enter inside the walk of a render that commits.
         // The completion now waits for the end of the pass, and that it still runs there is what this pins.
         [Test]
@@ -1255,7 +1255,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AnEnterWithNothingToPlayAheadOfABoundary_When_TheBoundaryCatchesOnMount_Then_ThatEnterCompletesOnce()
         {
@@ -1270,7 +1270,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AnInheritingEnterBlockedInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_ItsCompletionNeverRuns()
         {
@@ -1286,7 +1286,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base completes this enter inside the walk of a render that commits.
         // The completion now waits for the end of the pass, and that it still runs there is what this pins.
         [Test]
@@ -1304,7 +1304,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ASuspenseShowingItsFallbackInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_NoSuspenseFallbackIsRecordedAsShown()
         {
@@ -1321,7 +1321,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_APortalWhoseChildrenGrowAheadOfAThrow_When_TheBoundaryCatchesOnAnUpdate_Then_TheTargetKeepsNothing()
         {
@@ -1471,7 +1471,7 @@ namespace Velvet.Tests
         private static readonly System.Collections.Generic.List<string> s_caughtStacks = new();
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AFallbackWhoseContentThrowsUnderABoundaryCatchingInTheWalk_When_TheChildThrows_Then_TheOuterBoundaryReceivesTheContentsError()
         {
@@ -1486,7 +1486,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AnOuterBoundaryThatDeclinesTheFallbacksError_When_TheOriginalErrorGoesOn_Then_ItCatchesThatInTheWalk()
         {
@@ -1502,7 +1502,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AnOuterBoundaryThatDeclinesTheFallbacksError_When_ItReportsTheOriginalError_Then_TheComponentStackStartsAtTheComponentThatThrew()
         {
@@ -1557,7 +1557,7 @@ namespace Velvet.Tests
         private static int s_callbackCleanups;
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base takes an element callback's error on the aborting path.
         // It disposes what the element built, which a catch taken in the walk for that error would leave set up.
         [Test]
@@ -1600,7 +1600,7 @@ namespace Velvet.Tests
         private static VNode CallbackHostRender() => V.Div(children: new VNode[] { V.Component(CallbackBoundaryRender, key: "boundary") });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the merge base forgets no catch when a primary is discarded. What this
         // pins is that the forgetting this branch adds leaves alone a catch by a boundary above the Suspense's owner.
         [Test]

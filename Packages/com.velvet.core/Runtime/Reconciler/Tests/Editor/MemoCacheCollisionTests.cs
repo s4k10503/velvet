@@ -85,7 +85,7 @@ namespace Velvet.Tests
         private static FiberMemoCache CacheOf(MountedTree mounted) => mounted.Root.Reconciler.Context.FiberMemoCache;
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_TwoContainersEachHoldingAnUnkeyedMemoAtTheirFirstChild_When_TheyMount_Then_EachRunsItsOwnFactory()
         {
@@ -122,7 +122,7 @@ namespace Velvet.Tests
             => V.Memoized(() => { s_right++; return V.Label(text: "right"); }, 1);
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_TwoComponentsRenderingIntoOneContainer_When_TheyMount_Then_EachMemoRunsItsOwnFactory()
         {
@@ -184,7 +184,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_TwoRouteShellsWithAnUnkeyedMemoFirst_When_NavigationReplacesTheShell_Then_TheNewShellBuildsItsOwnBackdrop()
         {
@@ -203,7 +203,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AMemoizedRouteShellThatWasUnmounted_When_NavigationReturnsToIt_Then_ItsBackdropIsBuiltAgain()
         {
@@ -223,7 +223,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_TwoUnkeyedFragmentsEachHoldingAMemoAtTheirFirstChild_When_TheyMount_Then_EachRunsItsOwnFactory()
         {
@@ -246,7 +246,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AnExplicitKeySpellingTheNeighbouringMemoScope_When_BothMount_Then_TheKeyedMemoRunsItsOwnFactory()
         {
@@ -269,7 +269,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_OneExplicitKeyWrittenIntoTwoContainers_When_TheyMount_Then_EachRunsItsOwnFactory()
         {
@@ -298,7 +298,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_TwoContainersWhoseMemosCarryDifferentDependencies_When_ReRenderedWithBothUnchanged_Then_NeitherRunsItsFactoryAgain()
         {
@@ -328,7 +328,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: an explicit memo key already ignores the sibling position it
         // is written at. Qualifying the key by its declaring component and its container leaves that
         // alone, and filing the key in place of its own index is what keeps it that way.
@@ -356,7 +356,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_TwoListFragmentsWhoseIdsOverlap_When_TheyMount_Then_EachRowShowsItsOwnList()
         {
@@ -377,7 +377,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_OneMemoKeyInTwoKeyedFragmentsWithDifferentDependencies_When_TheyMount_Then_TheFirstsSubtreeStillHoldsWhatItRented()
         {
@@ -419,7 +419,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base keyed a memo by its key alone, which every walk spells alike.
         // The child's own render starts its walk afresh and its parent's reaches it under the keyed Fragment, so
         // qualifying the key by the scope FiberKeying composes for elements is what reddens this.
@@ -457,7 +457,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AComponentThatDeclaredAMemo_When_ItUnmounts_Then_TheCacheHoldsNothingOfIt()
         {
@@ -503,7 +503,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: a consumer's own re-render already finds the Provider above its memo.
         // The base reaches the memo through a cache key both walkers compose. The consumer is registered under
         // the memo's inner element rather than the memo's own container, so a spine that looked the memo up by
@@ -524,7 +524,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base finds a memo by a key that does not name its node.
         // So a node the host's re-render built afresh is found there as readily as the one that ran the Factory.
         [Test]
@@ -562,7 +562,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base finds a memo by a key that does not name its node.
         // So the node a recompute was handed is found there as readily as the one before it.
         [Test]
@@ -609,7 +609,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base finds a memo by a key that does not name its node.
         // A render the boundary caught in is discarded after it handed the memo a node, and the base finds the
         // memo from the node the host kept as readily as from that one.
@@ -655,7 +655,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base finds a memo by a key that does not name its node.
         // The Portal's children are walked as they were when the Portal first mounted them, and the base finds
         // the memo from that render's node as readily as from the ones the host's later renders handed it.
@@ -708,7 +708,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_TwoContainersHoldingAMemoAtTheirFirstChild_When_TheHostReRendersAndTheSecondConsumerThenReRendersOnItsOwnState_Then_ItReadsNoProviderOfTheFirst()
         {
@@ -757,7 +757,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_TwoContainersHoldingAMemoAtTheirFirstChildAroundABoundary_When_ItCatchesInTheHostsRenderAndTheSecondConsumerThenReRenders_Then_ItReadsItsOwnProvider()
         {
@@ -794,7 +794,7 @@ namespace Velvet.Tests
             });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base's spine already walked past a memo holding no consumer.
         // It found nothing in that memo's inner and went on to the Provider the consumer sits under.
         [Test]
@@ -826,7 +826,7 @@ namespace Velvet.Tests
             });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base filed all three occurrences under one key.
         // It rendered the first occurrence's inner into every container, so the three consumers share its nodes.
         [Test]
@@ -874,7 +874,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base kept one entry for both owners' occurrences.
         // Nothing on the base drops an entry when its component unmounts, so the second owner's consumer is
         // found after the first owner leaves.
@@ -908,7 +908,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base already kept this memo's entry across the component's re-render.
         // Keying it by `Path` rather than `SlotPath` is what reddens this.
         [Test]
@@ -936,7 +936,7 @@ namespace Velvet.Tests
             });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_TwoPortalsOfOneComponentIntoOneTarget_When_TheyMount_Then_EachShowsItsOwnMemo()
         {
@@ -969,7 +969,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ADivInAPortalsChildrenHoldingAMemo_When_TheDivLeavesAndThePortalStays_Then_TheCacheHoldsNothingOfIt()
         {
@@ -1005,7 +1005,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_APooledButtonHandedToALaterRender_When_ItHoldsAMemoWhereTheFirstHeldOne_Then_ItShowsThatRendersSubtree()
         {
@@ -1044,7 +1044,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base never held more than one entry for these rows.
         // It filed every row's memo under one key. Leaving the container's eviction out is what reddens this.
         [Test]
@@ -1079,7 +1079,7 @@ namespace Velvet.Tests
             };
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ARegistryPortalRetargetedAwayAndBack_When_ItsChildrenMountEachTime_Then_ItsMemoComputesEachTime()
         {
@@ -1104,7 +1104,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [TestCase(false)]
         [TestCase(true)]
         public void Given_AMemoRecomputeReusingItsCachedLeaf_When_ThePreviousResultRetires_Then_TheCurrentLeafKeepsItsProps(bool freshParent)
@@ -1136,7 +1136,7 @@ namespace Velvet.Tests
                 .GetValue(null)).Contains(props);
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base's disposal already returned every cached inner to the pool.
         // Leaving that return out of `DisposeAndReturnCachedTrees` is what reddens this.
         [Test]
@@ -1174,7 +1174,7 @@ namespace Velvet.Tests
             => V.Div(children: new VNode?[] { V.Component(SectionRentingEachPart) });
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base kept every entry until its reconciler was disposed.
         // Its disposal returned every cached inner, so nothing a memo rented stayed with the pool.
         [Test]
@@ -1221,7 +1221,7 @@ namespace Velvet.Tests
                 .GetValue(null);
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         // Before that, as characterization: the base let no entry go before its reconciler's disposal.
         // So nothing it cached reached the pool while the component unmounted; returning the subtree an eviction
         // lets go of, rather than releasing it, is what reddens this.
@@ -1250,7 +1250,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array set by its type rather than by its old name.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AReconcilerHoldingMemoEntries_When_ItIsDisposed_Then_TheCacheHoldsNothing()
         {
