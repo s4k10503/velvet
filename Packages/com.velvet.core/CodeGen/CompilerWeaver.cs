@@ -700,42 +700,38 @@ namespace Velvet.CodeGen
             {
                 return HookCaptureMatch.NotMatched;
             }
-            var item1Ldfld = next.Next;
-            var valueStore = item1Ldfld?.Next;
+            var valueStore = next.Next?.Next;
+            if (!IsFieldLoad(next.Next, "Item1") || valueStore == null
+                || !TryGetStlocVariable(valueStore, body, out var valueLocal))
+            {
+                // A dup that is not the canonical two-element tuple deconstruction: unknown shape, bail.
+                return HookCaptureMatch.Bail;
+            }
             // `var (v, set) = ...` with `set` never read leaves the tuple to a pop instead of an Item2 read, so
             // Item2 is discarded and capturing Item1 alone is sound for any hook.
-            if (item1Ldfld != null && item1Ldfld.OpCode == OpCodes.Ldfld
-                && item1Ldfld.Operand is FieldReference unusedItem1Field && unusedItem1Field.Name == "Item1"
-                && valueStore != null && TryGetStlocVariable(valueStore, body, out var keptValueLocal)
-                && valueStore.Next is { } discard && discard.OpCode == OpCodes.Pop)
+            var rest = valueStore.Next;
+            if (rest != null && rest.OpCode == OpCodes.Pop)
             {
-                capturedLocal = keptValueLocal;
-                newBoundary = discard;
+                capturedLocal = valueLocal;
+                newBoundary = rest;
                 return HookCaptureMatch.Matched;
             }
             // Item2 is read, so it is left out of the deps only where it cannot change: the allow-listed pairs
             // (UseState, UseReducer, UseTransition, UseOptimistic) have a reference-stable second element, while
             // a custom hook's, or a non-positional Velvet.Hooks member's, can change between renders.
-            if (!isDirect)
+            var setterStore = rest?.Next;
+            if (!isDirect || !IsFieldLoad(rest, "Item2") || setterStore == null || !IsValueConsumingStore(setterStore))
             {
                 return HookCaptureMatch.Bail;
             }
-            var item2Ldfld = valueStore?.Next;
-            var setterStore = item2Ldfld?.Next;
-            if (item1Ldfld != null && item1Ldfld.OpCode == OpCodes.Ldfld
-                && item1Ldfld.Operand is FieldReference item1Field && item1Field.Name == "Item1"
-                && valueStore != null && TryGetStlocVariable(valueStore, body, out var tupleValueLocal)
-                && item2Ldfld != null && item2Ldfld.OpCode == OpCodes.Ldfld
-                && item2Ldfld.Operand is FieldReference item2Field && item2Field.Name == "Item2"
-                && setterStore != null && IsValueConsumingStore(setterStore))
-            {
-                capturedLocal = tupleValueLocal;
-                newBoundary = setterStore;
-                return HookCaptureMatch.Matched;
-            }
-            // A dup that is not the canonical two-element tuple deconstruction: unknown shape, bail.
-            return HookCaptureMatch.Bail;
+            capturedLocal = valueLocal;
+            newBoundary = setterStore;
+            return HookCaptureMatch.Matched;
         }
+
+        private static bool IsFieldLoad(Instruction? instr, string fieldName)
+            => instr != null && instr.OpCode == OpCodes.Ldfld
+                && instr.Operand is FieldReference field && field.Name == fieldName;
 
         private static bool IsInsideAnyHandler(MethodBody body, Instruction insertAfter, IReadOnlyList<Instruction> returns)
         {
