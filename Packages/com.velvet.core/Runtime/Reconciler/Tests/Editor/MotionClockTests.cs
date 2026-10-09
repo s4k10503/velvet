@@ -112,9 +112,8 @@ namespace Velvet.Tests
                 Is.EqualTo(new[] { 0f, reference.style.opacity.value }).Within(1e-5f));
         }
 
-        // The clock reaches the delay exactly on the release step, so a play still waiting there would start a
-        // frame late. The last step matches the panel's own 16 ms frame, so a play whose tick stepped by the
-        // panel rather than by the clock lands on the same value, and the case reads where the delay was counted.
+        // The last step matches the panel's own 16 ms frame, so a play whose tick stepped by the panel rather than
+        // by the clock lands on the same value, and the case reads where the delay was counted.
         [Test]
         public void Given_ADelayedBezierPlayOnAClockHeldPartWayThroughItsDelay_When_ThePanelTicksPastTheDelay_Then_ItStartsOnceTheClockHasCoveredIt()
         {

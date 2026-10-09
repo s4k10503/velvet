@@ -322,6 +322,7 @@ namespace Velvet.Tests
             Assert.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base starts a zero-delay Bezier's tick inside the play too.
         [Test]
         public void Given_AZeroDelayBezierExit_When_CancelledBeforeThePanelTicks_Then_ItHandsOffToAReversalThatKeepsItsInlineOpacity()
         {
