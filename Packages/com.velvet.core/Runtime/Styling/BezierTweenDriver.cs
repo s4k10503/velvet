@@ -395,8 +395,7 @@ namespace Velvet
             var own = channel.Timing ?? new TweenChannelTiming(state.DelaySec, state.DurationSec, easing);
             var delaySec = own.DelaySec + state.DelayBaseSec;
             // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
-            var shortened = new TweenChannelTiming(delaySec < 0f ? delaySec * factor : delaySec,
-                own.DurationSec * factor, own.Easing);
+            var shortened = new TweenChannelTiming(delaySec < 0f ? delaySec * factor : delaySec, own.DurationSec * factor, own.Easing);
             channel.Timing = shortened;
             state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, shortened.DelaySec + shortened.DurationSec);
         }
