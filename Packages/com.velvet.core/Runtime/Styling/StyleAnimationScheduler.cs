@@ -238,8 +238,11 @@ namespace Velvet
 
             // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
             // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
-            var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, play.DelaySec,
-                allProperties: variantMode, propertyOverrides: propertyOverrides, delayOffsetSec: delayOffsetSec);
+            var (durationList, delayList) = ApplyTransitionStyles(element, new TweenSpec
+            {
+                DurationSec = durationSec, Easing = easing, DelaySec = play.DelaySec, DelayOffsetSec = delayOffsetSec,
+                AllProperties = variantMode, PropertyOverrides = propertyOverrides,
+            }, out var timing);
             if (variantMode)
             {
                 StyleAnimationClassUtils.RemoveClasses(element, toClasses);
@@ -258,6 +261,7 @@ namespace Velvet
                 RestingClasses = play.RestingClasses,
                 DurationList = durationList,
                 DelayList = delayList,
+                Timing = timing,
                 AnimatingElement = element,
                 OnSwap = play.OnSwap,
                 SwapAhead = variantMode,
@@ -357,11 +361,11 @@ namespace Velvet
             // ring band fades in lockstep with it.
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
-            // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
-            // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
+            // Step 3: after the duration, restore the element's transition timing. Classic enter also removes the
+            // transient to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
             // SLOWEST animating property (SlowestPropertyTimeoutMs) rather than just the top-level
             // durationSec/delaySec: PropertyOverrides can give one property a longer duration than the
-            // top-level value, and completing on the top-level timing alone would clear the inline
+            // top-level value, and completing on the top-level timing alone would restore the element's own
             // transition-duration (snapping the still-mid-tween slower property to its resting value) before
             // it actually finishes.
             var durationMs = (long)SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList)
@@ -376,7 +380,7 @@ namespace Velvet
                     }
                     // Target is opaque now — stop the co-fade and release the band's inline opacity.
                     RingCoFadeCoordinator.EndRingCoFade(completed);
-                    ClearTransitionStyles(element);
+                    RestoreTransitionStyles(element, completed.Timing);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
                     onComplete?.Invoke();
@@ -463,10 +467,12 @@ namespace Velvet
             // transition-property is untouched).
             var (staggerDelayMs, delayOffsetSec) = SplitNativeDelay(config.DelaySec, additionalDelaySec,
                 restoreFromOnCancel ? config.PropertyOverrides : null);
-            var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing,
-                config.DelaySec, allProperties: restoreFromOnCancel,
-                propertyOverrides: restoreFromOnCancel ? config.PropertyOverrides : null,
-                delayOffsetSec: delayOffsetSec);
+            var (durationList, delayList) = ApplyTransitionStyles(element, new TweenSpec
+            {
+                DurationSec = config.DurationSec, Easing = exitEasing, DelaySec = config.DelaySec,
+                DelayOffsetSec = delayOffsetSec, AllProperties = restoreFromOnCancel,
+                PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null,
+            }, out var timing);
             StyleAnimationClassUtils.AddClasses(element, fromClasses);
 
             // Step 2: swap classes on the next frame.
@@ -477,6 +483,7 @@ namespace Velvet
                 RestingClasses = restoreFromOnCancel ? fromClasses : null,
                 DurationList = durationList,
                 DelayList = delayList,
+                Timing = timing,
                 AnimatingElement = element,
                 OnSwap = onSwap,
             };
@@ -575,12 +582,9 @@ namespace Velvet
                 if (_pendingExits.Remove(element, out var completed))
                 {
                     RingCoFadeCoordinator.EndRingCoFade(completed);
-                    // Clear BEFORE returning the lists (mirrors the enter completion): the inline
-                    // slots retain the list references, and a completed exit's element can outlive
-                    // its drop (a re-entry preempting the drop render) — leaving them set would make
-                    // later class changes tween unexpectedly, and a re-rented list would silently
-                    // mutate this element's timing through the retained reference.
-                    ClearTransitionStyles(element);
+                    // A completed exit's element can outlive its drop (a re-entry preempting the drop
+                    // render), so the exit's timing must not stay on it for later class changes to tween by.
+                    RestoreTransitionStyles(element, completed.Timing);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
                     onComplete?.Invoke();
@@ -1281,12 +1285,7 @@ namespace Velvet
                 }
             }
             element.style.transitionProperty = names;
-            element.style.transitionDuration = durations;
-            element.style.transitionTimingFunction = easings;
-            if (delays != null)
-            {
-                element.style.transitionDelay = delays;
-            }
+            MotionTweenTiming.Write(element, durations, easings, delays);
         }
 
         private static void AppendLanding(List<StylePropertyName> names, List<TimeValue> durations,
@@ -1425,10 +1424,8 @@ namespace Velvet
         }
 
         // C# becomes the Single Source of Truth, so they need not be defined in USS.
-        // GC tuning: the EasingFunction list is cached statically per EasingMode; TimeValue lists are
-        // reused via TimeValueListPool.
-        // transition-property: all — a shared, never-mutated list (StyleList retains the reference as-is, so a
-        // static instance is safe; ClearTransitionStyles releases it via StyleKeyword.Null).
+        // The EasingFunction lists are cached per EasingMode and the TimeValue lists rented from TimeValueListPool,
+        // and the element receives MotionTweenTiming's copy of each, never one of these.
         private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
             new() { new UnityEngine.UIElements.StylePropertyName("all") };
 
@@ -1447,10 +1444,24 @@ namespace Velvet
             return ((long)(swapDelaySec * 1000), additionalDelaySec - swapDelaySec);
         }
 
-        private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
-            VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false,
-            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null, float delayOffsetSec = 0f)
+        private readonly struct TweenSpec
         {
+            public float DurationSec { get; init; }
+            public EasingMode Easing { get; init; }
+            public float DelaySec { get; init; }
+            public float DelayOffsetSec { get; init; }
+            // A variant swap's: transition-property: all, and the per-property overrides that extend it.
+            public bool AllProperties { get; init; }
+            public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
+        }
+
+        private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
+            VisualElement element, TweenSpec spec, out MotionTweenTiming.Play timing)
+        {
+            var (durationSec, easing, delaySec, delayOffsetSec) =
+                (spec.DurationSec, spec.Easing, spec.DelaySec, spec.DelayOffsetSec);
+            var (allProperties, propertyOverrides) = (spec.AllProperties, spec.PropertyOverrides);
+            timing = MotionTweenTiming.Begin(element);
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
@@ -1462,8 +1473,7 @@ namespace Velvet
 
             var durationMs = (int)(durationSec * 1000);
             var durationList = _listPool.RentDurationList(durationMs);
-            element.style.transitionDuration = durationList;
-            element.style.transitionTimingFunction = GetOrCreateEasingList(easing);
+            MotionTweenTiming.Write(element, durationList, GetOrCreateEasingList(easing), null);
 
             // Variant animations swap user utility classes (e.g. opacity-0 ↔ opacity-100) that carry no
             // transition-* of their own, so UITK has no property to tween and the swap would snap. Set
@@ -1480,7 +1490,7 @@ namespace Velvet
             {
                 var delayMs = (int)(delaySec * 1000);
                 delayList = _listPool.RentDelayList(delayMs);
-                element.style.transitionDelay = delayList;
+                MotionTweenTiming.Write(element, null, null, delayList);
             }
 
             return (durationList, delayList);
@@ -1554,8 +1564,7 @@ namespace Velvet
             }
 
             element.style.transitionProperty = propertyNames;
-            element.style.transitionDuration = durationList;
-            element.style.transitionTimingFunction = easingList;
+            MotionTweenTiming.Write(element, durationList, easingList, null);
 
             // Mirrors the single-entry path: transition-delay is set only when at least one property actually
             // needs one (an all-zero delay list is behaviorally identical to leaving it unset) — the rented list
@@ -1566,7 +1575,7 @@ namespace Velvet
                 _listPool.ReturnDelayList(delayList);
                 return (durationList, null);
             }
-            element.style.transitionDelay = delayList;
+            MotionTweenTiming.Write(element, null, null, delayList);
             return (durationList, delayList);
         }
 
@@ -1712,7 +1721,7 @@ namespace Velvet
             }
             else
             {
-                ClearTransitionStyles(element);
+                RestoreTransitionStyles(element, pending.Timing);
                 _listPool.ReturnDurationList(pending.DurationList);
                 _listPool.ReturnDelayList(pending.DelayList);
             }
@@ -1732,13 +1741,14 @@ namespace Velvet
                 RestingClasses = pending.RestingClasses,
                 DurationList = pending.DurationList,
                 DelayList = pending.DelayList,
+                Timing = pending.Timing,
             };
             var timeoutMs = SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList);
             var timeout = element.schedule.Execute(() =>
             {
                 if (_pendingEnters.Remove(element))
                 {
-                    ClearTransitionStyles(element);
+                    RestoreTransitionStyles(element, reversal.Timing);
                     _listPool.ReturnDurationList(reversal.DurationList);
                     _listPool.ReturnDelayList(reversal.DelayList);
                 }
@@ -1748,12 +1758,12 @@ namespace Velvet
             _pendingEnters[element] = reversal;
         }
 
-        // How long a tween must stay alive before it is safe to clear the inline transition styles / fire
+        // How long a tween must stay alive before it is safe to restore the element's transition timing / fire
         // completion: the SLOWEST animating property's delay + duration. For the single-entry case (no
         // PropertyOverrides) that is just duration[0] + delay[0], same as a plain top-level DurationSec/DelaySec;
         // PropertyOverrides can give each property its own duration / delay, so an interrupted reversal, and an
         // enter/exit's own completion, must both wait for whichever property finishes last, not just the first
-        // (or the first-declared) one — otherwise a slower property's transition-duration gets cleared (snapping
+        // (or the first-declared) one — otherwise a slower property's transition-duration gets replaced (snapping
         // it to the resting value, or dropping the ghost) while it is still mid-tween. Shared by
         // ScheduleReversalCleanup (a cancelled exit's reversal) and PlayEnterInternal / PlayExit's own
         // completion timeout, all three of which already hold the exact duration/delay lists ApplyTransitionStyles
@@ -1792,34 +1802,28 @@ namespace Velvet
                 RingCoFadeCoordinator.EndRingCoFade(pending);
                 if (pending.Spring != null)
                 {
-                    // A hard stop, no reversal: pause the tick and drop the inline overrides it owns (the
-                    // tween-only ClearTransitionStyles/ReturnDurationList/ReturnDelayList below are no-ops for
-                    // a spring entry, which never touches transition-* styles or rents a TimeValue list).
+                    // A hard stop, no reversal: pause the tick and drop the inline overrides it owns.
                     pending.Spring.Tick?.Pause();
                     MotionSpringDriver.ClearInlineOverrides(element, pending.Spring);
                     ReapplyMotionOwnedInlineValues(element);
                 }
                 if (pending.Bezier != null)
                 {
-                    // A hard stop, no reversal (same as the spring branch above; the tween-only clears below are
-                    // no-ops for a bezier entry, which never touches transition-* styles or rents a TimeValue list).
+                    // A hard stop, no reversal, as the spring branch above.
                     pending.Bezier.Tick?.Pause();
                     BezierTweenDriver.ClearInlineOverrides(element, pending.Bezier);
                     ReapplyMotionOwnedInlineValues(element);
                 }
-                ClearTransitionStyles(element);
+                RestoreTransitionStyles(element, pending.Timing);
                 _listPool.ReturnDurationList(pending.DurationList);
                 _listPool.ReturnDelayList(pending.DelayList);
             }
             map.Clear();
         }
 
-        private void ClearTransitionStyles(VisualElement element)
+        private void RestoreTransitionStyles(VisualElement element, MotionTweenTiming.Play? timing)
         {
-            // Releases UIElements' internal list reference, making pool return safe.
-            element.style.transitionDuration = StyleKeyword.Null;
-            element.style.transitionTimingFunction = StyleKeyword.Null;
-            element.style.transitionDelay = StyleKeyword.Null;
+            MotionTweenTiming.End(element, timing);
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).
             // Routed through the guard rather than nulled here: a per-frame animate-* driver can be holding the
@@ -1827,9 +1831,6 @@ namespace Velvet
             MotionNativeTransitionGuard.RestoreAfterForeignWrite(element);
         }
 
-        // StyleList<T> retains the List reference as-is (no copy), so cached lists must not be mutated
-        // after creation.
-        // The reference is released when StyleKeyword.Null is assigned in ClearTransitionStyles, so it is safe.
         private static List<EasingFunction> GetOrCreateEasingList(EasingMode easing)
         {
             if (!s_easingCache.TryGetValue(easing, out var list))
@@ -1855,6 +1856,8 @@ namespace Velvet
             public string[]? RestingClasses;
             public List<TimeValue>? DurationList;
             public List<TimeValue>? DelayList;
+            // The tween timing this play wrote, which a reversal it hands on to carries.
+            public MotionTweenTiming.Play? Timing;
             // The element whose transition-interpolated opacity the co-fade tick samples each frame (the
             // animating subtree root). Stored so the tick reads it without recapturing.
             public VisualElement? AnimatingElement;

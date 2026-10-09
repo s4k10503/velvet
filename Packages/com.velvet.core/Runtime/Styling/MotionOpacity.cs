@@ -53,7 +53,7 @@ namespace Velvet
             public float DurationSec;
             public EasingMode Easing;
             // The timing the list a variant swap holds inline gave opacity, before this took opacity out of it; NaN
-            // duration while the slot holds no such list.
+            // duration until one is read, and again once no tween plays on the element.
             public float HeldDurationSec = float.NaN;
             public float HeldDelaySec;
             public EasingMode HeldEasing;
@@ -230,14 +230,13 @@ namespace Velvet
         }
 
         // A list a variant swap holds inline names the timing the engine would have run opacity by. It is read as the
-        // swap writes it, before the suspension takes opacity out of it (Step). The swap writes the list's durations
-        // with it and clears both as it ends, while the suspension writes names alone.
+        // swap writes it, before the suspension takes opacity out of it (Step), and dropped once no tween plays on the
+        // element, whose slots then hold its own timing (MotionTweenTiming).
         private static void HoldTiming(VisualElement element, Drawing drawing)
         {
-            var durations = element.style.transitionDuration;
-            var lists = new TransitionLists(element.style.transitionProperty.value, durations.value,
+            var lists = new TransitionLists(element.style.transitionProperty.value, element.style.transitionDuration.value,
                 element.style.transitionDelay.value, element.style.transitionTimingFunction.value);
-            if (durations.keyword != StyleKeyword.Undefined)
+            if (!MotionTweenTiming.Playing(element))
             {
                 drawing.HeldDurationSec = float.NaN;
             }
