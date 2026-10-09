@@ -51,6 +51,7 @@ worth knowing, both when several variants name one such utility:
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
 | **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` · `group-disabled:` | A marked ancestor's (`group`) state; `group-disabled:` reads it on the same terms as `disabled:` above |
 | **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` · `peer-disabled:` | A marked previous-sibling's (`peer`) state; `peer-checked:` and `peer-disabled:` read it on the same terms as `checked:` and `disabled:` above |
+| **Structural** | `first:` · `last:` · `only:` · `odd:` · `even:` · `nth-N:` · `nth-last-N:` | The element's place among its parent's children. The element a tree is mounted into and a portal's target are parents too, and the children of theirs this tree did not render count as siblings |
 
 ```csharp
 // State: a hover background and an active scale, layered over the base utilities.

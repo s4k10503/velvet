@@ -1288,6 +1288,8 @@ namespace Velvet
             {
                 PointerEventsScope.NoteReconciledInto(_ctx, target);
                 _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
+                // The target's other children count as siblings too, other portals' among them.
+                ApplyStructuralVariants(target);
             }
             finally
             {
@@ -1364,6 +1366,7 @@ namespace Velvet
                 var oldChildren = oldNode.Children ?? Array.Empty<VNode>();
                 var newChildren = newNode.Children ?? Array.Empty<VNode>();
                 _host.ReconcileChildren(wrapper, oldChildren, newChildren);
+                ApplyStructuralVariants(wrapper);
             }
             finally
             {
@@ -3039,10 +3042,20 @@ namespace Velvet
             // band — are internal, not logical siblings, so first:/last:/nth must neither count them nor
             // land on one. Walking logical slots and converting each to a physical index does both, wherever
             // in the child list they happen to sit.
-            var count = LogicalChildSlots.Count(container);
-            for (var i = 0; i < count; i++)
+            // One walk over the physical children, collecting the ruled ones before any payload is written:
+            // a payload can add an invisible sibling (a filter bounds spacer), which would shift a walk
+            // still reading the child list. Logical slot is the running count of non-invisible children, the
+            // inverse of LogicalChildSlots.ToPhysical, so no per-slot conversion rescans the list.
+            List<(VisualElement Element, int Index, List<(StyleStructuralKind Kind, int N, string[] Payloads,
+                int[] Declarations, long Priority)> Rules)>? ruled = null;
+            var count = 0;
+            for (var physical = 0; physical < container.childCount; physical++)
             {
-                var slotOccupant = container.ElementAt(LogicalChildSlots.ToPhysical(container, i));
+                var slotOccupant = container[physical];
+                if (SilhouetteBoundsSpacer.IsSpacer(slotOccupant))
+                {
+                    continue;
+                }
                 // A z-managed child's slot holds its PLACEHOLDER, not the element the rules were registered
                 // against (ApplyStructuralVariantConfig keys by the real element / its own wrapper) — resolve
                 // through the z-registry first, then the ordinary wrapper unwrap (the slot may ALSO hold a
@@ -3051,8 +3064,17 @@ namespace Velvet
                     _ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
                 if (_ctx.StructuralVariants.TryGetValue(inner, out var rules))
                 {
-                    EvaluateStructural(_ctx, inner, i, count, rules);
+                    (ruled ??= new()).Add((inner, count, rules));
                 }
+                count++;
+            }
+            if (ruled == null)
+            {
+                return;
+            }
+            foreach (var (element, index, rules) in ruled)
+            {
+                EvaluateStructural(_ctx, element, index, count, rules);
             }
         }
 

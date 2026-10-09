@@ -609,6 +609,7 @@ namespace Velvet
                 if (providerNode.Children != null)
                 {
                     ReconcileChildrenOfNewElement(container, container, providerNode.Children);
+                    _patcher.ApplyStructuralVariants(container);
                 }
             }
             finally

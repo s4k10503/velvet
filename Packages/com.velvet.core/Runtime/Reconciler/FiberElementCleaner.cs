@@ -577,6 +577,12 @@ namespace Velvet
                 ReturnOccupantToPool(child, poolable);
             }
 
+            // Outside a pass nothing would drain the set.
+            if (portalInfo.SlotLength > 0 && _ctx.SharedReconcileDepth > 0)
+            {
+                _ctx.PortalTargetsToRestyle.Add(target);
+            }
+
             // Surviving Portals on the same target whose slot starts after the removed range
             // collapse left by SlotLength so their next patch addresses the right DOM positions.
             PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, element, portalInfo, -portalInfo.SlotLength);
