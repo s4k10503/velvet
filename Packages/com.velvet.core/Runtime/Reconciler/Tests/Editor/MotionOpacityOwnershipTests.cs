@@ -21,15 +21,29 @@ namespace Velvet.Tests
             return element;
         }
 
-        private VisualElement Carrying()
+        // The tween play a variant swap holds its lists under, from Carrying.
+        private MotionTweenTiming.Play _swap;
+
+        // A drawn element under a swap holding a one-second opacity transition, its own opacity carried towards 0.2;
+        // own is the transition duration the element carries of its own, if any.
+        private VisualElement Carrying(List<TimeValue> own = null)
         {
             var element = Drawn();
+            if (own != null) element.style.transitionDuration = own;
             element.style.transitionProperty = new List<StylePropertyName> { new("opacity") };
-            element.style.transitionDuration = new List<TimeValue> { new(1f) };
-            element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+            _swap = MotionTweenTiming.Begin(element);
+            MotionTweenTiming.Write(element, new List<TimeValue> { new(1f) },
+                new List<EasingFunction> { new(EasingMode.Linear) }, null);
             MotionOpacity.Draw(element, Half, 0f);
             MotionOpacity.WriteTransitioned(element, 0.2f);
             return element;
+        }
+
+        // Ends the swap as the scheduler does: its timing goes back, and its transition-property is released.
+        private void EndSwap(VisualElement element)
+        {
+            MotionTweenTiming.End(element, _swap);
+            element.style.transitionProperty = StyleKeyword.Null;
         }
 
         private static object Drawing(VisualElement element)
@@ -232,11 +246,25 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AHeldOpacityTransition_When_TheInlineDurationIsCleared_Then_TheHeldTimingIsDropped()
+        public void Given_AHeldOpacityTransition_When_TheSwapEnds_Then_TheHeldTimingIsDropped()
         {
             // Arrange
             var element = Carrying();
-            element.style.transitionDuration = StyleKeyword.Null;
+            EndSwap(element);
+            // Act
+            MotionOpacity.Draw(element, Half, 0f);
+            MotionOpacity.WriteTransitioned(element, 0.6f);
+            MotionOpacity.Draw(element, Half, 0.5f);
+            // Assert
+            Assert.That(MotionOpacity.Own(element), Is.EqualTo(0.6f).Within(0.001f));
+        }
+
+        [Test]
+        public void Given_AHeldOpacityTransitionOnAnElementWithItsOwnDuration_When_TheSwapEnds_Then_TheHeldTimingIsDropped()
+        {
+            // Arrange — the swap's end puts the element's own 400ms list back in the slot.
+            var element = Carrying(new List<TimeValue> { new(0.4f) });
+            EndSwap(element);
             // Act
             MotionOpacity.Draw(element, Half, 0f);
             MotionOpacity.WriteTransitioned(element, 0.6f);

@@ -343,11 +343,11 @@ namespace Velvet
             // ring band fades in lockstep with it.
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
-            // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
-            // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
+            // Step 3: after the duration, restore the element's transition timing. Classic enter also removes the
+            // transient to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
             // SLOWEST animating property (SlowestPropertyTimeoutMs) rather than just the top-level
             // durationSec/delaySec: PropertyOverrides can give one property a longer duration than the
-            // top-level value, and completing on the top-level timing alone would clear the inline
+            // top-level value, and completing on the top-level timing alone would restore the element's own
             // transition-duration (snapping the still-mid-tween slower property to its resting value) before
             // it actually finishes.
             var durationMs = (long)SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList)
@@ -362,7 +362,7 @@ namespace Velvet
                     }
                     // Target is opaque now — stop the co-fade and release the band's inline opacity.
                     RingCoFadeCoordinator.EndRingCoFade(completed);
-                    ClearTransitionStyles(element, completed.Timing);
+                    RestoreTransitionStyles(element, completed.Timing);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
                     onComplete?.Invoke();
@@ -557,7 +557,7 @@ namespace Velvet
                     RingCoFadeCoordinator.EndRingCoFade(completed);
                     // A completed exit's element can outlive its drop (a re-entry preempting the drop
                     // render), so the exit's timing must not stay on it for later class changes to tween by.
-                    ClearTransitionStyles(element, completed.Timing);
+                    RestoreTransitionStyles(element, completed.Timing);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
                     onComplete?.Invoke();
@@ -1210,7 +1210,7 @@ namespace Velvet
                 }
             }
             element.style.transitionProperty = names;
-            MotionTweenTiming.Write(element, durations, easings, delays, pending.Timing);
+            MotionTweenTiming.Write(element, durations, easings, delays);
         }
 
         private static void AppendLanding(List<StylePropertyName> names, List<TimeValue> durations,
@@ -1634,7 +1634,7 @@ namespace Velvet
             }
             else
             {
-                ClearTransitionStyles(element, pending.Timing);
+                RestoreTransitionStyles(element, pending.Timing);
                 _listPool.ReturnDurationList(pending.DurationList);
                 _listPool.ReturnDelayList(pending.DelayList);
             }
@@ -1661,7 +1661,7 @@ namespace Velvet
             {
                 if (_pendingEnters.Remove(element))
                 {
-                    ClearTransitionStyles(element, reversal.Timing);
+                    RestoreTransitionStyles(element, reversal.Timing);
                     _listPool.ReturnDurationList(reversal.DurationList);
                     _listPool.ReturnDelayList(reversal.DelayList);
                 }
@@ -1671,12 +1671,12 @@ namespace Velvet
             _pendingEnters[element] = reversal;
         }
 
-        // How long a tween must stay alive before it is safe to clear the inline transition styles / fire
+        // How long a tween must stay alive before it is safe to restore the element's transition timing / fire
         // completion: the SLOWEST animating property's delay + duration. For the single-entry case (no
         // PropertyOverrides) that is just duration[0] + delay[0], same as a plain top-level DurationSec/DelaySec;
         // PropertyOverrides can give each property its own duration / delay, so an interrupted reversal, and an
         // enter/exit's own completion, must both wait for whichever property finishes last, not just the first
-        // (or the first-declared) one — otherwise a slower property's transition-duration gets cleared (snapping
+        // (or the first-declared) one — otherwise a slower property's transition-duration gets replaced (snapping
         // it to the resting value, or dropping the ghost) while it is still mid-tween. Shared by
         // ScheduleReversalCleanup (a cancelled exit's reversal) and PlayEnterInternal / PlayExit's own
         // completion timeout, all three of which already hold the exact duration/delay lists ApplyTransitionStyles
@@ -1727,14 +1727,14 @@ namespace Velvet
                     BezierTweenDriver.ClearInlineOverrides(element, pending.Bezier);
                     ReapplyMotionOwnedInlineValues(element);
                 }
-                ClearTransitionStyles(element, pending.Timing);
+                RestoreTransitionStyles(element, pending.Timing);
                 _listPool.ReturnDurationList(pending.DurationList);
                 _listPool.ReturnDelayList(pending.DelayList);
             }
             map.Clear();
         }
 
-        private void ClearTransitionStyles(VisualElement element, MotionTweenTiming.Play? timing)
+        private void RestoreTransitionStyles(VisualElement element, MotionTweenTiming.Play? timing)
         {
             MotionTweenTiming.End(element, timing);
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).

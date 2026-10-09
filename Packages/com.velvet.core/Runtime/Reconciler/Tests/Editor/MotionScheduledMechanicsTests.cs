@@ -418,6 +418,25 @@ namespace Velvet.Tests
             Assert.That(TimingSlot(element, slot), Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(characterization): the base writes a landing straight into the slot on screen.
+        // With tween timing layered, a landing for an enter under a later tween must still reach that slot.
+        [Test]
+        public void Given_AnExitTweenStartedOverAVariantEnter_When_AZeroDurationPoseLandsOnTheEnter_Then_TheLandingIsOnScreen()
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(0.5f));
+            scheduler.PlayExit(element, LinearExit(0.6f), onComplete: null);
+
+            // Act
+            scheduler.LandNamedProperties(element, new[] { "opacity-50" }, StyleTransitionConfig.None);
+
+            // Assert — the exit's 600ms, with opacity's 1ms landing entry after it.
+            var durations = element.style.transitionDuration.value;
+            Assert.That(durations == null ? "" : string.Join(",", durations), Is.EqualTo("600ms,1ms"));
+        }
+
         [Test]
         public void Given_AnExitWhoseDelayCodeWroteBeforeItRestarted_When_TheRestartEndsBeforeTheReversal_Then_TheDelayIsTheCodes()
         {
