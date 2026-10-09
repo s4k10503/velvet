@@ -33,7 +33,7 @@ namespace Velvet.Tests
 
         private static void Noop<T>(T _) { }
 
-        // Long-form factories only: the params shorthand overloads take a class string and children alone.
+        // Long-form factories only: the params shorthand overloads are the last case's.
         private static IEnumerable<MethodInfo> ElementFactories() =>
             typeof(V).GetMethods(BindingFlags.Public | BindingFlags.Static)
                 .Where(method => typeof(BaseElementNode).IsAssignableFrom(method.ReturnType))
@@ -179,6 +179,46 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((builders.Length > 1, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
+        }
+
+        [Test]
+        public void Given_EveryShorthandElementFactory_When_CalledWithAnEventsArray_Then_ItHasAnEventsFormThatCarriesThem()
+        {
+            // Arrange — the class-string-and-children shorthands, each of which has a sibling taking events.
+            var factories = typeof(V).GetMethods(BindingFlags.Public | BindingFlags.Static);
+            var shorthands = factories
+                .Where(method => typeof(BaseElementNode).IsAssignableFrom(method.ReturnType))
+                .Where(method => method.GetParameters().Length == 2
+                                 && method.GetParameters()[1].IsDefined(typeof(ParamArrayAttribute)))
+                .ToArray();
+
+            // Act
+            var failures = new List<string>();
+            foreach (var shorthand in shorthands)
+            {
+                var withEvents = factories.SingleOrDefault(method =>
+                    method.Name == shorthand.Name
+                    && method.IsGenericMethodDefinition == shorthand.IsGenericMethodDefinition
+                    && method.GetParameters().Select(parameter => parameter.ParameterType).SequenceEqual(
+                        new[] { typeof(string), typeof(FiberEventBinding[]), typeof(VNode[]) }));
+                if (withEvents == null)
+                {
+                    failures.Add(shorthand.Name + ": no events form");
+                    continue;
+                }
+                var callable = withEvents.IsGenericMethodDefinition
+                    ? withEvents.MakeGenericMethod(typeof(VisualElement))
+                    : withEvents;
+                var node = callable.Invoke(null, new object?[] { "id", new FiberEventBinding[] { Sentinel }, new VNode?[0] });
+                if (!(node is BaseElementNode element && element.Events.Contains(Sentinel)))
+                {
+                    failures.Add(shorthand.Name + ": dropped the events array");
+                }
+                Retire(node);
+            }
+
+            // Assert
+            Assert.That((shorthands.Length > 1, string.Join("\n", failures)), Is.EqualTo((true, string.Empty)));
         }
     }
 }

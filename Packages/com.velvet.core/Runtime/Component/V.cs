@@ -48,6 +48,16 @@ namespace Velvet
             return bindings;
         }
 
+        private static ElementNode Shorthand(Type elementType, string[] classNames, VNode?[]? children,
+            FiberEventBinding[]? events) =>
+            new ElementNode
+            {
+                ElementType = elementType,
+                ClassNames = classNames,
+                Children = children == null || children.Length == 0 ? EmptyChildren : children,
+                Events = events ?? EmptyEvents,
+            };
+
         private static readonly ClassNameParseCache s_classNameCache = new();
 
 #if UNITY_EDITOR
@@ -132,6 +142,17 @@ namespace Velvet
             };
 
         /// <summary>
+        /// Shorthand overload with event bindings: positional <paramref name="className"/>,
+        /// <paramref name="events"/> and variadic <c>children</c>, building a <c>div</c> element.
+        /// </summary>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode Div(string className, FiberEventBinding[] events, params VNode?[] children) =>
+            Shorthand(typeof(VisualElement), ParseClassNames(className), children, events);
+
+        /// <summary>
         /// Creates an element backed by a custom <see cref="VisualElement"/> subclass <typeparamref name="T"/>,
         /// for control types the built-in factories (<see cref="Div"/>, <see cref="Label"/>, …) do not expose.
         /// Long form: every prop is a named optional parameter. For the shorthand
@@ -200,6 +221,19 @@ namespace Velvet
                 Children = children == null || children.Length == 0 ? EmptyChildren : children,
                 Events = EmptyEvents,
             };
+
+        /// <summary>
+        /// Shorthand overload with event bindings: positional <paramref name="className"/>,
+        /// <paramref name="events"/> and variadic <c>children</c>, building a <typeparamref name="T"/> element.
+        /// </summary>
+        /// <typeparam name="T">Concrete VisualElement subclass to instantiate.</typeparam>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode Custom<T>(string className, FiberEventBinding[] events, params VNode?[] children)
+            where T : VisualElement =>
+            Shorthand(typeof(T), ParseCustomClassNames<T>(className), children, events);
 
         /// <summary>
         /// Creates a ScrollView.
@@ -283,6 +317,17 @@ namespace Velvet
                 Children = children == null || children.Length == 0 ? EmptyChildren : children,
                 Events = EmptyEvents,
             };
+
+        /// <summary>
+        /// Shorthand overload with event bindings: positional <paramref name="className"/>,
+        /// <paramref name="events"/> and variadic <c>children</c>, building a <c>ScrollView</c> element.
+        /// </summary>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode ScrollView(string className, FiberEventBinding[] events, params VNode?[] children) =>
+            Shorthand(typeof(ScrollView), ParseClassNames(className), children, events);
 
         /// <summary>
         /// Creates a Button.
@@ -375,6 +420,17 @@ namespace Velvet
                 Children = children == null || children.Length == 0 ? EmptyChildren : children,
                 Events = EmptyEvents,
             };
+
+        /// <summary>
+        /// Shorthand overload with event bindings: positional <paramref name="className"/>,
+        /// <paramref name="events"/> and variadic <c>children</c>, building a <c>Button</c>.
+        /// </summary>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode Button(string className, FiberEventBinding[] events, params VNode?[] children) =>
+            Shorthand(typeof(Button), ParseClassNames(className), children, events);
 
         /// <summary>
         /// Creates a Label.

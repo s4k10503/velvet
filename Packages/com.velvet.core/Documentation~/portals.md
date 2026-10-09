@@ -89,7 +89,11 @@ The boundary behaves the same in all four forms:
   below for what this shared mechanism does not cover. A capture binding (`Capture = true`) on a logical
   ancestor runs before the portal's content does, outermost first, as React's `on…Capture` handlers run
   ahead of a portal child's; a physical ancestor's runs through native dispatch, as its bubble handler
-  does.
+  does. Where a portal renders into an element inside another portal's content, both phases follow the
+  logical chain through both call sites, and a portal rendering into an element above its own call site
+  runs the call site's bubble handlers before that element's. A pointer-down or pointer-up the layer
+  router hands to a `V.Portal(layer:)`'s content reaches the content's logical ancestors in both phases
+  too.
 - **Physical-walk styling does not cross, anywhere.** Relational `group-`/`peer-` variants and
   focus-within variants (`has-[:focus]:`, `group-focus-within:`) resolve against the physical
   tree in every portal form, including `V.Portal(layer:)`/`V.WorldSpace` — they register their

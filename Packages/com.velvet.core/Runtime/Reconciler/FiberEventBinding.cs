@@ -56,8 +56,10 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Base for the bindings UI Toolkit dispatches through an element's callback registry: pointer, wheel,
-    /// key, focus and geometry. <see cref="Capture"/> is React's <c>on…Capture</c> form.
+    /// Base for the bindings that take React's <c>on…Capture</c> form: pointer down, up and move, wheel, key,
+    /// focus in and out, focus and blur. The enter and leave bindings derive from
+    /// <see cref="FiberEventBinding"/> instead, as React's <c>onPointerEnter</c> and <c>onPointerLeave</c> have
+    /// no capture form, and so does the geometry binding, which has no React counterpart at all.
     /// </summary>
     public abstract class FiberDispatchedEventBinding : FiberEventBinding
     {
@@ -87,13 +89,13 @@ namespace Velvet
         public EventCallback<PointerMoveEvent>? Handler { get; init; }
     }
 
-    public sealed class PointerEnterBinding : FiberDispatchedEventBinding
+    public sealed class PointerEnterBinding : FiberEventBinding
     {
         public override string EventId => "pointerenter";
         public EventCallback<PointerEnterEvent>? Handler { get; init; }
     }
 
-    public sealed class PointerLeaveBinding : FiberDispatchedEventBinding
+    public sealed class PointerLeaveBinding : FiberEventBinding
     {
         public override string EventId => "pointerleave";
         public EventCallback<PointerLeaveEvent>? Handler { get; init; }
@@ -141,7 +143,7 @@ namespace Velvet
         public EventCallback<BlurEvent>? Handler { get; init; }
     }
 
-    public sealed class GeometryChangedBinding : FiberDispatchedEventBinding
+    public sealed class GeometryChangedBinding : FiberEventBinding
     {
         public override string EventId => "geometrychanged";
         public EventCallback<GeometryChangedEvent>? Handler { get; init; }
