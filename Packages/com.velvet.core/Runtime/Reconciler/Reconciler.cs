@@ -478,6 +478,27 @@ namespace Velvet
             _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
         }
 
+        bool IReconcilerBridge.HoldRowLayoutEffects()
+        {
+            if (_ctx.DeferDrainLayoutEffects) return false;
+            _ctx.DeferDrainLayoutEffects = true;
+            return true;
+        }
+
+        // The end of a drain's commit work (FlushDrainEndCommitWork and the wave end), for the rows of one range.
+        void IReconcilerBridge.ReleaseRowLayoutEffects(bool placed)
+        {
+            _ctx.DeferDrainLayoutEffects = false;
+            if (!placed)
+            {
+                _ctx.PendingDrainLayoutEffects.Clear();
+                return;
+            }
+            PointerEventsScope.RequestSyncAll(_ctx);
+            FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
+            MotionLayoutIdDriver.ExpireSnapshots(_ctx);
+        }
+
         // Every range render ends here, and one run from a geometry or scroll callback has no pass whose end would
         // walk the pointer-events scopes; ahead of the layout work, which reads the rows it placed.
         void IReconcilerBridge.CommitStrandedLayoutWorkForController()

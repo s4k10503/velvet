@@ -23,14 +23,15 @@ namespace Velvet.Tests
     /// <item>An update commit whose layout effects and handles all keep their deps lays out nothing, as a browser
     /// forces a reflow only where something reads the layout.</item>
     /// <item>A commit made inside the panel's own layout pass — a virtual list rendering its rows, or a tree mounted
-    /// from a <see cref="GeometryChangedEvent"/> callback — completes that pass, and its layout effects and callback
-    /// refs read the box the pass gives their elements.</item>
-    /// <item>That holds whether the pass came from the panel's repaint or from its layout validation, whether the
-    /// event came from the pass's own changes or from its list of hierarchy changes, and for a commit made inside a
-    /// pass a commit started: a measurement stored in state re-renders, and a callback ref that
-    /// commits synchronously has the elements that commit adds laid out before their own refs read them.</item>
-    /// <item>Commits nested inside the layout passes of their own layout effects lay the panel out ten deep and
-    /// warn once past that, and a commit made from inside the style updater's traversal lays nothing out.</item>
+    /// from a <see cref="GeometryChangedEvent"/> callback — reads the box it gives its elements too, whether the pass
+    /// came from the panel's repaint or from its layout validation, and whether the event came from the pass's own
+    /// changes or from its list of hierarchy changes. A measurement stored in state re-renders, and a callback ref
+    /// that commits synchronously has the elements that commit adds laid out before their own refs read them.</item>
+    /// <item>The commit computes that box without sending its <see cref="GeometryChangedEvent"/>s, which the panel's
+    /// next layout visit sends, so a callback that mounts a tree runs once and an element the commit laid out
+    /// still receives its event.</item>
+    /// <item>A virtual list's row commits its layout effects once the list holds it.</item>
+    /// <item>A commit made from inside the style updater's traversal lays nothing out.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -63,8 +64,9 @@ namespace Velvet.Tests
             s_setStableWidth = default;
             s_widthReadInRef = float.NaN;
             s_rowHeightsReadInLayoutEffect.Clear();
+            s_rowsFoundInLayoutEffect.Clear();
             s_rowHeightsReadInRef.Clear();
-            s_nthWidths.Clear();
+            s_geometryEventsReceived = 0;
             s_hiddenInsertionRuns = 0;
             s_neverResolves = new VelvetTaskCompletionSource<string>();
         }
@@ -215,38 +217,6 @@ namespace Velvet.Tests
             Assert.That(s_hiddenInsertionRuns, Is.EqualTo(0));
         }
 
-        [Test]
-        public void Given_EachMountLayingOutTheHostOfTheNext_When_TheChainRunsTwelveDeep_Then_TenReadTheirBoxTheRestReadTheLastLayoutAndOneWarningIsLogged()
-        {
-            // Arrange — every host's first GeometryChangedEvent adds the next host and mounts a measuring tree, whose
-            // layout pass lays the next host out from inside the one before.
-            const int depth = FiberLayoutReflow.MaxNesting + 2;
-            ChainHost(1, depth);
-            var warnings = 0;
-            Application.LogCallback count = (message, _, type) =>
-            {
-                if (type == LogType.Warning && message.Contains($"nested {FiberLayoutReflow.MaxNesting} deep")) warnings++;
-            };
-            Application.logMessageReceived += count;
-
-            // Act
-            try
-            {
-                ForcePanelUpdate(_window.rootVisualElement.panel);
-            }
-            finally
-            {
-                Application.logMessageReceived -= count;
-            }
-
-            // Assert
-            var reads = new List<string>();
-            for (var n = 1; n <= depth; n++) reads.Add(ReadRow(s_nthWidths, n).ToString());
-            var expected = new List<string>();
-            for (var n = 1; n <= depth; n++) expected.Add((n <= FiberLayoutReflow.MaxNesting ? MountWidth : float.NaN).ToString());
-            Assert.That($"{string.Join(",", reads)} | {warnings}", Is.EqualTo($"{string.Join(",", expected)} | 1"));
-        }
-
         // GREEN_ON_BASE(characterization): the base mounts from a CustomStyleResolvedEvent reading the box unlaid.
         // That event is sent from inside the style updater's traversal, where a commit here lays nothing out;
         // dropping the `_applyingStyles` check in `FiberLayoutReflow` starts a second traversal under the first.
@@ -318,19 +288,17 @@ namespace Velvet.Tests
             Assert.That(s_stableBox.Current.layout.width, Is.EqualTo(MountWidth).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): the base lays out a virtual list whose rows run layout effects.
-        // A commit there lays out no panel at all, so it never starts the panel's layout pass again from inside it.
-        // Here a commit inside that pass runs the layout updater again, on lists of its own; dropping the
-        // `_changeEvents.SetValue(_layoutUpdater, spare.ChangeEvents)` swap in `FiberLayoutReflow` is the
-        // perturbation this case is for.
         [Test]
-        public void Given_AVirtualListWhoseRowsRunLayoutEffects_When_ThePanelLaysTheListOut_Then_TheLayoutPassCompletes()
+        public void Given_AVirtualListWhoseRowsRunLayoutEffects_When_ThePanelLaysTheListOut_Then_ARowsLayoutEffectFindsItsRowInThePanel()
         {
             // Arrange
             _mounted = V.Mount(_window.rootVisualElement, MeasuredRowList());
 
-            // Act + Assert
-            Assert.DoesNotThrow(() => ForcePanelUpdate(_window.rootVisualElement.panel));
+            // Act
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(s_rowsFoundInLayoutEffect.Contains("a"), Is.True);
         }
 
         [Test]
@@ -359,19 +327,39 @@ namespace Velvet.Tests
             Assert.That(ReadRow(s_rowHeightsReadInRef, "a"), Is.EqualTo(RowHeight).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): the base mounts a tree from a GeometryChangedEvent without throwing.
-        // A commit there lays out no panel at all, so it never starts the panel's layout pass again from inside it.
-        // Here a commit inside that pass runs the layout updater again, on lists of its own; dropping the
-        // `_changeEvents.SetValue(_layoutUpdater, spare.ChangeEvents)` swap in `FiberLayoutReflow` is the
-        // perturbation this case is for.
+        // GREEN_ON_BASE(characterization): the base runs a GeometryChangedEvent callback that mounts a tree once.
+        // Here the mount computes the panel's layout from inside the callback; running the layout updater's
+        // `Update` there instead of `_calculate.Invoke(node, s_unbounded)` in `FiberLayoutReflow` dispatches the
+        // host's next GeometryChangedEvent while this one is still running, which reaches the callback again.
         [Test]
-        public void Given_ATreeMountedFromAGeometryChangedCallback_When_ThePanelLaysItOut_Then_TheLayoutPassCompletes()
+        public void Given_AGeometryChangedCallbackThatUnregistersItselfAndMountsATree_When_ThePanelLaysItsHostOut_Then_TheCallbackRunsOnce()
         {
             // Arrange
-            MountMeasuredBoxOnFirstGeometryChange();
+            var runs = 0;
+            MountOnFirstGeometryChange(V.Component(MeasuredBoxRender, key: "box"), () => runs++);
 
-            // Act + Assert
-            Assert.DoesNotThrow(() => ForcePanelUpdate(_window.rootVisualElement.panel));
+            // Act
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(runs, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base sends an element its GeometryChangedEvent on the panel's update.
+        // Here the mount's layout effect has computed the element's box already, and only the dirty flag the
+        // computation leaves sends the event; dropping `_dirty.SetValue(node, true)` from `FiberLayoutReflow` leaves
+        // the panel's layout updater nothing to visit.
+        [Test]
+        public void Given_AnElementALayoutEffectLaidOut_When_ThePanelUpdates_Then_TheElementReceivesItsGeometryChangedEvent()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(GeometryWatchingRender, key: "watched"));
+
+            // Act
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(s_geometryEventsReceived, Is.EqualTo(1));
         }
 
         [Test]
@@ -398,39 +386,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_widthReadInLayoutEffect, Is.EqualTo(MountWidth).Within(0.01f));
-        }
-
-        [Test]
-        public void Given_ATreeMountedFromAGeometryChangedEventOfAPassAMountStarted_When_ThatMountLaysThePanelOut_Then_TheInnerLayoutEffectReadsTheWidthTheMountGaveTheElement()
-        {
-            // Arrange — the outer tree's layout effect lays the panel out, which lays the host out for the first
-            // time and mounts the inner tree from inside that pass.
-            MountMeasuredBoxOnFirstGeometryChange();
-            var outerHost = new VisualElement();
-            _window.rootVisualElement.Add(outerHost);
-
-            // Act
-            _mounted = V.Mount(outerHost, V.Component(StableLayoutEffectBoxRender, key: "outer"));
-
-            // Assert
-            Assert.That(s_widthReadInLayoutEffect, Is.EqualTo(MountWidth).Within(0.01f));
-        }
-
-        // GREEN_ON_BASE(characterization): the base mounts a tree from a GeometryChangedEvent without throwing.
-        // Here the earlier mount has run the layout updater on lists of its own, and the panel's pass must iterate
-        // its own lists again; dropping `_changeEvents.SetValue(_layoutUpdater, changeEvents)` from the `finally` in
-        // `FiberLayoutReflow` leaves the pass iterating a list the inner commit then clears.
-        [Test]
-        public void Given_APanelAnEarlierCommitLaidOut_When_ATreeMountsFromAGeometryChangedEventOfItsNextPass_Then_ThatPassCompletes()
-        {
-            // Arrange
-            var earlierHost = new VisualElement();
-            _window.rootVisualElement.Add(earlierHost);
-            _mounted = V.Mount(earlierHost, V.Component(StableLayoutEffectBoxRender, key: "earlier"));
-            MountMeasuredBoxOnFirstGeometryChange();
-
-            // Act + Assert
-            Assert.DoesNotThrow(() => ForcePanelUpdate(_window.rootVisualElement.panel));
         }
 
         [Test]
@@ -478,22 +433,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ATreeWhoseUpdatesKeepMeasuring_When_ItCommitsSeveralTimes_Then_ThePanelKeepsOneSpareListPair()
-        {
-            // Arrange
-            _mounted = V.Mount(_window.rootVisualElement, V.Component(MeasuredBoxRender, key: "box"));
-            s_setWidth.Invoke(UpdatedWidth);
-            _mounted.GetSchedulerForTest().DrainImmediateForTest();
-            s_setWidth.Invoke(MountWidth);
-
-            // Act
-            _mounted.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Assert
-            Assert.That(SpareListPairs(_window.rootVisualElement.panel), Is.EqualTo(1));
-        }
-
-        [Test]
         public void Given_ALayoutEffectThatStoresAMeasuredHeightInStateInATreeMountedFromAGeometryChangedCallback_When_ThePanelLaysItOut_Then_TheRenderCarriesTheHeight()
         {
             // Arrange
@@ -524,31 +463,18 @@ namespace Velvet.Tests
         private void MountMeasuredBoxOnFirstGeometryChange()
             => MountOnFirstGeometryChange(V.Component(MeasuredBoxRender, key: "box"));
 
-        private void MountOnFirstGeometryChange(VNode tree)
+        private void MountOnFirstGeometryChange(VNode tree, Action onRun = null)
         {
             var host = new VisualElement { name = "geometry-host" };
             EventCallback<GeometryChangedEvent> onGeometry = null;
             onGeometry = _ =>
             {
+                onRun?.Invoke();
                 host.UnregisterCallback(onGeometry);
                 _mountedFromLayoutPass.Add(V.Mount(host, tree));
             };
             host.RegisterCallback(onGeometry);
             _window.rootVisualElement.Add(host);
-        }
-
-        // FiberLayoutReflow keeps a spare pair of the layout updater's event lists per nesting depth it reached.
-        // -1 where the panel holds no such record.
-        private static int SpareListPairs(IPanel panel)
-        {
-            var table = typeof(V).Assembly.GetType("Velvet.FiberLayoutReflow")
-                ?.GetField("s_updaters", BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null);
-            if (table == null) return -1;
-            var args = new object[] { panel, null };
-            table.GetType().GetMethod("TryGetValue").Invoke(table, args);
-            var spares = args[1]?.GetType().GetField("_spares", BindingFlags.Instance | BindingFlags.NonPublic)
-                ?.GetValue(args[1]) as System.Collections.ICollection;
-            return spares?.Count ?? -1;
         }
 
         // The panel's layout validation, which runs the style and layout updaters under a guard of its own, without
@@ -566,23 +492,6 @@ namespace Velvet.Tests
             }
             throw new MissingMethodException(panel.GetType().FullName, "ValidateLayout");
         }
-
-        private void ChainHost(int n, int last)
-        {
-            var host = new VisualElement();
-            EventCallback<GeometryChangedEvent> onGeometry = null;
-            onGeometry = _ =>
-            {
-                host.UnregisterCallback(onGeometry);
-                if (n < last) ChainHost(n + 1, last);
-                _mountedFromLayoutPass.Add(V.Mount(host, V.Component(MeasuredNthRender, n, key: $"nth-{n}")));
-            };
-            host.RegisterCallback(onGeometry);
-            _window.rootVisualElement.Add(host);
-        }
-
-        private static float ReadRow(Dictionary<int, float> widths, int n)
-            => widths.TryGetValue(n, out var width) ? width : float.NaN;
 
         private static float ReadRow(Dictionary<string, float> heights, string label)
             => heights.TryGetValue(label, out var height) ? height : float.NaN;
@@ -619,17 +528,18 @@ namespace Velvet.Tests
 
         #endregion
 
-        private static readonly Dictionary<int, float> s_nthWidths = new();
+        private static int s_geometryEventsReceived;
 
         [Component]
-        private static VNode MeasuredNthRender(int n)
+        private static VNode GeometryWatchingRender()
         {
             Hooks.UseLayoutEffect((Func<Action>)(() =>
             {
-                s_nthWidths[n] = s_root.Q<VisualElement>($"nth-{n}").layout.width;
+                s_root.Q<VisualElement>("watched-box")
+                    .RegisterCallback<GeometryChangedEvent>(_ => s_geometryEventsReceived++);
                 return null;
-            }), new object[] { n });
-            return V.Div(className: $"w-[{MountWidth}px] h-[20px]", name: $"nth-{n}");
+            }), Array.Empty<object>());
+            return V.Div(className: $"w-[{MountWidth}px] h-[20px]", name: "watched-box");
         }
 
         [Component]
@@ -779,6 +689,7 @@ namespace Velvet.Tests
 
         #region MeasuredRow component (a virtual-list row whose layout effect and callback ref read its height)
 
+        private static readonly HashSet<string> s_rowsFoundInLayoutEffect = new();
         private static readonly Dictionary<string, float> s_rowHeightsReadInLayoutEffect = new();
         private static readonly Dictionary<string, float> s_rowHeightsReadInRef = new();
 
@@ -787,7 +698,10 @@ namespace Velvet.Tests
         {
             Hooks.UseLayoutEffect((Func<Action>)(() =>
             {
-                s_rowHeightsReadInLayoutEffect[label] = s_root.Q<VisualElement>($"row-{label}").layout.height;
+                var row = s_root.Q<VisualElement>($"row-{label}");
+                if (row == null) return null;
+                s_rowsFoundInLayoutEffect.Add(label);
+                s_rowHeightsReadInLayoutEffect[label] = row.layout.height;
                 return null;
             }), new object[] { label });
             var measure = Hooks.UseCallback<Func<VisualElement, Action>>(element =>

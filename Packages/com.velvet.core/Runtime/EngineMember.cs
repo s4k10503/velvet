@@ -102,10 +102,10 @@ namespace Velvet
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
             "UnityEngine.UIElements.StylePropertyName", "id", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
-        // FiberLayoutReflow's layout pass ahead of a commit's layout reads.
+        // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";
         private const string UpdatePhaseShape = "enum:" + UpdatePhaseType;
-        private const string LayoutUpdaterType = "UnityEngine.UIElements.VisualTreeLayoutUpdater";
+        private const string LayoutNodeType = "UnityEngine.UIElements.Layout.LayoutNode";
 
         internal static readonly EngineMember PanelGetUpdater = Method(UIElements, "UnityEngine.UIElements.Panel",
             "GetUpdater", "UnityEngine.UIElements.IVisualTreeUpdater", UpdatePhaseShape);
@@ -118,19 +118,17 @@ namespace Velvet
 
         internal static readonly EngineMember StylesUpdatePhase = Field(UIElements, UpdatePhaseType, "Styles", UpdatePhaseShape);
 
-        internal static readonly EngineMember LayoutUpdatePhase = Field(UIElements, UpdatePhaseType, "Layout", UpdatePhaseShape);
-
         internal static readonly EngineMember StyleUpdaterUpdate =
             Method(UIElements, "UnityEngine.UIElements.VisualTreeStyleUpdater", "Update", "System.Void");
 
-        internal static readonly EngineMember LayoutUpdaterUpdate = Method(UIElements, LayoutUpdaterType, "Update", "System.Void");
+        internal static readonly EngineMember ElementLayoutNode =
+            Field(UIElements, VisualElementType, "m_LayoutNode", LayoutNodeType);
 
-        internal static readonly EngineMember LayoutChangeEvents = Field(UIElements, LayoutUpdaterType, "changeEventsList",
-            "System.Collections.Generic.List`1[System.ValueTuple`3[UnityEngine.Rect,UnityEngine.Rect,"
-            + "UnityEngine.UIElements.VisualElement]]");
+        internal static readonly EngineMember LayoutNodeCalculate =
+            Method(UIElements, LayoutNodeType, "CalculateLayout", "System.Void", "System.Single", "System.Single");
 
-        internal static readonly EngineMember LayoutMissedHierarchyChangeEvents = Field(UIElements, LayoutUpdaterType,
-            "missedHierarchyChangeEventsList", "System.Collections.Generic.List`1[UnityEngine.UIElements.VisualElement]");
+        internal static readonly EngineMember LayoutNodeDirty =
+            WrittenProperty(UIElements, LayoutNodeType, "IsDirty", "System.Boolean");
 
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;

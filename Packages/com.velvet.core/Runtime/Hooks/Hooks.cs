@@ -1091,9 +1091,9 @@ namespace Velvet
 
         /// <summary>
         /// Position-based layout effect. Runs synchronously immediately after Render completes,
-        /// before the frame is painted, with the committed tree laid out: <c>layout</c>,
-        /// <c>resolvedStyle</c> and <c>worldBound</c> read here reflect this commit. A state update made here
-        /// re-renders before the frame is painted.
+        /// before the frame is painted, with the committed tree laid out: <c>layout</c> and
+        /// <c>resolvedStyle</c> read here reflect this commit, and <c>worldBound</c> does except for the position
+        /// of an element the commit moved. A state update made here re-renders before the frame is painted.
         /// </summary>
         /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
         /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
