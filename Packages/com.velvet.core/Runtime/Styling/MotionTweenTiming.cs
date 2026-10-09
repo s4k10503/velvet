@@ -17,10 +17,12 @@ namespace Velvet
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Hold> s_holds = new();
+        private static readonly ConditionalWeakTable<VisualElement, Hold>.CreateValueCallback s_save = Save;
 
-        internal static void Begin(VisualElement element)
+        internal static void Begin(VisualElement element) => s_holds.GetValue(element, s_save);
+
+        private static Hold Save(VisualElement element)
         {
-            if (s_holds.TryGetValue(element, out _)) return;
             var style = element.style;
             var hold = new Hold
             {
@@ -28,8 +30,10 @@ namespace Velvet
                 Delay = Copy(style.transitionDelay),
                 Curve = Copy(style.transitionTimingFunction),
             };
+            // MUTANT_SURVIVES(equivalent, line removed): ApplyTransitionStyles, Begin's only caller, writes timing
+            // before anything else can, and that write's Adopt leaves each saved slot equal to the one read above.
             Record(style, hold);
-            s_holds.Add(element, hold);
+            return hold;
         }
 
         internal static void Write(VisualElement element, List<TimeValue>? duration,
@@ -77,13 +81,14 @@ namespace Velvet
 
         // Keep snapshots independent of the lists returned to the scheduler's pool.
         private static StyleList<T> Copy<T>(StyleList<T> list) =>
-            list.keyword == StyleKeyword.Undefined && list.value != null
-                ? new StyleList<T>(new List<T>(list.value)) : list;
+            list.value is { } value ? new StyleList<T>(new List<T>(value)) : list;
 
         private static bool Same<T>(StyleList<T> a, StyleList<T> b)
         {
             var (x, y) = (a.value, b.value);
             if (a.keyword != b.keyword || x?.Count != y?.Count) return false;
+            // MUTANT_SURVIVES(equivalent, literal): a slot recorded with no list is one the hold already saved
+            // under the same keyword, so adopting it again saves what the hold holds.
             if (x == null) return true;
             for (var i = 0; i < x.Count; i++)
             {

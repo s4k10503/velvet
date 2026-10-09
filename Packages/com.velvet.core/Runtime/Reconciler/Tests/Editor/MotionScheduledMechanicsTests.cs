@@ -235,6 +235,58 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Undefined, true, StyleKeyword.Undefined, true, StyleKeyword.Undefined, true)));
         }
 
+        [Test]
+        public void Given_AMotionWhoseCodeWritesAPrefixOfItsOverrideTweensDurations_When_ThatTweenEnds_Then_ThatPrefixIsItsOwn()
+        {
+            // Arrange — the tween writes 100ms for its catch-all and 150ms for opacity.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aPose = "visible";
+            s_aTransition = new StyleTransitionConfig
+            {
+                DurationSec = 0.1f, Easing = EasingMode.Linear,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.15f) },
+            };
+            using var mounted = MountAAlone();
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            var a = Root.Q<VisualElement>("a");
+
+            // Act — its first entry alone, and past the tween's end.
+            a.style.transitionDuration = new List<TimeValue> { new(100f, TimeUnit.Millisecond) };
+            AdvancePast(0.4f);
+
+            // Assert
+            var durations = a.style.transitionDuration;
+            Assert.That((durations.keyword,
+                    durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(100f, TimeUnit.Millisecond))),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseCodeWritesTheLastTweensDurationAfterItEnded_When_ANextTweenEnds_Then_ThatDurationIsItsOwn()
+        {
+            // Arrange — a 100ms tween that ends with no timing of the element's own.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition) = ("visible", s_quickTween);
+            using var mounted = MountAAlone();
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            AdvancePast(0.3f);
+            var a = Root.Q<VisualElement>("a");
+            a.style.transitionDuration = new List<TimeValue> { new(100f, TimeUnit.Millisecond) };
+
+            // Act — a swap back on the same tween, and past its end.
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(0.3f);
+
+            // Assert
+            var durations = a.style.transitionDuration;
+            Assert.That((durations.keyword,
+                    durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(100f, TimeUnit.Millisecond))),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
         // Where the replacement sits after the move across parents; the mounted element sits at left 200.
         private static int s_movedLeft;
 
