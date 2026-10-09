@@ -68,6 +68,11 @@ namespace Velvet
                 return false;
             }
 
+            if (StyleLogicalUtilities.TryParse(className, out result))
+            {
+                return true;
+            }
+
             // Color opacity modifier: {bg|text|border}-<color>/<N> applies alpha N% to the resolved base
             // color (bg-red-500/50, text-black/75, border-white/10, bg-[#fff]/50). Detected before the
             // bracket parsing below because the palette form carries no '[' at all. A leading '-' never
@@ -275,7 +280,8 @@ namespace Velvet
             {
                 return true;
             }
-            if (IsFractionToken(cls))
+            // Logical-direction utilities (ms-4, start-1/2, rounded-ss-lg) have no USS class at all.
+            if (IsFractionToken(cls) || StyleLogicalUtilities.TryParse(cls, out _))
             {
                 return true;
             }
@@ -603,7 +609,7 @@ namespace Velvet
         }
 
         // A zero denominator does not parse: no percent stands for it.
-        private static bool TryParseFractionPercent(string frac, out float percent)
+        internal static bool TryParseFractionPercent(string frac, out float percent)
         {
             percent = 0f;
             var slash = frac.IndexOf('/');
@@ -1177,36 +1183,6 @@ namespace Velvet
                 }
             }
         }
-
-        // Re-asserts the winning layer for ONE property, without mutating the map — the single-property
-        // form of ReapplyLayeredValues above.
-        //
-        // For a manipulator that borrows a shared inline slot and nulls it outright on detach
-        // (StyleTextBalanceManipulator and width): the authored value it clobbered is still recorded
-        // here, so re-resolving the one slot restores exactly what the cascade says it should hold — and
-        // does so regardless of how that value got there. A restore driven by re-scanning the element's
-        // class list is only as complete as that list: it cannot see a layer a VARIANT registered
-        // (dark:w-[80px]), whose payload is not a token of the element's own.
-        //
-        // A property with no surviving layer clears the inline value — the same fallback Clear itself takes
-        // once it removes the last layer.
-        //
-        // No filter-family exemption, unlike the whole-map form: this re-resolves whatever property it is
-        // handed, so a filter one would recompose the filter list and restart an in-flight transition tween.
-        // Today's only caller passes a width; a caller that wants a filter property has to weigh that.
-        internal static void ReapplyLayeredValue(VisualElement element, ArbitraryProperty property)
-        {
-            if (element == null || !s_layers.TryGetValue(element, out var map))
-            {
-                return;
-            }
-            ResolveAndApply(element, property, map);
-        }
-
-        // Re-asserts every layer that writes the inline WIDTH slot, for a caller handing that slot back after
-        // borrowing it. Re-resolving Width settles the Size layer with it (see ResolveSharedLonghands).
-        internal static void ReapplyWidthSlot(VisualElement element)
-            => ReapplyLayeredValue(element, ArbitraryProperty.Width);
 
         // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — HasLayer and the class
         // projection see none of it — but every layer resolve that writes a held slot writes the held value
@@ -2277,9 +2253,10 @@ namespace Velvet
             return false;
         }
 
-        // Parses a <length-percentage> token: a '%' suffix is percent; a 'px', 'rem', or no suffix is
-        // pixel (bare numbers default to px, and rem is converted at the fixed 1rem = 16px scale because
-        // UI Toolkit has no rem unit and no document root to resolve a relative font size against).
+        // Parses a <length-percentage> token: a '%' suffix is percent; a 'px', 'rem', an absolute unit (in, cm,
+        // mm, pt, pc, Q) or no suffix is pixel (bare numbers default to px, and rem is converted at the fixed
+        // 1rem = 16px scale because UI Toolkit has no rem unit and no document root to resolve a relative font
+        // size against).
         // InvariantCulture, finite values only. Internal so other utility parsers (clip-path) share THE
         // length grammar instead of re-implementing it.
         internal static bool TryParseValue(ReadOnlySpan<char> valueStr, out float value, out LengthUnit unit)
@@ -2322,6 +2299,15 @@ namespace Velvet
                     CultureInfo.InvariantCulture,
                     out value);
             }
+            else if (TryFindAbsoluteUnit(valueStr, out var unitLength, out var pixelsPerUnit))
+            {
+                parsed = float.TryParse(
+                    valueStr.Slice(0, valueStr.Length - unitLength),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out value);
+                value *= pixelsPerUnit;
+            }
             else
             {
                 parsed = float.TryParse(
@@ -2332,6 +2318,29 @@ namespace Velvet
             }
 
             return parsed && float.IsFinite(value);
+        }
+
+        // CSS's absolute length units at their fixed ratio to a pixel (96 per inch); the match is
+        // case-sensitive, as Tailwind's length test is, so Q is upper case and the rest lower.
+        private static readonly (string Suffix, float Pixels)[] s_absoluteUnits =
+        {
+            ("in", 96f), ("cm", 96f / 2.54f), ("mm", 96f / 25.4f), ("pt", 96f / 72f), ("pc", 16f), ("Q", 96f / 101.6f),
+        };
+
+        private static bool TryFindAbsoluteUnit(ReadOnlySpan<char> valueStr, out int length, out float pixels)
+        {
+            foreach (var (suffix, perUnit) in s_absoluteUnits)
+            {
+                if (valueStr.Length > suffix.Length && valueStr.EndsWith(suffix.AsSpan(), StringComparison.Ordinal))
+                {
+                    length = suffix.Length;
+                    pixels = perUnit;
+                    return true;
+                }
+            }
+            length = 0;
+            pixels = 0f;
+            return false;
         }
 
         // Parses a unitless finite float (used by scale-[..]). A trailing unit is rejected.

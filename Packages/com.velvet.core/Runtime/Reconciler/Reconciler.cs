@@ -100,15 +100,7 @@ namespace Velvet
                         // not left permanently active.
                         try
                         {
-                            // Ahead of the layout effects, which read the tree the drain committed.
-                            try
-                            {
-                                PointerEventsScope.OnDrainEnd(_ctx);
-                            }
-                            finally
-                            {
-                                FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
-                            }
+                            FlushDrainEndCommitWork();
                         }
                         finally
                         {
@@ -116,6 +108,27 @@ namespace Velvet
                             MotionLayoutIdDriver.ExpireSnapshots(_ctx);
                         }
                     });
+            }
+        }
+
+        // The drag session's overlay join follows the layout effects but does not depend on them completing.
+        private void FlushDrainEndCommitWork()
+        {
+            try
+            {
+                // Ahead of the layout effects, which read the tree the drain committed.
+                try
+                {
+                    PointerEventsScope.OnDrainEnd(_ctx);
+                }
+                finally
+                {
+                    FiberEffects.FlushDeferredDrainLayoutEffects(_ctx);
+                }
+            }
+            finally
+            {
+                _ctx.ActiveDrag?.JoinOverlaysAfterCommit();
             }
         }
 
@@ -677,8 +690,9 @@ namespace Velvet
             // Gradient elements hold an inline background-image referencing a shared baked texture: clear
             // the inline image so a still-mounted element released at root disposal carries no residue
             // (the cached textures themselves are shared and outlive the reconciler).
-            foreach (var (element, _) in _ctx.GradientBackgrounds)
+            foreach (var (element, binding) in _ctx.GradientBackgrounds)
             {
+                GradientBackground.Detach(element, binding);
                 GradientBackground.Clear(element);
             }
             _ctx.GradientBackgrounds.Clear();
@@ -842,6 +856,13 @@ namespace Velvet
             }
 
             _ctx.TextBalanceManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.FlexMinSizeManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.FlexMinSizeManipulators.Clear();
+
             foreach (var scope in _ctx.PointerEventsScopes.Values)
             {
                 // MUTANT_SURVIVES(unreachable): no case leaves a scope in the table by now, since the unmount

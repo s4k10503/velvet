@@ -284,6 +284,7 @@ namespace Velvet
             DetachManipulator(element, _ctx.DivideManipulators);
             DetachManipulator(element, _ctx.GridManipulators);
             DetachManipulator(element, _ctx.TextBalanceManipulators);
+            DetachManipulator(element, _ctx.FlexMinSizeManipulators);
             DetachManipulator(element, _ctx.ChildVariantManipulators);
             if (_ctx.PointerEventsScopes.TryGetValue(element, out var pointerEvents))
             {
@@ -372,11 +373,12 @@ namespace Velvet
             {
                 LeadingLengthProbe.Detach(_ctx, element, leadingProbe);
             }
-            if (_ctx.GradientBackgrounds.ContainsKey(element))
+            if (_ctx.GradientBackgrounds.TryGetValue(element, out var gradientBinding))
             {
                 // Clear the baked gradient background-image so a pooled element cannot ghost a prior
                 // gradient onto its next consumer. The texture itself is shared/cached, so it is NOT
                 // destroyed here — only this element's reference is dropped.
+                GradientBackground.Detach(element, gradientBinding);
                 GradientBackground.Clear(element);
                 _ctx.GradientBackgrounds.Remove(element);
             }

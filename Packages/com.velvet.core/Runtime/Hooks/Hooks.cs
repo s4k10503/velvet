@@ -243,6 +243,114 @@ namespace Velvet
 
         #endregion
 
+        #region UseSyncExternalStore
+
+        /// <summary>
+        /// Subscribes to a store Velvet does not own and returns its current snapshot — the counterpart of React's
+        /// <c>useSyncExternalStore(subscribe, getSnapshot)</c>. Must be used inside Render() only.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <paramref name="getSnapshot"/> must return the same value, compared with <c>Object.is</c>, on every call
+        /// while the store has not changed: cache the snapshot instead of building a new one per read. A store-change
+        /// notification re-renders the component when <paramref name="getSnapshot"/> then returns a value that is not
+        /// <c>Object.is</c>-equal to the one it last rendered, or throws. A render that returns another snapshot than
+        /// the previous one, or that subscribes, checks the snapshot again once it commits, so a snapshot built afresh
+        /// per read re-renders the component after every render until the scheduler's update-depth limit drops the
+        /// update and logs an error. In the Editor, a hook whose two consecutive reads in one render differ logs an
+        /// error once.
+        /// </para>
+        /// <para>
+        /// <paramref name="subscribe"/> receives the callback to invoke when the store changes and returns the action
+        /// that unsubscribes it. It is called on the first render, and again, after the previous subscription is
+        /// removed, by a render passing a <paramref name="subscribe"/> that is not <see cref="Delegate.Equals(object)"/>
+        /// to the previous one, or by the render after one whose call threw; the StrictMode diagnostic render never
+        /// calls it. A method group on the same instance compares equal across renders; a lambda capturing a local is
+        /// a new closure each render and re-subscribes on each later render, as an inline subscribe function does in
+        /// React. Unmounting removes the subscription. A change the store raises while <paramref name="subscribe"/>
+        /// runs is returned by the render that subscribed.
+        /// </para>
+        /// <para>
+        /// The callback must be invoked on the Unity main thread: invoked from another thread, it throws
+        /// <see cref="InvalidOperationException"/> to its invoker and schedules nothing. The re-render it schedules
+        /// takes the Urgent lane and never the Transition lane, including when the store is mutated inside
+        /// <c>startTransition</c>, and the scheduler flushes it from the main thread's posted work instead of waiting
+        /// for its next frame-boundary callback. The scheduler's resume of a parked time-sliced pass flushes such a
+        /// re-render first, so readers the pass committed in an earlier slice show the changed snapshot before the next
+        /// slice renders it.
+        /// </para>
+        /// <para>
+        /// Within one batch drain pass, readers passing equal <paramref name="getSnapshot"/> delegates observe the
+        /// snapshot the pass's first read pinned, as readers of one store do through
+        /// <see cref="UseStore{TStore,TSel}"/>; the next pass, the delayed tier's included, pins afresh. A render
+        /// outside a drain reads the live snapshot, and so does a render whose <paramref name="subscribe"/> raises a
+        /// change while it runs. A render that subscribes and returns a pin the store has moved past asks for a
+        /// re-render once it commits.
+        /// </para>
+        /// </remarks>
+        /// <typeparam name="T">Snapshot type.</typeparam>
+        /// <param name="subscribe">Registers a store-change callback and returns its unsubscribe action. Must not be null.</param>
+        /// <param name="getSnapshot">Returns the store's current snapshot. Must not be null.</param>
+        /// <returns>The store snapshot this render observes.</returns>
+        public static T UseSyncExternalStore<T>(Func<Action, Action> subscribe, Func<T> getSnapshot)
+        {
+            if (subscribe == null) throw new ArgumentNullException(nameof(subscribe));
+            if (getSnapshot == null) throw new ArgumentNullException(nameof(getSnapshot));
+            var fiber = Resolve("UseSyncExternalStore");
+            fiber.StoreSlots ??= new List<HookStoreSlot>();
+            var index = fiber.Indices.StoreHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
+
+            HookExternalStoreSlot<T> slot;
+            if (index >= fiber.StoreSlots.Count)
+            {
+                slot = new HookExternalStoreSlot<T> { Fiber = fiber };
+                fiber.StoreSlots.Add(slot);
+            }
+            else if (fiber.StoreSlots[index] is HookExternalStoreSlot<T> typed)
+            {
+                slot = typed;
+            }
+            else
+            {
+                throw HookSlotTypeMismatch(fiber, "UseSyncExternalStore", fiber.StoreSlots[index].GetType(),
+                    $"HookExternalStoreSlot<{typeof(T).Name}>", index);
+            }
+
+            var live = getSnapshot();
+#if UNITY_EDITOR
+            if (!slot.ReportedUncachedSnapshot && !ObjectIs.AreEqual(live, getSnapshot()))
+            {
+                slot.ReportedUncachedSnapshot = true;
+                FiberLogger.LogError("UseSyncExternalStore",
+                    $"{ComponentName(fiber)}: getSnapshot returned a different value on two consecutive reads." +
+                    " Cache the snapshot and return the same value until the store changes.");
+            }
+#endif
+            // The wave pin is keyed by getSnapshot itself: equal delegates read the same value, whichever
+            // component holds them.
+            var ctx = fiber.Reconciler?.Context;
+            slot.Record(getSnapshot, ctx != null ? ctx.PinStoreSnapshot(getSnapshot, live) : live);
+
+            // The StrictMode diagnostic render subscribes nothing: a subscription is externally visible.
+            if (!IsStrictDiagnosticPass(fiber) && (slot.Subscribe == null || !slot.Subscribe.Equals(subscribe)))
+            {
+                slot.Resubscribe(subscribe);
+                var latest = getSnapshot();
+                if (!ObjectIs.AreEqual(live, latest)) slot.Value = latest;
+            }
+
+            // MUTANT_SURVIVES(equivalent, clause removed): the diagnostic render finds the flag cleared by a commit check that already ran, or queues a second one beside it in the same commit, whose request coalesces with the first.
+            if (slot.AwaitsCommitCheck && !IsStrictDiagnosticPass(fiber))
+            {
+                (fiber.PendingLayoutEffects ??= new List<HookEffectSlot>()).Add(slot.CommitCheck);
+            }
+
+            return slot.Value;
+        }
+
+        #endregion
+
         #region UseContext
 
         /// <summary>

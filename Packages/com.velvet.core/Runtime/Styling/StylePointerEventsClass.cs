@@ -10,7 +10,7 @@ namespace Velvet
     }
 
     // Recognizes pointer-events-none / pointer-events-auto for PointerEventsScope. Neither has a scale or an
-    // arbitrary form, so the classifier is an exact match, as StyleTextBalanceClass's is.
+    // arbitrary form, so the classifier is an exact match.
     internal static class StylePointerEventsClass
     {
         private const string NoneClassName = "pointer-events-none";

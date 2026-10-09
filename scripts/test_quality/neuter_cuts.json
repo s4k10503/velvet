@@ -71,10 +71,10 @@
     {
       "name": "balance-attach",
       "mechanism": "balance",
-      "summary": "the balance manipulator subscribes to nothing on its target",
+      "summary": "the text-item manipulators, balance among them, subscribe to nothing on their target",
       "edits": [
         {
-          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceManipulator.cs",
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextItemManipulator.cs",
           "anchor": "protected override void RegisterCallbacksOnTarget()",
           "neuter": "return;"
         }
@@ -83,12 +83,48 @@
     {
       "name": "balance-apply",
       "mechanism": "balance",
-      "summary": "the balance manipulator narrows nothing it observes",
+      "summary": "the balance manipulator re-derives nothing it observes",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceManipulator.cs",
-          "anchor": "private void Apply()",
+          "anchor": "protected override void Derive(TextElement textElement, VisualElement parent)",
           "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "balance-break",
+      "mechanism": "balance",
+      "summary": "the breaker returns the text it was given, whatever the width",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceManipulator.cs",
+          "anchor": "internal string Break(string text)",
+          "neuter": "return text;"
+        }
+      ]
+    },
+    {
+      "name": "breaker-opportunities",
+      "mechanism": "balance",
+      "summary": "the opportunity rules report no break between two characters",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/TextBreakOpportunities.cs",
+          "anchor": "public static bool BreakAllowedBetween(int before, int previous, int next, bool softHyphens = false)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "breaker-plan",
+      "mechanism": "balance",
+      "summary": "the line breaker reads every division it chooses as the greedy one",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/TextLineBreaker.cs",
+          "anchor": "private static bool SameStarts(List<int> left, List<int> right)",
+          "neuter": "return true;"
         }
       ]
     },
@@ -146,9 +182,9 @@
       "summary": "the reconciler attaches and detaches no balance manipulator",
       "edits": [
         {
-          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
-          "anchor": "private void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)",
-          "neuter": "return;"
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectResolver.cs",
+          "anchor": "private static StyleTextBalanceManipulator? SyncBalance(ReconcilerContext ctx, TextElement element, TextWrapStyle style)",
+          "neuter": "return null;"
         }
       ]
     },
@@ -498,7 +534,7 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs",
-          "anchor": "LeadingValue? leading = null)",
+          "anchor": "TextBreakRequest? breaks = null)",
           "neuter": "return raw;"
         }
       ]
@@ -578,18 +614,6 @@
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberAnimateMotionApplier.cs",
           "anchor": "internal void ApplyAnimateOnPatch(VisualElement element, string[] classNames)",
           "neuter": "return;"
-        }
-      ]
-    },
-    {
-      "name": "balance-token",
-      "mechanism": "balance",
-      "summary": "the wrap-style reader finds no text-balance or text-pretty class on a class list",
-      "edits": [
-        {
-          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceClass.cs",
-          "anchor": "public static TextWrapStyle ReadWrapStyle(string[] classNames)",
-          "neuter": "return TextWrapStyle.None;"
         }
       ]
     },
@@ -684,20 +708,37 @@
     {
       "fixture": "Velvet.Tests.TextBalanceParityTests",
       "cuts": [
-        "balance-register",
-        "balance-token"
+        "balance-register"
       ],
       "caseScopes": [],
       "platform": "EditMode"
     },
     {
-      "fixture": "Velvet.Tests.TextBalancePlaybackTests",
+      "fixture": "Velvet.Tests.TextWrapBreakPanelTests",
       "cuts": [
         "balance-attach",
-        "balance-apply"
+        "balance-apply",
+        "balance-break",
+        "breaker-plan"
       ],
       "caseScopes": [],
-      "platform": "PlayMode"
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.TextBreakOpportunitiesTests",
+      "cuts": [
+        "breaker-opportunities"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.TextLineBreakerTests",
+      "cuts": [
+        "breaker-plan"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
     },
     {
       "fixture": "Velvet.Tests.PointerEventsUtilityTests",

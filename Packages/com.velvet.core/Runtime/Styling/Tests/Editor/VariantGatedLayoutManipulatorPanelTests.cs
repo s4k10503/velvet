@@ -180,7 +180,7 @@ namespace Velvet.Tests
 
     /// <summary>
     /// The same contract for the two remaining class-gated layout families — <c>divide-*</c> and
-    /// <c>text-balance</c>, each of which has its own configure and teardown path — driven by a
+    /// <c>text-balance</c>, which have their own configure and teardown paths — driven by a
     /// NON-responsive variant. <c>dark:</c> needs no panel: the conditional manipulator subscribes to
     /// <see cref="VelvetTheme"/>'s theme signal when it attaches to the element and evaluates it off-panel,
     /// so a bare reconciler is enough to cross the same side channel a breakpoint crossing uses.
@@ -236,8 +236,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADarkGatedTextBalanceApplied_When_TheThemeTurnsLight_Then_TheTextBalanceManipulatorIsRemoved()
         {
-            // Arrange — text-balance owns a shared inline width slot, so its teardown is bespoke rather
-            // than the shared configure step; the off-edge has to reach it just as the on-edge did.
+            // Arrange — the manipulator is attached by the text-effect pass rather than the shared configure
+            // step; the off-edge has to reach it just as the on-edge did.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { V.Label(className: "dark:text-balance", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
@@ -250,98 +250,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(0));
-        }
-
-        [Test]
-        public void Given_ADarkGatedWidth_When_TheThemeTurnsDark_Then_TheElementIsNotGateTracked()
-        {
-            // Arrange — a width payload has to re-sync the layout manipulators, since it decides whether
-            // text-balance stands down. It must not join the variant-gate tracking table while doing so:
-            // membership there routes the element through a composed class ARRAY for as long as a payload is
-            // lit, which is only worth paying where a pass reads a token back out of that array.
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { V.Label(className: "text-balance dark:w-40", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-            var label = scope.Root.Q<Label>();
-
-            // Act
-            VelvetTheme.IsDark = true;
-            Assume.That(label.ClassListContains("w-40"), Is.True,
-                "Precondition: the dark payload put the width class on the live class list");
-
-            // Assert
-            Assert.That(scope.Reconciler.Context.VariantGateClasses.ContainsKey(label), Is.False);
-        }
-
-        [Test]
-        public void Given_ADarkGatedTextBalanceBesideAWidth_When_TheThemeTurnsLight_Then_TheUtilitysWidthIsRestored()
-        {
-            // Arrange — the variant analogue of the literal co-present-width contract: text-balance
-            // borrows the element's width slot and nulls it on detach, so the utility's own value has
-            // to come back. w-[50px] is inline-resolved, so it is exactly the kind of token that never
-            // appears on the live class list the variant path re-derives from.
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { V.Label(className: "w-[50px] dark:text-balance", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-            var label = scope.Root.Q<Label>();
-            Assume.That(label.style.width.value.value, Is.EqualTo(50f),
-                "Precondition: the co-present w-[50px] utility resolved its own value at mount");
-            VelvetTheme.IsDark = true;
-            Assume.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(1),
-                "Precondition: the dark payload attached the manipulator that borrows the slot");
-
-            // Act — the only thing that changes is the theme; nothing re-renders.
-            VelvetTheme.IsDark = false;
-
-            // Assert
-            Assert.That(label.style.width.value.value, Is.EqualTo(50f));
-        }
-
-        [Test]
-        public void Given_ATrackedElementWithALiteralTextBalanceBesideAWidth_When_TextBalanceIsRenderedAway_Then_TheUtilitysWidthIsRestored()
-        {
-            // Arrange — no variant gates text-balance here; the dark:gap-4 is only there to put the element
-            // in the variant-applied table, which is what switches its layout gates onto the live class
-            // list. The teardown then runs on an ordinary re-render, with no variant toggle involved.
-            using var scope = new ReconcilerScope();
-            var tree1 = new VNode[] { V.Label(className: "w-[50px] text-balance dark:gap-4", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            var label = scope.Root.Q<Label>();
-            Assume.That(label.style.width.value.value, Is.EqualTo(50f),
-                "Precondition: the co-present w-[50px] utility resolved its own value at mount");
-            VelvetTheme.IsDark = true;
-            Assume.That(label.ClassListContains("gap-4"), Is.True,
-                "Precondition: the dark payload put a layout gate class on the live class list");
-
-            // Act — re-render without the text-balance token, everything else unchanged.
-            var tree2 = new VNode[] { V.Label(className: "w-[50px] dark:gap-4", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
-
-            // Assert
-            Assert.That(label.style.width.value.value, Is.EqualTo(50f));
-        }
-
-        [Test]
-        public void Given_ATextBalanceBesideAVariantSuppliedWidth_When_TextBalanceIsRenderedAway_Then_TheVariantsWidthIsRestored()
-        {
-            // Arrange — the width here is supplied by the dark: layer, not by a utility of the
-            // element's own. That is the case no class-list scan can restore, on either array: a variant
-            // token is skipped, because its payload is not a token the element itself carries. Nothing
-            // gates layout on this element, so it also proves the restore on the ordinary reconcile path.
-            using var scope = new ReconcilerScope();
-            var tree1 = new VNode[] { V.Label(className: "dark:w-[80px] text-balance", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            var label = scope.Root.Q<Label>();
-            VelvetTheme.IsDark = true;
-            Assume.That(label.style.width.value.value, Is.EqualTo(80f),
-                "Precondition: the dark payload resolved its own width before text-balance is removed");
-
-            // Act — remove just the text-balance token; the dark: layer is untouched.
-            var tree2 = new VNode[] { V.Label(className: "dark:w-[80px]", text: "hello") };
-            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
-
-            // Assert
-            Assert.That(label.style.width.value.value, Is.EqualTo(80f));
         }
     }
 }

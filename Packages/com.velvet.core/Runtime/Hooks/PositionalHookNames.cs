@@ -20,6 +20,7 @@ namespace Velvet
             nameof(Hooks.UseReducer),
             nameof(Hooks.UseOptimistic),
             nameof(Hooks.UseStore),
+            nameof(Hooks.UseSyncExternalStore),
             nameof(Hooks.UseContext),
             nameof(Hooks.UseRef),
             nameof(Hooks.UseMutableRef),

@@ -146,7 +146,17 @@ namespace Velvet
             AsyncActionsInFlight.IsPending = false;
         }
 
-        private static void RequestRenderFromHook(ComponentFiber fiber, bool joinsTransition)
+        // A UseSyncExternalStore change notification never takes the Transition lane and always takes the
+        // Urgent one, as React gives an external store's update its sync lane even when the store is mutated
+        // inside startTransition. The scheduler is then asked to flush the immediate tier without waiting for
+        // its frame-boundary callback (FiberBatchScheduler.OweExternalStoreFlush).
+        public static void RequestExternalStoreRender(ComponentFiber fiber)
+        {
+            RequestRenderFromHook(fiber, joinsTransition: false, forceUrgent: true);
+            if (fiber.IsDirty) fiber.Reconciler?.Context.BatchScheduler.OweExternalStoreFlush();
+        }
+
+        private static void RequestRenderFromHook(ComponentFiber fiber, bool joinsTransition, bool forceUrgent = false)
         {
             if (fiber.IsDisposed || !fiber.IsMounted)
             {
@@ -182,7 +192,7 @@ namespace Velvet
                 return;
             }
 
-            ScheduleRerender(fiber, IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
+            ScheduleRerender(fiber, forceUrgent || IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
         }
 
         // JavaScript's await resumes in a microtask, once the code that called startTransition has returned, so
@@ -553,6 +563,8 @@ namespace Velvet
         // advance in EditMode) so a parked slice can be driven to completion manually.
         internal static void ContinueReconcile(ComponentFiber fiber)
         {
+            // Ahead of the guards below, since the flush can unmount the fiber or finish its pass.
+            fiber.Reconciler?.Context.BatchScheduler.FlushOwedExternalStoreRenders();
             if (!fiber.IsMounted) return;
             if (fiber.Reconciler == null) return;
             var mountPoint = fiber.MountPoint;
@@ -623,6 +635,8 @@ namespace Velvet
                     // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
                     // Bottom-up — descendant effects (LIFO drain) before this fiber's.
                     FiberEffects.CommitSubtreeEffects(fiber);
+                    // This commit completes outside the batch drain, whose end joins a mid-drag overlay.
+                    resumeContext.ActiveDrag?.JoinOverlaysAfterCommit();
                     // Mirror FlushState's settled-flush pass: re-derive registered has- elements so a
                     // time-sliced flush that toggled a descendant's class / controlled value reflects on a
                     // has- ancestor that did not itself reconcile. Scoped to this flush's region (the fiber's
