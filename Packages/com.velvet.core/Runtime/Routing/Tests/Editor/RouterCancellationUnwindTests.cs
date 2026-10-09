@@ -37,34 +37,31 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASubscriberNavigatingToAnUnmatchedPathOnTheMatchingEvent_When_TheAttemptGoesOn_Then_ItIsNotDispossessed()
+        public void Given_ASubscriberNavigatingToAnUnmatchedPathOnTheLoadingEvent_When_TheAttemptGoesOn_Then_ItIsNotDispossessed()
         {
-            // The status transition is raised from inside the attempt that made it, so a subscriber
-            // navigating from there reaches the router while that attempt holds the claim and has committed
-            // nothing. The whole sequence is read because the dispossession shows up as a transition between
-            // two of the attempt's own, and the unmatched result is folded in because a case that arranged
-            // no inner navigation would otherwise still see the sequence it expects.
+            // The navigation is published from inside the attempt that made it, so a subscriber navigating
+            // from there reaches the router while that attempt holds the claim and has committed nothing. The
+            // unmatched result is folded in because a case that arranged no inner navigation would otherwise
+            // still see the outcome it expects.
             // Arrange
             var router = new Router(_routes);
             router.NavigateSync("/home");
-            var seen = new List<RouterStatus>();
             var innerResult = NavigationResult.Success;
             var navigatedFromTheEvent = false;
-            router.OnStatusChanged += status =>
+            router.OnNavigationChanged += navigation =>
             {
-                seen.Add(status);
-                if (status != RouterStatus.Matching || navigatedFromTheEvent) return;
+                if (navigation.State != NavigationLifecycle.Loading || navigatedFromTheEvent) return;
                 navigatedFromTheEvent = true;
                 innerResult = router.NavigateSync("/no-such-route");
             };
 
             // Act
-            router.NavigateSync("/about");
+            var outerResult = router.NavigateSync("/about");
 
             // Assert
             Assert.That(
-                $"inner={innerResult} statuses={string.Join(",", seen)}",
-                Is.EqualTo("inner=NotFound statuses=Matching,Loading,Ready"));
+                $"inner={innerResult} outer={outerResult} path={router.CurrentLocation?.Path}",
+                Is.EqualTo("inner=NotFound outer=Success path=/about"));
         }
 
         [Test]
@@ -88,7 +85,7 @@ namespace Velvet.Tests
             var result = router.NavigateSync("/guarded");
 
             // Assert
-            Assert.That($"result={result} pending={router.PendingLocation?.Path ?? "none"}",
+            Assert.That($"result={result} pending={router.Navigation.Location?.Path ?? "none"}",
                 Is.EqualTo("result=Cancelled pending=none"),
                 "A redirect taken on a disposed router publishes no destination");
         }
