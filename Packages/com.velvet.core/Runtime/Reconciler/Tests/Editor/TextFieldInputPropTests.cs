@@ -40,6 +40,14 @@ namespace Velvet.Tests
             }
         }
 
+        public override void TearDown()
+        {
+            base.TearDown();
+            // The saturating cases below fill a process-wide pool, which the rest of the run would inherit —
+            // the pooled-field case among them, whose first unmount needs the room.
+            VNodePoolTestAccess.ClearTextFieldPoolForTest();
+        }
+
         [Test]
         public void Given_ADeclaredPlaceholder_When_TheFieldIsReconciled_Then_TheElementCarriesIt()
         {
@@ -286,6 +294,274 @@ namespace Velvet.Tests
             Assert.That(element.value, Is.EqualTo("typed"));
         }
 
+        // The edit is arranged as the two cases above do. maxLength is the cut: writing it through
+        // TextField re-shows the committed value, and the shown text is the only place the edit lives.
+        // DelayedMaxLengthEditReportTests measures the same change on a panel, where the restore could
+        // report.
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderChangesMaxLength_Then_TheEditIsStillShownUncommitted()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 10) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 3) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "abcd";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the edit stays uncommitted.
+            Assert.That((element.text, element.value), Is.EqualTo(("abc", string.Empty)));
+        }
+
+        // The commit is simulated with SimulateChange: the value and shown text land together and the
+        // field's change callbacks run. Without the record following the commit, the deletion reads as the
+        // text Velvet last wrote.
+        [Test]
+        public void Given_AnEditDeletedAfterTheFieldCommittedItsText_When_ALaterRenderChangesMaxLength_Then_TheDeletionSurvives()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 10) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 3) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            element.SimulateChange("abc");
+            ((TextElement)element.textEdition).text = string.Empty;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the deletion was never committed.
+            Assert.That((element.text, element.value), Is.EqualTo((string.Empty, "abc")));
+        }
+
+        // The pool hands the same instance to the next tenant, so a record the first tenant left stands
+        // unless removal forgets it. The second tenant declares no limit at mount, so no limit write
+        // refreshes the record before the typing.
+        [Test]
+        public void Given_ARecycledDelayedField_When_TheNextTenantTypesAndALaterRenderChangesMaxLength_Then_TheEditSurvives()
+        {
+            // Arrange
+            var first = new VNode[] { V.TextField(isDelayed: true) };
+            var second = new VNode[] { V.TextField(isDelayed: true) };
+            var narrowed = new VNode[] { V.TextField(isDelayed: true, maxLength: 8) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), first);
+            var firstElement = (TextField)Root!.ElementAt(0);
+            firstElement.SimulateChange("abc");
+            Reconciler.Reconcile(Root, first, Array.Empty<VNode>());
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), second);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "abc";
+
+            // Act
+            Reconciler.Reconcile(Root, second, narrowed);
+
+            // Assert — the instance is folded in: a fresh one passes without the pool being involved.
+            Assert.That(
+                (ReferenceEquals(element, firstElement), element.text, element.value),
+                Is.EqualTo((true, "abc", string.Empty)));
+        }
+
+        // The first tenant commits the text the second then types, so a record the removal left standing
+        // reads that typing as no edit. The second tenant's own commit is what the record must follow.
+        [Test]
+        public void Given_ARecycledDelayedField_When_TheNextTenantCommitsThenTypesWhatTheLastTenantCommittedAndMaxLengthChanges_Then_TheEditSurvives()
+        {
+            // Arrange
+            var first = new VNode[] { V.TextField(isDelayed: true) };
+            var second = new VNode[] { V.TextField(isDelayed: true) };
+            var narrowed = new VNode[] { V.TextField(isDelayed: true, maxLength: 8) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), first);
+            var firstElement = (TextField)Root!.ElementAt(0);
+            firstElement.SimulateChange("abc");
+            Reconciler.Reconcile(Root, first, Array.Empty<VNode>());
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), second);
+            var element = (TextField)Root!.ElementAt(0);
+            element.SimulateChange("xy");
+            ((TextElement)element.textEdition).text = "abc";
+
+            // Act
+            Reconciler.Reconcile(Root, second, narrowed);
+
+            // Assert — the instance is folded in: a fresh one passes without the pool being involved.
+            Assert.That(
+                (ReferenceEquals(element, firstElement), element.text, element.value),
+                Is.EqualTo((true, "abc", "xy")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base re-shows the committed value under the new limit, which a
+        // zero limit also cuts to nothing; the case pins that the branch's cut of the edit does the same.
+        // Zero is a length to cut to, where -1 is no limit. The committed value is "xy" so the cut edit
+        // still differs from it and reads as uncommitted.
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderSetsMaxLengthToZero_Then_TheEditIsCutToNothingAndStaysUncommitted()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 10) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 0) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            element.SimulateChange("xy");
+            ((TextElement)element.textEdition).text = "abc";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the cut edit is not the committed text.
+            Assert.That((element.text, element.value), Is.EqualTo((string.Empty, "xy")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base registers no shown-text callback, so nothing accumulates
+        // there either. It pins that the branch's removal unregisters the one it registers.
+        // Each tenancy that records the shown text registers a change callback on the field, so a removal
+        // that left the previous one registered would add one per tenancy. The count is read after each
+        // unmount rather than against a constant, so callbacks the element carries for other reasons
+        // cancel out.
+        [Test]
+        public void Given_ARecycledDelayedField_When_ASecondTenancyRecordsAndUnmounts_Then_ItHoldsNoMoreCallbacksThanAfterTheFirst()
+        {
+            // Arrange
+            var tree = new VNode[] { V.TextField(isDelayed: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+            var firstElement = (TextField)Root!.ElementAt(0);
+            Reconciler.Reconcile(Root, tree, Array.Empty<VNode>());
+            var afterFirst = CallbackRegistryProbe.BubbleUpCallbackCount(firstElement);
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+            var secondElement = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, tree, Array.Empty<VNode>());
+
+            // Assert — the instance is folded in: a fresh one would not be the recycled field.
+            Assert.That(
+                (ReferenceEquals(secondElement, firstElement),
+                    CallbackRegistryProbe.BubbleUpCallbackCount(secondElement) - afterFirst),
+                Is.EqualTo((true, 0)));
+        }
+
+        // The record follows a controlled value written on a patch, not only the mount's.
+        [Test]
+        public void Given_AControlledDelayedFieldWhoseValueChanged_When_TheUserTypesTheOldValueAndMaxLengthChanges_Then_TheEditSurvives()
+        {
+            // Arrange
+            var mounted = new VNode[] { V.TextField(value: "a", isDelayed: true, maxLength: 10) };
+            var changed = new VNode[] { V.TextField(value: "b", isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: "b", isDelayed: true, maxLength: 8) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            Reconciler.Reconcile(Root, mounted, changed);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "a";
+
+            // Act
+            Reconciler.Reconcile(Root, changed, narrowed);
+
+            // Assert
+            Assert.That((element.text, element.value), Is.EqualTo(("a", "b")));
+        }
+
+        // GREEN_ON_BASE(characterization): with no edit pending the base leaves the field to the engine, as
+        // the control does. It pins that the branch's restore invents no edit across two limit changes.
+        // The limit narrows and widens with no edit pending, so what the field shows after the first change
+        // is what the next one is judged against; a stale record reads it as typed text and holds it over the
+        // wider limit. The control is the engine driven through the same two changes.
+        [Test]
+        public void Given_ADelayedValueWithLineBreaksAndNoEdit_When_MaxLengthNarrowsThenWidens_Then_TheFieldShowsWhatTheEngineAloneWould()
+        {
+            // Arrange
+            const string value = "a\nbcdef";
+            var mounted = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 5) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            var control = new TextField { isDelayed = true, maxLength = 10 };
+            control.SetValueWithoutNotify(value);
+            control.maxLength = 3;
+            control.maxLength = 5;
+
+            // Act
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            Reconciler.Reconcile(Root, narrowed, widened);
+
+            // Assert
+            Assert.That(element.text, Is.EqualTo(control.text));
+        }
+
+        // Dropping the prop restores -1, which means no limit and must not be read as a length to cut to.
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderDropsMaxLength_Then_TheEditIsStillShownUncommitted()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 3) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "abc";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the edit stays uncommitted.
+            Assert.That((element.text, element.value, element.maxLength), Is.EqualTo(("abc", string.Empty, -1)));
+        }
+
+        // An event from the inner text element is not a commit of the field's value, so it leaves the
+        // record where Velvet put it.
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_TheInnerElementRaisesAChangeEventAndMaxLengthChanges_Then_TheEditSurvives()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 10) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, maxLength: 8) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var inner = (TextElement)element.textEdition;
+            inner.text = "abc";
+            using (var evt = ChangeEvent<string>.GetPooled(string.Empty, "abc"))
+            {
+                element.SimulateBubbledEvent(evt, inner);
+            }
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That((element.text, element.value), Is.EqualTo(("abc", string.Empty)));
+        }
+
+        // GREEN_ON_BASE(characterization): with no edit pending the base leaves the field to the engine, as
+        // the control does. It pins that the branch reads no edit from the stripped line breaks.
+        // A single-line field shows its value with the line breaks stripped, so nothing was typed here
+        // although the shown text differs from the value. The control is a field the engine alone drove
+        // through the same limit change; an edit invented from the difference would be restored over what
+        // the engine shows.
+        [Test]
+        public void Given_ADelayedValueWithLineBreaksAndNoEdit_When_ALaterRenderChangesMaxLength_Then_TheFieldShowsWhatTheEngineAloneWould()
+        {
+            // Arrange
+            const string value = "a\nbcdef";
+            var oldTree = new VNode[]
+            {
+                V.TextField(value: value, isDelayed: true, maxLength: 10),
+            };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: value, isDelayed: true, maxLength: 3),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var control = new TextField { isDelayed = true, maxLength = 10 };
+            control.SetValueWithoutNotify(value);
+            control.maxLength = 3;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(element.text, Is.EqualTo(control.text));
+        }
+
         [Test]
         public void Given_AFieldThatNeverDeclaredAnyOfThem_When_AbsentSettingsAreApplied_Then_NothingIsWritten()
         {
@@ -307,10 +583,9 @@ namespace Velvet.Tests
         // a second render redeclares only the first. The undeclared member is nobody's to write, so it has
         // to survive. One callback instance stands in both trees, so the patch does not re-run it
         // (ReconcilerContext.SyncRefCallback's identity skip) and a second assignment cannot stand in for
-        // a survival.
-        // GREEN_ON_BASE(refactor): the props are applied before the ref writes, here as on the base.
-        // Moving the setup out to the pass boundary keeps that, and the comment above is the only text
-        // of this case the branch touched.
+        // a survival. Each saturates the TextField pool before the second render, for the reason
+        // VNodePoolTestAccess.SaturateTextFieldPoolForTest gives.
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the flag.
         [Test]
         public void Given_APasswordFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
         {
@@ -324,16 +599,18 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setFlag) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.isPasswordField),
-                Is.EqualTo((true, true)));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.isPasswordField),
+                Is.EqualTo((true, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the hint.
         [Test]
         public void Given_APlaceholderWrittenFromARefCallback_When_ALaterRenderRedeclaresTheMaxLength_Then_TheHintSurvives()
         {
@@ -347,16 +624,18 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(maxLength: 13, refCallback: setHint) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.textEdition.placeholder),
-                Is.EqualTo((true, "from ref")));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.textEdition.placeholder),
+                Is.EqualTo((true, true, "from ref")));
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the limit.
         [Test]
         public void Given_AMaxLengthWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheLimitSurvives()
         {
@@ -370,16 +649,18 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setLimit) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.maxLength),
-                Is.EqualTo((true, 4)));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.maxLength),
+                Is.EqualTo((true, true, 4)));
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the flag.
         [Test]
         public void Given_AReadOnlyFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
         {
@@ -393,16 +674,18 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setFlag) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.isReadOnly),
-                Is.EqualTo((true, true)));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.isReadOnly),
+                Is.EqualTo((true, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base patches this field, keeping the instance and the flag.
         [Test]
         public void Given_ADelayedFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
         {
@@ -416,21 +699,25 @@ namespace Velvet.Tests
             var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setFlag) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var element = (TextField)Root!.ElementAt(0);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
             // Assert
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), element), element.isDelayed),
-                Is.EqualTo((true, true)));
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), element), element.isDelayed),
+                Is.EqualTo((true, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base re-rents the pooled field and patches it, keeping the hint.
         [Test]
         public void Given_APooledFieldWhoseLastTenantDeclaredAPlaceholder_When_ItsNextTenantWritesOneFromARefCallback_Then_TheHintSurvives()
         {
             // Arrange — the first tenancy records a placeholder default and then unmounts, which is what
-            // hands the element to the shared pool; the second declares only the length limit.
+            // hands the element to the shared pool; the second declares only the length limit. The pool is
+            // saturated only once the second tenancy holds the field, since the first unmount needs the room,
+            // and from there for the reason VNodePoolTestAccess.SaturateTextFieldPoolForTest gives.
             var declaring = new VNode[] { V.TextField(placeholder: "previous tenant") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), declaring);
             var pooled = (TextField)Root!.ElementAt(0);
@@ -443,6 +730,7 @@ namespace Velvet.Tests
             var oldTree = new VNode[] { V.TextField(maxLength: 12, refCallback: setHint) };
             var newTree = new VNode[] { V.TextField(maxLength: 13, refCallback: setHint) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var poolSaturated = VNodePoolTestAccess.SaturateTextFieldPoolForTest();
 
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
@@ -450,9 +738,9 @@ namespace Velvet.Tests
             // Assert — the identity term is what makes this a reading of the recycled element; a fresh one
             // would carry no record from either tenancy and satisfy the hint on its own.
             Assert.That(
-                (ReferenceEquals(Root!.ElementAt(0), pooled),
+                (poolSaturated, ReferenceEquals(Root!.ElementAt(0), pooled),
                     ((TextField)Root!.ElementAt(0)).textEdition.placeholder),
-                Is.EqualTo((true, "from ref")));
+                Is.EqualTo((true, true, "from ref")));
         }
     }
 }

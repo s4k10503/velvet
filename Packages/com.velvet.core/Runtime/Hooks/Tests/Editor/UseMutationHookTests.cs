@@ -30,7 +30,8 @@ namespace Velvet.Tests
     /// observes it still pending; and a mutation whose <c>OnSuccess</c> threw leaves no data standing under the
     /// resulting error.</item>
     /// <item>If the component unmounts while a mutation is in flight, the caller's await still observes the function
-    /// result but the disposed fiber does not receive a Success state transition.</item>
+    /// result but the disposed fiber does not receive a Success or an Error state transition.</item>
+    /// <item>Committing an outcome re-renders the component.</item>
     /// <item>A cancellation callback that throws while the unmount walks the live sources is reported rather than
     /// raised, and the walk goes on to the sources after it.</item>
     /// </list>
@@ -46,6 +47,14 @@ namespace Velvet.Tests
         private VisualElement _root = null!;
         private static MutationResult<int, int>? s_captured;
         private static Func<int, CancellationToken, VelvetTask<int>> s_mutationFn = (v, _) => VelvetTask.FromResult(v * 2);
+
+        // The unmount cancels each call's token, so a call whose function honours it rejects with the
+        // cancellation; these cases read the unmount itself and only need the call to have settled.
+        private static async VelvetTask Settled(VelvetTask<int> call)
+        {
+            try { await call; }
+            catch (OperationCanceledException) { }
+        }
 
         [SetUp]
         public void SetUp()
@@ -400,6 +409,7 @@ namespace Velvet.Tests
                 "Every call delivers its own success, whether or not a later one has already settled");
         });
 
+        // GREEN_ON_BASE(characterization): the base unmounts two calls in flight without throwing too; the change only has the trailing awaits tolerate the cancellation they now reject with.
         [UnityTest]
         public IEnumerator Given_TwoMutationsInFlight_When_TheComponentUnmounts_Then_TheUnmountCompletes() => VelvetTask.ToCoroutine(async () =>
         {
@@ -429,10 +439,11 @@ namespace Velvet.Tests
             // Assert — the first term keeps the reading load-bearing: with fewer than two calls in flight
             // the disposal order this pins is never exercised.
             Assert.That((bothStarted, thrown), Is.EqualTo((2, (Exception?)null)));
-            await firstCall;
-            await secondCall;
+            await Settled(firstCall);
+            await Settled(secondCall);
         });
 
+        // GREEN_ON_BASE(characterization): the base cancels and releases the second source after a throwing callback too; the change only has the trailing awaits tolerate the cancellation they now reject with.
         [UnityTest]
         public IEnumerator Given_TwoMutationsInFlight_When_TheFirstTokensCallbackThrows_Then_TheSecondSourceIsCancelledAndReleased() => VelvetTask.ToCoroutine(async () =>
         {
@@ -469,10 +480,11 @@ namespace Velvet.Tests
                 $"{escaped?.GetType().Name ?? "none"} {secondToken.IsCancellationRequested} {CancellationTokenStateProbe.ReadTokenState(secondToken)}",
                 Is.EqualTo("none True released"),
                 "A cancellation callback belonging to one call must not cost the next call its cancellation or its release");
-            await firstCall;
-            await secondCall;
+            await Settled(firstCall);
+            await Settled(secondCall);
         });
 
+        // GREEN_ON_BASE(characterization): the base unmounts a call in flight without throwing too; the change only has the trailing await tolerate the cancellation it now rejects with.
         [UnityTest]
         public IEnumerator Given_AMutationInFlight_When_TheComponentUnmounts_Then_TheUnmountCompletes() => VelvetTask.ToCoroutine(async () =>
         {
@@ -494,7 +506,7 @@ namespace Velvet.Tests
             // exception out of here aborts the enclosing reconcile, not just this hook.
             Assert.That((startedPending, thrown),
                 Is.EqualTo((MutationStatus.Pending, (Exception?)null)));
-            await inFlight;
+            await Settled(inFlight);
         });
 
         [UnityTest]
@@ -752,6 +764,65 @@ namespace Velvet.Tests
             Assert.That(captured.Status, Is.Not.EqualTo(MutationStatus.Success),
                 "A disposed fiber does not receive a Success state transition");
         });
+
+        // GREEN_ON_BASE(refactor): the base already skips the commit of a failure that lands after the unmount.
+        // The change moves that skip into the shared commit step while running the handlers, and this pins
+        // that the handle stays pending through the move.
+        [UnityTest]
+        public IEnumerator Given_InFlightMutation_When_ComponentUnmountedAndItThenFails_Then_TheHandleIsNotCommitted() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the rejection is carried into the reading: a call that never failed leaves the
+            // handle pending whether or not the failure is committed.
+            var failingException = new InvalidOperationException("simulated");
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "unmount-failure"));
+            var captured = s_captured!;
+            var inflight = captured.MutateAsync(7);
+            Exception? rethrown = null;
+
+            // Act
+            mounted.Dispose();
+            gate.TrySetException(failingException);
+            try { await inflight; } catch (InvalidOperationException caught) { rethrown = caught; }
+
+            // Assert
+            Assert.That((ReferenceEquals(rethrown, failingException), captured.Status),
+                Is.EqualTo((true, MutationStatus.Pending)),
+                "A call that fails after its component unmounted rejects to its caller and writes nothing to the handle");
+        });
+
+        // GREEN_ON_BASE(refactor): the base already re-renders the component when a call's outcome is committed.
+        // The change moves that request into the shared commit step, and this pins that it still reaches the
+        // component after the pending render has been flushed.
+        [UnityTest]
+        public IEnumerator Given_AMutationRenderedPending_When_ItSucceeds_Then_TheComponentRendersTheOutcome() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the pending render is flushed before the call completes, so the render request the
+            // call made when it started cannot be what shows the outcome.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationStatusRender, key: "outcome-render"));
+            var inFlight = s_captured!.MutateAsync(1);
+            mounted.FlushStateForTest();
+            var pendingText = _root.Q<Label>().text;
+
+            // Act
+            gate.TrySetResult(2);
+            await inFlight;
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((pendingText, _root.Q<Label>().text), Is.EqualTo(("Pending", "Success")),
+                "Committing an outcome asks the component for a render");
+        });
+
+        [Component]
+        public static VNode CaptureMutationStatusRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn));
+            return V.Label(text: s_captured.Status.ToString());
+        }
 
         [Component]
         public static VNode CaptureMutationRender()

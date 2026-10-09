@@ -91,7 +91,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   the child stays mounted until the last of those exits completes. A coordinator's exit pose staggers
   its inheriting children's exits with its `StaggerChildrenSec`, `DelayChildrenSec` and `When`,
   numbered as *Orchestration* below numbers a label change. The children of an inner
-  `V.AnimatePresence` are that presence's, as in Framer without `propagate`. `initial: false`
+  `V.AnimatePresence` are that presence's, as in Framer without `propagate`; see *Propagating a removal
+  to an inner presence* below for `propagate: true`. `initial: false`
   suppresses the mount enter of every Motion that mounts under a child the presence's first render
   created, a `V.Portal`'s and a later render's included, for as long as that child stays, as Framer's
   `PresenceChild` keeps the `initial` it was created with; an inner presence's children answer to that
@@ -106,6 +107,45 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 - An `exit` on a Motion outside every `V.AnimatePresence` plays nothing, as in Framer.
 - A `mode:` naming no `AnimatePresenceMode` member is refused at construction: `V.AnimatePresence`
   throws `ArgumentOutOfRangeException`, naming the parameter.
+
+### Propagating a removal to an inner presence
+
+`propagate: true` on an inner `V.AnimatePresence` follows Framer's `propagate`. While the keyed child of the
+enclosing presence that holds it is leaving, the inner presence treats every one of its own children as not
+present and exits them through its own exit path, and the enclosing child stays mounted until those exits have
+completed.
+
+- Each presence owns its own exits. The inner presence's `onExitComplete` runs once, when its own exits have
+  finished, whatever else the enclosing child still waits on. When those were the last thing the enclosing child
+  waited for, the enclosing presence's `onExitComplete` runs first and the inner presence's second, as in Framer,
+  where the inner presence's `safeToRemove()` completes the enclosing child before its own callback runs.
+- A child the inner presence was already exiting is waited for and not exited again. One it removes in the same
+  render keeps the one exit.
+- The nearest enclosing presence decides: a presence between the two that does not propagate stops it, and the
+  enclosing child leaves without waiting. Without `propagate` on the inner presence its children are left as they
+  are when the enclosing child is removed.
+- If the enclosing key returns before the exits end, the inner presence's present children come back, as they do
+  for a cancelled exit. A child the inner presence removed itself stays exiting.
+- An inner presence that stops propagating, or is no longer rendered, while the enclosing child waits on it stops
+  holding that child.
+- A key added to the inner presence while the enclosing child is leaving mounts already leaving, as Framer's
+  `PresenceChild` mounts it with `isPresent=false`: its Motions start at their `initial` pose, with no enter, and
+  play their `exit` from there. The key counts in the enclosing child's wait while the inner presence's exits
+  are running, and the inner presence's `onExitComplete` runs again when it finishes, once the others have.
+- The inner presence is found wherever it sits under the enclosing child: written inline under elements, rendered
+  by a component, at the top of the child, or inside a `V.Portal`, and whether it mounted with the child or in a
+  later render of its own component. When it mounts that way, the nearest enclosing child is the one that
+  counts: the child of the nearest presence its host element or its component sits inside.
+
+```csharp
+V.AnimatePresence(key: "pages", children: new VNode[]
+{
+    V.Div(key: "settings", children: new VNode[]
+    {
+        V.AnimatePresence(key: "tabs", propagate: true, onExitComplete: OnTabsGone, children: tabs),
+    }),
+}),
+```
 
 ### `PopLayout` mode
 
@@ -243,9 +283,9 @@ resolved start described above.
   per-corner spellings.
 - **Spacing-scale lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*`
   … `inset-y-*`) and `basis-*`, from the `--space-*` scale (`p-4`, `w-64`, `-mt-2`), the sizing
-  fractions (`w-1/2`), and the bracket forms. These dirty Yoga layout on every tick — the whole
-  subtree relayouts each frame for the length of the play — so reach for a transform channel first
-  and animate a length only where the reflow is the point.
+  and position fractions (`w-1/2`, `left-1/2`), and the bracket forms. These dirty Yoga layout on
+  every tick — the whole subtree relayouts each frame for the length of the play — so reach for a
+  transform channel first and animate a length only where the reflow is the point.
 - **Border widths,** from the `border-*` width utilities (`border`, `border-2`, `border-t-4`) and
   the bracket forms. These read a **separate literal scale mirroring the stylesheet's own
   declarations**, not the spacing scale — `border-2` is 2px, not `--space-2`. Same per-tick layout
@@ -424,27 +464,51 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 
 ## Looping utilities (`animate-*`)
 
-Five class-driven loops, each infinite, each driven from a panel-root tick. `animate-pulse` and
-`animate-spin` take Tailwind's durations and timing functions: the pulse reaches half opacity at
-mid-loop with each half eased by `cubic-bezier(0.4, 0, 0.6, 1)`, and the spin turns linearly.
+Seven class-driven loops, each infinite, each driven from a panel-root tick. `animate-pulse`, `animate-spin`,
+`animate-ping` and `animate-bounce` take Tailwind's durations, keyframes and timing functions: each keyframe
+interval is eased by the timing function its keyframe names, as a CSS animation applies it.
 
 | class | what moves | default loop |
 |---|---|---|
 | `animate-gradient` | pans a baked gradient back and forth along its axis | 3s |
 | `animate-shimmer` | sweeps the gradient one way across the box | 1.5s |
 | `animate-hue` | rotates the hue-rotate filter angle a full turn | 4s |
-| `animate-pulse` | oscillates opacity between full and half | 2s |
-| `animate-spin` | rotates a full turn, linearly | 1s |
+| `animate-pulse` | oscillates opacity from the element's own to half and back, each half on `cubic-bezier(0.4, 0, 0.6, 1)` | 2s |
+| `animate-spin` | rotates a full turn on from the element's own rotation, linearly | 1s |
+| `animate-ping` | scales to twice the element's own scale while fading to nothing by three quarters of the loop, on `cubic-bezier(0, 0, 0.2, 1)`, then holds | 1s |
+| `animate-bounce` | lifts the element a quarter of its height and drops it back, the lift easing in on `cubic-bezier(0.8, 0, 1, 1)` and out on `cubic-bezier(0, 0, 0.2, 1)` | 1s |
 
 `animate-none` cancels, and the last *recognised* `animate-*` in the class list wins — an unclaimed
 name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
-`animate-hue-[5s]`. The two gradient modes are inert without a `bg-gradient-*` to pan.
+`animate-hue-[5s]`. The two gradient modes are inert without a gradient
+([styling-gradients.md](styling-gradients.md)) to pan.
+
+Tailwind's keyframes leave some frames unnamed, and a CSS animation fills those from the element's own value.
+The loops do the same, so `opacity-75 animate-pulse` runs between 0.75 and 0.5, `rotate-45 animate-spin` turns on
+from 45 degrees, `scale-50 animate-ping` starts at half size and grows to full size, and
+`translate-y-[10px] animate-bounce` bounces about that offset. The element's own value is what its classes give
+the slot, a named class or an arbitrary one, or a value written into the slot by anything other than the loop or a
+Motion play driving that slot. Class values are re-read whenever the element's class list changes, which is how
+`hover:` and `dark:` variants reach them, and when something else that decides which rules match the element
+changes: a pointer, focus or press event on it or beneath it, a theme switch, a change to its `enabled` prop or an
+ancestor's, or a class change on an ancestor made through a render. A class added to an ancestor imperatively, and
+an enabled state set with `SetEnabled` outside the prop, are not seen until the next of those. A bounce is measured in the element's own pixels, so it moves nothing until the element has
+a laid-out height. The keyframes' `transform` applies beneath the `scale` and `rotate` properties, so a bounce on a
+scaled or turned element is scaled and turned with it. `animate-spin` on an element with an uneven `scale` does
+not carry it: CSS turns the content beneath the scale and leaves the squash axes where they are,
+while a single `rotate` and `scale` turn the squash axes with the element. An even scale is exact.
+
+A layoutId move on an element with a running `animate-bounce` or `animate-ping` composes with it as CSS composes a
+layout animation with a keyframe one: the move writes the element's translate or scale, and the bounce's lift or
+the ping's growth is added to its frame, so the element keeps bouncing or pinging while it moves.
 
 Each mode owns its style slot while it runs, as a CSS animation outranks an element's ordinary
 declarations: the gradient pair owns background position, size and repeat, `animate-hue` owns the
-filter, `animate-pulse` owns opacity, and `animate-spin` owns rotate. A static utility writing that
-slot is shadowed, and so are a `transition-filter` tween and a `Spring` or `Bezier` Motion `rotate`
-channel driving it — the mode's frame is written over each of their writes. A `Spring` or `Bezier`
+filter, `animate-pulse` owns opacity, `animate-spin` owns rotate, `animate-ping` owns opacity and scale, and
+`animate-bounce` owns translate. A static utility writing that
+slot supplies the element's own value rather than showing, and a `transition-filter` tween and a `Spring` or
+`Bezier` Motion channel on a rotate, scale or translate slot driving it are shadowed — the mode's frame is written
+over each of their writes and the channel's value is not taken for the element's own. A `Spring` or `Bezier`
 Motion `opacity` channel is the exception: it shows over `animate-pulse` for as long as its play drives
 it, and the pulse takes the slot back when the play lets go, as Framer Motion runs opacity on the
 browser's own animation engine, whose animations outrank a CSS animation. Detaching restores the slot
@@ -490,6 +554,21 @@ A step is exactly one of:
   its own.
 - **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances
   immediately (never holds the cursor).
+- **`AnimationSequenceStep.Await(taskFactory)`** -- calls `taskFactory` on arrival and holds the cursor
+  until the `VelvetTask` it returns settles: the `await` a `useAnimate` caller writes between two
+  `animate()` calls, for a wait no clock produces -- a server response, a tap, a dialogue advance. A task
+  that settles while the sequence is paused is read once it resumes, so no step after the await commits
+  in between. A task that has already settled when the factory returns is crossed in the same frame, as a
+  `Call` step is; otherwise the step after it commits on the first frame after the settle, and its hold
+  counts that frame's time and none from before it, the wait's included. A task that faults, or cancels on its
+  own, throws out of that frame as a throwing `Call` callback does, reaching the nearest error boundary,
+  and the cursor moves on from the next frame. The factory receives a `CancellationToken`, which a
+  restart, a `deps` change or unmount cancels when it leaves the step with the task still pending; a
+  restart or `deps` change cancels it only after reseeding the sequence, so a token callback that throws
+  does so out of the restart with the sequence already reseeded. A task the sequence has left
+  advances nothing, and a fault it ends in is logged, as `Forget()` logs one. Under the Editor's StrictMode
+  mount double-invoke an `Await` at step 0 calls its factory twice, the first call's token cancelled when
+  its task is still pending.
 
 **"One at a time" needs no separate multi-target API.** Descendant Motions naming no label of their own inherit
 the coordinator's label exactly as they already do for any hand-toggled label change (see "Label
@@ -506,10 +585,56 @@ restarts it on every render, so a sequence that plays once per mount passes `Arr
 `useEffect(fn, [])` would. `controls.Restart()` returns to step 0 and re-commits its effect (including
 firing a `Call` step 0's callback again) without implicitly resuming a paused sequence.
 
+`controls` drive the sequence's own timeline -- its step cursor and its clock -- and not a Motion play a
+step's label has already started: `controls.Pause()` freezes the cursor, and the transition the current
+step handed out runs on to its end. The handle also carries `controls.TimeSec`, the Web Animations API's
+`currentTime` and Framer Motion's `time`, read-only: seconds into the timeline, counting each hold at its
+authored length. As `currentTime` does, it keeps growing across a loop's passes rather than starting from 0
+on each; a completed sequence reads its full length, and a reseed reads 0. Under `iterations` it counts a
+`repeatDelaySec` gap as it passes, as Framer Motion's `time` counts `repeatDelay`, so the timeline of `n` passes
+of length `L` ends at `n * L + (n - 1) * repeatDelaySec`, with no gap after the last pass. It is read live from
+the handle, where `state` is a per-render snapshot.
+
+A cancel, a playback rate (`playbackRate`, Framer Motion's `speed`), seek (a settable `time`) and reverse
+(`reverse()`, a negative `playbackRate`) are not offered. Each acts on the animation already running, and the
+sequence only hands a label's Motion its transition: it holds no handle on the play that starts, so none of
+them could reach it, as `Pause` cannot. A timeline of labels also cannot sample the interpolated motion
+between two of them, and running it backwards across a `Call` step has no settled answer to whether the
+callback fires again. To reverse a transition a label started, flip that Motion's `animate` label back: see
+"Springs" for what an interrupted spring keeps.
+
 Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
 outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`
 relative-offset DSL) -- steps are a strict FIFO queue; two independently-timed tracks need two separate
 `UseAnimationSequence` coordinators.
+
+**A fixed number of passes** is the overload taking `iterations` in place of `loop` -- the Web Animations
+API's `iterations` and CSS's `animation-iteration-count`, so the count includes the first pass and Framer
+Motion's `repeat: 2` is `iterations: 3`. Each pass after the first starts again at step 0, re-committing
+its effect as `loop` does, and `IsComplete` latches once the last pass's last hold elapses, leaving the
+cursor on the last step. `iterations: 0` plays no pass: no step commits, no `Call` fires, and the sequence
+reads complete from its mount render on. A negative count throws `ArgumentOutOfRangeException`. A restart
+plays every pass again.
+
+A count changed by a re-render applies to the sequence as it plays, as the Web Animations API's
+`updateTiming` does: a count no higher than the passes already finished completes the sequence at the next
+frame with the end state a normal completion holds, as `animation-fill-mode: forwards` shows the end keyframe: the
+last step current and its label and transition adopted, with no skipped `Call` callback run. A count of zero commits
+nothing: a mount at zero commits no step, and a count lowered to zero leaves the cursor and label as they are. A count above the finished passes resumes a completed sequence at the
+next pass's step 0, after the `repeatDelaySec` gap that follows any pass already played.
+
+`repeatDelaySec` is Framer Motion's `repeatDelay`: seconds the cursor waits on the last step between one
+pass and the next, never after the last, so it does not delay completion. It throws
+`ArgumentOutOfRangeException` when negative or not finite. Under `loop`, a trailing `Wait` step is the same
+gap, since no completion waits behind it.
+
+A finished sequence keeps its last step current, as `animation-fill-mode: forwards` would, while `iterations: 0`
+commits nothing, as the default `animation-fill-mode: none` would. Where this differs from the Web Animations API
+and CSS: the count is a whole number, where both accept a fraction such as `2.5`.
+
+An alternate direction (CSS's `animation-direction: alternate`, Framer Motion's `repeatType: "reverse"`)
+is not offered: playing a `Call` step backwards has no settled answer to whether its callback fires
+again, and a `To` step played backwards would need the label before it rather than its own.
 
 ## Transition semantics: a node default a pose overrides
 

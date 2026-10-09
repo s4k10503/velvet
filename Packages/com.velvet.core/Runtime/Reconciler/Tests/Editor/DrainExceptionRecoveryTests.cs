@@ -176,7 +176,7 @@ namespace Velvet.Tests
         {
             try
             {
-                scheduler.DrainImmediateForTest();
+                scheduler.RunImmediateCallbackForTest();
             }
             catch (InvalidOperationException thrown) when (thrown.Message == HandleFailure)
             {

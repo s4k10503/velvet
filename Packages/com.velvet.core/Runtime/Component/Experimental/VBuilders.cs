@@ -274,6 +274,15 @@ namespace Velvet.Experimental
         /// and on a later render taking the flag off.</summary>
         public bool? IsDelayed { get; set; }
 
+        /// <summary>When true, the field is multi-line.</summary>
+        public bool? Multiline { get; set; }
+
+        /// <summary>Written to the field's keyboardType (HTML <c>inputmode</c>).</summary>
+        public UnityEngine.TouchScreenKeyboardType? KeyboardType { get; set; }
+
+        /// <summary>Written to the field's autoCorrection (HTML <c>autocorrect</c>).</summary>
+        public bool? AutoCorrection { get; set; }
+
         /// <summary>When false, disables user input.</summary>
         public bool? Enabled { get; set; }
 
@@ -284,7 +293,8 @@ namespace Velvet.Experimental
         public override VNode Build() =>
             V.TextField(className: Class, value: Value, onValueChanged: OnChange, key: Key, name: Name,
                 label: Label, isPasswordField: IsPasswordField, placeholder: Placeholder, maxLength: MaxLength,
-                isReadOnly: IsReadOnly, isDelayed: IsDelayed, enabled: Enabled);
+                isReadOnly: IsReadOnly, isDelayed: IsDelayed, multiline: Multiline, keyboardType: KeyboardType,
+                autoCorrection: AutoCorrection, enabled: Enabled);
     }
 
     /// <summary>
@@ -308,13 +318,23 @@ namespace Velvet.Experimental
         /// <summary>When false, disables user interaction.</summary>
         public bool? Enabled { get; set; }
 
+        /// <summary>Axis the slider runs along.</summary>
+        public UnityEngine.UIElements.SliderDirection? Direction { get; set; }
+
+        /// <summary>When true, swaps the ends the low and high values sit at.</summary>
+        public bool? Inverted { get; set; }
+
+        /// <summary>Distance one arrow key moves the value; null is 1.</summary>
+        public float? Step { get; set; }
+
         /// <param name="className">Utility class string applied to the slider.</param>
         public VSlider(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>
             V.Slider(className: Class, value: Value, lowValue: LowValue, highValue: HighValue,
-                onValueChanged: OnChange, key: Key, name: Name, enabled: Enabled);
+                onValueChanged: OnChange, key: Key, name: Name, enabled: Enabled, direction: Direction,
+                inverted: Inverted, step: Step);
     }
 
     /// <summary>

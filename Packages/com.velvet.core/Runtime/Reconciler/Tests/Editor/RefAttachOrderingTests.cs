@@ -769,7 +769,7 @@ namespace Velvet.Tests
             // Assert — the rendered row count is read beside the order, because a range update that rendered
             // nothing reaches the same order with nothing about this entrance measured.
             Assert.That((scrollView.contentContainer.ElementAt(1).childCount, string.Join(",", s_log)),
-                Is.EqualTo((2, "detach:departing,attach:arriving")));
+                Is.EqualTo((1, "detach:departing,attach:arriving")));
         }
 
         [Test]

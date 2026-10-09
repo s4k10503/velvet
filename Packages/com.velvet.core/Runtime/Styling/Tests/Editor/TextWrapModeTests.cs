@@ -8,8 +8,8 @@ namespace Velvet.Tests
     /// <summary>
     /// text-balance and text-pretty set CSS's wrap mode and leave the collapse to what the text inherits:
     /// the leaf's inline white-space carries the wrapping counterpart of the nearest white-space class above
-    /// the ask, and a white-space class nearer than the ask decides on its own. The text-balance manipulator
-    /// runs when the later of the two classes is text-balance. The inline write is read directly, as
+    /// the ask, and a white-space class nearer than the ask decides on its own. A leaf under either class
+    /// gets the line-breaking manipulator, with the style of the later of them. The inline write is read directly, as
     /// <see cref="StyleTextEffectPanelTests"/> reads pre-line's, so no layout pass is needed.
     /// GWT, one assert per case.
     /// </summary>
@@ -200,8 +200,9 @@ namespace Velvet.Tests
             Assert.That(NarrowingOf(scope, label), Is.EqualTo("Balance"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already ran the later class's style; only the name moved with the behaviour.
         [Test]
-        public void Given_ADarkTextPrettyOverTextBalance_When_TheThemeTurnsDark_Then_TheBoxIsNarrowedPretty()
+        public void Given_ADarkTextPrettyOverTextBalance_When_TheThemeTurnsDark_Then_TheLeafIsBrokenPretty()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -215,8 +216,7 @@ namespace Velvet.Tests
             Assert.That((before, NarrowingOf(scope, label)), Is.EqualTo(("Balance", "Pretty")));
         }
 
-        // Which narrowing the label's manipulator runs, or "none" without one. A manipulator without the
-        // style field is a balancing one, the only kind there was before text-pretty narrowed.
+        // Which line breaking the label's manipulator runs, or "none" without one.
         private static string NarrowingOf(ReconcilerScope scope, VisualElement element)
         {
             if (!scope.Reconciler.Context.TextBalanceManipulators.TryGetValue(element, out var manipulator))
@@ -225,7 +225,7 @@ namespace Velvet.Tests
             }
             var field = typeof(StyleTextBalanceManipulator).GetField("_style",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            return field?.GetValue(manipulator)?.ToString() ?? "Balance";
+            return field!.GetValue(manipulator)!.ToString();
         }
 
         [Test]

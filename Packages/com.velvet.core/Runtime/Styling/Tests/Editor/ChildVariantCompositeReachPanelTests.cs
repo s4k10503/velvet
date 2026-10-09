@@ -72,5 +72,16 @@ namespace Velvet.Tests
                     payloaded.resolvedStyle.backgroundColor == bare.resolvedStyle.backgroundColor),
                 Is.EqualTo((true, false)));
         }
+
+        [Test]
+        public void Given_ABackgroundClassOnTheField_When_TheThemeDressesTheInput_Then_TheInputBoxIsPainted()
+        {
+            // Arrange / Act — the field's own utility, with no child-combinator token, against the bare field's
+            // input in the same tree.
+            var (painted, bare) = MountPair("bg-red-500");
+
+            // Assert — the box the text is typed into resolves a different background from the themed one.
+            Assert.That(painted.resolvedStyle.backgroundColor == bare.resolvedStyle.backgroundColor, Is.False);
+        }
     }
 }

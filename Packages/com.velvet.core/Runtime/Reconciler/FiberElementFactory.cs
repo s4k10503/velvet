@@ -265,14 +265,14 @@ namespace Velvet
                 FiberPropApplier.ApplyDelegatesFocus(element, props.DelegatesFocus);
             }
 
+            if (props.Slider != null)
+            {
+                FiberPropApplier.ApplySlider(element, null, props.Slider, props.FieldValue);
+            }
+
             if (props.FieldValue != null)
             {
                 FiberPropApplier.ApplyFieldValue(element, props.FieldValue);
-            }
-
-            if (props.Slider != null)
-            {
-                FiberPropApplier.ApplySlider(element, props.Slider);
             }
 
             if (props.ScrollView != null)

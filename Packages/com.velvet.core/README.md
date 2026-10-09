@@ -121,7 +121,7 @@ A representative sample — see
 [Documentation~/react-migration.md §1](./Documentation~/react-migration.md#1-hooks-mapping) for
 the complete hook-by-hook mapping (all of `UseReducer` / `UseLayoutEffect` / `UseInsertionEffect` /
 `UseMemo` / `UseTransition` / `UseDeferredValue` / `UseOptimistic` / `UseId` /
-`UseImperativeHandle`, plus semantic-difference notes):
+`UseImperativeHandle` / `UseSyncExternalStore`, plus semantic-difference notes):
 
 | React | Velvet |
 |-------|--------|

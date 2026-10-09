@@ -9,7 +9,7 @@ namespace Velvet.TestUtilities
     /// callback that never fires in EditMode. Reached by reflection because production types carry no
     /// test-only members.
     /// <para>
-    /// Both methods throw <see cref="MissingMethodException"/> when the drain they reflect for is gone.
+    /// Each method throws <see cref="MissingMethodException"/> when the method it reflects for is gone.
     /// Throwing is the point: a caller drains to observe the re-render a queued fiber produces, so a drain
     /// that quietly reached nothing would leave it asserting on the tree as it stood before the update.
     /// </para>
@@ -18,14 +18,20 @@ namespace Velvet.TestUtilities
     {
         private const string DrainImmediateMethodName = "DrainImmediate";
         private const string DrainDelayedMethodName = "DrainDelayed";
+        private const string RunImmediateCallbackMethodName = "RunImmediateCallback";
 
         /// <summary>Drains the Normal / Urgent tier.</summary>
-        // Bypasses: the panel scheduler callback: production registers DrainImmediate with _anchor.schedule.Execute and never calls it.
+        // Bypasses: the panel scheduler callback: production registers RunImmediateCallback, which also retires the tier's registration and marks a scheduler pass; this drains as FlushImmediate and the Transition tier's drain do, doing neither (RunImmediateCallbackForTest runs the callback itself).
         internal static void DrainImmediateForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, DrainImmediateMethodName);
 
-        /// <summary>Drains the Transition tier.</summary>
-        // Bypasses: the panel scheduler callback and its delay: production registers DrainDelayed with schedule.Execute(...).ExecuteLater(delayMs).
+        /// <summary>Runs the callback the Normal / Urgent tier registers with the panel scheduler.</summary>
+        // Bypasses: the panel scheduler that decides when it runs.
+        internal static void RunImmediateCallbackForTest(this FiberBatchScheduler scheduler)
+            => Drain(scheduler, RunImmediateCallbackMethodName);
+
+        /// <summary>Drains every Transition-tier entry, after whatever the Normal / Urgent tier still holds.</summary>
+        // Bypasses: the panel callbacks and their admission: a panel callback drains only the entries waiting for its own registration; VelvetPreviewHost.Settle is the production caller that drains the whole tier this way.
         internal static void DrainDelayedForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, DrainDelayedMethodName);
 

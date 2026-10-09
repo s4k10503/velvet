@@ -75,9 +75,11 @@
 [Velvet] ctor Velvet.MotionVariant.ctor(System.String?, Velvet.StyleTransitionConfig?): System.Void
 [Velvet] ctor Velvet.MountOptions.ctor(System.Action`2[System.Exception, Velvet.ErrorInfo]?): System.Void
 [Velvet] ctor Velvet.MutableRef`1[T].ctor(T): System.Void
+[Velvet] ctor Velvet.MutateOptions`2[TVariables, TData].ctor(): System.Void
 [Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action?, System.Action`1[System.Exception]?): System.Void
 [Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
 [Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`3[TVariables, TData, TContext].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Func`2[TVariables, TContext]?, System.Action`3[TData, TVariables, TContext?]?, System.Action`3[System.Exception, TVariables, TContext?]?, System.Action`4[TData?, System.Exception?, TVariables, TContext?]?): System.Void
 [Velvet] ctor Velvet.MutationResult`2[TVariables, TData].ctor(): System.Void
 [Velvet] ctor Velvet.NullStoreLogger.ctor(): System.Void
 [Velvet] ctor Velvet.ParticlesElement.ctor(): System.Void
@@ -88,6 +90,10 @@
 [Velvet] ctor Velvet.PointerMoveBinding.ctor(): System.Void
 [Velvet] ctor Velvet.PointerUpBinding.ctor(): System.Void
 [Velvet] ctor Velvet.PortalNode.ctor(): System.Void
+[Velvet] ctor Velvet.QueryClient.ctor(Velvet.QueryClientOptions?): System.Void
+[Velvet] ctor Velvet.QueryClientOptions.ctor(): System.Void
+[Velvet] ctor Velvet.QueryKey.ctor(System.Object?[]): System.Void
+[Velvet] ctor Velvet.QueryOptions`1[T].ctor(Velvet.QueryKey, System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]]): System.Void
 [Velvet] ctor Velvet.Ref`1[T].ctor(): System.Void
 [Velvet] ctor Velvet.ResolvedFont.ctor(UnityEngine.TextCore.Text.FontAsset?, System.Boolean, System.Boolean): System.Void
 [Velvet] ctor Velvet.RouteActionContext.ctor(): System.Void
@@ -103,7 +109,7 @@
 [Velvet] ctor Velvet.SceneViewSettings.ctor(UnityEngine.Camera?, System.Single): System.Void
 [Velvet] ctor Velvet.ScrollViewSettings.ctor(System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior]): System.Void
 [Velvet] ctor Velvet.SearchParams.ctor(): System.Void
-[Velvet] ctor Velvet.SliderSettings.ctor(System.Nullable`1[System.Single], System.Nullable`1[System.Single]): System.Void
+[Velvet] ctor Velvet.SliderSettings.ctor(System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean], System.Nullable`1[System.Single]): System.Void
 [Velvet] ctor Velvet.StoreLogger.ctor(): System.Void
 [Velvet] ctor Velvet.StyleOverrides.ctor(): System.Void
 [Velvet] ctor Velvet.StylePropertyTransition.ctor(System.String, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single]): System.Void
@@ -188,6 +194,22 @@
 [Velvet] field Velvet.PanelFocusOrder.Isolated: Velvet.PanelFocusOrder
 [Velvet] field Velvet.PlayTrigger.Manual: Velvet.PlayTrigger
 [Velvet] field Velvet.PlayTrigger.Mount: Velvet.PlayTrigger
+[Velvet] field Velvet.QueryClientContext.Ref: Velvet.ComponentContext`1[Velvet.QueryClient?]
+[Velvet] field Velvet.QueryProperties.All: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.Data: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.Error: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.FailureCount: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.FailureReason: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsError: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsFetching: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsPending: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsStale: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsSuccess: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.None: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.Status: Velvet.QueryProperties
+[Velvet] field Velvet.QueryStatus.Error: Velvet.QueryStatus
+[Velvet] field Velvet.QueryStatus.Pending: Velvet.QueryStatus
+[Velvet] field Velvet.QueryStatus.Success: Velvet.QueryStatus
 [Velvet] field Velvet.ResolvedFont.Asset: UnityEngine.TextCore.Text.FontAsset?
 [Velvet] field Velvet.ResolvedFont.HasAsset: System.Boolean
 [Velvet] field Velvet.ResolvedFont.ResidualBold: System.Boolean
@@ -278,7 +300,11 @@
 [Velvet] field Velvet.VirtualListAlign.End: Velvet.VirtualListAlign
 [Velvet] field Velvet.VirtualListAlign.Smart: Velvet.VirtualListAlign
 [Velvet] field Velvet.VirtualListAlign.Start: Velvet.VirtualListAlign
+[Velvet] field Velvet.VirtualListScrollBehavior.Auto: Velvet.VirtualListScrollBehavior
+[Velvet] field Velvet.VirtualListScrollBehavior.Instant: Velvet.VirtualListScrollBehavior
+[Velvet] field Velvet.VirtualListScrollBehavior.Smooth: Velvet.VirtualListScrollBehavior
 [Velvet] method Velvet.AnimatePresenceNode.StaggerDelaySec(System.Int32, System.Int32): System.Single
+[Velvet] method Velvet.AnimationSequenceStep.Await(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.Call(System.Action): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.To(System.String, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single]): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.Wait(System.Single): Velvet.AnimationSequenceStep
@@ -319,6 +345,7 @@
 [Velvet] method Velvet.Hooks.TryGetMemoizedVNode(System.RuntimeMethodHandle, System.Object?[]?, System.Int32&, Velvet.VNode?&): System.Boolean
 [Velvet] method Velvet.Hooks.UseActionData`1(): T?
 [Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Object?[]?, System.Boolean, System.Boolean): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
+[Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Object?[]?, System.Int32, System.Boolean, System.Single): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
 [Velvet] method Velvet.Hooks.UseAsyncError(): System.Exception?
 [Velvet] method Velvet.Hooks.UseAsyncValue`1(): T?
 [Velvet] method Velvet.Hooks.UseBlocker(System.Boolean): Velvet.RouteBlockerState
@@ -365,11 +392,13 @@
 [Velvet] method Velvet.Hooks.UseMutation(Velvet.MutationOptions): Velvet.MutationResult`2[Velvet.Unit, Velvet.Unit]
 [Velvet] method Velvet.Hooks.UseMutation`1(Velvet.MutationOptions`1[TVariables]): Velvet.MutationResult`2[TVariables, Velvet.Unit]
 [Velvet] method Velvet.Hooks.UseMutation`2(Velvet.MutationOptions`2[TVariables, TData]): Velvet.MutationResult`2[TVariables, TData]
+[Velvet] method Velvet.Hooks.UseMutation`3(Velvet.MutationOptions`3[TVariables, TData, TContext]): Velvet.MutationResult`2[TVariables, TData]
 [Velvet] method Velvet.Hooks.UseNavigate(System.Boolean): System.Func`2[System.String, Velvet.VelvetTask`1[Velvet.NavigationResult]]
 [Velvet] method Velvet.Hooks.UseNavigation(): Velvet.NavigationState
 [Velvet] method Velvet.Hooks.UseOptimistic`2(TState, System.Func`3[TState, TAction, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseOutletContext`1(): T?
 [Velvet] method Velvet.Hooks.UseParams(): System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
+[Velvet] method Velvet.Hooks.UseQuery`1(Velvet.QueryOptions`1[T], Velvet.QueryClient?): Velvet.QueryResult`1[T]
 [Velvet] method Velvet.Hooks.UseReducer`2(System.Func`3[TState, TAction, TState], TState): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseReducer`3(System.Func`3[TState, TAction, TState], TArg, System.Func`2[TArg, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseRef`1(): Velvet.Ref`1[T]
@@ -381,6 +410,7 @@
 [Velvet] method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 [Velvet] method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]?): TSel
 [Velvet] method Velvet.Hooks.UseSubmit(): Velvet.SubmitFunction
+[Velvet] method Velvet.Hooks.UseSyncExternalStore`1(System.Func`2[System.Action, System.Action], System.Func`1[T]): T
 [Velvet] method Velvet.Hooks.UseTransition(): System.ValueTuple`2[System.Boolean, Velvet.TransitionStarter]
 [Velvet] method Velvet.Hooks.Use`1(System.Func`1[Velvet.VelvetTask`1[T]], System.Object?): T
 [Velvet] method Velvet.Hooks.Use`1(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]], System.Object?): T
@@ -394,15 +424,26 @@
 [Velvet] method Velvet.IStoreWriter`1[TState].SetState(System.Func`2[TState, TState]): System.Boolean
 [Velvet] method Velvet.MountedTree.Dispose(): System.Void
 [Velvet] method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData]): Velvet.VelvetTask`1[TData]
+[Velvet] method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData], Velvet.MutateOptions`2[Velvet.Unit, TData]?): Velvet.VelvetTask`1[TData]
 [Velvet] method Velvet.MutationResultExtensions.Mutate`1(Velvet.MutationResult`2[Velvet.Unit, TData]): System.Void
+[Velvet] method Velvet.MutationResultExtensions.Mutate`1(Velvet.MutationResult`2[Velvet.Unit, TData], Velvet.MutateOptions`2[Velvet.Unit, TData]?): System.Void
 [Velvet] method Velvet.MutationResult`2[TVariables, TData].Mutate(TVariables): System.Void
+[Velvet] method Velvet.MutationResult`2[TVariables, TData].Mutate(TVariables, Velvet.MutateOptions`2[TVariables, TData]?): System.Void
 [Velvet] method Velvet.MutationResult`2[TVariables, TData].MutateAsync(TVariables): Velvet.VelvetTask`1[TData]
+[Velvet] method Velvet.MutationResult`2[TVariables, TData].MutateAsync(TVariables, Velvet.MutateOptions`2[TVariables, TData]?): Velvet.VelvetTask`1[TData]
 [Velvet] method Velvet.MutationResult`2[TVariables, TData].Reset(): System.Void
 [Velvet] method Velvet.NullStoreLogger.Log(System.String): System.Void
 [Velvet] method Velvet.NullStoreLogger.LogError(System.String): System.Void
 [Velvet] method Velvet.NullStoreLogger.LogWarning(System.String): System.Void
 [Velvet] method Velvet.ParticlesElement.Play(): System.Void
 [Velvet] method Velvet.ParticlesElement.Stop(): System.Void
+[Velvet] method Velvet.QueryClient.Clear(): System.Void
+[Velvet] method Velvet.QueryClient.InvalidateQueries(Velvet.QueryKey?): System.Void
+[Velvet] method Velvet.QueryKey.Equals(System.Object?): System.Boolean
+[Velvet] method Velvet.QueryKey.Equals(Velvet.QueryKey?): System.Boolean
+[Velvet] method Velvet.QueryKey.GetHashCode(): System.Int32
+[Velvet] method Velvet.QueryKey.ToString(): System.String
+[Velvet] method Velvet.QueryResult`1[T].Refetch(): System.Void
 [Velvet] method Velvet.Ref`1[T].Set(T?): System.Void
 [Velvet] method Velvet.RouteBlockerManager.Register(System.Func`2[Velvet.BlockerFunctionArgs, System.Boolean], Velvet.RouteBlockerState): System.IDisposable
 [Velvet] method Velvet.RouteTree.Match(System.String): System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]?
@@ -420,6 +461,7 @@
 [Velvet] method Velvet.SearchParams.Has(System.String): System.Boolean
 [Velvet] method Velvet.SearchParamsSetter.Invoke(System.Func`2[Velvet.ISearchParams, Velvet.ISearchParams], Velvet.NavigationMode): System.Void
 [Velvet] method Velvet.SearchParamsSetter.Invoke(Velvet.ISearchParams, Velvet.NavigationMode): System.Void
+[Velvet] method Velvet.SliderSettings.Deconstruct(System.Nullable`1[System.Single]&, System.Nullable`1[System.Single]&): System.Void
 [Velvet] method Velvet.StateUpdater`1[T].Equals(System.Object?): System.Boolean
 [Velvet] method Velvet.StateUpdater`1[T].Equals(Velvet.StateUpdater`1[T]): System.Boolean
 [Velvet] method Velvet.StateUpdater`1[T].GetHashCode(): System.Int32
@@ -473,7 +515,7 @@
 [Velvet] method Velvet.Unit.GetHashCode(): System.Int32
 [Velvet] method Velvet.Unit.ToString(): System.String
 [Velvet] method Velvet.V.Anchored(UnityEngine.Transform?, UnityEngine.Camera?, System.Nullable`1[UnityEngine.Vector2], System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single], System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
-[Velvet] method Velvet.V.AnimatePresence(Velvet.VNode?[]?, System.String?, System.Boolean, System.Single, System.Single, System.Int32, Velvet.AnimatePresenceMode, System.Action?): Velvet.AnimatePresenceNode
+[Velvet] method Velvet.V.AnimatePresence(Velvet.VNode?[]?, System.String?, System.Boolean, System.Single, System.Single, System.Int32, Velvet.AnimatePresenceMode, System.Action?, System.Boolean): Velvet.AnimatePresenceNode
 [Velvet] method Velvet.V.Await`1(Velvet.Deferred`1[T], System.Func`2[T, Velvet.VNode?], Velvet.VNode?, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Await`1(Velvet.Deferred`1[T], Velvet.VNode, Velvet.VNode?, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Button(System.String, Velvet.VNode?[]): Velvet.ElementNode
@@ -543,12 +585,14 @@
 [Velvet] method Velvet.V.SceneView(UnityEngine.Camera?, System.String?, System.String?, System.String?, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.ScrollView(System.String, Velvet.VNode?[]): Velvet.ElementNode
 [Velvet] method Velvet.V.ScrollView(System.String?, System.String?, System.String?, System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior], System.Action`1[UnityEngine.UIElements.VisualElement]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
-[Velvet] method Velvet.V.Slider(System.String?, System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Action`1[System.Single]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Slider(System.String?, System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Action`1[System.Single]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean], System.Nullable`1[System.Single]): Velvet.ElementNode
 [Velvet] method Velvet.V.Suspense(Velvet.VNode?, Velvet.VNode?[], System.String?): Velvet.SuspenseNode
 [Velvet] method Velvet.V.Text(System.String?): Velvet.TextNode
-[Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean]): Velvet.ElementNode
+[Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[UnityEngine.TouchScreenKeyboardType], System.Nullable`1[System.Boolean]): Velvet.ElementNode
 [Velvet] method Velvet.V.Toggle(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[System.Int32, System.Single], System.Func`2[T, Velvet.VNode], System.Boolean, System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
 [Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[System.Int32, System.Single], System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
+[Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Single, System.Func`2[T, Velvet.VNode], System.Boolean, System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
 [Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Single, System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
 [Velvet] method Velvet.V.When(System.Boolean, System.Func`1[Velvet.VNode]?): Velvet.VNode?
 [Velvet] method Velvet.V.WorldSpace(UnityEngine.Vector3, System.Nullable`1[UnityEngine.Quaternion], System.Nullable`1[UnityEngine.Vector2], Velvet.VNode?[]?, System.String?, Velvet.PanelFocusOrder): Velvet.WorldSpaceNode
@@ -644,6 +688,7 @@
 [Velvet] method Velvet.VelvetTask`1[T].Preserve(): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.VelvetTask`1[T].SuppressThrowing(): Velvet.VelvetTask+SuppressThrowingAwaitable
 [Velvet] method Velvet.VirtualListHandle.ScrollToItem(System.Int32, Velvet.VirtualListAlign): System.Void
+[Velvet] method Velvet.VirtualListHandle.ScrollToItem(System.Int32, Velvet.VirtualListAlign, Velvet.VirtualListScrollBehavior): System.Void
 [Velvet] method protected Velvet.Experimental.VBuilder.BuildChildren(): Velvet.VNode?[]
 [Velvet] method protected Velvet.Store`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method protected Velvet.Store`1[TState].OnDispose(): System.Void
@@ -661,15 +706,18 @@
 [Velvet] property Velvet.AnimatePresenceNode.Initial: System.Boolean
 [Velvet] property Velvet.AnimatePresenceNode.Mode: Velvet.AnimatePresenceMode
 [Velvet] property Velvet.AnimatePresenceNode.OnExitComplete: System.Action?
+[Velvet] property Velvet.AnimatePresenceNode.Propagate: System.Boolean
 [Velvet] property Velvet.AnimatePresenceNode.StaggerDirection: System.Int32
 [Velvet] property Velvet.AnimatePresenceNode.StaggerSec: System.Single
 [Velvet] property Velvet.AnimationSequenceControls.Pause: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Play: System.Action
 [Velvet] property Velvet.AnimationSequenceControls.Restart: System.Action
+[Velvet] property Velvet.AnimationSequenceControls.TimeSec: System.Single
 [Velvet] property Velvet.AnimationSequenceState.CurrentLabel: System.String?
 [Velvet] property Velvet.AnimationSequenceState.CurrentTransition: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.AnimationSequenceState.IsComplete: System.Boolean
 [Velvet] property Velvet.AnimationSequenceState.StepIndex: System.Int32
+[Velvet] property Velvet.AnimationSequenceStep.AwaitFactory: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]?
 [Velvet] property Velvet.AnimationSequenceStep.Callback: System.Action?
 [Velvet] property Velvet.AnimationSequenceStep.HoldSec: System.Nullable`1[System.Single]
 [Velvet] property Velvet.AnimationSequenceStep.Label: System.String?
@@ -779,17 +827,23 @@
 [Velvet] property Velvet.Experimental.VImage.WhileHoverClass: System.String?
 [Velvet] property Velvet.Experimental.VImage.WhileTapClass: System.String?
 [Velvet] property Velvet.Experimental.VLabel.Text: System.String?
+[Velvet] property Velvet.Experimental.VSlider.Direction: System.Nullable`1[UnityEngine.UIElements.SliderDirection]
 [Velvet] property Velvet.Experimental.VSlider.Enabled: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VSlider.HighValue: System.Nullable`1[System.Single]
+[Velvet] property Velvet.Experimental.VSlider.Inverted: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VSlider.LowValue: System.Nullable`1[System.Single]
 [Velvet] property Velvet.Experimental.VSlider.OnChange: System.Action`1[System.Single]?
+[Velvet] property Velvet.Experimental.VSlider.Step: System.Nullable`1[System.Single]
 [Velvet] property Velvet.Experimental.VSlider.Value: System.Nullable`1[System.Single]
+[Velvet] property Velvet.Experimental.VTextField.AutoCorrection: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.Enabled: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.IsDelayed: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.IsPasswordField: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.IsReadOnly: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VTextField.KeyboardType: System.Nullable`1[UnityEngine.TouchScreenKeyboardType]
 [Velvet] property Velvet.Experimental.VTextField.Label: System.String?
 [Velvet] property Velvet.Experimental.VTextField.MaxLength: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.Experimental.VTextField.Multiline: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.OnChange: System.Action`1[System.String]?
 [Velvet] property Velvet.Experimental.VTextField.Placeholder: System.String?
 [Velvet] property Velvet.Experimental.VTextField.Value: System.String?
@@ -862,15 +916,26 @@
 [Velvet] property Velvet.MotionVariant.Transition: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.MountOptions.OnCaughtError: System.Action`2[System.Exception, Velvet.ErrorInfo]?
 [Velvet] property Velvet.MutableRef`1[T].Current: T
+[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnError: System.Action`3[System.Exception, TVariables, System.Object?]?
+[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSettled: System.Action`4[TData?, System.Exception?, TVariables, System.Object?]?
+[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSuccess: System.Action`3[TData, TVariables, System.Object?]?
 [Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
 [Velvet] property Velvet.MutationOptions.OnError: System.Action`1[System.Exception]?
+[Velvet] property Velvet.MutationOptions.OnSettled: System.Action`1[System.Exception?]?
 [Velvet] property Velvet.MutationOptions.OnSuccess: System.Action?
 [Velvet] property Velvet.MutationOptions`1[TVariables].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask]
 [Velvet] property Velvet.MutationOptions`1[TVariables].OnError: System.Action`2[System.Exception, TVariables]?
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnSettled: System.Action`2[System.Exception?, TVariables]?
 [Velvet] property Velvet.MutationOptions`1[TVariables].OnSuccess: System.Action`1[TVariables]?
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnError: System.Action`2[System.Exception, TVariables]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSettled: System.Action`3[TData?, System.Exception?, TVariables]?
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSuccess: System.Action`2[TData, TVariables]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnError: System.Action`3[System.Exception, TVariables, TContext?]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnMutate: System.Func`2[TVariables, TContext]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSettled: System.Action`4[TData?, System.Exception?, TVariables, TContext?]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSuccess: System.Action`3[TData, TVariables, TContext?]?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Data: TData?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Error: System.Exception?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsError: System.Boolean
@@ -902,6 +967,33 @@
 [Velvet] property Velvet.PortalNode.Layer: System.Nullable`1[Velvet.UILayer]
 [Velvet] property Velvet.PortalNode.TargetElement: UnityEngine.UIElements.VisualElement?
 [Velvet] property Velvet.PortalNode.TargetId: System.String?
+[Velvet] property Velvet.QueryClient.DefaultGcTime: System.TimeSpan
+[Velvet] property Velvet.QueryClient.DefaultRetry: System.Int32
+[Velvet] property Velvet.QueryClient.DefaultRetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]
+[Velvet] property Velvet.QueryClient.DefaultStaleTime: System.TimeSpan
+[Velvet] property Velvet.QueryClientOptions.Clock: System.Func`1[System.TimeSpan]?
+[Velvet] property Velvet.QueryClientOptions.GcTime: System.TimeSpan
+[Velvet] property Velvet.QueryClientOptions.Retry: System.Int32
+[Velvet] property Velvet.QueryClientOptions.RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
+[Velvet] property Velvet.QueryClientOptions.StaleTime: System.TimeSpan
+[Velvet] property Velvet.QueryOptions`1[T].GcTime: System.Nullable`1[System.TimeSpan]
+[Velvet] property Velvet.QueryOptions`1[T].NotifyOnChangeProps: System.Nullable`1[Velvet.QueryProperties]
+[Velvet] property Velvet.QueryOptions`1[T].QueryFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]]
+[Velvet] property Velvet.QueryOptions`1[T].QueryKey: Velvet.QueryKey
+[Velvet] property Velvet.QueryOptions`1[T].Retry: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.QueryOptions`1[T].RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
+[Velvet] property Velvet.QueryOptions`1[T].StaleTime: System.Nullable`1[System.TimeSpan]
+[Velvet] property Velvet.QueryOptions`1[T].StructuralSharing: System.Func`3[T?, T, T]?
+[Velvet] property Velvet.QueryResult`1[T].Data: T?
+[Velvet] property Velvet.QueryResult`1[T].Error: System.Exception?
+[Velvet] property Velvet.QueryResult`1[T].FailureCount: System.Int32
+[Velvet] property Velvet.QueryResult`1[T].FailureReason: System.Exception?
+[Velvet] property Velvet.QueryResult`1[T].IsError: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].IsFetching: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].IsPending: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].IsStale: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].IsSuccess: System.Boolean
+[Velvet] property Velvet.QueryResult`1[T].Status: Velvet.QueryStatus
 [Velvet] property Velvet.Ref`1[T].Current: T?
 [Velvet] property Velvet.Ref`1[T].SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
 [Velvet] property Velvet.RouteActionContext.FormData: System.Object?
@@ -951,8 +1043,11 @@
 [Velvet] property Velvet.SearchParams.Count: System.Int32
 [Velvet] property Velvet.SearchParams.Empty: Velvet.SearchParams
 [Velvet] property Velvet.SearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] property Velvet.SliderSettings.Direction: System.Nullable`1[UnityEngine.UIElements.SliderDirection]
 [Velvet] property Velvet.SliderSettings.HighValue: System.Nullable`1[System.Single]
+[Velvet] property Velvet.SliderSettings.Inverted: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.SliderSettings.LowValue: System.Nullable`1[System.Single]
+[Velvet] property Velvet.SliderSettings.Step: System.Nullable`1[System.Single]
 [Velvet] property Velvet.StoreLogger.Default: Velvet.StoreLogger
 [Velvet] property Velvet.Store`1[TState].Current: TState
 [Velvet] property Velvet.Store`1[TState].InitialState: TState
@@ -990,10 +1085,13 @@
 [Velvet] property Velvet.SubmitOptions.Replace: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.SuspenseNode.Children: Velvet.VNode?[]
 [Velvet] property Velvet.SuspenseNode.Fallback: Velvet.VNode
+[Velvet] property Velvet.TextFieldSettings.AutoCorrection: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.IsDelayed: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.IsPassword: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.IsReadOnly: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.TextFieldSettings.KeyboardType: System.Nullable`1[UnityEngine.TouchScreenKeyboardType]
 [Velvet] property Velvet.TextFieldSettings.MaxLength: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.TextFieldSettings.Multiline: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.Placeholder: System.String?
 [Velvet] property Velvet.TextNode.Text: System.String
 [Velvet] property Velvet.VNode.Key: System.String?
@@ -1030,6 +1128,7 @@
 [Velvet] property Velvet.VelvetTheme.IsDark: System.Boolean
 [Velvet] property Velvet.VirtualListHandle.Element: UnityEngine.UIElements.ScrollView
 [Velvet] property Velvet.VirtualListNode.ClassNames: System.String[]
+[Velvet] property Velvet.VirtualListNode.Horizontal: System.Boolean
 [Velvet] property Velvet.VirtualListNode.ItemHeight: System.Single
 [Velvet] property Velvet.VirtualListNode.ItemHeightAt: System.Func`2[System.Int32, System.Single]?
 [Velvet] property Velvet.VirtualListNode.Items: System.Collections.Generic.IReadOnlyList`1[System.Object?]
@@ -1130,9 +1229,11 @@
 [Velvet] type Velvet.MountOptions
 [Velvet] type Velvet.MountedTree
 [Velvet] type Velvet.MutableRef`1[T]
+[Velvet] type Velvet.MutateOptions`2[TVariables, TData]
 [Velvet] type Velvet.MutationOptions
 [Velvet] type Velvet.MutationOptions`1[TVariables]
 [Velvet] type Velvet.MutationOptions`2[TVariables, TData]
+[Velvet] type Velvet.MutationOptions`3[TVariables, TData, TContext]
 [Velvet] type Velvet.MutationResultExtensions
 [Velvet] type Velvet.MutationResult`2[TVariables, TData]
 [Velvet] type Velvet.MutationStatus
@@ -1151,6 +1252,14 @@
 [Velvet] type Velvet.PointerMoveBinding
 [Velvet] type Velvet.PointerUpBinding
 [Velvet] type Velvet.PortalNode
+[Velvet] type Velvet.QueryClient
+[Velvet] type Velvet.QueryClientContext
+[Velvet] type Velvet.QueryClientOptions
+[Velvet] type Velvet.QueryKey
+[Velvet] type Velvet.QueryOptions`1[T]
+[Velvet] type Velvet.QueryProperties
+[Velvet] type Velvet.QueryResult`1[T]
+[Velvet] type Velvet.QueryStatus
 [Velvet] type Velvet.Ref`1[T]
 [Velvet] type Velvet.ResolvedFont
 [Velvet] type Velvet.RouteActionContext
@@ -1238,5 +1347,6 @@
 [Velvet] type Velvet.VirtualListAlign
 [Velvet] type Velvet.VirtualListHandle
 [Velvet] type Velvet.VirtualListNode
+[Velvet] type Velvet.VirtualListScrollBehavior
 [Velvet] type Velvet.WheelBinding
 [Velvet] type Velvet.WorldSpaceNode

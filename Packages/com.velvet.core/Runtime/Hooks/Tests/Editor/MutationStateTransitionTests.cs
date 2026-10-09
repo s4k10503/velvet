@@ -135,6 +135,7 @@ namespace Velvet.Tests
         private static object? Argument(Type parameterType) =>
             parameterType == typeof(string) ? "later"
             : parameterType == typeof(Exception) ? new InvalidOperationException("swept")
+            : parameterType == typeof(MutateOptions<string, string>) ? new MutateOptions<string, string>()
             : null;
     }
 }

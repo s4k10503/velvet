@@ -621,6 +621,20 @@ namespace Velvet.Tests
                 "A duplicate registration overwrites the previous target with the new one");
         }
 
+        [Test]
+        public void Given_IdRegisteredToAnElement_When_RegisteredAgainToTheSameElement_Then_NoWarningLogged()
+        {
+            // Arrange
+            var element = new VisualElement();
+            FiberPortalRegistry.Register("same", element);
+
+            // Act
+            FiberPortalRegistry.Register("same", element);
+
+            // Assert — an unexpected warning fails the case, so reaching the end silently is the pass
+            LogAssert.NoUnexpectedReceived();
+        }
+
         #endregion
 
         #region has- reactivity across a Portal boundary
