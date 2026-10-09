@@ -353,6 +353,28 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOddReverseRepeatingSpringExit_When_ItIsRetargeted_Then_TheReversalEndsOnItsTarget()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-100" }, new[] { "opacity-0" });
+            var state = MotionSpringDriver.Create(plan, Stiffness, Damping, Mass,
+                new MotionRepeat(1f, TransitionRepeatType.Reverse, 0f));
+
+            // Act — a plan that resolved no channel reads true, the answer the repeat alone would give.
+            var endsAtFrom = true;
+            if (state != null)
+            {
+                MotionSpringDriver.Step(element, state, 0.3f);
+                MotionSpringDriver.Retarget(state);
+                endsAtFrom = MotionSpringDriver.EndsAtFrom(state);
+            }
+
+            // Assert
+            Assert.That(endsAtFrom, Is.False);
+        }
+
+        [Test]
         public void Given_ARepeatingSpringExit_When_ItIsRetargeted_Then_TheReversalSettlesLikeASpringThatDoesNotRepeat()
         {
             // Arrange

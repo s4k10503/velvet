@@ -291,10 +291,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASpringRetargetedNearItsStart_When_ItSettles_Then_ItRestsWithinFramersThresholdForTheShortTravel()
         {
-            // Arrange — a 16 px exit, cancelled 0.05 s in, under 2 px from where it began: the reversal's travel is
-            // under 5, so Framer Motion's spring rests it within 0.005 rather than the 0.5 of the exit's own travel.
+            // Arrange — a 16 px exit from 16 px, cancelled 0.05 s in, under 2 px from where it began: the reversal's
+            // travel is under 5, so Framer Motion's spring rests it within 0.005 rather than the 0.5 of the exit's own
+            // travel, or of the 30 px a sum of the two positions would read.
             var element = new VisualElement();
-            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-0" }, new[] { "translate-x-4" });
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-4" }, new[] { "translate-x-0" });
             var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f);
 
             // Act — NaN for a plan that resolved no translate channel, or a reversal that never settles.
