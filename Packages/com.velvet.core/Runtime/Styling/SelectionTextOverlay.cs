@@ -40,10 +40,7 @@ namespace Velvet
             input.RegisterCallback<FocusOutEvent>(OnFocusOut);
             input.RegisterCallback<GeometryChangedEvent>(OnInputGeometryChanged);
             _poll = input.schedule.Execute(Refresh).Every(0);
-            if (!IsFocused())
-            {
-                _poll.Pause();
-            }
+            _poll.Pause();
         }
 
         internal void SetTextColor(Color? textColor)
@@ -62,16 +59,21 @@ namespace Velvet
             _drawing = null;
         }
 
-        private bool IsFocused() => _input.focusController?.focusedElement == _input;
+        // Kept from the input's own focus events: the field is a composite root, so the focus controller's
+        // focusedElement names the field while the input holds focus (TextFieldEventPropTests pins that).
+        // A drawing built while the input already holds focus waits for its next focus.
+        private bool _focused;
 
         private void OnFocusIn(FocusInEvent _)
         {
+            _focused = true;
             _poll.Resume();
             Refresh();
         }
 
         private void OnFocusOut(FocusOutEvent _)
         {
+            _focused = false;
             _poll.Pause();
             Hide();
         }
@@ -89,7 +91,7 @@ namespace Velvet
             var selection = (ITextSelection)_input;
             var start = Mathf.Min(selection.cursorIndex, selection.selectIndex);
             var end = Mathf.Max(selection.cursorIndex, selection.selectIndex);
-            if (start == end || !IsFocused())
+            if (start == end || !_focused)
             {
                 Hide();
                 return;
