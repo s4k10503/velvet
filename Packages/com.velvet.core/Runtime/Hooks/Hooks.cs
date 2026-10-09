@@ -2415,7 +2415,7 @@ namespace Velvet
                 "UseQuery found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
                 "above the caller, or pass the client to UseQuery.");
             var (_, setVersion) = UseState(0);
-            // MUTANT_SURVIVES(equivalent, arithmetic): any step makes a value the slot does not hold, which is all the re-render asks.
+            // MUTANT_SURVIVES(equivalent, arithmetic): a step of one either way gives a value unequal to the one the slot holds, which is all the re-render asks.
             var observer = UseMutableRef<QueryObserver<TQueryFnData, TData>>(() => new QueryObserver<TQueryFnData, TData>(() => setVersion.Invoke(v => v + 1))).Current;
             var settings = new QuerySettings<TQueryFnData, TData>(options, queryClient);
 

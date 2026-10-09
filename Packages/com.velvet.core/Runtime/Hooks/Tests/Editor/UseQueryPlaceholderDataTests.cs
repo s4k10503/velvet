@@ -20,8 +20,11 @@ namespace Velvet.Tests
     /// load; the function is handed the previous key, and is not asked again while its placeholder shows.</item>
     /// <item>A placeholder is asked for again on a key change once data had landed in between, and a component
     /// listing only <c>IsPlaceholderData</c> re-renders when the entry's data replaces the placeholder.</item>
+    /// <item>A placeholder is kept only while the function that made it is the one given, and a function
+    /// given in its place is handed the data of the last entry read that had some.</item>
     /// <item>A select applies to the placeholder as to the entry's data, and one that throws on it makes the
-    /// result an error that is not flagged as placeholder data, as v5's main does.</item>
+    /// result an error that is not flagged as placeholder data, as v5's main does; a select that works on the
+    /// placeholder afterwards clears that error.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -236,6 +239,7 @@ namespace Velvet.Tests
             // Arrange
             using var mounted = V.Mount(_root, V.Component(FlagReader, key: "flag"));
             mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
             var rendersBefore = s_flagRenders;
 
             // Act
@@ -245,6 +249,59 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_flagRenders, Is.GreaterThan(rendersBefore),
                 "IsPlaceholderData turning false is a change of that property, even when the data it shows is equal");
+        }
+
+        [Test]
+        public void Given_APlaceholderShowing_When_TheFunctionIsReplaced_Then_TheNewFunctionIsAsked()
+        {
+            // Arrange
+            using var mounted = Mount();
+            s_placeholder = (_, _) => 7;
+
+            // Act
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Data, Is.EqualTo(7), "A placeholder is kept only while the same function made it");
+        }
+
+        [Test]
+        public void Given_KeepPreviousDataShowingTheOldKey_When_TheFunctionIsReplaced_Then_ItIsHandedTheDataOfTheEntryThatHadSome()
+        {
+            // Arrange
+            s_placeholder = QueryPlaceholder.KeepPreviousData;
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(1);
+            mounted.FlushStateForTest();
+            TurnTo(mounted, 2);
+            s_placeholder = (previous, previousKey) => QueryPlaceholder.KeepPreviousData(previous, previousKey);
+
+            // Act
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((Last().Data, Last().IsPlaceholderData), Is.EqualTo((1, true)),
+                "The entry moved to has no data, so the placeholder is made from the data of the entry the component left");
+        }
+
+        [Test]
+        public void Given_APlaceholderWhoseSelectThrew_When_ASelectThatSucceedsReplacesIt_Then_TheResultShowsThePlaceholder()
+        {
+            // Arrange
+            s_select = _ => throw new InvalidOperationException("select-failed");
+            using var mounted = V.Mount(_root, V.Component(SelectingPager, key: "pager"));
+            mounted.FlushEffectsForTest();
+            s_select = data => "#" + data;
+
+            // Act
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_selected[s_selected.Count - 1].Status, s_selected[s_selected.Count - 1].Data),
+                Is.EqualTo((QueryStatus.Success, "#9")), "A select that works on the placeholder clears the error a failing one left");
         }
 
         [Test]
@@ -321,6 +378,8 @@ namespace Velvet.Tests
         [Component]
         private static VNode SelectingPager()
         {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
             s_selected.Add(Hooks.UseQuery(
                 new QueryOptions<int, string>(new QueryKey("page", 1), Fetch)
                 {

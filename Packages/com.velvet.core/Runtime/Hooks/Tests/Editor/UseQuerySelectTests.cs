@@ -19,6 +19,9 @@ namespace Velvet.Tests
     /// query function returned.</item>
     /// <item>The select runs again only when the entry's data or the select's instance changes, and what it
     /// returns keeps the instance the result held where the two are deeply equal.</item>
+    /// <item>A component listing only <c>Data</c> re-renders when a selection replaces no data, and not when a
+    /// select that had worked throws, which leaves the last selection in place beside the error; a select
+    /// that works again clears the error.</item>
     /// <item>A select that throws makes the result an error carrying its exception, until a key change to an
     /// uncached entry leaves the result pending, and again when the key comes back, whether the selection is a
     /// reference or a value type; options whose two types differ need a select.</item>
@@ -34,6 +37,10 @@ namespace Velvet.Tests
         private static readonly QueryKey Todos = new("todos");
         private static readonly Func<int[], List<int>> Failing = _ => throw new InvalidOperationException("select-failed");
         private static readonly Func<int[], int> FailingCount = _ => throw new InvalidOperationException("select-failed");
+        private static readonly Func<int[], List<int>> NotEmpty = data =>
+            data.Length == 0 ? throw new InvalidOperationException("select-failed") : data.ToList();
+        private static readonly Func<int[], List<int>> AtMostTwo = data =>
+            data.Length > 2 ? throw new InvalidOperationException("select-failed") : data.ToList();
         private static readonly Func<int[], List<int>> AboveOne = data =>
         {
             s_selects++;
@@ -49,6 +56,7 @@ namespace Velvet.Tests
         private static readonly List<QueryResult<int>> s_counts = new();
         private static StateUpdater<int> s_setTick;
         private static StateUpdater<int> s_setPage;
+        private static int s_watchRenders;
 
         [SetUp]
         public void SetUp()
@@ -62,6 +70,7 @@ namespace Velvet.Tests
             s_counts.Clear();
             s_setTick = default;
             s_setPage = default;
+            s_watchRenders = 0;
         }
 
         [Test]
@@ -165,6 +174,56 @@ namespace Velvet.Tests
             // Assert
             Assert.That((Last().Status, Last().Error?.Message), Is.EqualTo((QueryStatus.Error, "select-failed")),
                 "A failing select is the result's error");
+        }
+
+        [Test]
+        public void Given_AComponentListingOnlyData_When_TheRequestLandsAndTheSelectMakesTheData_Then_ItRerenders()
+        {
+            // Arrange
+            using var mounted = Mount(WatchingSelection);
+            mounted.FlushStateForTest();
+            var rendersBefore = s_watchRenders;
+
+            // Act
+            Land(mounted, 1, 2, 3);
+
+            // Assert
+            Assert.That(s_watchRenders, Is.GreaterThan(rendersBefore), "The selection replacing no data is a change of data");
+        }
+
+        [Test]
+        public void Given_ASelectThatThrewOnOneData_When_NewDataLandsThatItSelects_Then_TheResultIsNoLongerAnError()
+        {
+            // Arrange
+            using var mounted = Mount(Recovering);
+            Land(mounted);
+            Last().Refetch();
+
+            // Act
+            s_sources[1].TrySetResult(new[] { 5 });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Success), "A select that works clears the error an earlier run of it left");
+        }
+
+        [Test]
+        public void Given_AComponentListingOnlyData_When_ASelectThatSucceededThrowsOnNewData_Then_ItDoesNotRerender()
+        {
+            // Arrange
+            using var mounted = Mount(WatchingBreakingSelection);
+            Land(mounted, 1, 2);
+            Rerender(mounted);
+            var rendersBefore = s_watchRenders;
+            Last().Refetch();
+
+            // Act
+            s_sources[1].TrySetResult(new[] { 1, 2, 3 });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_watchRenders, Is.EqualTo(rendersBefore),
+                "The result keeps the last selection beside the error, so its data has not changed");
         }
 
         [Test]
@@ -278,6 +337,54 @@ namespace Velvet.Tests
                 },
                 s_client));
             return V.Label(text: "selecting");
+        }
+
+        [Component]
+        private static VNode WatchingSelection()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            s_watchRenders++;
+            s_renders.Add(Hooks.UseQuery(
+                new QueryOptions<int[], List<int>>(Todos, Fetch)
+                {
+                    Select = AboveOne,
+                    Retry = 0,
+                    NotifyOnChangeProps = QueryProperties.Data,
+                },
+                s_client));
+            return V.Label(text: "watching");
+        }
+
+        [Component]
+        private static VNode WatchingBreakingSelection()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            s_watchRenders++;
+            s_renders.Add(Hooks.UseQuery(
+                new QueryOptions<int[], List<int>>(Todos, Fetch)
+                {
+                    Select = AtMostTwo,
+                    Retry = 0,
+                    NotifyOnChangeProps = QueryProperties.Data,
+                },
+                s_client));
+            return V.Label(text: "watching");
+        }
+
+        [Component]
+        private static VNode Recovering()
+        {
+            s_renders.Add(Hooks.UseQuery(
+                new QueryOptions<int[], List<int>>(Todos, Fetch)
+                {
+                    Select = NotEmpty,
+                    Retry = 0,
+                    NotifyOnChangeProps = QueryProperties.All,
+                },
+                s_client));
+            return V.Label(text: "recovering");
         }
 
         [Component]
