@@ -318,7 +318,8 @@ var page = Hooks.UseQuery(new QueryOptions<Todo[]>(new QueryKey("todos", pageInd
 
 **Reading and writing the cache by hand.** `GetQueryData` returns an entry's data, default when it has
 none or has expired unread. `SetQueryData` writes data as a request landing would: the entry is `Success`
-with no error, its data is fresh from that moment, shared structurally with what it held, and clears an
+with no error, its data is fresh from that moment, shared structurally with what it held — by the
+`StructuralSharing` of the options the entry was last handed, as for an invalidation below — and clears an
 invalidation, and the components reading it re-render for what changed. A request in flight keeps running
 and lands over it. A key with no entry gets one, which expires after the client's `GcTime` unless a query
 reads it. The updater form is handed the data held; a null data or updater result writes nothing.

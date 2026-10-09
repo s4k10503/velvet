@@ -538,7 +538,8 @@ namespace Velvet
         internal T SetData(T data)
         {
             var held = HasData ? Data : default;
-            var sharing = _observers.Count > 0 ? _observers[0].FetchOptions.StructuralSharing : null;
+            // v5's setData shares with the query's own options, those the entry was last handed.
+            var sharing = _options?.StructuralSharing;
             var shared = sharing != null ? sharing(held, data) : QueryStructuralSharing.Replace(held, data);
             Data = shared;
             HasData = true;
