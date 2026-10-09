@@ -184,7 +184,7 @@ namespace Velvet
         /// <summary>
         /// TanStack Query's <c>placeholderData</c> given as a function: data the result shows while the entry
         /// has none and is pending, handed the data and key of the last entry this component read that had
-        /// data — default and null when there is none. The result is then <see cref="QueryStatus.Success"/>
+        /// data and still has it — default and null when there is none. The result is then <see cref="QueryStatus.Success"/>
         /// with <see cref="QueryResult{T}.IsPlaceholderData"/> true, and the entry is left without data.
         /// <see cref="QueryPlaceholder.KeepPreviousData{T}"/> keeps the previous key's data; <c>(_, _) =&gt; value</c>
         /// is the value form.
@@ -742,12 +742,16 @@ namespace Velvet
                 _currentPlaceholder = settings.Placeholder;
             }
 
+            // v5 drops a select error once the data it came from is gone, rather than reporting it over the state of
+            // an entry that has none.
+            if (!hasSource && !isPlaceholderData) _selectError = null;
             if (_selectError != null)
             {
                 error = _selectError;
                 data = _selectResult;
                 hasData = _hasSelectResult;
                 status = QueryStatus.Error;
+                isPlaceholderData = false;
             }
 
             return new QuerySnapshot<TData>
@@ -810,7 +814,8 @@ namespace Velvet
                 return true;
             }
 
-            var previous = _lastWithData;
+            // An entry that has lost its data since hands none, as v5's state.data reads undefined.
+            var previous = _lastWithData is { HasData: true } held ? held : null;
             var produced = settings.Placeholder!(
                 previous != null ? previous.Data : default, previous?.Key);
             placeholder = default!;
