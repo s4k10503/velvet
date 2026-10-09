@@ -744,6 +744,73 @@ namespace Velvet.Tests
                 "A copy whose type cannot be named leaves nothing to key the cache on, and the weave says nothing of it");
         }
 
+        // The index of the variable an ldloc form loads, or -1 for any other instruction.
+        private static int LoadedVariableIndex(Instruction instr)
+        {
+            if (instr.OpCode == OpCodes.Ldloc_0) return 0;
+            if (instr.OpCode == OpCodes.Ldloc_1) return 1;
+            if (instr.OpCode == OpCodes.Ldloc_2) return 2;
+            if (instr.OpCode == OpCodes.Ldloc_3) return 3;
+            return (instr.OpCode == OpCodes.Ldloc || instr.OpCode == OpCodes.Ldloc_S)
+                && instr.Operand is VariableDefinition variable ? variable.Index : -1;
+        }
+
+        [Test]
+        public void Given_AHookValueLeftOnTheStack_When_CompilerWeaverRuns_Then_ItIsCopiedWithADupBeforeTheNextStore()
+        {
+            // Arrange — `Hooks.UseId(null)` followed by an instruction that is neither a store nor a pop
+            using var module = BuildHookShapeProbeModule("StackCopyProbe",
+                out var method, out var useId, out _, out _);
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Pop));
+            il.Append(Instruction.Create(OpCodes.Pop));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            var call = IndexOfCallTo(method, "UseId");
+            var instructions = method.Body.Instructions;
+            Assert.That(
+                (instructions[call + 1].OpCode.Code, instructions[call + 2].OpCode.Name.StartsWith("stloc")),
+                Is.EqualTo((Code.Dup, true)),
+                "A value with no local of its own is copied off the stack where the call produced it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base copies a stored hook value out of its local the same way.
+        // What it pins is the copy reading the variable the hook stored into: `!=` in place of `==` in the copy
+        // loop of `InjectMemoization` emits a dup there instead.
+        [Test]
+        public void Given_AHookValueStoredToALocal_When_CompilerWeaverRuns_Then_ItIsCopiedFromThatLocal()
+        {
+            // Arrange — `var id = Hooks.UseId(null);` into the second of two locals
+            using var module = BuildHookShapeProbeModule("LocalCopyProbe",
+                out var method, out var useId, out _, out _);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_1));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            var call = IndexOfCallTo(method, "UseId");
+            Assert.That(LoadedVariableIndex(method.Body.Instructions[call + 2]), Is.EqualTo(1),
+                "A value with a local of its own is copied from that local, and not from the stack");
+        }
+
         [Test]
         public void Given_DiscardedHookResult_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
         {

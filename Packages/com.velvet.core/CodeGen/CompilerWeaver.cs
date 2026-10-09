@@ -1336,7 +1336,7 @@ namespace Velvet.CodeGen
             foreach (var (local, stored, copy) in copies)
             {
                 il.InsertAfter(stored, Instruction.Create(OpCodes.Stloc, copy));
-                il.InsertAfter(stored, local is null ? Instruction.Create(OpCodes.Dup) : Instruction.Create(OpCodes.Ldloc, local));
+                il.InsertAfter(stored, local == null ? Instruction.Create(OpCodes.Dup) : Instruction.Create(OpCodes.Ldloc, local));
             }
 
             // Inject Store + reload at every return path so all `Ret` instructions
