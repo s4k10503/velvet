@@ -236,7 +236,24 @@ namespace Velvet
         }
 
         private static (float from, float to)? StartingFrom((float from, float to)? channel, (float from, float to)? start)
-            => channel is { } c && start is { } s ? (s.from, c.to) : channel;
+            => channel == null || start == null ? channel : (start.Value.from, channel.Value.to);
+
+        // A `start` for StartingFrom: each channel a driver's play has, holding the value given for it.
+        internal static SpringPlan Holding<TColor, TLength>((float? opacity, float? translateX, float? translateY,
+                float? scale, float? rotate) axes, List<TColor>? colors, Converter<TColor, ColorChannelPlan> color,
+            List<TLength>? lengths, Converter<TLength, LengthChannelPlan> length)
+            => new()
+            {
+                Opacity = Holding(axes.opacity),
+                TranslateX = Holding(axes.translateX),
+                TranslateY = Holding(axes.translateY),
+                Scale = Holding(axes.scale),
+                Rotate = Holding(axes.rotate),
+                Colors = colors?.ConvertAll(color),
+                Lengths = lengths?.ConvertAll(length),
+            };
+
+        private static (float from, float to)? Holding(float? value) => value is { } v ? (v, v) : null;
 
         private static (float from, float to)? PairAxis(in SideScan from, in SideScan to,
             ArbitraryProperty axis, float identity, MotionSlotContext? context)

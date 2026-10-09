@@ -1072,8 +1072,8 @@ namespace Velvet
 
         // Whether `play` is still the element's enter, running, or held by CancelPlay.
         internal bool IsRunning(VisualElement element, object play)
-            => (_pendingEnters.TryGetValue(element, out var pending) && ReferenceEquals(pending, play))
-                || (_held.TryGetValue(element, out var held) && ReferenceEquals(held, play));
+            => ReferenceEquals(_pendingEnters.GetValueOrDefault(element), play)
+                || ReferenceEquals(_held.GetValueOrDefault(element), play);
 
         // Framer Motion's cancel(): the play returns to its time-0 values, its starting ones, and stops there with
         // no completion. It leaves the enter map for _held, its inline values and its ring co-fade kept, so the

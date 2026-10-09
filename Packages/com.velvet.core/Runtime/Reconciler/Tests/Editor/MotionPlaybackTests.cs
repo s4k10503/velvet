@@ -467,6 +467,27 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Undefined, false)));
         }
 
+        // A reseed starts its plays on the playback before it releases the held ones the plays did not replace.
+        [Test]
+        public void Given_APlayACancelHolds_When_ThePlaybackStartsAPlayElsewhereAndThenReleasesItsHeldPlays_Then_TheHeldElementCarriesNoInlineOpacity()
+        {
+            // Arrange
+            var element = OnPanel("released");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            var held = element.style.opacity.keyword;
+            _scheduler.PlayVariantEnter(OnPanel("elsewhere"), s_hidden, s_visible, Linear(), playback: playback);
+
+            // Act
+            playback.ReleaseHeldPlays();
+
+            // Assert
+            Assert.That((held, element.style.opacity.keyword == StyleKeyword.Undefined),
+                Is.EqualTo((StyleKeyword.Undefined, false)));
+        }
+
         // The later play drives translate alone, so only releasing the held play takes its opacity off.
         [Test]
         public void Given_APlayACancelHolds_When_APlayOnAnotherPropertyStartsOnItsElement_Then_TheHeldOpacityComesOff()
@@ -582,6 +603,70 @@ namespace Velvet.Tests
             // Assert
             var width = element.style.width.value;
             Assert.That((width.unit, width.value), Is.EqualTo((LengthUnit.Percent, 100f)));
+        }
+
+        [Test]
+        public void Given_ATransformPlayACancelHolds_When_TheNextTransformPlayStartsOnItsElement_Then_EachAxisStartsFromItsHeldValue()
+        {
+            // Arrange
+            var element = OnPanel("turned");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element,
+                new[] { "translate-x-[0px]", "translate-y-[0px]", "scale-50", "rotate-45" },
+                new[] { "translate-x-[10px]", "translate-y-[20px]", "scale-100", "rotate-90" }, Linear(),
+                playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+
+            // Act
+            _scheduler.PlayVariantEnter(element,
+                new[] { "translate-x-[30px]", "translate-y-[30px]", "scale-150", "rotate-180" },
+                new[] { "translate-x-[40px]", "translate-y-[40px]", "scale-125", "rotate-n90" }, Linear());
+
+            // Assert
+            var translate = element.style.translate.value;
+            Assert.That((translate.x.value, translate.y.value, element.style.scale.value.value.x,
+                    element.style.rotate.value.angle.value),
+                Is.EqualTo((0f, 0f, 0.5f, 45f)));
+        }
+
+        // The held play drove opacity alone, so the colour and the width start from the next play's own from-side.
+        [Test]
+        public void Given_AnOpacityPlayACancelHolds_When_APlayAlsoDrivingAColorAndAWidthStartsOnItsElement_Then_OnlyItsOpacityStartsFromTheHeldValue()
+        {
+            // Arrange
+            var element = OnPanel("widened");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-100", "bg-[#ffffff]", "w-[100px]" },
+                new[] { "opacity-50", "bg-[#ff0000]", "w-[50px]" }, Linear());
+
+            // Assert
+            Assert.That((Opacity(element), element.style.backgroundColor.value, element.style.width.value.value),
+                Is.EqualTo((0f, Color.white, 100f)));
+        }
+
+        // The held play drove a colour and a width, neither of which the next play drives.
+        [Test]
+        public void Given_AColorAndWidthPlayACancelHolds_When_AnOpacityPlayStartsOnItsElement_Then_ItStartsFromItsOwnFromSide()
+        {
+            // Arrange
+            var element = OnPanel("faded");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, new[] { "bg-[#000000]", "w-[0px]" },
+                new[] { "bg-[#ffffff]", "w-[100px]" }, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+
+            // Act
+            _scheduler.PlayVariantEnter(element, s_visible, new[] { "opacity-50" }, Linear());
+
+            // Assert
+            Assert.That(Opacity(element), Is.EqualTo(1f));
         }
 
         // The band follows its caster's resolved opacity, which the cancel holds at the fade's start.

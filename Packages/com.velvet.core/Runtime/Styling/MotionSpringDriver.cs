@@ -439,38 +439,12 @@ namespace Velvet
         /// <c>StyleAnimationScheduler</c> starts the next play on a held element from.
         /// </summary>
         public static MotionSpringClassParser.SpringPlan StartValues(MotionSpringState state)
-        {
-            var plan = new MotionSpringClassParser.SpringPlan
-            {
-                Opacity = Resting(state.Opacity),
-                TranslateX = Resting(state.TranslateX),
-                TranslateY = Resting(state.TranslateY),
-                Scale = Resting(state.Scale),
-                Rotate = Resting(state.Rotate),
-            };
-            if (state.Colors != null)
-            {
-                plan.Colors = new List<MotionSpringClassParser.ColorChannelPlan>();
-                foreach (var c in state.Colors)
-                {
-                    plan.Colors.Add(new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From));
-                }
-            }
-            if (state.Lengths != null)
-            {
-                plan.Lengths = new List<MotionSpringClassParser.LengthChannelPlan>();
-                foreach (var l in state.Lengths)
-                {
-                    plan.Lengths.Add(new MotionSpringClassParser.LengthChannelPlan(l.Property, l.Value.RestingTarget,
-                        l.Value.RestingTarget, l.Unit));
-                }
-            }
-            return plan;
-        }
-
-        private static (float from, float to)? Resting(SpringChannel? channel)
-            => channel == null ? null : (channel.RestingTarget, channel.RestingTarget);
-
+            => MotionSpringClassParser.Holding(
+                (state.Opacity?.RestingTarget, state.TranslateX?.RestingTarget, state.TranslateY?.RestingTarget,
+                    state.Scale?.RestingTarget, state.Rotate?.RestingTarget),
+                state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
+                state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property,
+                    l.Value.RestingTarget, l.Value.RestingTarget, l.Unit));
 
         /// <summary>
         /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref

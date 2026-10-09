@@ -222,37 +222,12 @@ namespace Velvet
 
         /// <summary>The bezier sibling of <see cref="MotionSpringDriver.StartValues"/>.</summary>
         public static MotionSpringClassParser.SpringPlan StartValues(BezierTweenState state)
-        {
-            var plan = new MotionSpringClassParser.SpringPlan
-            {
-                Opacity = Start(state.Opacity),
-                TranslateX = Start(state.TranslateX),
-                TranslateY = Start(state.TranslateY),
-                Scale = Start(state.Scale),
-                Rotate = Start(state.Rotate),
-            };
-            if (state.Colors != null)
-            {
-                plan.Colors = new List<MotionSpringClassParser.ColorChannelPlan>();
-                foreach (var c in state.Colors)
-                {
-                    plan.Colors.Add(new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From));
-                }
-            }
-            if (state.Lengths != null)
-            {
-                plan.Lengths = new List<MotionSpringClassParser.LengthChannelPlan>();
-                foreach (var l in state.Lengths)
-                {
-                    plan.Lengths.Add(new MotionSpringClassParser.LengthChannelPlan(l.Property, l.Value.From,
-                        l.Value.From, l.Unit));
-                }
-            }
-            return plan;
-        }
-
-        private static (float from, float to)? Start(BezierTweenChannel? channel)
-            => channel == null ? null : (channel.From, channel.From);
+            => MotionSpringClassParser.Holding(
+                (state.Opacity?.From, state.TranslateX?.From, state.TranslateY?.From, state.Scale?.From,
+                    state.Rotate?.From),
+                state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
+                state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property, l.Value.From,
+                    l.Value.From, l.Unit));
 
         /// <summary>
         /// Releases every inline slot this state ever wrote — and the transition suspension
