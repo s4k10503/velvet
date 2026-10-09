@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using System.Text.RegularExpressions;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -20,10 +18,6 @@ namespace Velvet
 
         // Nesting, and a run of terms or arguments, past this depth is declined rather than recursed into.
         private const int MaxDepth = 64;
-
-        private static readonly Regex s_token = new(
-            @"\G(?<space>[ _]+)?(?:(?<number>[-+]?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?)(?<unit>%|[A-Za-z]+)?|(?<function>[A-Za-z]+)\(|(?<symbol>[-+*/(),]))",
-            RegexOptions.CultureInvariant);
 
         // Unit names match case-sensitively, as StyleArbitraryValueResolver.TryParseValue's do.
         private static readonly Dictionary<string, Leaf> s_units = new(StringComparer.Ordinal)
@@ -197,36 +191,27 @@ namespace Velvet
 
         private sealed class Parser
         {
-            private readonly List<Match> _tokens = new();
+            private readonly List<Token> _tokens = new();
             private readonly bool _tokenized;
             private int _at;
             private int _depth;
 
-            public Parser(string text)
-            {
-                var end = 0;
-                for (var match = s_token.Match(text); match.Success; match = match.NextMatch())
-                {
-                    _tokens.Add(match);
-                    end = match.Index + match.Length;
-                }
-                _tokenized = end == text.Length;
-            }
+            public Parser(string text) => _tokenized = Tokenize(text, _tokens);
 
             // A function or a single dimension, with no space before it and nothing after it.
             public bool TryTop(out StyleLengthExpression? top)
             {
-                top = _tokenized && !Spaced() && !Peek("(") ? Value().Length : null;
+                top = _tokenized && !Spaced() && !Peek('(') ? Value().Length : null;
                 return _at == _tokens.Count;
             }
 
-            private bool Is(string group) => _at < _tokens.Count && _tokens[_at].Groups[group].Success;
+            private bool Is(char kind) => _at < _tokens.Count && _tokens[_at].Kind == kind;
 
-            private bool Spaced() => Is("space");
+            private bool Spaced() => _at < _tokens.Count && _tokens[_at].Spaced;
 
-            private bool Peek(string symbol) => Is("symbol") && _tokens[_at].Groups["symbol"].Value == symbol;
+            private bool Peek(char symbol) => Is(symbol);
 
-            private bool Accept(string symbol)
+            private bool Accept(char symbol)
             {
                 var accepted = Peek(symbol);
                 _at += accepted ? 1 : 0;
@@ -252,11 +237,11 @@ namespace Velvet
                 {
                     return default;
                 }
-                if (Is("number") && !Spaced() && "+-".IndexOf(_tokens[_at].Groups["number"].Value[0]) >= 0)
+                if (Is(Token.Number) && !Spaced() && "+-".IndexOf(_tokens[_at].Text[0]) >= 0)
                 {
                     return Leave(MoreTerms(Operand.Add(left, Product(), 1f)));
                 }
-                var sign = Peek("+") ? 1f : Peek("-") ? -1f : 0f;
+                var sign = Peek('+') ? 1f : Peek('-') ? -1f : 0f;
                 if (sign == 0f)
                 {
                     return Leave(left);
@@ -270,29 +255,29 @@ namespace Velvet
 
             private Operand MoreFactors(Operand left)
                 => !Enter() ? default
-                    : Accept("*") ? Leave(MoreFactors(Operand.Multiply(left, Value())))
-                    : Accept("/") ? Leave(MoreFactors(Operand.Divide(left, Value())))
+                    : Accept('*') ? Leave(MoreFactors(Operand.Multiply(left, Value())))
+                    : Accept('/') ? Leave(MoreFactors(Operand.Divide(left, Value())))
                     : Leave(left);
 
             private Operand Value()
                 => !Enter() ? default
-                    : Leave(Accept("(") ? Closed(Sum())
-                        : Is("function") ? Function()
+                    : Leave(Accept('(') ? Closed(Sum())
+                        : Is(Token.Function) ? Function()
                         : Dimension());
 
-            private Operand Closed(Operand inner) => Accept(")") ? inner : default;
+            private Operand Closed(Operand inner) => Accept(')') ? inner : default;
 
             private List<Operand>? Arguments(List<Operand> args)
             {
                 args.Add(Sum());
-                return !Enter() ? null : Leave(Accept(",") ? Arguments(args) : args);
+                return !Enter() ? null : Leave(Accept(',') ? Arguments(args) : args);
             }
 
             private Operand Function()
             {
-                var name = _tokens[_at++].Groups["function"].Value;
+                var name = _tokens[_at++].Text;
                 var args = Arguments(new List<Operand>());
-                if (args == null || !Accept(")"))
+                if (args == null || !Accept(')'))
                 {
                     return default;
                 }
@@ -307,19 +292,108 @@ namespace Velvet
 
             private Operand Dimension()
             {
-                if (!Is("number"))
+                if (!Is(Token.Number))
                 {
                     return default;
                 }
                 var token = _tokens[_at++];
-                if (!float.TryParse(token.Groups["number"].Value, NumberStyles.Float, CultureInfo.InvariantCulture,
+                if (!float.TryParse(token.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,
                         out var number))
                 {
                     return default;
                 }
-                var unit = token.Groups["unit"];
-                return unit.Success ? Operand.Of(Unit(unit.Value) is { } leaf ? new Scaled(leaf, number) : null)
+                return token.Unit != null ? Operand.Of(Unit(token.Unit) is { } leaf ? new Scaled(leaf, number) : null)
                     : Operand.Of(number);
+            }
+
+            // Splits text into tokens, each after an optional run of spaces or underscores: a number with an
+            // optional unit, a function name with its opening parenthesis, or one of - + * / ( ) ,. False when
+            // something else, or a trailing run of spaces, is left over.
+            private static bool Tokenize(string text, List<Token> tokens)
+            {
+                var at = 0;
+                while (at >= 0 && at < text.Length)
+                {
+                    at = ReadToken(text, at, tokens);
+                }
+                return at == text.Length;
+            }
+
+            // Where the token read from at ends, or -1 when none can be read there.
+            private static int ReadToken(string text, int at, List<Token> tokens)
+            {
+                var start = Span(text, at, " _");
+                var number = NumberEnd(text, start);
+                var name = Span(text, number, Letters);
+                if (number > start)
+                {
+                    var unit = Is(text, number, "%") ? number + 1 : name;
+                    tokens.Add(new Token(Token.Number, start > at, text.Substring(start, number - start),
+                        unit > number ? text.Substring(number, unit - number) : null));
+                    return unit;
+                }
+                if (name > start && Is(text, name, "("))
+                {
+                    tokens.Add(new Token(Token.Function, start > at, text.Substring(start, name - start), null));
+                    return name + 1;
+                }
+                if (Is(text, start, "-+*/(),"))
+                {
+                    tokens.Add(new Token(text[start], start > at, string.Empty, null));
+                    return start + 1;
+                }
+                return -1;
+            }
+
+            // Where a number starting at start ends, or start when none does: an optional sign, digits with an
+            // optional fraction (or a fraction alone), then an optional exponent. A dot with no digit after it
+            // ends the number before the dot, and an e with no digit after it is left to be read as a unit.
+            private static int NumberEnd(string text, int start)
+            {
+                var whole = Span(text, Is(text, start, "+-") ? start + 1 : start, Digits);
+                var end = Is(text, whole, ".") && Is(text, whole + 1, Digits) ? Span(text, whole + 1, Digits) : whole;
+                if (end == start || !Is(text, end - 1, Digits))
+                {
+                    return start;
+                }
+                var exponent = Is(text, end, "eE") ? (Is(text, end + 1, "+-") ? end + 2 : end + 1) : end;
+                return Is(text, exponent, Digits) ? Span(text, exponent, Digits) : end;
+            }
+
+            private const string Digits = "0123456789";
+
+            private const string Letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+            private static bool Is(string text, int at, string set) => at < text.Length && set.IndexOf(text[at]) >= 0;
+
+            private static int Span(string text, int at, string set)
+            {
+                while (Is(text, at, set))
+                {
+                    at++;
+                }
+                return at;
+            }
+        }
+
+        // A number (its text, and its unit when one is glued to it), a function's name, or a symbol, whose Kind
+        // is the symbol itself.
+        private readonly struct Token
+        {
+            public const char Number = 'n';
+            public const char Function = 'f';
+
+            public readonly char Kind;
+            public readonly bool Spaced;
+            public readonly string Text;
+            public readonly string? Unit;
+
+            public Token(char kind, bool spaced, string text, string? unit)
+            {
+                Kind = kind;
+                Spaced = spaced;
+                Text = text;
+                Unit = unit;
             }
         }
     }

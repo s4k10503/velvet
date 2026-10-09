@@ -32,6 +32,11 @@ namespace Velvet.Tests
         [TestCase("calc(80px/2/2)")]
         [TestCase("calc(1e1px+10px)")]
         [TestCase("calc(25px_-_5px)")]
+        [TestCase("calc(.5*40px)")]
+        [TestCase("calc(2E1px)")]
+        [TestCase("calc(2e+1px)")]
+        [TestCase("calc(200e-1px)")]
+        [TestCase("calc(101.6Q/96*20)")]
         public void Given_AMathFunctionOfPixelLengths_When_ParsedAsAnArbitraryTop_Then_ItIsTwentyPixels(string length)
         {
             // Act
@@ -231,6 +236,9 @@ namespace Velvet.Tests
         [TestCase("-calc(1px)")]
         [TestCase("_calc(1px)")]
         [TestCase("calc(1px---1px)")]
+        [TestCase("calc(20.px)")]
+        [TestCase("calc(2e)")]
+        [TestCase("calc(1px)(")]
         public void Given_AMalformedMathFunction_When_ParsedAsAnArbitraryTop_Then_TheClassIsDeclined(string length)
         {
             // Act
