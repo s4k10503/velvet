@@ -64,7 +64,7 @@ namespace Velvet.Tests
             "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration", "Collision",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "RoslynAnalyzer",
-            "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Wheel",
+            "UnityUIEFilter", "FocusIn", "PointerDown", "Move", "Leave", "Wheel",
             "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS012",
             "VEL", "VEL500", "VEL501", "VEL502", "ProjectReference", "VEL503",
             "ForTest",
@@ -201,7 +201,7 @@ namespace Velvet.Tests
             + "|#[^\n]*",
             RegexOptions.Compiled | RegexOptions.Singleline);
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; added player and CI files still use the existing corpus filters.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; added player and CI files still use the existing corpus filters.
         [Test]
         public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_EachFormatsCommentsAreTaken()
         {
@@ -262,7 +262,7 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", unheld.Distinct()), Is.Empty);
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; this case retains the label-only differential against the existing corpus builder.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; this case retains the label-only differential against the existing corpus builder.
         [Test]
         public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_TheRegionStripTakesOnlyLabelWords()
         {
@@ -304,7 +304,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, string.Empty)));
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; retaining their condition tokens remains the existing corpus contract.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; retaining its condition tokens remains the existing corpus contract.
         [Test]
         public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_ItKeepsEveryDirectiveCondition()
         {
@@ -340,7 +340,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, string.Empty)));
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; this case retains equality between the Markdown walk and scanned-file sets.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; this case retains equality between the Markdown walk and scanned-file sets.
         [Test]
         public void Given_TheMarkdownTheWalkFinds_When_ComparedAgainstTheScannedSet_Then_EveryFileIsScanned()
         {
@@ -362,7 +362,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, string.Empty)));
         }
 
-        // GREEN_ON_BASE(construction): this change only drops the Up identifier-allowlist entry; documenting `V.NoSuchFactory` still breaks this existing reference check.
+        // GREEN_ON_BASE(construction): this change only drops the KeyDown identifier-allowlist entry; documenting `V.NoSuchFactory` still breaks this existing reference check.
         [Test]
         public void Given_DocumentationMarkdown_When_ScannedForVDotReferences_Then_EveryReferenceExistsOnV()
         {
@@ -383,7 +383,7 @@ namespace Velvet.Tests
                 "Documentation references V.* members that do not exist on typeof(V):\n" + string.Join("\n", unresolved));
         }
 
-        // GREEN_ON_BASE(construction): this change only drops the Up identifier-allowlist entry; documenting `UseNoSuchHook` still breaks their existing consistency check.
+        // GREEN_ON_BASE(construction): this change only drops the KeyDown identifier-allowlist entry; documenting `UseNoSuchHook` still breaks their existing consistency check.
         [Test]
         public void Given_DocumentationMarkdown_When_ScannedForBacktickedHookReferences_Then_EveryReferenceExistsOnHooks()
         {
@@ -411,7 +411,7 @@ namespace Velvet.Tests
                 "Documentation references Hooks.* members that do not exist on typeof(Hooks):\n" + string.Join("\n", unresolved));
         }
 
-        // GREEN_ON_BASE(construction): this change only drops the Up identifier-allowlist entry; removing the `motion.md` index link still breaks directory/index equality.
+        // GREEN_ON_BASE(construction): this change only drops the KeyDown identifier-allowlist entry; removing the `motion.md` index link still breaks directory/index equality.
         [Test]
         public void Given_DocumentationReadmeIndex_When_ComparedAgainstDirectoryContents_Then_LinksAndFilesMatchExactly()
         {
@@ -434,7 +434,7 @@ namespace Velvet.Tests
                 "Documentation~/README.md's index is out of sync with the directory's actual .md files:\n" + string.Join("\n", diff));
         }
 
-        // GREEN_ON_BASE(construction): this change only drops the Up identifier-allowlist entry; deleting `guides/motion.md` still breaks the guide/index membership check.
+        // GREEN_ON_BASE(construction): this change only drops the KeyDown identifier-allowlist entry; deleting `guides/motion.md` still breaks the guide/index membership check.
         [Test]
         public void Given_TheDocfxTableOfContents_When_ComparedAgainstTheGuideDirectory_Then_LinksAndFilesMatchExactly()
         {
@@ -457,7 +457,7 @@ namespace Velvet.Tests
                 "docs/toc.yml is out of sync with Documentation~'s actual .md files:\n" + string.Join("\n", diff));
         }
 
-        // GREEN_ON_BASE(construction): this change only drops the Up identifier-allowlist entry; adding `Packages/com.velvet.core/Runtime/NoSuchFile.cs` still breaks the separate path resolver.
+        // GREEN_ON_BASE(construction): this change only drops the KeyDown identifier-allowlist entry; adding `Packages/com.velvet.core/Runtime/NoSuchFile.cs` still breaks the separate path resolver.
         [Test]
         public void Given_ProjectMarkdown_When_ScannedForBacktickedPaths_Then_EveryPathExistsInTheRepo()
         {
@@ -496,7 +496,7 @@ namespace Velvet.Tests
         // one that hides: the entry suppresses nothing while the source spelling it is there, and becomes
         // load-bearing the day that source is deleted, with no review in between.
         //
-        // GREEN_ON_BASE(characterization): dropping the Up entry preserves the remaining entries' documented-span/source-missing contract on both trees; the head's NavigationMoveEvent.Direction.Up makes the dropped entry redundant there.
+        // GREEN_ON_BASE(characterization): dropping the KeyDown and Up entries preserves the remaining entries' documented-span/source-missing contract on both trees; the head's NavigationMoveEvent.Direction.Up and the guide's full key-event names make the dropped entries redundant there.
         [Test]
         public void Given_TheIdentifierAllowlist_When_EachEntryIsSoughtInTheSpansAndTheSources_Then_EveryEntrySuppressesAReport()
         {
@@ -534,7 +534,7 @@ namespace Velvet.Tests
                     : IdentifierTokenPattern.Matches(JsxElementPattern.Replace(span.Reference, " "))
                         .Select(token => (span.Path, span.Reference, Token: token.Value)));
 
-        // GREEN_ON_BASE(construction): this change only drops the Up identifier-allowlist entry; documenting `published_check.unpublished_reasonn` still breaks this existing binding check.
+        // GREEN_ON_BASE(construction): this change only drops the KeyDown identifier-allowlist entry; documenting `published_check.unpublished_reasonn` still breaks this existing binding check.
         [Test]
         public void Given_MarkdownNamingAScriptSymbol_When_TheSymbolIsSoughtInThatScript_Then_ItIsDefinedThere()
         {
@@ -558,7 +558,7 @@ namespace Velvet.Tests
         // going or the walk stopping short of them, and either wants reading before the number moves.
         private const int ScriptSymbolSpanFloor = 2;
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; this case keeps requiring a nonempty population of live reference spans.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; this case keeps requiring a nonempty population of live reference spans.
         [Test]
         public void Given_TheScriptSymbolCheck_When_ItsLiveSpansAreCounted_Then_SomeMarkdownStillReachesIt()
         {
@@ -594,7 +594,7 @@ namespace Velvet.Tests
             return spans.Distinct().ToList();
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; the bound-name and unbound-name controls retain their existing discrimination.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; the bound-name and unbound-name controls retain their existing discrimination.
         [Test]
         public void Given_TheImportSpellings_When_EachNameIsSoughtInTheModule_Then_OnlyABoundOneResolves()
         {
@@ -693,7 +693,7 @@ namespace Velvet.Tests
         private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract) =>
             BacktickSpans().SelectMany(span => extract(span.Path, span.Reference)).Distinct().ToList();
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; this change retains exclusion of dated changelog prose from the identifier corpus.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; this change retains exclusion of dated changelog prose from the identifier corpus.
         [Test]
         public void Given_ADatedChangelogSection_When_TheProseIsRead_Then_ItIsNotThere()
         {
@@ -712,7 +712,7 @@ namespace Velvet.Tests
             Assert.That((kept.Contains("StillHere"), kept.Contains("GoneNow")), Is.EqualTo((true, false)));
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; this case retains its synthetic heading controls.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; this case retains its synthetic heading controls.
         [Test]
         public void Given_AHighlightsBlockInsideADatedSection_When_TheProseIsRead_Then_ItGoesWithIt()
         {
@@ -729,7 +729,7 @@ namespace Velvet.Tests
             Assert.That((kept.Contains("GoneNow"), kept.Contains("AlsoGone")), Is.EqualTo((false, false)));
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; the existing non-changelog dated-heading control remains applicable.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; the existing non-changelog dated-heading control remains applicable.
         [Test]
         public void Given_ADatedHeadingInAnotherDocument_When_TheProseIsRead_Then_ItIsLeftAlone()
         {
@@ -934,7 +934,7 @@ namespace Velvet.Tests
             return unresolved.Distinct().ToList();
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; this case retains detection of a top-level Markdown directory omitted by the walk.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; this case retains detection of a top-level Markdown directory omitted by the walk.
         [Test]
         public void Given_EveryTopLevelDirectoryHoldingMarkdown_When_TheWalkIsRead_Then_TheWalkReachesIt()
         {
@@ -954,7 +954,7 @@ namespace Velvet.Tests
                 + "walk, or leave it untracked if it is machine-local");
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; root selection still must reject a root containing only untracked Markdown.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; root selection still must reject a root containing only untracked Markdown.
         [Test]
         public void Given_MarkdownGitDoesNotTrack_When_TheUnwalkedRootsAreRead_Then_ItNamesNoRoot()
         {
@@ -1002,7 +1002,7 @@ namespace Velvet.Tests
         // question — an entry there is a path pattern, one in BaseUnwalkedDirectories a basename at any
         // depth — and measured, BaseUnwalkedDirectories and IgnoredRoots disagree in both directions today.
         //
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; this case retains tracked-Markdown coverage without changing corpus exclusions.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; this case retains tracked-Markdown coverage without changing corpus exclusions.
         [Test]
         public void Given_EveryTrackedMarkdownFileUnderAWalkedRoot_When_TheCorpusIsRead_Then_TheWalkReachedIt()
         {
@@ -1037,7 +1037,7 @@ namespace Velvet.Tests
                 + "all, as a case-only rename and a tracked file deleted without git rm each leave it");
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; the foreign-owner control still distinguishes successful listing from Git refusal.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; the foreign-owner control still distinguishes successful listing from Git refusal.
         [Test]
         public void Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt()
         {
@@ -1071,7 +1071,7 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; the synthetic stale git-directory pointer still requires relocation to find tracked Markdown.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; the synthetic stale git-directory pointer still requires relocation to find tracked Markdown.
         [Test]
         public void Given_AWorktreeWhoseRecordedGitDirectoryIsGone_When_TheTrackedListingIsRead_Then_TheOneUnderTheCheckoutAnswers()
         {
@@ -1114,7 +1114,7 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; reachable Git metadata must still preserve the foreign-owner refusal.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; reachable Git metadata must still preserve the foreign-owner refusal.
         [Test]
         public void Given_ALinkedWorktreeGitCanFindOnItsOwn_When_TheTrackedListingIsRead_Then_TheOwnershipRefusalStillFires()
         {
@@ -1334,7 +1334,7 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; the planted Markdown probe must remain excluded while scripts stays reachable.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; the planted Markdown probe must remain excluded while scripts stays reachable.
         [Test]
         public void Given_APytestCacheUnderAWalkedRoot_When_TheWalkRuns_Then_ItsMarkdownStaysOutOfTheCorpus()
         {
@@ -1374,7 +1374,7 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; the staged-copy probe remains excluded while docs stays reachable.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; the staged-copy probe remains excluded while docs stays reachable.
         [Test]
         public void Given_TheDocBuildStagedTheGuides_When_TheWalkRuns_Then_TheStagedCopyStaysOutOfTheCorpus()
         {
@@ -1440,7 +1440,7 @@ namespace Velvet.Tests
             return assignment.Success ? "docs/" + assignment.Groups[1].Value : string.Empty;
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; the two planted generated-directory probes must remain outside the corpus.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; the two planted generated-directory probes must remain outside the corpus.
         [Test]
         public void Given_TheDocfxGeneratedDirectories_When_TheWalkRuns_Then_NeitherEntersTheCorpus()
         {
@@ -1506,7 +1506,7 @@ namespace Velvet.Tests
         private static readonly Regex DocfxOutputPattern =
             new(@"""(?:dest|output)""\s*:\s*""([^""]+)""", RegexOptions.Compiled);
 
-        // GREEN_ON_BASE(construction): this change only drops the Up identifier-allowlist entry; repeating `docs/_site` in a workflow still breaks this existing single-source guard.
+        // GREEN_ON_BASE(construction): this change only drops the KeyDown identifier-allowlist entry; repeating `docs/_site` in a workflow still breaks this existing single-source guard.
         [Test]
         public void Given_TheDocfxGeneratedDirectories_When_TheWorkflowsAreScanned_Then_NoneIsWrittenOutAgain()
         {
@@ -1534,7 +1534,7 @@ namespace Velvet.Tests
                 "docs/docfx.json owns where DocFX writes; a workflow repeating it is a second place to change");
         }
 
-        // GREEN_ON_BASE(characterization): this change only drops the Up identifier-allowlist entry; its planted record remains excluded while the scratch-root probe is reached.
+        // GREEN_ON_BASE(characterization): this change only drops the KeyDown identifier-allowlist entry; its planted record remains excluded while the scratch-root probe is reached.
         [Test]
         public void Given_ACampaignHoldsItsRecord_When_TheWalkRuns_Then_TheRecordStaysOutOfTheCorpus()
         {

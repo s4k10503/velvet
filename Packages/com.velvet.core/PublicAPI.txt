@@ -166,6 +166,9 @@
 [Velvet] field Velvet.FiberUpdatePriority.Normal: Velvet.FiberUpdatePriority
 [Velvet] field Velvet.FiberUpdatePriority.Transition: Velvet.FiberUpdatePriority
 [Velvet] field Velvet.FiberUpdatePriority.Urgent: Velvet.FiberUpdatePriority
+[Velvet] field Velvet.FocusScopeOrientation.Both: Velvet.FocusScopeOrientation
+[Velvet] field Velvet.FocusScopeOrientation.Horizontal: Velvet.FocusScopeOrientation
+[Velvet] field Velvet.FocusScopeOrientation.Vertical: Velvet.FocusScopeOrientation
 [Velvet] field Velvet.FontIntent.Family: System.String?
 [Velvet] field Velvet.FontIntent.HasFamily: System.Boolean
 [Velvet] field Velvet.FontIntent.HasItalic: System.Boolean
@@ -534,7 +537,7 @@
 [Velvet] method Velvet.V.DropdownField(System.String?, System.String?, System.Collections.Generic.List`1[System.String]?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Droppable(System.String, System.Object?, System.Boolean, System.String?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.ErrorBoundary(System.Func`2[System.Exception, Velvet.VNode], Velvet.VNode?[], System.String?): Velvet.ComponentNode
-[Velvet] method Velvet.V.FocusScope(System.String?, System.String?, System.String?, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.FocusScope(System.String?, System.String?, System.String?, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FocusScopeOrientation): Velvet.ElementNode
 [Velvet] method Velvet.V.Fragment(Velvet.VNode?[]): Velvet.FragmentNode
 [Velvet] method Velvet.V.Fragment(Velvet.VNode?[], System.String?): Velvet.FragmentNode
 [Velvet] method Velvet.V.Image(System.String?, System.String?, System.String?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
@@ -892,6 +895,7 @@
 [Velvet] property Velvet.FocusRing.Ref: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
 [Velvet] property Velvet.FocusScopeSettings.AutoFocus: System.Boolean
 [Velvet] property Velvet.FocusScopeSettings.Contain: System.Boolean
+[Velvet] property Velvet.FocusScopeSettings.Orientation: Velvet.FocusScopeOrientation
 [Velvet] property Velvet.FocusScopeSettings.RestoreFocus: System.Boolean
 [Velvet] property Velvet.FocusScopeSettings.SingleTabStop: System.Boolean
 [Velvet] property Velvet.FragmentNode.Children: Velvet.VNode?[]
@@ -1213,6 +1217,7 @@
 [Velvet] type Velvet.FocusManagerOptions
 [Velvet] type Velvet.FocusOutBinding
 [Velvet] type Velvet.FocusRing
+[Velvet] type Velvet.FocusScopeOrientation
 [Velvet] type Velvet.FocusScopeSettings
 [Velvet] type Velvet.FontIntent
 [Velvet] type Velvet.FragmentNode
