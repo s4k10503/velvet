@@ -465,6 +465,18 @@ namespace Velvet
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
                     resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
+                // A Portal a render created inside children its Suspense hides was hidden with them before this
+                // drain mounted its own, so they are hidden here; the reveal finds them through PortalState.
+                if (SuspenseHiddenElements.IsAtOrUnderHidden(placeholder))
+                {
+                    for (var slot = slotStart; slot < slotStart + slotLength; slot++)
+                    {
+                        if (LogicalChildSlots.TryGetPhysical(resolvedTarget, slot, out var physical))
+                        {
+                            SuspenseHiddenElements.Hide(resolvedTarget[physical]);
+                        }
+                    }
+                }
             }
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
             // last member this pass tears down here, never synchronously mid-diff.

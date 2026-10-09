@@ -1845,27 +1845,11 @@ namespace Velvet
         // Puts back a record SuspenseRecordAt read, null being no fallback shown.
         internal void RestoreSuspenseRecord(ComponentFiber? boundary, VisualElement? container,
             VisualElement? portalScope, long positionKey, SuspenseFallbackRecord? record)
-        {
-            if (record is { } shown)
-            {
-                SetSuspenseFallbackShown(boundary, container, portalScope, positionKey, shown.Node, true, shown.HidesPrimary);
-                return;
-            }
-            var position = (container, portalScope, positionKey);
-            if (boundary == null) _rootlessSuspenseFallbackKeys.Remove(position);
-            else RemoveSuspenseFallback(boundary, position);
-        }
+            => SetSuspenseFallbackShown(boundary, container, portalScope, positionKey, record?.Node!, record.HasValue,
+                record.GetValueOrDefault().HidesPrimary);
 
         internal bool IsSuspensePrimaryHidden(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope, long positionKey)
-        {
-            var position = (container, portalScope, positionKey);
-            if (boundary == null)
-            {
-                return _rootlessSuspenseFallbackKeys.TryGetValue(position, out var rootless) && rootless.HidesPrimary;
-            }
-            if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys)) return false;
-            return keys.TryGetValue(position, out var record) && record.HidesPrimary;
-        }
+            => SuspenseRecordAt(boundary, container, portalScope, positionKey).GetValueOrDefault().HidesPrimary;
 
         internal bool IsSuspenseFallbackShownOnSpine(ComponentFiber boundary, VisualElement? container, VisualElement? portalScope,
             long positionKey, SuspenseNode node)

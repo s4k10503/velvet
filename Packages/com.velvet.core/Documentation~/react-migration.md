@@ -611,8 +611,11 @@ when the boundary reveals them. Their elements are kept rather than created agai
 them keep their state. A query over the tree finds those hidden elements too. The commit that shows the
 fallback takes down their layout effects, imperative handles and element refs, as React 18 does, and blurs
 a focused element inside them; the commit that reveals them sets the effects, handles and refs up
-again. Their passive effects stay connected throughout, as React's do. A `V.Anchored` element among them
-stays hidden while it tracks its target. A boundary that has not
+again. Their passive effects stay connected throughout, as React's do. The components in the children of a
+`V.Portal` a render adds to the hidden children, whose elements are hidden all the same, and those of a
+`V.VirtualList` row the list mounts outside a render of the boundary are not taken down that way: they set
+their layout effects and refs up as they mount. A `V.Anchored`
+element among the hidden children stays hidden while it tracks its target. A boundary that has not
 shown its children yet discards what the suspended render built: a component whose render suspended keeps
 its state meanwhile only where no host element sits between it and the Suspense — one inside such an element
 is disposed with it — and one first mounted under the fallback runs none of its effects, passive ones

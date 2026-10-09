@@ -35,6 +35,15 @@ namespace Velvet
 
         internal static bool IsHidden(VisualElement element) => s_hidden.TryGetValue(element, out _);
 
+        internal static bool IsAtOrUnderHidden(VisualElement? element)
+        {
+            for (var ve = element; ve != null; ve = ve.parent)
+            {
+                if (IsHidden(ve)) return true;
+            }
+            return false;
+        }
+
         internal static void Release(VisualElement element) => s_hidden.Remove(element);
     }
 }

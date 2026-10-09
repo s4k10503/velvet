@@ -6,7 +6,9 @@
   or a `V.VirtualList` row among them included, and their passive effects stay connected; their layout
   effects, imperative handles and element refs are taken down until the reveal, as React 18 does, and a
   focused element inside them is blurred. A `V.Portal`'s children are hidden with them, and each hidden element
-  gets back the inline `display` it had on the reveal. It used to remove those elements and dispose every
+  gets back the inline `display` it had on the reveal. The components of a Portal a render adds while the
+  boundary hides, and of a `V.VirtualList` row the list mounts outside a render of the boundary, still set
+  their layout effects and refs up as they mount. It used to remove those elements and dispose every
   component inside a host element of them, so the reveal created them again. A query over the tree, such as
   `Q<Label>()`, now finds the hidden elements while the fallback shows.
 

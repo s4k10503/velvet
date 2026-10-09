@@ -206,8 +206,7 @@ namespace Velvet
                     // failure, or a suspend no Suspense span of this walk caught — leaves those elements to no
                     // caller: they go the way a suspended span's do.
                     RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
-                    RestoreSuspenseRecords(commit);
-                    RestoreOffscreenState(commit);
+                    RestoreWhatTheSuspensesWrote(commit);
                     // A boundary above discards everything this walk rendered, so the components it mounted go
                     // too, where a suspended span keeps them for the retry.
                     if (exception is BoundaryCaughtSignal) DisposeFibersMountedBy(oldFibers, newFibers);
@@ -235,7 +234,13 @@ namespace Velvet
                     FinalizeGeneralCommit(commit);
                     ApplyOffscreenChanges(commit);
                 }
-                else RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
+                else
+                {
+                    RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
+                    // The fibers KeepFibersTheStoppedWalkLeft kept stand as the screen does, which is what this
+                    // puts their offscreen state back to.
+                    RestoreWhatTheSuspensesWrote(commit);
+                }
                 SweepOrphans(oldFibers, newFibers);
                 return removalsRan;
             }
@@ -1508,6 +1513,8 @@ namespace Velvet
         private void SetPrimaryHidden(
             InlineWalk walk, GeneralCommitState commit, int from, int to, ComponentFiber? boundaryFiber, bool hidden)
         {
+            // MUTANT_SURVIVES(equivalent, guard removed): an empty range adds no root, and no fiber is under none.
+            if (from == to) return;
             var roots = new HashSet<VisualElement>();
             for (var i = from; i < to; i++)
             {
@@ -1603,7 +1610,8 @@ namespace Velvet
             fiber.OffscreenUnder = offscreenUnder;
         }
 
-        private static void RestoreOffscreenState(GeneralCommitState commit)
+        // For a walk whose removal pass does not run, so nothing those writes describe reached the screen.
+        private void RestoreWhatTheSuspensesWrote(GeneralCommitState commit)
         {
             for (var i = commit.OffscreenBefore?.Count ?? 0; i-- > 0;)
             {
@@ -1612,10 +1620,6 @@ namespace Velvet
                 fiber.HiddenUnder = hiddenUnder;
                 fiber.OffscreenUnder = offscreenUnder;
             }
-        }
-
-        private void RestoreSuspenseRecords(GeneralCommitState commit)
-        {
             for (var i = commit.RecordsBefore?.Count ?? 0; i-- > 0;)
             {
                 var (boundary, container, portalScope, position, before) = commit.RecordsBefore![i];
@@ -1655,10 +1659,10 @@ namespace Velvet
                     {
                         SuspenseHiddenElements.Hide(element);
                         _ctx.DetachRefsWhileHidden(element);
-                        // A hidden element is no focus target, so the focus inside it goes; what UI Toolkit does
-                        // with it unasked is pinned by SuspenseHiddenFocusPanelTests.
+                        // UI Toolkit lets go of the focus of an element no longer displayed only at its next layout
+                        // pass, which SuspenseHiddenFocusPanelTests pins; the commit that hides it lets go of it here.
                         var focused = element.focusController?.focusedElement as VisualElement;
-                        if (HolderOf(focused, new HashSet<VisualElement> { element }) != null) focused!.Blur();
+                        if (SuspenseHiddenElements.IsAtOrUnderHidden(focused)) focused!.Blur();
                     }
                     else
                     {

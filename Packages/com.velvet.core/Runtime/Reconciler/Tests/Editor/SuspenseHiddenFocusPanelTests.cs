@@ -24,24 +24,27 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the merge base has no Suspense hide involved in this case at all.
         // What it pins is UI Toolkit's own handling, which the hide's explicit blur is written against.
         [Test]
-        public void Given_AFocusedButtonOnAPanel_When_ItsInlineDisplayBecomesNone_Then_UIToolkitLeavesItFocused()
+        public void Given_AFocusedButtonOnAPanel_When_ItsInlineDisplayBecomesNone_Then_UIToolkitLetsGoOfItsFocusAtTheNextLayoutPass()
         {
             // Arrange
             _mounted = V.Mount(_window.rootVisualElement, V.Button(name: "focusable"));
             var button = _window.rootVisualElement.Q<Button>("focusable");
+            var controller = button.focusController;
             var granted = DriveFocus(button);
 
             // Act
             button.style.display = DisplayStyle.None;
+            var focusedBeforeTheLayoutPass = ReferenceEquals(controller.focusedElement, button);
             ForcePanelUpdate(button.panel);
 
             // Assert — whether focus was granted is read with it, since a button never focused is not focused after
-            Assert.That((granted, ReferenceEquals(button.focusController.focusedElement, button)), Is.EqualTo((true, true)),
-                "UI Toolkit leaves the focus on an element an inline display: none hides");
+            Assert.That((granted, focusedBeforeTheLayoutPass, ReferenceEquals(controller.focusedElement, button)),
+                Is.EqualTo((true, true, false)),
+                "UI Toolkit keeps the focus of an element display: none hides until its next layout pass lets go of it");
         }
 
         // GREEN_ON_BASE(characterization): the base removes the focused button, which takes the focus with it.
-        // What this pins is that a button the boundary keeps hidden gives the focus up as well.
+        // What this pins is that a button the boundary keeps hidden gives the focus up in the commit that hides it.
         [Test]
         public void Given_AFocusedButtonInARevealedPrimary_When_TheBoundarySuspendsAgain_Then_ItIsNoLongerFocused()
         {
@@ -51,11 +54,10 @@ namespace Velvet.Tests
             var controller = button.focusController;
             var granted = DriveFocus(button);
 
-            // Act
+            // Act — no layout pass follows, which would let go of the focus whatever the commit did
             s_setOwn.Invoke(1);
             _mounted.FlushStateForTest();
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
-            ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Assert — whether focus was granted is read with it, since a button never focused is not focused after
             Assert.That((granted, ReferenceEquals(controller.focusedElement, button)), Is.EqualTo((true, false)),
