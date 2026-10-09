@@ -350,6 +350,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEnterTweenWithAnExitTweenStartedOnTopOfIt_When_TheExitEnds_Then_TheEntersDurationTimesTheElementAgain()
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(0.6f));
+            scheduler.PlayExit(element, LinearExit(0.1f), onComplete: null);
+
+            // Act — past the exit's end, short of the enter's.
+            AdvancePast(0.2f);
+
+            // Assert
+            var durations = element.style.transitionDuration;
+            Assert.That((durations.keyword,
+                    durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(600f, TimeUnit.Millisecond))),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
         public void Given_AnElementWithItsOwnDuration_When_AnExitTweenRestartsWhileItPlays_Then_ItsDurationIsItsOwnOnceBothEnd()
         {
             // Arrange

@@ -6,6 +6,15 @@ namespace Velvet
 {
     internal static class MotionTweenTiming
     {
+        // One tween's timing as it last wrote it, which the element takes back while that tween is the latest
+        // still playing.
+        internal sealed class Play
+        {
+            public StyleList<TimeValue> Duration;
+            public StyleList<TimeValue> Delay;
+            public StyleList<EasingFunction> Curve;
+        }
+
         private sealed class Hold
         {
             public StyleList<TimeValue> Duration;
@@ -15,14 +24,20 @@ namespace Velvet
             public StyleList<TimeValue> WrittenDelay;
             public StyleList<EasingFunction> WrittenCurve;
             // An enter and an exit can play on one element at once, and a cancelled exit's reversal carries its
-            // play on: the saved timing goes back only when the last of them ends.
-            public int Plays;
+            // play on. In start order: the last one times the element, and the saved timing goes back only once
+            // none remains.
+            public readonly List<Play> Plays = new();
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Hold> s_holds = new();
         private static readonly ConditionalWeakTable<VisualElement, Hold>.CreateValueCallback s_save = Save;
 
-        internal static void Begin(VisualElement element) => s_holds.GetValue(element, s_save).Plays++;
+        internal static Play Begin(VisualElement element)
+        {
+            var play = new Play();
+            s_holds.GetValue(element, s_save).Plays.Add(play);
+            return play;
+        }
 
         private static Hold Save(VisualElement element)
         {
@@ -50,15 +65,25 @@ namespace Velvet
             if (duration != null) style.transitionDuration = new List<TimeValue>(duration);
             if (curve != null) style.transitionTimingFunction = new List<EasingFunction>(curve);
             if (delay != null) style.transitionDelay = new List<TimeValue>(delay);
-            if (holding) Record(style, hold);
+            if (!holding) return;
+            Record(style, hold);
+            var latest = hold.Plays[hold.Plays.Count - 1];
+            (latest.Duration, latest.Delay, latest.Curve) = (hold.WrittenDuration, hold.WrittenDelay, hold.WrittenCurve);
         }
 
-        internal static void End(VisualElement element)
+        internal static void End(VisualElement element, Play? play)
         {
-            if (!s_holds.TryGetValue(element, out var hold)) return;
+            if (!s_holds.TryGetValue(element, out var hold) || !hold.Plays.Remove(play!)) return;
             var style = element.style;
             Adopt(style, hold);
-            if (--hold.Plays > 0) return;
+            if (hold.Plays.Count > 0)
+            {
+                var latest = hold.Plays[hold.Plays.Count - 1];
+                (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
+                    (latest.Duration, latest.Delay, latest.Curve);
+                Record(style, hold);
+                return;
+            }
             s_holds.Remove(element);
             (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
                 (hold.Duration, hold.Delay, hold.Curve);

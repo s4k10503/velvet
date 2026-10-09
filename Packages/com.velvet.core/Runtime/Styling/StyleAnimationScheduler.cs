@@ -223,7 +223,7 @@ namespace Velvet
 
             // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
             // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
-            var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, play.DelaySec,
+            var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, out var timing, play.DelaySec,
                 allProperties: variantMode, propertyOverrides: propertyOverrides, delayOffsetSec: delayOffsetSec);
             if (variantMode)
             {
@@ -243,6 +243,7 @@ namespace Velvet
                 RestingClasses = play.RestingClasses,
                 DurationList = durationList,
                 DelayList = delayList,
+                Timing = timing,
                 AnimatingElement = element,
                 OnSwap = play.OnSwap,
                 SwapAhead = variantMode,
@@ -361,7 +362,7 @@ namespace Velvet
                     }
                     // Target is opaque now — stop the co-fade and release the band's inline opacity.
                     RingCoFadeCoordinator.EndRingCoFade(completed);
-                    ClearTransitionStyles(element);
+                    ClearTransitionStyles(element, completed.Timing);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
                     onComplete?.Invoke();
@@ -441,7 +442,7 @@ namespace Velvet
             // transition-property is untouched).
             var (staggerDelayMs, delayOffsetSec) = SplitNativeDelay(config.DelaySec, additionalDelaySec,
                 restoreFromOnCancel ? config.PropertyOverrides : null);
-            var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing,
+            var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing, out var timing,
                 config.DelaySec, allProperties: restoreFromOnCancel,
                 propertyOverrides: restoreFromOnCancel ? config.PropertyOverrides : null,
                 delayOffsetSec: delayOffsetSec);
@@ -455,6 +456,7 @@ namespace Velvet
                 RestingClasses = restoreFromOnCancel ? fromClasses : null,
                 DurationList = durationList,
                 DelayList = delayList,
+                Timing = timing,
                 AnimatingElement = element,
                 OnSwap = onSwap,
             };
@@ -555,7 +557,7 @@ namespace Velvet
                     RingCoFadeCoordinator.EndRingCoFade(completed);
                     // A completed exit's element can outlive its drop (a re-entry preempting the drop
                     // render), so the exit's timing must not stay on it for later class changes to tween by.
-                    ClearTransitionStyles(element);
+                    ClearTransitionStyles(element, completed.Timing);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
                     onComplete?.Invoke();
@@ -1368,10 +1370,11 @@ namespace Velvet
         }
 
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
-            VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false,
+            VisualElement element, float durationSec, EasingMode easing, out MotionTweenTiming.Play timing,
+            float delaySec = 0f, bool allProperties = false,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null, float delayOffsetSec = 0f)
         {
-            MotionTweenTiming.Begin(element);
+            timing = MotionTweenTiming.Begin(element);
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
@@ -1631,7 +1634,7 @@ namespace Velvet
             }
             else
             {
-                ClearTransitionStyles(element);
+                ClearTransitionStyles(element, pending.Timing);
                 _listPool.ReturnDurationList(pending.DurationList);
                 _listPool.ReturnDelayList(pending.DelayList);
             }
@@ -1651,13 +1654,14 @@ namespace Velvet
                 RestingClasses = pending.RestingClasses,
                 DurationList = pending.DurationList,
                 DelayList = pending.DelayList,
+                Timing = pending.Timing,
             };
             var timeoutMs = SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList);
             var timeout = element.schedule.Execute(() =>
             {
                 if (_pendingEnters.Remove(element))
                 {
-                    ClearTransitionStyles(element);
+                    ClearTransitionStyles(element, reversal.Timing);
                     _listPool.ReturnDurationList(reversal.DurationList);
                     _listPool.ReturnDelayList(reversal.DelayList);
                 }
@@ -1723,16 +1727,16 @@ namespace Velvet
                     BezierTweenDriver.ClearInlineOverrides(element, pending.Bezier);
                     ReapplyMotionOwnedInlineValues(element);
                 }
-                ClearTransitionStyles(element);
+                ClearTransitionStyles(element, pending.Timing);
                 _listPool.ReturnDurationList(pending.DurationList);
                 _listPool.ReturnDelayList(pending.DelayList);
             }
             map.Clear();
         }
 
-        private void ClearTransitionStyles(VisualElement element)
+        private void ClearTransitionStyles(VisualElement element, MotionTweenTiming.Play? timing)
         {
-            MotionTweenTiming.End(element);
+            MotionTweenTiming.End(element, timing);
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).
             // Routed through the guard rather than nulled here: a per-frame animate-* driver can be holding the
@@ -1765,6 +1769,8 @@ namespace Velvet
             public string[]? RestingClasses;
             public List<TimeValue>? DurationList;
             public List<TimeValue>? DelayList;
+            // The tween timing this play wrote, which a reversal it hands on to carries.
+            public MotionTweenTiming.Play? Timing;
             // The element whose transition-interpolated opacity the co-fade tick samples each frame (the
             // animating subtree root). Stored so the tick reads it without recapturing.
             public VisualElement? AnimatingElement;
