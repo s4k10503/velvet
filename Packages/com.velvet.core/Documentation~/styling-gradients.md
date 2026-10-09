@@ -24,7 +24,7 @@ or column and 512 by 512 for any other, and again when the element's size crosse
 | `bg-gradient-to-{dir}` / `bg-linear-to-{dir}` | linear, toward `t` `tr` `r` `br` `b` `bl` `l` `tl` |
 | `bg-linear-{n}` / `-bg-linear-{n}` / `bg-linear-[{n}deg]` | linear at an angle in degrees, 0 pointing up, clockwise |
 | `bg-radial` / `bg-radial-[at_{position}]` | radial from a centre (default the middle), an ellipse out to the farthest corner |
-| `bg-radial-[{shape} {size} at_{position}]` | `circle` or `ellipse`; `closest-side`, `closest-corner`, `farthest-side`, `farthest-corner`, or radii: a circle's length, an ellipse's two lengths or percentages (`circle_40px`, `ellipse_50%_1in`), a length being a non-negative `px`, `rem` or absolute unit |
+| `bg-radial-[{shape} {size} at_{position}]` | `circle` or `ellipse`; `closest-side`, `closest-corner`, `farthest-side`, `farthest-corner`, or radii: a circle's length, an ellipse's two lengths or percentages (`circle_40px`, `ellipse_50%_1in`), a length being a non-negative `px`, `rem` or absolute unit, or a math function that comes to one |
 | `bg-conic` / `bg-conic-{n}` / `bg-conic-[from_{n}deg]` | conic, sweeping clockwise from a start angle |
 
 A position is keywords (`top`, `left`, `center`, …) or percentages, which may lie outside the box, x before y: `at_top_left`,
@@ -45,9 +45,10 @@ The last shape utility in the class list wins, and a stop utility with no shape 
 0%–100%: the gradient line runs on past the box. As in Tailwind, a bare position is a whole, unsigned
 percentage; a negative or fractional one is written in brackets (`from-[-50%]`, `via-[12.5%]`). A stop may
 also sit at a length in `px`, `rem` (1rem is 16px, as elsewhere) or an absolute unit (`in`, `cm`, `mm`, `pt`,
-`pc`, `Q`, at CSS's fixed ratios), negative allowed, written in brackets (`from-[20px]`, `via-[-1rem]`). The
-units that need an element or panel to measure against (`em`, `vw`, `vh`, …) and `calc()` and the other math
-functions are not read, here or in any other utility's length. With only one of `from-` and `to-` given, the other end
+`pc`, `Q`, at CSS's fixed ratios), negative allowed, written in brackets (`from-[20px]`, `via-[-1rem]`), or
+a math function that comes to one length or one percentage (`from-[calc(1rem+4px)]`,
+[styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). The units that need an element or panel to
+measure against (`em`, `vw`, `vh`, …) are not read, here or in any other utility's length. With only one of `from-` and `to-` given, the other end
 is that colour made transparent, and `via-` alone fades in from and out to its own transparent colour.
 
 ## Stop lists in the shape's brackets
@@ -73,7 +74,8 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
 - **Each stop** is a colour, then none, one or two positions. The colour is a palette name
   (`slate-900`), a bracketed value, or anything the arbitrary `bg-[…]` value takes: `#0f172a`,
   `rgb(15,23,42)`, or a basic colour name such as `red`. A position is a percentage, a length in `px`, `rem` or an
-  absolute unit, negative allowed (`red_20px`, `red_-1rem`; not on a conic), or on a conic an angle (`red_90deg`, in the units a first argument takes).
+  absolute unit or a math function that comes to one of those ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)),
+  negative allowed (`red_20px`, `red_-1rem`; not on a conic), or on a conic an angle (`red_90deg`, in the units a first argument takes).
   Two positions make the colour hold between them (`red_0%_40%`) and count as two stops. A position in
   pixels is a share of the gradient line (a radial's ray), so it is placed once the element's size is
   known.
@@ -113,5 +115,6 @@ both.
 
 - Not read, and so leaving the class inert: interpolation spaces other than the seven above (`hwb`,
   `xyz`, `display-p3`, …), a centre written in lengths or with edge offsets (`at_20px_30px`,
-  `at_right_10px_bottom_20px`), `calc()` and `var()` in a stop, and a colour written as `color-mix()`,
+  `at_right_10px_bottom_20px`), `var()` in a stop, a math function in a stop that does not come to one
+  length or one percentage, and a colour written as `color-mix()`,
   `hsl()`, `oklch()` and the other functions the arbitrary-colour parser does not read.
