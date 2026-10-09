@@ -22,6 +22,10 @@ namespace Velvet.Tests
         [TestCase("slice-r-[3]", "null,3,null,null")]
         [TestCase("slice-b-[3]", "null,null,3,null")]
         [TestCase("slice-l-[3]", "null,null,null,3")]
+        [TestCase("slice-[12_8]", "12,8,12,8")]
+        [TestCase("slice-[12_8_4]", "12,8,4,8")]
+        [TestCase("slice-[12_8_4_2]", "12,8,4,2")]
+        [TestCase("slice-[12px_8]", "12,8,12,8")]
         public void Given_ASliceInsetClass_When_Mounted_Then_ItWritesTheEdgesItNames(string className, string expected)
         {
             // Arrange
@@ -59,6 +63,11 @@ namespace Velvet.Tests
         [TestCase("slice-scale-[-1]", "slice-scale-[1]")]
         [TestCase("-slice-scale-[1]", "slice-scale-[1]")]
         [TestCase("slice-scale-[2px]", "slice-scale-[2]")]
+        [TestCase("slice-[1_2_3_4_5]", "slice-[1_2_3_4]")]
+        [TestCase("slice-[12_]", "slice-[12_8]")]
+        [TestCase("slice-[1__2]", "slice-[1_2]")]
+        [TestCase("slice-[12_8.5]", "slice-[12_8]")]
+        [TestCase("slice-x-[1_2]", "slice-x-[1]")]
         public void Given_AnInvalidSliceValue_When_Parsed_Then_ItIsDeclinedWhereItsValidNeighbourParses(
             string invalid, string valid)
         {
@@ -71,6 +80,20 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((validParsed, invalidParsed), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_SliceShorthandsDifferingInTheLeftInsetAlone_When_TheirValueKeysAreCompared_Then_OnlyTheSameValueSharesAKey()
+        {
+            // Arrange — two spellings of one value share a key, so the key is read from the parsed edges rather
+            // than from the class text.
+
+            // Act
+            var sameValue = FiberNodePatcher.ValueKey("slice-[1_2_3_4]") == FiberNodePatcher.ValueKey("slice-[1px_2_3_4]");
+            var otherLeft = FiberNodePatcher.ValueKey("slice-[1_2_3_4]") == FiberNodePatcher.ValueKey("slice-[1_2_3_5]");
+
+            // Assert
+            Assert.That((sameValue, otherLeft), Is.EqualTo((true, false)));
         }
 
         [Test]

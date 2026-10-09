@@ -544,13 +544,60 @@ namespace Velvet
             {
                 return null;
             }
-            var digits = value.EndsWith("px".AsSpan()) ? value.Slice(0, value.Length - 2) : value;
-            if (negate || !int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var inset))
+            if (negate)
+            {
+                return false;
+            }
+            if (property == ArbitraryProperty.Slice)
+            {
+                return TryParseSliceShorthand(value, out result);
+            }
+            if (!TryParseSliceInset(value, out var inset))
             {
                 return false;
             }
             result = new ArbitraryStyle(property, inset, LengthUnit.Pixel);
             return true;
+        }
+
+        // border-image-slice's one to four values, '_' standing for the space between them: one sets every edge,
+        // two the vertical then the horizontal pair, three the top, the horizontal pair and the bottom, and four
+        // the top, right, bottom and left.
+        private static bool TryParseSliceShorthand(ReadOnlySpan<char> value, out ArbitraryStyle result)
+        {
+            result = default;
+            Span<int> insets = stackalloc int[4];
+            var count = 0;
+            while (true)
+            {
+                var gap = value.IndexOf('_');
+                // MUTANT_SURVIVES(equivalent, boundary): at a gap of 0 the part is empty or starts with '_', and
+                // neither parses as an inset.
+                var part = gap < 0 ? value : value.Slice(0, gap);
+                if (count == insets.Length || !TryParseSliceInset(part, out insets[count]))
+                {
+                    return false;
+                }
+                count++;
+                // MUTANT_SURVIVES(equivalent, boundary): a gap of 0 left an empty part, which returned above.
+                if (gap < 0)
+                {
+                    break;
+                }
+                value = value.Slice(gap + 1);
+            }
+            var top = insets[0];
+            var right = count > 1 ? insets[1] : top;
+            var bottom = count > 2 ? insets[2] : top;
+            var left = count > 3 ? insets[3] : right;
+            result = new ArbitraryStyle(ArbitraryProperty.Slice, top, right, bottom, left);
+            return true;
+        }
+
+        private static bool TryParseSliceInset(ReadOnlySpan<char> value, out int inset)
+        {
+            var digits = value.EndsWith("px".AsSpan()) ? value.Slice(0, value.Length - 2) : value;
+            return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out inset);
         }
 
         // Parses a duration-[..] time value to SECONDS. Accepts "<n>ms" / "<n>s" (duration-[400ms] /
@@ -798,7 +845,8 @@ namespace Velvet
             [ArbitraryProperty.SliceScale] = new Action<IStyle, StyleFloat>[] { (s, v) => s.unitySliceScale = v },
         };
 
-        // Integer-valued counterpart to PropertySetters: the nine-slice insets.
+        // Integer-valued counterpart to PropertySetters: the nine-slice insets. Slice is here for ClearInline;
+        // ApplyInline writes its four edges from the payload itself.
         private static readonly Dictionary<ArbitraryProperty, Action<IStyle, StyleInt>[]> IntSetters = new()
         {
             [ArbitraryProperty.Slice] = new Action<IStyle, StyleInt>[]
@@ -2040,7 +2088,7 @@ namespace Velvet
             {
                 // Among transform properties, scale (uniform + per-axis) and both translate axes are composed
                 // by ResolveAndApply's combined appliers and never reach here; what lands is every transform
-                // property written in one go — rotate, transform-origin — plus aspect-ratio.
+                // property written in one go — rotate, transform-origin — plus aspect-ratio and the four-edge Slice.
                 case ArbitraryProperty.Rotate:
                     element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
                     return;
@@ -2052,6 +2100,15 @@ namespace Velvet
                 case ArbitraryProperty.Opacity:
                     MotionOpacity.WriteTransitioned(element, style.Value);
                     return;
+                case ArbitraryProperty.Slice:
+                {
+                    var slices = element.style;
+                    slices.unitySliceTop = (int)style.Value;
+                    slices.unitySliceRight = (int)style.Value2;
+                    slices.unitySliceBottom = (int)style.Value3;
+                    slices.unitySliceLeft = (int)style.Value4;
+                    return;
+                }
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)

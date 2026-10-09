@@ -275,8 +275,8 @@ namespace Velvet
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
 
         #region Nine-slice (the background image's slice insets and their scale)
-        // The insets are written as StyleInt, so Value carries a whole number.
-        Slice,        // slice-[12]       -> -unity-slice-top/right/bottom/left
+        // The insets are written as StyleInt, so their values are whole numbers.
+        Slice,        // slice-[12_8_4_2] -> -unity-slice-top/right/bottom/left (one to four values, see Value4)
         SliceX,       // slice-x-[12]     -> left + right
         SliceY,       // slice-y-[12]     -> top + bottom
         SliceTop,     // slice-t-[12]
@@ -300,8 +300,11 @@ namespace Velvet
         // its own class; a pair here arrives from ONE class and has no spelling that sets half of it.
         public float Value2 { get; }
         public LengthUnit Unit2 { get; }
-        // TransformOrigin's z, a length in pixels; 0 for every other property.
+        // TransformOrigin's z, a length in pixels; Slice's bottom inset; 0 for every other property.
         public float Value3 { get; }
+        // Slice's left inset; 0 for every other property. Slice carries its four edges in Value (top), Value2
+        // (right), Value3 and Value4, because one slice-[…] class sets all four in the border-image-slice order.
+        public float Value4 { get; }
         // Color payload for color properties; default for length/angle/custom properties.
         public Color Color { get; }
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
@@ -326,6 +329,7 @@ namespace Velvet
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
+            Value4 = 0f;
             Color = default;
             Custom = null;
         }
@@ -340,6 +344,7 @@ namespace Velvet
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
+            Value4 = 0f;
             Color = default;
             Custom = null;
         }
@@ -355,6 +360,25 @@ namespace Velvet
             Value2 = value2;
             Unit2 = unit2;
             Value3 = value3;
+            Value4 = 0f;
+            Color = default;
+            Custom = null;
+        }
+
+        // Creates a four-edge result (Slice), top, right, bottom, left.
+        public ArbitraryStyle(ArbitraryProperty property, float top, float right, float bottom, float left)
+        {
+            Property = property;
+            // MUTANT_SURVIVES(equivalent): nothing a four-edge result reaches reads Auto to a different end.
+            // Slice's write does not read it, MotionPropertyClassParser declines Slice as undrivable either way,
+            // and every four-edge result would carry the same flag into FiberNodePatcher.ValueKey.
+            Auto = false;
+            Value = top;
+            Unit = LengthUnit.Pixel;
+            Value2 = right;
+            Unit2 = LengthUnit.Pixel;
+            Value3 = bottom;
+            Value4 = left;
             Color = default;
             Custom = null;
         }
@@ -370,6 +394,7 @@ namespace Velvet
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
+            Value4 = 0f;
             Custom = null;
         }
 
@@ -384,6 +409,7 @@ namespace Velvet
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
+            Value4 = 0f;
             Color = default;
         }
     }

@@ -739,7 +739,7 @@ namespace Velvet
         internal static string ValueKey(string rawCls)
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
-                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Color}|{style.Auto}"
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Value4}|{style.Color}|{style.Auto}"
                     + $"|{(style.Custom == null ? string.Empty : rawCls)}"
                 : rawCls;
 
