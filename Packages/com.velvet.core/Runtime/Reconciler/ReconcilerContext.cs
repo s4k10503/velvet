@@ -1432,6 +1432,10 @@ namespace Velvet
         internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info, long Sequence)> PendingCaughtErrorReports = new();
         internal long NextCaughtErrorSequence;
 
+        // The fibers of the layout commits whose setups wait for a panel's layout pass, once per waiting commit
+        // (FiberEffects.DeferSetupPass).
+        internal readonly List<ComponentFiber> FibersAwaitingLayout = new();
+
         // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
         // it (FiberEffects.CommitStrandedLayoutWork).
         internal int EffectCommitDepth;
@@ -1607,7 +1611,11 @@ namespace Velvet
         // Runs the queued setups in walk order. An entry is recorded whether or not the setup completed —
         // the identity is what makes the stable-ref skip possible, so a setup that throws is attempted
         // once rather than again on every later patch carrying the same delegate.
-        internal void DrainRefAttaches()
+        internal void DrainRefAttaches() => DrainRefAttaches(layoutSettled: false);
+
+        // layoutSettled: the panel's layout pass has laid out the entries queued when the drain was handed to it
+        // (FiberLayoutReflow.RunAfterLayout), so the first batch reads that layout without validating it again.
+        private void DrainRefAttaches(bool layoutSettled)
         {
             // A nested caller — the VirtualList controller's item loop, reached from a patch as well as
             // from a scroll callback — hands its entries to the enclosing pass's own boundary, which is
@@ -1630,6 +1638,17 @@ namespace Velvet
                     {
                         batchEnd = _pendingRefAttaches.Count;
                         RunReplacedRefCleanups(i, batchEnd);
+                        // React attaches refs in its layout phase, after the detaches above, where a callback
+                        // that reads its element's box reads it laid out.
+                        // A setup that commits synchronously queues a later batch, which the pass has not laid out.
+                        var waitOn = layoutSettled && i == 0
+                            ? null
+                            : FiberLayoutReflow.LayOut(PanelsOfRefSetups(i, batchEnd));
+                        if (waitOn != null)
+                        {
+                            FiberLayoutReflow.RunAfterLayout(waitOn, () => DrainRefAttaches(layoutSettled: true));
+                            return;
+                        }
                     }
                     var (element, callback, owner, pass) = _pendingRefAttaches[i];
                     // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
@@ -1686,6 +1705,13 @@ namespace Velvet
                 CompactPendingRefAttaches();
                 _drainingRefAttaches = false;
             }
+        }
+
+        private List<UnityEngine.UIElements.IPanel>? PanelsOfRefSetups(int start, int end)
+        {
+            List<UnityEngine.UIElements.IPanel>? panels = null;
+            for (var i = start; i < end; i++) FiberLayoutReflow.AddPanel(ref panels, _pendingRefAttaches[i].Element?.panel);
+            return panels;
         }
 
         private void RunReplacedRefCleanups(int start, int end)
