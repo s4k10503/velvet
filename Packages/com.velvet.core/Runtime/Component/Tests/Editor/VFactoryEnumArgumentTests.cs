@@ -11,14 +11,15 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies what <c>V.Portal(focusOrder:)</c>, <c>V.WorldSpace(focusOrder:)</c>,
     /// <c>V.Particles(playOn:)</c>, <c>V.Draggable(movement:)</c>, <c>V.AnimatePresence(mode:)</c>,
-    /// <c>V.Route(loaderMode:)</c> and <c>V.Slider(direction:)</c> do with their enum argument:
+    /// <c>V.Route(loaderMode:)</c>, <c>V.Slider(direction:)</c> and <c>V.SliderInt(direction:)</c> do with
+    /// their enum argument:
     /// <list type="bullet">
     /// <item>A value naming no member of the enum is refused synchronously with an
     /// <see cref="ArgumentOutOfRangeException"/> that names the parameter, carries the value, and names
     /// the API and the enum in its message.</item>
     /// <item>Every member still reaches what the factory builds.</item>
-    /// <item><c>V.Slider</c>, which rents a props bag and an event array on its way to the node, refuses
-    /// before renting either.</item>
+    /// <item><c>V.Slider</c> and <c>V.SliderInt</c>, which rent a props bag and an event array on their way
+    /// to the node, refuse before renting either.</item>
     /// </list>
     /// <see cref="VPortalFactoryTests"/> specifies the same of <c>V.Portal(layer:)</c>, whose check
     /// these follow.
@@ -548,6 +549,105 @@ namespace Velvet.Tests
             }
             var afterRefusal = VNodePoolTestAccess.RentedOutCountsForTest();
             var accepted = V.Slider(value: 1f, onValueChanged: onChanged, step: 0.5f);
+            var afterAccepted = VNodePoolTestAccess.RentedOutCountsForTest();
+            VNodePool.ReturnProps(accepted.Props);
+            VNodePool.ReturnEventArray(accepted.Events);
+
+            // Assert
+            Assert.That(
+                (refusedParam,
+                    afterRefusal.Props - before.Props,
+                    afterRefusal.EventArrays - before.EventArrays,
+                    afterAccepted.Props - afterRefusal.Props,
+                    afterAccepted.EventArrays - afterRefusal.EventArrays),
+                Is.EqualTo(("step", 0, 0, 1, 1)));
+        }
+
+        #endregion
+
+        #region V.SliderInt(direction:, step:)
+
+        [Test]
+        public void Given_ADirectionNamingNoMember_When_VSliderIntThrows_Then_TheMessageNamesTheApiAndTheEnum()
+        {
+            // Act
+            var ex = Assert.Throws<ArgumentOutOfRangeException>(() => V.SliderInt(direction: UnnamedDirection));
+
+            // Assert
+            Assert.That((ex.ParamName, ex.Message.Contains("V.SliderInt"), ex.Message.Contains("SliderDirection")),
+                Is.EqualTo(("direction", true, true)));
+        }
+
+        [Test]
+        public void Given_ADirectionNamingNoMember_When_VSliderIntRefusesIt_Then_TheCallRentsNothing()
+        {
+            // Arrange — the control is V.Slider's case of the same name, and for its reason.
+            Action<int> onChanged = _ => { };
+            var before = VNodePoolTestAccess.RentedOutCountsForTest();
+            string? refusedParam = null;
+
+            // Act
+            try
+            {
+                V.SliderInt(value: 1, onValueChanged: onChanged, direction: UnnamedDirection);
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                refusedParam = ex.ParamName;
+            }
+            var afterRefusal = VNodePoolTestAccess.RentedOutCountsForTest();
+            var accepted = V.SliderInt(value: 1, onValueChanged: onChanged, direction: SliderDirection.Vertical);
+            var afterAccepted = VNodePoolTestAccess.RentedOutCountsForTest();
+            VNodePool.ReturnProps(accepted.Props);
+            VNodePool.ReturnEventArray(accepted.Events);
+
+            // Assert
+            Assert.That(
+                (refusedParam,
+                    afterRefusal.Props - before.Props,
+                    afterRefusal.EventArrays - before.EventArrays,
+                    afterAccepted.Props - afterRefusal.Props,
+                    afterAccepted.EventArrays - afterRefusal.EventArrays),
+                Is.EqualTo(("direction", 0, 0, 1, 1)));
+        }
+
+        // What it answers for is the refusal: narrow that check to one member and this case goes red.
+        [Test]
+        public void Given_EveryMemberOfSliderDirection_When_VSliderIntIsCalled_Then_EachBuildsANodeCarryingIt()
+        {
+            // Arrange
+            var members = (SliderDirection[])Enum.GetValues(typeof(SliderDirection));
+
+            // Act
+            var carried = new List<string>();
+            foreach (var member in members)
+            {
+                carried.Add(V.SliderInt(direction: member).Props?.SliderInt?.Direction?.ToString() ?? "null");
+            }
+
+            // Assert
+            Assert.That(string.Join(",", carried), Is.EqualTo(string.Join(",", members.Select(m => m.ToString()))));
+        }
+
+        [Test]
+        public void Given_AStepOfZero_When_VSliderIntRefusesIt_Then_TheCallRentsNothing()
+        {
+            // Arrange — same control, and for the same reason.
+            Action<int> onChanged = _ => { };
+            var before = VNodePoolTestAccess.RentedOutCountsForTest();
+            string? refusedParam = null;
+
+            // Act
+            try
+            {
+                V.SliderInt(value: 1, onValueChanged: onChanged, step: 0);
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                refusedParam = ex.ParamName;
+            }
+            var afterRefusal = VNodePoolTestAccess.RentedOutCountsForTest();
+            var accepted = V.SliderInt(value: 1, onValueChanged: onChanged, step: 2);
             var afterAccepted = VNodePoolTestAccess.RentedOutCountsForTest();
             VNodePool.ReturnProps(accepted.Props);
             VNodePool.ReturnEventArray(accepted.Events);
