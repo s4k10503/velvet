@@ -357,9 +357,7 @@ namespace Velvet
         // leaves the edit there without its line breaks. With no edit pending, what the write left on screen
         // becomes the record; left unrecorded, the text multiline coming off leaves reads as typed to the next
         // multiline or limit write, which then holds it on screen for a blur to commit.
-        // Rejected: comparing the shown text with the forms the value takes on a single-line display. An edit
-        // equal to one of them reads as no edit, and which forms exist depends on which write last cut the
-        // value. TextFieldMultilineKeyboardPropTests pins each of these.
+        // TextFieldMultilineKeyboardPropTests pins each of these.
         private static void WriteMultiline(TextField field, bool value)
         {
             var edit = HasUncommittedEdit(field) ? field.text : null;
@@ -521,10 +519,7 @@ namespace Velvet
             if (HasUncommittedEdit(field) && field.textEdition is TextElement shown)
             {
                 held = shown;
-                // MUTANT_SURVIVES(equivalent, boundary): at a length equal to the limit Substring(0, limit) returns the text itself.
-                var overLimit = field.text.Length > limit;
-                // MUTANT_SURVIVES(equivalent, boundary): measured, a zero limit leaves "" on the second write with or without this bound; TextFieldInputPropTests pins that outcome.
-                edit = limit >= 0 && overLimit ? field.text.Substring(0, limit) : field.text;
+                edit = CutToLimit(field.text, limit);
                 ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit);
             }
 
@@ -538,19 +533,45 @@ namespace Velvet
             ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit!);
         }
 
-        // The text Velvet's own writes, and the engine's commits, last left on screen. A delayed field
-        // holds the user's typing in the shown text while the value lags, and nothing else tells that
-        // apart from a rewrite: a single-line field shows its value with line breaks stripped, so shown
-        // text differing from the value does not mean anyone typed. Every Velvet write that can change the
-        // shown text records it — ApplyFieldValue, WriteMaxLength, WriteMultiline and the baseline
-        // FiberElementFactory.ApplyProps takes as the element is created —
-        // and a commit records it through the callback below, since an edit that was committed and then
-        // changed again is an edit against the committed text. ForgetRecordedDefaults forgets the record and
-        // its callback on every removal, so a recycled field carries neither.
+        // A delayed field holds the user's typing in the shown text while the value lags, so an edit is
+        // shown text that is neither of two things. The first is the record: the text Velvet's own writes
+        // and the engine's commits last left on screen. Each write of Velvet's own text records it —
+        // ApplyFieldValue, WriteMaxLength and WriteMultiline when no edit is pending, and the baseline
+        // FiberElementFactory.ApplyProps takes as the element is created — and a commit records it through
+        // the callback below, since an edit that was committed and then changed again is an edit against
+        // the committed text. ForgetRecordedDefaults forgets the record and its callback on every removal,
+        // so a recycled field carries neither.
+        // The second is the field's display of its own value, because code outside Velvet can write the
+        // value silently, which moves the shown text and not the record; typing moves the text and not the
+        // value. Comparing with that display alone was rejected: no form of it matches the text multiline
+        // coming off leaves, which WriteMultiline records.
         internal static bool HasUncommittedEdit(TextField field)
             => field.isDelayed
                && s_shownText.TryGetValue(field, out var left)
-               && field.text != left.Text;
+               && field.text != left.Text
+               && !ShowsItsValue(field);
+
+        // The two forms an engine write of the value leaves: the value cut to the limit, which a limit write
+        // shows with its line breaks, and on a single-line field a value write's form, breaks dropped and
+        // then cut. TextFieldMultilineEngineTests pins both.
+        private static bool ShowsItsValue(TextField field)
+        {
+            var value = field.value ?? string.Empty;
+            var text = field.text;
+            return text == CutToLimit(value, field.maxLength)
+                   || (!field.multiline && text == CutToLimit(value.Replace("\n", string.Empty), field.maxLength));
+        }
+
+        private static string CutToLimit(string text, int limit)
+        {
+            if (limit < 0)
+            {
+                return text;
+            }
+
+            // MUTANT_SURVIVES(equivalent, boundary): at a length equal to the limit Substring(0, limit) returns the text itself.
+            return text.Length > limit ? text.Substring(0, limit) : text;
+        }
 
         internal static void RecordShownText(TextField field)
         {

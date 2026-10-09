@@ -343,6 +343,59 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "abc", string.Empty)));
         }
 
+        // The value is written from a refCallback through the silent setter, which moves the shown text
+        // without a change event, and the limit then arrives, narrows and widens with no edit pending: read
+        // as typed, what the narrower limit left is held over the wider one.
+        [Test]
+        public void Given_ADelayedFieldWhoseValueARefCallbackWroteSilently_When_MaxLengthArrivesThenWidens_Then_TheFieldShowsTheValue()
+        {
+            // Arrange
+            Func<VisualElement, Action> seed = el =>
+            {
+                ((TextField)el).SetValueWithoutNotify("hello");
+                return () => { };
+            };
+            var mounted = new VNode[] { V.TextField(isDelayed: true, refCallback: seed) };
+            var narrowed = new VNode[] { V.TextField(isDelayed: true, maxLength: 3, refCallback: seed) };
+            var widened = new VNode[] { V.TextField(isDelayed: true, maxLength: 10, refCallback: seed) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            Reconciler.Reconcile(Root, narrowed, widened);
+
+            // Assert
+            Assert.That(element.text, Is.EqualTo("hello"));
+        }
+
+        // A limit a refCallback writes moves the shown text with no record taken, and a zero limit cuts the
+        // value to nothing: that empty text is the value's display, not a deletion.
+        [Test]
+        public void Given_ADelayedFieldARefCallbackLimitedToZero_When_ALaterRenderDeclaresAWiderLimit_Then_TheFieldShowsTheValue()
+        {
+            // Arrange
+            Func<VisualElement, Action> limitToZero = el =>
+            {
+                ((TextField)el).maxLength = 0;
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(value: "abc", isDelayed: true, refCallback: limitToZero) };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: "abc", isDelayed: true, maxLength: 5, refCallback: limitToZero),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var whileZero = element.text;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the reading under the zero limit is folded in because the case is about what it showed.
+            Assert.That((whileZero, element.text), Is.EqualTo((string.Empty, "abc")));
+        }
+
         // The commit is simulated with SimulateChange: the value and shown text land together and the
         // field's change callbacks run. Without the record following the commit, the deletion reads as the
         // text Velvet last wrote.

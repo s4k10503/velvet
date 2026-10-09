@@ -328,6 +328,84 @@ namespace Velvet.Tests
                 Is.EqualTo((true, string.Empty, "draft")));
         }
 
+        // GREEN_ON_BASE(characterization): the base compares the shown text with the value's single-line form.
+        // The silent write leaves exactly that form, so the base shows the value as multiline comes on. It
+        // pins that the branch, whose record the silent write leaves stale, does not read that text as typed.
+        [Test]
+        public void Given_ADelayedFieldWhoseValueARefCallbackWroteSilently_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheValue()
+        {
+            // Arrange
+            Func<VisualElement, Action> seed = el =>
+            {
+                ((TextField)el).SetValueWithoutNotify("line1\nline2");
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, refCallback: seed) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, multiline: true, refCallback: seed) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(((TextElement)element.textEdition).text, Is.EqualTo("line1\nline2"));
+        }
+
+        // The value is written from a refCallback through the silent setter, as in the case above, and the
+        // limit then narrows and widens with no edit pending: read as typed, what the narrower limit left
+        // is held over the wider one.
+        [Test]
+        public void Given_AMultilineDelayedFieldWhoseValueARefCallbackWroteSilently_When_MaxLengthNarrowsThenWidens_Then_TheFieldShowsTheValue()
+        {
+            // Arrange
+            Func<VisualElement, Action> seed = el =>
+            {
+                ((TextField)el).SetValueWithoutNotify("x\ny");
+                return () => { };
+            };
+            var mounted = new VNode[] { V.TextField(isDelayed: true, multiline: true, refCallback: seed) };
+            var narrowed = new VNode[]
+            {
+                V.TextField(maxLength: 2, isDelayed: true, multiline: true, refCallback: seed),
+            };
+            var widened = new VNode[]
+            {
+                V.TextField(maxLength: 5, isDelayed: true, multiline: true, refCallback: seed),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            Reconciler.Reconcile(Root, narrowed, widened);
+
+            // Assert
+            Assert.That(((TextElement)element.textEdition).text, Is.EqualTo("x\ny"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads the deletion as an edit against the record it took.
+        // It pins that the branch's comparison with the value's display drops the line break only where the
+        // field is single-line: on a multi-line field the deleted break is an edit.
+        [Test]
+        public void Given_AMultilineDelayedFieldWhoseEditDeletesTheValuesBreak_When_ALaterRenderChangesMaxLength_Then_TheEditStaysUncommitted()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(value: "a\nb", maxLength: 10, isDelayed: true, multiline: true) };
+            var newTree = new VNode[] { V.TextField(value: "a\nb", maxLength: 8, isDelayed: true, multiline: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "ab";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the edit stays uncommitted.
+            Assert.That(
+                (element.value, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("a\nb", "ab")));
+        }
+
         [Test]
         public void Given_ADelayedFieldWithNoEditWhoseValueHasALineBreak_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheBreak()
         {
@@ -470,8 +548,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnEditEqualToTheValueCutWithItsBreakRemoved_When_ALaterRenderTurnsMultilineOn_Then_TheEditStaysUncommitted()
         {
-            // Arrange — the value arrives after the limit, as in the limit case above, so the field shows
-            // "abc" and the typing deletes its last character.
+            // Arrange — the value arrives after the limit, as in
+            // Given_ADelayedFieldWithNoEditWhoseValueArrivedAfterItsLimit_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheValueUpToTheLimit,
+            // so the field shows "abc" and the typing deletes its last character.
             var mountTree = new VNode[] { V.TextField(value: "x", maxLength: 3, isDelayed: true) };
             var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true) };
             var newTree = new VNode[]
