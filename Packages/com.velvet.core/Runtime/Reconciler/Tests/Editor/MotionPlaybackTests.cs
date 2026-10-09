@@ -524,7 +524,7 @@ namespace Velvet.Tests
             _scheduler.PlayVariantEnter(element, s_visible, new[] { "opacity-50" }, Linear());
 
             // Assert
-            Assert.That(Opacity(element), Is.EqualTo(0f));
+            Assert.That((element.style.opacity.keyword, Opacity(element)), Is.EqualTo((StyleKeyword.Undefined, 0f)));
         }
 
         [Test]
@@ -546,7 +546,7 @@ namespace Velvet.Tests
             _scheduler.PlayExit(element, exit, onComplete: null, restoreFromOnCancel: true);
 
             // Assert
-            Assert.That(Opacity(element), Is.EqualTo(0f));
+            Assert.That((element.style.opacity.keyword, Opacity(element)), Is.EqualTo((StyleKeyword.Undefined, 0f)));
         }
 
         [Test]
@@ -707,6 +707,151 @@ namespace Velvet.Tests
             // Assert
             Assert.That((element.style.opacity.keyword == StyleKeyword.Undefined, ListedPlays(playback)),
                 Is.EqualTo((false, 0)));
+        }
+
+        [Test]
+        public void Given_APlayACancelHolds_When_TheSchedulerCancelsEverything_Then_ItsElementCarriesNoInlineOpacity()
+        {
+            // Arrange
+            var element = OnPanel("cancelled");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            var held = element.style.opacity.keyword;
+
+            // Act
+            _scheduler.CancelAll();
+
+            // Assert
+            Assert.That((held, element.style.opacity.keyword == StyleKeyword.Undefined),
+                Is.EqualTo((StyleKeyword.Undefined, false)));
+        }
+
+        // A tween runs on the classes the element resolves, so it takes a held play's values off first.
+        [Test]
+        public void Given_APlayACancelHolds_When_ATweenStartsOnItsElement_Then_TheHeldOpacityComesOff()
+        {
+            // Arrange
+            var element = OnPanel("tweened");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            var held = element.style.opacity.keyword;
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[10px]" },
+                new StyleTransitionConfig { DurationSec = 1f });
+
+            // Assert
+            Assert.That((held, element.style.opacity.keyword == StyleKeyword.Undefined),
+                Is.EqualTo((StyleKeyword.Undefined, false)));
+        }
+
+        [Test]
+        public void Given_APlayACancelHolds_When_ATweenExitStartsOnItsElement_Then_TheHeldOpacityComesOff()
+        {
+            // Arrange
+            var element = OnPanel("tween-leaving");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            var held = element.style.opacity.keyword;
+            var exit = new StyleTransitionConfig
+            {
+                DurationSec = 1f, ExitFromClass = "translate-x-[0px]", ExitToClass = "translate-x-[10px]",
+            };
+
+            // Act
+            _scheduler.PlayExit(element, exit, onComplete: null, restoreFromOnCancel: true);
+
+            // Assert
+            Assert.That((held, element.style.opacity.keyword == StyleKeyword.Undefined),
+                Is.EqualTo((StyleKeyword.Undefined, false)));
+        }
+
+        // The band holds its own inline opacity while the play is held, which the release takes off with the play's.
+        [Test]
+        public void Given_ARingedElementsPlayACancelHolds_When_ThePlaybackReleasesItsHeldPlays_Then_TheBandCarriesNoInlineOpacity()
+        {
+            // Arrange
+            var element = OnPanel("ringed");
+            var band = RingOverlay.Attach(element, new RingSpec(width: 2f, color: Color.red, offset: 0f,
+                inset: false), Array.Empty<string>()).Overlay;
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            Ticks(1);
+            var held = band.style.opacity.keyword;
+
+            // Act
+            playback.ReleaseHeldPlays();
+
+            // Assert
+            Assert.That((held, band.style.opacity.keyword == StyleKeyword.Undefined),
+                Is.EqualTo((StyleKeyword.Undefined, false)));
+        }
+
+        [Test]
+        public void Given_ARunningSpringPlayOnAPlayback_When_ThePlaybackCancelsItsPlays_Then_ItHoldsItsStartingOpacity()
+        {
+            // Arrange
+            var element = OnPanel("spring-held");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible,
+                new StyleTransitionConfig { Type = TransitionType.Spring }, playback: playback);
+            Ticks(5);
+
+            // Act
+            playback.CancelPlays();
+
+            // Assert
+            Assert.That((element.style.opacity.keyword, Opacity(element)), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_ASpringPlayACancelHolds_When_ThePlaybackReleasesItsHeldPlays_Then_TheElementCarriesNoInlineOpacity()
+        {
+            // Arrange
+            var element = OnPanel("spring-released");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible,
+                new StyleTransitionConfig { Type = TransitionType.Spring }, playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            var held = element.style.opacity.keyword;
+
+            // Act
+            playback.ReleaseHeldPlays();
+
+            // Assert
+            Assert.That((held, element.style.opacity.keyword == StyleKeyword.Undefined),
+                Is.EqualTo((StyleKeyword.Undefined, false)));
+        }
+
+        // w-[100px] is an inline-resolved class the element keeps as its resting pose, so releasing the held width
+        // writes that class's value back rather than leaving the slot empty.
+        [Test]
+        public void Given_AWidthPlayACancelHolds_When_ThePlaybackReleasesItsHeldPlays_Then_TheElementCarriesItsRestingWidth()
+        {
+            // Arrange
+            var element = OnPanel("wide");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, new[] { "w-[0px]" }, new[] { "w-[100px]" }, Linear(),
+                playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            var held = element.style.width.value.value;
+
+            // Act
+            playback.ReleaseHeldPlays();
+
+            // Assert
+            var width = element.style.width;
+            Assert.That((held, width.keyword, width.value.value), Is.EqualTo((0f, StyleKeyword.Undefined, 100f)));
         }
 
         // Its from-value is already within the spring's rest distance of its target and it has no delay, so its
