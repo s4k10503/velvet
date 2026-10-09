@@ -32,8 +32,7 @@ namespace Velvet
             {
                 return;
             }
-            GradientBackground.Apply(element, spec);
-            _ctx.GradientBackgrounds[element] = spec;
+            _ctx.GradientBackgrounds[element] = GradientBackground.Bind(element, spec);
         }
 
         // Patch-time reconciliation of an element's gradient against its new class list. Mirrors the
@@ -52,33 +51,27 @@ namespace Velvet
             // feeds it the spec), so the straight background-image path must stand down. Only an element node
             // is skewable — a Motion never attaches a sheared silhouette, so its gradient stays on the
             // straight path even with skew classes present. Drop any straight gradient left from a prior
-            // non-skew state so the un-sheared rectangle does not linger behind the slant.
-            if (skewable && StyleSkewClass.TryExtract(classNames, out _))
+            // non-skew state so the un-sheared rectangle does not linger behind the slant; the same drop
+            // clears one whose gradient classes were removed.
+            var skewed = skewable && StyleSkewClass.TryExtract(classNames, out _);
+            if (skewed || !want)
             {
                 if (bound)
                 {
                     ClearStraightGradient(element, classNames);
+                    GradientBackground.Detach(element, current!);
                     _ctx.GradientBackgrounds.Remove(element);
                 }
                 return;
             }
-
-            if (!bound && !want)
+            if (!bound)
             {
-                return;
+                _ctx.GradientBackgrounds[element] = GradientBackground.Bind(element, spec);
             }
-            if (want)
+            else if (!current!.Spec.Equals(spec))
             {
-                if (!bound || !current.Equals(spec))
-                {
-                    GradientBackground.Apply(element, spec);
-                    _ctx.GradientBackgrounds[element] = spec;
-                }
-                return;
+                GradientBackground.Rebind(element, current, spec);
             }
-            // Bound, not skewed, but the gradient classes were removed: clear the straight gradient.
-            ClearStraightGradient(element, classNames);
-            _ctx.GradientBackgrounds.Remove(element);
         }
 
         // Clears the straight gradient background-image, but only nulls the image when no className-driven

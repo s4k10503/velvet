@@ -83,6 +83,12 @@ namespace Velvet
                 || ((exactType == typeof(Button) || exactType == typeof(Label)) && element.childCount == 0))
             {
                 CleanupElementResources(element);
+                if (exactType == typeof(TextField))
+                {
+                    // Its input box carries what the field's surface utilities put on it (StyleInputBoxSurface):
+                    // stacked variant manipulators keyed by the box and paint bindings.
+                    CleanupDescendants(element);
+                }
                 ReturnToPool(element);
             }
             else
@@ -248,37 +254,22 @@ namespace Velvet
             // ReconcilerContext, not by adding a line here. Dropping these also prevents a pooled widget from
             // ghosting a prior consumer's attributes / propagated-variant classes into its next mount.
             _ctx.ClearElementSideTables(element);
-            // Stacked-variant manipulators are keyed by a tuple (not the element), so collect this element's
-            // entries and detach them — releasing their inner-variant subscriptions (incl. a stacked dark:'s
-            // process-wide VelvetTheme.DarkModeChanged) so they do not leak past unmount.
-            if (_ctx.StackedVariantManipulators.Count > 0)
-            {
-                List<(VisualElement, object, long, StyleVariantKind, string, string?)>? stale = null;
-                foreach (var kv in _ctx.StackedVariantManipulators)
-                {
-                    if (kv.Key.target == element)
-                    {
-                        (stale ??= new List<(VisualElement, object, long, StyleVariantKind, string, string?)>()).Add(kv.Key);
-                    }
-                }
-                if (stale != null)
-                {
-                    // Removed before detaching, and read by Remove: a detach closes its leaf through
-                    // GateStackedVariant, which can remove a key listed after it.
-                    foreach (var key in stale)
-                    {
-                        if (_ctx.StackedVariantManipulators.Remove(key, out var stacked))
-                        {
-                            element.RemoveManipulator(stacked);
-                        }
-                    }
-                }
-            }
+            // Detaching the element's stacked manipulators releases their inner-variant subscriptions (incl. a
+            // stacked dark:'s process-wide VelvetTheme.DarkModeChanged), which would otherwise outlive unmount.
+            _ctx.DetachStackedVariants(element);
             DetachManipulator(element, _ctx.GapManipulators);
             DetachManipulator(element, _ctx.DivideManipulators);
             DetachManipulator(element, _ctx.GridManipulators);
             DetachManipulator(element, _ctx.TextBalanceManipulators);
+            DetachManipulator(element, _ctx.FlexMinSizeManipulators);
             DetachManipulator(element, _ctx.ChildVariantManipulators);
+            if (_ctx.PointerEventsScopes.TryGetValue(element, out var pointerEvents))
+            {
+                pointerEvents.Release();
+                _ctx.PointerEventsScopes.Remove(element);
+            }
+            // Before the pool return, which resets a control's own picking mode and not its internals'.
+            PointerEventsScope.ReleaseTorn(element);
             // Must run before ClearAll, which drops the holds and the layers the hand-back resolves to.
             StyleArbitraryValueResolver.HandBackAll(element);
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
@@ -359,11 +350,12 @@ namespace Velvet
             {
                 LeadingLengthProbe.Detach(_ctx, element, leadingProbe);
             }
-            if (_ctx.GradientBackgrounds.ContainsKey(element))
+            if (_ctx.GradientBackgrounds.TryGetValue(element, out var gradientBinding))
             {
                 // Clear the baked gradient background-image so a pooled element cannot ghost a prior
                 // gradient onto its next consumer. The texture itself is shared/cached, so it is NOT
                 // destroyed here — only this element's reference is dropped.
+                GradientBackground.Detach(element, gradientBinding);
                 GradientBackground.Clear(element);
                 _ctx.GradientBackgrounds.Remove(element);
             }
@@ -560,6 +552,12 @@ namespace Velvet
                 CleanupElement(child);
                 target.RemoveAt(i);
                 ReturnOccupantToPool(child, poolable);
+            }
+
+            // Outside a pass nothing would drain the set.
+            if (portalInfo.SlotLength > 0 && _ctx.SharedReconcileDepth > 0)
+            {
+                _ctx.PortalTargetsToRestyle.Add(target);
             }
 
             // Surviving Portals on the same target whose slot starts after the removed range

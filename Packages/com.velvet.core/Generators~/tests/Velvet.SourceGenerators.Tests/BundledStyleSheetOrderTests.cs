@@ -13,7 +13,8 @@ namespace Velvet.SourceGenerators.Tests
     /// </summary>
     /// <remarks>
     /// Cascade order is the @import order of StyleUtilities.uss followed by line order within each partial,
-    /// which is what the importer flattens the sheet to.
+    /// which is what the importer flattens the sheet to. The preflight sheet is a base layer and is not a
+    /// utility, so it is left out.
     /// </remarks>
     public sealed class BundledStyleSheetOrderTests
     {
@@ -46,6 +47,25 @@ namespace Velvet.SourceGenerators.Tests
 
             // Assert
             Assert.Equal(Exemptions.Select(e => e.Reason).ToList(), exercised);
+        }
+
+        [Fact]
+        public void Given_TheBundledStyleSheets_When_TheirCascadeOrderIsRead_Then_ThePreflightSheetComesBeforeEverySheetOfRules()
+        {
+            // Arrange — the preflight rules are a base layer a utility must outrank, so the guard above leaves
+            // the sheet out by name as the table builder does; this is what keeps that from hiding a reset
+            // that moved after the utilities and would win over them.
+            var withRules = UssCascadeOrder.SheetsIn(Path.Combine(SolutionPaths.RuntimeRoot(), "Styles"))
+                .Where(source => !UssStyleSheetParser.Parse(source.Path, source.Text).Rules.IsEmpty)
+                .Select(source => Path.GetFileName(source.Path))
+                .ToList();
+            Assume.NotEmpty(withRules, "the bundled stylesheets declare rules");
+
+            // Act
+            var first = withRules[0];
+
+            // Assert
+            Assert.Equal(StyleUtilityTableBuilder.PreflightSheetName, first);
         }
 
         /// <summary>Pairs where satisfying the rule would cost more than it buys.</summary>
@@ -123,6 +143,12 @@ namespace Velvet.SourceGenerators.Tests
             foreach (var source in UssCascadeOrder.SheetsIn(
                 Path.Combine(SolutionPaths.RuntimeRoot(), "Styles")))
             {
+                if (Path.GetFileName(source.Path) == StyleUtilityTableBuilder.PreflightSheetName)
+                {
+                    // A base layer declared ahead of every utility to lose to them, so a reset may precede a
+                    // utility writing the same property.
+                    continue;
+                }
                 var sheet = UssStyleSheetParser.Parse(source.Path, source.Text);
                 foreach (var rule in sheet.Rules)
                 {

@@ -45,6 +45,42 @@ namespace Velvet
         PreLine, // whitespace-pre-line
     }
 
+    // The line-breaking of CSS's text-wrap-style that Velvet realises. None is auto, the engine's own greedy
+    // breaking, and also what text-wrap and text-nowrap reset to.
+    internal enum TextWrapStyle
+    {
+        None,
+        Balance,
+        Pretty,
+    }
+
+    // The two things text-wrap, text-nowrap, text-balance and text-pretty set: the wrap mode and the style.
+    internal readonly struct TextWrapSetting
+    {
+        public readonly bool? Wraps;
+        public readonly TextWrapStyle? Style;
+
+        public TextWrapSetting(bool? wraps, TextWrapStyle? style)
+        {
+            Wraps = wraps;
+            Style = style;
+        }
+    }
+
+    // What a text leaf asks of the line breaking: the breaker that holds its style and measurements, and
+    // whether the white-space it inherits keeps the spaces and newlines it was written with.
+    internal readonly struct TextBreakRequest
+    {
+        public readonly StyleTextBalanceManipulator Breaker;
+        public readonly bool Preserves;
+
+        public TextBreakRequest(StyleTextBalanceManipulator breaker, bool preserves)
+        {
+            Breaker = breaker;
+            Preserves = preserves;
+        }
+    }
+
     // Which unit a resolved Leading value carries, following CSS line-height's two kinds of value. Em is a
     // number (every named leading-* preset and a unitless bracket value): CSS inherits the number itself,
     // so it multiplies whatever font-size is in effect where the rich-text tag is generated. EmLength is an
@@ -118,16 +154,21 @@ namespace Velvet
         public readonly WhiteSpace? WhiteSpaceClass;
         // The wrap mode those four set: true to wrap, false for text-nowrap.
         public readonly bool? Wraps;
+        // The line-breaking those four set: balance, pretty, or None for text-wrap and text-nowrap, which
+        // reset it. CSS inherits text-wrap-style as it does the wrap mode, so the nearest element that sets
+        // it decides for the text under it.
+        public readonly TextWrapStyle? WrapStyle;
 
         public TextEffect(TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading,
-            WhiteSpace? whiteSpaceClass, bool? wraps)
+            WhiteSpace? whiteSpaceClass, TextWrapSetting wrap)
         {
             Transform = transform;
             Decoration = decoration;
             Whitespace = whitespace;
             Leading = leading;
             WhiteSpaceClass = whiteSpaceClass;
-            Wraps = wraps;
+            Wraps = wrap.Wraps;
+            WrapStyle = wrap.Style;
         }
 
         // True when no axis carries a token (nothing to track for this element).
@@ -215,7 +256,7 @@ namespace Velvet
                 }
             }
             return new TextEffect(facets.Transform, facets.Decoration, whitespace, facets.Leading,
-                whiteSpaceClass, facets.Wraps);
+                whiteSpaceClass, new TextWrapSetting(facets.Wraps, facets.WrapStyle));
         }
 
         // The axes Parse folds a class array into, bundled so the
@@ -230,6 +271,7 @@ namespace Velvet
             public WhiteSpace? WhiteSpaceClass;
             public int WhiteSpaceRank;
             public bool? Wraps;
+            public TextWrapStyle? WrapStyle;
         }
 
         // The utilities that write white-space, in the order _typography.uss declares them, since among
@@ -265,11 +307,21 @@ namespace Velvet
             {
                 case "whitespace-pre-line": facets.Whitespace = WhitespaceCollapseKind.PreLine; return true;
                 case "text-wrap":
+                    facets.Wraps = true;
+                    facets.WrapStyle = TextWrapStyle.None;
+                    return true;
                 case "text-balance":
+                    facets.Wraps = true;
+                    facets.WrapStyle = TextWrapStyle.Balance;
+                    return true;
                 case "text-pretty":
                     facets.Wraps = true;
+                    facets.WrapStyle = TextWrapStyle.Pretty;
                     return true;
-                case "text-nowrap": facets.Wraps = false; return true;
+                case "text-nowrap":
+                    facets.Wraps = false;
+                    facets.WrapStyle = TextWrapStyle.None;
+                    return true;
             }
             for (var rank = 0; rank < WhiteSpaceClassesInSheetOrder.Length; rank++)
             {
@@ -407,8 +459,8 @@ namespace Velvet
             return true;
         }
 
-        // Applies a resolved whitespace-pre-line collapse, then transform, then decoration, then leading to a
-        // raw string, in that order — CSS resolves white-space processing before text-transform, so
+        // Applies a resolved whitespace-pre-line collapse, then transform, then the line breaks a request
+        // asks for, then decoration, then leading to a raw string, in that order — CSS resolves white-space processing before text-transform, so
         // collapsing first means Capitalize's word-boundary scan and the decoration wrap both see the
         // already-normalized text. Leading wraps OUTERMOST, after decoration: line-height is a layout
         // property with no bearing on the string's own content, so it never needs to observe (or interact
@@ -425,20 +477,60 @@ namespace Velvet
             TextTransformKind? transform,
             TextDecorationKind? decoration,
             WhitespaceCollapseKind? whitespace = null,
-            LeadingValue? leading = null)
+            LeadingValue? leading = null,
+            TextBreakRequest? breaks = null)
         {
             if (string.IsNullOrEmpty(raw))
             {
                 return raw;
             }
-            var text = whitespace == WhitespaceCollapseKind.PreLine ? CollapseForPreLine(raw) : raw;
+            var text = CollapseWhitespace(raw, whitespace, breaks);
             if (string.IsNullOrEmpty(text))
             {
                 return text;
             }
             text = ApplyTransform(text, transform);
+            if (breaks != null)
+            {
+                text = breaks.Value.Breaker.Break(text);
+            }
             text = ApplyDecoration(text, decoration);
             return ApplyLeading(text, leading);
+        }
+
+        // A line break request collapses a default white-space here: the breaks it writes are newlines, and
+        // the resolver writes the leaf pre-wrap, which collapses nothing itself. A request whose breaker
+        // writes none is applied again without the request, so the leaf keeps the white-space as authored.
+        private static string CollapseWhitespace(string raw, WhitespaceCollapseKind? whitespace, TextBreakRequest? breaks)
+        {
+            if (whitespace == WhitespaceCollapseKind.PreLine)
+            {
+                return CollapseForPreLine(raw);
+            }
+            return breaks != null && !breaks.Value.Preserves ? CollapseForNormal(raw) : raw;
+        }
+
+        // CSS white-space: normal. Every run of spaces, tabs and line breaks folds to one space and none
+        // survives at either end of the string.
+        internal static string CollapseForNormal(string text)
+        {
+            var sb = new StringBuilder(text.Length);
+            var pendingSpace = false;
+            foreach (var ch in text)
+            {
+                if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r')
+                {
+                    pendingSpace = sb.Length > 0;
+                    continue;
+                }
+                if (pendingSpace)
+                {
+                    sb.Append(' ');
+                    pendingSpace = false;
+                }
+                sb.Append(ch);
+            }
+            return sb.ToString();
         }
 
         private static string ApplyTransform(string text, TextTransformKind? transform)

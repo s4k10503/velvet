@@ -417,7 +417,7 @@ namespace Velvet.Tests
                     new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 1f });
                 var cachedRotation = element.style.rotate;
                 loop.StartTime -= 2.0;
-                StyleAnimateDriver.ReassertLoop(element);
+                StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.Rotate);
                 var phaseMoved = Mathf.Abs(Mathf.DeltaAngle(cachedRotation.value.angle.value,
                     element.style.rotate.value.angle.value)) > StyleAnimateDriver.SpinAngleDeg(0.1f);
                 element.style.rotate = cachedRotation;

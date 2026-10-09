@@ -473,7 +473,7 @@ namespace Velvet
             if (context == null)
             {
                 // No shared context (defensive): fall back to the standalone single-fiber drain.
-                fiber.MountPoint.schedule.Execute(() => RunEffects(fiber));
+                fiber.MountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, RunEffects));
                 return;
             }
             if (context.PendingPassiveEffectFiberSet.Add(fiber))
@@ -492,7 +492,7 @@ namespace Velvet
             // any fiber stages — so this return is never on it — is held by PassiveEffectDrainArmingTests.
             if (anchor == null) return;
             context.PassiveEffectDrainScheduled = true;
-            anchor.schedule.Execute(() => DrainPassiveEffects(context));
+            anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, context, DrainPassiveEffects));
         }
 
         // Tree-ordered, 2-phase passive (UseEffect) commit across every fiber staged in the current

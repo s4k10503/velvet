@@ -188,7 +188,19 @@ in front of the query string, and any other route takes a bare one out, as React
 does. A pathless layout, whose path is empty too, is not an index route.
 
 - The method defaults to `get`, which runs no action: it navigates to the action's path with the form
-  data, an `ISearchParams`, as the query string.
+  data as the query string, which only a `get` encodes. The body is read as React Router reads it with
+  the URLSearchParams constructor: null, an `ISearchParams`, a string (one leading `?` dropped,
+  `&`-separated, `+` and percent escapes decoded), a dictionary, a sequence of key/value pairs, tuples
+  or two-element lists, a primitive, an enum, a `decimal` or a `BigInteger`, whose string (an enum's
+  name) parses as a string body does, and any other object, whose readable public properties, indexers
+  aside, and then public fields it declares itself stand for a plain object's own enumerable ones, each
+  in declaration order. A value is stringified as JavaScript's `String` does: `null` is `"null"`, a
+  number has no culture, and a list is its elements joined by `,`. Strings, dictionaries and pair
+  sequences keep the order they were written in; an `ISearchParams` groups the values of a
+  repeated key, as its interface does. The serialiser is the one every Velvet query uses, so a space
+  is `%20`. A body that throws while it is read, or a sequence with an entry that is no pair, is one React
+  Router cannot encode either: the navigation commits "Unable to encode submission body" as the error of
+  the leaf route and runs no action, to the action's path with its query.
 - `post`, `put`, `patch` and `delete` call the action of the route the path matches: the deepest route
   with a path, or the index route when the query string holds a bare `index`. The action receives a
   `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the `FormData` as it

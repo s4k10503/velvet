@@ -162,10 +162,12 @@ def package_json(version="2.0.1"):
 
 
 class ConsistencyDecisionTests(unittest.TestCase):
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_ThePackageVersionNamesTheNewestClosedSection_When_Decided_Then_ThereIsNoReason(self):
         # Act / Assert
         self.assertIsNone(consistency_reason(PUBLISHED, package_json()))
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_ThePackageVersionHasNoSection_When_Decided_Then_TheAbsentSectionIsNamed(self):
         # Arrange — package.json bumped without the CHANGELOG being closed.
         reason = consistency_reason(MISSING, package_json())
@@ -173,6 +175,7 @@ class ConsistencyDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("has no '## [2.0.1]' section", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_TheSectionIsOpen_When_Decided_Then_TheDateIsAskedFor(self):
         # Arrange — a heading written without its date builds a note nobody can date.
         reason = consistency_reason(UNDATED, package_json())
@@ -180,6 +183,7 @@ class ConsistencyDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("carries no date", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_ANewerVersionIsClosedAbove_When_Decided_Then_TheBumpIsAskedFor(self):
         # Arrange — a release whose CHANGELOG landed without its package.json bump. Reading only the
         # version package.json names would report the older, published one and pass.
@@ -188,6 +192,7 @@ class ConsistencyDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("bump package.json to 2.1.0", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_PackageJsonDeclaresNoVersion_When_Decided_Then_ThatIsTheReason(self):
         # Act / Assert
         self.assertIn("declares no version", consistency_reason(PUBLISHED, package_json(version=None)))
@@ -196,6 +201,7 @@ class ConsistencyDecisionTests(unittest.TestCase):
 class DrainDecisionTests(unittest.TestCase):
     """What a release may do to the section that holds what waits for a major."""
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AMajorClosingOverItsWaitingBreaks_When_Decided_Then_TheOnesLeftBehindAreNamed(self):
         # Arrange — the version closes, package.json bumps, and the entries stay put. The note is
         # built from the closed section alone, so each one ships described by nothing.
@@ -205,6 +211,7 @@ class DrainDecisionTests(unittest.TestCase):
         self.assertIn("3.0.0 is a major and '## [Unreleased — breaking]' still lists 2 entries",
                       reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AMajorThatMovesTheWholeSectionIntoItself_When_Decided_Then_ThereIsNoReason(self):
         # Arrange — the entry moved out of `### Changed` is last in its subsection at the base and
         # not at the result, so the two spellings match only for a reader that ends an entry at the
@@ -214,6 +221,7 @@ class DrainDecisionTests(unittest.TestCase):
         # Assert
         self.assertIsNone(reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AMajorThatDropsAnEntryInsteadOfCarryingIt_When_Decided_Then_TheLostOneIsNamed(self):
         # Arrange — the section is empty at the result either way, so emptiness cannot separate this
         # from the case above.
@@ -223,6 +231,7 @@ class DrainDecisionTests(unittest.TestCase):
         self.assertIn("1 entry left '## [Unreleased — breaking]' and no entry of 3.0.0 carries "
                       "that text", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AMinorClosingOverAnEntryItTakesWithIt_When_Decided_Then_ItIsRefused(self):
         # Arrange — the same drain under a version that is not a major, which is a break shipped to
         # callers who read the range as compatible.
@@ -231,6 +240,7 @@ class DrainDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("2.2.0 is not a major", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AMinorClosingOverAFullSection_When_Decided_Then_ItIsRefused(self):
         # Arrange — the section is exactly where the change found it, and the tree it releases holds
         # the code those entries describe, so the minor ships every one of them undescribed.
@@ -239,6 +249,7 @@ class DrainDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("2.2.0 is not a major and '## [Unreleased — breaking]' still lists", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AMinorOnALineWithNoBreakingSection_When_Decided_Then_ThereIsNoReason(self):
         # Arrange — the maintenance line, which was cut before the section existed and so carries
         # neither the section nor the code its entries describe.
@@ -247,6 +258,7 @@ class DrainDecisionTests(unittest.TestCase):
         # Assert
         self.assertIsNone(reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AMajorDrainThatRewordedAnEntryOnTheWay_When_Decided_Then_TheRepairIsNamed(self):
         # Arrange — the entry arrived, so the break is described and this refusal is a false one. It
         # stands because the reading sees only that the text is gone, which a drop leaves too; what
@@ -256,6 +268,7 @@ class DrainDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("make any wording change in a change that closes no version", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AMajorClosingBesideAPatchInOneChange_When_Decided_Then_ThereIsNoReason(self):
         # Arrange — 3.0.0 drains the section correctly and 2.1.1 closes below it. Both are new here,
         # so both are asked, and the section's own before and after cannot say which one emptied it.
@@ -264,6 +277,7 @@ class DrainDecisionTests(unittest.TestCase):
         # Assert
         self.assertIsNone(reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AnEntryReclassifiedByAChangeThatClosesNothing_When_Decided_Then_ThereIsNoReason(self):
         # Arrange — deciding an entry was never breaking is an edit of its own, and the file it
         # leaves is the file a minor that shipped the break would leave.
@@ -276,6 +290,7 @@ class DrainDecisionTests(unittest.TestCase):
 class LeftOpenDecisionTests(unittest.TestCase):
     """What a release may leave in `## [Unreleased]`, where a fragment sits until it is compiled."""
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AVersionClosingOverAnEntryLeftInTheOpenSection_When_Decided_Then_ItIsNamed(self):
         # Arrange — the rename came before the fragments were compiled, so the one written for this
         # release is filed under a section opened above it.
@@ -289,6 +304,7 @@ class LeftOpenDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("2.1.0 closes and '## [Unreleased]' still lists 1 entry", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AVersionClosingOverTheWholeOpenSection_When_Decided_Then_ThereIsNoReason(self):
         # Arrange — the control: the rename took everything, which is what a compiled release is.
         reason = published_check.left_open_reason(PUBLISHED, AHEAD)
@@ -296,6 +312,7 @@ class LeftOpenDecisionTests(unittest.TestCase):
         # Assert
         self.assertIsNone(reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AnOpenSectionHoldingEntriesAndNothingClosing_When_Decided_Then_ThereIsNoReason(self):
         # Arrange — between releases the section is supposed to hold entries.
         reason = published_check.left_open_reason(PUBLISHED, PUBLISHED.replace(
@@ -328,22 +345,24 @@ class TagListingBound(unittest.TestCase):
             published_check.git = original
         return seen
 
-    # GREEN_ON_BASE(characterization): the default was already five, and this pins it against the
-    # change that adds a way to name another.
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_NoBoundNamed_When_TheTagsAreListed_Then_TheHooksOwnIsUsed(self):
         # Act / Assert — five seconds is what a killed hook cannot report from.
         self.assertEqual(self.bound_seen()["timeout"], 5)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_ABoundNamed_When_TheTagsAreListed_Then_ThatIsWhatGitRunsUnder(self):
         # Act / Assert
         self.assertEqual(self.bound_seen(timeout=30)["timeout"], 30)
 
 
 class PublicationDecisionTests(unittest.TestCase):
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_TheVersionIsClosedAndTagged_When_Decided_Then_ThereIsNoReason(self):
         # Act / Assert
         self.assertIsNone(publication_reason(PUBLISHED, package_json(), TAGS))
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_TheVersionIsClosedAndUntagged_When_Decided_Then_TheDispatchIsNamedWithARef(self):
         # Arrange — the release commit is on main and the dispatch never ran. A dispatch without --ref
         # builds from the branch tip, which is the harm the reason is about.
@@ -352,6 +371,7 @@ class PublicationDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("gh workflow run upm.yml --ref release/2.0.1 -f version=2.0.1", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AResultReopeningTheUnpublishedVersion_When_Decided_Then_ItAnswersForIt(self):
         # Arrange — a withdrawn release leaves its base closing a version no tag answers for. The
         # change that reopens the section is the repair, and asked of the base alone it refuses
@@ -361,12 +381,14 @@ class PublicationDecisionTests(unittest.TestCase):
         # Act / Assert
         self.assertTrue(reopened_by(PUBLISHED, {"v2.0.0", "v2.0.0-main"}, reopened))
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AResultStillClosingIt_When_Decided_Then_TheRefusalStands(self):
         # Arrange — the ordinary change on top of an unpublished release, which is what the refusal
         # is for and has to keep refusing.
         # Act / Assert
         self.assertFalse(reopened_by(PUBLISHED, {"v2.0.0", "v2.0.0-main"}, PUBLISHED))
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AResultReopeningOnlyOneOfTwo_When_Decided_Then_TheRefusalStands(self):
         # Arrange — two dated sections and no tag for either. Reopening the newer leaves the older
         # closed and unanswered, which a reading of "did anything change" would let through.
@@ -378,6 +400,7 @@ class PublicationDecisionTests(unittest.TestCase):
         # Act / Assert
         self.assertFalse(reopened_by(two, {"v1.0.0", "v1.0.0-main"}, reopened))
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_TheTagsCarryANameThatMerelyStartsTheSame_When_Decided_Then_ItIsStillUnpublished(self):
         # Arrange — a prefix match would read v2.0.1-main as the release tag it is not.
         reason = publication_reason(PUBLISHED, package_json(), {"v2.0.10", "v2.0.1-main"})
@@ -385,6 +408,7 @@ class PublicationDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("v2.0.1 closed in the CHANGELOG and never published", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_ATreeConsistencyAlreadyRefuses_When_Decided_Then_TheMergePathStaysOpen(self):
         # Arrange — AHEAD rather than UNDATED: a tree with no dated section at all answers None from the
         # tag branch too, so it cannot tell the suppression from its absence. Here 2.1.0 is closed above
@@ -395,6 +419,7 @@ class PublicationDecisionTests(unittest.TestCase):
         # Assert
         self.assertIsNone(reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_TwoVersionsAreUnpublished_When_Decided_Then_TheOlderIsTheOneToDispatch(self):
         # Arrange — the CHANGELOG is newest-first, so naming the first would send the maintainer to
         # publish 2.1.0 before 2.0.1: the split force-push would leave the upm branch on the older
@@ -404,6 +429,7 @@ class PublicationDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("--ref release/2.0.1 -f version=2.0.1", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AnEarlierVersionWasSkippedPast_When_Decided_Then_ItIsStillNamed(self):
         # Arrange — 2.1.0 closed and published above an unpublished 2.0.1. Asking only about the version
         # package.json names would take the question off 2.0.1 for good.
@@ -413,6 +439,7 @@ class PublicationDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("v2.0.1", reason)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_ARemoteWithNoReleaseTagAtAll_When_Decided_Then_ItIsNotCalledUnpublished(self):
         # Arrange — a copy with no release history, where naming a dispatch would be an instruction
         # with nothing behind it.
@@ -435,10 +462,12 @@ class DispatchMirrorTests(unittest.TestCase):
     def workflow(self):
         return (Path(published_check.REPO_ROOT) / ".github" / "workflows" / "upm.yml").read_text()
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_TheDispatchWorkflow_When_ItsTagIsRead_Then_ItIsStillTheSpellingThisModuleLooksFor(self):
         # Assert
         self.assertIn('TAG="v${VERSION}"', self.workflow())
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_TheDispatchWorkflow_When_ItsInputsAreRead_Then_TheOneTheRepairNamesIsDeclared(self):
         # Arrange — the repair prints `-f version=…`, which is this input by name. Matched as a whole
         # declaration line: a rename to release_version still contains "version:".
@@ -466,6 +495,10 @@ class GitReadingTests(unittest.TestCase):
         git(path, "init", "--quiet", "--initial-branch", "main")
         git(path, "config", "user.email", "test@example.invalid")
         git(path, "config", "user.name", "Test")
+        # Automatic maintenance is off so no process the reading's fetch starts outlives the test
+        # in this directory.
+        git(path, "config", "maintenance.auto", "false")
+        git(path, "config", "gc.auto", "0")
         for relative, text in ((CHANGELOG_PATH, changelog), (PACKAGE_JSON_PATH, package or package_json())):
             written = path / relative
             written.parent.mkdir(parents=True, exist_ok=True)
@@ -477,10 +510,12 @@ class GitReadingTests(unittest.TestCase):
         git(path, "remote", "add", "origin", str(path))
         return path
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_ARepositoryHoldingAPublishedVersion_When_Read_Then_ThereIsNoReason(self):
         # Act / Assert
         self.assertIsNone(unpublished_reason(self.repository(), "HEAD"))
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_ARepositoryWhoseRemoteLacksTheTag_When_Read_Then_TheDispatchIsNamed(self):
         # Arrange — the shape main was in for a day: the release commit landed, nothing tagged.
         reason = unpublished_reason(self.repository(tags=("v2.0.0",)), "HEAD")
@@ -508,6 +543,7 @@ class GitReadingTests(unittest.TestCase):
             published_check.main()
         return err.getvalue()
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_AVersionTheRemoteAlreadyTags_When_Read_Then_ItIsRecordedNotClosed(self):
         # Arrange — merging a maintenance line forward brings its released sections across, and the
         # merge publishes nothing: the line's own dispatch already did.
@@ -516,8 +552,7 @@ class GitReadingTests(unittest.TestCase):
         # Act / Assert
         self.assertNotIn("2.1.3", said)
 
-    # GREEN_ON_BASE(characterization): an untagged version closed before the tags reached the reading
-    # and closes after, and it is the half the change must not buy its silence with.
+    # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_AVersionNoTagAnswersFor_When_Read_Then_ItIsStillClosing(self):
         # Arrange — the same shape with no tag, which is a release rather than a record.
         said = self.forward_merge(("v2.0.1",))
@@ -543,6 +578,7 @@ class GitReadingTests(unittest.TestCase):
             published_check.main()
         return err.getvalue()
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_AMinorClosingOverABreakingFragment_When_Read_Then_TheBreakIsNamed(self):
         # Arrange — the breaking section is empty in the file and holds the fragment's entry, so a
         # reading of the file alone passes a minor over it.
@@ -553,6 +589,7 @@ class GitReadingTests(unittest.TestCase):
         self.assertIn("2.1.0 is not a major and '## [Unreleased — breaking]' still lists 1 entry",
                       said)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_AReleaseLeavingAFragmentUncompiled_When_Read_Then_TheFragmentIsNamed(self):
         # Arrange
         said = self.closing_over_a_fragment("unreleased/fix.md",
@@ -561,6 +598,7 @@ class GitReadingTests(unittest.TestCase):
         # Act / Assert
         self.assertIn("2.1.0 closes and '## [Unreleased]' still lists 1 entry", said)
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_ARevisionThatDoesNotExist_When_Read_Then_ItAnswersCleanRatherThanRaising(self):
         # Arrange — a branch that was never fetched is ordinary on a developer's machine, and refusing
         # there would train the reader to work around the guard.
@@ -569,6 +607,7 @@ class GitReadingTests(unittest.TestCase):
         # Act / Assert
         self.assertIsNone(unpublished_reason(repository, "origin/nothing-like-this"))
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_ACommitAfterTheOneThatDatedAVersion_When_TheReleaseCommitIsRead_Then_ItIsTheDatingOne(self):
         # Arrange — the release renames `[Unreleased]`, then an unrelated commit lands on top.
         path = self.repository(changelog=PUBLISHED)
@@ -586,6 +625,7 @@ class GitReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, (dated, "2.1.0"))
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only the repository it builds gained a config that turns maintenance off.
     def test_Given_ACHANGELOGClosingNoVersion_When_TheReleaseCommitIsRead_Then_NoneIsNamed(self):
         # Act / Assert
         self.assertIsNone(published_check.release_commit(self.repository(changelog=UNDATED), "HEAD"))
@@ -610,6 +650,7 @@ class TagCommitTests(unittest.TestCase):
                               capture_output=True, text=True).stdout.strip()
         return path, head
 
+    # GREEN_ON_BASE(refactor): the case is unchanged; only a setup helper of GitReadingTests changed, and this one never reads it.
     def test_Given_AnAnnotatedTag_When_TheRemoteIsListed_Then_TheCommitIsWhatItNames(self):
         # Arrange -- an annotated tag is an object of its own; the listing has to hand back the
         # commit under it, since a lightweight tag is what the dispatch makes and a reader given the

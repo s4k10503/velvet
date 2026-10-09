@@ -230,7 +230,8 @@ namespace Velvet
                 // read: its diff carries no owner, and its parked state outlives the rented list that would
                 // carry one. The general walk takes such a container instead — it holds the owners for the
                 // whole of its own pass and never parks.
-                if (GeneralPathReconciler.NeedsExpansion(newChildren) || oldFibers.Count > 0)
+                if (GeneralPathReconciler.NeedsExpansion(newChildren) || oldFibers.Count > 0
+                    || _general.EmitsLeavingChildHoldingPropagatingPresence())
                 {
                     // General path: a single live-context walk commits each emitted leaf
                     // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so
@@ -431,13 +432,21 @@ namespace Velvet
                 // it records is the one the children below reconcile at.
                 if (declaringFiber != null) _ctx.FiberStack.Push(declaringFiber);
                 var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
+                // A presence in the Portal's children expands with no emission of its enclosing presence child
+                // around it, so the child is read off where the placeholder sits.
+                var enclosingPresenceChild = _ctx.EnclosingPresenceChild;
+                _ctx.EnclosingPresenceChild = _ctx.PresenceChildOf(placeholder);
                 try
                 {
+                    PointerEventsScope.NoteReconciledInto(_ctx, resolvedTarget);
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
                         slotStart: slotStart);
+                    // The mount half of FiberNodePatcher.PatchPortalChildren's structural pass.
+                    _patcher.ApplyStructuralVariants(resolvedTarget);
                 }
                 finally
                 {
+                    _ctx.EnclosingPresenceChild = enclosingPresenceChild;
                     _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                     if (declaringFiber != null) _ctx.FiberStack.Pop();
                     _ctx.CurrentPortalPlaceholder = enclosingPortal;
@@ -558,6 +567,16 @@ namespace Velvet
                     ? ReconcilerContext.BoundaryRemovalOutcome.Skipped
                     : ReconcilerContext.BoundaryRemovalOutcome.Ran;
 
+        // The structural pass of the Reconciler entry that parked, which ran over the children committed so far
+        // and cannot see the rest; a resume that parks again leaves it to the one that finishes.
+        private void ApplyStructuralVariantsOnceSettled(VisualElement? parent)
+        {
+            if (PendingIndexedState == null && PendingKeyedState == null)
+            {
+                _patcher.ApplyStructuralVariants(parent!);
+            }
+        }
+
         // Resumes a suspended IndexedReconcile.
         // Does nothing when PendingIndexedState is null.
         internal void ContinueIndexed(double frameBudgetMs)
@@ -575,6 +594,7 @@ namespace Velvet
                 ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
                     state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit);
                 removals = FastPathRemovalOutcome();
+                ApplyStructuralVariantsOnceSettled(state.Parent);
             }
             finally
             {
@@ -596,6 +616,7 @@ namespace Velvet
             {
                 ReconcileKeyedFrom(state, frameBudgetMs);
                 removals = FastPathRemovalOutcome();
+                ApplyStructuralVariantsOnceSettled(state.Parent);
             }
             finally
             {

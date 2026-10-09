@@ -1228,6 +1228,360 @@ class DeclarationRemovalTests(unittest.TestCase):
         self.assertEqual(removals, [1])
 
 
+class AssignmentRemovalTests(unittest.TestCase):
+    """The line removal's write arm, and the writes it refuses because the read after one could be
+    left with nothing assigning it.
+
+    A case that refuses a write also names a removal the arm still emits, so neither an arm that
+    stopped emitting nor a refusal that swallowed the arm passes it.
+    """
+
+    def test_Given_AResetHelper_When_MutantsAreGenerated_Then_EachWriteIsRemovable(self):
+        # Arrange — the shapes a pool reset writes: a field, a member path, an element, a compound
+        # write and an increment.
+        text = textwrap.dedent("""\
+            void Reset(Node node, int i)
+            {
+                _phase = Phase.Idle;
+                node.Key = null;
+                _slots[i] = default;
+                _mask &= ~Bit;
+                _version++;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [3, 4, 5, 6, 7])
+
+    def test_Given_ALocalDeclaredWithoutAValue_When_MutantsAreGenerated_Then_ItsWritesAreNotRemoved(self):
+        # Arrange — line 13 reads `suffix` after an `if` whose arms are its only writers, so removing
+        # either strands the read.
+        text = textwrap.dedent("""\
+            void Read(bool flag)
+            {
+                string suffix;
+                if (flag)
+                {
+                    suffix = First();
+                }
+                else
+                {
+                    suffix = Second();
+                }
+                _count = 0;
+                Use(suffix);
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [12, 13])
+
+    def test_Given_ALocalOfAGenericTypeOverATuple_When_MutantsAreGenerated_Then_ItsWriteIsNotRemoved(self):
+        # Arrange — the shape a task source settles with: line 6 is the only write before line 9
+        # reads `waiting`, and the declaration's type argument is a tuple holding a generic.
+        text = textwrap.dedent("""\
+            void Settle()
+            {
+                List<(Action<object?> Continuation, object? State)> waiting;
+                lock (_gate)
+                {
+                    waiting = _waiting;
+                    _waiting = null;
+                }
+                Run(waiting);
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [7, 9])
+
+    def test_Given_AnArgumentContinuingOntoALine_When_MutantsAreGenerated_Then_ItIsNotReadAsADeclaration(self):
+        # Arrange — line 4 reads as `ref` declaring `BorderColor` when taken on its own, and it is the
+        # tail of the call line 3 opens.
+        text = textwrap.dedent("""\
+            void Capture(Element element)
+            {
+                CaptureFace(element.Color,
+                    ref BorderColor, ref BorderFromInline);
+                BorderColor = default;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [5])
+
+    def test_Given_AnArgumentContinuingOverSeveralLines_When_MutantsAreGenerated_Then_ItsMiddleIsNotADeclaration(self):
+        # Arrange — line 4 closes what it opens, so only the line above it says it is no statement.
+        text = textwrap.dedent("""\
+            void Capture(Element element)
+            {
+                CaptureFace(element.Color,
+                    ref BorderColor, ref BorderFromInline,
+                    element.Width);
+                BorderColor = default;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [6])
+
+    def test_Given_AnOutParameterAssignedFieldByField_When_MutantsAreGenerated_Then_ItsFieldWritesAreNotRemoved(self):
+        # Arrange — together lines 3 and 4 are what assigns `size` before the method returns.
+        text = textwrap.dedent("""\
+            static void Measure(out Size size)
+            {
+                size.Width = 1;
+                size.Height = 2;
+                _count = 0;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [5])
+
+    def test_Given_AnOutArgumentInACallWhoseLambdaOpensTheBrace_When_MutantsAreGenerated_Then_ItIsNoParameter(self):
+        # Arrange — line 3's first argument list closes before the header ends, so it is a call's.
+        text = textwrap.dedent("""\
+            void Run(int key)
+            {
+                Find(key, out var node).Then(() =>
+                {
+                    Use(node);
+                });
+                node.Value = 1;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [5, 7])
+
+    def test_Given_AnOutArgumentInAnExpressionBodiedMember_When_MutantsAreGenerated_Then_ItIsNoParameter(self):
+        # Arrange — `fiber` on line 3 is an argument's declaration, which leaves a write to one of its
+        # members free; read as a parameter, it refused line 6, which writes through another `fiber`.
+        text = textwrap.dedent("""\
+            internal sealed class Probe
+            {
+                internal bool Has(int key) => _map.TryGetValue(key, out var fiber) && fiber != null;
+                internal void Apply(Fiber fiber)
+                {
+                    fiber.Props = _props;
+                }
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [6])
+
+    def test_Given_AnOutParameter_When_MutantsAreGenerated_Then_ItsWriteIsNotRemoved(self):
+        # Arrange — removing line 3 leaves the method returning with `value` unassigned.
+        text = textwrap.dedent("""\
+            static bool TryRead(string s, out int value)
+            {
+                value = 0;
+                _reads = s.Length;
+                return false;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [4])
+
+    def test_Given_AnOutArgumentWrittenWhereTheCallFailed_When_MutantsAreGenerated_Then_ThatWriteIsNotRemoved(self):
+        # Arrange — line 5 is the only write on the path where the lookup found nothing, and line 8
+        # reads `entries` on both paths.
+        text = textwrap.dedent("""\
+            void Add(int key, Entry item)
+            {
+                if (!_map.TryGetValue(key, out var entries))
+                {
+                    entries = new List<Entry>();
+                    _map[key] = entries;
+                }
+                entries.Add(item);
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [6, 8])
+
+    def test_Given_AStructLocalAssignedFieldByField_When_MutantsAreGenerated_Then_ItsFieldWritesAreNotRemoved(self):
+        # Arrange — together lines 4 and 5 are what assigns `size` before line 7 reads it whole.
+        text = textwrap.dedent("""\
+            void Fill()
+            {
+                Size size;
+                size.Width = 1;
+                size.Height = 2;
+                _count = 0;
+                Use(size);
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [6, 7])
+
+    def test_Given_AnOutParameterWrittenThroughAnElement_When_MutantsAreGenerated_Then_OnlyTheWholeWriteIsKept(self):
+        # Arrange — indexing reads `buffer`, so line 4 can never be the write that assigns it.
+        text = textwrap.dedent("""\
+            static void Fill(out int[] buffer)
+            {
+                buffer = new int[4];
+                buffer[0] = 1;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [4])
+
+    def test_Given_APatternVariable_When_MutantsAreGenerated_Then_OnlyItsWholeWriteIsKept(self):
+        # Arrange — line 5 is the only write on the path where the pattern failed, and line 7 writes
+        # through a variable the match or that write has already assigned whole.
+        text = textwrap.dedent("""\
+            void Bind(object source)
+            {
+                if (source is not Fiber typed)
+                {
+                    typed = Fallback();
+                }
+                typed.Ready = true;
+                Use(typed);
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [7, 8])
+
+    def test_Given_ACompoundWriteToAPatternVariable_When_MutantsAreGenerated_Then_ItIsRemovable(self):
+        # Arrange — a compound write and an increment read their target first, so neither can be what
+        # assigns it.
+        text = textwrap.dedent("""\
+            void Count(object source)
+            {
+                if (source is int n)
+                {
+                    n += 2;
+                    n++;
+                    Use(n);
+                }
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [5, 6, 7])
+
+    def test_Given_AStructConstructor_When_MutantsAreGenerated_Then_OnlyTheMethodsWriteIsRemoved(self):
+        # Arrange — the constructor has to assign `A` before it returns; `Clear` has no such duty.
+        text = textwrap.dedent("""\
+            internal struct Pair
+            {
+                public int A;
+                public Pair(int a)
+                {
+                    A = a;
+                }
+                public void Clear()
+                {
+                    A = 0;
+                }
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [10])
+
+    def test_Given_AStructConstraintOnAMethod_When_MutantsAreGenerated_Then_ItsLocalsAreStillRead(self):
+        # Arrange — `where T : struct` names the keyword after the parameter list, and a header read
+        # whole takes the method for a struct, whose locals are never read as declarations.
+        text = textwrap.dedent("""\
+            internal sealed class Reader
+            {
+                T Read<T>(bool flag) where T : struct
+                {
+                    T found;
+                    if (flag)
+                    {
+                        found = Load<T>();
+                    }
+                    else
+                    {
+                        found = default;
+                    }
+                    _reads = 1;
+                    return found;
+                }
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [14])
+
+    def test_Given_AWriteClosingAnInitializer_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+        # Arrange — the value runs to the semicolon, so line 4's write carries the brace that closes
+        # line 3's initializer.
+        text = textwrap.dedent("""\
+            void Build()
+            {
+                var box = new Box {
+                    Left = 1 };
+                _count = 0;
+            }
+            """)
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [5])
+
+
 class LogicFlipTests(unittest.TestCase):
     """Which joins the logic operator may flip: not one whose statement binds a name on only some paths.
 
@@ -1605,6 +1959,399 @@ class RepositoryReachTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(guards, {"if (!ReferenceEquals(round, _liveRound)) return;"})
+
+
+class ForwardingMemberTests(unittest.TestCase):
+    """Which expression bodies read as forwarding, and the cut each one is given.
+
+    The class body under test starts on line 5 of the source `forwards_in` builds.
+    """
+
+    @staticmethod
+    def forwards_in(members):
+        """(name, first line, last line, cut, declined) of each forwarding member of a class body."""
+        text = "namespace Velvet\n{\n    internal sealed class Probe\n    {\n" + textwrap.indent(
+            textwrap.dedent(members), " " * 8) + "    }\n}\n"
+        return [(forwarder.name, forwarder.first, forwarder.last, forwarder.cut, forwarder.declined)
+                for forwarder in mutation_check.forwarding_members(text)]
+
+    def test_Given_AWrappedForwardingBody_When_MembersAreRead_Then_ItsLinesRunFromTheHeadToTheBody(self):
+        # Arrange — the spelling whose tail `STATEMENT_BOUNDARY` refuses to remove.
+        members = ("public bool TrySetCanceled(CancellationToken token) =>\n"
+                   "    _core.TrySetCanceled(token);\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.TrySetCanceled", 5, 6, "default", None)])
+
+    def test_Given_AVoidForward_When_MembersAreRead_Then_ItsCutIsAnEmptyBody(self):
+        # Arrange — `default` is no body for a member that returns nothing.
+        members = "public void Return(Item item) => _pool.Return(item);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Return", 5, 5, "{ }", None)])
+
+    def test_Given_ABodyPassingALiteral_When_MembersAreRead_Then_ItIsNotAForward(self):
+        # Arrange
+        members = "public bool Set() => _core.Set(1);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ABodyPassingAKeyword_When_MembersAreRead_Then_ItIsNotAForward(self):
+        # Arrange — `default` is a word the identifier chain would otherwise take as a name.
+        members = "public bool TrySetResult() => _source.TrySettle(default);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ALambdaInsideAMethodBody_When_MembersAreRead_Then_ItIsNotAForward(self):
+        # Arrange — the lambda's shape is a forward's; it stands in a method's braces, not the type's.
+        members = ("public void Run()\n"
+                   "{\n"
+                   "    Action run = () => _core.Run();\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AFieldInitialisedWithALambda_When_MembersAreRead_Then_ItIsNotAForward(self):
+        # Arrange — the arrow stands in the type's braces, behind the `=` of a field, and the lambda's
+        # parameter is a name the head would otherwise end on.
+        members = "readonly Func<Key, int> _read = key => _core.Read(key);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AForwardWithAnOutArgument_When_MembersAreRead_Then_ItIsGivenNoCut(self):
+        # Arrange — neither cut assigns the out parameter.
+        members = "public bool TryRead(out int value) => _core.TryRead(out value);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.TryRead", 5, 5, None, "an out parameter")])
+
+    def test_Given_AnAsyncForward_When_MembersAreRead_Then_ItIsGivenNoCut(self):
+        # Arrange — which cut fits depends on whether the task carries a result, which the head's
+        # spelling does not settle.
+        members = "public async VelvetTask Run() => _core.RunAsync();\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Run", 5, 5, None, "async")])
+
+    def test_Given_AConstrainedGenericForward_When_MembersAreRead_Then_ItIsNamedForItsMethod(self):
+        # Arrange — the constraint stands between the parameters and the arrow, where the head is
+        # otherwise read for its name.
+        members = "public T Get<T>(Key key) where T : class => _core.Get<T>(key);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Get", 5, 5, "default", None)])
+
+    def test_Given_AForwardingConstructorWithAnInitializer_When_MembersAreRead_Then_ItsCutIsAnEmptyBody(self):
+        # Arrange
+        members = "internal Probe(Sheet sheet) : base(sheet) => Read(sheet);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Probe", 5, 5, "{ }", None)])
+
+    def test_Given_AnEqualityOperator_When_MembersAreRead_Then_ItIsAForward(self):
+        # Arrange — `==` is the `=` a field is told apart by, inside an operator's own token.
+        members = "public static bool operator ==(Probe left, Probe right) => left.Equals(right);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.operator ==", 5, 5, "default", None)])
+
+    def test_Given_AGetAccessor_When_MembersAreRead_Then_ItIsNamedForItsProperty(self):
+        # Arrange
+        members = ("public string Text\n"
+                   "{\n"
+                   "    get => _props.Text;\n"
+                   "    set { _props.Text = value; }\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Text.get", 7, 7, "default", None)])
+
+    def test_Given_AGenericMethodReturningAGenericType_When_MembersAreRead_Then_ItIsNamedForTheMethod(self):
+        # Arrange — the return type's argument list and the method's both stand in the head, and the
+        # first `<` is the return type's.
+        members = "public List<T> Get<T>(int x) => Inner<T>(x);\n"
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Get", 5, 5, "default", None)])
+
+    def test_Given_ATupleTypedPropertyWithAnAccessor_When_MembersAreRead_Then_TheAccessorIsAForward(self):
+        # Arrange — the head holds a parenthesis without being a method's.
+        members = ("public (int, int) Pair\n"
+                   "{\n"
+                   "    get => _core.Pair;\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Pair.get", 7, 7, "default", None)])
+
+    def test_Given_APropertyWithAnAttributeArgument_When_MembersAreRead_Then_TheAccessorIsAForward(self):
+        # Arrange
+        members = ("[Obsolete(Reason)]\n"
+                   "public int Count\n"
+                   "{\n"
+                   "    get => _core.Count;\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Count.get", 8, 8, "default", None)])
+
+    def test_Given_AMethodWithTwoConstraintClauses_When_MembersAreRead_Then_ItsLocalFunctionIsNotAForward(self):
+        # Arrange — `class where` across the two clauses has the spelling of a type's head.
+        members = ("public void Run<T, U>()\n"
+                   "    where T : class\n"
+                   "    where U : struct\n"
+                   "{\n"
+                   "    int Read() => _core.Read();\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ANestedType_When_MembersAreRead_Then_ItIsNamedUnderItsOuterType(self):
+        # Arrange
+        members = ("internal sealed class Inner\n"
+                   "{\n"
+                   "    public short Version => _core.Version;\n"
+                   "}\n")
+
+        # Act
+        found = self.forwards_in(members)
+
+        # Assert
+        self.assertEqual(found, [("Probe.Inner.Version", 7, 7, "default", None)])
+
+    def test_Given_TypesOfOneNameDifferingInArity_When_PairsAreRead_Then_TheMemberIsPaired(self):
+        # Arrange — a runner without a result beside one with a result.
+        text = textwrap.dedent("""\
+            internal sealed class Method<TStateMachine>
+            {
+                public short Version => _core.Version;
+            }
+            internal sealed class Method<TStateMachine, T>
+            {
+                public short Version => _core.Version;
+            }
+            """)
+
+        # Act
+        paired = mutation_check.paired_forwards(mutation_check.forwarding_members(text))
+
+        # Assert
+        self.assertEqual(paired, {("Method", "Version")})
+
+    def test_Given_AGenericAndANonGenericTypeForwardingOneMember_When_PairsAreRead_Then_TheMemberIsPaired(self):
+        # Arrange
+        text = textwrap.dedent("""\
+            internal sealed class Source
+            {
+                public short Version => _core.Version;
+                public bool IsPooled => _isPooled;
+            }
+            internal sealed class Source<T>
+            {
+                public short Version => _core.Version;
+            }
+            """)
+
+        # Act
+        paired = mutation_check.paired_forwards(mutation_check.forwarding_members(text))
+
+        # Assert
+        self.assertEqual(paired, {("Source", "Version")})
+
+
+class ForwardedBodyReachTests(unittest.TestCase):
+    """`FORWARD_BODY` is the shape no operator emits inside; this is what says so of the package."""
+
+    def test_Given_ThePackagesForwardingMembers_When_MutantsAreGenerated_Then_NoneLandsInAForwardedBody(self):
+        # Arrange
+        sources = [path for path in sorted((REPO_ROOT / mutation_check.PACKAGE).rglob("*.cs"))
+                   if mutation_check.mutable(path, REPO_ROOT)]
+
+        # Act
+        members, inside = 0, 0
+        for path in sources:
+            text = path.read_text()
+            forwarders = mutation_check.forwarding_members(text)
+            lines = {number for forwarder in forwarders
+                     for number in range(forwarder.first, forwarder.last + 1)}
+            mutants = mutation_check.mutations_for(path, text, lines)
+            members += len(forwarders)
+            inside += len(mutation_check.inside_forwarded_bodies(text, forwarders, mutants))
+
+        # Assert — with the count beside it, since a reading that finds no member finds no mutant in one.
+        self.assertEqual((members > 100, inside), (True, 0))
+
+
+class ForwardingReachReportTests(unittest.TestCase):
+    """A changed forwarding member is named, since no mutant edits what it forwards."""
+
+    DEFAULTED = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static void Run(Fiber fiber, bool twice = false) => Executor.Run(fiber, twice);
+            }
+        }
+        """)
+
+    def test_Given_AForwarderWhoseHeadCarriesALiteral_When_TheReachIsListed_Then_TheForwardIsNamed(self):
+        # Arrange — the `false` is mutated, so the member's one line reads as reached, and the
+        # unreached list says nothing about the forward standing on it.
+        campaign = StubbedCampaign(self.DEFAULTED)
+
+        # Act
+        campaign.run("--list")
+
+        # Assert
+        self.assertIn("  forwards   Packages/com.velvet.core/Runtime/Probe.cs:5 Probe.Run",
+                      campaign.printed.splitlines())
+
+    # GREEN_ON_BASE(characterization): a block body calling the same member names no forward, as the base names none.
+    def test_Given_ABlockBodyCallingTheSameMember_When_TheReachIsListed_Then_NoForwardIsNamed(self):
+        # Arrange — the control for the case above: a body an operator does reach.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal static class Probe
+                {
+                    internal static void Run(Fiber fiber, bool twice = false)
+                    {
+                        Executor.Run(fiber, twice);
+                    }
+                }
+            }
+            """))
+
+        # Act
+        campaign.run("--list")
+
+        # Assert
+        self.assertNotIn("forwards", campaign.printed)
+
+
+class ForwarderCensusTests(unittest.TestCase):
+    """The inventory a cut sweep over forwarding members starts from."""
+
+    @staticmethod
+    def load_census():
+        spec = importlib.util.spec_from_file_location(
+            "forwarder_census", Path(__file__).with_name("forwarder_census.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_Given_APairedForwarder_When_TheCensusIsRendered_Then_ItsRowCarriesThePairAndTheCut(self):
+        # Arrange
+        census = self.load_census()
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Source
+                {
+                    public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
+                }
+                internal sealed class Source<T>
+                {
+                    public VelvetTaskStatus GetStatus(short version) => _core.GetStatus(version);
+                }
+            }
+            """))
+
+        # Act
+        rows = census.render(campaign.project, census.census(campaign.project, [campaign.source]), False)
+
+        # Assert
+        self.assertEqual(rows[0], "\t".join(("Packages/com.velvet.core/Runtime/Probe.cs:5-5",
+                                             "Source.GetStatus", "member", "paired", "default", "0",
+                                             "0")))
+
+    def test_Given_AFileNamedRelativeToTheProject_When_TheCensusRunsElsewhere_Then_ItReadsThatFile(self):
+        # Arrange
+        census = self.load_census()
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Probe
+                {
+                    public short Version => _core.Version;
+                }
+            }
+            """))
+        spoken = io.StringIO()
+
+        # Act
+        with contextlib.redirect_stdout(spoken):
+            census.main(["--project", str(campaign.project), StubbedCampaign.SOURCE])
+
+        # Assert
+        self.assertIn("\tProbe.Version\t", spoken.getvalue())
+
+    def test_Given_ANamedFileThatIsMissing_When_TheCensusRuns_Then_ItExitsNonZero(self):
+        # Arrange — an empty census would otherwise read as a file holding no forwarding member.
+        census = self.load_census()
+        campaign = StubbedCampaign()
+
+        # Act
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = census.main(["--project", str(campaign.project),
+                                "Packages/com.velvet.core/Runtime/Nope.cs"])
+
+        # Assert
+        self.assertNotEqual(code, 0)
 
 
 class GenerationHealthTests(unittest.TestCase):
@@ -2438,9 +3185,8 @@ class OutstandingMutationTests(unittest.TestCase):
 class ReachTests(unittest.TestCase):
     """What the operators do not touch, which is most of a diff and was folded into a clean verdict.
 
-    A method written as a run of assignments generates nothing, and the run said only that nothing
-    survived. `Generators~/README.md` owns how much of a diff that is, with the window it was
-    measured over; a second copy here went stale twice while the guides moved.
+    `Generators~/README.md` owns how much of a diff that is, with the window it was measured over; a
+    second copy here went stale twice while the guides moved.
     """
 
     ASSIGNMENTS = textwrap.dedent("""\
@@ -2452,7 +3198,7 @@ class ReachTests(unittest.TestCase):
         }
         """)
 
-    def test_Given_AMethodOfAssignments_When_MutantsAreGenerated_Then_EveryLineIsUnreached(self):
+    def test_Given_AMethodOfAssignments_When_MutantsAreGenerated_Then_OnlyTheSignatureIsUnreached(self):
         # Arrange
         numbers = set(range(1, len(self.ASSIGNMENTS.splitlines()) + 1))
 
@@ -2462,8 +3208,128 @@ class ReachTests(unittest.TestCase):
         unreached = [number for number in mutation_check.code_line_numbers(self.ASSIGNMENTS, numbers)
                      if number not in reached]
 
-        # Assert — the signature and the three assignments; the braces are not code lines.
-        self.assertEqual(unreached, [1, 3, 4, 5])
+        # Assert — the braces are not code lines.
+        self.assertEqual(unreached, [1])
+
+    def test_Given_ATypeAndItsMembers_When_TheBodyLinesAreRead_Then_OnlyTheMethodsStatementsAreThem(self):
+        # Arrange — a namespace, a type, a field, a signature continued over two lines and an
+        # expression-bodied member all sit outside a member body's braces.
+        text = textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Probe
+                {
+                    private int _count;
+                    internal void Settle(
+                        int next)
+                    {
+                        _count = next;
+                        Apply(next);
+                    }
+                    internal int Next => _count + 1;
+                }
+            }
+            """)
+
+        # Act
+        found = mutation_check.body_line_numbers(text, set(range(1, len(text.splitlines()) + 1)))
+
+        # Assert
+        self.assertEqual(found, [9, 10])
+
+    def test_Given_AFieldInitializersBraces_When_TheBodyLinesAreRead_Then_TheirEntriesAreNotThem(self):
+        # Arrange — the shape of a generated table: a collection initializer whose header ends with a
+        # parenthesis, as a method's does, and holds the field's `=`.
+        text = textwrap.dedent("""\
+            internal static class Table
+            {
+                private static readonly Dictionary<string, int> s_map = new Dictionary<string, int>(4)
+                {
+                    { "a", 1 },
+                    { "b", 2 },
+                };
+                private static int Read()
+                {
+                    return s_map.Count;
+                }
+            }
+            """)
+
+        # Act
+        found = mutation_check.body_line_numbers(text, set(range(1, len(text.splitlines()) + 1)))
+
+        # Assert
+        self.assertEqual(found, [10])
+
+    def test_Given_ALambdaAFieldInitializerHolds_When_TheBodyLinesAreRead_Then_ItsStatementsAreThem(self):
+        # Arrange — the header holds the field's `=` and ends with the lambda's arrow.
+        text = textwrap.dedent("""\
+            internal static class Table
+            {
+                private static readonly Action s_log = () =>
+                {
+                    Write(1);
+                };
+            }
+            """)
+
+        # Act
+        found = mutation_check.body_line_numbers(text, set(range(1, len(text.splitlines()) + 1)))
+
+        # Assert
+        self.assertEqual(found, [5])
+
+    def test_Given_ABodyLineOfBracketsAlone_When_TheBodyLinesAreRead_Then_ItIsNotOneOfThem(self):
+        # Arrange — line 5 closes the call line 3 opened, and `code_line_numbers` counts it.
+        text = textwrap.dedent("""\
+            void Settle(int next)
+            {
+                Apply(
+                    next
+                );
+            }
+            """)
+
+        # Act — the three lines inside the braces, so what decides is the brackets rather than the scope.
+        found = mutation_check.body_line_numbers(text, {3, 4, 5})
+
+        # Assert
+        self.assertEqual(found, [3, 4])
+
+    def test_Given_AMethodWithAnUnreachedStatement_When_TheReachIsPrinted_Then_TheBodyShareFollowsIt(self):
+        # Arrange — which lines are body lines and which carry a mutant is the two readings' own
+        # business, pinned beside this; what this asks is that the run prints their share at all.
+        text = textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Probe
+                {
+                    private int _value;
+                    internal void Settle(int next)
+                    {
+                        var label = Describe(next);
+                        _value = next;
+                        Use(label);
+                    }
+                }
+            }
+            """)
+        campaign = StubbedCampaign(text)
+        numbers = set(range(1, len(text.splitlines()) + 1))
+        body = mutation_check.body_line_numbers(text, numbers)
+        reached = {mutant.line for mutant in mutation_check.mutations_for(Path("probe.cs"), text, numbers)}
+        hit = len([number for number in body if number in reached])
+
+        # Act
+        campaign.run("--list")
+
+        # Assert — the counts ride along, so a reading that found nothing to share cannot satisfy it.
+        self.assertEqual(
+            ((hit, len(body)),
+             "{} of the {} changed code line(s) inside a member body's braces, beyond brackets and "
+             "separators alone, carry a mutant ({}%)".format(hit, len(body), round(100 * hit / len(body)))
+             in campaign.printed.splitlines()),
+            ((2, 3), True))
 
     def test_Given_ALineHoldingOnlyABrace_When_TheCodeLinesAreRead_Then_ItIsNotOneOfThem(self):
         # Arrange — block punctuation is not something an operator failed to reach, and counting it
@@ -2525,6 +3391,157 @@ class ReachTests(unittest.TestCase):
              next(line.rsplit(":", 1)[-1] for line in campaign.printed.splitlines()
                   if "unreached" in line)),
             (["literal"], "1,3,5"))
+
+
+class DeclinedLineTests(unittest.TestCase):
+    """A statement the line removal would take on a line of its own, beside a brace, a label or another
+    statement, which the removal does not read because it reads a line only whole.
+
+    The reach is one bit per line, so nothing it printed over `try { _state.Dispose(); }` said a
+    statement there was skipped for its formatting.
+    """
+
+    def declined(self, line):
+        """Line 2's reading, behind a finished statement, which is where a removal may stand."""
+        return mutation_check.declined_line_numbers("Init();\n" + line + "\n", {2})
+
+    def test_Given_ACallInsideBracesOnOneLine_When_TheLinesAreRead_Then_ItIsDeclined(self):
+        # Arrange
+        line = "try { _state.Dispose(); }"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [2])
+
+    def test_Given_TwoCallsOnOneLine_When_TheLinesAreRead_Then_ItIsDeclined(self):
+        # Arrange — no brace on the line, so only the cut at the first semicolon separates the calls.
+        line = "Reset(); Notify();"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [2])
+
+    def test_Given_ACallAloneOnItsLine_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the line the removal does read, which matches the pattern as a piece and whole.
+        line = "Reset();"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AForHeaderOfCalls_When_TheLinesAreRead_Then_ItsClausesAreNotDeclined(self):
+        # Arrange — `More();` would match the removal pattern if the header's semicolons cut the line.
+        line = "for (Init(); More(); Advance()) Step();"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AReturnOfATupleBehindAnotherStatement_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — `return (value, true);` matches the removal pattern and is not a call. No brace,
+        # because with the braces left uncut `if (done) { return (value, true);` matches it too, and
+        # an `await` in front because no removal arm reads one.
+        line = "await Settle(); return (value, true);"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ADeconstructionInsideBraces_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the removal refuses a declaration wherever it stands, so naming it would say the
+        # formatting cost a mutant it never could have had.
+        line = "if (ready) { var (a, b) = Split(); }"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ABracedCallInsideAComment_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — the line's own code is an `await`, which no removal arm reads.
+        line = "await Settle(); // { Clear(); }"
+
+        # Act
+        found = self.declined(line)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ACallBehindACaseLabel_When_TheLinesAreRead_Then_ItIsDeclined(self):
+        # Arrange — the label is no statement, and the call alone on the line under it is removable.
+        text = "switch (key)\n{\n    case 1: Reset();\n        break;\n}\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {3})
+
+        # Assert
+        self.assertEqual(found, [3])
+
+    def test_Given_ANamedArgumentContinuingACall_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — `name:` reads as a label, and the code above has not finished a statement.
+        text = "Call(first,\n    name: Reset());\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {2})
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ADoLoopsTailBehindItsBrace_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — on a line of its own the tail is refused, since the `do` block would lose it.
+        text = "do\n{\n    Step();\n} while (Next());\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {4})
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AnIfWhoseElseSharesItsLine_When_TheLinesAreRead_Then_ItIsNotDeclined(self):
+        # Arrange — on a line of its own the `if` is refused, since the `else` would be stranded.
+        text = "Init();\nif (ready) Reset(); else Clear();\n"
+
+        # Act
+        found = mutation_check.declined_line_numbers(text, {2})
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AOneLineTryAndCatch_When_Listed_Then_TheReachNamesBothLinesDeclined(self):
+        # Arrange — the containment the issue measured, beside a line that does carry a mutant so the
+        # run reaches the listing rather than the refusal of a change no operator reaches.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Probe
+                {
+                    internal static bool Ready(int a, int b) => a <= b;
+                    internal void Dispose()
+                    {
+                        try { _state.Dispose(); }
+                        catch (Exception ex) { Logger.LogError(ex.Message); }
+                    }
+                }
+            }
+            """))
+
+        # Act
+        campaign.run("--list")
+
+        # Assert
+        self.assertEqual(re.findall(r"^  declined .*$", campaign.printed, re.MULTILINE),
+                         ["  declined   Packages/com.velvet.core/Runtime/Probe.cs:8,9"])
 
 
 class UnreachableChangeTests(unittest.TestCase):
