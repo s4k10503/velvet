@@ -162,7 +162,7 @@ namespace Velvet.Tests
             string seen = null;
             router.RouteBlockerManager.Register(_ =>
             {
-                seen = $"{router.Status} {router.PendingLocation?.Path ?? "none"}";
+                seen = $"{router.Navigation.State} {router.Navigation.Location?.Path ?? "none"}";
                 return true;
             }, new RouteBlockerState());
 
@@ -170,7 +170,7 @@ namespace Velvet.Tests
             router.NavigateSync("/other");
 
             // Assert
-            Assert.That(seen, Is.EqualTo("Ready none"));
+            Assert.That(seen, Is.EqualTo("Idle none"));
         }
 
         #endregion

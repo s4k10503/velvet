@@ -15,9 +15,8 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The commit waits for the loader: the committed location stays that of the route already on
     /// screen until the loader's task resolves, and the location and its data commit together.</item>
-    /// <item>The router reports <see cref="RouterStatus.Loading"/> through that window, and
-    /// <see cref="Router.PendingLocation"/> reports the destination — resolved, so it carries the
-    /// destination's path parameters.</item>
+    /// <item><see cref="Router.Navigation"/> reports <see cref="NavigationLifecycle.Loading"/> through that
+    /// window, and the destination — resolved, so it carries the destination's path parameters.</item>
     /// <item>The destination is published only while a navigation is in flight: the commit that lands it,
     /// a guard redirect that matches no route, a redirect chain that exhausts the limit, and disposing the
     /// router each withdraw it — the two redirect refusals only from the initiator that still holds the
@@ -33,7 +32,7 @@ namespace Velvet.Tests
     /// off it rather than finding the source gone — the awaited one superseded inside its own run, and
     /// the Suspend one on screen at the commit that leaves it.</item>
     /// <item>A navigation that matches no route neither cancels the attempt holding the window open nor
-    /// takes over the status describing it.</item>
+    /// takes over the navigation describing it.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -85,7 +84,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAwaitLoaderThatHasNotResolved_When_Navigating_Then_TheStatusIsLoading()
+        public void Given_AnAwaitLoaderThatHasNotResolved_When_Navigating_Then_TheNavigationIsLoading()
         {
             // Arrange
             var (router, _) = RouterAwaitingItsLoader();
@@ -94,11 +93,11 @@ namespace Velvet.Tests
             router.NavigateAsync("/users/7").Forget();
 
             // Assert
-            Assert.That(router.Status, Is.EqualTo(RouterStatus.Loading));
+            Assert.That(router.Navigation.State, Is.EqualTo(NavigationLifecycle.Loading));
         }
 
         [Test]
-        public void Given_AnAwaitLoaderThatHasNotResolved_When_Navigating_Then_PendingLocationIsTheDestination()
+        public void Given_AnAwaitLoaderThatHasNotResolved_When_Navigating_Then_TheNavigationsLocationIsTheDestination()
         {
             // Arrange
             var (router, _) = RouterAwaitingItsLoader();
@@ -107,11 +106,11 @@ namespace Velvet.Tests
             router.NavigateAsync("/users/7").Forget();
 
             // Assert
-            Assert.That(router.PendingLocation?.Path, Is.EqualTo("/users/7"));
+            Assert.That(router.Navigation.Location?.Path, Is.EqualTo("/users/7"));
         }
 
         [Test]
-        public void Given_AnAwaitLoaderThatHasNotResolved_When_Navigating_Then_PendingLocationCarriesTheDestinationsParams()
+        public void Given_AnAwaitLoaderThatHasNotResolved_When_Navigating_Then_TheNavigationsLocationCarriesTheDestinationsParams()
         {
             // The destination is resolved against the route tree rather than carried as the raw path a
             // Blocker is handed, so a pending-UI branch can read the parameters it is loading for.
@@ -122,7 +121,7 @@ namespace Velvet.Tests
             router.NavigateAsync("/users/7").Forget();
 
             // Assert
-            Assert.That(router.PendingLocation?.Params["id"], Is.EqualTo("7"));
+            Assert.That(router.Navigation.Location?.Params["id"], Is.EqualTo("7"));
         }
 
         [UnityTest]
@@ -153,7 +152,7 @@ namespace Velvet.Tests
             // Arrange
             var (router, loader) = RouterAwaitingItsLoader();
             var navigation = router.NavigateAsync("/users/7");
-            var whileLoading = router.PendingLocation?.Path ?? "none";
+            var whileLoading = router.Navigation.Location?.Path ?? "none";
 
             // Act
             loader.TrySetResult("user-7");
@@ -161,7 +160,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                $"loading={whileLoading} settled={router.PendingLocation?.Path ?? "none"}",
+                $"loading={whileLoading} settled={router.Navigation.Location?.Path ?? "none"}",
                 Is.EqualTo("loading=/users/7 settled=none"));
         });
 
@@ -184,6 +183,33 @@ namespace Velvet.Tests
                 Is.EqualTo("result=Success errors=late-failure"));
         });
 
+        [UnityTest]
+        public IEnumerator Given_ANavigationAwaitingItsLoader_When_ItsCallerCancelsIt_Then_NoNavigationIsLeftInFlight()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The cancellation is observed after the loaders rather than before them, by a check of its own.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("users/:id", loader: (ctx, ct) =>
+                {
+                    var pending = new VelvetTaskCompletionSource<object>();
+                    ct.Register(() => pending.TrySetCanceled());
+                    return pending.Task;
+                }));
+            using var caller = new CancellationTokenSource();
+            var navigation = router.NavigateAsync("/users/7", NavigationMode.Push, caller.Token);
+            var whileLoading = router.Navigation.State;
+
+            // Act
+            caller.Cancel();
+            var result = await navigation;
+
+            // Assert
+            Assert.That($"loading={whileLoading} result={result} state={router.Navigation.State}",
+                Is.EqualTo("loading=Loading result=Cancelled state=Idle"));
+        });
+
         [Test]
         public void Given_ANavigationAwaitingItsLoader_When_TheRouterIsDisposed_Then_ThePendingDestinationIsWithdrawn()
         {
@@ -192,14 +218,14 @@ namespace Velvet.Tests
             // Arrange
             var (router, _) = RouterAwaitingItsLoader();
             router.NavigateAsync("/users/7").Forget();
-            var whileLoading = router.PendingLocation?.Path ?? "none";
+            var whileLoading = router.Navigation.Location?.Path ?? "none";
 
             // Act
             router.Dispose();
 
             // Assert
             Assert.That(
-                $"loading={whileLoading} disposed={router.PendingLocation?.Path ?? "none"}",
+                $"loading={whileLoading} disposed={router.Navigation.Location?.Path ?? "none"}",
                 Is.EqualTo("loading=/users/7 disposed=none"));
         }
 
@@ -220,13 +246,13 @@ namespace Velvet.Tests
 
             // Act
             var redirected = await router.NavigateAsync("/gated");
-            var afterRedirect = router.PendingLocation?.Path ?? "none";
+            var afterRedirect = router.Navigation.Location?.Path ?? "none";
             router.NavigateAsync("/users/7").Forget();
 
             // Assert
             Assert.That(
                 $"result={redirected} afterRedirect={afterRedirect} "
-                + $"loading={router.PendingLocation?.Path ?? "none"}",
+                + $"loading={router.Navigation.Location?.Path ?? "none"}",
                 Is.EqualTo("result=NotFound afterRedirect=none loading=/users/7"));
         });
 
@@ -247,13 +273,13 @@ namespace Velvet.Tests
 
             // Act
             var overflowed = await router.NavigateAsync("/a");
-            var afterOverflow = router.PendingLocation?.Path ?? "none";
+            var afterOverflow = router.Navigation.Location?.Path ?? "none";
             router.NavigateAsync("/users/7").Forget();
 
             // Assert
             Assert.That(
                 $"result={overflowed} afterOverflow={afterOverflow} "
-                + $"loading={router.PendingLocation?.Path ?? "none"}",
+                + $"loading={router.Navigation.Location?.Path ?? "none"}",
                 Is.EqualTo("result=Error afterOverflow=none loading=/users/7"));
         });
 
@@ -289,8 +315,43 @@ namespace Velvet.Tests
             // Assert — the refused result rides along because a destination reading /users/7 is also what
             // a guard that redirected nowhere at all would leave.
             Assert.That(
-                $"guarded={guarded} loading={router.PendingLocation?.Path ?? "none"}",
+                $"guarded={guarded} loading={router.Navigation.Location?.Path ?? "none"}",
                 Is.EqualTo("guarded=NotFound loading=/users/7"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AGuardThatNavigatesThenRedirectsToARoute_When_TheRedirectMatches_Then_TheNewerDestinationStands()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The case above with a redirect that matches: the refused hop withdrew nothing there, and a
+            // matched one would publish its own destination over the newer attempt's.
+            // Arrange
+            var loader = new VelvetTaskCompletionSource<object>();
+            Router router = null;
+            router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("home"),
+                    Route("guarded", guard: _ =>
+                    {
+                        router.NavigateAsync("/users/7").Forget();
+                        return "/target";
+                    }),
+                    Route("target"),
+                    Route("users/:id", loader: (ctx, ct) => loader.Task),
+                }),
+            });
+            await router.NavigateAsync("/home");
+
+            // Act
+            var guarded = await router.NavigateAsync("/guarded");
+
+            // Assert
+            Assert.That(
+                $"guarded={guarded} path={router.CurrentLocation?.Path} "
+                + $"loading={router.Navigation.Location?.Path ?? "none"}",
+                Is.EqualTo("guarded=Cancelled path=/home loading=/users/7"));
         });
 
         [UnityTest]
@@ -328,13 +389,13 @@ namespace Velvet.Tests
             });
 
             // Act
-            var stillLoading = router.Status;
+            var stillLoading = router.Navigation.State;
 
             // Assert
             Assert.That(
-                $"status={stillLoading} cancellable={captured.CanBeCanceled} "
+                $"state={stillLoading} cancellable={captured.CanBeCanceled} "
                 + $"cancelled={captured.IsCancellationRequested}",
-                Is.EqualTo("status=Loading cancellable=True cancelled=False"));
+                Is.EqualTo("state=Loading cancellable=True cancelled=False"));
         }
 
         [UnityTest]
@@ -442,12 +503,11 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_TheStatusStillDescribesTheHeldNavigation()
+        public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_TheRouterStillReportsTheHeldNavigation()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // An attempt that never matched takes no claim, so it is not the one Status belongs to. The
-            // result it hands its own caller is folded in: withholding the status must not cost the caller
-            // the outcome.
+            // An attempt that never matched takes no claim, so Navigation is not its to describe. The result
+            // it hands its own caller is folded in: reporting nothing must not cost the caller the outcome.
             // Arrange
             var (router, _) = RouterAwaitingItsLoader();
             router.NavigateAsync("/users/7").Forget();
@@ -456,8 +516,10 @@ namespace Velvet.Tests
             var unmatched = await router.NavigateAsync("/nowhere");
 
             // Assert
-            Assert.That($"unmatched={unmatched} status={router.Status}",
-                Is.EqualTo("unmatched=NotFound status=Loading"));
+            Assert.That(
+                $"unmatched={unmatched} state={router.Navigation.State} "
+                + $"location={router.Navigation.Location?.Path ?? "none"}",
+                Is.EqualTo("unmatched=NotFound state=Loading location=/users/7"));
         });
     }
 }

@@ -673,6 +673,56 @@ namespace Velvet.Tests
                 Is.EqualTo("rerendered=True state=Idle location=null"));
         }
 
+        // GREEN_ON_BASE(characterization): the base reconciles at the subscription the same way.
+        // Its subscriber reads a status where this branch's reads the navigation itself.
+        [Test]
+        public void Given_ANavigationStartedBeforeTheHookSubscribes_When_TheSubscriptionIsCommitted_Then_TheHookReportsIt()
+        {
+            // The navigation starts between the render and the effect that subscribes, so no event reaches
+            // the hook for it.
+            // Arrange
+            var loader = new VelvetTaskCompletionSource<object>();
+            var router = new Router(new[]
+            {
+                Route("home", element: V.Component(StubA)),
+                Route("data", element: V.Component(StubB), loader: (ctx, ct) => loader.Task),
+            });
+            router.NavigateSync("/home");
+            using var mounted = MountWith(router, V.Component(Capture.Render, key: "cap"));
+            router.NavigateAsync("/data").Forget();
+
+            // Act
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Capture.State.State, Is.EqualTo(NavigationLifecycle.Loading));
+        }
+
+        [Test]
+        public void Given_AMountedNavigationHook_When_ItIsUnmounted_Then_ItNoLongerListensToTheRouter()
+        {
+            // Arrange
+            var router = new Router(new[] { Route("home", element: V.Component(StubA)) });
+            router.NavigateSync("/home");
+            var mounted = MountWith(router, V.Component(Capture.Render, key: "cap"));
+            mounted.FlushEffectsForTest();
+            var listenersWhileMounted = NavigationListeners(router);
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That($"mounted={listenersWhileMounted} unmounted={NavigationListeners(router)}",
+                Is.EqualTo("mounted=1 unmounted=0"));
+        }
+
+        // A field-like event's backing field carries the event's own name.
+        private static int NavigationListeners(Router router)
+            => (typeof(Router).GetField(nameof(Router.OnNavigationChanged),
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?.GetValue(router) as Delegate)?.GetInvocationList().Length ?? 0;
+
         [Test]
         public void Given_NavigateElement_When_Mounted_Then_RedirectsToTarget()
         {

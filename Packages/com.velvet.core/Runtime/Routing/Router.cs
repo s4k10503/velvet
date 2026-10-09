@@ -28,10 +28,10 @@ namespace Velvet
         // recent one that had somewhere to go.
         private RouteCancellationSource? _activeNavigation;
         private bool _disposed;
-        // Identifies whoever currently owns Status. An attempt that has lost the claim must not put Status
-        // back: cancelling its token does not force it to resume at that moment, so it can reach its rollback
-        // after a newer navigation has established its own Status, and by then the value it would write
-        // describes a router that no longer exists.
+        // Identifies whichever attempt currently owns Navigation. An attempt that has lost the claim must
+        // not put Navigation back: cancelling its token does not force it to resume at that moment, so it can
+        // reach its rollback after a newer navigation has published itself, and by then the value it would
+        // write describes a router that no longer exists.
         private int _navigationSequence;
 
         // The routers constructed, oldest first, held weakly so that a router nobody disposed and nothing else
@@ -80,37 +80,44 @@ namespace Velvet
             s_newest = null;
         }
 
-        private RouterStatus _status = RouterStatus.Idle;
+        private NavigationLifecycle _navigationPhase;
+        private RouterLocation? _pendingLocation;
+        // The submission of the attempt holding the claim, or of the initiator a redirect is part of.
+        private Submission? _pendingSubmission;
 
-        /// <summary>Current processing state of the router.</summary>
-        public RouterStatus Status
-        {
-            get => _status;
-            private set
-            {
-                if (_status == value)
-                {
-                    return;
-                }
-                _status = value;
-                OnStatusChanged?.Invoke(value);
-            }
-        }
         /// <summary>Location information for the most recently successful navigation. null before the first navigation.</summary>
         public RouterLocation? CurrentLocation { get; private set; }
+
         /// <summary>
-        /// The location an in-flight navigation is heading for — resolved against the route tree, so it
-        /// carries the destination's parameters and matches. Set once the path has matched, and cleared by
-        /// the commit that makes it <see cref="CurrentLocation"/>, by the attempt that gives up on it, and
-        /// by <see cref="Dispose"/>. <c>UseNavigation</c> reports it as
-        /// <see cref="NavigationState.Location"/>; the routing guide states where that lands relative to
-        /// React Router's <c>navigation.location</c>.
+        /// The navigation in flight, as React Router's <c>router.state.navigation</c> describes it: from the
+        /// moment its path has matched a route until it commits or gives up, and <c>default</c> — Idle, every
+        /// other member null — while none is. It describes that attempt and nothing else: an attempt that
+        /// ends without committing changes nothing <see cref="CurrentLocation"/>,
+        /// <see cref="CurrentLoaderData"/> or <see cref="CurrentLoaderErrors"/> holds, and reports how it ended
+        /// through the <see cref="NavigationResult"/> it returns or the exception it throws. The destination
+        /// is resolved against the route tree, so it carries the destination's parameters and matches. The
+        /// form members are null for a submission whose method no form takes or whose body cannot be
+        /// encoded, as React Router's navigation carries no submission then.
         /// </summary>
-        public RouterLocation? PendingLocation { get; private set; }
-        // The submission of the attempt that last published a destination, which UseNavigation reads while
-        // one is in flight. A refused one carries none, as React Router's navigation has no submission then.
-        private Submission? _pendingSubmission;
-        internal Submission? PendingSubmission => _pendingSubmission?.Refusal == null ? _pendingSubmission : null;
+        public NavigationState Navigation
+        {
+            get
+            {
+                if (_navigationPhase == NavigationLifecycle.Idle)
+                {
+                    return default;
+                }
+                var submission = _pendingSubmission?.Refusal == null ? _pendingSubmission : null;
+                return new NavigationState
+                {
+                    State = _navigationPhase,
+                    Location = _pendingLocation,
+                    FormMethod = submission?.FormMethod,
+                    FormAction = submission?.Action,
+                    FormData = submission?.FormData,
+                };
+            }
+        }
         // React Router's isRevalidationRequired: set when an action starts, cleared by a commit, so a navigation
         // that takes over from a submission whose action has started keeps no loader data.
         private bool _revalidationRequired;
@@ -138,10 +145,10 @@ namespace Velvet
         public event Action<RouterLocation> OnLocationChanged = null!;
 
         /// <summary>
-        /// Raised whenever <see cref="Status"/> transitions (idle/matching/loading/etc.), letting hooks
-        /// such as <c>UseNavigation</c> observe an in-flight navigation.
+        /// Raised with the new <see cref="Navigation"/> whenever it changes. <see cref="Dispose"/> clears it
+        /// without raising this.
         /// </summary>
-        public event Action<RouterStatus> OnStatusChanged = null!;
+        public event Action<NavigationState> OnNavigationChanged = null!;
 
         private readonly IRouteScopeFactory? _scopeFactory;
 
@@ -219,7 +226,7 @@ namespace Velvet
         /// Submits <paramref name="formData"/> as React Router's <c>router.navigate(to, { formMethod,
         /// formData })</c> does; <c>routing.md</c> owns what each method does. A <c>get</c> submission navigates
         /// with the form data as its query string. Another form method calls the action of the route the target
-        /// path matches, reporting <see cref="RouterStatus.Submitting"/> while it runs, and commits its result
+        /// path matches, reporting <see cref="NavigationLifecycle.Submitting"/> while it runs, and commits its result
         /// for <c>UseActionData</c> or its failure as that route's error. A method no form takes commits React
         /// Router's 405 error.
         /// </summary>
@@ -325,11 +332,11 @@ namespace Velvet
 
         // Refusing the step before the navigation starts, rather than partway through it, is what makes
         // NavigateAsync and GoBack/GoForward agree on everything the refusal skips: no in-flight attempt
-        // cancelled out from under its caller, and no Status transition left to put back.
+        // cancelled out from under its caller, and no Navigation left to put back.
         // The discard is what carries a mode outside the enum through to the commit, whose own switch
         // answers it with ArgumentOutOfRangeException — the router's one report of such a cast, and the
         // one RouterUnfinishedNavigationTests reaches the commit's unwind through. Naming these four arms
-        // would raise the cast here instead, before Status has anything to put back.
+        // would raise the cast here instead, before Navigation has anything to put back.
         private bool StepHasNoEntryToLandOn(NavigationMode mode) => mode switch
         {
             NavigationMode.Back => !CanGoBack,
@@ -507,14 +514,12 @@ namespace Velvet
 
             if (initiator?.Redirects >= MaxRedirects)
             {
-                WithdrawInitiatorsDestination(initiator);
-                ReportUnclaimedOutcome(RouterStatus.Error);
+                EndInitiatorsNavigation(initiator);
                 return NavigationResult.Error;
             }
 
             if (path == null)
             {
-                ReportUnclaimedOutcome(RouterStatus.NotFound);
                 return NavigationResult.NotFound;
             }
 
@@ -533,8 +538,7 @@ namespace Velvet
 
             if (matches == null)
             {
-                WithdrawInitiatorsDestination(initiator);
-                ReportUnclaimedOutcome(RouterStatus.NotFound);
+                EndInitiatorsNavigation(initiator);
                 return NavigationResult.NotFound;
             }
 
@@ -544,13 +548,19 @@ namespace Velvet
                 // A redirect inherits its initiator's claim rather than taking one, so it does not dispossess
                 // the navigation it is part of, and it commits into the slot the initiator resolved.
                 pending = initiator.Value;
+                // An initiator a newer navigation took over from — one its Guard started, say — has lost the
+                // claim, and the redirect has nothing of its own to publish over the newer navigation's.
+                if (!StillCurrent(pending))
+                {
+                    return NavigationResult.Cancelled;
+                }
             }
             else
             {
                 // Everything past the Blocker an attempt does to the router at large happens on this side of
                 // the match, and that is the point of taking the claim here: an attempt that matches no route
                 // must not dispossess one still under way in a guard or a loader, because that attempt is the
-                // only one able to put Status back and the only one its destination and its token belong to.
+                // only one able to put Navigation back and the only one its token belongs to.
                 if (takeover != null)
                 {
                     // Installed before the predecessor is cancelled, as RouteLoaderRunner.BeginRound installs a
@@ -580,13 +590,12 @@ namespace Velvet
             // Built here rather than at the commit so the phases below have a destination to publish while
             // they run, and reused as the committed location so the two are one object.
             var location = BuildLocation(path, matches);
-            // Written before the Claim below raises OnStatusChanged, for the reason ReleaseClaim clears it
-            // before its Status write.
-            PendingLocation = location;
             // A redirect keeps its initiator's submission on show while it loads, as React Router's navigation
             // does while it follows a redirect out of an action.
-            _pendingSubmission = initiator.HasValue ? _pendingSubmission : submission;
-            Claim(submission?.IsMutation == true ? RouterStatus.Submitting : RouterStatus.Matching);
+            PublishNavigation(
+                submission?.IsMutation == true ? NavigationLifecycle.Submitting : NavigationLifecycle.Loading,
+                location,
+                initiator.HasValue ? _pendingSubmission : submission);
 
             RouteLoaderRunner.LoaderRound round;
             ActionOutcome? action = null;
@@ -603,7 +612,7 @@ namespace Velvet
                 // round current before it, which can be the round of the navigation that took over.
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    ReleaseClaim(pending, RouterStatus.Idle);
+                    ReleaseClaim(pending);
                     return NavigationResult.Cancelled;
                 }
 
@@ -611,7 +620,7 @@ namespace Velvet
                 PublishActionData(matches, action);
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    ReleaseClaim(pending, RouterStatus.Idle);
+                    ReleaseClaim(pending);
                     return NavigationResult.Cancelled;
                 }
                 mode = ModeAfterAction(mode, submission, action);
@@ -624,29 +633,35 @@ namespace Velvet
                 }
                 round = loaderRound;
                 // Inside the try: the commit throws on a navigation mode outside the enum, and that throw
-                // escaping past the handlers would leave Status mid-flight.
+                // escaping past the handlers would leave Navigation mid-flight.
                 CommitHistoryEntry(path, mode, pending);
             }
             catch (OperationCanceledException)
             {
                 // A Guard throwing OperationCanceledException, this attempt's or a redirect's, unwinds by
-                // exception, skipping the in-line rollback the cancellation checks use. Status was set before
-                // the Guards run, so an aborted attempt would otherwise leave UseNavigation reporting a
-                // navigation that is no longer in flight.
-                ReleaseClaim(pending, RouterStatus.Idle);
+                // exception, skipping the in-line rollback the cancellation checks use. Navigation was
+                // published before the Guards run, so an aborted attempt would otherwise leave UseNavigation
+                // reporting a navigation that is no longer in flight.
+                ReleaseClaim(pending);
                 throw;
             }
             catch (Exception)
             {
                 // Broad because a Guard delegate's own throw lands here, as does the InvalidOperationException
                 // a route declaring both RedirectTo and Guard raises. Both propagate; what must not survive
-                // is this attempt's Status claim, which a newer owner would otherwise find held.
-                ReleaseClaim(pending, RouterStatus.Error);
+                // is this attempt's claim, which a newer owner would otherwise find held.
+                ReleaseClaim(pending);
                 throw;
             }
 
+            // Written once the history entry has committed, so an attempt whose commit throws leaves the loader
+            // state of the location it was on.
+            // Copied rather than aliased: a Suspend loader of this round that resolves after the commit writes
+            // into round.Results, and CurrentLoaderData publishes whatever this field holds as a read-only
+            // snapshot.
+            _loaderData = new Dictionary<string?, object>(round.Results);
+            _loaderErrors = new Dictionary<string?, Exception>(round.Errors);
             CurrentLocation = location;
-            PendingLocation = null;
             _revalidationRequired = false;
             CommitAction(matches, action);
             // Only now may the round's late results reach the live state: the republish they trigger reads
@@ -654,7 +669,7 @@ namespace Velvet
             // round it replaces ends — up to this line that round's loaders were streaming into the route the
             // user was still looking at.
             _loaderRunner.Promote(round);
-            Status = RouterStatus.Ready;
+            PublishNavigation(NavigationLifecycle.Idle, null, null);
             // Before the notification, so a handler reading a Blocker off it sees one that has started over
             // rather than one still holding the attempt this commit completed.
             _blockerManager.ResetAll();
@@ -665,7 +680,7 @@ namespace Velvet
 
         #region Per-attempt navigation state
 
-        // Where one navigation attempt will land, and the sequence deciding whether it still owns Status.
+        // Where one navigation attempt will land, and the sequence deciding whether it still owns Navigation.
         // The destination stays here until the attempt commits, because the Guard and loader phases await
         // application code and a navigation starting in that window resolves its own destination from the
         // shared index: a parked Back that had already moved it puts a Push's forward truncation one entry
@@ -700,43 +715,38 @@ namespace Velvet
         private bool StillCurrent(PendingNavigation pending) =>
             pending.Sequence == _navigationSequence;
 
-        // A redirect refused for overflow or matching nothing ends the attempt its initiator published a
-        // destination for, and the initiator does nothing afterwards but forward the result — so the
-        // destination is withdrawn here or not at all. Status is left to the caller.
-        private void WithdrawInitiatorsDestination(PendingNavigation? initiator)
+        // A redirect refused for overflow or matching nothing ends the attempt its initiator published, and
+        // the initiator does nothing afterwards but forward the result — so that navigation ends here or not
+        // at all.
+        private void EndInitiatorsNavigation(PendingNavigation? initiator)
         {
-            if (initiator.HasValue && StillCurrent(initiator.Value))
+            if (initiator.HasValue)
             {
-                PendingLocation = null;
+                ReleaseClaim(initiator.Value);
             }
         }
 
-        // Status for an attempt that ended above the claim. Having none, it may only report into a router
-        // where nobody holds one: an attempt still under way in a guard or a loader is what Status describes,
-        // and it is the only one able to put Status back. A published destination is what says such an
-        // attempt exists — published in the same step as the claim, and cleared by whatever ends it.
-        private void ReportUnclaimedOutcome(RouterStatus status)
+        private void ReleaseClaim(PendingNavigation pending)
         {
-            if (PendingLocation != null)
+            if (StillCurrent(pending))
             {
-                return;
+                PublishNavigation(NavigationLifecycle.Idle, null, null);
             }
-            Status = status;
         }
 
-        private void ReleaseClaim(PendingNavigation pending, RouterStatus status)
+        // Every part is written before the event is raised, so a subscriber reading the router reads the
+        // navigation it is told about.
+        private void PublishNavigation(NavigationLifecycle phase, RouterLocation? location, Submission? submission)
         {
-            if (!StillCurrent(pending))
+            if (_navigationPhase == phase && ReferenceEquals(_pendingLocation, location)
+                && ReferenceEquals(_pendingSubmission, submission))
             {
                 return;
             }
-
-            // Before the Status write, which raises OnStatusChanged: UseNavigation reads the destination
-            // alongside the status, and a navigation issued from a subscriber that ends before taking a claim
-            // reports through ReportUnclaimedOutcome, which reads this field to decide whether an attempt
-            // holds the claim.
-            PendingLocation = null;
-            Status = status;
+            _navigationPhase = phase;
+            _pendingLocation = location;
+            _pendingSubmission = submission;
+            OnNavigationChanged?.Invoke(Navigation);
         }
 
         #endregion
@@ -834,8 +844,8 @@ namespace Velvet
 
         #region Loading
 
-        // Returns a null outcome on a normal completion, leaving _loaderData/_loaderErrors set for the commit
-        // along with the round that produced them; returns Cancelled when the run observes cancellation.
+        // Returns a null outcome on a normal completion, with the round for the commit to publish; returns
+        // Cancelled when the run observes cancellation.
         // A Back or Forward step decides which loaders run as a Push does: React Router keeps no loader data
         // per history entry.
         private async VelvetTask<(NavigationResult? outcome, RouteLoaderRunner.LoaderRound round)> RunLoaderPhase(
@@ -845,7 +855,7 @@ namespace Velvet
             IReadOnlyList<RouteMatch>? keptFrom,
             int launchLimit)
         {
-            Status = RouterStatus.Loading;
+            PublishNavigation(NavigationLifecycle.Loading, _pendingLocation, _pendingSubmission);
             // An Await-mode loader suspends here, holding the commit — and so the route on screen — until it
             // resolves. A newer navigation that matches, arriving inside that window, cancels this token,
             // which is what the check below is reading.
@@ -856,19 +866,10 @@ namespace Velvet
                 // This attempt has committed nothing, so the live loader state is not its to reset: it describes
                 // wherever the user actually is, which a loader that cancelled this attempt by navigating may
                 // already have moved.
-                ReleaseClaim(pending, RouterStatus.Idle);
+                ReleaseClaim(pending);
                 return (NavigationResult.Cancelled, round);
             }
 
-            // Copied rather than aliased: a Suspend loader of this round that resolves after the commit writes
-            // into round.Results, and CurrentLoaderData publishes whatever this field holds as a read-only
-            // snapshot.
-            _loaderData = new Dictionary<string?, object>(round.Results);
-
-            // A loader error does not abort navigation. The location commits and
-            // the nearest RouteDefinition.ErrorElement renders in place of the route's Element. Errors
-            // are surfaced through RouterContext.Errors (keyed by RouteId) for UseRouteError.
-            _loaderErrors = new Dictionary<string?, Exception>(round.Errors);
             return (null, round);
         }
 
@@ -1144,19 +1145,6 @@ namespace Velvet
             RepublishCurrentLocation(routeId);
         }
 
-        // Status for an attempt taking the claim. Announced even where it is unchanged, since the destination
-        // and the submission it describes are the new attempt's: a second submission over a first is
-        // Submitting either way.
-        private void Claim(RouterStatus status)
-        {
-            if (_status == status)
-            {
-                OnStatusChanged?.Invoke(status);
-                return;
-            }
-            Status = status;
-        }
-
         // Every commit clears the action data but the one an action produced, and records a failure as the error
         // of the route it belongs to.
         private void CommitAction(IReadOnlyList<RouteMatch> matches, ActionOutcome? action)
@@ -1223,11 +1211,11 @@ namespace Velvet
             // Retire the outstanding claim BEFORE the Cancel, which inverts the ordering a navigation uses.
             // A navigation takes its claim afterwards so that a prior attempt unwinding synchronously inside
             // the Cancel still restores its own state; here there is no such attempt worth restoring, and
-            // that same synchronous unwind would raise OnStatusChanged on a router being torn down.
+            // that same synchronous unwind would raise OnNavigationChanged on a router being torn down.
             _navigationSequence++;
             // Retiring the claim above is what stops the unwinding attempt from clearing this itself, and a
-            // destination left published would outlive the navigation that was heading for it.
-            PendingLocation = null;
+            // navigation left published would outlive the attempt it describes.
+            _navigationPhase = NavigationLifecycle.Idle;
             // Cancel any in-flight navigation so a pending Loader await unwinds cleanly during shutdown.
             // Contained on RouteLoaderRunner.Retire's terms: a navigation parked on an Await loader runs its
             // round under a token linked to this source, so that round's Loaders have their cancellation

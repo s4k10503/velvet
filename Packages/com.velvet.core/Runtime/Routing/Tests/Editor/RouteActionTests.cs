@@ -171,8 +171,8 @@ namespace Velvet.Tests
             var result = await submission;
 
             // Assert
-            Assert.That((result, router.Status, router.PendingLocation == null),
-                Is.EqualTo((NavigationResult.Cancelled, RouterStatus.Idle, true)));
+            Assert.That((result, router.Navigation.State, router.Navigation.Location == null),
+                Is.EqualTo((NavigationResult.Cancelled, NavigationLifecycle.Idle, true)));
         });
 
         [Test]
@@ -248,7 +248,8 @@ namespace Velvet.Tests
             router.SubmitAsync("second", PostToItems).Forget();
 
             // Assert
-            Assert.That((router.Status, router.CurrentActionData["/items"]), Is.EqualTo((RouterStatus.Loading, (object)"saved")));
+            Assert.That((router.Navigation.State, router.CurrentActionData["/items"]),
+                Is.EqualTo((NavigationLifecycle.Loading, (object)"saved")));
         }
 
         [Test]
@@ -286,7 +287,7 @@ namespace Velvet.Tests
             router.SubmitAsync("lamp", PostToItems).Forget();
 
             // Assert
-            Assert.That($"{router.PendingLocation?.Path} {router.PendingSubmission?.FormMethod} {_log.Contains("action")}",
+            Assert.That($"{router.Navigation.Location?.Path} {router.Navigation.FormMethod} {_log.Contains("action")}",
                 Is.EqualTo("/other post False"));
         }
 
@@ -749,14 +750,14 @@ namespace Velvet.Tests
         {
             // Arrange
             var router = ItemsRouter("/other", Created);
-            var statuses = new List<RouterStatus>();
-            router.OnStatusChanged += status => statuses.Add(status);
+            var states = new List<NavigationLifecycle>();
+            router.OnNavigationChanged += navigation => states.Add(navigation.State);
 
             // Act
             Submit(router, "lamp", new SubmitOptions { Method = "head", Action = "/items" });
 
             // Assert
-            Assert.That(string.Join(",", statuses), Is.EqualTo("Matching,Loading,Ready"));
+            Assert.That(string.Join(",", states), Is.EqualTo("Loading,Idle"));
         }
 
         [Test]
@@ -772,7 +773,7 @@ namespace Velvet.Tests
             router.SubmitAsync(query, new SubmitOptions { Action = "/search" }).Forget();
 
             // Assert
-            Assert.That(router.PendingSubmission?.FormMethod, Is.EqualTo("get"));
+            Assert.That(router.Navigation.FormMethod, Is.EqualTo("get"));
         }
 
         [Test]
