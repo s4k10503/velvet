@@ -11,17 +11,22 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class ViewportWindowTests : PanelTestBase
     {
+        // The re-measuring poll ticks on the panel's clock, which a fixture driving the scheduler back to back
+        // does not move, so a fake clock is advanced a tick's worth before each drive.
         private VisualElement MountLeaf(string className)
         {
+            var panel = _window.rootVisualElement.panel;
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(panel, UseFrameFakeClockHost.ReadFakeClock);
             _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "leaf", className: className));
-            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
-            for (var i = 0; i < 2; i++)
+            for (var i = 0; i < 3; i++)
             {
-                ForcePanelUpdate(leaf.panel);
-                EditorPanelTestHelpers.DriveSchedulerOnce(leaf.panel);
+                ForcePanelUpdate(panel);
+                UseFrameFakeClockHost.Ms += 16;
+                EditorPanelTestHelpers.DriveSchedulerOnce(panel);
             }
-            ForcePanelUpdate(leaf.panel);
-            return leaf;
+            ForcePanelUpdate(panel);
+            return _window.rootVisualElement.Q<VisualElement>("leaf");
         }
 
         [Test]

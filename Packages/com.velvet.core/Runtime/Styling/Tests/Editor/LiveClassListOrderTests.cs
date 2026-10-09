@@ -71,6 +71,9 @@ namespace Velvet.Tests
             "System.Int32 Velvet.CascadeSnapshot.ClassKey(UnityEngine.UIElements.VisualElement)";
         private const string HostStampReader =
             "System.Int32 Velvet.VelvetStyleUtilities.ClassStamp(System.Int32, UnityEngine.UIElements.VisualElement)";
+        private const string DeclaredKindReader =
+            "Velvet.StyleRelativeLengths/Declared Velvet.StyleRelativeLengths.DeclaredKind("
+            + "UnityEngine.UIElements.VisualElement, Velvet.StyleLonghand, UnityEngine.UIElements.StyleLength)";
 
         // Marks the case that measures one reader's verdict. The roster reads these off the methods carrying
         // [Test] rather than off a list of its own, and the case beside it reads the marked method's IL, so
@@ -108,6 +111,9 @@ namespace Velvet.Tests
 
         private static readonly MethodInfo StampHostClasses = typeof(VelvetStyleUtilities)
             .GetMethod("ClassStamp", BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static readonly MethodInfo ReadDeclaredKind = typeof(StyleRelativeLengths)
+            .GetMethod("DeclaredKind", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         // Null on a tree without the pointer-events utilities, which PointerEventsOf reports as an answer no
         // case expects rather than throw.
@@ -835,6 +841,33 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, false)),
                 "the follow re-syncs a portal host when the document root's classes change order");
         }
+
+        // What shows the case can fail is widening `rule.CascadePosition > position` in DeclaredKind to take
+        // every match: the class arriving last then decides, which the two arrangements put in different places.
+        [Test]
+        [ReaderVerdict(DeclaredKindReader)]
+        public void Given_APercentageAndALengthHeightClass_When_TheOrderTheyWereAddedInIsReversed_Then_TheDeclaredKindIsTheSameBothWays()
+        {
+            // Arrange — h-full declares a percentage and h-16 a length, so the two arrangements answer
+            // differently wherever the later arrival rather than the later cascade position wins.
+            var added = Carrying("h-full", "h-16");
+            var reversed = Carrying("h-16", "h-full");
+            var fullAlone = DeclaredHeight(Carrying("h-full"));
+            var sixteenAlone = DeclaredHeight(Carrying("h-16"));
+
+            // Act
+            var fromAdded = DeclaredHeight(added);
+            var fromReversed = DeclaredHeight(reversed);
+
+            // Assert — that the two classes declare different kinds rides along, since two of one kind would
+            // agree here whatever decided between them.
+            Assert.That((fromAdded == fromReversed, fullAlone == sixteenAlone), Is.EqualTo((true, false)),
+                "the later cascade position decides what a parent declares, not the later place in the class list");
+        }
+
+        private static string DeclaredHeight(VisualElement element)
+            => ReadDeclaredKind.Invoke(null, new object[] { element, StyleLonghand.Height, element.style.height })!
+                .ToString();
 
         // GREEN_ON_BASE(characterization): the base already picks this winner by cascade position.
         // What shows the case can fail is widening `position > winningPosition` to take every match:

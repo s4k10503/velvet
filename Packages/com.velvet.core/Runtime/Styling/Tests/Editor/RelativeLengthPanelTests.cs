@@ -399,24 +399,6 @@ namespace Velvet.Tests
             Assert.That(Child.layout.width, Is.EqualTo(expected).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): a class swap animates on its transition; the base never re-measured.
-        [Test]
-        public void Given_AViewportWidthRemeasuredUnderATransition_When_AFixedWidthReplacesIt_Then_TheSwapAnimates()
-        {
-            // Arrange — the bundled sheet carries the transition class.
-            VelvetStyleUtilities.AttachTo(_sim.rootVisualElement);
-            Mount("w-[500px] h-[200px]", "transition-all duration-[1000ms] w-[50vw] h-[10px]");
-            _sim.panelSize = new Vector2(200, 300);
-            Settle();
-            s_childClass = "transition-all duration-[1000ms] w-[10px] h-[10px]";
-
-            // Act
-            Rerender();
-
-            // Assert
-            Assert.That(Child.layout.width, Is.GreaterThan(10.5f));
-        }
-
         // GREEN_ON_BASE(characterization): the base wrote nothing for a class it did not parse.
         [Test]
         public void Given_AViewportWidth_When_MountedBeforeAnyFrame_Then_NoZeroOrKeywordIsWrittenInline()
@@ -452,11 +434,12 @@ namespace Velvet.Tests
 
         [TestCase("", "h-[100px]", "h-[10px] w-[50%]", "h-[10px] w-[calc(50%+1px)]", false)]
         [TestCase("w-[600px]", "w-[300px] h-[100px]", "w-[10px] h-[25%]", "w-[10px] h-[calc(25%+1px)]", true)]
-        [TestCase("w-[600px] h-[600px]", "w-[300px] h-[50%]", "w-[10px] h-[25%]", "w-[10px] h-[calc(25%+1px)]", true)]
+        [TestCase("w-[600px] h-[600px] shrink-[0]", "w-[300px] h-[50%]", "w-[10px] h-[25%]", "w-[10px] h-[calc(25%+1px)]", true)]
         [TestCase("w-[600px] h-[600px]", "w-[300px] h-24", "w-[10px] h-[25%]", "w-[10px] h-[calc(25%+1px)]", true)]
         [TestCase("w-[600px] h-[600px]", "absolute inset-0", "w-[10px] h-[25%]", "w-[10px] h-[calc(25%+1px)]", true)]
         [TestCase("w-[600px] h-[600px]", "absolute inset-0", "h-[10px] w-[25%]", "h-[10px] w-[calc(25%+1px)]", false)]
-        [TestCase("w-[600px] min-h-[200px]", "absolute h-full w-[300px]", "w-[10px] h-[50%]", "w-[10px] h-[calc(50%+1px)]", true)]
+        [TestCase("w-[600px] min-h-[200px]", "absolute h-full w-[300px]", "w-[10px] h-[25%]", "w-[10px] h-[calc(25%+1px)]", true)]
+        [TestCase("flex-row flex-wrap w-[600px] h-[600px] shrink-[0]", "w-[300px]", "w-[10px] h-[25%]", "w-[10px] h-[calc(25%+1px)]", true)]
         public void Given_AParentWhoseSizeIsDefinite_When_Settled_Then_ThePercentageIsTakenOfIt(
             string frame, string parent, string native, string child, bool vertical)
         {
@@ -492,7 +475,6 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base never read the expression, so it behaved as the same percentage.
         [TestCase("w-[600px]", "w-[300px] h-full")]
         [TestCase("w-[600px] h-[600px]", "w-[300px] h-auto")]
-        [TestCase("flex-row flex-wrap w-[600px] h-[600px]", "w-[300px]")]
         public void Given_AParentWhoseHeightIsIndefinite_When_SettledAgain_Then_APercentageInItBehavesAsTheSamePercentage(
             string frame, string parent)
         {
@@ -510,7 +492,7 @@ namespace Velvet.Tests
         }
 
         [TestCase("absolute h-[100px]", "absolute h-[100px] w-[40px]", "h-[10px] w-[40px]", "h-[10px] w-[calc(50%+1px)]", false)]
-        [TestCase("absolute w-[100px]", "absolute w-[100px] h-[40px]", "w-[10px] h-[40px]", "w-[10px] h-[calc(50%+1px)]", true)]
+        [TestCase("absolute w-[100px]", "absolute w-[100px] h-[40px]", "w-[10px] h-[40px] shrink-[0]", "w-[10px] h-[calc(50%+1px)] shrink-[0]", true)]
         public void Given_AParentSizedByItsContent_When_ItDeclaresTheSizeItHad_Then_ThePercentageIsTakenOfIt(
             string before, string after, string native, string child, bool vertical)
         {

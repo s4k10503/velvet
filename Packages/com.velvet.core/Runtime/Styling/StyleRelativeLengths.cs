@@ -20,10 +20,11 @@ namespace Velvet
     }
 
     // Measures a StyleLengthExpression on the element it is written to. An em is the element's own font size
-    // except on font-size, the viewport is the panel (an editor window's content, in an editor panel), and a percentage is taken of the content box of
-    // the parent the element is laid out in: a clip wrapper's parent for a clipped element, whichever of the
-    // two boxes the value is written to (ClipPathLayoutBox). RelativeLengthPanelTests holds that box to the one
-    // UI Toolkit takes its own percentages of.
+    // except on font-size, the viewport is the panel (an editor window's content, in an editor panel), and a
+    // percentage is taken of the box of the parent the element is laid out in: a clip wrapper's parent for a
+    // clipped element, whichever of the two boxes the value is written to (ClipPathLayoutBox). The box is the
+    // content box, and the padding box for an absolute element; RelativeLengthPanelTests holds both to the
+    // ones UI Toolkit takes its own percentages of.
     internal static class StyleRelativeLengths
     {
         private static readonly StyleList<TimeValue> s_noTime = new(new List<TimeValue> { new(0f) });
@@ -57,29 +58,37 @@ namespace Velvet
                 length = keyword;
                 return true;
             }
-            var percent = !definite ? 0f
-                : vertical is { } across ? (across ? parent.contentRect.height : parent.contentRect.width) : em;
+            var box = PercentBox(parent, outer.resolvedStyle.position == Position.Absolute);
+            var percent = !definite ? 0f : vertical is { } across ? (across ? box.y : box.x) : em;
             var viewport = ViewportOf(element);
             var px = expression.Evaluate(new RelativeLengthBasis(em, percent, viewport.width, viewport.height));
             length = new StyleLength(new Length(px, LengthUnit.Pixel));
             return float.IsFinite(px);
         }
 
-        // In an editor panel the viewport is the panel's child the element sits under, which ViewportWindowTests
-        // holds to the window's content; in a runtime panel it is the panel's root.
+        private static UnityEngine.Vector2 PercentBox(VisualElement parent, bool absolute)
+        {
+            var content = parent.contentRect.size;
+            var style = parent.resolvedStyle;
+            return absolute
+                ? content + new UnityEngine.Vector2(style.paddingLeft + style.paddingRight, style.paddingTop + style.paddingBottom)
+                : content;
+        }
+
+        // An editor window places its root on the panel absolutely, inset by the window's tab and borders, so in
+        // an editor panel that root is the viewport (ViewportWindowTests); content placed on the panel some other
+        // way, and every runtime panel, takes the panel itself.
         private static UnityEngine.Rect ViewportOf(VisualElement element)
         {
             var root = element.panel.visualTree;
-            if (element.panel.contextType != ContextType.Editor)
-            {
-                return root.layout;
-            }
             var top = element;
             while (top.hierarchy.parent != root)
             {
                 top = top.hierarchy.parent;
             }
-            return top.layout;
+            return element.panel.contextType == ContextType.Editor && top.resolvedStyle.position == Position.Absolute
+                ? top.layout
+                : root.layout;
         }
 
         // Whether box's size along the axis is one a percentage can be taken of — CSS's definite size. Read from
@@ -103,7 +112,7 @@ namespace Velvet
                 return size == Declared.Length || style.position == Position.Absolute || IsDefinite(parent, vertical);
             }
             // An absolute box is sized by its content unless an inset on each side pins it to its containing block,
-            // which is always definite. Stretched across a single-line parent's cross axis, or grown along its main
+            // which is always definite. Stretched across a parent's cross axis, or grown along its main
             // axis, a box in flow is as definite as the parent.
             if (style.position == Position.Absolute)
             {
@@ -113,7 +122,6 @@ namespace Velvet
             }
             var sized = IsRow(parent) == vertical
                 ? (style.alignSelf == Align.Auto ? parent.resolvedStyle.alignItems : style.alignSelf) == Align.Stretch
-                    && parent.resolvedStyle.flexWrap == Wrap.NoWrap
                 : style.flexGrow > 0f;
             return sized && IsDefinite(parent, vertical);
         }

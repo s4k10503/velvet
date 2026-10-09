@@ -56,17 +56,17 @@ A percentage inside one of them is taken where CSS takes it for the longhand wri
 `max-w-`, `left-` and `right-` of the parent's width, and so is every padding and margin edge, `pt-` and
 `mt-` included; `h-`, `min-h-`, `max-h-`, `top-` and `bottom-` of the parent's height; `basis-` of the
 parent's size along its flex direction; `text-[…]` of the parent's font size; and `tracking-[…]` of the
-element's own font size. The parent's size is its content box, for an `absolute` element too: that is the box
-UI Toolkit takes an absolute element's own percentages of, where CSS takes the padding box. On an element
-with a `clip-path-*`, every longhand — padding included — is measured against the parent the clip wrapper
+element's own font size. The parent's size is its content box, and its padding box for an `absolute`
+element, as CSS and UI Toolkit both take it. On an element with a `clip-path-*`, every longhand — padding included — is measured against the parent the clip wrapper
 sits in, not the wrapper.
 
 A percentage of a parent size the parent takes from its content is not measured, since the parent's size
 would then follow the length measured from it. The parent's size on an axis is definite when the parent
 declares a length for it, or a percentage of a size that is itself definite (`h-full` under a parent of
 declared height); when, `absolute`, it declares a percentage, or is pinned by an inset on both sides
-(`inset-0`); or when, in flow, it is stretched across the cross axis of a parent that does not wrap, or grown
-along a parent's main axis, while that parent's size is definite. `auto` (`h-auto`) declares no size, and
+(`inset-0`); or when, in flow, it is stretched across a parent's cross axis, or grown along a parent's main
+axis, while that parent's size is definite. A parent that wraps (`flex-wrap`) still counts as stretched: UI
+Toolkit takes its own percentage of the stretched size there, where CSS would take none. `auto` (`h-auto`) declares no size, and
 only inline values and the bundled utility classes count as declarations: a size another stylesheet gives the
 parent reads as none. A variant (`hover:h-auto`) counts while it is on.
 
@@ -89,8 +89,7 @@ these moves:
 
 Unlike CSS, where the value is part of layout, the new value lands a tick after the change. A re-measure is
 written with the transitions of the element and of its clip wrapper held at zero duration and delay, so it
-lands at once rather than animating; a class change that swaps one length for another still animates on the
-element's transition.
+lands at once rather than animating.
 
 ### Where they are not read
 
