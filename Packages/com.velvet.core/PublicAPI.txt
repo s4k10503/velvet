@@ -146,7 +146,7 @@
 [Velvet] ctor protected Velvet.VNode.ctor(): System.Void
 [Velvet] event Velvet.DevTools.VelvetDevToolsRegistry.RegistryChanged: System.Action?
 [Velvet] event Velvet.Router.OnLocationChanged: System.Action`1[Velvet.RouterLocation]
-[Velvet] event Velvet.Router.OnStatusChanged: System.Action`1[Velvet.RouterStatus]
+[Velvet] event Velvet.Router.OnNavigationChanged: System.Action`1[Velvet.NavigationState]
 [Velvet] event Velvet.VelvetFonts.FontsChanged: System.Action?
 [Velvet] event Velvet.VelvetTheme.DarkModeChanged: System.Action?
 [Velvet] field Velvet.AnimatePresenceMode.PopLayout: Velvet.AnimatePresenceMode
@@ -165,6 +165,9 @@
 [Velvet] field Velvet.FiberUpdatePriority.Normal: Velvet.FiberUpdatePriority
 [Velvet] field Velvet.FiberUpdatePriority.Transition: Velvet.FiberUpdatePriority
 [Velvet] field Velvet.FiberUpdatePriority.Urgent: Velvet.FiberUpdatePriority
+[Velvet] field Velvet.FocusScopeOrientation.Both: Velvet.FocusScopeOrientation
+[Velvet] field Velvet.FocusScopeOrientation.Horizontal: Velvet.FocusScopeOrientation
+[Velvet] field Velvet.FocusScopeOrientation.Vertical: Velvet.FocusScopeOrientation
 [Velvet] field Velvet.FontIntent.Family: System.String?
 [Velvet] field Velvet.FontIntent.HasFamily: System.Boolean
 [Velvet] field Velvet.FontIntent.HasItalic: System.Boolean
@@ -224,13 +227,6 @@
 [Velvet] field Velvet.RouterContext.Location: Velvet.ComponentContext`1[Velvet.RouterLocation]
 [Velvet] field Velvet.RouterContext.OutletContext: Velvet.ComponentContext`1[System.Object]
 [Velvet] field Velvet.RouterContext.Router: Velvet.ComponentContext`1[Velvet.Router]
-[Velvet] field Velvet.RouterStatus.Error: Velvet.RouterStatus
-[Velvet] field Velvet.RouterStatus.Idle: Velvet.RouterStatus
-[Velvet] field Velvet.RouterStatus.Loading: Velvet.RouterStatus
-[Velvet] field Velvet.RouterStatus.Matching: Velvet.RouterStatus
-[Velvet] field Velvet.RouterStatus.NotFound: Velvet.RouterStatus
-[Velvet] field Velvet.RouterStatus.Ready: Velvet.RouterStatus
-[Velvet] field Velvet.RouterStatus.Submitting: Velvet.RouterStatus
 [Velvet] field Velvet.StyleOverrides.Empty: Velvet.StyleOverrides
 [Velvet] field Velvet.StyleTransition.Fade: Velvet.StyleTransitionConfig
 [Velvet] field Velvet.StyleTransition.FadeSlideUp: Velvet.StyleTransitionConfig
@@ -533,7 +529,7 @@
 [Velvet] method Velvet.V.DropdownField(System.String?, System.String?, System.Collections.Generic.List`1[System.String]?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Droppable(System.String, System.Object?, System.Boolean, System.String?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.ErrorBoundary(System.Func`2[System.Exception, Velvet.VNode], Velvet.VNode?[], System.String?): Velvet.ComponentNode
-[Velvet] method Velvet.V.FocusScope(System.String?, System.String?, System.String?, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.FocusScope(System.String?, System.String?, System.String?, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FocusScopeOrientation): Velvet.ElementNode
 [Velvet] method Velvet.V.Fragment(Velvet.VNode?[]): Velvet.FragmentNode
 [Velvet] method Velvet.V.Fragment(Velvet.VNode?[], System.String?): Velvet.FragmentNode
 [Velvet] method Velvet.V.Image(System.String?, System.String?, System.String?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
@@ -891,6 +887,7 @@
 [Velvet] property Velvet.FocusRing.Ref: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
 [Velvet] property Velvet.FocusScopeSettings.AutoFocus: System.Boolean
 [Velvet] property Velvet.FocusScopeSettings.Contain: System.Boolean
+[Velvet] property Velvet.FocusScopeSettings.Orientation: Velvet.FocusScopeOrientation
 [Velvet] property Velvet.FocusScopeSettings.RestoreFocus: System.Boolean
 [Velvet] property Velvet.FocusScopeSettings.SingleTabStop: System.Boolean
 [Velvet] property Velvet.FragmentNode.Children: Velvet.VNode?[]
@@ -1029,9 +1026,8 @@
 [Velvet] property Velvet.Router.CurrentLoaderData: System.Collections.Generic.IReadOnlyDictionary`2[System.String?, System.Object]
 [Velvet] property Velvet.Router.CurrentLoaderErrors: System.Collections.Generic.IReadOnlyDictionary`2[System.String?, System.Exception]
 [Velvet] property Velvet.Router.CurrentLocation: Velvet.RouterLocation?
-[Velvet] property Velvet.Router.PendingLocation: Velvet.RouterLocation?
+[Velvet] property Velvet.Router.Navigation: Velvet.NavigationState
 [Velvet] property Velvet.Router.RouteBlockerManager: Velvet.RouteBlockerManager
-[Velvet] property Velvet.Router.Status: Velvet.RouterStatus
 [Velvet] property Velvet.RouterLocation.Matches: System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]?
 [Velvet] property Velvet.RouterLocation.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
 [Velvet] property Velvet.RouterLocation.Path: System.String?
@@ -1208,6 +1204,7 @@
 [Velvet] type Velvet.FocusManagerOptions
 [Velvet] type Velvet.FocusOutBinding
 [Velvet] type Velvet.FocusRing
+[Velvet] type Velvet.FocusScopeOrientation
 [Velvet] type Velvet.FocusScopeSettings
 [Velvet] type Velvet.FontIntent
 [Velvet] type Velvet.FragmentNode
@@ -1273,7 +1270,6 @@
 [Velvet] type Velvet.Router
 [Velvet] type Velvet.RouterContext
 [Velvet] type Velvet.RouterLocation
-[Velvet] type Velvet.RouterStatus
 [Velvet] type Velvet.SceneViewElement
 [Velvet] type Velvet.SceneViewSettings
 [Velvet] type Velvet.ScrollViewSettings
