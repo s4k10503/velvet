@@ -26,7 +26,6 @@ namespace Velvet.TestUtilities
         private const string SliderPoolFieldName = "s_sliderPool";
         private const string TextFieldPoolFieldName = "s_textFieldPool";
         private const string OwnedPropsFieldName = "s_ownedProps";
-        private const string OwnedEventArraysFieldName = "s_ownedSingleEventArrays";
         private const string OwnedNodeArraysFieldName = "s_ownedNodeArrays";
         private const string RentalJournalFieldName = "s_rentalJournal";
         private const string ClearMethodName = "Clear";
@@ -70,9 +69,32 @@ namespace Velvet.TestUtilities
         public static bool SaturateTextFieldPoolForTest()
             => Saturate(TextFieldPoolFieldName, () => VNodePool.ReturnTextField(new TextField()));
 
-        // Bypasses: nothing — it reads how many props bags, single-event arrays and node arrays are rented out.
+        // Bypasses: nothing — it reads how many props bags, event arrays and node arrays are rented out.
         public static (int Props, int EventArrays, int NodeArrays) RentedOutCountsForTest()
-            => (Count(OwnedPropsFieldName), Count(OwnedEventArraysFieldName), Count(OwnedNodeArraysFieldName));
+            => (Count(OwnedPropsFieldName), CountOf(OwnedEventArrays()), Count(OwnedNodeArraysFieldName));
+
+        // The rented-out event-array set is the pool's one static HashSet<FiberEventBinding[]>, and is found
+        // by that type, so a fixture reading it does not name the field.
+        private static object OwnedEventArrays()
+        {
+            var fields = typeof(VNodePool).GetFields(BindingFlags.Static | BindingFlags.NonPublic);
+            FieldInfo? match = null;
+            foreach (var field in fields)
+            {
+                if (field.FieldType != typeof(HashSet<FiberEventBinding[]>)) continue;
+                if (match != null)
+                {
+                    throw new AmbiguousMatchException(
+                        typeof(VNodePool).FullName + " holds more than one HashSet<FiberEventBinding[]>.");
+                }
+                match = field;
+            }
+            if (match == null)
+            {
+                throw new MissingFieldException(typeof(VNodePool).FullName, "HashSet<FiberEventBinding[]>");
+            }
+            return match.GetValue(null)!;
+        }
 
         // Bypasses: nothing — it reads whether the pool counts a props bag as rented out.
         public static bool IsRentedOutForTest(FiberElementProps props)
@@ -108,9 +130,10 @@ namespace Velvet.TestUtilities
             clear.Invoke(pool, null);
         }
 
-        private static int Count(string fieldName)
+        private static int Count(string fieldName) => CountOf(Pool(fieldName));
+
+        private static int CountOf(object pool)
         {
-            var pool = Pool(fieldName);
             var count = pool.GetType().GetProperty(CountPropertyName, BindingFlags.Instance | BindingFlags.Public);
             if (count == null)
             {
