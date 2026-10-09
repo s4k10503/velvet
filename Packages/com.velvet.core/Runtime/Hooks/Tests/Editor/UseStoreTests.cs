@@ -47,6 +47,7 @@ namespace Velvet.Tests
             ResetCustomComparer();
             ResetThrowingSelector();
             ResetTearingParity();
+            ResetNullTearing();
         }
 
         [Test]
@@ -353,6 +354,29 @@ namespace Velvet.Tests
                 "A reader that read a pin older than the store renders again and catches up with it");
         }
 
+        [Test]
+        public void Given_NullSnapshot_When_StoreMutatesPartwayThroughADrainPass_Then_ALaterReaderObservesThePinnedNull()
+        {
+            // Arrange — the ancestor pins null, then changes the store while it renders
+            using var store = new TestTextStore(null);
+            s_textStore = store;
+            using var mounted = V.Mount(_root, V.Div(name: "host", children: new VNode[]
+            {
+                V.Component(TextAncestorRender, key: "ancestor"),
+                V.Component(TextDescendantRender, key: "descendant"),
+            }));
+            s_textAncestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_textDescendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_textDescendantReads.Clear();
+            s_textMutateOnRender = true;
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the descendant's first read after the change, still inside the pass that pinned null
+            Assert.AreEqual("<null>", s_textDescendantReads[0] ?? "<null>");
+        }
+
         private sealed record PairState(int Number, string Text);
 
         private sealed record IndexedState(int Index, IReadOnlyList<int> Items);
@@ -376,6 +400,13 @@ namespace Velvet.Tests
             public TestIndexedStore(IndexedState initial) : base(initial) { }
             public void SetIndexed(IndexedState next) => SetState(_ => next);
             protected override void ResetCore() => SetState(_ => new IndexedState(0, System.Array.Empty<int>()));
+        }
+
+        private sealed class TestTextStore : Store<string>
+        {
+            public TestTextStore(string initial) : base(initial) { }
+            public void SetText(string next) => SetState(_ => next);
+            protected override void ResetCore() => SetState(_ => null);
         }
 
         private sealed class NumberEqualityOnly : IEqualityComparer<int>
@@ -601,6 +632,51 @@ namespace Velvet.Tests
             var value = Hooks.UseStore(s_store, s => s);
             s_midPassReaderRenders.Add(value);
             return V.Label(name: "mid-pass-reader", text: value.ToString());
+        }
+
+        #endregion
+
+        #region NullTearing components (a store whose pinned snapshot is null)
+
+        private static Store<string> s_textStore;
+        private static string s_textDescendantValue;
+        private static readonly List<string> s_textDescendantReads = new();
+        private static bool s_textMutateOnRender;
+        private static ComponentFiber s_textAncestorFiber;
+        private static ComponentFiber s_textDescendantFiber;
+
+        private static void ResetNullTearing()
+        {
+            s_textStore = null;
+            s_textDescendantValue = null;
+            s_textDescendantReads.Clear();
+            s_textMutateOnRender = false;
+            s_textAncestorFiber = null;
+            s_textDescendantFiber = null;
+        }
+
+        // Unwoven, like the mid-pass components: on a memo hit a woven body skips what follows its hooks, which
+        // here is the mutation and the recorded read.
+        [Component(Compiler = false)]
+        private static VNode TextAncestorRender()
+        {
+            s_textAncestorFiber = FiberAmbientStack.Current;
+            var text = Hooks.UseStore(s_textStore, s => s);
+            if (s_textMutateOnRender)
+            {
+                s_textMutateOnRender = false;
+                ((TestTextStore)s_textStore).SetText("changed");
+            }
+            return V.Label(text: text ?? "");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode TextDescendantRender()
+        {
+            s_textDescendantFiber = FiberAmbientStack.Current;
+            s_textDescendantValue = Hooks.UseStore(s_textStore, s => s);
+            s_textDescendantReads.Add(s_textDescendantValue);
+            return V.Label(text: s_textDescendantValue ?? "");
         }
 
         #endregion

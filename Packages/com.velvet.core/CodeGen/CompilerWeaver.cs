@@ -67,7 +67,8 @@ namespace Velvet.CodeGen
         // Object.is, the same strictness the reconciler and Provider use to drive a re-render. Admitting one of
         // these is sound because every reactive change the hook can drive is observable as an Object.is difference
         // in the captured return value:
-        //   UseState / UseReducer / UseStore / UseOptimistic — the current value flows out and changes on update.
+        //   UseState / UseReducer / UseStore / UseSyncExternalStore / UseOptimistic — the current value flows out and
+        //     changes on update.
         //   UseContext — the live context value flows out and changes when the Provider supplies a new value.
         //   UseDeferredValue — the deferred value flows out and changes as it catches up.
         //   UseTransition — the (startTransition, isPending) tuple flows out; isPending changes drive a re-render.
@@ -84,6 +85,7 @@ namespace Velvet.CodeGen
             nameof(Velvet.Hooks.UseState),
             nameof(Velvet.Hooks.UseReducer),
             nameof(Velvet.Hooks.UseStore),
+            nameof(Velvet.Hooks.UseSyncExternalStore),
             nameof(Velvet.Hooks.UseContext),
             nameof(Velvet.Hooks.UseDeferredValue),
             nameof(Velvet.Hooks.UseId),

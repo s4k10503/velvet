@@ -182,6 +182,12 @@ namespace Velvet
                         TextOverlineSilhouette.Detach(element, overlineBinding);
                         _ctx.TextOverlineBindings.Remove(element);
                     }
+                    // Likewise the line-breaking manipulator, whose events would otherwise keep re-deriving
+                    // a leaf the resolver can no longer resolve.
+                    if (_ctx.TextBalanceManipulators.Remove(element, out var balanceBreaker))
+                    {
+                        element.RemoveManipulator(balanceBreaker);
+                    }
                 }
             }
             // After DiffProps (and the class-driven config it follows): re-sync the data-/aria- attribute
@@ -341,14 +347,12 @@ namespace Velvet
         // - The [&>*]: child-combinator variant runs first so gap / divide / grid (next) win a shared child
         //   edge — [&>*]:ml-[2px] behaves like a child's own margin, which gap already overwrites. It too runs
         //   AFTER PatchCommon so it sees the final child set.
-        // - The layout manipulators (gap, divide, grid and text-balance — ApplyResolvedLayoutManipulators
-        //   owns the order among those four) run next but still
+        // - The layout manipulators (gap, divide and grid, with the pointer-events scope —
+        //   ApplyResolvedLayoutManipulators owns the order among them) run next but still
         //   AFTER PatchCommon (which reconciles children) so gap's margin writes are the final word on the
         //   element — the wrap path writes the container's OWN margins (-gap/2) — and so they re-apply
         //   against the current child set (a child add / remove re-spaces even when the className did not
-        //   change). text-balance rides the same slot for consistency (every per-element style manipulator
-        //   attaches from one place), though its own ordering is not load-bearing: it measures the
-        //   element's own text, not a shared child edge or the child set.
+        //   change).
         // - Structural variants (first:/last:/nth) re-derive every child's position-based match from the
         //   final sibling order.
         // - has-[.class]: re-evaluated with the element AS subject (its descendants drive its own payload),
@@ -418,6 +422,11 @@ namespace Velvet
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
             bool paintTail, bool clipActive, bool canReleaseFace)
         {
+            if (classesChanged)
+            {
+                // A rule can match a descendant by this element's classes, so the loops beneath read theirs again.
+                StyleAnimateDriver.NotifySubtreeStyleChanged(element);
+            }
             _appliers.ApplyGradientOnPatch(element, classNames, skewable: paintTail);
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
@@ -440,6 +449,7 @@ namespace Velvet
                 // did not re-render) still shows the inherited transform; a whole-component render also re-applies
                 // via the ancestor's post-children pass (idempotent).
                 StyleTextEffectResolver.OnTextSet(_ctx, label, newNode.Text);
+                ApplyFlexMinSizeManipulator(label, System.Array.Empty<string>());
             }
         }
 
@@ -517,8 +527,15 @@ namespace Velvet
             // BeforeChildren computes the children's wait from DelaySec + DurationSec, so a frame built off
             // the node's config while the swap ran on the pose's would let children start before their
             // parent finished.
-            var appliedNew = MotionVariantResolver.ResolveApplied(newNode, motionAmbient,
-                out var newVariantClasses, out var swapTransition);
+            // A Motion a presence mounted already leaving keeps resting at its initial pose while it exits.
+            string[] newVariantClasses;
+            StyleTransitionConfig? swapTransition;
+            var appliedNew = _ctx.PresenceMountsLeaving
+                ? MotionVariantResolver.ResolveAppliedAt(newNode,
+                    MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                    out newVariantClasses, out swapTransition)
+                : MotionVariantResolver.ResolveApplied(newNode, motionAmbient,
+                    out newVariantClasses, out swapTransition);
             // Diff against the previously-APPLIED set (base + resolved variant), not the raw ClassNames — so a
             // changed effective label swaps the variant classes even when this node's base classes are equal.
             // When no entry exists (variant-less, never stored) the baseline is the node's base classes with no
@@ -722,7 +739,7 @@ namespace Velvet
         internal static string ValueKey(string rawCls)
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
-                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Color}"
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Color}|{style.Auto}"
                     + $"|{(style.Custom == null ? string.Empty : rawCls)}"
                 : rawCls;
 
@@ -1269,6 +1286,7 @@ namespace Velvet
             var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
             try
             {
+                PointerEventsScope.NoteReconciledInto(_ctx, target);
                 _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
             }
             finally
@@ -1848,15 +1866,17 @@ namespace Velvet
                 FiberPropApplier.ApplyDelegatesFocus(element, newProps.DelegatesFocus);
             }
 
-            if (!Equals(oldProps.FieldValue, newProps.FieldValue))
+            var fieldValueChanged = !Equals(oldProps.FieldValue, newProps.FieldValue);
+            if (oldProps.Slider != newProps.Slider)
+            {
+                FiberPropApplier.ApplySlider(
+                    element, oldProps.Slider, newProps.Slider, fieldValueChanged ? newProps.FieldValue : null);
+            }
+
+            if (fieldValueChanged)
             {
                 FiberPropApplier.ApplyFieldValue(element, newProps.FieldValue);
                 RaiseCheckedSignal(element);
-            }
-
-            if (oldProps.Slider != newProps.Slider)
-            {
-                FiberPropApplier.ApplySlider(element, newProps.Slider);
             }
 
             if (oldProps.ScrollView != newProps.ScrollView)
@@ -2177,21 +2197,23 @@ namespace Velvet
         {
             private readonly string[] _payloads;
             private readonly int[] _declarations;
+            private readonly bool[] _inputBoxOnly;
 
-            internal ChildVariantOp(string[] payloads, int[] declarations)
+            internal ChildVariantOp(string[] payloads, int[] declarations, bool[] inputBoxOnly)
             {
                 _payloads = payloads;
                 _declarations = declarations;
+                _inputBoxOnly = inputBoxOnly;
             }
 
             public Dictionary<VisualElement, StyleChildVariantManipulator> Table(ReconcilerContext ctx)
                 => ctx.ChildVariantManipulators;
 
             public StyleChildVariantManipulator Create(ReconcilerContext ctx)
-                => new StyleChildVariantManipulator(ctx, _payloads, _declarations);
+                => new StyleChildVariantManipulator(ctx, _payloads, _declarations, _inputBoxOnly);
 
             public void Update(StyleChildVariantManipulator manipulator)
-                => manipulator.UpdatePayloads(_payloads, _declarations);
+                => manipulator.UpdatePayloads(_payloads, _declarations, _inputBoxOnly);
         }
 
         private readonly struct GapOp : IManipulatorOp<StyleGapManipulator>
@@ -3048,17 +3070,19 @@ namespace Velvet
 
             // A [&>*]: token can still resolve to no payload (every wrapped payload was a dead-token kind —
             // structural / has- / attribute- / supports-), so the real gate is TryExtract, not the prefix scan.
-            var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads, out var declarations);
+            var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads, out var declarations,
+                out var inputBoxOnly);
 
             Configure<ChildVariantOp, StyleChildVariantManipulator>(element, hasPayloads,
-                new ChildVariantOp(payloads, declarations));
+                new ChildVariantOp(payloads, declarations, inputBoxOnly));
         }
 
-        // Configures the four manipulators whose existence is gated purely on a layout utility class being
-        // present: gap, divide, grid, text-balance. They are configured as a unit because gap and grid share
-        // one ownership rule — a grid owns its children's margins, so the gap manipulator must be suppressed
-        // for exactly the class lists that produce a grid manipulator. Call AFTER the container's children
-        // have been reconciled so each sees the final child list.
+        // Configures the three manipulators whose existence is gated purely on a layout utility class being
+        // present: gap, divide, grid; and the pointer-events scope, which rides the same sequence
+        // (ApplyResolvedLayoutManipulators) because the variant re-sync runs it too. The three are configured as
+        // a unit because gap and grid share one ownership rule — a grid owns its children's margins, so the gap
+        // manipulator must be suppressed for exactly the class lists that produce a grid manipulator. Call AFTER
+        // the container's children have been reconciled so each sees the final child list.
         // Resolves its own class source rather than taking the one the paint passes use: those resolve after
         // the structural / has- passes (see ApplyPostChildrenClassPasses), and gap has to run before them.
         internal void ApplyLayoutManipulators(VisualElement element, string[] classNames)
@@ -3069,10 +3093,10 @@ namespace Velvet
         // realises the payload. TypographyHasNoStylesheetRuleTests fails if a sheet ever declares one.
         internal void ApplyFontLayer(VisualElement element, string[] oldClassNames, string[] newClassNames)
             => StyleFontResolver.ApplyOnClassChange(element, oldClassNames,
-                ResolveGateClasses(element, newClassNames));
+                ResolveGateClasses(element, newClassNames), _ctx.FontScope);
 
         internal void ApplyFontLayerOnCreate(VisualElement element, string[] classNames)
-            => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames));
+            => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames), _ctx.FontScope);
 
         // Same rule as ApplyFontLayer, over the same guard's other half.
         internal void ApplyTextEffects(VisualElement element, string[] classNames)
@@ -3125,7 +3149,9 @@ namespace Velvet
             // predecessor than a patch would.
             if (reconciled != null)
             {
-                StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved);
+                StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved, _ctx.FontScope);
+                // No pass boundary follows a variant toggle, so the inheritors it queued are settled here.
+                _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
             }
             ApplyResolvedLayoutManipulators(element, resolved);
             if (reconciled != null)
@@ -3174,13 +3200,11 @@ namespace Velvet
         // the children unspaced until something unrelated forces a re-apply. Which one departs is exactly
         // the grid-class verdict, so it selects the order — and is forwarded so the gap gate does not
         // re-scan for it.
-        // Divide and text-balance are in no such handoff: divide writes only the border width and color of
-        // the one edge it draws on (and hands that same pair back on teardown), text-balance writes only the
-        // element's OWN width, and neither gap nor grid writes a border at all — so the three write sets
-        // are disjoint and the position of these two in the sequence is not load-bearing. Grid writes its
-        // CHILDREN's widths, which is the one slot text-balance also writes, and the handoff for that is
-        // the child's own: a text-balance element inside a grid container stands down entirely (see
-        // StyleTextBalanceManipulator's grid-parent check).
+        // Divide is in no such handoff: it writes only the border width and color of the one edge it draws
+        // on (and hands that same pair back on teardown), and neither gap nor grid writes a border at all —
+        // so the write sets are disjoint and its position in the sequence is not load-bearing.
+        // The pointer-events scope writes only pickingMode, which none of the three writes, so its place is not
+        // load-bearing either.
         private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
         {
             if (StyleGridClass.HasGridClass(classNames))
@@ -3194,7 +3218,27 @@ namespace Velvet
                 ApplyGapManipulator(element, classNames, gridSuppressed: false);
             }
             ApplyDivideManipulator(element, classNames);
-            ApplyTextBalanceManipulator(element, classNames);
+            ApplyFlexMinSizeManipulator(element, classNames);
+            ApplyPointerEvents(element, classNames);
+        }
+
+        // Every Label and Button gets one, unlike the class-gated manipulators beside it: the automatic
+        // minimum size applies to a text flex item whatever classes it carries, and the manipulator decides
+        // for itself whether a class has taken the axis over.
+        internal void ApplyFlexMinSizeManipulator(VisualElement element, string[] classNames)
+        {
+            if (element is not TextElement)
+            {
+                return;
+            }
+            if (_ctx.FlexMinSizeManipulators.TryGetValue(element, out var existing))
+            {
+                existing.Refresh(classNames);
+                return;
+            }
+            var manipulator = new StyleFlexMinSizeManipulator(_ctx, classNames);
+            element.AddManipulator(manipulator);
+            _ctx.FlexMinSizeManipulators[element] = manipulator;
         }
 
         // The class source every gate-driven pass reads: the reconciled array, followed by each gate token a
@@ -3258,11 +3302,12 @@ namespace Velvet
         internal string[] ResolveVariantClassesOnCreate(VisualElement element, string[] classNames, bool paintTail)
             => ResolveVariantClasses(element, classNames, classNames, paintTail, out _);
 
-        // The same source for the gates that resolve at their own point in the sequence — the four layout
-        // manipulators (ApplyLayoutManipulators), the font layer (ApplyFontLayer) and the text-effect cascade
-        // (ApplyTextEffects). It reads the cached array but does not REPLACE it: the paint resolve a few
-        // passes later answers "did the classes change" by comparing against that same record, and advancing it
-        // here would swallow a payload one of the has- / attribute passes in between had just toggled.
+        // The same source for the gates that resolve at their own point in the sequence — the three layout
+        // manipulators and the pointer-events scope (ApplyLayoutManipulators), the font layer (ApplyFontLayer)
+        // and the text-effect cascade (ApplyTextEffects). It reads the cached array but does not REPLACE it: the
+        // paint resolve a few passes later answers "did the classes change" by comparing against that same record,
+        // and advancing it here would swallow a payload one of the has- / attribute passes in between had just
+        // toggled.
         private string[] ResolveGateClasses(VisualElement element, string[] classNames)
             => _ctx.VariantGateClasses.Count == 0
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
@@ -3420,39 +3465,37 @@ namespace Velvet
                 new GridOp(new GridSpec(columns, columnGap, rowGap, space)));
         }
 
-        // Carries no per-element spec to diff, unlike Gap/Grid/Divide — the manipulator re-derives
-        // everything itself. Kept outside the shared Configure step because its teardown owes the element a
-        // restore of the shared inline width slot, which the shared body has no way to signal.
-        private void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)
+        // A scope whose mode moved, or that came or went, can change what an enclosing scope's walk reaches, so
+        // every scope is walked again rather than this one alone.
+        private void ApplyPointerEvents(VisualElement element, string[] classNames)
         {
-            // Fast early-out for the ~99% of elements with no text-balance class and no existing manipulator.
-            var wrapStyle = StyleTextBalanceClass.ReadWrapStyle(classNames);
-            if (wrapStyle == TextWrapStyle.None)
+            var mode = StylePointerEventsClass.Read(classNames);
+            var scopes = _ctx.PointerEventsScopes;
+            if (scopes.TryGetValue(element, out var existing))
             {
-                if (_ctx.TextBalanceManipulators.TryGetValue(element, out var stale))
+                if (existing.Mode == mode)
                 {
-                    element.RemoveManipulator(stale);
-                    _ctx.TextBalanceManipulators.Remove(element);
-                    // Detach nulls the borrowed width slot, taking a w-[..] or size-[..] applied in this
-                    // same patch with it — the class diff re-applies a token only on a change. The layer
-                    // map rather than a class array: a w-[600px] never enters the class list, and the array
-                    // here may be the element's LIVE one — ReSyncVariantGatedPasses substitutes it for an
-                    // element no pass has recorded a reconciled array for — which carries no bracket tokens.
-                    StyleArbitraryValueResolver.ReapplyWidthSlot(element);
+                    return;
                 }
-                return;
+                if (mode == PointerEventsMode.Inherit)
+                {
+                    existing.Release();
+                    scopes.Remove(element);
+                }
+                else
+                {
+                    existing.Mode = mode;
+                }
             }
-
-            if (_ctx.TextBalanceManipulators.TryGetValue(element, out var existing))
+            else if (mode == PointerEventsMode.Inherit)
             {
-                existing.Refresh(wrapStyle);
+                return;
             }
             else
             {
-                var manipulator = new StyleTextBalanceManipulator(_ctx, wrapStyle);
-                element.AddManipulator(manipulator);
-                _ctx.TextBalanceManipulators[element] = manipulator;
+                scopes[element] = new PointerEventsScope(element, mode);
             }
+            PointerEventsScope.RequestSyncAll(_ctx);
         }
 
         #endregion

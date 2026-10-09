@@ -25,15 +25,17 @@ namespace Velvet
 
         private IReadOnlyList<AnimationSequenceStep> _steps = Array.Empty<AnimationSequenceStep>();
         private int _stepIndex;
+        private int _passesCompleted;
         private float _elapsedInStepSec;
         private float _currentHoldSec;
-        // The holds of every step the cursor has left since the last reseed, across loop passes, so TimeSec reads
-        // the timeline position without re-deriving them. A double, since a loop adds to it for as long as the
+        // The holds of every step the cursor has left since the last reseed, and every repeat gap it has waited
+        // out, across passes, so TimeSec reads the timeline position without re-deriving them. A double, since a loop adds to it for as long as the
         // sequence plays.
         private double _timeBeforeStepSec;
         private string? _currentLabel;
         private StyleTransitionConfig? _currentTransition;
         private bool _isComplete;
+        private bool _inRepeatGap;
         private int _generation;
         private bool _isArriving;
         private IReadOnlyList<AnimationSequenceStep>? _pendingResetSteps;
@@ -56,6 +58,17 @@ namespace Velvet
         // single-step-loop case, where "next" wraps back to the same index it started from.
         public int Generation => _generation;
 
+        // The passes a reseed plays, counting the first; null plays without end. Read at a reseed, where zero
+        // commits no step, and on every Advance, where a count the finished passes already reach completes the
+        // sequence at once and a count above them resumes a completed one.
+        public int? Iterations { get; set; } = 1;
+
+        // The gap between one pass's end and the next pass's start, read as each gap begins. Never follows the
+        // last pass, so it delays no completion.
+        public float RepeatDelaySec { get; set; }
+
+        public bool HasReseeded { get; private set; }
+
         // Re-seeds the walker at step 0 and immediately commits its effect. Called once per mount (or deps
         // change) from Hooks.UseAnimationSequence's effect, and again from controls.Restart(). Reentrant-safe:
         // a Call step's own callback invoking this (directly, or via controls.Restart()) while an arrival is
@@ -73,12 +86,22 @@ namespace Velvet
         // Advances the cursor by dt seconds, committing every step whose hold elapses along the way (a
         // zero-hold Wait/Call chain can cross several steps within one call). Returns the committed step
         // index so the caller can diff it against its own re-render trigger. The iteration count is bounded to
-        // _steps.Count + 1 so an all-zero-hold loop (with loop: true) cannot spin forever inside one call — it
-        // still keeps progressing on every subsequent frame instead.
-        public int Advance(float dt, bool loop)
+        // _steps.Count + 1 so an all-zero-hold sequence playing more than one pass — without end, or a count
+        // above one — cannot spin forever inside one call; it carries on over the frames after.
+        public int Advance(float dt)
         {
-            if (_isComplete || _steps.Count == 0)
+            if (_steps.Count == 0)
             {
+                return _stepIndex;
+            }
+            if (_isComplete)
+            {
+                ResumeIfPassesRemain();
+                return _stepIndex;
+            }
+            if (!PassesRemain)
+            {
+                CompleteAtLoweredCount();
                 return _stepIndex;
             }
             if (_await != null)
@@ -98,21 +121,119 @@ namespace Velvet
             {
                 _elapsedInStepSec -= _currentHoldSec;
                 _timeBeforeStepSec += _currentHoldSec;
+                if (_inRepeatGap)
+                {
+                    _inRepeatGap = false;
+                    ArriveAtStart(0);
+                    continue;
+                }
                 var next = _stepIndex + 1;
                 if (next >= _steps.Count)
                 {
-                    if (!loop)
+                    _passesCompleted++;
+                    if (!PassesRemain)
                     {
                         _isComplete = true;
                         // A finished sequence reads its full length, not the overshoot past it.
                         _elapsedInStepSec = 0f;
                         break;
                     }
+                    if (RepeatDelaySec > 0f)
+                    {
+                        _inRepeatGap = true;
+                        _currentHoldSec = RepeatDelaySec;
+                        continue;
+                    }
                     next = 0;
                 }
                 ArriveAtStart(next);
             }
             return _stepIndex;
+        }
+
+        // A null Iterations plays without end.
+        private bool PassesRemain => Iterations == null || _passesCompleted < Iterations;
+
+        // Completes at a count the finished passes already reach. The wait the cursor was parked on is abandoned
+        // only once the walker has completed, as ResetImmediate abandons the one a reseed leaves.
+        private void CompleteAtLoweredCount()
+        {
+            var left = DetachAwait();
+            AdoptEndState();
+            _inRepeatGap = false;
+            _isComplete = true;
+            _elapsedInStepSec = 0f;
+            left?.Abandon();
+        }
+
+        // A count lowered mid-pass shows the state a normal completion holds: the cursor on the last step, the
+        // label and transition the To steps leave, folded as Arrive folds them, and the time a completion reads,
+        // Iterations passes of the steps' holds with a repeat gap between each. No Call callback runs and an
+        // Await step holds for no time. Zero passes commit nothing, so a count lowered to zero leaves the cursor
+        // and label as they are and reads time 0.
+        private void AdoptEndState()
+        {
+            string? label = null;
+            StyleTransitionConfig? transition = null;
+            var firstPassSec = SimulatePass(ref transition, ref label);
+            var passes = Iterations ?? 0;
+            // The transition a pass leaves is the same from the second pass on, so a second pass costed from the
+            // first's carry stands for every later one.
+            var laterPassSec = firstPassSec;
+            if (passes > 1)
+            {
+                var carry = transition;
+                string? laterLabel = null;
+                laterPassSec = SimulatePass(ref carry, ref laterLabel);
+            }
+            _timeBeforeStepSec = passes == 0
+                ? 0
+                : firstPassSec + (passes - 1) * (laterPassSec + (double)RepeatDelaySec);
+            if (passes == 0)
+            {
+                return;
+            }
+            _stepIndex = _steps.Count - 1;
+            _currentLabel = label;
+            _currentTransition = transition;
+        }
+
+        // The holds of one pass from `carry`, the transition the cursor brings to its first step, folding the label
+        // and transition each To step leaves as Arrive does.
+        private double SimulatePass(ref StyleTransitionConfig? carry, ref string? label)
+        {
+            double passSec = 0;
+            for (var i = 0; i < _steps.Count; i++)
+            {
+                if (_steps[i].Kind == AnimationSequenceStepKind.To)
+                {
+                    label = _steps[i].Label;
+                    carry = _steps[i].Transition ?? carry ?? StyleTransition.Fade;
+                }
+                passSec += HoldOf(_steps[i], carry);
+            }
+            return passSec;
+        }
+
+        // The frame after a raised count, not the render that raised it, and the time since the sequence completed
+        // does not count toward what follows. A pass already played is followed by the repeat gap before the next
+        // starts at step 0, as between any two passes; a sequence that played none, completed by a count of zero,
+        // starts at step 0 at once.
+        private void ResumeIfPassesRemain()
+        {
+            if (!PassesRemain)
+            {
+                return;
+            }
+            _isComplete = false;
+            _elapsedInStepSec = 0f;
+            if (_passesCompleted > 0 && RepeatDelaySec > 0f)
+            {
+                _inRepeatGap = true;
+                _currentHoldSec = RepeatDelaySec;
+                return;
+            }
+            ArriveAtStart(0);
         }
 
         public AnimationSequenceState ToState() => new(_currentLabel, _currentTransition, _stepIndex, _isComplete);
@@ -160,13 +281,20 @@ namespace Velvet
         {
             _steps = steps;
             _stepIndex = 0;
+            _passesCompleted = 0;
+            HasReseeded = true;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
             _timeBeforeStepSec = 0f;
             _currentLabel = null;
             _currentTransition = null;
             _isComplete = _steps.Count == 0;
+            _inRepeatGap = false;
             WarnAboutUnvalidatedToSteps();
+            if (Iterations == 0)
+            {
+                _isComplete = true;
+            }
             return _isComplete;
         }
 
@@ -268,10 +396,10 @@ namespace Velvet
                 case AnimationSequenceStepKind.To:
                     _currentLabel = step.Label;
                     _currentTransition = step.Transition ?? _currentTransition ?? StyleTransition.Fade;
-                    _currentHoldSec = Math.Max(0f, step.HoldSec ?? ResolveHoldFromTransition(_currentTransition));
+                    _currentHoldSec = HoldOf(step, _currentTransition);
                     break;
                 case AnimationSequenceStepKind.Wait:
-                    _currentHoldSec = Math.Max(0f, step.HoldSec ?? 0f);
+                    _currentHoldSec = HoldOf(step, _currentTransition);
                     break;
                 case AnimationSequenceStepKind.Call:
                     _currentHoldSec = 0f;
@@ -281,6 +409,21 @@ namespace Velvet
                     _currentHoldSec = 0f;
                     BeginAwait(step.AwaitFactory!);
                     break;
+            }
+        }
+
+        // The hold a To or Wait step parks the cursor for, given the transition the cursor carries into it; every
+        // other kind holds for none.
+        private static float HoldOf(in AnimationSequenceStep step, StyleTransitionConfig? transition)
+        {
+            switch (step.Kind)
+            {
+                case AnimationSequenceStepKind.To:
+                    return Math.Max(0f, step.HoldSec ?? ResolveHoldFromTransition(transition!));
+                case AnimationSequenceStepKind.Wait:
+                    return Math.Max(0f, step.HoldSec ?? 0f);
+                default:
+                    return 0f;
             }
         }
 

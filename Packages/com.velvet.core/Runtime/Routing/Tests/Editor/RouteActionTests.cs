@@ -3,6 +3,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Numerics;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine.TestTools;
@@ -367,16 +369,365 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AGetSubmissionOfSomethingOtherThanSearchParams_When_Submitted_Then_ItThrows()
+        public void Given_AGetSubmissionOfAString_When_Submitted_Then_ItIsParsedAsAQueryStringTheWayUrlSearchParamsDoes()
         {
             // Arrange
             var router = ItemsRouter("/other", Created);
 
             // Act
-            TestDelegate submit = () => router.SubmitAsync("lamp", new SubmitOptions { Action = "/items" });
+            Submit(router, "?a=b+c&d=%26&e", new SubmitOptions { Action = "/items" });
 
             // Assert
-            Assert.Throws<ArgumentException>(submit);
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=b%20c&d=%26&e="));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfNameValuePairs_When_Submitted_Then_TheyAreTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var pairs = new Dictionary<string, string> { ["q"] = "lamp" };
+
+            // Act
+            Submit(router, pairs, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAStringRepeatingAKey_When_Submitted_Then_TheQueryKeepsTheBodysOrder()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, "a=1&b=2&a=3", new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=1&b=2&a=3"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnObject_When_Submitted_Then_ItsPublicPropertiesAreTheQueryStringifiedAsJavaScriptDoes()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new { q = "lamp", page = 2, all = true, none = (string?)null },
+                new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp&page=2&all=true&none=null"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAKeyValuePairSequence_When_Submitted_Then_ThePairsAreTheQueryInOrder()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new List<KeyValuePair<string, string>> { new("b", "1"), new("a", "2"), new("b", "3") }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?b=1&a=2&b=3"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAListOfTwoElementLists_When_Submitted_Then_ThePairsAreTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new[] { new[] { "q", "lamp" } }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfATuple_When_Submitted_Then_ItIsAPairOfTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new[] { ("q", "lamp") }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=lamp"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAPrimitive_When_Submitted_Then_ItParsesAsAQueryString()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, 5, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?5="));
+        }
+
+        // GREEN_ON_BASE(characterization): a null get body already gave an empty query on the base; this pins
+        // that the new encoding keeps null on that path rather than reporting it as unencodable.
+        [Test]
+        public void Given_AGetSubmissionOfNull_When_Submitted_Then_TheQueryIsEmpty()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, null, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That((router.CurrentLocation!.Path, router.CurrentLoaderErrors.Count), Is.EqualTo(("/items", 0)));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnObjectWithAListMember_When_Submitted_Then_TheListIsItsElementsJoinedByCommas()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new { tags = new[] { "a", "b" } }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?tags=a%2Cb"));
+        }
+
+        // GREEN_ON_BASE(characterization): an ISearchParams body was the one get body the base accepted; this pins
+        // that the new encoding leaves its grouping of repeated keys as the base wrote it.
+        [Test]
+        public void Given_AGetSubmissionOfASearchParams_When_Submitted_Then_ItsRepeatedKeysAreGrouped()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var query = new SearchParams();
+            query.Append("a", "1");
+            query.Append("b", "2");
+            query.Append("a", "3");
+
+            // Act
+            Submit(router, query, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=1&a=3&b=2"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfADoubleUnderACommaCulture_When_Submitted_Then_TheNumberHasNoCulture()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var culture = CultureInfo.CurrentCulture;
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+
+            // Act
+            try
+            {
+                Submit(router, new { price = 1.5 }, new SubmitOptions { Action = "/items" });
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = culture;
+            }
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?price=1.5"));
+        }
+
+        [TestCase(-0.0, "0")]
+        [TestCase(1e21, "1e%2B21")]
+        [TestCase(1e-7, "1e-7")]
+        [TestCase(123456789012345680000.0, "123456789012345680000")]
+        [TestCase(25.0, "25")]
+        [TestCase(0.5, "0.5")]
+        [TestCase(double.NaN, "NaN")]
+        [TestCase(double.PositiveInfinity, "Infinity")]
+        [TestCase(double.NegativeInfinity, "-Infinity")]
+        public void Given_AGetSubmissionOfADoubleMember_When_Submitted_Then_ItIsWrittenAsJavaScriptWritesIt(double value, string written)
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new { n = value }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?n=" + written));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAStringPairWithAnEmptyName_When_Submitted_Then_ThePairKeepsTheEmptyName()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, "=x", new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?=x"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnEnum_When_Submitted_Then_ItsNameParsesAsAQueryString()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, Shade.Dark, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?Dark="));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfADecimal_When_Submitted_Then_ItParsesAsAQueryString()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, 1.5m, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?1.5="));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfABigInteger_When_Submitted_Then_ItParsesAsAQueryString()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, BigInteger.Parse("123456789012345678901234567890", CultureInfo.InvariantCulture),
+                new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?123456789012345678901234567890="));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnObjectWithAWriteOnlyProperty_When_Submitted_Then_OnlyTheReadableOneIsTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new WriteOnlyBody(), new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?Q=lamp"));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfAnObjectWithAPublicField_When_Submitted_Then_TheFieldIsTheQuery()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new FieldBody(), new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?Q=lamp"));
+        }
+
+        private enum Shade
+        {
+            Dark,
+        }
+
+        private sealed class WriteOnlyBody
+        {
+            public string Q => "lamp";
+
+            public string Sink
+            {
+                set { }
+            }
+        }
+
+        private sealed class FieldBody
+        {
+            public string Q = "lamp";
+        }
+
+        [Test]
+        public void Given_AGetSubmissionWhoseMemberThrows_When_Submitted_Then_ItCommitsTheEncodingError()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new ThrowingBody(), new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLoaderErrors["/items"].Message, Is.EqualTo("Unable to encode submission body"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already left a post's one-shot sequence unenumerated; this
+        // pins that the encoding added for get bodies does not reach a post's.
+        [Test]
+        public void Given_APostOfAOneShotSequence_When_Submitted_Then_ItIsNotEnumerated()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            var reads = 0;
+            IEnumerable<int> OneShot()
+            {
+                reads++;
+                yield return 1;
+            }
+
+            // Act
+            Submit(router, OneShot(), PostToItems);
+
+            // Assert
+            Assert.That(reads, Is.EqualTo(0));
+        }
+
+        private sealed class ThrowingBody
+        {
+            public string Name => throw new InvalidOperationException();
+        }
+
+        [Test]
+        public void Given_AGetSubmissionOfASequenceOfNonPairs_When_Submitted_Then_ItCommitsTheEncodingErrorAtTheLeafAndRunsNoAction()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+
+            // Act
+            Submit(router, new[] { 1, 2 }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(
+                (router.CurrentLocation!.Path, router.CurrentLoaderErrors["/items"].Message, _log.Contains("action")),
+                Is.EqualTo(("/items", "Unable to encode submission body", false)));
+        }
+
+        [Test]
+        public void Given_ARefusedGetSubmissionWithNoAction_When_Submitted_Then_ItLandsOnTheCurrentLocationWithItsSearch()
+        {
+            // Arrange
+            var router = ItemsRouter("/items?q=1", Created);
+
+            // Act
+            Submit(router, new[] { 1, 2 }, new SubmitOptions());
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?q=1"));
         }
 
         [Test]

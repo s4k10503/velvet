@@ -40,5 +40,5 @@
 ### Added
 
 - `text-pretty`, which sets the wrap mode the way `text-balance` does and avoids a last line holding a
-  single short word, on Chromium's rule: when that word is narrower than a third of the line, the box
-  narrows until a word joins it, without adding a line.
+  single short word, on Chromium's rule: when that word is narrower than a third of the line, a word
+  from the line above moves down to join it, without adding a line.

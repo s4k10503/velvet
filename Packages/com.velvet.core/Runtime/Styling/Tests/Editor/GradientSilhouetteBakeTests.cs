@@ -104,6 +104,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStopListWithAMiddlePlateau_When_BakedViaShader_Then_TheCentreIsThePlateau()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange — six stops: a dark base at both ends and a white plateau from 45% to 55%, which the
+            // shader reaches only by walking past the third stop.
+            StyleGradientClass.TryExtract(new[]
+            {
+                "bg-linear-[to_bottom,#0f172a_0%,#0f172a_40%,#ffffff_45%,#ffffff_55%,#0f172a_60%,#0f172a_100%]",
+            }, out var spec);
+
+            // Act — sample the centre, inside the plateau. A bake that did not happen reads as NaN.
+            var tex = GradientSilhouetteBaker.Bake(spec, 64f, 64f, 0f, 0f, new Vector4(8f, 8f, 8f, 8f));
+            var centre = new Color(float.NaN, float.NaN, float.NaN);
+            if (tex != null)
+            {
+                centre = tex.GetPixel(tex.width / 2, tex.height / 2);
+                Object.DestroyImmediate(tex);
+            }
+
+            // Assert
+            Assert.That(Mathf.Min(centre.r, centre.g, centre.b), Is.GreaterThan(0.9f));
+        }
+
+        [Test]
         public void Given_ASkewXAngle_When_SizingTheBake_Then_TheQuadWidensToHoldTheSlant()
         {
             // Arrange / Act — a skew-x shear shifts the top/bottom edges, widening the bounding box by

@@ -28,7 +28,11 @@ namespace Velvet
             => element.tooltip = tooltip ?? string.Empty;
 
         public static void ApplyEnabled(VisualElement element, bool? enabled)
-            => element.SetEnabled(enabled ?? true);
+        {
+            element.SetEnabled(enabled ?? true);
+            // :disabled matches the element and everything beneath it, with no class change on any of them.
+            StyleAnimateDriver.NotifySubtreeStyleChanged(element);
+        }
 
         // Hiding writes the same `hidden` utility an author could write, so it goes through the class
         // projection rather than straight onto the class list — outside it, a `md:flex` payload and this prop
@@ -99,8 +103,8 @@ namespace Velvet
         private static readonly ConditionalWeakTable<VisualElement, Recorded<bool>> s_delegatesFocusDefaults = new();
 
         // A record is the applier's claim on a member: while one stands, dropping the prop writes the
-        // recorded value back, and for a TextField so does redeclaring a neighbour, since the bag's presence
-        // is what admits the members this render left undeclared. Recording is idempotent, so the next
+        // recorded value back, and for a TextField or a Slider so does redeclaring a neighbour, since the
+        // bag's presence is what admits the members this render left undeclared. Recording is idempotent, so the next
         // tenancy's first declared write leaves a record the previous tenancy took — and the restore then
         // puts that tenancy's reading over whatever this one wrote. Called from
         // FiberElementCleaner.ReturnToPool, which is the single gate every poolable type passes through.
@@ -116,6 +120,12 @@ namespace Velvet
                 // keeps one from staying on a pooled element.
                 textField.UnregisterCallback(s_reassertTouchKeyboard, TrickleDown.TrickleDown);
                 s_textFieldDefaults.Remove(textField);
+                ForgetShownText(textField);
+            }
+            else if (element is Slider slider)
+            {
+                s_sliderDefaults.Remove(slider);
+                FiberSliderKeyboard.ForgetStep(slider);
             }
         }
 
@@ -181,22 +191,100 @@ namespace Velvet
             if (value == null)
             {
                 FiberElementFactory.ClearFieldValue(element);
-                return;
+            }
+            else
+            {
+                FiberElementFactory.ApplyFieldValue(element, value);
             }
 
-            FiberElementFactory.ApplyFieldValue(element, value);
+            if (element is TextField field)
+            {
+                RecordShownText(field);
+            }
         }
 
-        public static void ApplySlider(VisualElement element, SliderSettings? settings)
+        // The range keeps the rule it had while it was the record's only content: both bounds written, a null
+        // one as 0 or 10, whenever either bound's declaration changed and at no other time. Writing them on
+        // every call would rewrite a range a refCallback set each time a render changes only the direction
+        // or the flag. Those two take ApplyTextField's recorded-default shape, for the reason given there.
+        // SliderDirectionPropTests measures both.
+        //
+        // A declared value that arrives with a range change is written in between: the range widens to hold
+        // both ranges, the value is placed inside the new one without a notification, and only then do the
+        // bounds narrow, so the value neither falls to the old range nor reports a clamp the render never asked
+        // for. SliderDirectionPropTests measures both.
+        public static void ApplySlider(
+            VisualElement element, SliderSettings? previous, SliderSettings? settings, object? declaredValue = null)
         {
             if (element is not Slider sliderEl)
             {
                 return;
             }
 
-            sliderEl.lowValue = Resolve(settings?.LowValue, 0f);
-            sliderEl.highValue = Resolve(settings?.HighValue, 10f);
+            FiberSliderKeyboard.SetStep(sliderEl, settings?.Step);
+            if (previous?.LowValue != settings?.LowValue || previous?.HighValue != settings?.HighValue)
+            {
+                var low = Resolve(settings?.LowValue, 0f);
+                var high = Resolve(settings?.HighValue, 10f);
+                if (declaredValue is float value)
+                {
+                    sliderEl.lowValue = UnityEngine.Mathf.Min(sliderEl.lowValue, low);
+                    sliderEl.highValue = UnityEngine.Mathf.Max(sliderEl.highValue, high);
+                    sliderEl.SetValueWithoutNotify(UnityEngine.Mathf.Clamp(value, low, high));
+                }
+
+                sliderEl.lowValue = low;
+                sliderEl.highValue = high;
+            }
+
+            if (!s_sliderDefaults.TryGetValue(sliderEl, out var built))
+            {
+                if (settings?.Direction == null && settings?.Inverted == null)
+                {
+                    return;
+                }
+
+                built = new SliderDefaults();
+                s_sliderDefaults.Add(sliderEl, built);
+            }
+
+            ApplyDirection(sliderEl, settings?.Direction, built);
+            ApplyInverted(sliderEl, settings?.Inverted, built);
         }
+
+        private static void ApplyDirection(Slider slider, SliderDirection? declared, SliderDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.Direction ??= new Recorded<SliderDirection>(slider.direction);
+                slider.direction = value;
+            }
+            else if (built.Direction != null)
+            {
+                slider.direction = built.Direction.Value;
+            }
+        }
+
+        private static void ApplyInverted(Slider slider, bool? declared, SliderDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.Inverted ??= new Recorded<bool>(slider.inverted);
+                slider.inverted = value;
+            }
+            else if (built.Inverted != null)
+            {
+                slider.inverted = built.Inverted.Value;
+            }
+        }
+
+        private sealed class SliderDefaults
+        {
+            public Recorded<SliderDirection>? Direction;
+            public Recorded<bool>? Inverted;
+        }
+
+        private static readonly ConditionalWeakTable<Slider, SliderDefaults> s_sliderDefaults = new();
 
         public static void ApplyScrollView(VisualElement element, ScrollViewSettings? settings)
         {
@@ -233,6 +321,11 @@ namespace Velvet
 
                 built = new TextFieldDefaults();
                 s_textFieldDefaults.Add(tfEl, built);
+            }
+
+            if (!s_shownText.TryGetValue(tfEl, out _))
+            {
+                RecordShownText(tfEl);
             }
 
             ApplyPasswordFlag(tfEl, settings?.IsPassword, built);
@@ -417,13 +510,107 @@ namespace Velvet
             if (declared is { } value)
             {
                 built.MaxLength ??= new Recorded<int>(field.maxLength);
-                field.maxLength = value;
+                WriteMaxLength(field, value);
             }
             else if (built.MaxLength != null)
             {
-                field.maxLength = built.MaxLength.Value;
+                WriteMaxLength(field, built.MaxLength.Value);
             }
         }
+
+        // Ordering: the edit is cut to the new limit and written silently BEFORE the limit, then written
+        // silently again after it. Narrowing the limit culls the shown text through a notifying setter, so
+        // an edit still longer than the limit would be reported to onValueChanged; cut beforehand, the cull
+        // finds nothing to change. The limit write then re-shows the committed value over the edit, which
+        // is what the second write undoes. The value is not touched, so the commit stays with Enter or
+        // blur, and the record keeps the text Velvet last wrote so the restored edit still reads as one.
+        // Both writes are skipped on an unchanged limit, which the setter ignores. With no edit, the
+        // limit write's own result is what Velvet left on screen and becomes the record.
+        // DelayedMaxLengthEditReportTests pins that nothing is reported; TextFieldInputPropTests pins that
+        // the edit survives and the no-edit cases.
+        private static void WriteMaxLength(TextField field, int limit)
+        {
+            if (field.maxLength == limit)
+            {
+                return;
+            }
+
+            TextElement? held = null;
+            string? edit = null;
+            if (HasUncommittedEdit(field) && field.textEdition is TextElement shown)
+            {
+                held = shown;
+                // MUTANT_SURVIVES(equivalent, boundary): at a length equal to the limit Substring(0, limit) returns the text itself.
+                var overLimit = field.text.Length > limit;
+                // MUTANT_SURVIVES(equivalent, boundary): measured, a zero limit leaves "" on the second write with or without this bound; TextFieldInputPropTests pins that outcome.
+                edit = limit >= 0 && overLimit ? field.text.Substring(0, limit) : field.text;
+                ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit);
+            }
+
+            field.maxLength = limit;
+            if (held == null)
+            {
+                RecordShownText(field);
+                return;
+            }
+
+            ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit!);
+        }
+
+        // The text Velvet's own writes, and the engine's commits, last left on screen. A delayed field
+        // holds the user's typing in the shown text while the value lags, and nothing else tells that
+        // apart from a rewrite: a single-line field shows its value with line breaks stripped, so shown
+        // text differing from the value does not mean anyone typed. Every Velvet write that can change the
+        // shown text records it — ApplyFieldValue, WriteMaxLength and the baseline ApplyTextField takes —
+        // and a commit records it through the callback below, since an edit that was committed and then
+        // changed again is an edit against the committed text. ForgetRecordedDefaults forgets the record and
+        // its callback on every removal, so a recycled field carries neither.
+        internal static bool HasUncommittedEdit(TextField field)
+            => field.isDelayed
+               && s_shownText.TryGetValue(field, out var left)
+               && field.text != left.Text;
+
+        internal static void RecordShownText(TextField field)
+        {
+            if (!s_shownText.TryGetValue(field, out var left))
+            {
+                left = new ShownText(field);
+                s_shownText.Add(field, left);
+                field.RegisterValueChangedCallback(left.OnChange);
+            }
+
+            left.Text = field.text;
+        }
+
+        internal static void ForgetShownText(TextField field)
+        {
+            if (s_shownText.TryGetValue(field, out var left))
+            {
+                field.UnregisterValueChangedCallback(left.OnChange);
+                s_shownText.Remove(field);
+            }
+        }
+
+        private sealed class ShownText
+        {
+            private readonly TextField _field;
+
+            public string? Text;
+
+            public ShownText(TextField field) => _field = field;
+
+            // Only the field's own event is a commit of the value; TextFieldInputPropTests pins that an
+            // event from the inner element does not move the record.
+            public void OnChange(ChangeEvent<string> evt)
+            {
+                if (evt.target == _field)
+                {
+                    Text = _field.text;
+                }
+            }
+        }
+
+        private static readonly ConditionalWeakTable<TextField, ShownText> s_shownText = new();
 
         private static void ApplyReadOnlyFlag(TextField field, bool? declared, TextFieldDefaults built)
         {
