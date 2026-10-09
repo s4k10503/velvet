@@ -553,11 +553,8 @@ namespace Velvet
                 if (_pendingExits.Remove(element, out var completed))
                 {
                     RingCoFadeCoordinator.EndRingCoFade(completed);
-                    // Clear BEFORE returning the lists (mirrors the enter completion): the inline
-                    // slots retain the list references, and a completed exit's element can outlive
-                    // its drop (a re-entry preempting the drop render) — leaving them set would make
-                    // later class changes tween unexpectedly, and a re-rented list would silently
-                    // mutate this element's timing through the retained reference.
+                    // A completed exit's element can outlive its drop (a re-entry preempting the drop
+                    // render), so the exit's timing must not stay on it for later class changes to tween by.
                     ClearTransitionStyles(element);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
@@ -1352,8 +1349,6 @@ namespace Velvet
         // C# becomes the Single Source of Truth, so they need not be defined in USS.
         // GC tuning: the EasingFunction list is cached statically per EasingMode; TimeValue lists are
         // reused via TimeValueListPool.
-        // transition-property: all — a shared, never-mutated list (StyleList retains the reference as-is, so a
-        // static instance is safe; ClearTransitionStyles releases it via StyleKeyword.Null).
         private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
             new() { new UnityEngine.UIElements.StylePropertyName("all") };
 
@@ -1716,17 +1711,14 @@ namespace Velvet
                 RingCoFadeCoordinator.EndRingCoFade(pending);
                 if (pending.Spring != null)
                 {
-                    // A hard stop, no reversal: pause the tick and drop the inline overrides it owns (the
-                    // tween-only ClearTransitionStyles/ReturnDurationList/ReturnDelayList below are no-ops for
-                    // a spring entry, which never touches transition-* styles or rents a TimeValue list).
+                    // A hard stop, no reversal: pause the tick and drop the inline overrides it owns.
                     pending.Spring.Tick?.Pause();
                     MotionSpringDriver.ClearInlineOverrides(element, pending.Spring);
                     ReapplyMotionOwnedInlineValues(element);
                 }
                 if (pending.Bezier != null)
                 {
-                    // A hard stop, no reversal (same as the spring branch above; the tween-only clears below are
-                    // no-ops for a bezier entry, which never touches transition-* styles or rents a TimeValue list).
+                    // A hard stop, no reversal, as the spring branch above.
                     pending.Bezier.Tick?.Pause();
                     BezierTweenDriver.ClearInlineOverrides(element, pending.Bezier);
                     ReapplyMotionOwnedInlineValues(element);
@@ -1740,7 +1732,6 @@ namespace Velvet
 
         private void ClearTransitionStyles(VisualElement element)
         {
-            // Restore before returning the tween's lists to the pool.
             MotionTweenTiming.End(element);
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).
@@ -1749,9 +1740,6 @@ namespace Velvet
             MotionNativeTransitionGuard.RestoreAfterForeignWrite(element);
         }
 
-        // StyleList<T> retains the List reference as-is (no copy), so cached lists must not be mutated
-        // after creation.
-        // ClearTransitionStyles restores the element's timing before the play returns its rented lists.
         private static List<EasingFunction> GetOrCreateEasingList(EasingMode easing)
         {
             if (!s_easingCache.TryGetValue(easing, out var list))

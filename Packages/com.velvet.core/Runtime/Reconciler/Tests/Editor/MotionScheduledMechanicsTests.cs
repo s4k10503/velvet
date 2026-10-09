@@ -287,6 +287,103 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Undefined, true)));
         }
 
+        private static readonly string[] s_hiddenPose = { "opacity-0" };
+        private static readonly string[] s_visiblePose = { "opacity-100" };
+
+        private static StyleTransitionConfig LinearTween(float durationSec) =>
+            new() { DurationSec = durationSec, Easing = EasingMode.Linear };
+
+        private static StyleTransitionConfig LinearExit(float durationSec) => new()
+        {
+            DurationSec = durationSec, Easing = EasingMode.Linear, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+        };
+
+        // A Div whose duration-[400ms] the resolver writes inline, for a scheduler of the case's own to play on.
+        private VisualElement ElementWithItsOwnDuration()
+        {
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(),
+                new VNode[] { V.Div(name: "own", className: "duration-[400ms]") });
+            return Root.Q<VisualElement>("own");
+        }
+
+        private static (StyleKeyword, bool) OwnDurationReading(VisualElement element)
+        {
+            var durations = element.style.transitionDuration;
+            return (durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f));
+        }
+
+        [TestCase(0.1f, 0.3f)]
+        [TestCase(0.3f, 0.1f)]
+        public void Given_AnElementWithItsOwnDuration_When_AnEnterAndAnExitTweenOverlapOnItAndBothEnd_Then_ItsDurationIsItsOwn(
+            float enterSec, float exitSec)
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+
+            // Act — an enter, an exit started on top of it, and past both ends in the order the durations give.
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(enterSec));
+            scheduler.PlayExit(element, LinearExit(exitSec), onComplete: null);
+            AdvancePast(0.8f);
+
+            // Assert
+            Assert.That(OwnDurationReading(element), Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AnEnterTweenWithAnExitTweenStartedOnTopOfIt_When_TheEnterEnds_Then_TheExitsDurationStillTimesTheElement()
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(0.1f));
+            scheduler.PlayExit(element, LinearExit(0.6f), onComplete: null);
+
+            // Act — past the enter's end, short of the exit's.
+            AdvancePast(0.2f);
+
+            // Assert
+            var durations = element.style.transitionDuration;
+            Assert.That((durations.keyword,
+                    durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(600f, TimeUnit.Millisecond))),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AnElementWithItsOwnDuration_When_AnExitTweenRestartsWhileItPlays_Then_ItsDurationIsItsOwnOnceBothEnd()
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayExit(element, LinearExit(0.3f), onComplete: null);
+
+            // Act — the restart hands the first exit to a reversal; past both ends.
+            scheduler.PlayExit(element, LinearExit(0.3f), onComplete: null);
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(OwnDurationReading(element), Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Tween)]
+        public void Given_AnElementWithItsOwnDuration_When_CancelAllStopsAPlayOnIt_Then_ItsDurationIsItsOwn(TransitionType type)
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            var config = type == TransitionType.Spring
+                ? new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 200f, Damping = 26f }
+                : LinearTween(0.3f);
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, config);
+
+            // Act
+            scheduler.CancelAll();
+
+            // Assert
+            Assert.That(OwnDurationReading(element), Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
         // Where the replacement sits after the move across parents; the mounted element sits at left 200.
         private static int s_movedLeft;
 

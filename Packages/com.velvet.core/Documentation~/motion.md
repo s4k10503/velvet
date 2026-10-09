@@ -37,7 +37,9 @@ removed/added on swap, and anything not mentioned falls back to the element's ba
 
 A tween temporarily replaces the element's inline transition duration, delay, and easing. When it
 finishes or is interrupted, it restores the element's own lists, including a `duration-[...]`
-value. When Velvet next writes or releases the tween's timing, it preserves a slot whose keyword or
+value. Where tweens overlap on one element — an exit started over an enter, or an exit restarted
+while it plays — the timing last written stays until the last of them ends, and that end restores
+the element's own lists. When Velvet next writes or releases the tween's timing, it preserves a slot whose keyword or
 list entries differ from its last temporary value. An identical reassignment, or a change undone
 before that observation, does not replace the saved timing.
 

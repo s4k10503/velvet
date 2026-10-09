@@ -14,12 +14,15 @@ namespace Velvet
             public StyleList<TimeValue> WrittenDuration;
             public StyleList<TimeValue> WrittenDelay;
             public StyleList<EasingFunction> WrittenCurve;
+            // An enter and an exit can play on one element at once, and a cancelled exit's reversal carries its
+            // play on: the saved timing goes back only when the last of them ends.
+            public int Plays;
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Hold> s_holds = new();
         private static readonly ConditionalWeakTable<VisualElement, Hold>.CreateValueCallback s_save = Save;
 
-        internal static void Begin(VisualElement element) => s_holds.GetValue(element, s_save);
+        internal static void Begin(VisualElement element) => s_holds.GetValue(element, s_save).Plays++;
 
         private static Hold Save(VisualElement element)
         {
@@ -42,25 +45,23 @@ namespace Velvet
             var style = element.style;
             var holding = s_holds.TryGetValue(element, out var hold);
             if (holding) Adopt(style, hold);
-            if (duration != null) style.transitionDuration = duration;
-            if (curve != null) style.transitionTimingFunction = curve;
-            if (delay != null) style.transitionDelay = delay;
+            // Copies, so no slot is ever written from a list the scheduler pools or caches, whatever the engine
+            // keeps of an assigned list.
+            if (duration != null) style.transitionDuration = new List<TimeValue>(duration);
+            if (curve != null) style.transitionTimingFunction = new List<EasingFunction>(curve);
+            if (delay != null) style.transitionDelay = new List<TimeValue>(delay);
             if (holding) Record(style, hold);
         }
 
         internal static void End(VisualElement element)
         {
+            if (!s_holds.TryGetValue(element, out var hold)) return;
             var style = element.style;
-            if (s_holds.TryGetValue(element, out var hold))
-            {
-                Adopt(style, hold);
-                s_holds.Remove(element);
-                (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
-                    (hold.Duration, hold.Delay, hold.Curve);
-                return;
-            }
+            Adopt(style, hold);
+            if (--hold.Plays > 0) return;
+            s_holds.Remove(element);
             (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
-                (StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null);
+                (hold.Duration, hold.Delay, hold.Curve);
         }
 
         internal static void Forget(VisualElement element) => s_holds.Remove(element);
