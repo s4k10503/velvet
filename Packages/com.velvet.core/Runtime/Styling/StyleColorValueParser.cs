@@ -217,11 +217,6 @@ namespace Velvet
             var s = value.Replace('_', ' ').Trim();
             if (!s.Contains('('))
             {
-                if (string.Equals(s, "transparent", StringComparison.OrdinalIgnoreCase))
-                {
-                    color = new CssColor(CssColorSpace.Srgb, 0, 0, 0, 0);
-                    return true;
-                }
                 if (!ColorUtility.TryParseHtmlString(s, out var html))
                 {
                     return false;

@@ -339,6 +339,8 @@ namespace Velvet.Tests
             Assert.That(color, Is.EqualTo(new[] { 0.2f, 0.4f, 0.6f, 1f }).Within(Tolerance));
         }
 
+        // GREEN_ON_BASE(characterization): ColorUtility reads the keyword as transparent black before the function
+        // grammar sits in front of it, and must still once it does.
         [Test]
         public void Given_Transparent_When_Parsed_Then_ItIsTransparentBlack()
         {
