@@ -38,8 +38,18 @@ namespace Velvet.Tests
         private const string ControlThemePath =
             "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextInputControlThemeStandIn.uss";
 
-        private void AttachTheme(string path)
-            => _host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(path));
+        // Whether the sheet was there to attach, which a case folds into what it asserts: a tree without the
+        // stand-in then answers by assertion rather than by an exception from the attach.
+        private bool AttachTheme(string path)
+        {
+            var sheet = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(path);
+            if (sheet != null)
+            {
+                _host.Root.styleSheets.Add(sheet);
+            }
+
+            return sheet != null;
+        }
 
         [TearDown]
         public void TearDown()
@@ -507,7 +517,7 @@ namespace Velvet.Tests
             string themePath, string baseClasses, string utility, bool caret)
         {
             // Arrange
-            AttachTheme(themePath);
+            var themed = AttachTheme(themePath);
             s_base = baseClasses;
             s_utility = utility;
             var field = Mount(ThemedTogglingHost);
@@ -517,8 +527,8 @@ namespace Velvet.Tests
             Render(false);
 
             // Assert
-            Assert.That((whileDeclared, caret ? Caret(field) : Selection(field)),
-                Is.EqualTo((Palette("red-500"), (Color32)Color.blue)));
+            Assert.That((themed, whileDeclared, caret ? Caret(field) : Selection(field)),
+                Is.EqualTo((true, Palette("red-500"), (Color32)Color.blue)));
         }
 
         // GREEN_ON_BASE(characterization): a selection colour written after the restore survives later style passes.
