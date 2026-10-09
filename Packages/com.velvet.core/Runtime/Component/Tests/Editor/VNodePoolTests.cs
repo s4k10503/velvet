@@ -46,6 +46,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ReturnedPropsCarryingSliderIntSettings_When_RentedAgain_Then_TheSettingsAreCleared()
+        {
+            // Arrange
+            var props = VNodePool.RentProps();
+            props.SliderInt = new SliderIntSettings(LowValue: 2);
+            var carried = props.SliderInt != null;
+            VNodePool.ReturnProps(props);
+
+            // Act
+            var reused = VNodePool.RentProps();
+
+            // Assert — the identity term is what makes this a reading of the returned bag; a fresh one
+            // carries nothing on its own.
+            Assert.That(
+                (carried, ReferenceEquals(reused, props), reused.SliderInt),
+                Is.EqualTo((true, true, (SliderIntSettings?)null)));
+        }
+
+        [Test]
         public void Given_ReturnedProps_When_RentedAgain_Then_ReusesSameInstance()
         {
             // Arrange
