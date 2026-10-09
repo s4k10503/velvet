@@ -191,10 +191,13 @@ namespace Velvet
 
         private static TextField Defaults => s_freshDefaults ??= new TextField();
 
-        // What StyleTextInputColors restores, for the reason above.
+        // What StyleTextInputColors restores, for the reason above. Read through the obsolete members for
+        // the reason StyleTextInputColors writes through them.
+#pragma warning disable CS0618
         internal static Color DefaultCursorColor => Defaults.textSelection.cursorColor;
 
         internal static Color DefaultSelectionColor => Defaults.textSelection.selectionColor;
+#pragma warning restore CS0618
 
         public static void ResetTextFieldForReuse(TextField textField)
         {

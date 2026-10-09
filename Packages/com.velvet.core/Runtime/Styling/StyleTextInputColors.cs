@@ -7,13 +7,16 @@ namespace Velvet
     // Realises caret-*, selection:bg-* and selection:text-* on a text input. None of them has a USS rule: each is
     // read off the class lists of the input's box, its control and their ancestors, nearest first, as CSS
     // inherits caret-color and as Tailwind's selection: reaches a descendant's selection. On one element the
-    // class added last wins; `-inherit` hands the question to the parent, and a value that does not parse is
-    // skipped, as CSS drops an invalid declaration. `caret-current` takes the input's resolved text colour.
+    // class Tailwind emits last wins, which for utilities of one property is the order
+    // StyleCandidateOrder.Compare gives, whatever order the classes were added in. A value that does not
+    // parse is skipped, as Tailwind emits no rule for it; `-inherit` competes like any value, and winning
+    // hands the question to the parent. `caret-current` takes the input's resolved text colour.
     //
-    // It runs on the input text element's custom-style event, which _text_input.uss keeps firing on every
-    // style pass, and a class change on the control or an ancestor restyles the input below it. Ordering: that
-    // event comes after the box's and the control's in the same pass, where the engine writes a colour from
-    // --unity-cursor-color / --unity-selection-color, so a utility written here wins over a theme's.
+    // It runs on the input text element's custom-style event, which the rule _text_input.uss keys on
+    // InputTextClass keeps firing on every style pass, and a class change on the control or an ancestor
+    // restyles the input below it. Ordering: that event comes after the box's and the control's in the same
+    // pass, where the engine writes a colour from --unity-cursor-color / --unity-selection-color, so a
+    // utility written here wins over a theme's.
     //
     // A colour a utility wrote and no utility asks for any more goes back to the theme's, which the engine
     // has just written where the box or control declares one, or else to the colour a freshly built field
@@ -24,6 +27,9 @@ namespace Velvet
     // TextInputColorUtilityTests and SelectionTextOverlayTests pin each of these.
     internal static class StyleTextInputColors
     {
+        // The class _text_input.uss keys its rule on.
+        internal const string InputTextClass = "velvet-text-input";
+
         private const string CaretPrefix = "caret-";
         private const string SelectionBackgroundPrefix = "selection:bg-";
         private const string SelectionTextPrefix = "selection:text-";
@@ -56,7 +62,14 @@ namespace Velvet
                 return;
             }
 
-            box.Q<TextElement>()?.RegisterCallback(s_onResolved);
+            var input = box.Q<TextElement>();
+            if (input == null)
+            {
+                return;
+            }
+
+            input.AddToClassList(InputTextClass);
+            input.RegisterCallback(s_onResolved);
         }
 
         // A recycled field carries nothing of the last consumer's utilities.
@@ -88,6 +101,10 @@ namespace Velvet
             ApplySelection(state, box, control, input, selection);
         }
 
+        // The obsolete per-element colours are what the utilities write: the --unity-cursor-color and
+        // --unity-selection-color properties the warning points to are the theme's channel, which a utility
+        // has to outrank rather than share.
+#pragma warning disable CS0618
         private static void ApplyCaret(State state, VisualElement box, VisualElement control, TextElement input,
             ITextSelection selection)
         {
@@ -139,6 +156,7 @@ namespace Velvet
             state.Overlay?.Detach();
             state.Overlay = null;
         }
+#pragma warning restore CS0618
 
         // The nearest element, from the box up, whose class list resolves the utility.
         private static bool TryResolve(VisualElement box, string prefix, TextElement input, out Color color)
@@ -154,41 +172,52 @@ namespace Velvet
         }
 
         // False for an element whose class list leaves the question to its parent: none of the utility, only
-        // values that do not parse, or `-inherit` added after any that do.
+        // values that do not parse, or `-inherit` winning among those that do.
         private static bool Read(VisualElement element, string prefix, TextElement input, out Color color)
         {
             color = default;
-            var classes = element.GetClasses() as System.Collections.Generic.IList<string>
-                          ?? new System.Collections.Generic.List<string>(element.GetClasses());
-            for (var i = classes.Count - 1; i >= 0; i--)
+            string? winner = null;
+            var inherits = false;
+            foreach (var cls in element.GetClasses())
             {
-                var cls = classes[i];
                 if (!cls.StartsWith(prefix, System.StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                var suffix = cls.Substring(prefix.Length);
-                if (suffix == Inherit)
-                {
-                    return false;
-                }
-
-                if (suffix == Current)
-                {
-                    color = input.resolvedStyle.color;
-                    return true;
-                }
-
-                if (!StyleColorValueParser.TryParseColorSuffix(suffix, out color))
+                // MUTANT_SURVIVES(equivalent, boundary): a class list holds a class once, and only an identical class compares equal.
+                if (winner != null && StyleCandidateOrder.Compare(cls, winner) < 0)
                 {
                     continue;
                 }
 
+                var suffix = cls.Substring(prefix.Length);
+                if (TryValue(suffix, input, out var value))
+                {
+                    winner = cls;
+                    color = value;
+                    inherits = suffix == Inherit;
+                }
+            }
+
+            return winner != null && !inherits;
+        }
+
+        private static bool TryValue(string suffix, TextElement input, out Color color)
+        {
+            color = default;
+            if (suffix == Inherit)
+            {
                 return true;
             }
 
-            return false;
+            if (suffix == Current)
+            {
+                color = input.resolvedStyle.color;
+                return true;
+            }
+
+            return StyleColorValueParser.TryParseColorSuffix(suffix, out color);
         }
 
         private static VisualElement? BoxOf(TextElement input)

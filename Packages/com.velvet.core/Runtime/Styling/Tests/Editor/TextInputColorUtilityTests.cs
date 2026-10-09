@@ -129,6 +129,20 @@ namespace Velvet.Tests
         [Component]
         private static VNode InvalidHost() => Field("caret-red-500 caret-nonsense");
 
+        // Tailwind emits caret-blue-500 before caret-red-500, so red wins although it is added first.
+        [Component]
+        private static VNode SheetOrderHost() => Field("caret-red-500 caret-blue-500");
+
+        // Tailwind emits caret-blue-500 before caret-inherit, so inherit wins although it is added first.
+        [Component]
+        private static VNode SheetOrderInheritHost() => V.Div(className: "caret-red-500", children: new VNode[]
+        {
+            Field("caret-inherit caret-blue-500"),
+        });
+
+        [Component]
+        private static VNode PlainFieldHost() => V.TextField(name: "field");
+
         [Component]
         private static VNode InvalidOpacityBaseHost() => Field("caret-red-500 caret-nonsense/50");
 
@@ -314,6 +328,47 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Caret(field), Is.EqualTo(Palette("red-500")));
+        }
+
+        [Test]
+        public void Given_TwoCaretColorsOnOneField_When_ItMounts_Then_TheOneTailwindEmitsLastWinsWhateverTheClassOrder()
+        {
+            // Arrange / Act
+            var field = Mount(SheetOrderHost);
+
+            // Assert
+            Assert.That(Caret(field), Is.EqualTo(Palette("red-500")));
+        }
+
+        [Test]
+        public void Given_CaretInheritAddedBeforeAColor_When_ItMounts_Then_InheritStillWinsAndTheCaretTakesTheAncestors()
+        {
+            // Arrange / Act
+            var field = Mount(SheetOrderInheritHost);
+
+            // Assert
+            Assert.That(Caret(field), Is.EqualTo(Palette("red-500")));
+        }
+
+        [Test]
+        public void Given_AFieldsInputAndAPlainTextElement_When_AStylePassRuns_Then_OnlyTheInputHearsItsCustomStyleEvent()
+        {
+            // Arrange — both carry a callback, and differ only in the custom property the bundled sheet gives
+            // the text element inside a text input's box.
+            var input = (TextElement)Mount(PlainFieldHost).textEdition;
+            var plain = new TextElement();
+            _host.Root.Add(plain);
+            var inputHeard = 0;
+            var plainHeard = 0;
+            input.RegisterCallback<CustomStyleResolvedEvent>(_ => inputHeard++);
+            plain.RegisterCallback<CustomStyleResolvedEvent>(_ => plainHeard++);
+
+            // Act
+            _host.Root.AddToClassList("restyled");
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That((inputHeard > 0, plainHeard), Is.EqualTo((true, 0)));
         }
 
         [Test]
