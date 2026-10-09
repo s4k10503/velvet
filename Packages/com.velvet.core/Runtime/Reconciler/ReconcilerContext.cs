@@ -563,7 +563,130 @@ namespace Velvet
         // distinct. innerName is the relational name of a NAMED inner (dark:group-hover/sidebar:bg-on) — "" for
         // every other inner — so two stacked named relationals (dark:group-hover/a / dark:group-hover/b) get
         // separate manipulators resolving their own source.
-        public Dictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators { get; } = new();
+        public IReadOnlyDictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators => _stackedVariantManipulators;
+        private readonly Dictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> _stackedVariantManipulators = new();
+
+        // The same registrations grouped by target, so a settle on one element reads that element's entries
+        // instead of copying the whole registry. Written only by AddStackedVariant, RemoveStackedVariant and
+        // ClearStackedVariants, beside the registry above. A target's entry goes with its last registration, so
+        // the index holds no element the registry has let go of. An entry carries its manipulator beside its
+        // key so that reading a target's manipulators looks no key up in the registry.
+        private readonly Dictionary<VisualElement, List<StackedVariantRegistration>> _stackedVariantsByTarget = new();
+
+        private readonly struct StackedVariantRegistration
+        {
+            public readonly (VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) Key;
+            public readonly StyleStackedVariantManipulator Manipulator;
+
+            public StackedVariantRegistration((VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) key,
+                StyleStackedVariantManipulator manipulator)
+            {
+                Key = key;
+                Manipulator = manipulator;
+            }
+        }
+
+        private void AddStackedVariant((VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) key, StyleStackedVariantManipulator manipulator)
+        {
+            _stackedVariantManipulators[key] = manipulator;
+            if (!_stackedVariantsByTarget.TryGetValue(key.target, out var registrations))
+            {
+                registrations = new List<StackedVariantRegistration>();
+                _stackedVariantsByTarget[key.target] = registrations;
+            }
+            registrations.Add(new StackedVariantRegistration(key, manipulator));
+        }
+
+        private StyleStackedVariantManipulator? RemoveStackedVariant((VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) key)
+        {
+            if (!_stackedVariantManipulators.Remove(key, out var removed))
+            {
+                return null;
+            }
+            var registrations = _stackedVariantsByTarget[key.target];
+            // MUTANT_SURVIVES(unreachable, boundary): AddStackedVariant listed every manipulator the registry
+            // holds under its key's target, so the loop finds removed and breaks before i reaches Count.
+            for (var i = 0; i < registrations.Count; i++)
+            {
+                if (ReferenceEquals(registrations[i].Manipulator, removed))
+                {
+                    registrations.RemoveAt(i);
+                    break;
+                }
+            }
+            if (registrations.Count == 0)
+            {
+                _stackedVariantsByTarget.Remove(key.target);
+            }
+            return removed;
+        }
+
+        internal void ClearStackedVariants()
+        {
+            _stackedVariantManipulators.Clear();
+            _stackedVariantsByTarget.Clear();
+        }
+
+        internal bool HasStackedVariantsOn(VisualElement target) => _stackedVariantsByTarget.ContainsKey(target);
+
+        // A caller walks the copy rather than the index: a settle applies a payload, and a payload that is
+        // itself a variant re-enters GateStackedVariant, which adds to and removes from the very list it would
+        // be reading. StackedVariantEdgeTests pins the case.
+        internal void CopyStackedVariantsOn(VisualElement target, List<StyleStackedVariantManipulator> into)
+        {
+            if (!_stackedVariantsByTarget.TryGetValue(target, out var registrations))
+            {
+                return;
+            }
+            foreach (var registration in registrations)
+            {
+                into.Add(registration.Manipulator);
+            }
+        }
+
+        // Walks the whole registry over a pooled copy, for the reason CopyStackedVariantsOn gives.
+        internal void ForEachStackedVariant<TState>(TState state,
+            System.Action<StyleStackedVariantManipulator, TState> action)
+        {
+            if (_stackedVariantManipulators.Count == 0)
+            {
+                return;
+            }
+            var stacked = BufferPool.RentStackedVariantList();
+            try
+            {
+                foreach (var manipulator in _stackedVariantManipulators.Values)
+                {
+                    stacked.Add(manipulator);
+                }
+                foreach (var manipulator in stacked)
+                {
+                    action(manipulator, state);
+                }
+            }
+            finally
+            {
+                BufferPool.ReturnStackedVariantList(stacked);
+            }
+        }
+
+        // Walked over a copy, each removed before it is detached and skipped once already gone: a detach closes
+        // its leaf through GateStackedVariant, which can remove a registration listed after it.
+        internal void DetachStackedVariants(VisualElement target)
+        {
+            if (!_stackedVariantsByTarget.TryGetValue(target, out var registrations))
+            {
+                return;
+            }
+            foreach (var registration in registrations.ToArray())
+            {
+                var removed = RemoveStackedVariant(registration.Key);
+                if (removed != null)
+                {
+                    target.RemoveManipulator(removed);
+                }
+            }
+        }
 
         // Detaches and forgets every stacked manipulator owner gated, and every one those gated in turn, for an
         // owner that is going away while its target stays: no call opens their gates again, and a retained one
@@ -571,7 +694,7 @@ namespace Velvet
         internal void DropStackedVariants(object owner)
         {
             List<(VisualElement, object, long, StyleVariantKind, string, string?)>? owned = null;
-            foreach (var kv in StackedVariantManipulators)
+            foreach (var kv in _stackedVariantManipulators)
             {
                 if (ReferenceEquals(kv.Key.owner, owner))
                 {
@@ -584,7 +707,8 @@ namespace Velvet
             }
             foreach (var key in owned)
             {
-                if (StackedVariantManipulators.Remove(key, out var dropped))
+                var dropped = RemoveStackedVariant(key);
+                if (dropped != null)
                 {
                     key.Item1.RemoveManipulator(dropped);
                     DropStackedVariants(dropped);
@@ -609,7 +733,7 @@ namespace Velvet
             var key = (target, owner, outerPriority, innerKind, innerName ?? string.Empty, leafPayload);
             if (outerOn)
             {
-                if (!StackedVariantManipulators.TryGetValue(key, out var m))
+                if (!_stackedVariantManipulators.TryGetValue(key, out var m))
                 {
                     var innerPriority = StyleLayerPriority.ForVariant(innerKind);
                     var priority = StyleLayerPriority.Stack(outerPriority, innerPriority);
@@ -618,7 +742,7 @@ namespace Velvet
                     m.SeedInner(VariantManipulators.TryGetValue(target, out var local)
                         ? local.Holds(innerKind)
                         : StyleVariantManipulator.LiveHolds(target, innerKind));
-                    StackedVariantManipulators[key] = m;
+                    AddStackedVariant(key, m);
                     target.AddManipulator(m);
                 }
                 else
@@ -629,7 +753,7 @@ namespace Velvet
                 }
                 m.SetOuterGate(true);
             }
-            else if (StackedVariantManipulators.TryGetValue(key, out var m))
+            else if (_stackedVariantManipulators.TryGetValue(key, out var m))
             {
                 // Outer gate closed: clear the leaf. Level-based inners (dark, responsive) are then
                 // detached + dropped so their subscription (a stacked dark:'s process-wide
@@ -644,7 +768,7 @@ namespace Velvet
                 if (!m.RetainsAcrossOuterClose)
                 {
                     target.RemoveManipulator(m);
-                    StackedVariantManipulators.Remove(key);
+                    RemoveStackedVariant(key);
                     DropStackedVariants(m);
                 }
             }

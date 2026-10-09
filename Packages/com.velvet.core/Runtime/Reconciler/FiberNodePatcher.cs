@@ -1916,7 +1916,7 @@ namespace Velvet
             }
 
             var value = boolField.value;
-            VariantSettleSweep.ForEach(element, _ctx, consumer => consumer.SettleChecked(value));
+            VariantSettleSweep.ForEach(element, _ctx, value, static (consumer, checkedValue) => consumer.SettleChecked(checkedValue));
             VariantSettleSweep.SettleCheckedFromSource(element, _ctx, value);
         }
 
