@@ -3468,6 +3468,17 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): a flex factor never took a percentage, and the border decline leaves it so.
+        [Test]
+        public void Given_ShrinkArbitraryWithAPercent_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("shrink-[50%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
         [Test]
         public void Given_GrowArbitraryWithALengthUnit_When_Parsed_Then_DeclinesToParse()
         {

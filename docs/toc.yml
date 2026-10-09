@@ -25,6 +25,8 @@
       href: guides/styling-variants.md
     - name: Colours
       href: guides/styling-colors.md
+    - name: Bracketed lengths
+      href: guides/styling-arbitrary-lengths.md
     - name: Gradients
       href: guides/styling-gradients.md
     - name: Filters
