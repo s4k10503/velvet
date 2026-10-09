@@ -301,7 +301,7 @@ namespace Velvet
             var delta = ComputeDelta(drawn, layout, TransformOrigin(element));
             projection.Scale = delta.Scale;
             Write(element, projection, delta.Translate);
-            WriteOpacity(element, projection, Fade(element, projection, ctx));
+            WriteOpacity(element, projection, Fade(element, projection, ctx), ctx);
             if (projection.Leader != null) LayoutIdPicking.Ignore(element, projection);
             return projection.Scale;
         }
@@ -337,7 +337,8 @@ namespace Velvet
             layoutId != null && ctx.ElementToLayoutId.GetValueOrDefault(look.Source) == layoutId ? MotionOpacity.Own(look.Source) : look.Opacity;
 
         // The slot is left alone until the projection first draws a fade, and handed back when it stops.
-        private static void WriteOpacity(VisualElement element, LayoutIdProjection projection, LayoutIdFade? fade)
+        private static void WriteOpacity(VisualElement element, LayoutIdProjection projection, LayoutIdFade? fade,
+            ReconcilerContext ctx)
         {
             if (fade is { } drawn)
             {
@@ -347,7 +348,7 @@ namespace Velvet
             else if (projection.WritesOpacity)
             {
                 projection.WritesOpacity = false;
-                MotionOpacity.End(element);
+                MotionOpacity.End(element, ctx.StyleAnimationScheduler.Clock);
             }
         }
 
@@ -459,9 +460,11 @@ namespace Velvet
         private static void EnsureFrame(VisualElement host, ReconcilerContext ctx)
         {
             if (ctx.LayoutIdFrames.ContainsKey(host)) return;
+            var clock = ctx.StyleAnimationScheduler.Clock;
+            var lastSec = clock.NowSec;
             ctx.LayoutIdFrames[host] = host.schedule.Execute((TimerState ts) =>
             {
-                var dt = ts.deltaTime / 1000f;
+                var dt = clock.StepSince(ref lastSec, ts);
                 if (dt <= 0f) return;
                 Frame(host, dt, ctx);
             }).Every(StyleAnimateDriver.TickMs);
@@ -546,7 +549,7 @@ namespace Velvet
             StyleAnimateDriver.YieldSlots(element, projection, MotionTransitionSlots.None);
             // The loop's frame follows at once, rather than the element standing at its own value until its next tick.
             StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.None);
-            WriteOpacity(element, projection, null);
+            WriteOpacity(element, projection, null, ctx);
             LayoutIdPicking.Restore(projection);
             MotionNativeTransitionGuard.Release(element, projection);
         }

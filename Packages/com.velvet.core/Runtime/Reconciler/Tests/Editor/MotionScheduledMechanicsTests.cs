@@ -4901,6 +4901,105 @@ namespace Velvet.Tests
             Assert.That(element.ClassListContains("opacity-0"), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): a delayed bezier play on the default clock honours its delay.
+        [Test]
+        public void Given_ADelayedBezierPlayOnTheDefaultClock_When_LessThanTheDelayHasPassed_Then_ItHasNotMoved()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.5f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — held at the from-pose the play wrote inline, rather than carrying no inline opacity.
+            var opacity = element.style.opacity;
+            scheduler.CancelAll();
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the default clock counts a delay on the panel's own time, which the
+        // simulated frames below carry past it; a delay counted on wall time would still be waiting unless the
+        // frames took half a second to run.
+        [Test]
+        public void Given_ADelayedBezierPlayOnTheDefaultClock_When_MoreThanTheDelayHasPassedOnThePanel_Then_ItHasMoved()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.5f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 40; i++) Tick();
+
+            // Assert
+            var opacity = element.style.opacity.value;
+            scheduler.CancelAll();
+            Assert.That(opacity, Is.GreaterThan(0f));
+        }
+
+        // 16 ms frames: the fourth passes the 50 ms delay by 14 ms, and the fifth steps 16 ms more.
+        [Test]
+        public void Given_ADelayedBezierPlayOnTheDefaultClock_When_TheFrameAfterItsDelayEnds_Then_ItHasMovedByWhatThatFramePassedItBy()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.05f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert — 30 ms in; counted from the frame that ended the delay, 16.
+            var opacity = element.style.opacity.value;
+            scheduler.CancelAll();
+            Assert.That(opacity, Is.EqualTo(0.030f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): an undelayed bezier play starts its tick as it plays, on the default clock.
+        // One parked behind a zero delay would start it only on the frame after.
+        [Test]
+        public void Given_AnUndelayedBezierPlayOnTheDefaultClock_When_ThePanelTicksOnce_Then_ItHasMovedThatFrame()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            Tick();
+
+            // Assert
+            var opacity = element.style.opacity.value;
+            scheduler.CancelAll();
+            Assert.That(opacity, Is.GreaterThan(0f));
+        }
+
         [Component]
         private static VNode LateMountHost()
         {

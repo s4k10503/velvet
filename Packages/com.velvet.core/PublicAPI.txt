@@ -144,6 +144,7 @@
 [Velvet] ctor protected Velvet.ContextProviderNode.ctor(): System.Void
 [Velvet] ctor protected Velvet.Experimental.VBuilder.ctor(System.String?): System.Void
 [Velvet] ctor protected Velvet.FiberEventBinding.ctor(): System.Void
+[Velvet] ctor protected Velvet.MotionClock.ctor(): System.Void
 [Velvet] ctor protected Velvet.Store`1[TState].ctor(TState): System.Void
 [Velvet] ctor protected Velvet.VNode.ctor(): System.Void
 [Velvet] event Velvet.DevTools.VelvetDevToolsRegistry.RegistryChanged: System.Action?
@@ -591,7 +592,7 @@
 [Velvet] method Velvet.V.SliderInt(System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Int32], System.Nullable`1[System.Int32], System.Action`1[System.Int32]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Nullable`1[UnityEngine.UIElements.SliderDirection], System.Nullable`1[System.Boolean], System.Nullable`1[System.Int32]): Velvet.ElementNode
 [Velvet] method Velvet.V.Suspense(Velvet.VNode?, Velvet.VNode?[], System.String?): Velvet.SuspenseNode
 [Velvet] method Velvet.V.Text(System.String?): Velvet.TextNode
-[Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[UnityEngine.TouchScreenKeyboardType], System.Nullable`1[System.Boolean]): Velvet.ElementNode
+[Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[UnityEngine.TouchScreenKeyboardType], System.Nullable`1[System.Boolean], System.Action`1[System.String]?, UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyDownEvent]?, UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyUpEvent]?, UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusInEvent]?, UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusOutEvent]?, System.Action`1[UnityEngine.UIElements.VisualElement]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Toggle(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[System.Int32, System.Single], System.Func`2[T, Velvet.VNode], System.Boolean, System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
 [Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[System.Int32, System.Single], System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?, Velvet.Ref`1[Velvet.VirtualListHandle]?): Velvet.VirtualListNode
@@ -855,7 +856,12 @@
 [Velvet] property Velvet.Experimental.VTextField.Label: System.String?
 [Velvet] property Velvet.Experimental.VTextField.MaxLength: System.Nullable`1[System.Int32]
 [Velvet] property Velvet.Experimental.VTextField.Multiline: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VTextField.OnBlur: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusOutEvent]?
 [Velvet] property Velvet.Experimental.VTextField.OnChange: System.Action`1[System.String]?
+[Velvet] property Velvet.Experimental.VTextField.OnFocus: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusInEvent]?
+[Velvet] property Velvet.Experimental.VTextField.OnKeyDown: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyDownEvent]?
+[Velvet] property Velvet.Experimental.VTextField.OnKeyUp: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyUpEvent]?
+[Velvet] property Velvet.Experimental.VTextField.OnSubmit: System.Action`1[System.String]?
 [Velvet] property Velvet.Experimental.VTextField.Placeholder: System.String?
 [Velvet] property Velvet.Experimental.VTextField.Value: System.String?
 [Velvet] property Velvet.Experimental.VToggle.Enabled: System.Nullable`1[System.Boolean]
@@ -918,6 +924,9 @@
 [Velvet] property Velvet.KeyUpBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyUpEvent]?
 [Velvet] property Velvet.MemoNode.Dependencies: System.Object?[]?
 [Velvet] property Velvet.MemoNode.Factory: System.Func`1[Velvet.VNode]
+[Velvet] property Velvet.MotionClock.GameTime: Velvet.MotionClock
+[Velvet] property Velvet.MotionClock.NowSec: System.Double
+[Velvet] property Velvet.MotionClock.Realtime: Velvet.MotionClock
 [Velvet] property Velvet.MotionNode.Animate: System.String?
 [Velvet] property Velvet.MotionNode.Exit: System.String?
 [Velvet] property Velvet.MotionNode.Initial: System.String?
@@ -927,6 +936,7 @@
 [Velvet] property Velvet.MotionNode.Variants: System.Collections.Generic.IReadOnlyDictionary`2[System.String, Velvet.MotionVariant]?
 [Velvet] property Velvet.MotionVariant.ClassName: System.String?
 [Velvet] property Velvet.MotionVariant.Transition: Velvet.StyleTransitionConfig?
+[Velvet] property Velvet.MountOptions.MotionClock: Velvet.MotionClock
 [Velvet] property Velvet.MountOptions.OnCaughtError: System.Action`2[System.Exception, Velvet.ErrorInfo]?
 [Velvet] property Velvet.MutableRef`1[T].Current: T
 [Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnError: System.Action`3[System.Exception, TVariables, System.Object?]?
@@ -1246,6 +1256,7 @@
 [Velvet] type Velvet.LoaderMode
 [Velvet] type Velvet.MemoNode
 [Velvet] type Velvet.MemoizeMethodAttribute
+[Velvet] type Velvet.MotionClock
 [Velvet] type Velvet.MotionNode
 [Velvet] type Velvet.MotionVariant
 [Velvet] type Velvet.MountOptions
