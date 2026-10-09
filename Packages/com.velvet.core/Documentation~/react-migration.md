@@ -543,10 +543,11 @@ is released as above.
 | `<button onClick={e => e.preventDefault()}>` | `new ClickedEventBinding { Handler = e => e.PreventDefault() }` in `events:` |
 | `<Link to="/a" onClick={fn}>` | `V.Link("/a", events: new FiberEventBinding[] { new ClickedEventBinding { Handler = fn } })` |
 
-Every `V.*` factory that returns an element node (`ElementNode` or `MotionNode`) takes an `events:`
-array, the way every host element takes every event prop in React: `V.Div`, `V.Custom<T>`, `V.Label`,
-`V.Image`, the controls, `V.ScrollView`, `V.ListView`, `V.SceneView`, `V.Particles`, `V.Anchored`,
-`V.FocusScope`, `V.DndContext`, `V.Draggable`, `V.Droppable` and `V.Motion`.
+Every `V.*` factory that returns an element node (`ElementNode` or `MotionNode`), other than the
+class-and-children shorthands below, takes an `events:` array, the way every host element takes every
+event prop in React: `V.Div`, `V.Custom<T>`, `V.Label`, `V.Image`, the controls, `V.ScrollView`,
+`V.ListView`, `V.SceneView`, `V.Particles`, `V.Anchored`, `V.FocusScope`, `V.DndContext`, `V.Draggable`,
+`V.Droppable` and `V.Motion`.
 `ElementFactoryEventsInventoryTests` finds these factories by their return type, so one added later is
 held to the parameter too. The class-and-children shorthands of `V.Div`, `V.Custom<T>`, `V.ScrollView` and
 `V.Button` have a sibling taking the array between the two, as in `V.Div("p-4", events, child)`. A call that

@@ -11,8 +11,8 @@ namespace Velvet.Tests
     /// caller's bindings both fire, its own first, unless they are one delegate, which fires once, and a
     /// later render replaces or removes what an earlier one bound. It also reads <c>V.VirtualList</c>'s array
     /// on the list's ScrollView, and the one click a button's <see cref="ClickedEventBinding"/>s share.
-    /// <see cref="ElementFactoryEventsInventoryTests"/> holds every factory returning an element node to
-    /// carrying the array; these read what a mounted element does with it.
+    /// <see cref="ElementFactoryEventsInventoryTests"/> holds the factories returning an element node to
+    /// the rule; these read what a mounted element does with it.
     /// </summary>
     [TestFixture]
     internal sealed class ElementFactoryEventsTests

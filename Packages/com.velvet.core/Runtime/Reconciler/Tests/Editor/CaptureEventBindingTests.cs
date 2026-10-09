@@ -13,7 +13,8 @@ namespace Velvet.Tests
     /// own included; one delegate bound in both phases runs in both; a render that moves a handler between
     /// phases rebinds it; and a logical ancestor of a portal's call site captures ahead of the portal's
     /// content and bubbles after it, in the order of the logical chain where one portal renders into
-    /// another's content.
+    /// another's content, and once however many bridges the content's physical path crosses or how many
+    /// targets share one.
     /// </summary>
     [TestFixture]
     internal sealed class CaptureEventBindingTests : PanelTestBase
@@ -35,6 +36,7 @@ namespace Velvet.Tests
             s_setContainer = default;
             s_setMoveBindings = default;
             s_setRender = default;
+            s_scrollView = null;
             RuntimeStateProbe.ClearPortalRegistry();
             _portalTarget = new VisualElement();
             _window.rootVisualElement.Add(_portalTarget);
@@ -376,6 +378,181 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("L<,C2<,B<,C1<,A<"));
+        }
+
+        // Two portals declared side by side under Q: the first renders into the registered target, and the
+        // second into an element that is not a Velvet node, put inside the first portal's content. The second
+        // portal's content crosses both bridges on its physical path, while its logical chain runs through
+        // B and Q only — A, the first portal's call site, is no ancestor of it.
+        private VisualElement MountPortalIntoASiblingPortalsContent(bool capture, bool bubble)
+        {
+            var host = new VisualElement();
+            _window.rootVisualElement.Add(host);
+            var inner = new VisualElement();
+            _mounted = V.Mount(host, V.Div(events: Logged("Q", capture, bubble), children: new VNode[]
+            {
+                V.Div(events: Logged("A", capture, bubble), children: new VNode[]
+                {
+                    V.Portal(PortalTargetId, children: new VNode[] { V.Div(name: "C1") }),
+                }),
+                V.Div(events: Logged("B", capture, bubble), children: new VNode[]
+                {
+                    V.Portal(inner, children: new VNode[]
+                    {
+                        V.Div(events: Logged("C2", capture, bubble), children: new VNode[]
+                        {
+                            V.Div(name: "L", events: Logged("L", capture, bubble)),
+                        }),
+                    }),
+                }),
+            }));
+            _portalTarget.Q<VisualElement>("C1").Add(inner);
+            return inner.Q<VisualElement>("L");
+        }
+
+        [Test]
+        public void Given_APortalRenderingIntoASiblingPortalsContent_When_APointerDownReachesItsContent_Then_CaptureRunsItsLogicalChainOnce()
+        {
+            // Arrange
+            var target = MountPortalIntoASiblingPortalsContent(capture: true, bubble: false);
+
+            // Act
+            Dispatch(target);
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("Q>,B>,C2>,L>"));
+        }
+
+        [Test]
+        public void Given_APortalRenderingIntoASiblingPortalsContent_When_APointerDownReachesItsContent_Then_BubbleRunsItsLogicalChainOnce()
+        {
+            // Arrange
+            var target = MountPortalIntoASiblingPortalsContent(capture: false, bubble: true);
+
+            // Act
+            Dispatch(target);
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("L<,C2<,B<,Q<"));
+        }
+
+        private static ScrollView s_scrollView;
+
+        // One portal into a ScrollView and one into its contentContainer: both targets resolve to the
+        // ScrollView as their anchor.
+        [Component]
+        private static VNode PortalsIntoAScrollViewAndItsContent()
+        {
+            var (show, setShow) = Hooks.UseState(true);
+            s_showPortal = setShow;
+            return V.Div(children: new VNode[]
+            {
+                show ? V.Portal(s_scrollView, children: new VNode[] { V.Div(name: "first") }) : null,
+                V.Portal(s_scrollView.contentContainer, children: new VNode[] { V.Div(name: "content") }),
+            });
+        }
+
+        [Test]
+        public void Given_TwoPortalsWhoseTargetsShareAnAnchor_When_APointerDownReachesOnesContent_Then_TheCapturingAncestorRunsOnce()
+        {
+            // Arrange
+            s_scrollView = new ScrollView();
+            _window.rootVisualElement.Add(s_scrollView);
+            MountCaptureAroundPortal(Log("ancestor", true), V.Component(PortalsIntoAScrollViewAndItsContent));
+
+            // Act
+            Dispatch(s_scrollView.Q<VisualElement>("content"));
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("ancestor"));
+        }
+
+        [Test]
+        public void Given_TwoPortalsWhoseTargetsShareAnAnchor_When_OneUnmountsAndAPointerDownReachesTheOthersContent_Then_TheAncestorStillCaptures()
+        {
+            // Arrange
+            s_scrollView = new ScrollView();
+            _window.rootVisualElement.Add(s_scrollView);
+            MountCaptureAroundPortal(Log("ancestor", true), V.Component(PortalsIntoAScrollViewAndItsContent));
+            s_showPortal.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Act
+            Dispatch(s_scrollView.Q<VisualElement>("content"));
+
+            // Assert — the first portal's content is folded in, so a portal that never unmounted cannot pass.
+            Assert.That(
+                (s_scrollView.Q<VisualElement>("first") == null, string.Join(",", s_log)),
+                Is.EqualTo((true, "ancestor")));
+        }
+
+        [Component]
+        private static VNode StoppingCallSiteInsideItsTarget()
+        {
+            var (container, setContainer) = Hooks.UseState<VisualElement>(null);
+            var (show, setShow) = Hooks.UseState(true);
+            s_setContainer = setContainer;
+            s_showPortal = setShow;
+            return V.Div(
+                events: Logged("Z", capture: false, bubble: true),
+                refCallback: element =>
+                {
+                    s_setContainer.Invoke(element);
+                    return () => { };
+                },
+                children: new VNode[]
+                {
+                    V.Div(name: "plain"),
+                    V.Div(
+                        events: new FiberEventBinding[]
+                        {
+                            new PointerDownBinding
+                            {
+                                Handler = evt =>
+                                {
+                                    s_log.Add("B<");
+                                    evt.StopPropagation();
+                                },
+                            },
+                        },
+                        children: new VNode[]
+                        {
+                            container == null || !show ? null : V.Portal(container, children: new VNode[] { V.Div(name: "L") }),
+                        }),
+                });
+        }
+
+        [Test]
+        public void Given_ACallSiteThatStoppedABubbleAtItsTarget_When_APointerDownReachesAnotherChild_Then_TheTargetBubbles()
+        {
+            // Arrange — the second dispatch carries no segment through the bridge that answered the first.
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(StoppingCallSiteInsideItsTarget));
+            _mounted.FlushStateForTest();
+            Dispatch(_window.rootVisualElement.Q<VisualElement>("L"));
+
+            // Act
+            Dispatch(_window.rootVisualElement.Q<VisualElement>("plain"));
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("B<,Z<"));
+        }
+
+        [Test]
+        public void Given_ACallSiteThatStoppedABubbleAtItsTarget_When_ThePortalUnmountsAndAPointerDownReachesAnotherChild_Then_TheTargetBubbles()
+        {
+            // Arrange — the second dispatch can take the pooled event the first gave back, which a prelude
+            // left behind on the target would answer from the first dispatch's stop.
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(StoppingCallSiteInsideItsTarget));
+            _mounted.FlushStateForTest();
+            Dispatch(_window.rootVisualElement.Q<VisualElement>("L"));
+            s_showPortal.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Act
+            Dispatch(_window.rootVisualElement.Q<VisualElement>("plain"));
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("B<,Z<"));
         }
 
         private static StateUpdater<VisualElement> s_setContainer;

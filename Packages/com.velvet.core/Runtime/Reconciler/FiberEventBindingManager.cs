@@ -30,39 +30,57 @@ namespace Velvet
             public ClickedEvent Current = new();
         }
 
-        // What a portal bridge carries in bubble at its anchor, run ahead of the anchor's own bubble
-        // bindings: the logical ancestors it adds sit below the anchor in React's return path. A prelude
-        // answers whether one of them stopped propagation, which keeps the anchor's own from running.
-        private readonly Dictionary<VisualElement, Func<EventBase, bool>> _bubblePreludes = new();
+        // The portal bridges FiberCrossPanelEventDispatcher.AttachBridge put on their anchors, one per anchor
+        // however many targets resolve to it, each held until the last of them releases it.
+        private readonly Dictionary<VisualElement, PortalBridge> _bridges = new();
 
-        // What moves a bridge's capture listeners behind the anchor's own capture bindings once those are
-        // registered again.
-        private readonly Dictionary<VisualElement, Action> _rebound = new();
-
-        internal void SetBridge(VisualElement element, Func<EventBase, bool> bubblePrelude, Action rebound)
+        private sealed class PortalBridge
         {
-            _bubblePreludes[element] = bubblePrelude;
-            _rebound[element] = rebound;
+            // Run ahead of the anchor's own bubble bindings, since the logical ancestors the bridge adds sit
+            // below the anchor in React's return path; answers whether one of them stopped propagation,
+            // which keeps the anchor's own from running.
+            public Func<EventBase, bool> BubblePrelude = null!;
+
+            // Moves the bridge's capture listeners behind the anchor's own capture bindings once those are
+            // registered again.
+            public Action Rebound = null!;
+
+            public Action Detach = null!;
+            public int Holds = 1;
         }
 
-        internal void ClearBridge(VisualElement element)
+        // Answers whether anchor already carries a bridge, taking one more hold on it where it does.
+        internal bool HoldBridge(VisualElement anchor)
         {
-            // MUTANT_SURVIVES(equivalent): a bridge detaches once no portal is left on its target, so an
-            // entry left behind carries no segment, and the next bridge on the element replaces it.
-            _bubblePreludes.Remove(element);
-            _rebound.Remove(element);
+            if (!_bridges.TryGetValue(anchor, out var bridge)) return false;
+            bridge.Holds++;
+            return true;
         }
+
+        internal void SetBridge(VisualElement anchor, Func<EventBase, bool> bubblePrelude, Action rebound, Action detach) =>
+            _bridges[anchor] = new PortalBridge { BubblePrelude = bubblePrelude, Rebound = rebound, Detach = detach };
+
+        internal void ReleaseBridge(VisualElement anchor)
+        {
+            var bridge = _bridges[anchor];
+            bridge.Holds--;
+            if (bridge.Holds > 0) return;
+            _bridges.Remove(anchor);
+            bridge.Detach();
+        }
+
+        internal bool IsBridgeAnchor(VisualElement element) => _bridges.ContainsKey(element);
 
         // Called once an element's bindings were registered again after UnbindAll.
         internal void Rebound(VisualElement element)
         {
-            if (_rebound.TryGetValue(element, out var rebound)) rebound();
+            if (_bridges.TryGetValue(element, out var bridge)) bridge.Rebound();
         }
 
         private bool StoppedByBubblePrelude(VisualElement element, EventBase evt)
         {
-            if (!_bubblePreludes.TryGetValue(element, out var prelude)) return false;
-            return prelude(evt);
+            if (!_bridges.TryGetValue(element, out var bridge)) return false;
+            return bridge.BubblePrelude(evt);
         }
 
         // The owning context's batch scheduler. Used to flush the immediate batch synchronously at the end of a
@@ -283,24 +301,15 @@ namespace Velvet
             _bindingsByElement.Clear();
         }
 
-        // Invoked by FiberCrossPanelEventDispatcher (see that class for the full walk algorithm) when a
-        // native event that already finished bubbling within its own panel needs to continue toward the
-        // logical ancestor chain OUTSIDE that panel — a portal/world-space host panel has no physical
-        // ancestor beyond its own root, so nothing native can carry the event further from there.
-        // Resolves element's own binding matching evt's runtime type and invokes its raw Handler
-        // directly, bypassing UI Toolkit's dispatcher entirely: native RegisterCallback<T> plumbing
-        // never runs here, since element may not even share a panel with evt's original target.
-        // This form invokes the element as the event's target, where capture bindings run first.
-        internal void TryInvokeSynthetic(VisualElement element, EventBase evt)
-        {
-            TryInvokeSynthetic(element, evt, capture: true);
-            TryInvokeSynthetic(element, evt, capture: false);
-        }
-
-        // The phase form a walk over ancestors takes: the capture walk runs only capture bindings, and the
-        // bubble walk every other binding. Returns true when a matching pointer, key, focus or geometry
-        // binding was invoked (informational only; the caller's walk continues regardless — a miss here
-        // does not stop propagation up the logical chain).
+        // Invoked by FiberCrossPanelEventDispatcher (see that class for the walks) for an element no native
+        // dispatch reaches: a logical ancestor off the event target's physical path, or an element the layer
+        // router picked and its logical ancestors. Resolves element's own binding matching evt's
+        // runtime type and invokes its raw Handler directly, bypassing UI Toolkit's dispatcher entirely:
+        // native RegisterCallback<T> plumbing never runs here, since element may not even share a panel
+        // with evt's original target. A capture walk runs only capture bindings, and a bubble walk every
+        // other binding. Returns true when a matching pointer, key, focus or geometry binding was invoked
+        // (informational only; the caller's walk continues regardless — a miss here does not stop
+        // propagation up the logical chain).
         internal bool TryInvokeSynthetic(VisualElement element, EventBase evt, bool capture)
         {
             if (element == null || evt == null || !_bindingsByElement.TryGetValue(element, out var bindings))
@@ -468,8 +477,6 @@ namespace Velvet
 
         // Registers a discrete user-input callback, bracketing each invocation with RunDiscrete so
         // hook updates it triggers take the Urgent lane and flush synchronously at the handler's end.
-        // Used for the discrete events (pointer down/up, key down/up, focus/blur); continuous events
-        // (pointer move/enter/leave, wheel, geometry) keep the plain BindCallback<T>.
         private void BindDiscreteCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler,
             bool capture)
             where T : EventBase<T>, new()

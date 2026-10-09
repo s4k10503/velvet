@@ -89,7 +89,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this element.</returns>
         public static ElementNode Div(
             string? className = null,
@@ -146,7 +146,7 @@ namespace Velvet
         /// <paramref name="events"/> and variadic <c>children</c>, building a <c>div</c> element.
         /// </summary>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Div(string className, FiberEventBinding[] events, params VNode?[] children) =>
@@ -170,7 +170,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this element.</returns>
         public static ElementNode Custom<T>(
             string? className = null,
@@ -228,7 +228,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Concrete VisualElement subclass to instantiate.</typeparam>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Custom<T>(string className, FiberEventBinding[] events, params VNode?[] children)
@@ -254,7 +254,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing the ScrollView.</returns>
         public static ElementNode ScrollView(
             string? className = null,
@@ -323,7 +323,7 @@ namespace Velvet
         /// <paramref name="events"/> and variadic <c>children</c>, building a <c>ScrollView</c> element.
         /// </summary>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode ScrollView(string className, FiberEventBinding[] events, params VNode?[] children) =>
@@ -426,7 +426,7 @@ namespace Velvet
         /// <paramref name="events"/> and variadic <c>children</c>, building a <c>Button</c>.
         /// </summary>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Button(string className, FiberEventBinding[] events, params VNode?[] children) =>
@@ -445,7 +445,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this label.</returns>
         public static ElementNode Label(
             string? className = null,
@@ -757,7 +757,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this image.</returns>
         public static ElementNode Image(
             string? className = null,
@@ -813,7 +813,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this scene view.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="resolutionScale"/> is &lt;= 0 or NaN.</exception>
         public static ElementNode SceneView(
@@ -879,7 +879,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this particles element.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="pixelsPerUnit"/> is not positive,
         /// or when <paramref name="playOn"/> names no member of <see cref="PlayTrigger"/>.</exception>
@@ -1010,7 +1010,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this list view.</returns>
         public static ElementNode ListView(
             string? className = null,
@@ -1939,7 +1939,7 @@ namespace Velvet
         /// never touches <c>style.scale</c>, so it composes with a <c>scale-*</c> class or a Motion scale
         /// variant on the same element; a non-null value OWNS that style slot every tick instead and will
         /// fight either of those for it. Must be positive when supplied.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="distanceFactor"/> is &lt;= 0, NaN, or positive infinity.</exception>
         public static ElementNode Anchored(
@@ -2011,7 +2011,7 @@ namespace Velvet
         /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
         /// <param name="orientation">With <paramref name="singleTabStop"/>, the axis arrow/dpad moves travel;
         /// a move on the other axis is ignored. Not read without <paramref name="singleTabStop"/>.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode FocusScope(
             string? className = null,
@@ -2073,7 +2073,7 @@ namespace Velvet
         /// <param name="collisionDetection">Collision strategy; null means
         /// <see cref="DndCollisions.RectIntersection"/>.</param>
         /// <param name="activation">Scope-wide activation default; a per-draggable override wins.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode DndContext(
             Action<DragStartArgs>? onDragStart = null,
@@ -2134,7 +2134,7 @@ namespace Velvet
         /// zero-re-render isDragging channel.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="movement"/> names no member of
         /// <see cref="DragMovement"/>.</exception>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Draggable(
             string id,
@@ -2195,7 +2195,7 @@ namespace Velvet
         /// <param name="whileOverClass">Classes applied while this target is the winning collision.</param>
         /// <param name="whileDragActiveClass">Classes applied to every enabled candidate while any drag
         /// is live in scope.</param>
-        /// <param name="events">Event bindings applied to the element, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Droppable(
             string id,
@@ -2541,7 +2541,7 @@ namespace Velvet
         /// <param name="className">Utility classes for the list.</param>
         /// <param name="name">The list element's name.</param>
         /// <param name="listRef">Receives the mounted list's handle.</param>
-        /// <param name="events">Event bindings applied to the list's ScrollView, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         public static VirtualListNode VirtualList<T>(
             IReadOnlyList<T> items,
             Func<T, string> keySelector,
@@ -2581,7 +2581,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
-        /// <param name="events">Event bindings applied to the list's ScrollView, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
         /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
@@ -2627,7 +2627,7 @@ namespace Velvet
         /// <param name="className">Utility classes for the list.</param>
         /// <param name="name">The list element's name.</param>
         /// <param name="listRef">Receives the mounted list's handle.</param>
-        /// <param name="events">Event bindings applied to the list's ScrollView, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         public static VirtualListNode VirtualList<T>(
             IReadOnlyList<T> items,
             Func<T, string> keySelector,
@@ -2657,7 +2657,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
-        /// <param name="events">Event bindings applied to the list's ScrollView, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
         /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>

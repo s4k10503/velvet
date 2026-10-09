@@ -113,6 +113,19 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_AContentCaptureThatStopsPropagation_When_ARoutedPointerDownHitsTheContent_Then_ItsOwnBubbleHandlerDoesNotRun()
+        {
+            // Arrange
+            s_stopAt = "content>";
+
+            // Act
+            yield return MountAndPress();
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("outer>,content>"));
+        }
+
+        [UnityTest]
         public IEnumerator Given_AContentHandlerThatStopsPropagation_When_ARoutedPointerDownHitsTheContent_Then_TheAncestorDoesNotBubble()
         {
             // Arrange

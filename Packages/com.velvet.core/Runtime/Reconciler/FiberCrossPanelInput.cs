@@ -27,21 +27,17 @@ namespace Velvet
     // found) — see those for the rest of the mechanism this file builds on.
 
     // Bridges a native UI Toolkit event crossing a Portal/WorldSpace boundary to the logical ancestor
-    // chain OUTSIDE that boundary. AttachBridge is called from two different kinds of place,
-    // distinguished by whether the returned unbind Action matters:
+    // chain OUTSIDE that boundary. AttachBridge is called from two different kinds of place:
     //   - PanelHostFactory.CreateLayerHost/CreateWorldSpaceHost, ONCE per framework-owned host panel,
     //     on that host's rootVisualElement. A host panel has no physical parent for native bubbling to
     //     continue into (a wholly separate Panel/PanelSettings/UIDocument), so this is the only way
-    //     further bubbling can happen at all. The unbind Action is discarded here: the host root is
-    //     destroyed wholesale with its GameObject (PanelHostFactory.Destroy), taking the callbacks
-    //     with it.
+    //     further bubbling can happen at all. The returned Action is invoked by PanelHostFactory.Destroy.
     //   - ChildReconciler's same-panel drain branch, ONCE per resolved target of a V.Portal(targetId:)
     //     or V.Portal(target:) (see ReconcilerContext.SamePanelPortalBridges). A same-panel target DOES
     //     have a physical parent chain that keeps bubbling on its own, but that chain reflects the
     //     target's OWN position, not the Portal's LOGICAL one, so this bridge still needs to run to
-    //     reach the latter. The unbind Action is retained and invoked when the last Portal on that
-    //     target unmounts, or at Reconciler.Dispose: a same-panel target is an ordinary element the
-    //     app or the tree owns, not a framework-owned host root destroyed wholesale.
+    //     reach the latter. The returned Action is invoked when the last Portal on that target
+    //     unmounts, or at Reconciler.Dispose.
     //
     // Ordinary same-panel bubbling stays UI Toolkit's own native dispatch (FiberEventBindingManager.Bind's
     // direct RegisterCallback<T> registrations on each element), which agrees with the logical tree
@@ -108,11 +104,13 @@ namespace Velvet
         // Registers the listeners above on bridgeAnchor — either a newly created host panel's root (called
         // once, from PanelHostFactory) or a resolved same-panel target (once per target, from
         // ReconcilerContext.BindPortalTarget, which owns the attach-once guard and which element it listens
-        // on). Returns the delegate that undoes every registration, for a caller that needs to detach it
-        // later (see the class comment above); a caller that never needs to (a framework-owned host root,
-        // destroyed wholesale) is free to discard it.
+        // on). Returns the delegate that releases this hold on the anchor.
         internal static System.Action AttachBridge(VisualElement bridgeAnchor, ReconcilerContext ctx)
         {
+            System.Action release = () => ctx.EventManager.ReleaseBridge(bridgeAnchor);
+            // Two targets can share an anchor — a ScrollView and its contentContainer — and a second set of
+            // listeners there would carry each ancestor twice, so a later hold shares the first one's.
+            if (ctx.EventManager.HoldBridge(bridgeAnchor)) return release;
             var bridge = new Bridge(bridgeAnchor, ctx);
             var registrations = new Registrations();
             foreach (var listen in Listeners) listen(bridgeAnchor, bridge, registrations);
@@ -122,20 +120,17 @@ namespace Velvet
             ctx.EventManager.SetBridge(bridgeAnchor, bridge.RunBubble, () =>
             {
                 foreach (var retrickle in registrations.Retrickle) retrickle();
-            });
-
-            return () =>
+            }, () =>
             {
-                ctx.EventManager.ClearBridge(bridgeAnchor);
                 foreach (var unregister in registrations.Undo) unregister();
-            };
+            });
+            return release;
         }
 
-        // One anchor's share of a dispatch. Each anchor on the target's physical path carries the logical
-        // ancestors that sit between the portal content below it and the point where the logical chain
-        // rejoins the physical path, so every anchor on the path adds its own segment at the place native
-        // dispatch reaches it, and the segments of nested portals interleave with the physical elements the
-        // way the logical chain does.
+        // One anchor's share of a dispatch. The target's logical chain is walked once, and where it leaves
+        // the target's physical path, the ancestors up to where it rejoins belong to the nearest anchor
+        // physically above the element it left from. Each anchor runs only those that belong to it, so an
+        // ancestor runs once however many anchors the physical path crosses.
         private sealed class Bridge
         {
             private readonly VisualElement _anchor;
@@ -159,8 +154,14 @@ namespace Velvet
             {
                 _bubbled = null;
                 var target = evt.target as VisualElement;
-                var start = SegmentStart(target);
-                if (start != null) CaptureChain(start, target, evt, _ctx);
+                Owned(target, -1, out var count);
+                // MUTANT_SURVIVES(equivalent, arithmetic): an index past the last names no ancestor, and
+                // TryInvokeSynthetic invokes nothing for a null element.
+                for (var index = count - 1; index >= 0; index--)
+                {
+                    if (evt.isPropagationStopped) return;
+                    _ctx.EventManager.TryInvokeSynthetic(Owned(target, index, out _)!, evt, capture: true);
+                }
             }
 
             public void Bubble(EventBase evt) => RunBubble(evt);
@@ -171,82 +172,70 @@ namespace Velvet
                 if (ReferenceEquals(_bubbled, evt)) return _stopped;
                 _bubbled = evt;
                 var target = evt.target as VisualElement;
-                _stopped = BubbleChain(SegmentStart(target), target, evt, _ctx);
+                _stopped = false;
+                for (var index = 0; !_stopped; index++)
+                {
+                    var ancestor = Owned(target, index, out _);
+                    if (ancestor == null) break;
+                    _ctx.EventManager.TryInvokeSynthetic(ancestor, evt, capture: false);
+                    _stopped = evt.isPropagationStopped;
+                }
                 return _stopped;
             }
 
-            // The innermost logical ancestor this anchor carries: the logical parent, off the target's physical
-            // path, of the element nearest the anchor whose logical parent leaves that path. What lies below
-            // another anchor on the path is that anchor's to carry.
-            private VisualElement? SegmentStart(VisualElement? target)
+            // The wanted-th logical ancestor of target, innermost first, that belongs to this anchor, and how
+            // many belong to it. Walked again for each one, which keeps a dispatch from allocating.
+            private VisualElement? Owned(VisualElement? target, int wanted, out int count)
             {
-                VisualElement? start = null;
-                for (var element = target; !ReferenceEquals(element, _anchor); element = element.hierarchy.parent)
+                count = 0;
+                VisualElement? found = null;
+                VisualElement? owner = null;
+                for (var current = target; current != null;)
                 {
-                    // MUTANT_SURVIVES(unreachable, guard removed): a listener on the anchor, and the prelude its
-                    // own bindings call, run only for a target at or below the anchor.
-                    if (element == null) return null;
-                    if (IsOtherAnchor(element)) start = null;
-                    var logical = LogicalParent(element, _ctx);
-                    if (OffPath(logical, target)) start = logical;
+                    var next = LogicalParent(current, _ctx);
+                    if (OffPath(next, target))
+                    {
+                        if (IsPhysicalAncestorOrSelf(current, target)) owner = AnchorAbove(current);
+                        if (ReferenceEquals(owner, _anchor) && count++ == wanted) found = next;
+                    }
+                    current = next;
                 }
-                return start;
+                return found;
             }
 
-            private bool IsOtherAnchor(VisualElement element)
+            private VisualElement? AnchorAbove(VisualElement element)
             {
-                foreach (var bridge in _ctx.SamePanelPortalBridges.Values)
-                {
-                    if (ReferenceEquals(bridge.Anchor, element)) return !ReferenceEquals(element, _anchor);
-                }
-                return false;
+                var anchor = element.hierarchy.parent;
+                while (anchor != null && !_ctx.EventManager.IsBridgeAnchor(anchor)) anchor = anchor.hierarchy.parent;
+                return anchor;
             }
         }
 
         // A pointer event the layer router took from the main panel reaches no native dispatch in the host
-        // panel, so every logical ancestor of the element it picked is run here: capture outermost first, the
-        // element itself, then bubble innermost first.
+        // panel, so the element it picked and every logical ancestor of it are run here: capture outermost
+        // first down to the element, then bubble from the element up.
         internal static void DispatchRerouted(VisualElement hit, EventBase evt, ReconcilerContext ctx)
         {
-            var parent = LogicalParent(hit, ctx);
-            if (parent != null) CaptureChain(parent, null, evt, ctx);
-            if (evt.isPropagationStopped) return;
-            ctx.EventManager.TryInvokeSynthetic(hit, evt);
-            if (evt.isPropagationStopped) return;
-            BubbleChain(parent, null, evt, ctx);
+            var depth = 0;
+            for (var ancestor = LogicalParent(hit, ctx); ancestor != null; ancestor = LogicalParent(ancestor, ctx)) depth++;
+            for (var level = depth; level >= 0; level--)
+            {
+                if (evt.isPropagationStopped) return;
+                var element = hit;
+                for (var step = 0; step < level; step++) element = LogicalParent(element, ctx)!;
+                ctx.EventManager.TryInvokeSynthetic(element, evt, capture: true);
+            }
+            for (VisualElement? element = hit; element != null; element = LogicalParent(element, ctx))
+            {
+                if (evt.isPropagationStopped) return;
+                ctx.EventManager.TryInvokeSynthetic(element, evt, capture: false);
+            }
         }
 
         // Whether a logical ancestor is one native dispatch does not reach: there is one, and it is not on
-        // the physical path of target, where a null target is a dispatch with no physical path at all.
+        // target's physical path.
         private static bool OffPath(VisualElement? logical, VisualElement? target) =>
             logical != null && !IsPhysicalAncestorOrSelf(logical, target);
-
-        // The chain from start up to where it rejoins target's physical path, outermost first. It is counted
-        // and then walked from start for each depth, which keeps a dispatch through an anchor from
-        // allocating.
-        private static void CaptureChain(VisualElement start, VisualElement? target, EventBase evt, ReconcilerContext ctx)
-        {
-            var length = 0;
-            for (var current = start; OffPath(current, target); current = LogicalParent(current!, ctx)) length++;
-            for (var depth = length - 1; depth >= 0; depth--)
-            {
-                if (evt.isPropagationStopped) return;
-                var ancestor = start;
-                for (var step = 0; step < depth; step++) ancestor = LogicalParent(ancestor, ctx)!;
-                ctx.EventManager.TryInvokeSynthetic(ancestor, evt, capture: true);
-            }
-        }
-
-        // The same chain innermost first; answers whether one of its handlers stopped propagation.
-        private static bool BubbleChain(VisualElement? start, VisualElement? target, EventBase evt, ReconcilerContext ctx)
-        {
-            for (var current = start; OffPath(current, target); current = LogicalParent(current!, ctx))
-            {
-                ctx.EventManager.TryInvokeSynthetic(current!, evt, capture: false);
-                if (evt.isPropagationStopped) return true;
-            }
-            return false;
-        }
 
         private static bool IsPhysicalAncestorOrSelf(VisualElement candidate, VisualElement? target)
         {

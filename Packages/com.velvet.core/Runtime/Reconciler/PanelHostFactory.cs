@@ -23,6 +23,10 @@ namespace Velvet
         public float BaseOrder;
         public bool DeclaringResolved;
 
+        // Lets go of the hold the host's root takes on FiberCrossPanelEventDispatcher's listeners, which
+        // the event manager keeps for as long as its reconciler lives.
+        public System.Action? ReleaseBridge;
+
         public GameObject? Host => Document != null ? Document.gameObject : null;
         public PanelSettings? Settings => Document != null ? Document.panelSettings : null;
 
@@ -87,7 +91,7 @@ namespace Velvet
             settings.sortingOrder = baseOrder + offset;
             AttachDocument(record.Document, settings);
             RecordDeclaringRoot(record, declaringPanel);
-            FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
+            record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
             FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
             return record;
         }
@@ -105,7 +109,7 @@ namespace Velvet
             record.Document.transform.SetPositionAndRotation(node.Position, node.Rotation);
             AttachDocument(record.Document, settings);
             RecordDeclaringRoot(record, declaringPanel);
-            FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
+            record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
             FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
             // The document derives its root sizing from (settings, size mode, size) but only
             // re-derives on a VALUE change, and the attach itself never re-runs it — so both size
@@ -349,6 +353,7 @@ namespace Velvet
         // partially dead record (scene unload) still releases the rest.
         public static void Destroy(PanelHostRecord record)
         {
+            record.ReleaseBridge?.Invoke();
             var settings = record.Settings;
             var host = record.Host;
             if (host != null)
