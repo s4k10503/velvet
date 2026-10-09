@@ -278,6 +278,12 @@ namespace Velvet
             }
             fiber.QueuedReset = QueuedErrorBoundaryReset.None;
             fiber.CaughtError = null;
+            // The children mount afresh, as React's do after a reset: what a Suspense among them kept offscreen,
+            // and the fallback recorded for it against this fiber, are not carried into the reset render.
+            var context = fiber.Reconciler?.Context;
+            if (context == null) return;
+            context.ComponentRegistry.DisposeOffscreenInlineChildren(fiber);
+            context.PruneSuspenseBoundaryState(fiber);
         }
 
         // A throw out of the handler would escape the commit delivering the report.
