@@ -2080,9 +2080,8 @@ namespace Velvet
         {
             var fiber = Resolve(nameof(UseErrorBoundary));
             var boundary = fiber.Parent;
-            while (boundary != null && !(boundary.IsErrorBoundary && !boundary.IsFrameworkErrorBoundary))
+            for (; boundary != null && !(boundary.IsErrorBoundary && !boundary.IsFrameworkErrorBoundary); boundary = boundary.Parent)
             {
-                boundary = boundary.Parent;
             }
             if (boundary == null)
             {
