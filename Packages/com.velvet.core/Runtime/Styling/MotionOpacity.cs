@@ -132,7 +132,8 @@ namespace Velvet
 
         // Stops the crossfade. The slot is handed back to the element's own inline opacity, or to its classes, and
         // the transitions with it, once the element's own opacity has landed.
-        public static void End(VisualElement element)
+        // clock: the mount's, on which the tail carries the element's own opacity once the crossfade has ended.
+        public static void End(VisualElement element, MotionClock? clock = null)
         {
             if (!s_drawing.TryGetValue(element, out var drawing)) return;
             drawing.Fade = LayoutIdFade.None;
@@ -142,7 +143,10 @@ namespace Velvet
                 return;
             }
             Apply(element, drawing);
-            drawing.Tail ??= element.schedule.Execute(state => StepTail(element, drawing, state.deltaTime / 1000f))
+            if (drawing.Tail != null) return;
+            clock ??= MotionClock.Realtime;
+            var lastSec = clock.NowSec;
+            drawing.Tail = element.schedule.Execute(state => StepTail(element, drawing, clock.StepSince(ref lastSec, state)))
                 .Every(StyleAnimateDriver.TickMs);
         }
 

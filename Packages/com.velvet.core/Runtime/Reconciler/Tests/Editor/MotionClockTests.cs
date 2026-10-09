@@ -8,8 +8,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins <see cref="MotionClock"/>: a mount's motion advances by the clock it chooses — the plays of every
-    /// transition type, a Tween's included — so a clock that holds still holds it while the panel keeps ticking,
-    /// and a clock stepped by one frame moves it by one frame.
+    /// transition type, a Tween's included, and <c>layoutId</c> moves — so a clock that holds still holds it while
+    /// the panel keeps ticking, and a clock stepped by one frame moves it by one frame.
     /// </summary>
     [TestFixture]
     internal sealed class MotionClockTests : MotionSimulatedPanelTestsBase
@@ -803,6 +803,80 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(opacities, Is.EqualTo(new[] { 0f, (float)FrameSec }).Within(1e-5f));
+        }
+
+        // --- layoutId ---
+
+        private static StateUpdater<bool> s_setMoved;
+
+        [Component]
+        private static VNode MovingBox()
+        {
+            var (moved, setMoved) = Hooks.UseState(false);
+            s_setMoved = setMoved;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "box", layoutId: "box", transition: s_linearTween,
+                    className: moved
+                        ? "absolute left-[64px] top-[0px] w-[100px] h-[100px]"
+                        : "absolute left-[0px] top-[0px] w-[100px] h-[100px]"),
+            });
+        }
+
+        // The move is 64px over a linear second, so the inverse translate starts at -64 and closes a pixel a frame.
+        [Test]
+        public void Given_ALayoutIdMoveOnAHeldClock_When_ThePanelTicksAndThenTheClockStepsAFrame_Then_ItMovesOnlyThatFrame()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            using var mounted = V.Mount(Root, V.Component(MovingBox, key: "root"), new MountOptions { MotionClock = clock });
+            Tick();
+            var element = Root.Q<VisualElement>("box");
+            s_setMoved.Invoke(true);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Act
+            HeldTicks(10);
+            var held = element.style.translate.value.x.value;
+            Step(clock, FrameSec);
+
+            // Assert
+            Assert.That(new[] { held, element.style.translate.value.x.value },
+                Is.EqualTo(new[] { -64f, -63f }).Within(1e-3f));
+        }
+
+        // --- the clock a filter-* transition reads off the element it starts on ---
+
+        [Test]
+        public void Given_AnElementUnderAnAncestorAMountRecorded_When_ItsClockIsAskedFor_Then_ItIsTheAncestors()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var ancestor = new VisualElement();
+            var element = new VisualElement();
+            ancestor.Add(element);
+            MotionClock.Record(ancestor, clock);
+
+            // Act
+            var asked = MotionClock.Of(element);
+
+            // Assert
+            Assert.That(asked, Is.SameAs(clock));
+        }
+
+        [Test]
+        public void Given_AnElementAMountOnAHeldClockRecorded_When_ThePoolResetsIt_Then_ItAnswersWithTheDefaultClock()
+        {
+            // Arrange
+            var element = new VisualElement();
+            MotionClock.Record(element, new HeldMotionClock());
+
+            // Act
+            FiberElementPoolReset.ResetCommonState(element);
+
+            // Assert
+            Assert.That(MotionClock.Of(element), Is.SameAs(MotionClock.Realtime));
         }
     }
 }

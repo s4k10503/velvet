@@ -1,4 +1,5 @@
 #nullable enable
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -7,8 +8,10 @@ namespace Velvet
     /// <summary>
     /// The time source a mounted tree's motion advances on, chosen per mount through
     /// <see cref="MountOptions.MotionClock"/>: every <see cref="StyleTransitionConfig"/> play whatever its
-    /// <see cref="StyleTransitionConfig.Type"/>, its <see cref="StyleTransitionConfig.DelaySec"/> included, and the
-    /// <c>animate-*</c> loops. <c>Documentation~/motion.md</c> owns the full scope.
+    /// <see cref="StyleTransitionConfig.Type"/>, its <see cref="StyleTransitionConfig.DelaySec"/> included, a
+    /// <c>layoutId</c> move, a <c>filter-*</c> transition, the <c>animate-*</c> loops, and the delta
+    /// <see cref="Hooks.UseFrame(System.Action{float}, int)"/> hands its callback.
+    /// <c>Documentation~/motion.md</c> owns the full scope.
     /// </summary>
     /// <remarks>
     /// Derive from this class for a clock the application controls itself — one a frame-step capture advances by
@@ -19,9 +22,10 @@ namespace Velvet
     {
         /// <summary>
         /// The default, and the behaviour a tree mounted without a clock has: a <see cref="TransitionType.Tween"/>
-        /// runs on UI Toolkit's own transitions, a spring or bezier play advances with the panel scheduler's own time,
-        /// and an <c>animate-*</c> loop with <c>Time.realtimeSinceStartupAsDouble</c>, which is what
-        /// <see cref="NowSec"/> reads.
+        /// runs on UI Toolkit's own transitions, the motion Velvet drives itself and
+        /// <see cref="Hooks.UseFrame(System.Action{float}, int)"/> advance with the panel scheduler's own time, and an
+        /// <c>animate-*</c> loop and a <c>filter-*</c> transition with <c>Time.realtimeSinceStartupAsDouble</c>,
+        /// which is what <see cref="NowSec"/> reads.
         /// </summary>
         public static MotionClock Realtime { get; } = new RealtimeClock();
 
@@ -57,6 +61,47 @@ namespace Velvet
             var dt = (float)(now - lastSec);
             lastSec = now;
             return dt;
+        }
+
+        // The clock of the mount that created an element, for the motion that starts on it from code holding no
+        // mount: a filter-* transition starts in the arbitrary-value resolver, which a hover manipulator runs too.
+        // An element no mount recorded answers with the nearest recorded ancestor, and Realtime past the root.
+        private static readonly ConditionalWeakTable<VisualElement, MotionClock> s_recorded = new();
+        // Set by the first record on any other clock: until then every answer is Realtime, and a record is skipped.
+        private static bool s_anyRecorded;
+
+        internal static void Record(VisualElement element, MotionClock clock)
+        {
+            if (!s_anyRecorded && clock.StepsOnPanelTime)
+            {
+                return;
+            }
+            s_anyRecorded = true;
+            s_recorded.AddOrUpdate(element, clock);
+        }
+
+        internal static void Forget(VisualElement element)
+        {
+            if (s_anyRecorded)
+            {
+                s_recorded.Remove(element);
+            }
+        }
+
+        internal static MotionClock Of(VisualElement element)
+        {
+            if (!s_anyRecorded)
+            {
+                return Realtime;
+            }
+            for (var current = element; current != null; current = current.hierarchy.parent)
+            {
+                if (s_recorded.TryGetValue(current, out var clock))
+                {
+                    return clock;
+                }
+            }
+            return Realtime;
         }
 
         private sealed class RealtimeClock : MotionClock

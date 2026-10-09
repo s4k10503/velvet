@@ -1850,5 +1850,86 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region Group F — on a mount's MotionClock
+
+        private const double ClockFrameSec = HeldMotionClock.FrameSec;
+
+        // A blur tween to 12 over a linear second on a mount whose clock holds still, its transition list given here.
+        private VisualElement BlurTweenOnHeldClock(HeldMotionClock clock, params string[] transitionProperties)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card", className: "transition-filter"),
+                new MountOptions { MotionClock = clock });
+            var element = _window.rootVisualElement.Q<VisualElement>("card");
+            ForcePanelUpdate(element.panel);
+            SetInlineTransition(element, transitionProperties, new[] { new TimeValue(1f) }, new[] { new TimeValue(0f) });
+            ApplyBlur(element, 12f);
+            return element;
+        }
+
+        // Ticks the panel a 16 ms frame at a time, which the clock does not follow.
+        private void PanelFrames(IPanel panel, int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                _now += 0.016;
+                EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+            }
+        }
+
+        private static float InlineBlur(VisualElement element) => element.style.filter.value[0].GetParameter(0).floatValue;
+
+        [Test]
+        public void Given_AFilterTweenOnAHeldClock_When_ThePanelTicksAndThenTheClockStepsAFrame_Then_ItMovesOnlyThatFrame()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = BlurTweenOnHeldClock(clock, "filter");
+
+            // Act
+            PanelFrames(element.panel, 10);
+            var held = InlineBlur(element);
+            clock.Now += ClockFrameSec;
+            PanelFrames(element.panel, 1);
+
+            // Assert
+            Assert.That(new[] { held, InlineBlur(element) }, Is.EqualTo(new[] { 0f, (float)(12 * ClockFrameSec) }).Within(1e-5f));
+        }
+
+        // The list names background-size on filter's timing, which on the panel's time leaves the write to the engine.
+        [Test]
+        public void Given_AFilterChangeTheEngineWouldTimeOnAHeldClock_When_TheClockStepsAFrame_Then_TheTweenMovesItThatFrame()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = BlurTweenOnHeldClock(clock, "filter", "background-size");
+
+            // Act
+            PanelFrames(element.panel, 10);
+            clock.Now += ClockFrameSec;
+            PanelFrames(element.panel, 1);
+
+            // Assert
+            Assert.That(InlineBlur(element), Is.EqualTo((float)(12 * ClockFrameSec)).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AFilterTweenTheEngineWouldTimeOnAHeldClock_When_ItSettles_Then_NoEngineTransitionFollows()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = BlurTweenOnHeldClock(clock, "filter", "background-size");
+            PanelFrames(element.panel, 1);
+            clock.Now += 2.0;
+
+            // Act — the tick settles, and the panel paints half a second on.
+            PanelFrames(element.panel, 1);
+            AdvanceAndPaint(element.panel, 0.5);
+
+            // Assert — landed. Written for the engine to animate, it would be half way from the start frame's 0.
+            Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
+        }
+
+        #endregion
     }
 }

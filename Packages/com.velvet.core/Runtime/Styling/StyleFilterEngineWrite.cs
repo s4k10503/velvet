@@ -7,7 +7,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Writes the filter utilities' composed list and the tween's frames. Where the engine's animation of a write
-    // takes filter's own timing (StyleFilterTransitionDriver.EngineTimesFilterWrites), the write is left to animate,
+    // takes filter's own timing (StyleFilterTransitionDriver.EngineTimesFilterWrites) on a mount whose MotionClock
+    // is the panel's, the write is left to animate,
     // but UI Toolkit's inline-filter setter pads a function one side lacks from that function's declared default,
     // which for contrast is 0 where CSS's identity is 1 (FilterTransitionPanelTests' straight-write contrast case
     // pins the engine's 0). So the side lacking functions at the end of the list is handed them at the neutral
@@ -70,7 +71,9 @@ namespace Velvet
                 WriteSuspended(element, to);
                 return;
             }
-            if (StyleFilterTransitionDriver.EngineTimesFilterWrites(element))
+            // The engine animates a write on the panel's time, which a mount on another clock does not follow, so
+            // there the write lands at once like one no transition runs for.
+            if (StyleFilterTransitionDriver.EngineTimesFilterWrites(element) && MotionClock.Of(element).StepsOnPanelTime)
             {
                 var painted = element.resolvedStyle.filter?.ToList() ?? new List<FilterFunction>();
                 var toCount = to?.Count ?? 0;

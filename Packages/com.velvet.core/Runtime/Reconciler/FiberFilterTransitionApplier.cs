@@ -17,6 +17,8 @@ namespace Velvet
 
         internal void ApplyFilterTransitionOnCreate(VisualElement element, string[] classNames)
         {
+            // Whatever its classes, since a tween starts wherever the resolved lists run filter, not only under this one.
+            MotionClock.Record(element, _ctx.StyleAnimationScheduler.Clock);
             if (!HasFilterTransitionClass(classNames))
             {
                 return;
