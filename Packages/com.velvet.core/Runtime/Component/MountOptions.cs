@@ -20,7 +20,7 @@ namespace Velvet
     public sealed record MountOptions(Action<Exception, ErrorInfo>? OnCaughtError = null)
     {
         /// <summary>
-        /// The clock this tree's spring, bezier and <c>animate-*</c> motion advances on, from its first render on.
+        /// The clock this tree's motion advances on, from its first render on.
         /// <see cref="Velvet.MotionClock.Realtime"/> by default; <see cref="Velvet.MotionClock.GameTime"/> or a
         /// clock of the application's own keeps that motion in step with game time. See <see cref="Velvet.MotionClock"/>.
         /// </summary>
