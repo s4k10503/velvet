@@ -26,8 +26,9 @@ namespace Velvet.Tests
     /// on its first render, and refetches only once the result is as old as the stale time or the entry was
     /// invalidated. A result landing between a reader's render and its subscription re-renders it.</item>
     /// <item>An entry nothing reads is removed once it has gone unread for the longest garbage-collection time
-    /// a query asked for, by the next sweep — an invalidation or a subscription — and removing it cancels its
-    /// request. An entry something reads again, or still reads, is not removed, and a new entry for a key
+    /// a query asked for, by the next sweep — an invalidation or a subscription — unless a request is still in
+    /// flight for it: then it stays, and readable, until the first gcTime after the request settles, a gcTime
+    /// of zero included. An entry something reads again, or still reads, is not removed, and a new entry for a key
     /// whose old entry was removed is not swept with it. An expired entry reads as absent before the sweep,
     /// and a reader mounting over it subscribes to a new entry, while one left by a reader in the commit that
     /// brings the next reader is handed over, whatever its gcTime — a keyed remount, and StrictMode's extra
@@ -629,7 +630,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnUnreadEntryWithARequestInFlight_When_ItIsRemoved_Then_TheRequestIsCancelled()
+        public void Given_AnUnreadEntryWithARequestInFlight_When_ASweepRunsPastItsGcTime_Then_TheRequestIsNotCancelled()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
@@ -641,8 +642,93 @@ namespace Velvet.Tests
             s_client.InvalidateQueries(Unrelated);
 
             // Assert
-            Assert.That(s_tokens[0].IsCancellationRequested, Is.True,
-                "Removing an entry cancels the request it still had in flight");
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.False,
+                "An entry still fetching is not removed, as v5's optionalRemove reschedules the removal instead");
+        }
+
+        [Test]
+        public void Given_AnUnreadEntryWithARequestInFlight_When_ItIsReadPastItsGcTime_Then_ItIsStillThere()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+
+            // Act
+            s_now = GcTime;
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry, Is.Not.Null, "An entry fetching does not read as expired");
+        }
+
+        [Test]
+        public void Given_AnUnreadEntryWhoseRequestLandedPastItsGcTime_When_ReadBeforeTheNextGcTime_Then_ItHoldsTheData()
+        {
+            // Arrange — unread from three minutes, so its gcTimes fall at eight and thirteen, and the request
+            // lands at nine.
+            using var mounted = MountUnreadAtThreeMinutesWhileFetching();
+            s_now = TimeSpan.FromMinutes(9);
+            s_sources[0].TrySetResult(7);
+
+            // Act
+            s_now = TimeSpan.FromMinutes(13) - TimeSpan.FromTicks(1);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry?.Data, Is.EqualTo(7),
+                "The removal tried while the request was in flight is put off to the next gcTime, as v5's timer is");
+        }
+
+        // GREEN_ON_BASE(characterization): the base has collected the entry since its first gcTime; this case pins that the deadline put off by a request in flight is the next gcTime, not a later one or none.
+        [Test]
+        public void Given_AnUnreadEntryWhoseRequestLandedPastItsGcTime_When_TheNextGcTimeComes_Then_ItIsCollected()
+        {
+            // Arrange
+            using var mounted = MountUnreadAtThreeMinutesWhileFetching();
+            s_now = TimeSpan.FromMinutes(9);
+            s_sources[0].TrySetResult(7);
+
+            // Act
+            s_now = TimeSpan.FromMinutes(13);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry, Is.Null, "Once the request has settled, the next gcTime removes the entry");
+        }
+
+        [Test]
+        public void Given_AnUnreadEntryWhoseRequestLandsExactlyAtItsGcTime_When_ReadAMinuteLater_Then_ItHoldsTheData()
+        {
+            // Arrange
+            using var mounted = MountUnreadAtThreeMinutesWhileFetching();
+            s_now = TimeSpan.FromMinutes(8);
+            s_sources[0].TrySetResult(7);
+
+            // Act
+            s_now = TimeSpan.FromMinutes(9);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry?.Data, Is.EqualTo(7), "A request in flight at the gcTime itself puts the removal off");
+        }
+
+        // GREEN_ON_BASE(characterization): with a gcTime of zero the base reads the entry as expired at once too; this case pins that putting the removal off divides by no gcTime of zero.
+        [Test]
+        public void Given_AZeroGcTimeAndARequestInFlight_When_ItLandsAfterTheReaderLeft_Then_TheEntryIsCollected()
+        {
+            // Arrange
+            s_client = NewClient(TimeSpan.Zero);
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+            s_now = TimeSpan.FromSeconds(1);
+
+            // Act
+            s_sources[0].TrySetResult(7);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos), Is.Null, "With a gcTime of zero the entry goes as soon as its request settles");
         }
 
         [Test]
@@ -775,6 +861,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(Pager, key: "pager"));
             mounted.FlushEffectsForTest();
             TurnPage(mounted);
+            s_sources[0].TrySetResult(1);
 
             // Act
             s_now = GcTime;
@@ -1217,6 +1304,15 @@ namespace Velvet.Tests
             s_now = GcTime;
             s_rendersA.Clear();
             s_rendersB.Clear();
+            return mounted;
+        }
+
+        private MountedTree MountUnreadAtThreeMinutesWhileFetching()
+        {
+            var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            s_now = TimeSpan.FromMinutes(3);
+            Hide(mounted);
             return mounted;
         }
 

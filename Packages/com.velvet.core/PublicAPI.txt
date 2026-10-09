@@ -213,6 +213,9 @@
 [Velvet] field Velvet.QueryProperties.IsSuccess: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.None: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.Status: Velvet.QueryProperties
+[Velvet] field Velvet.QueryRefetchMode.Always: Velvet.QueryRefetchMode
+[Velvet] field Velvet.QueryRefetchMode.IfStale: Velvet.QueryRefetchMode
+[Velvet] field Velvet.QueryRefetchMode.Never: Velvet.QueryRefetchMode
 [Velvet] field Velvet.QueryStatus.Error: Velvet.QueryStatus
 [Velvet] field Velvet.QueryStatus.Pending: Velvet.QueryStatus
 [Velvet] field Velvet.QueryStatus.Success: Velvet.QueryStatus
@@ -954,6 +957,8 @@
 [Velvet] property Velvet.NavigationState.FormMethod: System.String?
 [Velvet] property Velvet.NavigationState.Location: Velvet.RouterLocation?
 [Velvet] property Velvet.NavigationState.State: Velvet.NavigationLifecycle
+[Velvet] property Velvet.NetworkSignals.IsOnline: System.Func`1[System.Boolean]?
+[Velvet] property Velvet.NetworkSignals.IsVisible: System.Func`1[System.Boolean]?
 [Velvet] property Velvet.ParticlesSettings.Effect: UnityEngine.ParticleSystem?
 [Velvet] property Velvet.ParticlesSettings.PixelsPerUnit: System.Single
 [Velvet] property Velvet.ParticlesSettings.PlayOn: Velvet.PlayTrigger
@@ -973,11 +978,15 @@
 [Velvet] property Velvet.PortalNode.TargetElement: UnityEngine.UIElements.VisualElement?
 [Velvet] property Velvet.PortalNode.TargetId: System.String?
 [Velvet] property Velvet.QueryClient.DefaultGcTime: System.TimeSpan
+[Velvet] property Velvet.QueryClient.DefaultRefetchOnReconnect: Velvet.QueryRefetchMode
+[Velvet] property Velvet.QueryClient.DefaultRefetchOnWindowFocus: Velvet.QueryRefetchMode
 [Velvet] property Velvet.QueryClient.DefaultRetry: System.Int32
 [Velvet] property Velvet.QueryClient.DefaultRetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]
 [Velvet] property Velvet.QueryClient.DefaultStaleTime: System.TimeSpan
 [Velvet] property Velvet.QueryClientOptions.Clock: System.Func`1[System.TimeSpan]?
 [Velvet] property Velvet.QueryClientOptions.GcTime: System.TimeSpan
+[Velvet] property Velvet.QueryClientOptions.RefetchOnReconnect: Velvet.QueryRefetchMode
+[Velvet] property Velvet.QueryClientOptions.RefetchOnWindowFocus: Velvet.QueryRefetchMode
 [Velvet] property Velvet.QueryClientOptions.Retry: System.Int32
 [Velvet] property Velvet.QueryClientOptions.RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
 [Velvet] property Velvet.QueryClientOptions.StaleTime: System.TimeSpan
@@ -987,6 +996,10 @@
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].PlaceholderData: System.Func`3[TQueryFnData?, Velvet.QueryKey?, Velvet.QueryPlaceholder`1[TQueryFnData]]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].QueryFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[TQueryFnData]]
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].QueryKey: Velvet.QueryKey
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RefetchInterval: System.Nullable`1[System.TimeSpan]
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RefetchIntervalInBackground: System.Boolean
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RefetchOnReconnect: System.Nullable`1[Velvet.QueryRefetchMode]
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RefetchOnWindowFocus: System.Nullable`1[Velvet.QueryRefetchMode]
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].Retry: System.Nullable`1[System.Int32]
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].Select: System.Func`2[TQueryFnData, TData]?
@@ -1252,6 +1265,7 @@
 [Velvet] type Velvet.NavigationMode
 [Velvet] type Velvet.NavigationResult
 [Velvet] type Velvet.NavigationState
+[Velvet] type Velvet.NetworkSignals
 [Velvet] type Velvet.NullStoreLogger
 [Velvet] type Velvet.PanelFocusOrder
 [Velvet] type Velvet.ParticlesElement
@@ -1272,6 +1286,7 @@
 [Velvet] type Velvet.QueryPlaceholder
 [Velvet] type Velvet.QueryPlaceholder`1[T]
 [Velvet] type Velvet.QueryProperties
+[Velvet] type Velvet.QueryRefetchMode
 [Velvet] type Velvet.QueryResult`1[T]
 [Velvet] type Velvet.QueryStatus
 [Velvet] type Velvet.Ref`1[T]

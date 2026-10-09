@@ -215,6 +215,9 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `enabled` | `new QueryOptions<T>(...) { Enabled = ... }` |
 | `select: (data) => ...` | `new QueryOptions<TQueryFnData, TData>(...) { Select = data => ... }` |
 | `placeholderData: keepPreviousData` / `(previousData, previousQuery) => ...` | `new QueryOptions<T>(...) { PlaceholderData = QueryPlaceholder.KeepPreviousData }` / `(previousData, previousKey) => ...` |
+| `refetchInterval` / `refetchIntervalInBackground` as a number and a boolean | `new QueryOptions<T>(...) { RefetchInterval = ..., RefetchIntervalInBackground = ... }` |
+| `refetchOnWindowFocus` / `refetchOnReconnect` as `false` / `true` / `'always'` | `RefetchOnWindowFocus` / `RefetchOnReconnect` = `QueryRefetchMode.Never` / `IfStale` / `Always`, on one query or on `QueryClientOptions` |
+| `focusManager` / `onlineManager` | `NetworkSignals.IsVisible` / `IsOnline` |
 | `retry` / `retryDelay` as a number and a function | `new QueryOptions<T>(...) { Retry = ..., RetryDelay = ... }`, or `QueryClientOptions.Retry` / `RetryDelay` for every query |
 | `structuralSharing` as a function | `new QueryOptions<T>(...) { StructuralSharing = (held, arrived) => ... }` |
 | `notifyOnChangeProps: ['data']` / `'all'` | `new QueryOptions<T>(...) { NotifyOnChangeProps = QueryProperties.Data }` / `QueryProperties.All` |
@@ -284,8 +287,8 @@ throws fails the request.
 and a result the old key's request delivers afterwards is never shown as the new key's. A key with
 nothing cached renders `Pending`, or the placeholder below.
 
-**Turning a query off.** `Enabled = false` fetches nothing on its own: not on mount and not when its key
-is invalidated. It reports `IsStale` false and, with nothing cached, `Pending` without `IsFetching`;
+**Turning a query off.** `Enabled = false` fetches nothing on its own: not on mount, not when its key is
+invalidated, not on an interval, focus or reconnect. It reports `IsStale` false and, with nothing cached, `Pending` without `IsFetching`;
 `Refetch` still fetches. Turning it on fetches when the entry's data is stale, joining a request in
 flight, and the render that turns it on already reports the fetch. Invalidating an entry read by a
 disabled and an enabled query fetches it with the enabled one's function.
@@ -316,6 +319,21 @@ var page = Hooks.UseQuery(new QueryOptions<Todo[]>(new QueryKey("todos", pageInd
 // page.Data is the previous page, with page.IsPlaceholderData true, until this page lands.
 ```
 
+**Fetching again on its own.** `RefetchInterval` fetches an enabled query again each time the interval
+has passed on the client's `Clock` since its entry last changed — a request starting, landing or failing
+starts it over — or since the interval last came round, whether or not the data is stale, and joins a
+request in flight. A render that changes neither the interval nor `Enabled` leaves it running. By default
+it waits while the application is not visible, and a tick it skipped is not made up when the application
+is shown; `RefetchIntervalInBackground` fetches anyway. When the application becomes visible after being
+hidden, or the device comes back online, a mounted query fetches again under `RefetchOnWindowFocus` /
+`RefetchOnReconnect`: `IfStale`, the default, when its data is stale, `Always` whatever its age, `Never`
+not at all; set them on one query or for every query on `QueryClientOptions`. That refetch joins a request
+in flight. `NetworkSignals` holds both readings: online is `Application.internetReachability`, and the
+application counts as visible unless it is a mobile application that has lost focus.
+`NetworkSignals.IsVisible` / `IsOnline` replace them, for a desktop application that reads its window's
+state, or one whose server `internetReachability` does not describe. A reading that throws is logged and
+counted as visible or online.
+
 **Reading and writing the cache by hand.** `GetQueryData` returns an entry's data, default when it has
 none or has expired unread. `SetQueryData` writes data as a request landing would: the entry is `Success`
 with no error, its data is fresh from that moment, shared structurally with what it held, and clears an
@@ -343,7 +361,8 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 
 - Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
   absent from then on, and is removed the next time a query subscribes to the client, `InvalidateQueries`
-  runs or `SetQueryData` writes; removing it cancels the request it still has in flight.
+  runs or `SetQueryData` writes. As in v5, an entry with a request in flight is kept, and readable, until
+  the first `GcTime` after the request settles.
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
   share one request; v5's result arrives a microtask later.
@@ -351,7 +370,7 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
   the equal properties of a changed plain object: such an instance is kept or replaced whole, because
   Velvet does not rebuild one.
 - The `CancellationToken` a query function receives is cancelled when a refetch starts that request
-  over, when the entry is removed, and by `Clear`. v5 also aborts a request whose function read its
+  over, and by `Clear`. v5 also aborts a request whose function read its
   signal once the last observer unsubscribes; here it runs on, so a component mounting again finds its
   result. The same holds for the extra cleanup and setup StrictMode runs on a mounting component's
   effects: the second subscription joins the first one's request, where v5 cancels and refetches a request
@@ -361,9 +380,11 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 - A `StructuralSharing` function is typed for the query function's data, so with a `Select` that changes
   the type the selected data is not passed through it; the default sharing still applies when none is set.
 - The placeholder function is handed the previous entry's key rather than v5's query object.
+- A client with a mounted query reads `NetworkSignals` once a frame, and a reading that turns true since its
+  previous one stands for the event v5's managers listen to. A change that comes and goes within one frame
+  is not seen.
 - Not yet available: `retry` as a function or `true`, retries that pause while the application is
-  unfocused or offline (`networkMode`), `refetchInterval`, `refetchOnWindowFocus` and
-  `refetchOnReconnect`.
+  unfocused or offline (`networkMode`).
 
 ### 1-3. State Management (React + Zustand)
 

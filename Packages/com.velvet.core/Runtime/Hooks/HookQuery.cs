@@ -57,6 +57,21 @@ namespace Velvet
     }
 
     /// <summary>
+    /// Whether a query fetches again when the application becomes visible or the device comes back online:
+    /// TanStack Query's <c>refetchOnWindowFocus</c> and <c>refetchOnReconnect</c> given as <c>false</c>,
+    /// <c>true</c> or <c>'always'</c>.
+    /// </summary>
+    public enum QueryRefetchMode
+    {
+        /// <summary>Never, TanStack Query's <c>false</c>.</summary>
+        Never,
+        /// <summary>When its data is stale, TanStack Query's <c>true</c>.</summary>
+        IfStale,
+        /// <summary>Whether or not its data is stale, TanStack Query's <c>'always'</c>.</summary>
+        Always,
+    }
+
+    /// <summary>
     /// Data a query shows while it has none of its own, or nothing: what
     /// <see cref="QueryOptions{TQueryFnData, TData}.PlaceholderData"/> returns, where TanStack Query's function
     /// returns the data or <c>undefined</c>. A value converts to it implicitly, and a null value is no data.
@@ -99,8 +114,9 @@ namespace Velvet
     /// <summary>
     /// Options passed to <see cref="Hooks.UseQuery{TQueryFnData, TData}"/>: TanStack Query's
     /// <c>{ queryKey, queryFn }</c> with its <c>enabled</c>, <c>select</c>, <c>placeholderData</c>,
-    /// <c>staleTime</c>, <c>gcTime</c>, <c>retry</c>, <c>retryDelay</c>, <c>structuralSharing</c> and
-    /// <c>notifyOnChangeProps</c>. <see cref="QueryOptions{T}"/> is the form without a <see cref="Select"/> that
+    /// <c>staleTime</c>, <c>gcTime</c>, <c>refetchInterval</c>, <c>refetchIntervalInBackground</c>,
+    /// <c>refetchOnWindowFocus</c>, <c>refetchOnReconnect</c>, <c>retry</c>, <c>retryDelay</c>,
+    /// <c>structuralSharing</c> and <c>notifyOnChangeProps</c>. <see cref="QueryOptions{T}"/> is the form without a <see cref="Select"/> that
     /// changes the data's type.
     /// </summary>
     /// <typeparam name="TQueryFnData">What the query function returns and the entry holds.</typeparam>
@@ -108,7 +124,7 @@ namespace Velvet
     /// data unless <see cref="Select"/> turns it into something else.</typeparam>
     /// <param name="QueryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
     /// <param name="QueryFn">Fetches the entry's data. The token is cancelled when a refetch starts over this
-    /// request and when the entry is removed, by garbage collection or <see cref="QueryClient.Clear"/>.</param>
+    /// request and when <see cref="QueryClient.Clear"/> removes the entry.</param>
     public record QueryOptions<TQueryFnData, TData>(
         QueryKey QueryKey, Func<CancellationToken, VelvetTask<TQueryFnData>> QueryFn)
     {
@@ -174,6 +190,34 @@ namespace Velvet
         /// is the value form.
         /// </summary>
         public Func<TQueryFnData?, QueryKey?, QueryPlaceholder<TQueryFnData>>? PlaceholderData { get; init; }
+
+        /// <summary>
+        /// TanStack Query's <c>refetchInterval</c> given as a number: an enabled query fetches again each time
+        /// this much has passed on the client's clock since its entry last changed — a request starting,
+        /// landing or failing — or since the interval last came round, whether or not its data is stale,
+        /// joining a request already in flight. The wait is checked once a frame. Null, zero or less, or <see cref="TimeSpan.MaxValue"/> fetches on no
+        /// interval.
+        /// </summary>
+        public TimeSpan? RefetchInterval { get; init; }
+
+        /// <summary>
+        /// TanStack Query's <c>refetchIntervalInBackground</c>: true lets <see cref="RefetchInterval"/> fetch
+        /// while the application is not visible, as <see cref="NetworkSignals"/> reads it; by default it waits.
+        /// </summary>
+        public bool RefetchIntervalInBackground { get; init; }
+
+        /// <summary>
+        /// Overrides <see cref="QueryClient.DefaultRefetchOnWindowFocus"/> for this query: whether an enabled
+        /// query fetches again when the application becomes visible, TanStack Query's
+        /// <c>refetchOnWindowFocus</c>.
+        /// </summary>
+        public QueryRefetchMode? RefetchOnWindowFocus { get; init; }
+
+        /// <summary>
+        /// Overrides <see cref="QueryClient.DefaultRefetchOnReconnect"/> for this query: whether an enabled query
+        /// fetches again when the device comes back online, TanStack Query's <c>refetchOnReconnect</c>.
+        /// </summary>
+        public QueryRefetchMode? RefetchOnReconnect { get; init; }
     }
 
     /// <summary>
@@ -311,6 +355,12 @@ namespace Velvet
                 options.GcTime ?? client.DefaultGcTime, nameof(QueryOptions<TQueryFnData, TData>.GcTime));
             Enabled = options.Enabled;
             Placeholder = options.PlaceholderData;
+            RefetchOnWindowFocus = options.RefetchOnWindowFocus ?? client.DefaultRefetchOnWindowFocus;
+            RefetchOnReconnect = options.RefetchOnReconnect ?? client.DefaultRefetchOnReconnect;
+            // v5's isValidTimeout and its zero check: anything else sets no interval.
+            var every = options.RefetchInterval ?? TimeSpan.Zero;
+            // MUTANT_SURVIVES(equivalent, clause removed): a wait of TimeSpan.MaxValue on the client's clock never ends, so it fetches nothing either.
+            RefetchInterval = every > TimeSpan.Zero && every != TimeSpan.MaxValue ? every : null;
         }
 
         internal QueryOptions<TQueryFnData, TData> Options { get; }
@@ -318,6 +368,9 @@ namespace Velvet
         internal TimeSpan GcTime { get; }
         internal bool Enabled { get; }
         internal Func<TQueryFnData?, QueryKey?, QueryPlaceholder<TQueryFnData>>? Placeholder { get; }
+        internal QueryRefetchMode RefetchOnWindowFocus { get; }
+        internal QueryRefetchMode RefetchOnReconnect { get; }
+        internal TimeSpan? RefetchInterval { get; }
         internal Func<TQueryFnData, TData>? Select => Options.Select;
     }
 
@@ -325,10 +378,19 @@ namespace Velvet
     // when it starts, so a rewrite reaches only the requests after it.
     internal sealed class QueryFetchOptions<T>
     {
-        internal Func<CancellationToken, VelvetTask<T>> QueryFn { get; set; } = null!;
-        internal int MaxRetries { get; set; }
-        internal Func<int, Exception, TimeSpan> RetryDelay { get; set; } = null!;
-        internal Func<T?, T, T>? StructuralSharing { get; set; }
+        internal Func<CancellationToken, VelvetTask<T>> QueryFn { get; private set; } = null!;
+        internal int MaxRetries { get; private set; }
+        internal Func<int, Exception, TimeSpan> RetryDelay { get; private set; } = null!;
+        internal Func<T?, T, T>? StructuralSharing { get; private set; }
+
+        internal QueryFetchOptions<T> Assign<TData>(QueryOptions<T, TData> options, QueryClient client)
+        {
+            QueryFn = options.QueryFn;
+            MaxRetries = options.Retry ?? client.DefaultRetry;
+            RetryDelay = options.RetryDelay ?? client.DefaultRetryDelay;
+            StructuralSharing = options.StructuralSharing;
+            return this;
+        }
     }
 
     // What an entry knows of the observers reading it, whatever the type they read its data as.
@@ -337,6 +399,12 @@ namespace Velvet
         internal QueryFetchOptions<T> FetchOptions { get; } = new();
         internal TimeSpan StaleTime { get; private protected set; }
         internal bool Enabled { get; private protected set; }
+        internal QueryRefetchMode RefetchOnWindowFocus { get; private protected set; }
+        internal QueryRefetchMode RefetchOnReconnect { get; private protected set; }
+
+        // TanStack's shouldFetchOn: an enabled query fetches always, or only over stale data.
+        internal bool ShouldFetchOn(QueryRefetchMode mode, QueryEntry<T> entry)
+            => Enabled && (mode == QueryRefetchMode.Always || (mode == QueryRefetchMode.IfStale && entry.IsStaleFor(StaleTime)));
 
         // TanStack's onQueryUpdate: the entry's state changed.
         internal abstract void OnQueryUpdate();
@@ -370,6 +438,7 @@ namespace Velvet
         internal QueryEntry<TQueryFnData>? Entry { get; private set; }
 
         private QuerySettings<TQueryFnData, TData> _settings;
+        private CancellationTokenSource? _intervalWait;
         private CancellationTokenSource? _staleWait;
         private (TimeSpan UpdatedAt, TimeSpan StaleTime)? _staleFor;
         private QuerySnapshot<TData> _current;
@@ -400,14 +469,14 @@ namespace Velvet
         internal void Sync(QueryClient client, in QuerySettings<TQueryFnData, TData> settings)
         {
             var wasEnabled = Enabled;
+            var interval = _settings.RefetchInterval;
             var options = settings.Options;
             _settings = settings;
             StaleTime = settings.StaleTime;
             Enabled = settings.Enabled;
-            FetchOptions.QueryFn = options.QueryFn;
-            FetchOptions.MaxRetries = options.Retry ?? client.DefaultRetry;
-            FetchOptions.RetryDelay = options.RetryDelay ?? client.DefaultRetryDelay;
-            FetchOptions.StructuralSharing = options.StructuralSharing;
+            RefetchOnWindowFocus = settings.RefetchOnWindowFocus;
+            RefetchOnReconnect = settings.RefetchOnReconnect;
+            FetchOptions.Assign(options, client);
             var key = options.QueryKey;
             var current = Entry;
             if (current != null && !current.IsRemoved && ReferenceEquals(current.Client, client) && current.Key.Equals(key))
@@ -420,6 +489,9 @@ namespace Velvet
                 {
                     current.Fetch(FetchOptions, cancelRefetch: false);
                 }
+                // Over the same entry, v5's setOptions restarts the interval only when the query was turned on or
+                // off or the interval changed, so a re-render does not push the next refetch back.
+                if (wasEnabled != Enabled || interval != settings.RefetchInterval) RestartInterval();
                 ScheduleStale();
                 return;
             }
@@ -433,6 +505,7 @@ namespace Velvet
             entry.Subscribe(this);
             // A change that landed between the render and this subscription was delivered to no one here.
             Update();
+            RestartInterval();
         }
 
 #if UNITY_EDITOR
@@ -460,6 +533,7 @@ namespace Velvet
         private void Unsubscribe()
         {
             CancelStaleWait();
+            CancelInterval();
             var entry = Entry;
             if (entry == null) return;
             Entry = null;
@@ -469,10 +543,64 @@ namespace Velvet
         internal override void OnRemoved()
         {
             CancelStaleWait();
+            // MUTANT_SURVIVES(equivalent, line removed): a removed entry fetches nothing, and the re-render this asks for moves the subscription, whose Unsubscribe cancels the wait.
+            CancelInterval();
             OnChange();
         }
 
-        internal override void OnQueryUpdate() => Update();
+        // TanStack's onQueryUpdate, which updates the result and restarts the timers: the interval is measured
+        // from the entry's latest change.
+        internal override void OnQueryUpdate()
+        {
+            Update();
+            RestartInterval();
+        }
+
+        // TanStack's #updateRefetchInterval. The interval is polled once a frame on the client's clock, as a
+        // retry's wait is, and fires again an interval after it last fired until something restarts it.
+        private void RestartInterval()
+        {
+            CancelInterval();
+            var entry = Entry;
+            var every = _settings.RefetchInterval;
+            // MUTANT_SURVIVES(equivalent, clause removed): every caller has subscribed, and an entry notifies only its own observers, whose leaving runs from effects a hook setter queues rather than runs.
+            if (entry == null || !Enabled || every == null) return;
+            var wait = new CancellationTokenSource();
+            _intervalWait = wait;
+            RunInterval(entry, wait, every.Value).Forget();
+        }
+
+        private async VelvetTask RunInterval(QueryEntry<TQueryFnData> entry, CancellationTokenSource wait, TimeSpan every)
+        {
+            var client = entry.Client;
+            var start = client.Now;
+            while (true)
+            {
+                do
+                {
+                    await VelvetTask.Yield();
+                }
+                while (!wait.IsCancellationRequested && client.Now - start < every);
+                if (wait.IsCancellationRequested) return;
+                start = client.Now;
+                if (_settings.Options.RefetchIntervalInBackground || QueryClientSignals.IsVisible())
+                {
+                    entry.Fetch(FetchOptions, cancelRefetch: false);
+                }
+            }
+        }
+
+        private void CancelInterval() => Cancel(ref _intervalWait);
+
+        private static void Cancel(ref CancellationTokenSource? wait)
+        {
+            var pending = wait;
+            if (pending == null) return;
+            wait = null;
+            pending.Cancel();
+            // MUTANT_SURVIVES(equivalent, line removed): the source carries no timer and its token went only to the observer's own loop, so an undisposed one holds nothing.
+            pending.Dispose();
+        }
 
         // TanStack's updateResult: the entry changed, and the component re-renders if a property it has read
         // is among what differs from the reading its latest render took, or if it has read none.
@@ -533,12 +661,8 @@ namespace Velvet
 
         private void CancelStaleWait()
         {
-            var wait = _staleWait;
-            if (wait == null) return;
-            _staleWait = null;
             _staleFor = null;
-            wait.Cancel();
-            wait.Dispose();
+            Cancel(ref _staleWait);
         }
 
         private bool Notifies(QueryProperties changed)

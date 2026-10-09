@@ -10,7 +10,6 @@ Packages/com.velvet.core/Runtime/Component/V.cs	1
 Packages/com.velvet.core/Runtime/EngineMember.cs	3
 Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs	1
 Packages/com.velvet.core/Runtime/Hooks/Hooks.cs	3
-Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs	1
 Packages/com.velvet.core/Runtime/Hooks/QueryKey.cs	1
 Packages/com.velvet.core/Runtime/Hooks/QueryStructuralSharing.cs	5
 Packages/com.velvet.core/Runtime/Hooks/StateUpdater.cs	1
