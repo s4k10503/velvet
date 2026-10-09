@@ -9,8 +9,10 @@ namespace Velvet.Tests
     /// Pins the <c>events:</c> parameter the element factories take, through a mounted tree: a binding
     /// handed to a factory other than <c>V.Motion</c> reaches its element, a factory's own callback and the
     /// caller's bindings both fire, its own first, unless they are one delegate, which fires once, and a
-    /// later render replaces or removes what an earlier one bound. <see cref="ElementFactoryEventsInventoryTests"/> holds every factory to carrying the
-    /// array; these read what a mounted element does with it.
+    /// later render replaces or removes what an earlier one bound. It also reads <c>V.VirtualList</c>'s array
+    /// on the list's ScrollView, and the one click a button's <see cref="ClickedEventBinding"/>s share.
+    /// <see cref="ElementFactoryEventsInventoryTests"/> holds every factory returning an element node to
+    /// carrying the array; these read what a mounted element does with it.
     /// </summary>
     [TestFixture]
     internal sealed class ElementFactoryEventsTests
@@ -99,6 +101,91 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("click"));
+        }
+
+        [Test]
+        public void Given_TwoClickedEventBindingsTheFirstOfWhichPrevents_When_Clicked_Then_TheSecondSeesThePreventedClick()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Button(name: "button", events: new FiberEventBinding[]
+            {
+                new ClickedEventBinding { Handler = click => click.PreventDefault() },
+                new ClickedEventBinding { Handler = click => s_log.Add(click.DefaultPrevented.ToString()) },
+            }));
+
+            // Act
+            _root.Q<Button>("button").SimulateClick();
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("True"));
+        }
+
+        [Test]
+        public void Given_AClickedEventBindingThatPrevents_When_ClickedTwice_Then_EachClickArrivesUnprevented()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Button(name: "button", events: new FiberEventBinding[]
+            {
+                new ClickedEventBinding
+                {
+                    Handler = click =>
+                    {
+                        s_log.Add(click.DefaultPrevented.ToString());
+                        click.PreventDefault();
+                    },
+                },
+            }));
+            var button = _root.Q<Button>("button");
+
+            // Act
+            button.SimulateClick();
+            button.SimulateClick();
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("False,False"));
+        }
+
+        private static readonly int[] Rows = { 1, 2, 3 };
+
+        private static VNode Row(int row) => V.Label(text: row.ToString());
+
+        [Component]
+        private static VNode SwappingListHandler()
+        {
+            var (phase, setPhase) = Hooks.UseState(0);
+            s_setPhase = setPhase;
+            return V.VirtualList(Rows, row => row.ToString(), 20f, Row, events: new FiberEventBinding[]
+            {
+                new PointerDownBinding { Handler = _ => s_log.Add(phase == 0 ? "first" : "second") },
+            });
+        }
+
+        [Test]
+        public void Given_AVirtualListDeclaringAPointerDownBinding_When_APointerDownReachesItsScrollView_Then_TheHandlerRuns()
+        {
+            // Arrange — a VirtualList is not an element node; its ScrollView is built by the list's own path.
+            using var mounted = V.Mount(_root, V.Component(SwappingListHandler));
+
+            // Act
+            Dispatch(_root.Q<ScrollView>());
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("first"));
+        }
+
+        [Test]
+        public void Given_AVirtualListWhoseHandlerARenderReplaces_When_APointerDownReachesItsScrollView_Then_OnlyTheNewHandlerRuns()
+        {
+            // Arrange — the list patches its ScrollView in place rather than through the element path.
+            using var mounted = V.Mount(_root, V.Component(SwappingListHandler));
+            s_setPhase.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            Dispatch(_root.Q<ScrollView>());
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("second"));
         }
 
         [Component]

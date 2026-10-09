@@ -2479,6 +2479,7 @@ namespace Velvet
         /// <param name="className">Utility classes for the list.</param>
         /// <param name="name">The list element's name.</param>
         /// <param name="listRef">Receives the mounted list's handle.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         public static VirtualListNode VirtualList<T>(
             IReadOnlyList<T> items,
             Func<T, string> keySelector,
@@ -2488,8 +2489,9 @@ namespace Velvet
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null)
-            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
+            Ref<VirtualListHandle>? listRef = null,
+            FiberEventBinding[]? events = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef, events);
 
         /// <summary>
         /// Virtualized list component for rendering large item collections.
@@ -2517,6 +2519,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
         /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
@@ -2531,7 +2534,8 @@ namespace Velvet
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null)
+            Ref<VirtualListHandle>? listRef = null,
+            FiberEventBinding[]? events = null)
         {
             RequireVirtualListArguments(items, keySelector, renderer);
             return new VirtualListNode(
@@ -2546,6 +2550,7 @@ namespace Velvet
                 Key = key,
                 ListRef = listRef,
                 Horizontal = horizontal,
+                Events = events ?? EmptyEvents,
             };
         }
 
@@ -2560,6 +2565,7 @@ namespace Velvet
         /// <param name="className">Utility classes for the list.</param>
         /// <param name="name">The list element's name.</param>
         /// <param name="listRef">Receives the mounted list's handle.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         public static VirtualListNode VirtualList<T>(
             IReadOnlyList<T> items,
             Func<T, string> keySelector,
@@ -2569,13 +2575,14 @@ namespace Velvet
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null)
-            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
+            Ref<VirtualListHandle>? listRef = null,
+            FiberEventBinding[]? events = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef, events);
 
         /// <summary>
         /// Virtualized list whose items each take the height <paramref name="itemHeight"/> gives for their
         /// index — react-window's <c>rowHeight</c> function. Every other parameter is
-        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>'s.
+        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle}, FiberEventBinding[])"/>'s.
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. Must not be null.</param>
@@ -2588,6 +2595,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView, as on every factory returning an element node (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
         /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
@@ -2602,7 +2610,8 @@ namespace Velvet
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null)
+            Ref<VirtualListHandle>? listRef = null,
+            FiberEventBinding[]? events = null)
         {
             RequireVirtualListArguments(items, keySelector, renderer);
             return new VirtualListNode(
@@ -2617,6 +2626,7 @@ namespace Velvet
                 Key = key,
                 ListRef = listRef,
                 Horizontal = horizontal,
+                Events = events ?? EmptyEvents,
             };
         }
 
@@ -2808,6 +2818,9 @@ namespace Velvet
         /// </summary>
         /// <param name="to">Absolute or route-relative navigation target.</param>
         /// <param name="replace">Selects replacement instead of push navigation.</param>
+        /// <param name="events">Event bindings applied to the button, bound ahead of the navigation. A
+        /// <see cref="ClickedEventBinding"/> that calls <see cref="ClickedEvent.PreventDefault"/> keeps the click
+        /// from navigating, as React Router's <c>Link</c> does for an <c>onClick</c> that prevents the default.</param>
         public static ComponentNode Link(
             string to,
             string? text = null,
@@ -2815,12 +2828,13 @@ namespace Velvet
             string? name = null,
             VNode?[]? children = null,
             bool replace = false,
-            string? key = null)
+            string? key = null,
+            FiberEventBinding[]? events = null)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
                 RouteLink.Render,
-                new RouteLink.Props(to, text, className, name, children, replace),
+                new RouteLink.Props(to, text, className, name, children, replace, events),
                 key);
         }
 
@@ -2852,6 +2866,7 @@ namespace Velvet
         /// <param name="end">Restricts active state to an exact path match instead of a segment-prefix match.</param>
         /// <param name="replace">Selects replacement instead of push navigation.</param>
         /// <param name="caseSensitive">Uses ordinal matching instead of the case-insensitive default.</param>
+        /// <param name="events">Event bindings applied to the button, as on <see cref="Link"/>.</param>
         public static ComponentNode NavLink(
             string to,
             string activeClass,
@@ -2862,7 +2877,8 @@ namespace Velvet
             bool end = false,
             bool replace = false,
             bool caseSensitive = false,
-            string? key = null)
+            string? key = null,
+            FiberEventBinding[]? events = null)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
@@ -2878,6 +2894,7 @@ namespace Velvet
                     End = end,
                     Replace = replace,
                     CaseSensitive = caseSensitive,
+                    Events = events,
                 },
                 key);
         }

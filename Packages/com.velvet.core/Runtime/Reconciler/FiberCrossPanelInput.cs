@@ -51,11 +51,12 @@ namespace Velvet
     // return path — a portal's child answers to the position its placeholder holds (see LogicalParent).
     internal static class FiberCrossPanelEventDispatcher
     {
-        // Registers one BubbleUp listener per synthetic-bubbling-eligible event type on bridgeAnchor —
+        // Registers one BubbleUp listener per synthetic-bubbling-eligible event type, and a TrickleDown one
+        // for each event a capture binding answers, on bridgeAnchor —
         // either a newly created host panel's root (called once, from PanelHostFactory) or a resolved
         // same-panel target (once per target, from ReconcilerContext.BindPortalTarget, which owns the
         // attach-once guard and which element it listens on).
-        // Each listener fires only after UI Toolkit's own native dispatch has already bubbled the event
+        // Each BubbleUp listener fires only after UI Toolkit's own native dispatch has already bubbled the event
         // through every element AT OR BELOW bridgeAnchor (BubbleUp is the last phase to run on a given
         // element), so nothing here duplicates a handler UI Toolkit's own dispatcher already invoked at
         // or below that point. Matches the event set FiberEventBindingManager.TryInvokeSynthetic
@@ -95,6 +96,28 @@ namespace Velvet
             // TryInvokeSynthetic has a case for it too: per Unity's own docs it does not bubble or
             // trickle down, only ever dispatching to the element whose own geometry just changed, so a
             // BubbleUp listener on bridgeAnchor could likewise never receive one raised on a descendant.
+            // The capture walk runs as the event trickles through the anchor, ahead of every element below
+            // it; ClickEvent and ChangeEvent are left out because no capture binding answers them.
+            EventCallback<PointerDownEvent> capturePointerDown = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<PointerUpEvent> capturePointerUp = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<PointerMoveEvent> capturePointerMove = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<PointerEnterEvent> capturePointerEnter = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<PointerLeaveEvent> capturePointerLeave = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<WheelEvent> captureWheel = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<KeyDownEvent> captureKeyDown = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<KeyUpEvent> captureKeyUp = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<FocusInEvent> captureFocusIn = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            EventCallback<FocusOutEvent> captureFocusOut = evt => ContinueCapture(evt, evt.target as VisualElement, ctx, bridgeAnchor);
+            bridgeAnchor.RegisterCallback(capturePointerDown, TrickleDown.TrickleDown);
+            bridgeAnchor.RegisterCallback(capturePointerUp, TrickleDown.TrickleDown);
+            bridgeAnchor.RegisterCallback(capturePointerMove, TrickleDown.TrickleDown);
+            bridgeAnchor.RegisterCallback(capturePointerEnter, TrickleDown.TrickleDown);
+            bridgeAnchor.RegisterCallback(capturePointerLeave, TrickleDown.TrickleDown);
+            bridgeAnchor.RegisterCallback(captureWheel, TrickleDown.TrickleDown);
+            bridgeAnchor.RegisterCallback(captureKeyDown, TrickleDown.TrickleDown);
+            bridgeAnchor.RegisterCallback(captureKeyUp, TrickleDown.TrickleDown);
+            bridgeAnchor.RegisterCallback(captureFocusIn, TrickleDown.TrickleDown);
+            bridgeAnchor.RegisterCallback(captureFocusOut, TrickleDown.TrickleDown);
             bridgeAnchor.RegisterCallback(onPointerDown);
             bridgeAnchor.RegisterCallback(onPointerUp);
             bridgeAnchor.RegisterCallback(onPointerMove);
@@ -128,6 +151,16 @@ namespace Velvet
                 bridgeAnchor.UnregisterCallback(onBoolChange);
                 bridgeAnchor.UnregisterCallback(onStringChange);
                 bridgeAnchor.UnregisterCallback(onIntChange);
+                bridgeAnchor.UnregisterCallback(capturePointerDown, TrickleDown.TrickleDown);
+                bridgeAnchor.UnregisterCallback(capturePointerUp, TrickleDown.TrickleDown);
+                bridgeAnchor.UnregisterCallback(capturePointerMove, TrickleDown.TrickleDown);
+                bridgeAnchor.UnregisterCallback(capturePointerEnter, TrickleDown.TrickleDown);
+                bridgeAnchor.UnregisterCallback(capturePointerLeave, TrickleDown.TrickleDown);
+                bridgeAnchor.UnregisterCallback(captureWheel, TrickleDown.TrickleDown);
+                bridgeAnchor.UnregisterCallback(captureKeyDown, TrickleDown.TrickleDown);
+                bridgeAnchor.UnregisterCallback(captureKeyUp, TrickleDown.TrickleDown);
+                bridgeAnchor.UnregisterCallback(captureFocusIn, TrickleDown.TrickleDown);
+                bridgeAnchor.UnregisterCallback(captureFocusOut, TrickleDown.TrickleDown);
             };
         }
 
@@ -144,7 +177,30 @@ namespace Velvet
                 if (evt.isPropagationStopped) break;
                 // Native dispatch reaches the target's physical ancestors itself.
                 if (IsPhysicalAncestorOrSelf(current, target)) continue;
-                ctx.EventManager.TryInvokeSynthetic(current, evt);
+                ctx.EventManager.TryInvokeSynthetic(current, evt, capture: false);
+            }
+        }
+
+        // The capture counterpart of Continue: the same logical ancestors, outermost first, before native
+        // dispatch reaches anything below the anchor. Native dispatch runs the physical ancestors' capture
+        // bindings itself, as it runs their bubble bindings for Continue.
+        private static void ContinueCapture(EventBase evt, VisualElement? target, ReconcilerContext ctx, VisualElement bridgeAnchor)
+        {
+            if (target == null) return;
+            if (HasBridgeBelow(target, bridgeAnchor, ctx)) return;
+
+            List<VisualElement>? chain = null;
+            for (var current = LogicalParent(target, ctx); current != null; current = LogicalParent(current, ctx))
+            {
+                if (IsPhysicalAncestorOrSelf(current, target)) continue;
+                (chain ??= new List<VisualElement>()).Add(current);
+            }
+            if (chain == null) return;
+
+            for (var i = chain.Count - 1; i >= 0; i--)
+            {
+                if (evt.isPropagationStopped) break;
+                ctx.EventManager.TryInvokeSynthetic(chain[i], evt, capture: true);
             }
         }
 

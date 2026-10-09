@@ -86,7 +86,10 @@ The boundary behaves the same in all four forms:
   an element written straight into the portal bubbles the same way. `FocusEvent`/`BlurEvent` do not
   bubble, in a portal or out of one, as the DOM's `focus`/`blur` do not; React's bubbling
   `onFocus`/`onBlur` correspond to `FocusInEvent`/`FocusOutEvent`. See "Cross-panel input routing"
-  below for what this shared mechanism does not cover.
+  below for what this shared mechanism does not cover. A capture binding (`Capture = true`) on a logical
+  ancestor runs before the portal's content does, outermost first, as React's `on…Capture` handlers run
+  ahead of a portal child's; a physical ancestor's runs through native dispatch, as its bubble handler
+  does.
 - **Physical-walk styling does not cross, anywhere.** Relational `group-`/`peer-` variants and
   focus-within variants (`has-[:focus]:`, `group-focus-within:`) resolve against the physical
   tree in every portal form, including `V.Portal(layer:)`/`V.WorldSpace` — they register their

@@ -100,6 +100,7 @@ namespace Velvet
                     if (element is ScrollView scrollView && _ctx.VirtualListControllers.TryGetValue(scrollView, out var controller))
                     {
                         controller.Update(newVirtualList);
+                        RebindEvents(scrollView, newVirtualList.Events);
 
                         // The ScrollView persists across patches, so re-sync its class-driven styling the
                         // same way ElementNode does. DiffClassList (inside the helper) is non-destructive —
@@ -453,11 +454,8 @@ namespace Velvet
             }
         }
 
-        // Shared logic for PatchElement / PatchMotion: rebind events, update name, recurse into
-        // children Reconcile, and replace the callback ref's cleanup → setup pair.
-        private void PatchCommon(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode)
+        private void RebindEvents(VisualElement element, FiberEventBinding[] newEvents)
         {
-            var newEvents = newNode.Events;
             if (!_ctx.EventManager.HasSameBindings(element, newEvents))
             {
                 _ctx.EventManager.UnbindAll(element);
@@ -469,6 +467,13 @@ namespace Velvet
                     }
                 }
             }
+        }
+
+        // Shared logic for PatchElement / PatchMotion: rebind events, update name, recurse into
+        // children Reconcile, and replace the callback ref's cleanup → setup pair.
+        private void PatchCommon(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode)
+        {
+            RebindEvents(element, newNode.Events);
 
             // Sync the name to the new value, INCLUDING clearing it when the prop is removed (null / empty) — an
             // attribute that disappears from the VNode must disappear from the element (parity with className /

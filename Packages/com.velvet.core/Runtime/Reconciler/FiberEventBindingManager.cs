@@ -21,6 +21,15 @@ namespace Velvet
         // event type" without any generic type parameter to dispatch on.
         private readonly Dictionary<VisualElement, List<FiberEventBinding>> _bindingsByElement = new();
 
+        // The click every ClickedEventBinding on a button hands its handler, replaced at the start of each
+        // click by the callback BindClickedEvent puts ahead of them on Button.clicked.
+        private readonly Dictionary<Button, ClickedEventSlot> _clickedEventSlots = new();
+
+        private sealed class ClickedEventSlot
+        {
+            public ClickedEvent Current = new();
+        }
+
         // The owning context's batch scheduler. Used to flush the immediate batch synchronously at the end of a
         // discrete event handler so the UI updates before the next frame. Null when constructed without one (isolated unit
         // tests of binding registration): the discrete flag is still bracketed, but no synchronous flush runs.
@@ -31,7 +40,7 @@ namespace Velvet
             _batchScheduler = batchScheduler;
         }
 
-        // Skips re-registration if the same delegate is already registered.
+        // Skips re-registration if the same delegate is already registered in the same phase.
         public void Bind(VisualElement element, FiberEventBinding binding)
         {
             if (element == null || binding == null)
@@ -42,9 +51,11 @@ namespace Velvet
             var newDelegate = GetDelegate(binding);
             if (newDelegate != null && _boundDelegates.TryGetValue(element, out var existingDelegates))
             {
-                foreach (var d in existingDelegates)
+                // Holds an entry for every delegate the list above holds, at the same index.
+                _bindingsByElement.TryGetValue(element, out var existingBindings);
+                for (var i = 0; i < existingDelegates.Count; i++)
                 {
-                    if (d == newDelegate)
+                    if (existingDelegates[i] == newDelegate && IsCapture(existingBindings![i]) == IsCapture(binding))
                     {
                         return;
                     }
@@ -93,6 +104,9 @@ namespace Velvet
                     actions.Add(() => button.clicked -= wrapped);
                     break;
                 }
+                case ClickedEventBinding clickedEvent when element is Button button:
+                    BindClickedEvent(actions, button, clickedEvent.Handler);
+                    break;
                 case ChangeEventBinding<float> floatChange when element is INotifyValueChanged<float> floatField:
                     BindDiscreteValueChanged(actions, floatField, floatChange.Handler);
                     break;
@@ -117,21 +131,21 @@ namespace Velvet
             {
                 // Discrete user-input events (a distinct, atomic interaction): a hook update they trigger takes the
                 // Urgent lane and the immediate batch flushes synchronously when the handler returns.
-                case PointerDownBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
-                case PointerUpBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
-                case KeyDownBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
-                case KeyUpBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
-                case FocusInBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
-                case FocusOutBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
-                case FocusBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
-                case BlurBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
+                case PointerDownBinding b: BindDiscreteCallback(actions, element, b.Handler, b.Capture); break;
+                case PointerUpBinding b: BindDiscreteCallback(actions, element, b.Handler, b.Capture); break;
+                case KeyDownBinding b: BindDiscreteCallback(actions, element, b.Handler, b.Capture); break;
+                case KeyUpBinding b: BindDiscreteCallback(actions, element, b.Handler, b.Capture); break;
+                case FocusInBinding b: BindDiscreteCallback(actions, element, b.Handler, b.Capture); break;
+                case FocusOutBinding b: BindDiscreteCallback(actions, element, b.Handler, b.Capture); break;
+                case FocusBinding b: BindDiscreteCallback(actions, element, b.Handler, b.Capture); break;
+                case BlurBinding b: BindDiscreteCallback(actions, element, b.Handler, b.Capture); break;
                 // Continuous events (a high-frequency stream such as pointer move): updates batch to the next frame like a
                 // Normal-lane render; no synchronous flush.
-                case PointerMoveBinding b: BindCallback(actions, element, b.Handler); break;
-                case PointerEnterBinding b: BindCallback(actions, element, b.Handler); break;
-                case PointerLeaveBinding b: BindCallback(actions, element, b.Handler); break;
-                case WheelBinding b: BindCallback(actions, element, b.Handler); break;
-                case GeometryChangedBinding b: BindCallback(actions, element, b.Handler); break;
+                case PointerMoveBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
+                case PointerEnterBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
+                case PointerLeaveBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
+                case WheelBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
+                case GeometryChangedBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
             }
         }
 
@@ -158,8 +172,9 @@ namespace Velvet
             _bindingsByElement.Remove(element);
         }
 
-        // Order-sensitive: assumes the insertion order of _boundDelegates matches newEvents.
-        // Currently only called from PatchCommon, where Bind invocation order guarantees this.
+        // Order-sensitive: assumes the insertion order of _boundDelegates matches newEvents. Called where
+        // Bind invocation order guarantees this, so it reads newEvents the way Bind read them, passing over
+        // an entry Bind would skip as a repeat of an earlier one.
         public bool HasSameBindings(VisualElement element, FiberEventBinding[] newEvents)
         {
             if (element == null)
@@ -177,23 +192,46 @@ namespace Velvet
                 return delegates.Count == 0;
             }
 
-            if (delegates.Count != newEvents.Length)
-            {
-                return false;
-            }
-
+            _bindingsByElement.TryGetValue(element, out var bindings);
+            var bound = 0;
             for (var i = 0; i < newEvents.Length; i++)
             {
                 var newDelegate = GetDelegate(newEvents[i]);
                 // Unknown binding types where GetDelegate returns null are always treated as mismatch (fall back to rebind on the safe side).
-                if (newDelegate == null || delegates[i] != newDelegate)
+                if (newDelegate == null)
                 {
                     return false;
                 }
+
+                var capture = IsCapture(newEvents[i]);
+                if (RepeatsEarlier(newEvents, i, newDelegate, capture))
+                {
+                    continue;
+                }
+
+                if (bound >= delegates.Count || delegates[bound] != newDelegate
+                    || IsCapture(bindings![bound]) != capture)
+                {
+                    return false;
+                }
+                bound++;
             }
 
-            return true;
+            return bound == delegates.Count;
         }
+
+        private static bool RepeatsEarlier(FiberEventBinding[] events, int index, Delegate handler, bool capture)
+        {
+            var repeats = false;
+            for (var i = 0; i < index && !repeats; i++)
+            {
+                repeats = GetDelegate(events[i]) == handler && IsCapture(events[i]) == capture;
+            }
+            return repeats;
+        }
+
+        private static bool IsCapture(FiberEventBinding binding) =>
+            binding is FiberDispatchedEventBinding { Capture: true };
 
         public void Clear()
         {
@@ -217,10 +255,18 @@ namespace Velvet
         // Resolves element's own binding matching evt's runtime type and invokes its raw Handler
         // directly, bypassing UI Toolkit's dispatcher entirely: native RegisterCallback<T> plumbing
         // never runs here, since element may not even share a panel with evt's original target.
-        // Returns true when a matching pointer, key, focus or geometry binding was invoked (informational
-        // only; the caller's walk continues regardless — a miss here does not stop propagation up the
-        // logical chain).
-        internal bool TryInvokeSynthetic(VisualElement element, EventBase evt)
+        // This form invokes the element as the event's target, where capture bindings run first.
+        internal void TryInvokeSynthetic(VisualElement element, EventBase evt)
+        {
+            TryInvokeSynthetic(element, evt, capture: true);
+            TryInvokeSynthetic(element, evt, capture: false);
+        }
+
+        // The phase form a walk over ancestors takes: the capture walk runs only capture bindings, and the
+        // bubble walk every other binding. Returns true when a matching pointer, key, focus or geometry
+        // binding was invoked (informational only; the caller's walk continues regardless — a miss here
+        // does not stop propagation up the logical chain).
+        internal bool TryInvokeSynthetic(VisualElement element, EventBase evt, bool capture)
         {
             if (element == null || evt == null || !_bindingsByElement.TryGetValue(element, out var bindings))
             {
@@ -228,9 +274,11 @@ namespace Velvet
             }
 
             var invoked = false;
+            ClickedEvent? click = null;
             foreach (var binding in bindings)
             {
-                InvokeSyntheticField(element, binding, evt);
+                if (IsCapture(binding) != capture) continue;
+                InvokeSyntheticField(element, binding, evt, ref click);
                 if (InvokeSyntheticDiscrete(binding, evt) || InvokeSyntheticContinuous(binding, evt))
                 {
                     invoked = true;
@@ -242,13 +290,20 @@ namespace Velvet
         // ClickedBinding answers ClickEvent and ChangeEventBinding<T> answers ChangeEvent<T>, each only on the
         // element kind RegisterFieldBinding binds it to, and a click only on an enabled Button, as Clickable
         // and a disabled DOM button refuse one.
-        private void InvokeSyntheticField(VisualElement element, FiberEventBinding binding, EventBase evt)
+        private void InvokeSyntheticField(VisualElement element, FiberEventBinding binding, EventBase evt,
+            ref ClickedEvent? click)
         {
             switch (binding)
             {
                 case ClickedBinding b when element is Button && evt is ClickEvent && element.enabledInHierarchy:
                     RunDiscrete(b.Handler);
                     break;
+                case ClickedEventBinding b when element is Button && evt is ClickEvent && element.enabledInHierarchy:
+                {
+                    var shared = click ??= new ClickedEvent();
+                    RunDiscrete(() => b.Handler?.Invoke(shared));
+                    break;
+                }
                 case ChangeEventBinding<float> b when element is INotifyValueChanged<float>:
                     InvokeSyntheticChange(b.Handler, evt);
                     break;
@@ -329,23 +384,49 @@ namespace Velvet
             }
         }
 
-        private static void BindCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)
+        private static void BindCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler,
+            bool capture)
             where T : EventBase<T>, new()
         {
-            element.RegisterCallback(handler);
-            actions.Add(() => element.UnregisterCallback(handler));
+            var phase = capture ? TrickleDown.TrickleDown : TrickleDown.NoTrickleDown;
+            element.RegisterCallback(handler, phase);
+            actions.Add(() => element.UnregisterCallback(handler, phase));
+        }
+
+        // The callback registered first runs first on Button.clicked, so the one registered here ahead of
+        // the button's first ClickedEventBinding opens each click's event before any handler reads it.
+        private void BindClickedEvent(List<Action> actions, Button button, Action<ClickedEvent>? handler)
+        {
+            if (!_clickedEventSlots.TryGetValue(button, out var slot))
+            {
+                slot = new ClickedEventSlot();
+                _clickedEventSlots[button] = slot;
+                Action open = () => slot.Current = new ClickedEvent();
+                button.clicked += open;
+                actions.Add(() =>
+                {
+                    button.clicked -= open;
+                    _clickedEventSlots.Remove(button);
+                });
+            }
+
+            Action wrapped = () => RunDiscrete(() => handler?.Invoke(slot.Current));
+            button.clicked += wrapped;
+            actions.Add(() => button.clicked -= wrapped);
         }
 
         // Registers a discrete user-input callback, bracketing each invocation with RunDiscrete so
         // hook updates it triggers take the Urgent lane and flush synchronously at the handler's end.
         // Used for the discrete events (pointer down/up, key down/up, focus/blur); continuous events
         // (pointer move/enter/leave, wheel, geometry) keep the plain BindCallback<T>.
-        private void BindDiscreteCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)
+        private void BindDiscreteCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler,
+            bool capture)
             where T : EventBase<T>, new()
         {
+            var phase = capture ? TrickleDown.TrickleDown : TrickleDown.NoTrickleDown;
             EventCallback<T> wrapped = evt => RunDiscrete(() => handler?.Invoke(evt));
-            element.RegisterCallback(wrapped);
-            actions.Add(() => element.UnregisterCallback(wrapped));
+            element.RegisterCallback(wrapped, phase);
+            actions.Add(() => element.UnregisterCallback(wrapped, phase));
         }
 
         // Registers a discrete value-changed callback (text / toggle / slider input counts as a discrete interaction),
@@ -374,6 +455,7 @@ namespace Velvet
             return binding switch
             {
                 ClickedBinding clicked => clicked.Handler,
+                ClickedEventBinding clickedEvent => clickedEvent.Handler,
                 ChangeEventBinding<float> floatChange => floatChange.Handler,
                 ChangeEventBinding<bool> boolChange => boolChange.Handler,
                 ChangeEventBinding<string> stringChange => stringChange.Handler,

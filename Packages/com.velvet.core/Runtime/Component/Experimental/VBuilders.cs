@@ -232,7 +232,7 @@ namespace Velvet.Experimental
 
     /// <summary>
     /// <b>EXPERIMENTAL.</b> Initializer-style builder for a custom <see cref="UnityEngine.UIElements.VisualElement"/>
-    /// subclass. Maps to <see cref="V.Custom{T}(string, string, string, System.Func{UnityEngine.UIElements.VisualElement, System.Action}, VNode[])"/>;
+    /// subclass. Maps to <see cref="V.Custom{T}(string, string, string, FiberElementProps, System.Func{UnityEngine.UIElements.VisualElement, System.Action}, VNode[], string, string, string, IReadOnlyDictionary{string, string}, IReadOnlyDictionary{string, string}, FiberEventBinding[])"/>;
     /// children added via the collection initializer are kept.
     /// </summary>
     /// <typeparam name="T">Concrete VisualElement subclass to instantiate.</typeparam>

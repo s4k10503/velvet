@@ -10,7 +10,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies a <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>
+    /// Specifies a <see cref="V.VirtualList{T}(IReadOnlyList{T}, Func{T, string}, Func{int, float}, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle}, FiberEventBinding[])"/>
     /// whose items each take their own height, and the <see cref="VirtualListHandle"/> a list sets on its
     /// <c>listRef</c>, against react-window's <c>List</c>.
     /// <list type="bullet">
