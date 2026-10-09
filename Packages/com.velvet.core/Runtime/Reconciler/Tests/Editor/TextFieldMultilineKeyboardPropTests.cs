@@ -406,6 +406,111 @@ namespace Velvet.Tests
                 Is.EqualTo(("a\nb", "ab")));
         }
 
+        // GREEN_ON_BASE(characterization): the base's limit write reads any shown text other than its record as an edit.
+        // It pins that the branch holds a deletion the narrower limit carried across a multiline write as
+        // well, where the deletion equals the value's display under that limit.
+        [Test]
+        public void Given_ADeletionCarriedAcrossANarrowerLimit_When_MultilineComesOnAndTheLimitWidens_Then_TheDeletionSurvives()
+        {
+            // Arrange
+            var mounted = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 3) };
+            var turnedOn = new VNode[]
+            {
+                V.TextField(value: "hello", isDelayed: true, maxLength: 3, multiline: true),
+            };
+            var widened = new VNode[]
+            {
+                V.TextField(value: "hello", isDelayed: true, maxLength: 10, multiline: true),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "hel";
+            Reconciler.Reconcile(Root, mounted, narrowed);
+
+            // Act
+            Reconciler.Reconcile(Root, narrowed, turnedOn);
+            Reconciler.Reconcile(Root, turnedOn, widened);
+
+            // Assert — the value is folded in: the deletion stays uncommitted.
+            Assert.That(
+                (element.value, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("hello", "hel")));
+        }
+
+        // The deletion of the value's line break survives multiline coming off unchanged, and is then what
+        // the value's single-line display shows.
+        [Test]
+        public void Given_ADeletionOfTheValuesBreakTheDelayedFieldHasNotCommitted_When_MultilineComesOffAndBackOn_Then_TheDeletionSurvives()
+        {
+            // Arrange
+            var multilineTree = new VNode[] { V.TextField(value: "a\nb", isDelayed: true, multiline: true) };
+            var singleLineTree = new VNode[] { V.TextField(value: "a\nb", isDelayed: true, multiline: false) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), multilineTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "ab";
+
+            // Act
+            Reconciler.Reconcile(Root, multilineTree, singleLineTree);
+            Reconciler.Reconcile(Root, singleLineTree, multilineTree);
+
+            // Assert — the value is folded in: the deletion stays uncommitted.
+            Assert.That(
+                (element.value, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("a\nb", "ab")));
+        }
+
+        // Code outside Velvet turns multiline off directly, which drops the break the limit left after it,
+        // so the field shows neither form of the value's display.
+        [Test]
+        public void Given_ADelayedFieldWhoseMultilineCodeOutsideVelvetTurnedOff_When_ALaterRenderWidensTheLimit_Then_TheFieldShowsTheValueUpToIt()
+        {
+            // Arrange
+            var oldTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
+            };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 5, isDelayed: true, multiline: true),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            element.multiline = false;
+            var whileOff = ((TextElement)element.textEdition).text;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the reading while off is folded in because the case is about what that write left.
+            Assert.That(
+                (whileOff, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("ab", "a\nbcd")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads any shown text other than its record as an edit.
+        // It pins that the branch reads multiline coming off outside Velvet as no edit only where the field
+        // then shows the record without its breaks, and not over typing that differs from it.
+        [Test]
+        public void Given_AnEditOnADelayedFieldWhoseMultilineCodeOutsideVelvetTurnedOff_When_ALaterRenderDeclaresALimit_Then_TheEditStaysWithoutItsBreak()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, multiline: true) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, multiline: true, maxLength: 20) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "first\nsecond";
+            element.multiline = false;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the edit stays uncommitted.
+            Assert.That(
+                (element.value, ((TextElement)element.textEdition).text),
+                Is.EqualTo((string.Empty, "firstsecond")));
+        }
+
         [Test]
         public void Given_ADelayedFieldWithNoEditWhoseValueHasALineBreak_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheBreak()
         {

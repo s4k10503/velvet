@@ -365,11 +365,15 @@ namespace Velvet
             if (edit == null)
             {
                 RecordShownText(field);
+                return;
             }
-            else if (value)
+
+            if (value)
             {
                 ((INotifyValueChanged<string>)(TextElement)field.textEdition).SetValueWithoutNotify(edit);
             }
+
+            HoldEdit(field);
         }
 
         // The engine writes keyboardType back to Default and autoCorrection back to false when the field
@@ -531,25 +535,33 @@ namespace Velvet
             }
 
             ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit!);
+            HoldEdit(field);
         }
 
-        // A delayed field holds the user's typing in the shown text while the value lags, so an edit is
-        // shown text that is neither of two things. The first is the record: the text Velvet's own writes
-        // and the engine's commits last left on screen. Each write of Velvet's own text records it —
-        // ApplyFieldValue, WriteMaxLength and WriteMultiline when no edit is pending, and the baseline
-        // FiberElementFactory.ApplyProps takes as the element is created — and a commit records it through
-        // the callback below, since an edit that was committed and then changed again is an edit against
-        // the committed text. ForgetRecordedDefaults forgets the record and its callback on every removal,
-        // so a recycled field carries neither.
-        // The second is the field's display of its own value, because code outside Velvet can write the
-        // value silently, which moves the shown text and not the record; typing moves the text and not the
-        // value. Comparing with that display alone was rejected: no form of it matches the text multiline
-        // coming off leaves, which WriteMultiline records.
+        // A delayed field holds the user's typing in the shown text while the value lags. Shown text is an
+        // edit when it differs from the record — the text Velvet's own writes and the engine's commits last
+        // left on screen — and, unless Velvet already carried it as an edit, both from that record as
+        // multiline coming off since would leave it and from the field's display of its own value.
+        // The record is taken by each write of Velvet's own text — ApplyFieldValue, WriteMaxLength and
+        // WriteMultiline when no edit is pending, and the baseline FiberElementFactory.ApplyProps takes as
+        // the element is created — and by a commit through ShownText's callback, since an edit that was
+        // committed and then changed again is an edit against the committed text. ForgetRecordedDefaults
+        // forgets the record and its callback on every removal, so a recycled field carries neither.
+        // The display is asked because code outside Velvet can write the value silently, which moves the
+        // shown text and not the record, where typing moves the text and not the value. It is not asked
+        // alone: where the limit cuts the value after a line break, the text multiline coming off leaves
+        // matches no form of it. Nor is it asked of an edit Velvet carried, whose cut to a narrower limit
+        // can equal the value's display under that limit; the hold ShownText keeps answers that.
         internal static bool HasUncommittedEdit(TextField field)
-            => field.isDelayed
-               && s_shownText.TryGetValue(field, out var left)
-               && field.text != left.Text
-               && !ShowsItsValue(field);
+        {
+            if (!field.isDelayed || !s_shownText.TryGetValue(field, out var left))
+            {
+                return false;
+            }
+
+            return !left.Shows(field)
+                   && (left.HoldsEditOver(field) || (!left.ShowsWithoutBreaks(field) && !ShowsItsValue(field)));
+        }
 
         // The two forms an engine write of the value leaves: the value cut to the limit, which a limit write
         // shows with its line breaks, and on a single-line field a value write's form, breaks dropped and
@@ -582,7 +594,16 @@ namespace Velvet
                 field.RegisterValueChangedCallback(left.OnChange);
             }
 
-            left.Text = field.text;
+            left.Take();
+        }
+
+        // Called by a write that carried an edit across itself, after the write.
+        private static void HoldEdit(TextField field)
+        {
+            if (s_shownText.TryGetValue(field, out var left))
+            {
+                left.Hold();
+            }
         }
 
         internal static void ForgetShownText(TextField field)
@@ -597,10 +618,36 @@ namespace Velvet
         private sealed class ShownText
         {
             private readonly TextField _field;
-
-            public string? Text;
+            private string? _text;
+            private bool _multiline;
+            private bool _holding;
+            private string? _heldOver;
 
             public ShownText(TextField field) => _field = field;
+
+            public void Take()
+            {
+                _text = _field.text;
+                _multiline = _field.multiline;
+            }
+
+            // The hold lasts while the field's value is the one the edit was carried over, so a commit or a
+            // value write, silent or not, ends it when it moves the value. Typing on does not end it, since
+            // what the user types over that value is still theirs.
+            public void Hold()
+            {
+                _holding = true;
+                _heldOver = _field.value;
+            }
+
+            public bool Shows(TextField field) => field.text == _text;
+
+            // Code outside Velvet turning multiline off drops the line breaks from what the field shows, so
+            // with no edit it shows the record without them; TextFieldMultilineEngineTests pins that write.
+            public bool ShowsWithoutBreaks(TextField field)
+                => _multiline && !field.multiline && field.text == _text?.Replace("\n", string.Empty);
+
+            public bool HoldsEditOver(TextField field) => _holding && field.value == _heldOver;
 
             // Only the field's own event is a commit of the value; TextFieldInputPropTests pins that an
             // event from the inner element does not move the record.
@@ -608,7 +655,7 @@ namespace Velvet
             {
                 if (evt.target == _field)
                 {
-                    Text = _field.text;
+                    Take();
                 }
             }
         }
