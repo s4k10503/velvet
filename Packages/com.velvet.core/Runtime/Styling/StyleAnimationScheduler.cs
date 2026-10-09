@@ -876,12 +876,8 @@ namespace Velvet
 
             // The spring's own physics tick is now live — start sampling the caster's opacity each frame
             // (StartRingCoFadeTick) so a co-faded ring band tracks it exactly like a tween's, from the same
-            // moment its CSS transition would have started firing. A play on a playback starts it once its delay
-            // has run on the playback's time (StepOnPlayback).
-            if (pending.Playback == null)
-            {
-                RingCoFadeCoordinator.StartRingCoFadeTick(pending);
-            }
+            // moment its CSS transition would have started firing.
+            RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
             // Stepped a frame at a time, because the integrator clamps a longer step.
             for (var remaining = preRollSec; remaining > 0f; remaining -= PreRollStepSec)
@@ -956,10 +952,7 @@ namespace Velvet
                 return;
             }
 
-            if (pending.Playback == null)
-            {
-                RingCoFadeCoordinator.StartRingCoFadeTick(pending);
-            }
+            RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
             if (preRollSec > 0f && BezierTweenDriver.Step(element, state, preRollSec))
             {
@@ -1040,19 +1033,10 @@ namespace Velvet
         }
 
         // Writes the play at its time and reports whether that time has reached its end. Inside its delay it holds
-        // its from-values and has not; the ring co-fade starts the first time the delay is behind it, as the
-        // ungrouped path starts it with the tick that follows the delay.
+        // its from-values and has not.
         private static bool SeekOnPlayback(VisualElement element, PendingAnimation pending)
         {
             var inDelay = pending.PlayTimeSec < 0f;
-            // MUTANT_SURVIVES(equivalent, clause removed): a co-fade started again replaces its earlier tick.
-            // StartRingCoFadeTick pauses that one, and the new one samples the same caster.
-            if (!inDelay && !pending.CoFadeStarted)
-            {
-                // MUTANT_SURVIVES(equivalent): as the clause above, every frame restarts the one co-fade tick.
-                pending.CoFadeStarted = true;
-                RingCoFadeCoordinator.StartRingCoFadeTick(pending);
-            }
             var timeSec = Math.Max(0f, pending.PlayTimeSec);
             var done = pending.Spring != null
                 ? MotionSpringDriver.SeekTo(element, pending.Spring, timeSec)
@@ -2092,7 +2076,6 @@ namespace Velvet
             // inside its delay.
             public MotionPlayback? Playback;
             public float PlayTimeSec;
-            public bool CoFadeStarted;
         }
 
         // Ring-band co-fade bookkeeping for every StyleAnimationScheduler play (tween / spring / bezier, enter /
@@ -2141,8 +2124,6 @@ namespace Velvet
                 {
                     return;
                 }
-                // A play has one co-fade tick, so a second start replaces the first rather than leaving it running.
-                pending.RingTick?.Pause();
                 pending.RingTick = host.schedule.Execute(() =>
                 {
                     var overlay = pending.RingOverlay;

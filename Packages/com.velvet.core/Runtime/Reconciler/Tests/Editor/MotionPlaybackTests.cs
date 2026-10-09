@@ -289,31 +289,26 @@ namespace Velvet.Tests
                 Is.EqualTo((true, StyleKeyword.Undefined, 0f, true)));
         }
 
-        // The band follows its caster's resolved opacity once its co-fade starts, and a translate leaves that at 1;
-        // an ungrouped delayed play starts the co-fade with the tick after its delay.
+        // The band is given its element's resolved opacity every frame, by RingOverlay's own state tick as by the
+        // co-fade, so it holds the fade's from-value while the delay runs and rises once the fade moves. 11 frames
+        // stop 0.024 s short of the 0.2 s delay, and 10 more run 0.136 s into the fade.
         [Test]
-        public void Given_ARingedElementsDelayedPlayOnAPlayback_When_ThePanelTicksInsideAndThenPastTheDelay_Then_TheBandFollowsOnlyPastIt()
+        public void Given_ARingedElementsDelayedFadeOnAPlayback_When_ThePanelTicksFromInsideToPastTheDelay_Then_TheBandRisesWithTheFade()
         {
             // Arrange
             var element = OnPanel("ringed");
             var band = RingOverlay.Attach(element, new RingSpec(width: 2f, color: UnityEngine.Color.red, offset: 0f,
                 inset: false), Array.Empty<string>()).Overlay;
-            Ticks(2);
-            var config = new StyleTransitionConfig
-            {
-                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.2f,
-                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
-            };
-            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[100px]" }, config,
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(delaySec: 0.2f),
                 playback: new MotionPlayback());
+            Ticks(11);
+            var beforeTheDelayEnds = band.style.opacity.value;
 
             // Act
-            Ticks(5);
-            var insideDelay = band.style.opacity.value;
-            Ticks(20);
+            Ticks(10);
 
             // Assert
-            Assert.That((insideDelay, band.style.opacity.value), Is.EqualTo((0f, 1f)));
+            Assert.That(band.style.opacity.value, Is.GreaterThan(beforeTheDelayEnds));
         }
 
         [Test]
