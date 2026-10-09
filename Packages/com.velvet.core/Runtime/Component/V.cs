@@ -65,10 +65,10 @@ namespace Velvet
             Action<string>? onSubmit,
             EventCallback<KeyDownEvent>? onKeyDown,
             EventCallback<KeyUpEvent>? onKeyUp,
-            EventCallback<FocusInEvent>? onFocus,
-            EventCallback<FocusOutEvent>? onBlur,
+            (EventCallback<FocusInEvent>? In, EventCallback<FocusOutEvent>? Out) focus,
             FiberEventBinding[]? callerEvents)
         {
+            var (onFocus, onBlur) = focus;
             var count = (onValueChanged != null ? 1 : 0) + (onSubmit != null ? 1 : 0) + (onKeyDown != null ? 1 : 0)
                         + (onKeyUp != null ? 1 : 0) + (onFocus != null ? 1 : 0) + (onBlur != null ? 1 : 0);
             if (count == 0)
@@ -838,7 +838,7 @@ namespace Velvet
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var bindings = TextFieldEvents(onValueChanged, onSubmit, onKeyDown, onKeyUp, onFocus, onBlur, events);
+            var bindings = TextFieldEvents(onValueChanged, onSubmit, onKeyDown, onKeyUp, (onFocus, onBlur), events);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
                                     || isReadOnly.HasValue || isDelayed.HasValue || multiline.HasValue
