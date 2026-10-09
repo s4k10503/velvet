@@ -448,13 +448,21 @@ jobs:
   # Scripts rather than a player: the question is which defines the compile runs under, and a player
   # build would answer it alongside a scene load, an asset import and a linker pass with failure modes
   # of their own.
+  #
+  # One target per desktop platform: the Windows and macOS targets are the only compiles here without
+  # UNITY_EDITOR and with UNITY_STANDALONE_WIN or UNITY_STANDALONE_OSX, which is where a player's P/Invoke
+  # declarations sit. game-ci picks each target's Mono image for this Linux runner, under the same licence.
   # ---------------------------------------------------------------------------
   player-compile:
-    name: Player script compilation
+    name: Player script compilation (${{ matrix.targetPlatform }})
     needs: license-check
     if: needs.license-check.outputs.has_license == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        targetPlatform: [StandaloneLinux64, StandaloneWindows64, StandaloneOSX]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -463,9 +471,9 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: Library
-          key: Library-player-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          key: Library-player-${{ matrix.targetPlatform }}-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
-            Library-player-
+            Library-player-${{ matrix.targetPlatform }}-
 
       - uses: game-ci/unity-builder@d829bfc901f2347c8fe18898f06712b66916ef42 # v5.0.0
         env:
@@ -474,7 +482,7 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           unityVersion: 6000.3.23f1
-          targetPlatform: StandaloneLinux64
+          targetPlatform: ${{ matrix.targetPlatform }}
           projectPath: .
           buildMethod: Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer
           allowDirtyBuild: true
