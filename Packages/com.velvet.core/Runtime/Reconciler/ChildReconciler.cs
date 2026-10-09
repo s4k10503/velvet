@@ -469,6 +469,8 @@ namespace Velvet
                 // drain mounted its own, so they are hidden here; the reveal finds them through PortalState.
                 if (SuspenseHiddenElements.IsAtOrUnderHidden(placeholder))
                 {
+                    // MUTANT_SURVIVES(equivalent, boundary): the slot after this Portal's own holds no child.
+                    // The children it mounted are the last of resolvedTarget's, so TryGetPhysical declines that slot.
                     for (var slot = slotStart; slot < slotStart + slotLength; slot++)
                     {
                         if (LogicalChildSlots.TryGetPhysical(resolvedTarget, slot, out var physical))

@@ -696,8 +696,10 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert — the parent is read with it, since a primary created again is displayed too
-            Assert.That((primary.parent == container, primary.style.display.keyword), Is.EqualTo((true, StyleKeyword.Null)),
+            // Assert — the parent is read with it, since a primary created again is displayed too, and the
+            // boundary's fallback, which shows that the catch stopped the pass
+            Assert.That((primary.parent == container, primary.style.display.keyword, _root.DisplayedLabelTexts("|").Contains("caught")),
+                Is.EqualTo((true, StyleKeyword.Null, true)),
                 "The stopped pass revealed nothing, so the boundary still hides its children and reveals them now");
         }
 
@@ -708,6 +710,7 @@ namespace Velvet.Tests
         {
             // Arrange — the outer boundary hides first; the inner one then suspends inside it
             using var mounted = V.Mount(_root, V.Component(NestedRefHostRender, key: "nested-ref-host"));
+            var attachedBeforeTheHide = s_nestedRefElement != null;
             s_setOuterOwn.Invoke(1);
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
@@ -720,8 +723,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert
-            Assert.That(s_nestedRefElement, Is.Null,
+            // Assert — whether the ref was attached at all is read with it, since one never attached is not after
+            Assert.That((attachedBeforeTheHide, s_nestedRefElement == null), Is.EqualTo((true, true)),
                 "The inner boundary still waits, so React keeps the refs of its children detached");
         }
 
@@ -1668,7 +1671,6 @@ namespace Velvet.Tests
                     }),
             });
         }
-
 
         [Component]
         private static VNode BareListHostRender()
