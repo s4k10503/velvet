@@ -68,7 +68,8 @@ namespace Velvet
         /// unwoven. Auto-memoization needs no opt-in: set this to <c>false</c> to opt
         /// out. The weaver also declines a component silently, with no diagnostic, where it finds a hook it
         /// cannot memoize safely, and <c>VelvetCompilerILPostProcessor.WillProcess</c> decides which
-        /// assemblies it reaches at all. A call whose target the build cannot enumerate — through an interface,
+        /// assemblies it reaches at all. A component whose body the weaver fails to process is left unwoven with a
+        /// build warning naming it. A call whose target the build cannot enumerate — through an interface,
         /// or to a virtual method an override can replace — is cached with the rest of the body where it follows
         /// every hook call the body makes, and declines the component where it precedes one or sits inside a
         /// custom hook, even after that hook's own <c>UseState</c>. Once such a call

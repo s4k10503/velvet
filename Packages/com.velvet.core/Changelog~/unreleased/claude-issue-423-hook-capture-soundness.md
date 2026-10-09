@@ -7,3 +7,6 @@
 - A component that deconstructs a custom hook's pair, `var (count, total) = Custom();`, is no
   longer auto-memoized on the first element alone, which served a stale tree after the second changed. A
   `ref var x = ref Custom();` over a custom hook leaves the component unwoven.
+- A component the compiler weaver fails to process, because analyzing or weaving its body throws, is left
+  unwoven and reported as a build warning naming it and the exception, where the failure used to break the
+  assembly's compilation.

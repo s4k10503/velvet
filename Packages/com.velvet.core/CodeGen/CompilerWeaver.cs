@@ -40,7 +40,9 @@ namespace Velvet.CodeGen
     // a return before the hook section, a hook skipped or repeated by a branch, a hook return consumed by an
     // unsupported pattern, or a protected region overlapping the hook section — is left byte-for-byte unchanged
     // (graceful bailout). The allow-list defaults unknown hooks to bail, so correctness is never traded for
-    // coverage; no diagnostic is emitted for a bailout. The goal is "memoize less but never wrong".
+    // coverage; no diagnostic is emitted for a bailout. A body whose processing throws is restored to what it was
+    // and reported as a warning, so a defect here costs one component its memoization rather than the build.
+    // The goal is "memoize less but never wrong".
     // An open virtual / interface dispatch outside the BCL / Unity carve-out is opaque rather than a bail: an
     // override composing a hook can live in an assembly this scan never sees, so whether it reaches one is
     // decided where it runs. Ahead of the gate it bails the method, since a hook there would feed the body a
@@ -164,7 +166,7 @@ namespace Velvet.CodeGen
                     if (!IsCandidate(method)) continue;
                     if (!method.HasBody) continue;
                     if (IsAlreadyMemoized(method)) continue;
-                    if (TryWeaveMethod(method, context, reach, nonSafe))
+                    if (TryWeaveMethod(method, context, ref reach, ref nonSafe, diagnostics))
                     {
                         changed = true;
                     }
@@ -253,15 +255,82 @@ namespace Velvet.CodeGen
             return false;
         }
 
-        private static bool TryWeaveMethod(MethodDefinition method, WeaverContext context, HookReachFold reach, NonSafeHookFold nonSafe)
+        // The per-method boundary: a failure while analyzing or weaving one body leaves that body as it was and
+        // is reported as a warning, so a weaver defect costs the one component its memoization rather than the
+        // user's build. The folds are replaced because the walk that threw leaves them mid-descent.
+        private static bool TryWeaveMethod(MethodDefinition method, WeaverContext context, ref HookReachFold reach,
+            ref NonSafeHookFold nonSafe, List<DiagnosticMessage> diagnostics)
         {
-            if (!TryAnalyze(method, reach, nonSafe, out var analysis))
+            var snapshot = new BodySnapshot(method.Body);
+            try
             {
+                if (!TryAnalyze(method, reach, nonSafe, out var analysis))
+                {
+                    return false;
+                }
+
+                InjectMemoization(method, analysis, context);
+                return true;
+            }
+            catch (System.Exception exception)
+            {
+                snapshot.Restore();
+                reach = new HookReachFold();
+                nonSafe = new NonSafeHookFold();
+                diagnostics.Add(new DiagnosticMessage
+                {
+                    DiagnosticType = DiagnosticType.Warning,
+                    MessageData = WeaverDiagnostics.FormatMethodFailureWarning(method, exception),
+                });
                 return false;
             }
+        }
 
-            InjectMemoization(method, analysis, context);
-            return true;
+        // What InjectMemoization and the macro rewrites around it change in a body: the instruction list, each
+        // instruction's opcode and operand, and the variable list. Handlers and debug information refer to the
+        // instructions themselves, which are kept.
+        private sealed class BodySnapshot
+        {
+            private readonly MethodBody _body;
+            private readonly Instruction[] _instructions;
+            private readonly OpCode[] _opCodes;
+            private readonly object?[] _operands;
+            private readonly int _variableCount;
+
+            public BodySnapshot(MethodBody body)
+            {
+                _body = body;
+                _instructions = new Instruction[body.Instructions.Count];
+                body.Instructions.CopyTo(_instructions, 0);
+                _opCodes = new OpCode[_instructions.Length];
+                _operands = new object?[_instructions.Length];
+                for (var i = 0; i < _instructions.Length; i++)
+                {
+                    _opCodes[i] = _instructions[i].OpCode;
+                    _operands[i] = _instructions[i].Operand;
+                }
+                _variableCount = body.Variables.Count;
+            }
+
+            public void Restore()
+            {
+                _body.Instructions.Clear();
+                for (var i = 0; i < _instructions.Length; i++)
+                {
+                    _instructions[i].OpCode = _opCodes[i];
+                    _instructions[i].Operand = _operands[i];
+                    _body.Instructions.Add(_instructions[i]);
+                }
+                // Adding links each instruction to the one before it, so the first keeps the Previous the weave gave it.
+                if (_instructions.Length > 0)
+                {
+                    _instructions[0].Previous = null;
+                }
+                while (_body.Variables.Count > _variableCount)
+                {
+                    _body.Variables.RemoveAt(_body.Variables.Count - 1);
+                }
+            }
         }
 
         private static bool TryAnalyze(MethodDefinition method, HookReachFold reach, NonSafeHookFold nonSafe, out HookAnalysis analysis)
@@ -1267,7 +1336,7 @@ namespace Velvet.CodeGen
             foreach (var (local, stored, copy) in copies)
             {
                 il.InsertAfter(stored, Instruction.Create(OpCodes.Stloc, copy));
-                il.InsertAfter(stored, local == null ? Instruction.Create(OpCodes.Dup) : Instruction.Create(OpCodes.Ldloc, local));
+                il.InsertAfter(stored, local is null ? Instruction.Create(OpCodes.Dup) : Instruction.Create(OpCodes.Ldloc, local));
             }
 
             // Inject Store + reload at every return path so all `Ret` instructions

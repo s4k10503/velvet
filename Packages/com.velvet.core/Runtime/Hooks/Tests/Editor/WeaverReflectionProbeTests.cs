@@ -123,6 +123,9 @@ namespace Velvet.Tests
         // (the CodeGen assembly is editor-only and not referenced by this test asmdef) and returns the
         // MessageData of every emitted diagnostic.
         private static List<string> InvokeWeave(string weaverTypeFullName, ModuleDefinition module)
+            => InvokeWeave(weaverTypeFullName, module, out _);
+
+        private static List<string> InvokeWeave(string weaverTypeFullName, ModuleDefinition module, out bool changed)
         {
             var codeGenAssembly = AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(a => a.GetName().Name == CodeGenAssemblyName);
@@ -135,7 +138,7 @@ namespace Velvet.Tests
                 "Precondition: the weaver exposes a public static Weave method");
 
             var diagnostics = Activator.CreateInstance(weaveMethod!.GetParameters()[1].ParameterType)!;
-            weaveMethod.Invoke(null, new[] { (object)module, diagnostics });
+            changed = (bool)weaveMethod.Invoke(null, new[] { (object)module, diagnostics })!;
 
             var messages = new List<string>();
             foreach (var diagnostic in (IEnumerable)diagnostics)
@@ -436,6 +439,227 @@ namespace Velvet.Tests
                 "A pair read with its second element is keyed on the first alone, which holds only while the second is reference-stable");
         }
 
+        // The warnings the weaver raises for a body it failed to process, as opposed to one it declined.
+        private static int FailureWarnings(IEnumerable<string> messages)
+            => messages.Count(message => message.Contains("the IL post-processor threw"));
+
+        private static MethodDefinition AddProbeComponent(ModuleDefinition module, string name,
+            Action<ILProcessor> body)
+        {
+            var vnodeType = module.Types.Single(type => type.FullName == "Velvet.VNode");
+            var method = new MethodDefinition(name,
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, vnodeType);
+            method.Parameters.Add(new ParameterDefinition("p", Mono.Cecil.ParameterAttributes.None,
+                module.TypeSystem.Object));
+            var attributeType = new TypeReference("Velvet", "ComponentAttribute", module, module);
+            method.CustomAttributes.Add(new CustomAttribute(
+                new MethodReference(".ctor", module.TypeSystem.Void, attributeType) { HasThis = true }));
+            method.Body = new Mono.Cecil.Cil.MethodBody(method);
+            body(method.Body.GetILProcessor());
+            module.Types.Single(type => type.FullName == "Probe.Fixture").Methods.Add(method);
+            AssignSequentialOffsets(method);
+            return method;
+        }
+
+        // Components the weaver cannot process, beside one it can. `Broken` names no declaring type, so any
+        // walk reaching it throws; the walks reach it through a call in the body, through a helper, and through a
+        // Velvet.Hooks member, which only the reach fold descends. InjectFails throws after the weave has
+        // started: a branch with no target follows its ret.
+        private static ModuleDefinition BuildContainmentModule(out MethodDefinition injectFails,
+            out MethodDefinition sibling)
+        {
+            var module = BuildHookShapeProbeModule("ContainmentProbe", out _, out _, out _, out _);
+            var broken = new MethodReference("Broken", module.TypeSystem.Void);
+
+            var readBroken = new MethodDefinition("ReadBroken",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Object);
+            readBroken.Body = new Mono.Cecil.Cil.MethodBody(readBroken);
+            var readIl = readBroken.Body.GetILProcessor();
+            readIl.Append(Instruction.Create(OpCodes.Call, broken));
+            readIl.Append(Instruction.Create(OpCodes.Ldnull));
+            readIl.Append(Instruction.Create(OpCodes.Ret));
+            module.Types.Single(type => type.FullName == "Velvet.Hooks").Methods.Add(readBroken);
+
+            var helper = new MethodDefinition("Helper",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Void);
+            helper.Body = new Mono.Cecil.Cil.MethodBody(helper);
+            var helperIl = helper.Body.GetILProcessor();
+            helperIl.Append(Instruction.Create(OpCodes.Call, broken));
+            helperIl.Append(Instruction.Create(OpCodes.Ret));
+            module.Types.Single(type => type.FullName == "Probe.Fixture").Methods.Add(helper);
+
+            AddProbeComponent(module, "AnalysisFails", il =>
+            {
+                il.Append(Instruction.Create(OpCodes.Call, broken));
+                il.Append(Instruction.Create(OpCodes.Ldnull));
+                il.Append(Instruction.Create(OpCodes.Ret));
+            });
+            foreach (var name in new[] { "ReachFails1", "ReachFails2" })
+            {
+                AddProbeComponent(module, name, il =>
+                {
+                    il.Append(Instruction.Create(OpCodes.Call, readBroken));
+                    il.Append(Instruction.Create(OpCodes.Pop));
+                    il.Append(Instruction.Create(OpCodes.Ldnull));
+                    il.Append(Instruction.Create(OpCodes.Ret));
+                });
+            }
+            foreach (var name in new[] { "NonSafeFails1", "NonSafeFails2" })
+            {
+                AddProbeComponent(module, name, il =>
+                {
+                    il.Append(Instruction.Create(OpCodes.Call, helper));
+                    il.Append(Instruction.Create(OpCodes.Ldnull));
+                    il.Append(Instruction.Create(OpCodes.Ret));
+                });
+            }
+            injectFails = AddProbeComponent(module, "InjectFails", il =>
+            {
+                il.Append(Instruction.Create(OpCodes.Ldarg_0));
+                il.Append(Instruction.Create(OpCodes.Pop));
+                il.Append(Instruction.Create(OpCodes.Ldnull));
+                il.Append(Instruction.Create(OpCodes.Ret));
+                var noTarget = Instruction.Create(OpCodes.Nop);
+                noTarget.OpCode = OpCodes.Br;
+                noTarget.Operand = null;
+                il.Append(noTarget);
+            });
+            sibling = AddProbeComponent(module, "Sibling", il =>
+            {
+                il.Append(Instruction.Create(OpCodes.Ldnull));
+                il.Append(Instruction.Create(OpCodes.Ret));
+            });
+            return module;
+        }
+
+        // The body as the next reader sees it: each instruction with its opcode, operand and neighbours, and the
+        // variables.
+        private static string Describe(MethodDefinition method)
+            => string.Join("|", method.Body.Instructions.Select(instr =>
+                $"{instr.Previous?.OpCode}<{instr.OpCode} {instr.Operand}>{instr.Next?.OpCode}"))
+               + $"#{method.Body.Variables.Count}";
+
+        [Test]
+        public void Given_ABodyTheWeaverFailsOn_When_CompilerWeaverRuns_Then_ItIsWarnedAboutByNameAndExceptionType()
+        {
+            // Arrange
+            using var module = BuildContainmentModule(out _, out _);
+
+            // Act
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(
+                messages.Count(message => message.Contains("Probe.Fixture::AnalysisFails")
+                    && message.Contains("NullReferenceException")),
+                Is.EqualTo(1), "A weaver defect is visible rather than silent");
+        }
+
+        [Test]
+        public void Given_ManyBodiesTheWeaverFailsOn_When_CompilerWeaverRuns_Then_EachFailureIsTheBodysOwn()
+        {
+            // Arrange — the walks that threw left their state mid-descent, so a later body reaching the same
+            // callee would fail differently if the folds were kept
+            using var module = BuildContainmentModule(out _, out _);
+
+            // Act
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(
+                (FailureWarnings(messages), messages.Count(message => message.Contains("NullReferenceException"))),
+                Is.EqualTo((6, 6)), "Every failure is the one the missing declaring type causes");
+        }
+
+        [Test]
+        public void Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_TheBodyIsAsItWas()
+        {
+            // Arrange
+            using var module = BuildContainmentModule(out var injectFails, out _);
+            var before = Describe(injectFails);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(Describe(injectFails), Is.EqualTo(before),
+                "The instructions, their links and the variables are those the weave found");
+        }
+
+        [Test]
+        public void Given_AModuleWhereABodyIsWoven_When_CompilerWeaverRuns_Then_ItReportsAChange()
+        {
+            // Arrange
+            using var module = BuildContainmentModule(out _, out _);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module, out var changed);
+
+            // Assert
+            Assert.That(changed, Is.True, "The module was rewritten, so the post-processor has to write it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reports no change for a module it wove nothing in, as this does.
+        // What it pins is the analysis result being honoured: `true` in place of `false` for the failed analysis
+        // in `TryWeaveMethod` reports a change.
+        [Test]
+        public void Given_AModuleWhereNoBodyIsWoven_When_CompilerWeaverRuns_Then_ItReportsNoChange()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("NothingWovenProbe",
+                out _, out _, out _, out _);
+            AddProbeComponent(module, "Bails", il =>
+            {
+                il.Append(Instruction.Create(OpCodes.Call, UndeclaredMethodOf(module)));
+                il.Append(Instruction.Create(OpCodes.Ldnull));
+                il.Append(Instruction.Create(OpCodes.Ret));
+            });
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module, out var changed);
+
+            // Assert
+            Assert.That(changed, Is.False, "A module left as it was is not rewritten");
+        }
+
+        [Test]
+        public void Given_BodiesTheWeaverFailsOn_When_CompilerWeaverRuns_Then_ABodyBesideThemIsWoven()
+        {
+            // Arrange
+            using var module = BuildContainmentModule(out _, out var sibling);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(sibling), Is.True,
+                "A failure costs its own component the memoization, and no other");
+        }
+
+        // GREEN_ON_BASE(characterization): the base raises no failure warning for this assembly either, since it
+        // raises none at all. What it pins is the weave of these fixtures not throwing: deleting the
+        // `type == null ||` test at the head of `TryCaptureStackValue` throws on the ref-returning custom hook
+        // component, which the weaver reports and this reads.
+        [Test]
+        public void Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave()
+        {
+            // Arrange — every body this assembly's fixtures hold that the weaver left unwoven is processed again
+            var location = typeof(WeaverReflectionProbeTests).Assembly.Location;
+            var resolver = new DefaultAssemblyResolver();
+            resolver.AddSearchDirectory(System.IO.Path.GetDirectoryName(location));
+            resolver.AddSearchDirectory(System.IO.Path.GetDirectoryName(typeof(Hooks).Assembly.Location));
+            using var assembly = AssemblyDefinition.ReadAssembly(location,
+                new ReaderParameters { AssemblyResolver = resolver });
+
+            // Act
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", assembly.MainModule);
+
+            // Assert
+            Assert.That(messages.Where(message => message.Contains("threw")
+                    || message.Contains("is disabled for assembly")),
+                Is.Empty, "A body the weaver throws on, or an assembly it cannot resolve, is a failure to weave");
+        }
+
         // `call -> dup -> ldfld Item1 -> stloc.0 -> <readOp> <readField> -> <afterRead>`, the Item2 read of a
         // two-element deconstruction with one part replaced.
         private static bool PairShapeIsWoven(string moduleName, OpCode readOp, string readField, OpCode afterRead)
@@ -513,11 +737,11 @@ namespace Velvet.Tests
             AssignSequentialOffsets(method);
 
             // Act
-            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
 
             // Assert
-            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
-                "A copy whose type cannot be named leaves nothing to key the cache on");
+            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((false, 0)),
+                "A copy whose type cannot be named leaves nothing to key the cache on, and the weave says nothing of it");
         }
 
         [Test]
@@ -674,11 +898,11 @@ namespace Velvet.Tests
             AssignSequentialOffsets(method);
 
             // Act
-            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
 
             // Assert
-            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
-                "A callee Resolve() returns nothing for cannot be inspected, so the weaver bails");
+            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((false, 0)),
+                "A callee Resolve() returns nothing for cannot be inspected, so the weaver bails without failing");
         }
 
         // GREEN_ON_BASE(characterization): the base reads such a callee inside a Velvet.Hooks member as no hook.
@@ -713,10 +937,10 @@ namespace Velvet.Tests
             AssignSequentialOffsets(method);
 
             // Act
-            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
 
             // Assert
-            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((true, 0)),
                 "ReadMissing reaches nothing the reach fold can see, and UseId's value keys the cache");
         }
 
