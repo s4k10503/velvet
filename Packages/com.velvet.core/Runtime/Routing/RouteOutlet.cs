@@ -7,7 +7,8 @@ namespace Velvet
     // Not beside its factory in Component/V.cs: same reason Navigate is not — this body calls hooks.
     internal static class RouteOutlet
     {
-        [Component]
+        // The body creates and releases the Outlet's route scope as it renders, which a cache hit would skip.
+        [Component(Compiler = false)]
         public static VNode Render(object? outletContext)
         {
             var location = Hooks.UseContext(RouterContext.Location);
