@@ -42,9 +42,6 @@ namespace Velvet
             var hold = new Hold();
             (hold.Own.Duration, hold.Own.Delay, hold.Own.Curve) =
                 (Copy(style.transitionDuration), Copy(style.transitionDelay), Copy(style.transitionTimingFunction));
-            // MUTANT_SURVIVES(equivalent, line removed): the next Adopt runs before any slot is written, in the Write
-            // that made this hold or in the one ApplyTransitionStyles makes straight after Begin. With nothing
-            // recorded it saves the values read above again, and no play has set a slot yet for it to clear.
             (hold.WrittenDuration, hold.WrittenDelay, hold.WrittenCurve) =
                 (hold.Own.Duration.Value, hold.Own.Delay.Value, hold.Own.Curve.Value);
             return hold;
