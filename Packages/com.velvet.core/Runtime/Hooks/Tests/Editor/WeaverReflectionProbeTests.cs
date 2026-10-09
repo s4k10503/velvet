@@ -172,8 +172,9 @@ namespace Velvet.Tests
             return handler;
         }
 
-        // Invokes CompilerWeaver's private static bool <name>(MethodReference, Dictionary<string, bool>)
-        // through reflection (the CodeGen assembly is editor-only and not referenced by this test asmdef).
+        // Invokes CompilerWeaver's private static bool <name>(MethodReference, <walk state>) through reflection
+        // (the CodeGen assembly is editor-only and not referenced by this test asmdef), handing it a fresh
+        // instance of whatever state type it declares.
         private static object InvokeClassifier(string methodName, MethodReference callee)
         {
             var codeGenAssembly = AppDomain.CurrentDomain.GetAssemblies()
@@ -184,8 +185,8 @@ namespace Velvet.Tests
             var method = weaverType!.GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static);
             Assume.That(method, Is.Not.Null,
                 $"Precondition: {CompilerWeaverTypeFullName} exposes a private static {methodName} method");
-            var cache = new Dictionary<string, bool>();
-            return method!.Invoke(null, new object[] { callee, cache })!;
+            var state = Activator.CreateInstance(method!.GetParameters()[1].ParameterType, nonPublic: true)!;
+            return method.Invoke(null, new object[] { callee, state })!;
         }
 
         // --- CompilerWeaver hook-return consumption shape probes ---
@@ -514,6 +515,106 @@ namespace Velvet.Tests
             var gate = IndexOfCallTo(method, "TryGetMemoizedVNode");
             var regionStart = method.Body.Instructions.IndexOf(method.Body.ExceptionHandlers[0].TryStart);
             Assert.That((woven: gate >= 0, gateFirst: gate < regionStart), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base bails a callee whose type declares no such method, as here.
+        // What it pins is the safety fold's null guard: deleting `if (definition == null) return true;` from
+        // `NonSafeHookFold.TryLeaf` hands the null on to `IsDispatchOpen`, and the weave throws.
+        [Test]
+        public void Given_ACallToAMethodItsTypeDoesNotDeclare_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        {
+            // Arrange — one parameter, and a call naming a method Probe.Fixture does not declare
+            using var module = BuildHookShapeProbeModule("UndeclaredMethodProbe",
+                out var method, out _, out _, out _);
+            method.Parameters.Add(new ParameterDefinition("p", Mono.Cecil.ParameterAttributes.None,
+                module.TypeSystem.Object));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, UndeclaredMethodOf(module)));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
+                "A callee Resolve() returns nothing for cannot be inspected, so the weaver bails");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads such a callee inside a Velvet.Hooks member as no hook.
+        // What it pins is the reach fold's null guard: deleting `if (definition == null) return true;` from
+        // `HookReachFold.TryLeaf` hands the null on to `IsDispatchOpen`, and the weave throws.
+        [Test]
+        public void Given_AHooksMemberCallingAMethodItsTypeDoesNotDeclare_When_CompilerWeaverRuns_Then_MethodIsWoven()
+        {
+            // Arrange — `var value = Hooks.ReadMissing(); var id = Hooks.UseId(null);`, where ReadMissing's body
+            // calls a method Probe.Fixture does not declare. The safety fold classifies Hooks.* by name, so only
+            // the reach fold descends into ReadMissing.
+            using var module = BuildHookShapeProbeModule("HooksMemberUndeclaredProbe",
+                out var method, out var useId, out _, out _);
+            var readMissing = new MethodDefinition("ReadMissing",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Object);
+            readMissing.Body = new Mono.Cecil.Cil.MethodBody(readMissing);
+            var readIl = readMissing.Body.GetILProcessor();
+            readIl.Append(Instruction.Create(OpCodes.Call, UndeclaredMethodOf(module)));
+            readIl.Append(Instruction.Create(OpCodes.Ldnull));
+            readIl.Append(Instruction.Create(OpCodes.Ret));
+            module.Types.Single(type => type.FullName == "Velvet.Hooks").Methods.Add(readMissing);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Object));
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, readMissing));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_1));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "ReadMissing reaches nothing the reach fold can see, and UseId's value keys the cache");
+        }
+
+        // GREEN_ON_BASE(characterization): the base skips a System callee unresolved, so it weaves this body too.
+        // What it pins is the safety fold keeping that carve-out: deleting the `CannotReachVelvetHook` line from
+        // `NonSafeHookFold.TryLeaf` tries to resolve the callee, fails, and bails the body.
+        [Test]
+        public void Given_AHooklessBodyCallingAnUnresolvableSystemMethod_When_CompilerWeaverRuns_Then_MethodIsWoven()
+        {
+            // Arrange — one parameter, and a call into a System namespace in an assembly no resolver can find
+            using var module = BuildHookShapeProbeModule("UnresolvableSystemCalleeProbe",
+                out var method, out _, out _, out _);
+            method.Parameters.Add(new ParameterDefinition("p", Mono.Cecil.ParameterAttributes.None,
+                module.TypeSystem.Object));
+            var missingScope = new AssemblyNameReference("System.WeaverProbe.Missing", new Version(1, 0, 0, 0));
+            module.AssemblyReferences.Add(missingScope);
+            var missingType = new TypeReference("System.WeaverProbe", "Service", module, missingScope);
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, new MethodReference("Run", module.TypeSystem.Void, missingType)));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "A BCL / Unity callee is read as hook-free without resolving it, so its failure bails nothing");
+        }
+
+        // A reference to a method the module's own Probe.Fixture type does not declare: the type resolves,
+        // so Resolve() returns null for the method rather than throwing.
+        private static MethodReference UndeclaredMethodOf(ModuleDefinition module)
+        {
+            var fixtureType = module.Types.Single(type => type.FullName == "Probe.Fixture");
+            return new MethodReference("Undeclared", module.TypeSystem.Void, fixtureType);
         }
 
         // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so it leaves this one alone too.

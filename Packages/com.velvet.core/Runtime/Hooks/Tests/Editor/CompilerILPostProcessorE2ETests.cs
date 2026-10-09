@@ -382,6 +382,119 @@ namespace Velvet.Tests
             return V.Label(text: describe());
         }
 
+        // A hook value passed straight as an argument stays on the stack, as Roslyn's optimizing build leaves
+        // any value it reads once: the call is followed by the next argument, not by a store.
+        private static int s_stackBuilds;
+
+        private static string CountStackBuild()
+        {
+            s_stackBuilds++;
+            return "stack";
+        }
+
+        [Component]
+        public static VNode StoreValueAsArgumentComponent()
+            => V.Label(text: Hooks.UseStore(s_firstStore, value => value.ToString()), name: CountStackBuild());
+
+        private static System.Action<int> s_stackParentSetTick = null!;
+
+        [Component]
+        public static VNode StoreValueAsArgumentParent()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_stackParentSetTick = setTick;
+            return V.Component(StoreValueAsArgumentComponent, key: "stack");
+        }
+
+        // Item1 read off the returned tuple without storing either.
+        [Component]
+        public static VNode StateItem1AsArgumentComponent()
+            => V.Label(text: Hooks.UseState("first").Item1);
+
+        internal static StateUpdater<int> s_stackSetter;
+
+        // Only the setter is read off the tuple: the changing value is never captured.
+        [Component]
+        public static VNode StateSetterOffTheStackComponent()
+        {
+            s_stackSetter = Hooks.UseState(0).Item2;
+            return V.Label(text: "setter");
+        }
+
+        private static string Describe(object state) => state.ToString();
+
+        // The whole tuple handed on boxed, never stored.
+        [Component]
+        public static VNode WholeTupleOffTheStackComponent()
+            => V.Label(text: Describe(Hooks.UseState("whole")));
+
+        // A custom hook composing a dispatch, its value passed straight as an argument: the hook call is the
+        // boundary itself.
+        [Component]
+        public static VNode CustomHookWithDispatchAsArgumentComponent()
+            => V.Label(text: UseNameWithDispatch());
+
+        // A static field that happens to be named like the tuple's value element.
+        private static class TupleSlot
+        {
+            internal static (string value, StateUpdater<string> setValue) Item1;
+        }
+
+        // The whole tuple stored straight into that field, so the instruction after the call names a field Item1.
+        [Component]
+        public static VNode TupleStoredToAFieldNamedItem1Component()
+        {
+            TupleSlot.Item1 = Hooks.UseState("slot");
+            return V.Label(text: TupleSlot.Item1.value);
+        }
+
+        // A custom hook returning nothing: no value to capture, however the call is followed.
+        private static void UseMountLog()
+        {
+            Hooks.UseEffect(() => () => { }, System.Array.Empty<object>());
+        }
+
+        [Component]
+        public static VNode VoidCustomHookComponent()
+        {
+            UseMountLog();
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: count.ToString());
+        }
+
+        private static int s_countSlot;
+
+        // A custom hook returning a reference: the caller reads through it, so there is no value to copy.
+        private static ref int UseCountSlot()
+        {
+            _ = Hooks.UseRef<object>();
+            return ref s_countSlot;
+        }
+
+        [Component]
+        public static VNode RefReturningCustomHookComponent()
+        {
+            var count = UseCountSlot();
+            var (offset, _) = Hooks.UseState(0);
+            return V.Label(text: (count + offset).ToString());
+        }
+
+        // A custom hook returning an array, its value indexed straight off the stack.
+        private static string[] UseNames()
+        {
+            var (name, _) = Hooks.UseState("named");
+            return new[] { name };
+        }
+
+        [Component]
+        public static VNode ArrayFromCustomHookComponent()
+            => V.Label(text: UseNames()[0]);
+
+        // A Ref<object> read straight off the stack: the copy's type is a generic instance built from the call.
+        [Component]
+        public static VNode RefValueOffTheStackComponent()
+            => V.Label(text: Hooks.UseRef<object>() != null ? "ref" : "none");
+
         // A helper calling itself: the walk classifying it meets it again before it has finished reading it.
         private static string Repeat(string text, int times) => times <= 0 ? text : Repeat(text + "!", times - 1);
 
@@ -390,6 +503,119 @@ namespace Velvet.Tests
         {
             var (count, _) = Hooks.UseState(0);
             return V.Label(text: Repeat(count.ToString(), 2));
+        }
+
+        // A custom hook composing a SAFE hook: a hook call, whose value is captured.
+        private static int UseCount()
+        {
+            var (count, _) = Hooks.UseState(5);
+            return count;
+        }
+
+        [Component]
+        public static VNode CustomHookOnlyComponent()
+        {
+            var count = UseCount();
+            return V.Label(text: count.ToString());
+        }
+
+        private static readonly object s_boxedLabel = "label";
+
+        // An override of object.ToString reached ahead of the hook: the carve-out reads it without resolving.
+        [Component]
+        public static VNode BclVirtualAheadOfHookComponent()
+        {
+            var label = s_boxedLabel.ToString();
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: label + count.ToString());
+        }
+
+        // Building the delegate makes no call into the lambda that dispatches.
+        private static System.Func<string> MakeDescriber() => () => s_dispatchService?.Value() ?? "none";
+
+        [Component]
+        public static VNode DescriberAheadOfHookComponent()
+        {
+            var describe = MakeDescriber();
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: describe() + count.ToString());
+        }
+
+        public class MutatingFormatter
+        {
+            public virtual string Format(int value)
+            {
+                var mutation = Hooks.UseMutation(new MutationOptions<int, int>(
+                    MutationFn: (v, _) => VelvetTask.FromResult(v)));
+                return mutation.Status.ToString() + value;
+            }
+        }
+
+        private static readonly MutatingFormatter s_mutatingFormatter = new();
+
+        // The declared body of the virtual reaches UseMutation, but an override need not.
+        [Component]
+        public static VNode VirtualWithNonSafeDeclaredBodyComponent()
+        {
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: s_mutatingFormatter.Format(count));
+        }
+
+        private static readonly bool s_recurse = false;
+
+        // Three custom hooks calling one another in a ring, the first reaching its own hook only after the call
+        // into the second.
+        private static string UseLoopFirst(int depth)
+        {
+            var rest = depth > 0 ? UseLoopSecond(depth - 1) : "";
+            var (own, _) = Hooks.UseState("first");
+            return rest + own;
+        }
+
+        private static string UseLoopSecond(int depth) => UseLoopThird(depth);
+
+        private static string UseLoopThird(int depth) => UseLoopFirst(depth);
+
+        // Declared ahead of the case below so the walk enters the cycle at UseLoopFirst.
+        [Component]
+        public static VNode LoopEntryComponent()
+        {
+            var value = UseLoopFirst(0);
+            return V.Label(text: value);
+        }
+
+        [Component]
+        public static VNode LoopMemberBehindABranchComponent()
+        {
+            var value = s_recurse ? UseLoopSecond(0) : "";
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: value + count.ToString());
+        }
+
+        // The same cycle reaching UseMutation.
+        private static string UseMutatingLoopFirst(int depth)
+        {
+            var rest = depth > 0 ? UseMutatingLoopSecond(depth - 1) : "";
+            var mutation = Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: (v, _) => VelvetTask.FromResult(v)));
+            return rest + mutation.Status;
+        }
+
+        private static string UseMutatingLoopSecond(int depth) => UseMutatingLoopFirst(depth);
+
+        // Declared ahead of the case below so the safety walk enters the cycle at UseMutatingLoopFirst.
+        [Component]
+        public static VNode MutatingLoopEntryComponent()
+        {
+            var value = UseMutatingLoopFirst(0);
+            return V.Label(text: value);
+        }
+
+        [Component]
+        public static VNode MutatingLoopMemberComponent()
+        {
+            var value = UseMutatingLoopSecond(0);
+            return V.Label(text: value);
         }
 
         public class OverridableFormatter
@@ -758,7 +984,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base reads only call instructions too, so it weaves this body.
         // What it pins is the ahead-of-gate check doing the same: dropping the call-opcode filter from
-        // `HasOpaqueCallAhead` lets it walk the lambda the `ldftn` names, and reddens it.
+        // `IsOpaqueCall` lets it walk the lambda the `ldftn` names, and reddens it.
         [Test]
         public void Given_DispatchInsideALambdaHandedToAHook_When_Woven_Then_InjectsBothMemoCalls()
         {
@@ -768,14 +994,79 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base classifies a recursive helper as well.
-        // What it pins is the reach walk's cycle guard: removing the provisional None that `ReachOf` writes
-        // before reading a body leaves the walk recursing through `Repeat` without end.
+        // What it pins is the fold's cycle guard: deleting the open-method branch from `CallGraphFold.Fold`
+        // leaves the walk recursing through `Repeat` without end.
         [Test]
         public void Given_RecursiveHelperAfterTheHook_When_Woven_Then_InjectsBothMemoCalls()
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(RecursiveHelperComponent))), Is.True,
                 "A helper that calls itself is classified once, and reaches no hook");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a custom hook composing UseState as a hook call too.
+        // What it pins is the direct hook ending the fold: deleting the `IsDirectHookCall` branch from
+        // `HookReachFold.TryLeaf` sends the fold into UseState's own body, which reaches no positional hook.
+        [Test]
+        public void Given_CustomHookComposingASafeHook_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(CustomHookOnlyComponent))), Is.True,
+                "A custom hook's value is captured like a direct hook's, so the body has a dep to key on");
+        }
+
+        // GREEN_ON_BASE(characterization): the base skips a BCL / Unity callee unresolved too, so it weaves this.
+        // What it pins is the reach fold keeping that carve-out: deleting the `CannotReachVelvetHook` line
+        // from `HookReachFold.TryLeaf` reads object.ToString as an open dispatch ahead of the gate.
+        [Test]
+        public void Given_BclVirtualCallAheadOfTheHook_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(BclVirtualAheadOfHookComponent))), Is.True,
+                "A BCL virtual signature is read as hook-free without resolving it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads only call instructions in a callee's body too.
+        // What it pins is the fold doing the same: dropping the call-opcode filter from `CallGraphFold.Visit`
+        // walks the lambda MakeDescriber's `ldftn` names and reads the helper as Opaque.
+        [Test]
+        public void Given_HelperBuildingADispatchingLambdaAheadOfTheHook_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(DescriberAheadOfHookComponent))), Is.True,
+                "Building a delegate makes no call into its body, so the helper reaches no dispatch");
+        }
+
+        [Test]
+        public void Given_VirtualWhoseDeclaredBodyReachesUseMutation_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(VirtualWithNonSafeDeclaredBodyComponent))), Is.True,
+                "An open dispatch's declared body need not be the one that runs, so the safety walk does not read it");
+        }
+
+        [Test]
+        public void Given_AHookValuePassedStraightAsAnArgument_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(StoreValueAsArgumentComponent))), Is.True,
+                "A hook value left on the stack is copied where the call produces it");
+        }
+
+        [Test]
+        public void Given_Item1ReadOffTheStack_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(StateItem1AsArgumentComponent))), Is.True,
+                "Item1 read straight off the returned tuple is copied where the ldfld produces it");
+        }
+
+        [Test]
+        public void Given_AnArrayFromACustomHookIndexedOffTheStack_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(ArrayFromCustomHookComponent))), Is.True,
+                "An array value left on the stack is copied into a local of the array type");
         }
 
         [Test]
@@ -895,8 +1186,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base bails a body whose helper makes an open dispatch, as this one.
-        // What it pins is the helper taking Opaque from its dispatch: masking the Opaque flag off a callee's reach
-        // in `ReachOfDefinition` reddens it.
+        // What it pins is the helper taking Opaque from its dispatch: masking the Opaque flag off what
+        // `CallGraphFold.Visit` folds from a callee reddens it.
         [Test]
         public void Given_HelperDispatchingAheadOfTheHook_When_Analyzed_Then_IsLeftUnwoven()
         {
@@ -906,14 +1197,97 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base bails a custom hook reaching a dispatch, and so does this change.
-        // What it pins is a hook call still carrying its dispatch: testing `HasOpaqueCallAhead` for a reach of
-        // exactly Opaque instead of for the Opaque flag reddens it.
+        // What it pins is a hook call still carrying its dispatch: testing `IsOpaqueCall` for a reach of exactly
+        // Opaque instead of for the Opaque flag reddens it.
         [Test]
         public void Given_CustomHookComposingADispatch_When_Analyzed_Then_IsLeftUnwoven()
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(CustomHookWithDispatchComponent))), Is.False,
                 "A custom hook runs ahead of the gate, so a dispatch inside it bails the body as a direct one does");
+        }
+
+        [Test]
+        public void Given_HookCycleEnteredAtItsOtherMember_When_ThatMemberSitsBehindABranch_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(LoopMemberBehindABranchComponent))), Is.False,
+                "UseLoopSecond reaches UseState through UseLoopThird and UseLoopFirst, so it is a hook call the branch can skip");
+        }
+
+        [Test]
+        public void Given_UseMutationCycleEnteredAtItsOtherMember_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(MutatingLoopMemberComponent))), Is.False,
+                "UseMutatingLoopSecond reaches UseMutation through UseMutatingLoopFirst, so the body bails");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a setter-only read unwoven, and so does this change.
+        // What it pins is the stack capture taking Item1 alone: deleting the `field.Name != "Item1"` check from
+        // `TryCaptureStackValue` captures the stable setter and reddens it.
+        [Test]
+        public void Given_OnlyTheSetterReadOffTheStack_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(StateSetterOffTheStackComponent))), Is.False,
+                "The setter is stable while the value it sets is never captured, so the weaver bails");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a whole tuple unwoven, and so does this change.
+        // What it pins is the stack capture refusing one too: replacing `if (!IsValueTupleType(type)) return true;`
+        // in `TryCaptureStackValue` with `return true;` reddens it.
+        [Test]
+        public void Given_AWholeTupleHandedOnOffTheStack_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(WholeTupleOffTheStackComponent))), Is.False,
+                "A whole tuple compares structurally rather than by reference, so the weaver bails");
+        }
+
+        // GREEN_ON_BASE(characterization): the base bails a custom hook reaching a dispatch, and so does this change.
+        // What it pins is the ahead-of-gate scan reading its boundary: with the value on the stack the hook call
+        // is the boundary, and moving `if (instr == boundary) break;` ahead of the `IsOpaqueCall` test in
+        // `HasOpaqueCallAhead` reddens it.
+        [Test]
+        public void Given_CustomHookComposingADispatchPassedStraightAsAnArgument_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(CustomHookWithDispatchAsArgumentComponent))), Is.False,
+                "The custom hook is the boundary and runs ahead of the gate, so its dispatch bails the body");
+        }
+
+        // GREEN_ON_BASE(characterization): the base bails a whole tuple stored to a field, and so does this change.
+        // What it pins is the stack capture reading Item1 only through an ldfld: deleting the `OpCodes.Ldfld`
+        // check from `TryCaptureStackValue` takes the stsfld naming a field Item1 for the value element.
+        [Test]
+        public void Given_AWholeTupleStoredToAFieldNamedItem1_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(TupleStoredToAFieldNamedItem1Component))), Is.False,
+                "The field holds the whole tuple, which compares structurally, so the weaver bails");
+        }
+
+        // GREEN_ON_BASE(characterization): the base bails a void custom hook, and so does this change.
+        // What it pins is the stack capture refusing a void call: deleting the `MetadataType.Void` clause from
+        // `TryCaptureStackValue` declares a void local for it, and reddens this.
+        [Test]
+        public void Given_AVoidCustomHook_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(VoidCustomHookComponent))), Is.False,
+                "A void custom hook hides whatever value hook it composes, and pushes nothing to capture");
+        }
+
+        // GREEN_ON_BASE(characterization): the base bails a ref-returning custom hook, and so does this change.
+        // What it pins is the stack capture refusing a type it cannot name: deleting the `type == null` clause
+        // from `TryCaptureStackValue` reads the null `InCallerTerms` returns for a by-reference type.
+        [Test]
+        public void Given_ARefReturningCustomHook_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(RefReturningCustomHookComponent))), Is.False,
+                "The caller reads through the returned reference, so there is no value to copy");
         }
 
         [Test]
@@ -1186,6 +1560,55 @@ namespace Velvet.Tests
             // Assert
             Assert.That(_root.Q<Label>()?.text, Is.EqualTo("9/2"),
                 "Each hook statement keys the memo on its own value");
+        }
+
+        // GREEN_ON_BASE(characterization): the base renders this body unwoven, so it shows the new value too.
+        // What it pins is the copy holding the call's value: putting `ldnull` where `InjectMemoization` inserts
+        // the `dup` keys every render on null, so the second render hits and shows the first value.
+        [Test]
+        public void Given_AStoreValuePassedStraightAsAnArgument_When_TheStoreChanges_Then_TheLabelShowsItsNewValue()
+        {
+            // Arrange
+            using var first = new SettableStore(1);
+            s_firstStore = first;
+            using var mounted = V.Mount(_root, V.Component(StoreValueAsArgumentComponent, key: "stack"));
+
+            // Act
+            first.Set(9);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("9"), "The copied store value keys the memo");
+        }
+
+        [Test]
+        public void Given_AStoreValuePassedStraightAsAnArgument_When_TheParentReRendersWithItUnchanged_Then_TheBodyDoesNotRun()
+        {
+            // Arrange
+            using var first = new SettableStore(1);
+            s_firstStore = first;
+            s_stackBuilds = 0;
+            using var mounted = V.Mount(_root, V.Component(StoreValueAsArgumentParent, key: "stack-parent"));
+
+            // Act
+            s_stackParentSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_stackBuilds, Is.EqualTo(1), "An equal copied value is a hit, so the counter past the gate runs once");
+        }
+
+        // GREEN_ON_BASE(characterization): the base renders this body unwoven, and it renders the same woven.
+        // What it pins is the copy's type naming the call's arguments: deleting `resolved.GenericArguments.Add(each);`
+        // from `InCallerTerms` declares the copy as a Ref`1 instance with no type argument.
+        [Test]
+        public void Given_ARefValueReadOffTheStack_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(RefValueOffTheStackComponent, key: "ref-stack"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("ref"), "The copy of the Ref<object> keys the memo");
         }
 
         [Test]
