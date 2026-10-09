@@ -63,8 +63,6 @@ namespace Velvet.SourceGenerators.Tests
         {
             ["Velvet.Hooks.UseAnimationSequence"] =
                 "takes no delegate — its deps gate a declarative step list, so there are no closure captures to compare",
-            ["Velvet.Hooks.UseErrorBoundaryReset"] =
-                "takes no delegate — its reset keys are compared to reset a boundary, so there are no closure captures to compare",
             ["Velvet.Hooks.TryGetMemoizedVNode"] =
                 "auto-memoization plumbing whose deps array the ILPP weaver emits",
             ["Velvet.Hooks.StoreMemoizedVNode"] =

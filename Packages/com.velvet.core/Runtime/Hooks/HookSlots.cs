@@ -30,18 +30,32 @@ namespace Velvet
         }
     }
 
-    internal sealed class HookErrorBoundaryResetSlot
+    internal sealed class HookErrorBoundaryKeysSlot
     {
-        public HookErrorBoundaryResetSlot(Action reset)
+        private readonly ComponentFiber _boundary;
+
+        public HookErrorBoundaryKeysSlot(ComponentFiber boundary)
         {
-            Reset = reset;
+            _boundary = boundary;
+            CommitPendingReset = RunPendingReset;
         }
 
         public object?[]? Keys { get; set; }
 
-        public object? HandledRequest { get; set; }
+        public ErrorBoundaryResetDetails? PendingReset { get; set; }
 
-        public Action Reset { get; }
+        // Cached so that registering the layout effect builds no delegate per render.
+        public Func<Action?> CommitPendingReset { get; }
+
+        private Action? RunPendingReset()
+        {
+            var details = PendingReset;
+            PendingReset = null;
+            if (details == null || _boundary.CaughtError == null) return null;
+            _boundary.OnErrorBoundaryReset?.Invoke(details);
+            FiberErrorBoundary.Reset(_boundary);
+            return null;
+        }
     }
 
     internal sealed class HookCallbackSlot

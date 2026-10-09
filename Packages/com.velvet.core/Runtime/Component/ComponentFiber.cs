@@ -794,10 +794,17 @@ namespace Velvet
 
         // What this boundary caught, set where the catch succeeds: React's boundary keeps its error state until it
         // remounts, which here is a new fiber. FiberErrorBoundary.OutputOf reads it. Cleared by RouteErrorBoundary on
-        // a new location, as React Router's boundary resets there, by Hooks.UseErrorBoundaryReset, which is
+        // a new location, as React Router's boundary resets there, by FiberErrorBoundary.Reset, which is
         // react-error-boundary's reset, and by a Suspense expansion whose primary
         // suspends, which discards the render that caught, where that expansion's own walk reached the boundary.
         internal (Exception Error, ErrorInfo Info)? CaughtError { get; set; }
+
+        // The onReset Hooks.UseErrorBoundaryReset registered, overwritten on each render as FallbackFactory is.
+        internal Action<ErrorBoundaryResetDetails>? OnErrorBoundaryReset { get; set; }
+
+        private ErrorBoundaryReset? _errorBoundaryReset;
+
+        internal ErrorBoundaryReset ResetHandle => _errorBoundaryReset ??= new ErrorBoundaryReset(this);
 
         /// <summary>
         /// Set when this boundary's own fallback content throws while <see cref="IsShowingFallback"/> is

@@ -251,6 +251,13 @@ namespace Velvet
             return fallbackTree!;
         }
 
+        // react-error-boundary's setState(initialState), which follows its onReset.
+        internal static void Reset(ComponentFiber boundary)
+        {
+            boundary.CaughtError = null;
+            FiberWorkLoop.RequestRenderFromHook(boundary);
+        }
+
         // A throw out of the handler would escape the commit delivering the report.
         internal static void ReportCaughtError(ReconcilerContext ctx, Exception exception, ErrorInfo info)
         {
