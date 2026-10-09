@@ -645,19 +645,53 @@ namespace Velvet.Tests
         {
             // Arrange — every body this assembly's fixtures hold that the weaver left unwoven is processed again
             var location = typeof(WeaverReflectionProbeTests).Assembly.Location;
-            var resolver = new DefaultAssemblyResolver();
-            resolver.AddSearchDirectory(System.IO.Path.GetDirectoryName(location));
-            resolver.AddSearchDirectory(System.IO.Path.GetDirectoryName(typeof(Hooks).Assembly.Location));
             using var assembly = AssemblyDefinition.ReadAssembly(location,
-                new ReaderParameters { AssemblyResolver = resolver });
+                new ReaderParameters { AssemblyResolver = ReferenceResolverFor(location) });
+            var problems = new List<string>();
 
             // Act
-            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", assembly.MainModule);
+            try
+            {
+                problems.AddRange(InvokeWeave("Velvet.CodeGen.CompilerWeaver", assembly.MainModule)
+                    .Where(message => message.Contains("threw") || message.Contains("is disabled for assembly")));
+            }
+            catch (TargetInvocationException exception)
+            {
+                problems.Add($"the weave itself threw {exception.InnerException?.GetType().Name}: "
+                    + exception.InnerException?.Message);
+            }
 
             // Assert
-            Assert.That(messages.Where(message => message.Contains("threw")
-                    || message.Contains("is disabled for assembly")),
-                Is.Empty, "A body the weaver throws on, or an assembly it cannot resolve, is a failure to weave");
+            Assert.That(problems, Is.Empty,
+                "A body the weaver throws on, or an assembly it cannot resolve, is a failure to weave");
+        }
+
+        // Where the editor finds the assemblies the fixture assembly references: beside the assemblies loaded
+        // into this domain, beside the fixture assembly, and in the editor's own managed and framework
+        // directories. The ILPP is handed its references as paths instead.
+        private static DefaultAssemblyResolver ReferenceResolverFor(string assemblyPath)
+        {
+            var resolver = new DefaultAssemblyResolver();
+            var directories = new HashSet<string> { System.IO.Path.GetDirectoryName(assemblyPath)! };
+            foreach (var loaded in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (loaded.IsDynamic || string.IsNullOrEmpty(loaded.Location)) continue;
+                directories.Add(System.IO.Path.GetDirectoryName(loaded.Location)!);
+            }
+            var contents = UnityEditor.EditorApplication.applicationContentsPath;
+            foreach (var relative in new[]
+            {
+                "Managed", "MonoBleedingEdge/lib/mono/4.7.1-api", "MonoBleedingEdge/lib/mono/4.7.1-api/Facades",
+                "NetStandard/ref/2.1.0", "NetStandard/compat/2.1.0/shims/netstandard",
+            })
+            {
+                directories.Add(System.IO.Path.Combine(contents, relative));
+            }
+            foreach (var directory in directories.Where(System.IO.Directory.Exists))
+            {
+                resolver.AddSearchDirectory(directory);
+            }
+            return resolver;
         }
 
         // `call -> dup -> ldfld Item1 -> stloc.0 -> <readOp> <readField> -> <afterRead>`, the Item2 read of a
