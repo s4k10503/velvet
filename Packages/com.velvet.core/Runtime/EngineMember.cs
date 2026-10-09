@@ -75,6 +75,15 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleOpacity =
             ReadProperty(UIElements, ComputedStyleType, "opacity", "System.Single");
 
+        internal static readonly EngineMember ComputedStyleRotate =
+            ReadProperty(UIElements, ComputedStyleType, "rotate", "UnityEngine.UIElements.Rotate");
+
+        internal static readonly EngineMember ComputedStyleScale =
+            ReadProperty(UIElements, ComputedStyleType, "scale", "UnityEngine.UIElements.Scale");
+
+        internal static readonly EngineMember ComputedStyleTranslate =
+            ReadProperty(UIElements, ComputedStyleType, "translate", "UnityEngine.UIElements.Translate");
+
         internal static readonly EngineMember ComputedStyleTransitionProperty = ReadProperty(UIElements,
             ComputedStyleType, "transitionProperty", "System.Collections.Generic.List`1[UnityEngine.UIElements.StylePropertyName]");
 

@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -16,7 +17,8 @@ namespace Velvet.Tests
     /// captures at its own pointer-down still drags — under a distance constraint and with none —
     /// without clicking the child, while a sub-threshold press on it stays its click, a real drag ending
     /// on a Clickable source does NOT fire its click, and every DragOverlay positioner mounted at
-    /// activation tracks the pointer on the Overlay layer panel with picking disabled.
+    /// activation tracks the pointer on the Overlay layer panel with picking disabled, and one mounted
+    /// after activation joins the drag.
     /// </summary>
     internal sealed class DndPlayModeTests
     {
@@ -28,6 +30,9 @@ namespace Velvet.Tests
         private static readonly List<string> s_ended = new();
         private static DragActivation s_cardActivation;
         private static StateUpdater<bool> s_setShowChild;
+        private static StateUpdater<bool> s_setShowOverlay;
+        private static bool s_startMountsOverlay;
+        private static bool s_earlyOverlay;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
@@ -36,6 +41,12 @@ namespace Velvet.Tests
             s_ended.Clear();
             s_cardActivation = new DragActivation(Distance: 4f);
             s_setShowChild = default;
+            s_setShowOverlay = default;
+            s_startMountsOverlay = false;
+            s_earlyOverlay = false;
+            s_parkedRowCount = 0;
+            s_parkedShowOverlay = false;
+            s_parkedFiber = null;
             _panelGo = new GameObject("DndPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
             _settings = TestPanelSettings.Create();
@@ -601,6 +612,213 @@ namespace Velvet.Tests
                 (overlayRoot.Q<Label>("first-ghost").parent.style.display.value,
                     overlayRoot.Q<Label>("second-ghost").parent.style.display.value),
                 Is.EqualTo((DisplayStyle.None, DisplayStyle.None)));
+        }
+
+        // The overlay is declared only while showOverlay is set; s_startMountsOverlay says whether the
+        // drag's start callback is what sets it.
+        [Component]
+        private static VNode LateOverlayScene()
+        {
+            var (showOverlay, setShowOverlay) = Hooks.UseState(false);
+            s_setShowOverlay = setShowOverlay;
+            return V.DndContext(
+                onDragStart: e =>
+                {
+                    s_started.Add(e.Active.Id);
+                    if (s_startMountsOverlay)
+                    {
+                        setShowOverlay.Invoke(true);
+                    }
+                },
+                activation: DragActivation.None,
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", name: "item", movement: DragMovement.None,
+                        className: "absolute left-[30px] top-[20px] w-[50px] h-[50px]"),
+                    s_earlyOverlay
+                        ? V.DragOverlay(key: "early", children: new VNode[] { V.Label("ghost", name: "early-ghost") })
+                        : null,
+                    showOverlay
+                        ? V.DragOverlay(key: "late", children: new VNode[] { V.Label("ghost", name: "late-ghost") })
+                        : null,
+                });
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADragOverlayMountedByTheStartCallback_When_ThePressActivatesTheDrag_Then_TheOverlayShows()
+        {
+            // Arrange
+            s_startMountsOverlay = true;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+
+            // Act
+            SendPointerDown(Main("item"), new Vector2(40, 30));
+            yield return null;
+
+            // Assert — the Overlay layer host exists only once an overlay has mounted.
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+            var style = overlayRoot.Q<Label>("late-ghost").parent.style;
+            Assert.That((style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
+                Is.EqualTo((DisplayStyle.Flex, 30f, 20f)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADragOverlayMountedByARenderDuringTheDrag_When_TheDrainCommits_Then_TheOverlayShowsAtThePointerWithoutAMove()
+        {
+            // Arrange — no start callback mounts it, so only a join after the render's commit can see it.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var item = Main("item");
+            SendPointerDown(item, new Vector2(40, 30));
+
+            // Act — the render commits through the scheduler's drain; the pointer does not move.
+            s_setShowOverlay.Invoke(true);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            yield return null;
+
+            // Assert — the Overlay layer host exists only once an overlay has mounted.
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+            var style = overlayRoot.Q<Label>("late-ghost").parent.style;
+            Assert.That((style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
+                Is.EqualTo((DisplayStyle.Flex, 30f, 20f)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ADragOverlayMountedOutsideADrain_When_ThePointerMoves_Then_TheOverlayShows()
+        {
+            // Arrange — the flush bypasses the scheduler's drain, which stays armed until a frame passes.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var item = Main("item");
+            SendPointerDown(item, new Vector2(40, 30));
+            s_setShowOverlay.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Act — no frame passes before the assert, so the drain the setter armed has not run.
+            SendPointerMove(item, new Vector2(60, 30));
+
+            // Assert — the Overlay layer host exists only once an overlay has mounted.
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+            var style = overlayRoot.Q<Label>("late-ghost").parent.style;
+            Assert.That((style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
+                Is.EqualTo((DisplayStyle.Flex, 50f, 20f)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnOverlayJoinedAtActivation_When_AnotherOverlayMountsAndThePointerMoves_Then_EachJoinedExactlyOnce()
+        {
+            // Arrange — the second overlay's drain-end join walks the bindings again, the joined one included.
+            s_earlyOverlay = true;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            var item = Main("item");
+            SendPointerDown(item, new Vector2(40, 30));
+            s_setShowOverlay.Invoke(true);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            SendPointerMove(item, new Vector2(60, 30));
+            SendPointerMove(item, new Vector2(70, 30));
+            yield return null;
+
+            // Assert
+            var drag = _mounted.Root.Reconciler.Context.ActiveDrag;
+            var joined = (ICollection)typeof(DndActiveDrag)
+                .GetField("_overlays", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(drag)!;
+            Assert.That(joined.Count, Is.EqualTo(2));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ALayerHostCreatedByAnOverlayMountedMidDrag_When_EscapeIsPressedOnItsPanel_Then_TheDragCancels()
+        {
+            // Arrange — no overlay exists at activation, so the Overlay layer host is created mid-drag.
+            s_startMountsOverlay = true;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(LateOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            SendPointerDown(Main("item"), new Vector2(40, 30));
+            yield return null;
+            var overlayPanelRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay]
+                .Document.rootVisualElement.panel.visualTree;
+
+            // Act
+            using (var evt = KeyDownEvent.GetPooled('\0', KeyCode.Escape, EventModifiers.None))
+            {
+                evt.target = overlayPanelRoot;
+                overlayPanelRoot.SendEvent(evt);
+            }
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ActiveDrag == null, Is.True);
+        }
+
+        private static int s_parkedRowCount;
+        private static bool s_parkedShowOverlay;
+        private static ComponentFiber s_parkedFiber;
+
+        // Rows first, the overlay last, so a tiny budget parks the pass before the overlay mounts.
+        [Component]
+        private static VNode ParkedOverlayList()
+        {
+            s_parkedFiber = FiberAmbientStack.Current;
+            var children = new VNode[s_parkedRowCount + 1];
+            for (var i = 0; i < s_parkedRowCount; i++)
+            {
+                children[i] = V.Label($"row-{i}");
+            }
+            children[s_parkedRowCount] = s_parkedShowOverlay
+                ? V.DragOverlay(key: "parked", children: new VNode[] { V.Label("ghost", name: "parked-ghost") })
+                : null;
+            return V.Fragment(children: children);
+        }
+
+        [Component]
+        private static VNode ParkedOverlayScene() => V.DndContext(
+            activation: DragActivation.None,
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.Draggable("item", name: "item", movement: DragMovement.None,
+                    className: "absolute left-[30px] top-[20px] w-[50px] h-[50px]"),
+                V.Component(ParkedOverlayList, key: "list"),
+            });
+
+        [UnityTest]
+        public IEnumerator Given_ADragOverlayMountedByAParkedReconcile_When_ItsTerminalSliceCompletes_Then_TheOverlayShowsAtThePointerWithoutAMove()
+        {
+            // Arrange
+            s_parkedRowCount = 3;
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ParkedOverlayScene, key: "root"));
+            yield return null;
+            yield return null;
+            SendPointerDown(Main("item"), new Vector2(40, 30));
+            s_parkedRowCount = 40;
+            s_parkedShowOverlay = true;
+            s_parkedFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_parkedFiber.FlushStateWithTinyBudgetForTest();
+            Assume.That(s_parkedFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the pass parked");
+
+            // Act — the resume runs outside the batch drain; no frame passes and the pointer does not move.
+            s_parkedFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            var overlayRoot = _mounted.Root.Reconciler.Context.LayerHosts[UILayer.Overlay].Document.rootVisualElement;
+            var style = overlayRoot.Q<Label>("parked-ghost").parent.style;
+            Assert.That((style.display.value, Mathf.Round(style.left.value.value), Mathf.Round(style.top.value.value)),
+                Is.EqualTo((DisplayStyle.Flex, 30f, 20f)));
         }
 
         [UnityTest]

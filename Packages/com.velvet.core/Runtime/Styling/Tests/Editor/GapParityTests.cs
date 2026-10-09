@@ -42,7 +42,7 @@ namespace Velvet.Tests
     /// The manipulator writes INLINE margins (resolved to pixels from the same scale as <c>_tokens.uss</c>), so
     /// the produced spacing is observable via <c>element.style.margin*</c> without attaching to a panel or
     /// ticking layout — off-panel, both direction and wrap fall back from the class markers (the only source
-    /// available) to the same defaults their on-panel <c>resolvedStyle</c> fallback would produce. That
+    /// besides an inline value) to the same defaults their on-panel <c>resolvedStyle</c> fallback would produce. That
     /// agreement extends to a composite widget's inner box, whose off-panel direction default is the
     /// engine's column rather than <c>.flex</c>'s row so that the two answers match. It does NOT extend to a
     /// widget whose built-in USS lays that box out as a row — a horizontally scrolling <c>ScrollView</c>, a
@@ -1048,9 +1048,129 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFlexRowGapContainer_When_AnInlineReverseDirectionIsSet_Then_TheInlineDirectionOutranksTheClass()
+        {
+            // Arrange — the flex-row class alone would put the gap on the leading edge.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row gap-x-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexDirection = FlexDirection.RowReverse;
+
+            // Act — reconciling the container again applies the spacing after its children.
+            var tree2 = new VNode[] { Row("flex flex-row gap-x-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — a reversed row puts the gap on the trailing edge.
+            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never reads an inline direction, so the class row holds
+        // there throughout. What this pins is the branch's half: clearing the inline value hands the
+        // direction back to the class rather than leaving the reversed edge in place.
+        [Test]
+        public void Given_AFlexRowGapContainerWithAnInlineDirection_When_TheInlineDirectionIsCleared_Then_TheClassDirectionReturns()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row gap-x-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexDirection = FlexDirection.RowReverse;
+            var tree2 = new VNode[] { Row("flex flex-row gap-x-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+            container.style.flexDirection = StyleKeyword.Null;
+
+            // Act
+            var tree3 = new VNode[] { Row("flex flex-row gap-x-4", 5) };
+            scope.Reconciler.Reconcile(scope.Root, tree2, tree3);
+
+            // Assert — a row puts the gap on the leading edge.
+            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_AWrappingGapContainer_When_AnInlineNoWrapIsSet_Then_NoHalfMarginsAreWritten()
+        {
+            // Arrange — the flex-wrap class alone would select the half-margin path.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-wrap gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexWrap = Wrap.NoWrap;
+
+            // Act — reconciling the container again applies the spacing after its children.
+            var tree2 = new VNode[] { Row("flex flex-wrap gap-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the non-wrap path leaves the first child's margins unset, where the half-margin path writes four.
+            Assert.That(container[0].style.marginRight.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ANoWrapGapContainer_When_AnInlineWrapIsSet_Then_TheHalfMarginsAreWritten()
+        {
+            // Arrange — the flex-nowrap class alone would select the leading-margin path.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-nowrap gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexWrap = Wrap.Wrap;
+
+            // Act — reconciling the container again applies the spacing after its children.
+            var tree2 = new VNode[] { Row("flex flex-nowrap gap-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the half-margin path writes the first child's right half.
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Half4));
+        }
+
+        [Test]
+        public void Given_ANoWrapGapContainer_When_AnInlineWrapReverseIsSet_Then_TheHalfMarginsAreWritten()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-nowrap gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexWrap = Wrap.WrapReverse;
+
+            // Act
+            var tree2 = new VNode[] { Row("flex flex-nowrap gap-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Half4));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never reads an inline wrap, so the class wrap holds there
+        // throughout. What this pins is the branch's half: clearing the inline value hands the wrap back
+        // to the class rather than leaving the row on the no-wrap path.
+        [Test]
+        public void Given_AWrappingGapContainerWithAnInlineNoWrap_When_TheInlineWrapIsCleared_Then_TheClassWrapReturns()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-wrap gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            container.style.flexWrap = Wrap.NoWrap;
+            var tree2 = new VNode[] { Row("flex flex-wrap gap-4", 4) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+            container.style.flexWrap = StyleKeyword.Null;
+
+            // Act
+            var tree3 = new VNode[] { Row("flex flex-wrap gap-4", 5) };
+            scope.Reconciler.Reconcile(scope.Root, tree2, tree3);
+
+            // Assert
+            Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(Half4));
+        }
+
+        [Test]
         public void Given_AGapRowWithAnInlineDirection_When_EveryDirectionClassIsRemoved_Then_TheInlineDirectionIsRead()
         {
-            // Arrange — flex-direction set outside the class list, which the classes outranked until they left.
+            // Arrange — flex-direction set outside the class list, which the classes no longer cover once they have left.
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { Row("flex flex-row gap-x-4", 3) };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
@@ -1063,6 +1183,26 @@ namespace Velvet.Tests
 
             // Assert — a reversed row puts the gap on the trailing edge.
             Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
+        }
+
+        // GREEN_ON_BASE(characterization): the base answers Column once every direction class has left too. What
+        // this pins is the branch's half: the call that finds the classes gone sets the window itself, so a
+        // manipulator that read them present only once still does not take the off-panel fallback, which is Row.
+        [Test]
+        public void Given_AGapRowReadOnceWithItsDirectionClass_When_EveryDirectionClassIsRemoved_Then_TheGapMovesToTheColumnEdge()
+        {
+            // Arrange — the manipulator's creation is the only read that finds a direction class.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+
+            // Act
+            var tree2 = new VNode[] { Row("gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — an element carrying no direction class lays out as a column.
+            Assert.That(container[1].style.marginTop.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
@@ -2216,6 +2356,36 @@ namespace Velvet.Tests
             Assert.That(b.style.marginTop.value.value, Is.EqualTo(8f));
         }
 
+        // GREEN_ON_BASE(characterization): the base answers from the inline flex-wrap, unset here, once a wrap
+        // class has left too. What this pins is the branch's half: the call that finds the marker gone sets the
+        // window itself, so a manipulator that read the marker present only once does not take resolvedStyle,
+        // which the rule keeps at wrap.
+        [Test]
+        public void Given_ARowThatAStylesheetRuleWrapsAndTheWrapClassIsReadOnce_When_ItIsRemoved_Then_TheRowLeavesTheWrapPathBeforeAnyLayout()
+        {
+            // Arrange — the gap and the wrap class arrive together, after the panel has resolved the rule's wrap,
+            // so adding the manipulator is the only read that finds the marker and no layout pass follows it.
+            File.WriteAllText(UserSheetPath, ".test-wraps-by-rule { flex-wrap: wrap; }\n");
+            AssetDatabase.ImportAsset(UserSheetPath, ImportAssetOptions.ForceSynchronousImport);
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(UserSheetPath));
+            using var store = new ClassNameStore("flex flex-row test-wraps-by-rule w-[150px] h-[60px]");
+            s_classNameStore = store;
+            using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            store.Set("flex flex-row flex-wrap test-wraps-by-rule gap-4 w-[150px] h-[60px]");
+            scheduler.DrainImmediateForTest();
+
+            // Act — drop the marker; no panel pass.
+            store.Set("flex flex-row test-wraps-by-rule gap-4 w-[150px] h-[60px]");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the leading path writes no margin-top on a row.
+            Assert.That(b.style.marginTop.value.value, Is.EqualTo(0f));
+        }
+
         [Component]
         private static VNode InlineWrapClassRow()
         {
@@ -2257,7 +2427,7 @@ namespace Velvet.Tests
         private static VNode InlineWrapRow()
         {
             // "flex flex-row" is present (the realistic, idiomatic shape — nearly every real container
-            // carries a direction class) and NO flex-wrap class at all: IsWrap's resolvedStyle fallback is
+            // carries a direction class) and NO flex-wrap class at all: the inline flex-wrap set below is
             // the only source that can possibly answer, exactly the "wrap set some other way" case a
             // direction class must NOT paper over.
             var children = new VNode[3];

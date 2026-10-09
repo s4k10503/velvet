@@ -701,6 +701,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_HoverWithPositionFractionPayload_When_Hovered_Then_InlinePercentLeftApplied()
+        {
+            // Arrange
+            var leaf = MountLeaf("hover:left-1/2");
+
+            // Act
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+
+            // Assert
+            Assert.That((leaf.style.left.value.value, leaf.style.left.value.unit),
+                Is.EqualTo((50f, LengthUnit.Percent)));
+        }
+
+        [Test]
         public void Given_DarkHoverLeafApplied_When_DarkTogglesOffAndBackOnWithoutRehover_Then_PayloadReapplies()
         {
             // Arrange — applied while dark AND hovered, then the outer (dark) gate closes while the

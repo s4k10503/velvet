@@ -170,7 +170,8 @@ namespace Velvet
                 return fallback;
             }
 
-            var entry = def.FindClosestWeightWithFace(weight, italic) ?? def.FindClosestWeight(weight);
+            var entryOfStyle = def.FindClosestWeightWithFace(weight, italic);
+            var entry = entryOfStyle ?? def.FindClosestWeight(weight);
             if (entry == null)
             {
                 return fallback;
@@ -188,6 +189,14 @@ namespace Velvet
             if (asset == null && TryGetAsset(entry.upright, entry.uprightAddress, out var uprightAsset))
             {
                 asset = uprightAsset;
+            }
+
+            // An upright request over a family that holds only italic faces takes the italic one, as CSS
+            // does when no face of the requested style exists.
+            if (asset == null && !italic && entryOfStyle == null
+                && TryGetAsset(entry.italic, entry.italicAddress, out var onlyItalicAsset))
+            {
+                asset = onlyItalicAsset;
             }
 
             if (asset == null)

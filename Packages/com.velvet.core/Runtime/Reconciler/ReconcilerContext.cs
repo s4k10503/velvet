@@ -563,7 +563,130 @@ namespace Velvet
         // distinct. innerName is the relational name of a NAMED inner (dark:group-hover/sidebar:bg-on) — "" for
         // every other inner — so two stacked named relationals (dark:group-hover/a / dark:group-hover/b) get
         // separate manipulators resolving their own source.
-        public Dictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators { get; } = new();
+        public IReadOnlyDictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators => _stackedVariantManipulators;
+        private readonly Dictionary<(VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> _stackedVariantManipulators = new();
+
+        // The same registrations grouped by target, so a settle on one element reads that element's entries
+        // instead of copying the whole registry. Written only by AddStackedVariant, RemoveStackedVariant and
+        // ClearStackedVariants, beside the registry above. A target's entry goes with its last registration, so
+        // the index holds no element the registry has let go of. An entry carries its manipulator beside its
+        // key so that reading a target's manipulators looks no key up in the registry.
+        private readonly Dictionary<VisualElement, List<StackedVariantRegistration>> _stackedVariantsByTarget = new();
+
+        private readonly struct StackedVariantRegistration
+        {
+            public readonly (VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) Key;
+            public readonly StyleStackedVariantManipulator Manipulator;
+
+            public StackedVariantRegistration((VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) key,
+                StyleStackedVariantManipulator manipulator)
+            {
+                Key = key;
+                Manipulator = manipulator;
+            }
+        }
+
+        private void AddStackedVariant((VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) key, StyleStackedVariantManipulator manipulator)
+        {
+            _stackedVariantManipulators[key] = manipulator;
+            if (!_stackedVariantsByTarget.TryGetValue(key.target, out var registrations))
+            {
+                registrations = new List<StackedVariantRegistration>();
+                _stackedVariantsByTarget[key.target] = registrations;
+            }
+            registrations.Add(new StackedVariantRegistration(key, manipulator));
+        }
+
+        private StyleStackedVariantManipulator? RemoveStackedVariant((VisualElement target, object owner, long outerPriority, StyleVariantKind inner, string innerName, string? leaf) key)
+        {
+            if (!_stackedVariantManipulators.Remove(key, out var removed))
+            {
+                return null;
+            }
+            var registrations = _stackedVariantsByTarget[key.target];
+            // MUTANT_SURVIVES(unreachable, boundary): AddStackedVariant listed every manipulator the registry
+            // holds under its key's target, so the loop finds removed and breaks before i reaches Count.
+            for (var i = 0; i < registrations.Count; i++)
+            {
+                if (ReferenceEquals(registrations[i].Manipulator, removed))
+                {
+                    registrations.RemoveAt(i);
+                    break;
+                }
+            }
+            if (registrations.Count == 0)
+            {
+                _stackedVariantsByTarget.Remove(key.target);
+            }
+            return removed;
+        }
+
+        internal void ClearStackedVariants()
+        {
+            _stackedVariantManipulators.Clear();
+            _stackedVariantsByTarget.Clear();
+        }
+
+        internal bool HasStackedVariantsOn(VisualElement target) => _stackedVariantsByTarget.ContainsKey(target);
+
+        // A caller walks the copy rather than the index: a settle applies a payload, and a payload that is
+        // itself a variant re-enters GateStackedVariant, which adds to and removes from the very list it would
+        // be reading. StackedVariantEdgeTests pins the case.
+        internal void CopyStackedVariantsOn(VisualElement target, List<StyleStackedVariantManipulator> into)
+        {
+            if (!_stackedVariantsByTarget.TryGetValue(target, out var registrations))
+            {
+                return;
+            }
+            foreach (var registration in registrations)
+            {
+                into.Add(registration.Manipulator);
+            }
+        }
+
+        // Walks the whole registry over a pooled copy, for the reason CopyStackedVariantsOn gives.
+        internal void ForEachStackedVariant<TState>(TState state,
+            System.Action<StyleStackedVariantManipulator, TState> action)
+        {
+            if (_stackedVariantManipulators.Count == 0)
+            {
+                return;
+            }
+            var stacked = BufferPool.RentStackedVariantList();
+            try
+            {
+                foreach (var manipulator in _stackedVariantManipulators.Values)
+                {
+                    stacked.Add(manipulator);
+                }
+                foreach (var manipulator in stacked)
+                {
+                    action(manipulator, state);
+                }
+            }
+            finally
+            {
+                BufferPool.ReturnStackedVariantList(stacked);
+            }
+        }
+
+        // Walked over a copy, each removed before it is detached and skipped once already gone: a detach closes
+        // its leaf through GateStackedVariant, which can remove a registration listed after it.
+        internal void DetachStackedVariants(VisualElement target)
+        {
+            if (!_stackedVariantsByTarget.TryGetValue(target, out var registrations))
+            {
+                return;
+            }
+            foreach (var registration in registrations.ToArray())
+            {
+                var removed = RemoveStackedVariant(registration.Key);
+                if (removed != null)
+                {
+                    target.RemoveManipulator(removed);
+                }
+            }
+        }
 
         // Detaches and forgets every stacked manipulator owner gated, and every one those gated in turn, for an
         // owner that is going away while its target stays: no call opens their gates again, and a retained one
@@ -571,7 +694,7 @@ namespace Velvet
         internal void DropStackedVariants(object owner)
         {
             List<(VisualElement, object, long, StyleVariantKind, string, string?)>? owned = null;
-            foreach (var kv in StackedVariantManipulators)
+            foreach (var kv in _stackedVariantManipulators)
             {
                 if (ReferenceEquals(kv.Key.owner, owner))
                 {
@@ -584,7 +707,8 @@ namespace Velvet
             }
             foreach (var key in owned)
             {
-                if (StackedVariantManipulators.Remove(key, out var dropped))
+                var dropped = RemoveStackedVariant(key);
+                if (dropped != null)
                 {
                     key.Item1.RemoveManipulator(dropped);
                     DropStackedVariants(dropped);
@@ -609,7 +733,7 @@ namespace Velvet
             var key = (target, owner, outerPriority, innerKind, innerName ?? string.Empty, leafPayload);
             if (outerOn)
             {
-                if (!StackedVariantManipulators.TryGetValue(key, out var m))
+                if (!_stackedVariantManipulators.TryGetValue(key, out var m))
                 {
                     var innerPriority = StyleLayerPriority.ForVariant(innerKind);
                     var priority = StyleLayerPriority.Stack(outerPriority, innerPriority);
@@ -618,7 +742,7 @@ namespace Velvet
                     m.SeedInner(VariantManipulators.TryGetValue(target, out var local)
                         ? local.Holds(innerKind)
                         : StyleVariantManipulator.LiveHolds(target, innerKind));
-                    StackedVariantManipulators[key] = m;
+                    AddStackedVariant(key, m);
                     target.AddManipulator(m);
                 }
                 else
@@ -629,7 +753,7 @@ namespace Velvet
                 }
                 m.SetOuterGate(true);
             }
-            else if (StackedVariantManipulators.TryGetValue(key, out var m))
+            else if (_stackedVariantManipulators.TryGetValue(key, out var m))
             {
                 // Outer gate closed: clear the leaf. Level-based inners (dark, responsive) are then
                 // detached + dropped so their subscription (a stacked dark:'s process-wide
@@ -644,7 +768,7 @@ namespace Velvet
                 if (!m.RetainsAcrossOuterClose)
                 {
                     target.RemoveManipulator(m);
-                    StackedVariantManipulators.Remove(key);
+                    RemoveStackedVariant(key);
                     DropStackedVariants(m);
                 }
             }
@@ -653,9 +777,25 @@ namespace Velvet
         public Dictionary<VisualElement, StyleGapManipulator> GapManipulators { get; } = new();
         public Dictionary<VisualElement, StyleDivideManipulator> DivideManipulators { get; } = new();
         public Dictionary<VisualElement, StyleGridManipulator> GridManipulators { get; } = new();
-        // text-balance's per-element measure-and-narrow manipulator. Mirrors GapManipulators /
-        // GridManipulators; removed on cleanup / dispose.
+        // The line-breaking manipulator of each text leaf whose resolved text-wrap-style is balance or pretty
+        // (StyleTextEffectResolver attaches it). Mirrors GapManipulators / GridManipulators; removed on
+        // cleanup / dispose.
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
+        // The automatic minimum size of a text flex item, one per Label / Button the reconciler creates.
+        // Removed on cleanup / dispose like the manipulators above.
+        public Dictionary<VisualElement, StyleFlexMinSizeManipulator> FlexMinSizeManipulators { get; } = new();
+        // Each element whose own class list carries pointer-events-none or pointer-events-auto. Not a pure
+        // side-table: a scope holds picking off across a subtree, released on cleanup / dispose.
+        public Dictionary<VisualElement, PointerEventsScope> PointerEventsScopes { get; } = new();
+        // Elements this context put children into, or may have changed a pointer-events utility under, since the
+        // pointer-events scopes were last walked: the element each top-level pass reconciled into, each Portal
+        // target a mount or patch reconciled into, and the mount target and Portal targets a request outside a pass
+        // names (PointerEventsScope.NoteReconciledInto). Every walk (PointerEventsScope.WalkAll) empties it.
+        public HashSet<VisualElement> PointerEventsAnchors { get; } = new();
+        // Above zero from the start of Reconciler.FinishTopLevelPass until the pointer-events walk near its end. In
+        // that span SharedReconcileDepth is already back at zero, while the portal drain can still create elements,
+        // and the relational retarget toggle payloads, that request a walk (PointerEventsScope.RequestSyncAll).
+        internal int PointerEventsWalkHeld { get; set; }
 
         // Elements a VARIANT currently has a gate token toggled onto, keyed by that element. A gate token is
         // one whose mere presence in a class array decides what a class-driven pass builds; the families are
@@ -861,8 +1001,9 @@ namespace Velvet
         // Active gradient background per element (bg-gradient-to-* + from/via/to). Keyed by the element
         // itself — the gradient is baked to a texture set as the element's own background-image, no
         // wrapper. The stored spec lets the patch path skip a redundant re-bake, and cleanup clears the
-        // background-image so a pooled element cannot ghost a prior gradient.
-        public Dictionary<VisualElement, GradientSpec> GradientBackgrounds { get; } = new();
+        // background-image so a pooled element cannot ghost a prior gradient. The binding also holds the
+        // geometry watch a gradient laid out over the box's proportions needs, which cleanup removes.
+        public Dictionary<VisualElement, GradientBinding> GradientBackgrounds { get; } = new();
 
         // Per-element animate-* motion (animate-gradient / -shimmer / -hue). Keyed by the element itself — the
         // motion drives the element's own inline style (a background-position pan or a hue-rotate filter) with
@@ -1032,6 +1173,11 @@ namespace Velvet
         // placeholder's parent cannot answer that: one built inside an element whose creation then failed is
         // still parented by that element, which no caller holds.
         internal HashSet<VisualElement> PendingHostPlaceholders { get; } = new();
+
+        // Portal targets that lost children to a Portal's teardown this pass. Their remaining children changed
+        // sibling position with no reconcile of the target to re-derive structural variants, so the top-level
+        // boundary does it (Reconciler.FinishTopLevelPass).
+        internal HashSet<VisualElement> PortalTargetsToRestyle { get; } = new();
 
         // Per-stacking-context-parent z-layer containers (FiberZLayerCoordinator), lazily created on first
         // z-marked absolute child. NOT a pure side-table: the record's Front/Back reference live VisualElement
@@ -1679,7 +1825,7 @@ namespace Velvet
                 (added ??= new()).Add(key);
             }
             if (added == null) return;
-            foreach (var key in added) PresenceStates.Remove(key);
+            foreach (var key in added) RetirePresenceState(key);
         }
 
         internal readonly record struct BoundaryRecords(
@@ -1795,6 +1941,36 @@ namespace Velvet
             // descendants' exits. Entries retire with their key.
             public readonly Dictionary<string, PresenceExitWait> ExitWaits = new();
 
+            // The nearest enclosing presence's keyed child that this presence last expanded inside, Framer's
+            // nearest PresenceContext. A committing expansion made while that child is emitted writes it; the re-render
+            // this presence makes on its own (no enclosing emission around it) reads the last one.
+            public PresenceBoundaryState? Enclosing;
+            public string? EnclosingKey;
+
+            // As of the last expansion: whether this presence propagates, and whether that expansion treated every
+            // child as not present because the enclosing child is leaving.
+            public bool Propagate;
+            public bool ExitedForEnclosing;
+
+            // The slot this presence holds in the enclosing child's exit wait, for as long as it holds one.
+            public PresenceRegistration? Registration;
+
+            // The keys of the children the last committing expansion was given, which tells a key added since
+            // from one a finished exit has dropped while the props still list it.
+            public readonly HashSet<string> PropKeys = new();
+
+            // The keys mounted already leaving, whose Motions rest at their initial pose until they return or drop.
+            public readonly HashSet<string> LeavingMounts = new();
+
+            // Whether an expansion of this presence is under way, and the exit completions that fired meanwhile,
+            // which run once it has finished its bookkeeping (GeneralPathReconciler.ExpandAnimatePresenceInline).
+            public bool Expanding;
+            public List<System.Action>? DeferredCompletions;
+
+            // Whether the key is on its way out, not yet dropped: an exit running, or finished and awaiting the
+            // render that drops it.
+            internal bool IsLeaving(string key) => Exiting.Contains(key) || ExitComplete.Contains(key);
+
             // The Portal placeholder whose children reconcile last expanded this presence, if any. Kept
             // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: the
             // fiber an isolated re-render leaves unstamped is still reached through the parent index, and
@@ -1842,8 +2018,35 @@ namespace Velvet
         // The stagger slot the expansion plays PresenceAnchorMotion's enter in. Same set/restore discipline.
         internal float PresenceAnchorEnterDelaySec;
 
-        // Roots is the owning key's list in PresenceBoundaryState.ChildRoots, which stands for that key.
-        internal readonly record struct PresenceChildRootOwner(List<VisualElement> Roots, long Emission);
+        // The keyed child being emitted now and whether it is present: what a presence expanding inside that
+        // child's subtree reads as its nearest enclosing presence. Same set/restore discipline as
+        // PresenceAnchorMotion, and null outside any presence child's emission.
+        internal PresenceChildContext? EnclosingPresenceChild;
+
+        // Whether the keyed child being emitted was mounted already leaving: its Motions rest at their initial pose
+        // and exit from there. Same set/restore discipline as PresenceAnchorMotion.
+        internal bool PresenceMountsLeaving;
+
+        internal readonly record struct PresenceChildContext(PresenceBoundaryState State, string Key, bool IsPresent);
+
+        // Roots is the owning key's list in PresenceBoundaryState.ChildRoots, which stands for that key; State and
+        // Key name that key's presence and entry.
+        internal readonly record struct PresenceChildRootOwner(
+            List<VisualElement> Roots, long Emission, PresenceBoundaryState State, string Key);
+
+        // The presence child an element sits in, read off the nearest ancestor that is the top of one: what a
+        // presence expanding in a deferred mount (no emission around it) takes as its enclosing child.
+        internal PresenceChildContext? PresenceChildOf(VisualElement element)
+        {
+            for (var ancestor = element; ancestor != null; ancestor = ancestor.parent)
+            {
+                if (PresenceChildRoots.TryGetValue(ancestor, out var owner))
+                {
+                    return new PresenceChildContext(owner.State, owner.Key, !owner.State.IsLeaving(owner.Key));
+                }
+            }
+            return null;
+        }
 
         // One descendant Motion's exit: the element, the config PlayExit was handed, and whether that config's
         // from classes are the resting pose a cancel returns to.
@@ -1860,19 +2063,47 @@ namespace Velvet
             private readonly DescendantStatus[] _statuses;
             private int _pending;
             private readonly System.Action _onSettled;
-            private readonly System.Action<VisualElement> _onSettledByTeardown;
+            private readonly System.Action<VisualElement?> _onSettledByTeardown;
 
+            // inners are the propagating presences under this child that still have exits to play, each of which
+            // holds one slot of the count until its own exits are done.
             internal PresenceExitWait(bool anchorPlays, List<PresenceDescendantExit> descendants,
-                System.Action onSettled, System.Action<VisualElement> onSettledByTeardown)
+                List<PresenceBoundaryState>? inners, System.Action onSettled,
+                System.Action<VisualElement?> onSettledByTeardown)
             {
                 Descendants = descendants;
                 _statuses = new DescendantStatus[descendants.Count];
-                _pending = descendants.Count + (anchorPlays ? 1 : 0);
+                _pending = descendants.Count + (inners?.Count ?? 0) + (anchorPlays ? 1 : 0);
                 _onSettled = onSettled;
                 _onSettledByTeardown = onSettledByTeardown;
+                Registrations = Register(inners);
             }
 
             internal List<PresenceDescendantExit> Descendants { get; }
+
+            internal PresenceRegistration[] Registrations { get; }
+
+            private PresenceRegistration[] Register(List<PresenceBoundaryState>? inners)
+            {
+                if (inners == null) return System.Array.Empty<PresenceRegistration>();
+                var registrations = new PresenceRegistration[inners.Count];
+                for (var i = 0; i < registrations.Length; i++)
+                {
+                    registrations[i] = new PresenceRegistration(inners[i], this);
+                    inners[i].Registration = registrations[i];
+                }
+                return registrations;
+            }
+
+            internal void CompleteRegistration()
+            {
+                if (Settles()) _onSettled();
+            }
+
+            internal void TearDownRegistration()
+            {
+                if (Settles()) _onSettledByTeardown(null);
+            }
 
             internal DescendantStatus StatusOf(int index) => _statuses[index];
 
@@ -1906,6 +2137,37 @@ namespace Velvet
                 => Descendants.FindIndex(exit => ReferenceEquals(exit.Element, element));
 
             private bool Settles() => --_pending == 0;
+        }
+
+        // One propagating inner presence's slot in an enclosing child's exit wait, Framer's register(id) for
+        // usePresence(true). Whichever of the three ends it first settles the slot and the others find it spent.
+        internal sealed class PresenceRegistration
+        {
+            private readonly PresenceBoundaryState _inner;
+            private PresenceExitWait? _wait;
+
+            internal PresenceRegistration(PresenceBoundaryState inner, PresenceExitWait wait)
+            {
+                _inner = inner;
+                _wait = wait;
+            }
+
+            // safeToRemove: the inner presence's exits have finished, or it stopped propagating.
+            internal void Complete() => Spend()?.CompleteRegistration();
+
+            // The inner presence was retired before it finished, the way a descendant Motion leaves the tree.
+            internal void Gone() => Spend()?.TearDownRegistration();
+
+            // The enclosing key came back: nothing is waited for any more and nobody is told.
+            internal void Release() => Spend();
+
+            private PresenceExitWait? Spend()
+            {
+                var wait = _wait;
+                _wait = null;
+                if (ReferenceEquals(_inner.Registration, this)) _inner.Registration = null;
+                return wait;
+            }
         }
 
         // The three subjects a prune retires a DOM-less AnimatePresence entry for. A presence whose node
@@ -1944,8 +2206,16 @@ namespace Velvet
             }
             if (stale != null)
             {
-                foreach (var key in stale) PresenceStates.Remove(key);
+                foreach (var key in stale) RetirePresenceState(key);
             }
+        }
+
+        // The one place an AnimatePresence entry leaves PresenceStates before the whole table is dropped. An inner
+        // presence retired while an enclosing child waits on it stops holding that child, as a descendant Motion
+        // torn down does (FiberElementCleaner).
+        private void RetirePresenceState((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
+        {
+            if (PresenceStates.Remove(key, out var state)) state.Registration?.Gone();
         }
 
         // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a boundary that
@@ -2068,7 +2338,7 @@ namespace Velvet
                 if (key.IsSuspense)
                     RemoveSuspenseFallback(key.Boundary, (key.Parent, key.PortalScope, key.Position));
                 else
-                    PresenceStates.Remove((key.Boundary, key.Parent, key.Position));
+                    RetirePresenceState((key.Boundary, key.Parent, key.Position));
             }
             // MUTANT_SURVIVES(equivalent): EndBoundaryReproductionScope truncates each scope in a finally, so the list is already empty before this clear runs.
             _boundaryReproduced.Clear();
@@ -2092,6 +2362,8 @@ namespace Velvet
         // (_storeSnapshotWaveActive); outside one — on mount or a synchronous whole-tree flush — reads return
         // the live store.Current and nothing is pinned. Pinning is reference-keyed, so distinct stores never
         // collide, and the pins are dropped when the wave ends.
+        // Hooks.UseSyncExternalStore pins here too, keyed by its getSnapshot delegate under Delegate.Equals
+        // rather than by a Store, since an external store has no Velvet object to key on.
         private readonly Dictionary<object, object?> _pinnedStoreSnapshots = new();
         private bool _storeSnapshotWaveActive;
 
@@ -2109,9 +2381,10 @@ namespace Velvet
         internal TStore PinStoreSnapshot<TStore>(object store, TStore liveSnapshot)
         {
             if (!_storeSnapshotWaveActive) return liveSnapshot;
-            if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned) && pinned is TStore typed)
+            // A cast rather than a type test, which a pinned null fails.
+            if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned))
             {
-                return typed;
+                return (TStore)pinned!;
             }
             _pinnedStoreSnapshots[store] = liveSnapshot;
             return liveSnapshot;

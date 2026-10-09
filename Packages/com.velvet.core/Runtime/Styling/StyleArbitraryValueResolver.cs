@@ -23,9 +23,10 @@ namespace Velvet
         // so its '!' is accepted but inert. Returns the input unchanged when no modifier is present.
         //
         // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). Of the
-        // array-scanned subsystem utilities, the font, text-effect, z-* and gap-* families strip the bang themselves
-        // and let an important token win over the element's plain ones (StyleFontClass.TryExtract,
-        // StyleTextEffectClass.Parse, StyleZIndexClass.TryExtract, StyleGridClass.ExtractGaps); divide-*/shadow-*/clip-path-* do not
+        // array-scanned subsystem utilities, the font, text-effect, z-*, gap-* and divide-* families strip
+        // the bang themselves and let an important token win over the element's plain ones
+        // (StyleFontClass.TryExtract, StyleTextEffectClass.Parse, StyleZIndexClass.TryExtract,
+        // StyleGridClass.ExtractGaps, StyleDivideClass.TryExtract); shadow-* and clip-path-* do not
         // recognize the bang at all.
         public static string StripImportant(string className, out bool important)
         {
@@ -65,6 +66,11 @@ namespace Velvet
             if (className == null)
             {
                 return false;
+            }
+
+            if (StyleLogicalUtilities.TryParse(className, out result))
+            {
+                return true;
             }
 
             // Color opacity modifier: {bg|text|border}-<color>/<N> applies alpha N% to the resolved base
@@ -222,15 +228,6 @@ namespace Velvet
             ["12"] = 12f, ["45"] = 45f, ["90"] = 90f, ["180"] = 180f,
         };
 
-        // The translate fraction suffixes (percent of the element's own size). The slash form routes
-        // here; translate-x-full (100%) and the spacing-scale presets route to the same TranslateX/Y merge so
-        // an x and a y preset compose instead of clobbering via the `translate` shorthand.
-        private static readonly Dictionary<string, float> s_translateFraction = new()
-        {
-            ["1/2"] = 50f, ["1/3"] = 100f / 3f, ["2/3"] = 200f / 3f,
-            ["1/4"] = 25f, ["2/4"] = 50f, ["3/4"] = 75f,
-        };
-
         // The per-axis scale presets (scale-x-50 -> 0.5), mirroring the uniform .scale-N USS classes in
         // _transforms.uss. These have no standalone USS class because a separate .scale-x-N / .scale-y-N rule
         // would write the whole `scale: x y` and clobber the other axis; instead they route through the
@@ -268,9 +265,9 @@ namespace Velvet
         // Cheap dispatch gate: true when cls is a static-scale utility with NO static USS class, so
         // the reconciler must route it to TryParseStaticScale instead of the class list. That set is exactly
         // the names a USS selector cannot spell — any '-'-prefixed margin/rotate/translate name, the
-        // '/'-bearing translate fraction, and the positive per-axis translate/scale presets (no USS class — a
-        // per-axis rule would clobber the other axis via the shorthand). Other positive non-slash names (mt-2,
-        // rotate-6) keep their USS classes and are intentionally NOT claimed here.
+        // '/'-bearing translate, sizing and position fractions, and the positive per-axis translate/scale
+        // presets (no USS class — a per-axis rule would clobber the other axis via the shorthand). Other
+        // positive non-slash names (mt-2, rotate-6) keep their USS classes and are intentionally NOT claimed here.
         internal static bool MayBeStaticScale(string cls)
         {
             if (string.IsNullOrEmpty(cls))
@@ -280,6 +277,11 @@ namespace Velvet
             // Named filter presets (blur-sm, contrast-125, hue-rotate-90, ...) are non-bracket resolver tokens
             // too, so the one dispatch gate also claims them (incl. the negated -hue-rotate-N).
             if (StyleFilterValueParser.IsFilterPreset(cls))
+            {
+                return true;
+            }
+            // Logical-direction utilities (ms-4, start-1/2, rounded-ss-lg) have no USS class at all.
+            if (IsFractionToken(cls) || StyleLogicalUtilities.TryParse(cls, out _))
             {
                 return true;
             }
@@ -305,15 +307,6 @@ namespace Velvet
                 }
                 var suffix = cls.AsSpan("translate-x-".Length); // the x and y prefixes share a length
                 return suffix.SequenceEqual("full".AsSpan()) || SuffixInKeys(suffix, s_spacingScale);
-            }
-            // Sizing fractions (w-1/2, h-2/3, size-1/4) have no USS class — USS selectors cannot spell '/' —
-            // so the slash form routes to the resolver (the bracket form w-[50%] is claimed by the '[' check).
-            if ((cls.StartsWith("w-", StringComparison.Ordinal)
-                    || cls.StartsWith("h-", StringComparison.Ordinal)
-                    || cls.StartsWith("size-", StringComparison.Ordinal))
-                && cls.IndexOf('/') >= 0)
-            {
-                return true;
             }
             // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
             // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
@@ -384,9 +377,10 @@ namespace Velvet
             return false;
         }
 
-        // Parses the non-bracket static-scale forms that have no USS class: negative margins on the
-        // preset scale (-mt-2 -> MarginTop -8px), the negative rotate preset (-rotate-6 -> -6deg), and the
-        // translate fraction / negative px translate (translate-x-1/2 -> 50%, -translate-x-6 -> -24px).
+        // Parses the non-bracket static-scale forms that have no USS class: the sizing and position fractions
+        // (w-1/2, -left-1/2), negative margins on the preset scale (-mt-2 -> MarginTop -8px), the negative
+        // rotate preset (-rotate-6 -> -6deg), and the translate fraction / negative px translate
+        // (translate-x-1/2 -> 50%, -translate-x-6 -> -24px).
         // Returns false for anything else, so positive USS-backed names fall through to the class list.
         private static bool TryParseStaticScale(string className, out ArbitraryStyle result)
         {
@@ -395,8 +389,7 @@ namespace Velvet
             {
                 return false;
             }
-            // Sizing fractions (w-1/2, h-2/3, size-1/4) are non-negated and resolve to a percent of the parent.
-            if (TryParseSizingFraction(className, out result))
+            if (TryParseFraction(className, out result))
             {
                 return true;
             }
@@ -493,7 +486,10 @@ namespace Velvet
 
             var suffix = body.Substring("translate-x-".Length); // the x and y prefixes share a length
             var property = isX ? ArbitraryProperty.TranslateX : ArbitraryProperty.TranslateY;
-            if (s_translateFraction.TryGetValue(suffix, out var pct))
+            // The slash form (percent of the element's own size), translate-x-full (100%) and the spacing-scale
+            // presets route to the same TranslateX/Y merge so an x and a y preset compose instead of clobbering
+            // via the `translate` shorthand.
+            if (TryParseFractionPercent(suffix, out var pct))
             {
                 result = new ArbitraryStyle(property, negate ? -pct : pct, LengthUnit.Percent);
                 return true;
@@ -543,41 +539,118 @@ namespace Velvet
             return true;
         }
 
-        // Fractional sizing (w-1/2, h-2/3, size-3/4 → a percent of the parent). USS cannot spell '/',
-        // so these resolve here as inline percent rather than via a USS class. Width/Height target their own
-        // property; size-* fans out to both (the Size property). Only the denominators (2/3/4/5/6/12)
-        // and a numerator in 1..d-1 are accepted (100% is the separate `*-full` utility; anything else falls
-        // through and is not claimed).
-        private static bool TryParseSizingFraction(string className, out ArbitraryStyle result)
+        // The fraction families (w-1/2, min-h-1/3, basis-3/4, left-1/2, inset-x-1/4) resolve to an inline percent,
+        // for any a/b of non-negative integers as in Tailwind (left-3/2 is 150%). Only a position offset takes a
+        // sign (-left-1/2) and the `full` (left-full, -left-full) and `auto` keywords, as in Tailwind.
+        // The inset-x-/inset-y- rows precede inset-, because the first row whose prefix matches decides.
+        private static readonly (string Prefix, ArbitraryProperty Property, bool Position)[] s_fractionFamilies =
+        {
+            ("w-", ArbitraryProperty.Width, false),
+            ("h-", ArbitraryProperty.Height, false),
+            ("size-", ArbitraryProperty.Size, false),
+            ("min-w-", ArbitraryProperty.MinWidth, false),
+            ("min-h-", ArbitraryProperty.MinHeight, false),
+            ("max-w-", ArbitraryProperty.MaxWidth, false),
+            ("max-h-", ArbitraryProperty.MaxHeight, false),
+            ("basis-", ArbitraryProperty.FlexBasis, false),
+            ("top-", ArbitraryProperty.Top, true),
+            ("right-", ArbitraryProperty.Right, true),
+            ("bottom-", ArbitraryProperty.Bottom, true),
+            ("left-", ArbitraryProperty.Left, true),
+            ("inset-x-", ArbitraryProperty.InsetX, true),
+            ("inset-y-", ArbitraryProperty.InsetY, true),
+            ("inset-", ArbitraryProperty.Inset, true),
+        };
+
+        // -1 when cls names no fraction family, or negates one that takes no sign.
+        private static int FractionFamilyOf(string cls)
+        {
+            var negate = cls[0] == '-';
+            var body = cls.AsSpan(negate ? 1 : 0);
+            for (var i = 0; i < s_fractionFamilies.Length; i++)
+            {
+                if (body.StartsWith(s_fractionFamilies[i].Prefix.AsSpan()))
+                {
+                    return negate && !s_fractionFamilies[i].Position ? -1 : i;
+                }
+            }
+            return -1;
+        }
+
+        // The sizing `*-full` and `*-auto` classes are USS rules, so only a position family's keywords are claimed,
+        // and `-auto` only unnegated, as TryParseFraction reads it.
+        private static bool IsFractionToken(string cls)
+        {
+            var family = FractionFamilyOf(cls);
+            return family >= 0
+                && (cls.IndexOf('/') >= 0
+                    || (s_fractionFamilies[family].Position
+                        && (cls.EndsWith("-full", StringComparison.Ordinal)
+                            || (cls[0] != '-' && cls.EndsWith("-auto", StringComparison.Ordinal)))));
+        }
+
+        // Digits only with no sign or leading zero, as Tailwind's isPositiveInteger reads a fraction's halves.
+        private static bool TryParseFractionPart(string text, out int value)
+        {
+            value = 0;
+            if (text.Length == 0 || text.Length > 9 || (text.Length > 1 && text[0] == '0'))
+            {
+                return false;
+            }
+            for (var i = 0; i < text.Length; i++)
+            {
+                if (text[i] < '0' || text[i] > '9')
+                {
+                    return false;
+                }
+                value = value * 10 + (text[i] - '0');
+            }
+            return true;
+        }
+
+        // A zero denominator does not parse: no percent stands for it.
+        internal static bool TryParseFractionPercent(string frac, out float percent)
+        {
+            percent = 0f;
+            var slash = frac.IndexOf('/');
+            if (slash < 0
+                || !TryParseFractionPart(frac.Substring(0, slash), out var n)
+                || !TryParseFractionPart(frac.Substring(slash + 1), out var d)
+                || d == 0)
+            {
+                return false;
+            }
+            percent = 100f * n / d;
+            return true;
+        }
+
+        // `auto` is never negated, as in Tailwind, which has no -top-auto.
+        private static bool TryParseFraction(string className, out ArbitraryStyle result)
         {
             result = default;
-            ArbitraryProperty property;
-            int prefixLen;
-            if (className.StartsWith("w-", StringComparison.Ordinal)) { property = ArbitraryProperty.Width; prefixLen = 2; }
-            else if (className.StartsWith("h-", StringComparison.Ordinal)) { property = ArbitraryProperty.Height; prefixLen = 2; }
-            else if (className.StartsWith("size-", StringComparison.Ordinal)) { property = ArbitraryProperty.Size; prefixLen = 5; }
-            else { return false; }
-
-            var frac = className.Substring(prefixLen);
-            var slash = frac.IndexOf('/');
-            if (slash <= 0 || slash >= frac.Length - 1)
+            var family = FractionFamilyOf(className);
+            if (family < 0)
             {
                 return false;
             }
-            if (!int.TryParse(frac.Substring(0, slash), out var n)
-                || !int.TryParse(frac.Substring(slash + 1), out var d))
+            var (prefix, property, position) = s_fractionFamilies[family];
+            var negate = className[0] == '-';
+            var frac = className.Substring((negate ? 1 : 0) + prefix.Length);
+            float percent;
+            if (position && frac == "auto" && !negate)
+            {
+                result = ArbitraryStyle.AutoLength(property);
+                return true;
+            }
+            if (position && frac == "full")
+            {
+                percent = 100f;
+            }
+            else if (!TryParseFractionPercent(frac, out percent))
             {
                 return false;
             }
-            if (d != 2 && d != 3 && d != 4 && d != 5 && d != 6 && d != 12)
-            {
-                return false;
-            }
-            if (n < 1 || n >= d)
-            {
-                return false;
-            }
-            result = new ArbitraryStyle(property, 100f * n / d, LengthUnit.Percent);
+            result = new ArbitraryStyle(property, negate ? -percent : percent, LengthUnit.Percent);
             return true;
         }
 
@@ -1111,36 +1184,6 @@ namespace Velvet
             }
         }
 
-        // Re-asserts the winning layer for ONE property, without mutating the map — the single-property
-        // form of ReapplyLayeredValues above.
-        //
-        // For a manipulator that borrows a shared inline slot and nulls it outright on detach
-        // (StyleTextBalanceManipulator and width): the authored value it clobbered is still recorded
-        // here, so re-resolving the one slot restores exactly what the cascade says it should hold — and
-        // does so regardless of how that value got there. A restore driven by re-scanning the element's
-        // class list is only as complete as that list: it cannot see a layer a VARIANT registered
-        // (dark:w-[80px]), whose payload is not a token of the element's own.
-        //
-        // A property with no surviving layer clears the inline value — the same fallback Clear itself takes
-        // once it removes the last layer.
-        //
-        // No filter-family exemption, unlike the whole-map form: this re-resolves whatever property it is
-        // handed, so a filter one would recompose the filter list and restart an in-flight transition tween.
-        // Today's only caller passes a width; a caller that wants a filter property has to weigh that.
-        internal static void ReapplyLayeredValue(VisualElement element, ArbitraryProperty property)
-        {
-            if (element == null || !s_layers.TryGetValue(element, out var map))
-            {
-                return;
-            }
-            ResolveAndApply(element, property, map);
-        }
-
-        // Re-asserts every layer that writes the inline WIDTH slot, for a caller handing that slot back after
-        // borrowing it. Re-resolving Width settles the Size layer with it (see ResolveSharedLonghands).
-        internal static void ReapplyWidthSlot(VisualElement element)
-            => ReapplyLayeredValue(element, ArbitraryProperty.Width);
-
         // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — HasLayer and the class
         // projection see none of it — but every layer resolve that writes a held slot writes the held value
         // back after it, so a layer that changes once the manipulator has written — a [&>*]: payload turned
@@ -1169,11 +1212,13 @@ namespace Velvet
         // Makes the hold just taken on slot give way to a layer of the element's own: while one writes the slot,
         // that layer's value stands, and the held one returns once the last such layer goes. That is how a
         // zero-specificity Tailwind write (space, divide) gives way to the element's own arbitrary value for as
-        // long as it has one. The next Hold on the slot takes the yield back.
-        internal static void Yield(VisualElement element, HeldSlot slot)
+        // long as it has one. With importantOnly it gives way to an important layer alone, which is how an
+        // important divide still yields to a child's own important declaration. The next Hold on the slot takes
+        // the yield back.
+        internal static void Yield(VisualElement element, HeldSlot slot, bool importantOnly = false)
         {
             var map = s_layers.GetValue(element, static _ => new LayerMap());
-            map.Holds?.SetYield(slot);
+            map.Holds?.SetYield(slot, importantOnly);
             ReassertHolds(element, map, StyleHeldSlots.Bit(slot));
         }
 
@@ -1193,7 +1238,8 @@ namespace Velvet
                 {
                     continue;
                 }
-                if (!TryLayeredWinner(map, slot, out var winner))
+                if (!TryLayeredWinner(map, slot, out var winner, out var rank)
+                    || (holds.YieldsOnlyToImportant(slot) && (rank & StyleLayerPriority.Important) == 0))
                 {
                     continue;
                 }
@@ -1242,6 +1288,12 @@ namespace Velvet
                 HandBack(element, slot);
             }
         }
+
+        // Whether the highest priority an ungated class of the element's own claims on slot's longhand lies in
+        // the important band. Inline layers are not consulted.
+        internal static bool DeclaresImportantOwn(VisualElement element, HeldSlot slot)
+            => TryGetProjection(element) is { } model
+                && (model.ClaimOf(HeldSlotGroups.LonghandOf(slot)) & StyleLayerPriority.Important) != 0;
 
         // Whether a utility on element's class list sets slot through an ungated bundled USS rule. Tailwind
         // writes space and divide at zero specificity, so such a class of the element's own wins over them
@@ -1341,8 +1393,12 @@ namespace Velvet
         }
 
         private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner)
+            => TryLayeredWinner(map, slot, out winner, out _);
+
+        private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner, out long rank)
         {
             winner = default;
+            rank = long.MinValue;
             var best = long.MinValue;
             var latest = long.MinValue;
             var found = false;
@@ -1360,6 +1416,7 @@ namespace Velvet
                 if (priority > best || priority == best && isNewerArrival)
                 {
                     winner = style;
+                    rank = priority;
                     best = priority;
                     latest = arrival;
                     found = true;
@@ -1975,7 +2032,7 @@ namespace Velvet
                 return;
             }
 
-            var length = new StyleLength(new Length(style.Value, style.Unit));
+            var length = style.ToStyleLength();
             var s = ClipPathLayoutBox.StyleFor(element, style.Property);
             foreach (var setter in setters)
             {
@@ -2196,9 +2253,10 @@ namespace Velvet
             return false;
         }
 
-        // Parses a <length-percentage> token: a '%' suffix is percent; a 'px', 'rem', or no suffix is
-        // pixel (bare numbers default to px, and rem is converted at the fixed 1rem = 16px scale because
-        // UI Toolkit has no rem unit and no document root to resolve a relative font size against).
+        // Parses a <length-percentage> token: a '%' suffix is percent; a 'px', 'rem', an absolute unit (in, cm,
+        // mm, pt, pc, Q) or no suffix is pixel (bare numbers default to px, and rem is converted at the fixed
+        // 1rem = 16px scale because UI Toolkit has no rem unit and no document root to resolve a relative font
+        // size against).
         // InvariantCulture, finite values only. Internal so other utility parsers (clip-path) share THE
         // length grammar instead of re-implementing it.
         internal static bool TryParseValue(ReadOnlySpan<char> valueStr, out float value, out LengthUnit unit)
@@ -2241,6 +2299,15 @@ namespace Velvet
                     CultureInfo.InvariantCulture,
                     out value);
             }
+            else if (TryFindAbsoluteUnit(valueStr, out var unitLength, out var pixelsPerUnit))
+            {
+                parsed = float.TryParse(
+                    valueStr.Slice(0, valueStr.Length - unitLength),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out value);
+                value *= pixelsPerUnit;
+            }
             else
             {
                 parsed = float.TryParse(
@@ -2251,6 +2318,29 @@ namespace Velvet
             }
 
             return parsed && float.IsFinite(value);
+        }
+
+        // CSS's absolute length units at their fixed ratio to a pixel (96 per inch); the match is
+        // case-sensitive, as Tailwind's length test is, so Q is upper case and the rest lower.
+        private static readonly (string Suffix, float Pixels)[] s_absoluteUnits =
+        {
+            ("in", 96f), ("cm", 96f / 2.54f), ("mm", 96f / 25.4f), ("pt", 96f / 72f), ("pc", 16f), ("Q", 96f / 101.6f),
+        };
+
+        private static bool TryFindAbsoluteUnit(ReadOnlySpan<char> valueStr, out int length, out float pixels)
+        {
+            foreach (var (suffix, perUnit) in s_absoluteUnits)
+            {
+                if (valueStr.Length > suffix.Length && valueStr.EndsWith(suffix.AsSpan(), StringComparison.Ordinal))
+                {
+                    length = suffix.Length;
+                    pixels = perUnit;
+                    return true;
+                }
+            }
+            length = 0;
+            pixels = 0f;
+            return false;
         }
 
         // Parses a unitless finite float (used by scale-[..]). A trailing unit is rejected.

@@ -456,6 +456,106 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFamilyOfItalicFacesOnly_When_RegularUprightResolved_Then_TheItalicFaceIsSelectedWithoutSynthesis()
+        {
+            // Arrange — no entry carries an upright face, so no face of the requested style exists.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false);
+
+                // Assert
+                Assert.That((resolved.Asset == regularItalic, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, false, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+            }
+        }
+
+        [Test]
+        public void Given_AFamilyOfItalicFacesOnly_When_BoldUprightResolved_Then_TheItalicFaceIsFauxBolded()
+        {
+            // Arrange — the weight shortfall is still synthesized over the italic face taken in place of the upright.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Bold, italic: false);
+
+                // Assert
+                Assert.That((resolved.Asset == regularItalic, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, true, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+            }
+        }
+
+        [Test]
+        public void Given_ItalicFacesOnlyAtLightAndBlackWeights_When_BoldUprightResolved_Then_TheBlackItalicIsSelected()
+        {
+            // Arrange — style narrows first, then CSS's weight order picks the lightest at or above 700.
+            var lightItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var blackItalic = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Light, italic = lightItalic },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Black, italic = blackItalic }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Bold, italic: false);
+
+                // Assert
+                Assert.That(resolved.Asset == blackItalic, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(lightItalic);
+                Object.DestroyImmediate(blackItalic);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base picks the upright face of an entry that has one the same way; the
+        // italic-only fallback must leave that request alone.
+        [Test]
+        public void Given_AnEntryWithBothFaces_When_RegularUprightResolved_Then_TheUprightFaceIsSelected()
+        {
+            // Arrange — an upright face exists, so the italic-only fallback has no claim on the request.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var regularUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry
+                    {
+                        weight = VelvetFontWeight.Normal, upright = regularUpright, italic = regularItalic,
+                    }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false);
+
+                // Assert
+                Assert.That(resolved.Asset == regularUpright, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(regularUpright);
+            }
+        }
+
+        [Test]
         public void Given_AnItalicFaceOnlyByAddressAtALighterWeight_When_BoldItalicResolved_Then_TheItalicFaceIsFauxBolded()
         {
             // Arrange — an Addressables key is a face too. The cache is seeded so nothing is loaded.
