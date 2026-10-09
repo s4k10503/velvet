@@ -848,8 +848,18 @@ namespace Velvet
                 RetrySuspendedPasses(fiber);
                 return;
             }
+            // A primary the boundary keeps hidden is still in the container, and the boundary's re-render diffs its
+            // elements against this fiber's PreviousTree: the render below would move that past what they hold. The
+            // boundary renders this fiber instead, as SuspendPassOwner has it.
+            if (fiber.IsOffscreen && fiber.Reconciler!.Context.IsBoundaryHidingPrimary(boundary))
+            {
+                FiberWorkLoop.RequestRenderFromHook(fiber);
+                boundary.InvalidateMemoCache();
+                FiberWorkLoop.RequestRenderFromHook(boundary);
+                return;
+            }
             // Settle the child's subtree to its resolved output. The child's host slot is currently occupied by
-            // the fallback, so render WITHOUT committing (deferReconcile): the boundary's re-render below commits
+            // the fallback, or hidden behind it, so render WITHOUT committing (deferReconcile): the boundary's re-render below commits
             // the fallback→children reveal in one pass: a resolved resource schedules the boundary itself, not the
             // child. This single render handles all three resolve outcomes: a resolved child settles its
             // PreviousTree for the boundary to reuse; a faulted child's Use<T> throws a real exception that routes

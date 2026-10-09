@@ -604,12 +604,19 @@ A container of direct plain elements warns once for each repeated sibling key, o
 
 Suspense boundaries in separate host elements or Portals keep independent pending state, including
 Portals sharing one target. Updating a suspended primary keeps its fallback visible until its resource
-resolves. A component whose render suspended keeps its state meanwhile where no host element sits between it
-and the Suspense — one inside such an element is disposed with it — and the layout effects and imperative
-handles of one the boundary had shown are taken down in the commit that shows the fallback until the
-boundary reveals it again, while one first mounted under the fallback runs none of its effects, passive ones
-included, and creates no imperative handle until then, as React
-disconnects and mounts them. Removing the boundary releases that pending state when its displayed children are removed.
+resolves. A boundary that has shown its children and suspends again keeps them in the tree, hidden with an
+inline `display: none` ahead of the fallback, as React hides them: their elements are kept rather than
+created again, and the components in them keep their state, until the boundary reveals them by clearing that
+`display` again. A query over the tree finds those hidden elements too. Their layout effects and
+imperative handles are taken down in the commit that shows the fallback and set up again in the one that
+reveals them, while their passive effects stay connected, as React disconnects and reconnects them. A row of
+a `V.VirtualList` among those children that suspends as the same render mounts it is the exception: the
+boundary then discards its children as below. A boundary that has not
+shown its children yet discards what the suspended render built: a component whose render suspended keeps
+its state meanwhile only where no host element sits between it and the Suspense — one inside such an element
+is disposed with it — and one first mounted under the fallback runs none of its effects, passive ones
+included, and creates no imperative handle until the reveal, as React mounts it then. Removing the boundary
+releases that pending state when its displayed children are removed.
 
 Where an update's render suspends with no Suspense expansion inside it to catch the signal — the render
 of the component that updated, or of one below it that the render reaches, in any slice of a time-sliced

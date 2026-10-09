@@ -355,15 +355,16 @@ namespace Velvet
             }
 
             // Offscreen guard: a fiber inside a wrapper-less Suspense boundary that is currently showing its
-            // fallback must not flush independently — its host slot is occupied by the fallback. The boundary's
+            // fallback must not flush independently where its host slot is occupied by the fallback, and a primary
+            // the boundary keeps hidden waits for the reveal with it. The boundary's
             // own re-render (scheduled when the resource resolved) re-attempts the primary subtree and commits
             // the reveal in one pass: a resolved resource schedules the boundary itself, not the
             // suspended child. Leave IsDirty set so that re-render picks this fiber up via the expansion.
             var context = fiber.Reconciler?.Context;
             if (context is { AnyBoundaryShowingFallback: true })
             {
-                // Defer only PRIMARY (offscreen) descendants — their slot is occupied by the fallback, so
-                // an independent flush would write into the fallback's range. A visible fallback-subtree
+                // Defer only PRIMARY (offscreen) descendants — a discarded primary's slot is occupied by the
+                // fallback, so an independent flush would write into the fallback's range. A visible fallback-subtree
                 // fiber carries no offscreen mark and may flush normally (the fallback renders while the
                 // primary is offscreen).
                 //
