@@ -379,6 +379,41 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_EveryAxisMovingPartWay_When_ALabelChangeInheritsItsVelocity_Then_EachAxisMovesOtherwiseThanFromRest()
+        {
+            // Arrange — every axis springing toward its target, 0.1 s in; then the same new springs twice, one of
+            // which inherits.
+            var element = new VisualElement();
+            var moving = MotionSpringDriver.Create(MotionSpringClassParser.Resolve(
+                new[] { "opacity-0", "translate-x-0", "translate-y-0", "scale-50", "rotate-0" },
+                new[] { "opacity-100", "translate-x-4", "translate-y-4", "scale-100", "rotate-45" }),
+                Stiffness, Damping, Mass);
+            MotionSpringState Back() => MotionSpringDriver.Create(MotionSpringClassParser.Resolve(
+                new[] { "opacity-50", "translate-x-2", "translate-y-2", "scale-75", "rotate-12" },
+                new[] { "opacity-0", "translate-x-0", "translate-y-0", "scale-50", "rotate-0" }),
+                Stiffness, Damping, Mass);
+            var (inheriting, atRest) = (Back(), Back());
+
+            // Act — an axis the plans did not resolve reads as "missing".
+            var differs = "no state";
+            if (moving != null && inheriting != null && atRest != null)
+            {
+                MotionSpringDriver.Step(element, moving, 0.1f);
+                MotionSpringDriver.InheritVelocity(inheriting, moving);
+                MotionSpringDriver.Step(element, inheriting, 1f / 60f);
+                MotionSpringDriver.Step(element, atRest, 1f / 60f);
+                string Differs(SpringChannel? a, SpringChannel? b)
+                    => a == null || b == null ? "missing" : (a.Integrator.Value != b.Integrator.Value).ToString();
+                differs = string.Join(",", Differs(inheriting.Opacity, atRest.Opacity),
+                    Differs(inheriting.TranslateX, atRest.TranslateX), Differs(inheriting.TranslateY, atRest.TranslateY),
+                    Differs(inheriting.Scale, atRest.Scale), Differs(inheriting.Rotate, atRest.Rotate));
+            }
+
+            // Assert
+            Assert.That(differs, Is.EqualTo("True,True,True,True,True"));
+        }
+
+        [Test]
         public void Given_AWidthExitShrinkingPartWay_When_ItIsRetargeted_Then_TheReversalKeepsShrinkingAtFirst()
         {
             // Arrange
