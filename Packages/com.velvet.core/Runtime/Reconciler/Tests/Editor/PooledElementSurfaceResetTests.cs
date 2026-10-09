@@ -43,6 +43,7 @@ namespace Velvet.Tests
         {
             ["Button.clickable"] = "every instance builds its own manipulator, so equality with a fresh one is not a question",
             ["Slider.showInputField"] = "a slider carrying its input field is refused by the pool instead — SliderPoolAdmissionTests",
+            ["SliderInt.showInputField"] = "a slider carrying its input field is refused by the pool instead — SliderIntPoolTests",
         };
 
         // Compared against the value named here instead of against a fresh instance, for a slot whose fresh
@@ -97,6 +98,7 @@ namespace Velvet.Tests
         [TestCase("Label", 38)]
         [TestCase("Toggle", 28)]
         [TestCase("Slider", 33)]
+        [TestCase("SliderInt", 33)]
         [TestCase("TextField", 64)]
         public void Given_a_pooled_widget_moved_off_its_fresh_state_When_its_reset_helper_runs_Then_it_reads_back_what_a_fresh_instance_does(
             string widget, int floor)
@@ -181,6 +183,7 @@ namespace Velvet.Tests
             "Label" => new Label(),
             "Toggle" => new Toggle(),
             "Slider" => new Slider(),
+            "SliderInt" => new SliderInt(),
             "TextField" => new TextField(),
             _ => throw new ArgumentOutOfRangeException(nameof(widget), widget, null),
         };
@@ -193,6 +196,7 @@ namespace Velvet.Tests
                 case "Label": FiberLabelPoolHelper.ResetLabelForReuse((Label)element); break;
                 case "Toggle": FiberTogglePoolHelper.ResetToggleForReuse((Toggle)element); break;
                 case "Slider": FiberSliderPoolHelper.ResetSliderForReuse((Slider)element); break;
+                case "SliderInt": FiberSliderPoolHelper.ResetSliderIntForReuse((SliderInt)element); break;
                 case "TextField": FiberTextFieldPoolHelper.ResetTextFieldForReuse((TextField)element); break;
                 default: throw new ArgumentOutOfRangeException(nameof(widget), widget, null);
             }

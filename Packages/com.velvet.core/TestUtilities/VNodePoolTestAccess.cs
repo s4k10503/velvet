@@ -24,6 +24,7 @@ namespace Velvet.TestUtilities
         private const string ButtonPoolFieldName = "s_buttonPool";
         private const string TogglePoolFieldName = "s_togglePool";
         private const string SliderPoolFieldName = "s_sliderPool";
+        private const string SliderIntPoolFieldName = "s_sliderIntPool";
         private const string TextFieldPoolFieldName = "s_textFieldPool";
         private const string OwnedPropsFieldName = "s_ownedProps";
         private const string OwnedEventArraysFieldName = "s_ownedSingleEventArrays";
@@ -44,6 +45,9 @@ namespace Velvet.TestUtilities
 
         // Bypasses: nothing — it resets a static pool, which no production path does.
         public static void ClearSliderPoolForTest() => Clear(SliderPoolFieldName);
+
+        // Bypasses: nothing — it resets a static pool, which no production path does.
+        public static void ClearSliderIntPoolForTest() => Clear(SliderIntPoolFieldName);
 
         // Bypasses: nothing — it resets a static pool, which no production path does.
         public static void ClearTextFieldPoolForTest() => Clear(TextFieldPoolFieldName);

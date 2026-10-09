@@ -97,6 +97,10 @@ namespace Velvet
         public SliderSettings? Slider { get => _slider; set { ThrowIfReadOnly(); _slider = value; } }
         private SliderSettings? _slider;
 
+        /// <summary>SliderInt-specific settings.</summary>
+        public SliderIntSettings? SliderInt { get => _sliderInt; set { ThrowIfReadOnly(); _sliderInt = value; } }
+        private SliderIntSettings? _sliderInt;
+
         /// <summary>ScrollView-specific settings.</summary>
         public ScrollViewSettings? ScrollView { get => _scrollView; set { ThrowIfReadOnly(); _scrollView = value; } }
         private ScrollViewSettings? _scrollView;
@@ -172,6 +176,17 @@ namespace Velvet
             HighValue = this.HighValue;
         }
     }
+
+    /// <summary>
+    /// SliderInt.lowValue / highValue / direction / inverted, and the keyboard step: <see cref="SliderSettings"/>
+    /// over whole numbers, with the same undeclared and default rules.
+    /// </summary>
+    public sealed record SliderIntSettings(
+        int? LowValue = null,
+        int? HighValue = null,
+        SliderDirection? Direction = null,
+        bool? Inverted = null,
+        int? Step = null);
 
     /// <summary>Controls ScrollView scroller visibility and touch-scroll behavior.</summary>
     public sealed record ScrollViewSettings(

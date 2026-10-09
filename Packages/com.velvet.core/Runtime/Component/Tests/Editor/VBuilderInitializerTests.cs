@@ -220,6 +220,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_VSliderIntWithEveryMember_When_Built_Then_TheNodeIsTheFactorysSliderInt()
+        {
+            // Arrange
+            var builder = new VSliderInt("slider")
+            {
+                Value = 3, LowValue = 1, HighValue = 9, Direction = SliderDirection.Vertical, Inverted = true,
+                Step = 2, Enabled = false, OnChange = _ => { },
+            };
+
+            // Act
+            var node = (ElementNode)builder.Build();
+
+            // Assert
+            Assert.That(
+                (node.ElementType, node.Props?.FieldValue, node.Props?.Enabled, node.Props?.SliderInt, node.Events.Length),
+                Is.EqualTo((typeof(SliderInt), (object)3, (bool?)false,
+                    new SliderIntSettings(1, 9, SliderDirection.Vertical, true, 2), 1)));
+        }
+
+        [Test]
         public void Given_VToggleWithOnChange_When_Built_Then_BindsSingleChangeEvent()
         {
             VNode node = new VToggle("toggle") { Value = true, OnChange = _ => { } };
