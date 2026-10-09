@@ -467,6 +467,7 @@ namespace Velvet
                 var count = container.childCount;
                 for (var i = 0; i < count; i++)
                 {
+                    // MUTANT_SURVIVES(equivalent, arithmetic): subtracting the term changes the hash wherever adding it does.
                     hash = hash * 31 + (StyleOutOfFlowChild.HasNoBox(container[i]) ? 1 : 0);
                 }
                 return hash;

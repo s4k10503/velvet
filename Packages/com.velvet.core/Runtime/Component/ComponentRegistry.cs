@@ -266,14 +266,10 @@ namespace Velvet
             {
                 RegisterFiber(in site, identity, fiber);
                 // A Suspense keeping its committed primary takes a VirtualList row's suspend here, as
-                // GeneralPathReconciler.ExpandComponentInline takes an inline one's: the row mounts with no output,
-                // and GeneralPathReconciler.SetPrimaryHidden asks for its render, as for any dirty fiber, when it
-                // reveals the row.
-                if (!isInline && _ctx.HoldSuspendInPrimary())
-                {
-                    fiber.IsDirty = true;
-                    return fiber;
-                }
+                // GeneralPathReconciler.ExpandComponentInline takes an inline one's: the row mounts with no output.
+                // Its resolve asks for its render, which GeneralPathReconciler.SetPrimaryHidden asks for again when it
+                // reveals the row, as for any dirty fiber.
+                if (!isInline && _ctx.HoldSuspendInPrimary()) return fiber;
                 // A pass the signal abandons has committed nothing of this fiber, so the next pass reaching it
                 // renders it rather than bailing on the props this mount was given. Under a Suspense that catches
                 // the signal, the boundary's reveal renders it instead — see ReconcileExistingFiber.

@@ -847,13 +847,10 @@ namespace Velvet
             var boundary = fiber.IsOffscreen
                 ? fiber.OffscreenUnder
                 : ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
-            // What React retries is the work that suspended on this read; with none waiting on it, nothing renders,
-            // and a pass that suspended on another read takes this value up when it is retried. A boundary whose own
-            // pass this read gave up is that work: for a component written beside a Suspense the boundary found
-            // above is the component rendering it, and rendering this one ahead of its retry would leave the retry
-            // this one's output already settled, so the retry commits none of it.
-            if (boundary == null || ReferenceEquals(boundary.SuspendedOn, fiber))
+            if (boundary == null)
             {
+                // What React retries is the work that suspended on this read; with none waiting on it, nothing
+                // renders, and a pass that suspended on another read takes this value up when it is retried.
                 RetrySuspendedPasses(fiber);
                 return;
             }

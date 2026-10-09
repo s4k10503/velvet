@@ -1930,7 +1930,7 @@ namespace Velvet
         {
             if (boundary == null)
             {
-                // MUTANT_SURVIVES(unreachable): rootless fallback retirement goes through SetSuspenseFallbackShown's null-record arm instead.
+                // MUTANT_SURVIVES(unreachable): rootless fallback retirement goes through SetSuspenseFallbackShown's shown=false arm instead.
                 _rootlessSuspenseFallbackKeys.Remove(position);
                 return;
             }

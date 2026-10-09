@@ -81,6 +81,7 @@ namespace Velvet.Tests
             s_setAbortTick = default;
             s_setAbortOther = default;
             s_nestedRefElement = null;
+            s_memoRefElement = null;
         }
 
         [Test]
@@ -592,7 +593,7 @@ namespace Velvet.Tests
             // Assert — the reader's value is read with it, since a host never rendered again shows neither
             Assert.That((_root.Q<Label>("outside")?.text, primary.style.display.value),
                 Is.EqualTo(("outside:7", DisplayStyle.None)),
-                "The resolve retries the pass the reader gave up, as React retries it, so the host no longer waits on it");
+                "The reader's resolve renders the host again, so the host no longer waits and its boundary takes the suspend");
         }
 
         [Test]
@@ -794,6 +795,41 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_refAttachedRender, Is.EqualTo(s_refHostRenders),
                 "React attaches the ref of the render it commits");
+        }
+
+        [Test]
+        public void Given_ARefBelowAnElementOfAMemoizedComponentInAHiddenPrimary_When_TheBoundaryReveals_Then_ItIsAttachedToTheSameElement()
+        {
+            // Arrange — the memoized component bails on the reveal, so no patch of its elements queues the ref again
+            using var mounted = V.Mount(_root, V.Component(MemoRefHostRender, key: "memo-ref-host"));
+            var memoRef = _root.Q<VisualElement>("memo-ref");
+            Resuspend(mounted);
+
+            // Act
+            Resolve(mounted, 5);
+
+            // Assert
+            Assert.That(s_memoRefElement, Is.SameAs(memoRef),
+                "React 18 attaches the refs of a tree a Suspense reveals again, those of elements nothing re-rendered included");
+        }
+
+        [Test]
+        public void Given_ABoundaryHidingItsPrimaryForAVirtualListRow_When_TheRowsReadResolvesAndOnlyTheSchedulerDrains_Then_TheRowShowsTheValue()
+        {
+            // Arrange — nothing walks the whole tree here, so only what the scheduler is asked for renders
+            using var mounted = V.Mount(_root, V.Component(ListHostRender, key: "list-host"));
+            SeedViewport(mounted);
+            var container = _root.Q<VisualElement>("container");
+            var primary = _root.Q<VisualElement>("primary");
+            MountSuspendingRow(mounted);
+
+            // Act
+            s_rowSource.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the primary is read with it, since a boundary that discarded its children shows the row too
+            Assert.That((_root.Q<Label>("row")?.text, primary.parent == container), Is.EqualTo(("row:5", true)),
+                "The reveal asks for the render of the row the hide held back, which no walk of the boundary renders");
         }
 
         [Test]
@@ -1645,6 +1681,31 @@ namespace Velvet.Tests
         }
 
         private static VisualElement s_nestedRefElement;
+        private static VisualElement s_memoRefElement;
+
+        private static readonly Func<VisualElement, Action> s_memoRefCallback = element =>
+        {
+            s_memoRefElement = element;
+            return () => s_memoRefElement = null;
+        };
+
+        // Memoized with no props, so a render of its host bails on it and patches none of its elements.
+        [Component(Memoize = true)]
+        private static VNode MemoRefRender()
+            => V.Div(name: "memo-outer", children: new VNode[] { V.Div(name: "memo-ref", refCallback: s_memoRefCallback) });
+
+        [Component]
+        private static VNode MemoRefHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.Component(MemoRefRender, key: "memo"),
+                        V.Component(ReaderRender, key: "reader"),
+                    }),
+            });
 
         // The inner Suspense sits inside a host element of the outer primary, so that element's own reconcile
         // expands it; the ref is on an element of the inner primary.
