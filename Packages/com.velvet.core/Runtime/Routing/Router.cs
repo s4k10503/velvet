@@ -140,9 +140,59 @@ namespace Velvet
         /// submission's action returns a result for a route the current location matches. A subscriber that
         /// throws out of a loader's re-emit is reported to the console and the resolution stands: the loader's
         /// round settles and the route keeps what the loader produced. The same holds for the re-emit that
-        /// follows a loader failing, where what it keeps is that failure.
+        /// follows a loader failing, where what it keeps is that failure. A subscriber whose own navigation
+        /// commits while the router is announcing a location is the last that location reaches: the
+        /// subscribers after it hear the newer one, which that navigation announces, and not the one it left.
         /// </summary>
-        public event Action<RouterLocation> OnLocationChanged = null!;
+        public event Action<RouterLocation> OnLocationChanged
+        {
+            add
+            {
+                if (value == null)
+                {
+                    return;
+                }
+                (_locationListeners ??= new List<Action<RouterLocation>>()).Add(value);
+                _locationSnapshot = null;
+            }
+            remove
+            {
+                // The last registration goes first, as removing a handler from a multicast delegate takes it.
+                var index = value == null || _locationListeners == null ? -1 : _locationListeners.LastIndexOf(value);
+                if (index < 0)
+                {
+                    return;
+                }
+                _locationListeners!.RemoveAt(index);
+                _locationSnapshot = null;
+            }
+        }
+
+        // Created at the first subscription, so a router nobody listens to allocates neither. The snapshot is
+        // what an announcement walks, rebuilt only after the list changes: a subscription a subscriber adds or
+        // removes mid-announcement reaches the next one, as with a multicast delegate.
+        private List<Action<RouterLocation>>? _locationListeners;
+        private Action<RouterLocation>[]? _locationSnapshot;
+
+        private void AnnounceLocation(RouterLocation location)
+        {
+            if (_locationListeners == null)
+            {
+                return;
+            }
+            var snapshot = _locationSnapshot ??= _locationListeners.ToArray();
+            for (var index = 0; index < snapshot.Length; index++)
+            {
+                // A navigation a subscriber started that has committed announced its own location to every
+                // subscriber, so what is left of this pass would arrive after it, carrying one the router has
+                // left.
+                if (!ReferenceEquals(CurrentLocation, location))
+                {
+                    return;
+                }
+                snapshot[index](location);
+            }
+        }
 
         /// <summary>
         /// Raised with the new <see cref="Navigation"/> whenever it changes. <see cref="Dispose"/> clears it
@@ -679,14 +729,10 @@ namespace Velvet
             // rather than one still holding the attempt this commit completed.
             _blockerManager.ResetAll();
             PublishNavigation(NavigationLifecycle.Idle, null, null);
-            // A navigation a subscriber started from the Idle above, and that has committed already, announced
-            // its own location to every subscriber; this one's would arrive after it and leave them on a
-            // location the router has left. One still in flight has not, and this location is the one on show
-            // while it runs.
-            if (ReferenceEquals(CurrentLocation, location))
-            {
-                OnLocationChanged?.Invoke(location);
-            }
+            // A navigation a subscriber started from the Idle above announces nothing here while it is still in
+            // flight, and this location is the one on show while it runs; AnnounceLocation says what happens to
+            // one that has committed.
+            AnnounceLocation(location);
 
             return NavigationResult.Success;
         }
@@ -991,7 +1037,7 @@ namespace Velvet
                 Params = CurrentLocation.Params,
                 Matches = CurrentLocation.Matches,
             };
-            OnLocationChanged?.Invoke(CurrentLocation);
+            AnnounceLocation(CurrentLocation);
         }
 
         private void PushHistoryEntry(string path)

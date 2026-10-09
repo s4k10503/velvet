@@ -16,6 +16,8 @@
   Router's navigation does. When the parked navigation's loader honoured its token, the router briefly
   reported `NavigationLifecycle.Idle` between them.
 
-- A navigation started from a handler of a commit's own navigation-state notification, and that commits
-  at once, is the last location `Router.OnLocationChanged` announces. The commit it interrupted used to announce its own
-  location afterwards, leaving `V.RouterProvider` on a location the router had left.
+- A navigation started from a handler of a commit's own notifications, and that commits at once, is the
+  last location `Router.OnLocationChanged` announces to every subscriber. The announcement it interrupted
+  used to go on afterwards with the older location, to every subscriber when the handler was one of the
+  commit's navigation-state ones and to the location subscribers after the handler when it was one of
+  those, leaving `V.RouterProvider` on a location the router had left.

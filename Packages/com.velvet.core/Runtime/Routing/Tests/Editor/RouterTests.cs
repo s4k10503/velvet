@@ -175,6 +175,97 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALocationSubscriberThatNavigates_When_ItsNavigationCommits_Then_TheSubscriberAfterItIsLeftOnTheNewerLocation()
+        {
+            // The first subscriber's navigation commits inside the announcement of /about, before the second
+            // subscriber has been handed /about.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"), Route("x"));
+            var navigated = false;
+            router.OnLocationChanged += location =>
+            {
+                if (location.Path != "/about" || navigated) return;
+                navigated = true;
+                router.NavigateSync("/x");
+            };
+            var received = new List<string>();
+            router.OnLocationChanged += location => received.Add(location.Path);
+
+            // Act
+            router.NavigateSync("/about");
+
+            // Assert
+            Assert.That(
+                $"current={router.CurrentLocation?.Path} last={(received.Count == 0 ? "none" : received[received.Count - 1])}",
+                Is.EqualTo("current=/x last=/x"));
+        }
+
+        [Test]
+        public void Given_ALocationSubscriberThatRemovesItselfAndTheNextOne_When_ALocationIsAnnounced_Then_BothHearOnlyThatAnnouncement()
+        {
+            // As with a multicast delegate, a removal reaches the announcements after the one it is made in.
+            // The first subscriber is the first registration, so its own removal is of the list's head.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"), Route("x"));
+            var received = new List<string>();
+            Action<RouterLocation> second = location => received.Add("second:" + location.Path);
+            Action<RouterLocation> first = null;
+            first = location =>
+            {
+                received.Add("first:" + location.Path);
+                router.OnLocationChanged -= second;
+                router.OnLocationChanged -= first;
+            };
+            router.OnLocationChanged += first;
+            router.OnLocationChanged += second;
+
+            // Act
+            router.NavigateSync("/about");
+            router.NavigateSync("/x");
+
+            // Assert
+            Assert.That(string.Join(",", received), Is.EqualTo("first:/about,second:/about"));
+        }
+
+        [Test]
+        public void Given_ALocationSubscriberThatAddsAnother_When_LocationsAreAnnounced_Then_TheAddedOneHearsFromTheNextAnnouncement()
+        {
+            // As with a multicast delegate, an addition reaches the announcements after the one it is made in.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"), Route("x"));
+            var received = new List<string>();
+            Action<RouterLocation> added = location => received.Add(location.Path);
+            var adding = true;
+            router.OnLocationChanged += _ =>
+            {
+                if (!adding) return;
+                adding = false;
+                router.OnLocationChanged += added;
+            };
+
+            // Act
+            router.NavigateSync("/about");
+            router.NavigateSync("/x");
+
+            // Assert
+            Assert.That(string.Join(",", received), Is.EqualTo("/x"));
+        }
+
+        [Test]
+        public void Given_ARouterNobodyHasSubscribedTo_When_AHandlerIsRemovedFromIt_Then_ItStillNavigates()
+        {
+            // Arrange
+            var router = new Router(_routes);
+
+            // Act
+            router.OnLocationChanged -= _ => { };
+            var result = router.NavigateSync("/home");
+
+            // Assert
+            Assert.That(result, Is.EqualTo(NavigationResult.Success));
+        }
+
+        [Test]
         public void Given_ASubscriberNavigatingWhenACommitGoesIdle_When_ItsNavigationIsStillLoading_Then_TheCommittedLocationIsAnnounced()
         {
             // The subscriber's navigation parks on its loader, so the location the outer commit landed is the
