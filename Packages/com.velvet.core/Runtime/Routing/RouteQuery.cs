@@ -9,13 +9,19 @@ namespace Velvet
         internal static ISearchParams ParseQuery(string path)
         {
             var result = new SearchParams();
-            if (string.IsNullOrEmpty(path))
+            foreach (var pair in ParsePairs(path))
             {
-                return result;
+                result.Append(pair.Key, pair.Value);
             }
+            return result;
+        }
 
-            var qIndex = path.IndexOf('?');
-            if (qIndex < 0 || qIndex == path.Length - 1)
+        // The pairs of the text after the first '?', in the order written.
+        internal static List<KeyValuePair<string, string>> ParsePairs(string path)
+        {
+            var result = new List<KeyValuePair<string, string>>();
+            var qIndex = string.IsNullOrEmpty(path) ? -1 : path.IndexOf('?');
+            if (qIndex < 0)
             {
                 return result;
             }
@@ -24,16 +30,9 @@ namespace Velvet
             foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
             {
                 var eq = pair.IndexOf('=');
-                if (eq < 0)
-                {
-                    result.Append(DecodeQueryComponent(pair), string.Empty);
-                }
-                else
-                {
-                    var key = DecodeQueryComponent(pair.Substring(0, eq));
-                    var value = DecodeQueryComponent(pair.Substring(eq + 1));
-                    result.Append(key, value);
-                }
+                var key = DecodeQueryComponent(eq < 0 ? pair : pair.Substring(0, eq));
+                var value = eq < 0 ? string.Empty : DecodeQueryComponent(pair.Substring(eq + 1));
+                result.Add(new KeyValuePair<string, string>(key, value));
             }
             return result;
         }
@@ -68,6 +67,22 @@ namespace Velvet
                 {
                     parts.Add($"{escapedKey}={Uri.EscapeDataString(value ?? string.Empty)}");
                 }
+            }
+            return "?" + string.Join("&", parts);
+        }
+
+        // BuildQuery(ISearchParams) groups the values of one key; a pair list keeps the order it was given.
+        internal static string BuildQuery(IReadOnlyList<KeyValuePair<string, string>> pairs)
+        {
+            if (pairs.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>(pairs.Count);
+            foreach (var pair in pairs)
+            {
+                parts.Add($"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}");
             }
             return "?" + string.Join("&", parts);
         }
