@@ -11,7 +11,7 @@
 
 ### Removed
 
-- Router.Status, Router.OnStatusChanged, the RouterStatus enum and Router.PendingLocation. Status mixed
+- Router.Status, Router.OnStatusChanged and the RouterStatus enum. Status mixed
   the navigation in flight with how the last attempt ended, so an attempt that matched no route overwrote
   the Ready a committed location had left. Read `Router.Navigation` and `Router.OnNavigationChanged` for
   the navigation in flight, `Router.CurrentLocation` for where the router is, and what an attempt

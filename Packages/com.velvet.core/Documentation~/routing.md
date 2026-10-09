@@ -239,10 +239,11 @@ their caller, as a `NavigationResult` or as the exception the attempt threw.
 
 `Hooks.UseNavigation()` is `useNavigation()`, returning the `NavigationState` `Router.Navigation` holds:
 
-- `State` is `NavigationLifecycle.Submitting` from the moment a submission other than `get` has matched
-  a route until its action returns, `NavigationLifecycle.Loading` from the moment a navigation has
-  matched a route until it commits or gives up, and `NavigationLifecycle.Idle` otherwise. A path that
-  matches none never reports either.
+- `State` is `NavigationLifecycle.Submitting` from the moment a `post`, `put`, `patch` or `delete`
+  submission has matched a route until its action returns, `NavigationLifecycle.Loading` from the moment
+  a navigation has matched a route until it commits or gives up, and `NavigationLifecycle.Idle`
+  otherwise. A `get` submission, and one whose method no form takes, report `Loading` throughout. A
+  path that matches none never reports either.
 - `Location` is the location being navigated **to** while `State` is not `Idle` — resolved, so it
   carries the destination's `Params` and `Matches`, not just its path — and null while `State` is
   `Idle`, as `navigation.location` is `undefined` then.
