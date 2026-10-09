@@ -263,6 +263,65 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASpringThatDoesNotRepeat_When_ItsPassIsAboutToEndAndThenEnds_Then_ItSettlesOnlyAtTheEnd()
+        {
+            // Arrange — stiffness 200, damping 13: Framer Motion's opacity spring first rests on its 1 000 ms
+            // sample, which is when its animation finishes.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 200f, damping: 13f, mass: 1f);
+
+            // Act — a frame at a time to 0.99 s, then the frame across 1 s. A plan that resolved no channel leaves
+            // (true, false).
+            var (beforeEnd, atEnd) = (true, false);
+            if (state != null)
+            {
+                beforeEnd = false;
+                for (var i = 0; i < 99 && !beforeEnd; i++)
+                {
+                    beforeEnd = MotionSpringDriver.Step(element, state, 0.01f);
+                }
+                atEnd = MotionSpringDriver.Step(element, state, 0.02f);
+            }
+
+            // Assert
+            Assert.That((beforeEnd, atEnd), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_ASpringRetargetedNearItsStart_When_ItSettles_Then_ItRestsWithinFramersThresholdForTheShortTravel()
+        {
+            // Arrange — a 16 px exit, cancelled 0.05 s in, under 2 px from where it began: the reversal's travel is
+            // under 5, so Framer Motion's spring rests it within 0.005 rather than the 0.5 of the exit's own travel.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-0" }, new[] { "translate-x-4" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f);
+
+            // Act — NaN for a plan that resolved no translate channel, or a reversal that never settles.
+            var offset = float.NaN;
+            if (state?.TranslateX != null)
+            {
+                for (var i = 0; i < 3; i++)
+                {
+                    MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
+                MotionSpringDriver.Retarget(state);
+                var settled = false;
+                for (var i = 0; i < 1200 && !settled; i++)
+                {
+                    settled = MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
+                if (settled)
+                {
+                    offset = Mathf.Abs(state.TranslateX.Integrator.Value - state.TranslateX.RestingTarget);
+                }
+            }
+
+            // Assert
+            Assert.That(offset, Is.LessThanOrEqualTo(0.005f));
+        }
+
+        [Test]
         public void Given_ACriticallyDampedSpring_When_SteppedForEnoughTime_Then_ItSettlesAtTheTarget()
         {
             // Arrange — stiffness 100 / mass 1 critically damps at damping = 2*sqrt(stiffness*mass) = 20 (no

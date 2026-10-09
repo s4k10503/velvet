@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet.Tests
@@ -326,6 +327,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(velocity, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ASpringExitPartWay_When_ItIsRetargeted_Then_TheNextFrameCarriesOnFromWhereItWas()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-100" }, new[] { "opacity-0" });
+            var state = MotionSpringDriver.Create(plan, Stiffness, Damping, Mass);
+
+            // Act — NaN for a plan that resolved no channel.
+            var jump = float.NaN;
+            if (state != null)
+            {
+                MotionSpringDriver.Step(element, state, 0.3f);
+                var before = state.Opacity!.Integrator.Value;
+                MotionSpringDriver.Retarget(state);
+                MotionSpringDriver.Step(element, state, 1f / 60f);
+                jump = Mathf.Abs(state.Opacity.Integrator.Value - before);
+            }
+
+            // Assert — a frame of motion, not a jump back to the resting value.
+            Assert.That(jump, Is.LessThan(0.1f));
         }
 
         [Test]

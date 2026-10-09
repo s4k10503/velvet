@@ -253,7 +253,12 @@ new StyleTransitionConfig
   velocity-preserving integrator: **interrupting a spring retargets from the current value *and
   velocity***, Framer's signature interruptible feel. An exit whose delta resolves no channel at
   all completes immediately.
-- `DurationSec` is ignored for springs — settling time comes from the physics.
+- `DurationSec` is ignored for springs — settling time comes from the physics. A play samples each
+  channel's spring by the time since it started and ends when its slowest channel has rested,
+  measured as Framer Motion measures a spring's duration (see *Repeating a play* for the
+  thresholds), so a frame that arrives late moves the spring as far as the time it covers. A
+  spring that has not rested by 20 s never ends, as Framer's does not. An interruption hands the
+  channel to the integrator, which rests it by the same thresholds over the travel left.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike — flipping
   a label mid-spring retargets from the current value and velocity.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
@@ -412,7 +417,8 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
   A bezier holds the value its pass ended on; a spring keeps being sampled past its pass, as Framer's
   is, so it shows whatever small motion its spring still has. A negative or non-finite value throws
   `ArgumentOutOfRangeException`.
-- A spring's pass lasts as long as its spring takes to rest, measured as Framer measures it: sampled
+- A spring's pass lasts as long as its spring takes to rest, measured as Framer measures it (a play
+  that does not repeat ends there too): sampled
   every 50 ms, resting within 0.005 of its target and moving at no more than 0.01 per second for a
   travel under 5, or within 0.5 and at 2 per second for a longer one, and a spring that has not rested
   by 20 s has no pass to repeat and plays its first pass on. Framer animates each value on its own, so

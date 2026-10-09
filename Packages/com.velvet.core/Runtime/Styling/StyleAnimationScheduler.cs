@@ -845,9 +845,9 @@ namespace Velvet
         // from the SAME clock the scheduler itself used to decide when to fire this callback
         // (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
         // own time source, which a test's simulated panel overrides) rather than sampling a different clock
-        // (e.g. Time.realtimeSinceStartupAsDouble) that could disagree with it: a hitch is still absorbed by
-        // SpringIntegrator's own dt clamp, but the elapsed time now always matches what actually elapsed on the
-        // clock this tick is scheduled against. No-op if there is no host (should not happen for the on-panel /
+        // (e.g. Time.realtimeSinceStartupAsDouble) that could disagree with it, so the elapsed time always matches
+        // what actually elapsed on the clock this tick is scheduled against; a reversal's integrator clamps a
+        // hitch. No-op if there is no host (should not happen for the on-panel /
         // already-deferred-to-attach cases this is called from, but this guards rather than throws).
         private void StartSpringTick(VisualElement element, PendingAnimation pending, float preRollSec = 0f)
         {
@@ -867,7 +867,6 @@ namespace Velvet
             // moment its CSS transition would have started firing.
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
-            // Stepped a frame at a time, because the integrator clamps a longer step.
             for (var remaining = preRollSec; remaining > 0f; remaining -= PreRollStepSec)
             {
                 if (MotionSpringDriver.Step(element, state, Math.Min(remaining, PreRollStepSec)))
