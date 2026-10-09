@@ -621,7 +621,7 @@ the step's transition for that reason: equal to it in every setting, but not the
   reseed leaves unchanged come off once it commits.
 
 A `Tween` play -- the default `Type`, and that of `StyleTransition.Fade`, which a sequence takes until a step
-names a transition -- is UI Toolkit's own transition, and none of the three reaches it: it runs on to its end.
+names a transition -- is UI Toolkit's own transition, and none of the controls reaches it: it runs on to its end.
 Give the steps a `Spring` or `Bezier` transition where the plays have to follow the controls.
 
 The handle also carries `controls.TimeSec`, the Web Animations API's

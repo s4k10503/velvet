@@ -34,8 +34,9 @@ namespace Velvet
         // The playback seconds a frame of `dtSec` covers.
         public float Scale(float dtSec) => IsPaused ? 0f : dtSec * _rate;
 
-        // A play stays listed until a later Track finds it no longer running, so the list holds the running plays,
-        // those CancelPlays holds, and those that ended since the last play started.
+        // A play stays listed until its held values are released (Untrack) or a later Track finds it no longer
+        // running, so the list holds the running plays, those CancelPlays holds, and those that ended since the
+        // last play started.
         public void Track(StyleAnimationScheduler scheduler, VisualElement element, object play)
         {
             _plays.RemoveAll(entry => !entry.Scheduler.IsRunning(entry.Element, entry.Play));
