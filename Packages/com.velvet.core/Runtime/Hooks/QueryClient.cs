@@ -509,8 +509,8 @@ namespace Velvet
                 if (request.IsCancellationRequested) return;
                 if (failure == null)
                 {
-                    // v5 shares a landing with the query's options as they stand when it settles; a request started
-                    // with options the entry was never handed falls back to its own.
+                    // v5 shares a landing with the query's options as they stand when it settles; the request's own
+                    // are used only where the entry holds none.
                     Succeed(request, data, _options != null ? _options.StructuralSharing : sharing, failures);
                     return;
                 }
