@@ -89,8 +89,10 @@ namespace Velvet
         public float X2;
         public float Y2;
 
+        // DurationSec is one pass; ElapsedSec counts from the play's start across every pass Repeat adds.
         public float DurationSec;
         public float ElapsedSec;
+        public MotionRepeat Repeat;
 
         // The recurring tick, scheduled on the panel root. Paused (and nulled) once the tween completes, or on cancel.
         public IVisualElementScheduledItem? Tick;
@@ -120,7 +122,7 @@ namespace Velvet
         /// immediately).
         /// </summary>
         public static BezierTweenState? Create(MotionSpringClassParser.SpringPlan plan,
-            float x1, float y1, float x2, float y2, float durationSec)
+            float x1, float y1, float x2, float y2, float durationSec, MotionRepeat repeat = default)
         {
             if (plan.IsEmpty)
             {
@@ -133,6 +135,7 @@ namespace Velvet
                 X2 = x2,
                 Y2 = y2,
                 DurationSec = durationSec,
+                Repeat = repeat,
             };
             if (plan.Opacity is { } o) state.Opacity = new BezierTweenChannel(o.from, o.to);
             if (plan.TranslateX is { } tx) state.TranslateX = new BezierTweenChannel(tx.from, tx.to);
@@ -173,7 +176,7 @@ namespace Velvet
             MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
                 MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
-            ApplyEased(element, state, CurrentEased(state));
+            ApplyEased(element, state, CurrentFraction(state));
         }
 
         private static void SyncLayoutOwner(VisualElement element, BezierTweenState state)
@@ -195,18 +198,24 @@ namespace Velvet
 
         /// <summary>
         /// Advances elapsed time by <paramref name="dtSec"/> and re-applies the inline styles at the newly eased
-        /// progress. Returns true once elapsed time has reached the fixed duration — a deterministic completion,
-        /// unlike the spring's convergence-based settle.
+        /// progress. Returns true once elapsed time has reached the fixed duration of every pass — a deterministic
+        /// completion, unlike the spring's convergence-based settle — and never under an endless repeat.
         /// </summary>
         public static bool Step(VisualElement element, BezierTweenState state, float dtSec)
         {
             if (dtSec > 0f)
             {
-                state.ElapsedSec += dtSec;
+                state.ElapsedSec = state.Repeat.Fold(state.ElapsedSec + dtSec, state.DurationSec);
             }
-            ApplyEased(element, state, CurrentEased(state));
-            return state.ElapsedSec >= state.DurationSec;
+            ApplyEased(element, state, CurrentFraction(state));
+            return IsDone(state);
         }
+
+        // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
+        public static bool EndsAtFrom(BezierTweenState state) => state.Repeat.EndsAtFrom;
+
+        private static bool IsDone(BezierTweenState state)
+            => !state.Repeat.IsEndless && state.ElapsedSec >= state.Repeat.TotalSec(state.DurationSec);
 
         /// <summary>
         /// Releases every inline slot this state ever wrote — and the transition suspension
@@ -276,11 +285,11 @@ namespace Velvet
         /// points its <see cref="BezierTweenChannel.To"/> back at <see cref="BezierTweenChannel.RestingTarget"/>,
         /// and resets <see cref="BezierTweenState.ElapsedSec"/> to zero — a fresh full-duration reversal from
         /// wherever the forward tween currently is (exactly how a re-triggered CSS transition behaves, not a
-        /// time-reversed replay). The exit-cancel hand-off.
+        /// time-reversed replay). The exit-cancel hand-off. The reversal is one pass whatever the play repeated.
         /// </summary>
         public static void Retarget(BezierTweenState state)
         {
-            var eased = CurrentEased(state);
+            var eased = CurrentFraction(state);
             RetargetChannel(state.Opacity, eased);
             RetargetChannel(state.TranslateX, eased);
             RetargetChannel(state.TranslateY, eased);
@@ -295,6 +304,7 @@ namespace Velvet
                 foreach (var l in state.Lengths) RetargetChannel(l.Value, eased);
             }
             state.ElapsedSec = 0f;
+            state.Repeat = default;
         }
 
         private static void RetargetChannel(BezierTweenChannel? channel, float eased)
@@ -307,15 +317,24 @@ namespace Velvet
             channel.To = channel.RestingTarget;
         }
 
-        // The eased output for the current elapsed fraction. A zero duration reads as complete (eased at
-        // progress 1) rather than dividing by zero — the scheduler never builds one (ValidateBezierParameters
-        // rejects a zero duration), but a direct driver caller might.
-        private static float CurrentEased(BezierTweenState state)
+        // How far along each channel's From → To span the play shows now, eased. A zero duration reads as complete
+        // (eased at progress 1) rather than dividing by zero — the scheduler never builds one
+        // (ValidateBezierParameters rejects a zero duration), but a direct driver caller might. A finished play
+        // shows the end MotionRepeat.EndsAtFrom names, as Framer Motion's getFinalKeyframe overrides its last
+        // sample.
+        private static float CurrentFraction(BezierTweenState state)
         {
-            var progress = state.DurationSec > 0f
-                ? Mathf.Clamp01(state.ElapsedSec / state.DurationSec)
-                : 1f;
-            return CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress);
+            if (state.DurationSec <= 0f)
+            {
+                return CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, 1f);
+            }
+            if (IsDone(state))
+            {
+                return state.Repeat.EndsAtFrom ? 0f : 1f;
+            }
+            var progress = (float)state.Repeat.PassProgress(state.ElapsedSec, state.DurationSec, out var mirrored);
+            var eased = CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress);
+            return mirrored ? 1f - eased : eased;
         }
 
         // LerpUnclamped (not Lerp): an overshoot/anticipate curve samples eased values outside [0,1], and the

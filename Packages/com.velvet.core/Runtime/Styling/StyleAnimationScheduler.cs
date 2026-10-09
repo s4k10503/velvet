@@ -118,7 +118,8 @@ namespace Velvet
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
                 config.Type, config.Stiffness, config.Damping, config.Mass,
-                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses);
+                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses,
+                MotionRepeat.Of(config));
         }
 
         internal static bool RunsOnSwap(StyleTransitionConfig config)
@@ -152,13 +153,13 @@ namespace Velvet
         // default — the caller passes the config's own values through, since this overload takes the
         // already-unpacked timing primitives rather than the config itself).
         // bezierX1/bezierY1/bezierX2/bezierY2: the config's cubic-bezier control points (cubic-bezier(0.4, 0,
-        // 0.2, 1) by default), meaningful only when type is Bezier — passed through the same way.
+        // 0.2, 1) by default), meaningful only when type is Bezier — passed through the same way, as is repeat.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
             TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f,
             float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
-            Action? onSwap = null, string[]? appliedClasses = null)
+            Action? onSwap = null, string[]? appliedClasses = null, MotionRepeat repeat = default)
         {
             if (element == null)
             {
@@ -180,6 +181,7 @@ namespace Velvet
                 IsExit = false,
             };
 
+            WarnRepeatNotPlayed(type, repeat);
             if (type == TransitionType.Spring)
             {
                 StartSpringVariant(in play, stiffness, damping, mass);
@@ -188,7 +190,7 @@ namespace Velvet
 
             if (type == TransitionType.Bezier && durationSec != 0f)
             {
-                StartBezierVariant(in play, bezierX1, bezierY1, bezierX2, bezierY2, durationSec);
+                StartBezierVariant(in play, bezierX1, bezierY1, bezierX2, bezierY2, durationSec, repeat);
                 return;
             }
 
@@ -404,6 +406,7 @@ namespace Velvet
                 IsExit = true,
             };
 
+            WarnRepeatNotPlayed(config.Type, MotionRepeat.Of(config));
             if (config.Type == TransitionType.Spring)
             {
                 // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
@@ -418,7 +421,7 @@ namespace Velvet
                 // One curve drives both directions (no ExitBezier* fields — mirrors the spring reusing its single
                 // stiffness/damping/mass for the exit). Deferred-to-attach when off-panel, same as the spring exit.
                 StartBezierVariant(in play, config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2,
-                    config.DurationSec);
+                    config.DurationSec, MotionRepeat.Of(config));
                 return;
             }
 
@@ -720,9 +723,10 @@ namespace Velvet
         // (StartBezierTick) drives the resolved channels via inline styles. The one difference from the spring is
         // its completion is a fixed duration (BezierTweenDriver.Step reports done once elapsed reaches it) rather
         // than a dynamic settle. x1/y1/x2/y2 are the CSS cubic-bezier control points; durationSec is the fixed
-        // tween length; VariantPlay owns the rest, and StartSpringVariant the shared off-panel-defer contract.
+        // length of one pass, which repeat plays again; VariantPlay owns the rest, and StartSpringVariant the
+        // shared off-panel-defer contract.
         private void StartBezierVariant(in VariantPlay play, float x1, float y1, float x2, float y2,
-            float durationSec)
+            float durationSec, MotionRepeat repeat)
         {
             // Copied out because a local function cannot capture an `in` parameter.
             var element = play.Element;
@@ -743,7 +747,7 @@ namespace Velvet
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
             var state = ValidateBezierParameters(x1, y1, x2, y2, durationSec)
-                ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec)
+                ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat)
                 : null;
 
             CancelPending(map, element, animateReversal: play.IsExit);
@@ -939,6 +943,14 @@ namespace Velvet
         {
             state.Tick?.Pause();
             state.Tick = null;
+            if (BezierTweenDriver.EndsAtFrom(state))
+            {
+                // The resting classes are the to-pose, so clearing the inline values would jump the element there.
+                // The play stays registered holding its from-values, its ring co-fade still sampling them, until a
+                // cancel releases them as it releases a running play's.
+                state.OnSettled?.Invoke();
+                return;
+            }
             // Probe both maps, not just the one this play started into: an exit-cancel reversal hand-off
             // (CancelPending) can have MOVED it into _pendingEnters since then (same as the spring path).
             if (!RemoveIfCurrent(_pendingExits, element, pending))
@@ -1100,7 +1112,8 @@ namespace Velvet
         }
 
         // Whether a spring or bezier enter is still running on the element, whose settle re-applies the inline
-        // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens).
+        // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens). A bezier enter holding its
+        // from-values after its last pass counts, and its cancel is what re-applies them.
         internal bool IsDriving(VisualElement element)
             => _pendingEnters.TryGetValue(element, out var enter) && (enter.Spring != null || enter.Bezier != null);
 
@@ -1286,6 +1299,21 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent, boundary): durationSec != 0f already rules out both zeros.
             // They are the only values where durationSec < 0f and durationSec <= 0f disagree.
             => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
+
+        // Once per scheduler. Only the bezier driver plays a repeat.
+        private bool _warnedRepeatNotPlayed;
+
+        private void WarnRepeatNotPlayed(TransitionType type, MotionRepeat repeat)
+        {
+            if (type == TransitionType.Bezier || repeat.Count == 0f || _warnedRepeatNotPlayed)
+            {
+                return;
+            }
+            _warnedRepeatNotPlayed = true;
+            FiberLogger.LogWarning("Motion",
+                $"StyleTransitionConfig.Repeat is played only by TransitionType.Bezier; this {type} transition plays "
+                + "once. Use Type = TransitionType.Bezier for a play that repeats.");
+        }
 
         internal static bool ValidateDuration(float durationSec, Action? onComplete)
         {

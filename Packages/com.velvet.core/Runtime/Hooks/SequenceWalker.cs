@@ -531,10 +531,10 @@ namespace Velvet
                     + SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass);
             }
 
-            var hold = transition.DurationSec + transition.DelaySec;
+            var hold = transition.PlayedDurationSec + transition.DelaySec;
 
             // Bezier playback drives every channel with the SAME curve and never reads PropertyOverrides (like a
-            // spring's single stiffness/damping/mass), so its real span is the fixed DurationSec + DelaySec.
+            // spring's single stiffness/damping/mass), so its real span is its passes plus DelaySec.
             // Factoring a longer per-property override in here would park the walker on the step past the moment
             // the tween it describes has actually finished.
             if (transition.Type == TransitionType.Bezier)

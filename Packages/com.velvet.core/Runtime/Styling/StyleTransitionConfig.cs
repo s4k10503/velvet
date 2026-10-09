@@ -133,6 +133,67 @@ namespace Velvet
         /// </summary>
         public StyleTransitionConfig? Layout { get; init; }
 
+        private readonly float _repeat;
+        private readonly float _repeatDelaySec;
+
+        /// <summary>
+        /// The passes a play makes after its first — Framer Motion's <c>repeat</c>, so <c>Repeat = 2</c> plays three
+        /// times. <c>float.PositiveInfinity</c> repeats until another play or an unmount replaces it; 0, the
+        /// default, plays once. <see cref="RepeatType"/> decides each later pass's direction and
+        /// <see cref="RepeatDelaySec"/> the wait between passes. Played only when <see cref="Type"/> is
+        /// <see cref="TransitionType.Bezier"/>; a <see cref="TransitionType.Tween"/> or
+        /// <see cref="TransitionType.Spring"/> play logs a warning and plays once. <c>Documentation~/motion.md</c>
+        /// owns the full contract, including where a play ends and what a <c>layoutId</c> move does with it.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN, or neither a whole number nor
+        /// <c>float.PositiveInfinity</c>.</exception>
+        public float Repeat
+        {
+            get => _repeat;
+            init
+            {
+                if (!(value >= 0f) || (!float.IsPositiveInfinity(value) && value != MathF.Floor(value)))
+                {
+                    throw new ArgumentOutOfRangeException(nameof(Repeat), value,
+                        "Repeat counts whole passes after the first: zero or more, or float.PositiveInfinity.");
+                }
+                _repeat = value;
+            }
+        }
+
+        /// <summary>
+        /// How each pass after the first runs — Framer Motion's <c>repeatType</c>. Defaults to
+        /// <see cref="TransitionRepeatType.Loop"/>. Read only when <see cref="Repeat"/> is above zero.
+        /// </summary>
+        public TransitionRepeatType RepeatType { get; init; } = TransitionRepeatType.Loop;
+
+        /// <summary>
+        /// Seconds a repeating play holds the value one pass ends on before the next pass starts — Framer Motion's
+        /// <c>repeatDelay</c>. No wait follows the last pass, so it never delays completion. 0 by default.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The value is negative or not finite.</exception>
+        public float RepeatDelaySec
+        {
+            get => _repeatDelaySec;
+            init
+            {
+                if (!(value >= 0f) || float.IsInfinity(value))
+                {
+                    throw new ArgumentOutOfRangeException(nameof(RepeatDelaySec), value,
+                        "RepeatDelaySec must be finite and zero or more.");
+                }
+                _repeatDelaySec = value;
+            }
+        }
+
+        // What a reader that waits on a play's end waits from the end of its delay: every pass a Bezier play
+        // repeats and the waits between them, as Framer Motion's totalDuration. An endless repeat never ends, and
+        // those readers wait one pass of it rather than a delay that never runs out.
+        internal float PlayedDurationSec
+            => Type == TransitionType.Bezier && DurationSec > 0f && _repeat > 0f && !float.IsPositiveInfinity(_repeat)
+                ? DurationSec * (_repeat + 1f) + _repeatDelaySec * _repeat
+                : DurationSec;
+
         /// <summary>
         /// Optional per-property transition overrides layered on top of the top-level <see cref="DurationSec"/> /
         /// <see cref="Easing"/> / <see cref="DelaySec"/> (e.g. opacity tweening in 0.15s while scale takes 0.5s).
@@ -234,7 +295,7 @@ namespace Velvet
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
                 // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
-                // the child-orchestration knobs, the spring model, or the transition a layoutId move takes.
+                // the child-orchestration knobs, the spring model, the repeat, or the transition a layoutId move takes.
                 PropertyOverrides = PropertyOverrides,
                 Layout = Layout,
                 StaggerChildrenSec = StaggerChildrenSec,
@@ -248,6 +309,9 @@ namespace Velvet
                 BezierY1 = BezierY1,
                 BezierX2 = BezierX2,
                 BezierY2 = BezierY2,
+                Repeat = Repeat,
+                RepeatType = RepeatType,
+                RepeatDelaySec = RepeatDelaySec,
                 // Class names are identical, so share the parsed arrays (avoids re-parsing).
                 _enterFromClasses = _enterFromClasses,
                 _enterToClasses = _enterToClasses,
@@ -286,6 +350,9 @@ namespace Velvet
                 BezierY1 = BezierY1,
                 BezierX2 = BezierX2,
                 BezierY2 = BezierY2,
+                Repeat = Repeat,
+                RepeatType = RepeatType,
+                RepeatDelaySec = RepeatDelaySec,
             };
         }
 
@@ -365,6 +432,28 @@ namespace Velvet
         /// zero-duration <see cref="Tween"/>.
         /// </summary>
         Bezier,
+    }
+
+    /// <summary>
+    /// How each pass after the first of a repeating play runs — Framer Motion's <c>repeatType</c>. See
+    /// <see cref="StyleTransitionConfig.Repeat"/>.
+    /// </summary>
+    public enum TransitionRepeatType
+    {
+        /// <summary>Every pass runs from the from-values to the to-values. The default.</summary>
+        Loop,
+
+        /// <summary>
+        /// Every second pass plays the one before it backwards in time, its easing reversed with it, so an
+        /// ease-out pass returns as an ease-in one — CSS's <c>animation-direction: alternate</c>.
+        /// </summary>
+        Reverse,
+
+        /// <summary>
+        /// Every second pass runs from the to-values back to the from-values on the same easing, so an ease-out pass
+        /// returns ease-out.
+        /// </summary>
+        Mirror,
     }
 
     /// <summary>

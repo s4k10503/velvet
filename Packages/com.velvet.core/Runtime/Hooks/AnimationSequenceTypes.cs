@@ -37,7 +37,9 @@ namespace Velvet
         /// <summary>
         /// How long the sequence holds on this step before advancing. On a <see cref="To"/> step, null derives
         /// the hold from <see cref="Transition"/> (<c>DurationSec + DelaySec</c> for
-        /// <see cref="TransitionType.Tween"/> or <see cref="TransitionType.Bezier"/>, both fixed-duration); a
+        /// <see cref="TransitionType.Tween"/>; for <see cref="TransitionType.Bezier"/>, every pass its
+        /// <see cref="StyleTransitionConfig.Repeat"/> plays and the waits between them, or one pass of an endless
+        /// repeat, plus <c>DelaySec</c>); a
         /// <see cref="TransitionType.Spring"/>-typed <see cref="To"/> step holds for its <c>DelaySec</c> plus the
         /// duration Framer Motion's sequence gives the same spring — see the motion guide's Timelines section.
         /// Required on <see cref="Wait"/> (negative values clamp to 0). Always 0 on <see cref="Call"/> and

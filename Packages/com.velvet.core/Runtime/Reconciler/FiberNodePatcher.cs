@@ -524,7 +524,7 @@ namespace Velvet
             // swapTransition is what this node's own swap into the resolved pose plays on (see
             // ResolveApplied). The swap below and the orchestration frame this node establishes for its
             // children read the same value because they must be measured against the SAME span — When =
-            // BeforeChildren computes the children's wait from DelaySec + DurationSec, so a frame built off
+            // BeforeChildren computes the children's wait from DelaySec + PlayedDurationSec, so a frame built off
             // the node's config while the swap ran on the pose's would let children start before their
             // parent finished.
             // A Motion a presence mounted already leaving keeps resting at its initial pose while it exits.
@@ -957,7 +957,7 @@ namespace Velvet
         //   StaggerChildrenSec / DelayChildrenSec / a non-Together When — establishing a new stagger sequence
         //   (When == AfterChildren is not orchestrated; it warns once here and falls back to Together's
         //   no-extra-delay semantics for the parent's own swap — see TransitionWhen.AfterChildren). The frame's
-        //   base offset is this node's own [DelaySec, DelaySec + DurationSec] span when When == BeforeChildren
+        //   base offset is this node's own [DelaySec, DelaySec + PlayedDurationSec] span when When == BeforeChildren
         //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay this
         //   node's own swap, enter or exit waits out: a slot it claimed from a FURTHER-OUT orchestration, or
         //   the slot a presence plays its anchor's enter in. Folding extraDelaySec in regardless of When matters because this node's
@@ -985,7 +985,7 @@ namespace Velvet
                         + "children animate as if When = Together (no wait for the parent's own transition).");
                 }
                 var extraBeforeChildrenSec = swapTransition.When == TransitionWhen.BeforeChildren
-                    ? swapTransition.DelaySec + swapTransition.DurationSec
+                    ? swapTransition.DelaySec + swapTransition.PlayedDurationSec
                     : 0f;
                 return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
                     swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec);
