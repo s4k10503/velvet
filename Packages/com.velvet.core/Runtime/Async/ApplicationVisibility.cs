@@ -14,11 +14,13 @@ namespace Velvet
     /// main thread's top-level window is asked whether it is minimized. On macOS the application is hidden when
     /// <c>NSApplication</c> says so or when it has windows and none is both visible and not miniaturized; one
     /// with no windows reads as visible. Linux and WebGL have no reading and always count as visible, as does
-    /// any platform whose native read fails: the first failure latches, and every later read answers visible
-    /// without trying again, so a diagnostic read never faults a mutation.
+    /// any platform whose native read throws: the first failure logs one warning and latches, and every later
+    /// read answers visible without trying again, so a diagnostic read never faults a mutation.
     /// </remarks>
     internal static class ApplicationVisibility
     {
+        // Not readonly: ApplicationVisibilityTests substitutes the read.
+        private static Func<bool> s_readHidden = ReadHidden;
         private static bool s_unavailable;
 
         internal static bool IsVisible()
@@ -35,16 +37,22 @@ namespace Velvet
 
             try
             {
-                return !IsHidden();
+                return !s_readHidden();
             }
-            catch (Exception)
+            catch (Exception failure)
             {
                 s_unavailable = true;
+                Debug.LogWarning(
+                    "Velvet cannot read whether the application window is hidden, so a retry or a paused "
+                    + "mutation counts it as visible until the scripts reload. "
+                    + $"{failure.GetType().Name}: {failure.Message}");
                 return true;
             }
         }
 
-        private static bool IsHidden()
+        // Inside the editor each arm is keyed on the machine the editor runs on, never on the build target,
+        // so the native library an editor calls is its own whichever target is active.
+        private static bool ReadHidden()
         {
 #if UNITY_EDITOR_WIN || (!UNITY_EDITOR && UNITY_STANDALONE_WIN)
             return MainWindowIsMinimized();
@@ -95,6 +103,7 @@ namespace Velvet
             return IsIconic(s_mainWindow);
         }
 
+        [AOT.MonoPInvokeCallback(typeof(EnumWindowProc))]
         private static bool PickWindow(IntPtr window, IntPtr parameter)
         {
             if (!IsWindowVisible(window) || GetWindow(window, OwnerWindow) != IntPtr.Zero)

@@ -231,9 +231,11 @@ policy's `IsOnline` / `IsFocused`, which replace them for one. Both are polled o
   a mobile platform for `Application.isFocused`, since a backgrounded app has lost it; Windows whether the
   main thread's top-level window is minimized; macOS whether NSApplication is hidden or, when it has windows,
   none is both visible and not miniaturized (no windows reads as visible). Linux and WebGL have no reading and
-  count as visible. Any failure of a native read, or the absence of a window to ask, is latched and every later
-  read answers visible. These native readings have no test behind them, so replace them through
-  `NetworkSignals.IsVisible` where the platform's answer matters. The reading gates the retries of every
+  count as visible. The first failure of a native read, or on Windows the absence of a window to ask, logs one
+  warning and is latched: every later read answers visible without asking the platform again, until the
+  scripts reload.
+  No test runs the native readings themselves, so replace them through `NetworkSignals.IsVisible` where the
+  platform's answer matters. The reading gates the retries of every
   `RetryPolicy`, a `RetryPolicy.RunAsync` around a `Hooks.Use` loader included.
 
 While a call waits, `MutationResult.IsPaused` is true, and `FailureCount` / `FailureReason` follow v5's reducer:
