@@ -473,9 +473,10 @@ namespace Velvet
         /// <summary>
         /// Inheriting descendants wait for this Motion's OWN transition to finish before starting: every
         /// descendant's computed delay additionally includes this Motion's own
-        /// <see cref="StyleTransitionConfig.DelaySec"/> + <see cref="StyleTransitionConfig.DurationSec"/> — the
-        /// full span of its swap, not just the duration, since the swap does not even START until DelaySec has
-        /// elapsed.
+        /// <see cref="StyleTransitionConfig.DelaySec"/> and the time its play takes — its
+        /// <see cref="StyleTransitionConfig.DurationSec"/>, or a spring's time to rest, over every
+        /// <see cref="StyleTransitionConfig.Repeat"/> pass. The swap does not even START until DelaySec has
+        /// elapsed. A play repeating without end never finishes, so its descendants never start.
         /// </summary>
         BeforeChildren,
 

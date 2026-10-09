@@ -176,22 +176,77 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoRepeatsWithADelay_When_TheLastPassIsAboutToEndAndThenEnds_Then_OnlyTheEndSettles()
+        public void Given_ARepeatWithADelay_When_ItsLastPassIsAboutToEndAndThenEnds_Then_OnlyTheEndSettles()
         {
-            // Arrange — three 1.1 s passes and two 0.25 s waits: 3.8 s.
+            // Arrange — stiffness 200, damping 13: Framer's opacity pass rests at exactly 1 s, so two passes and the
+            // 0.25 s wait between them end exactly at 2.25 s, with no wait after the last.
             var element = new VisualElement();
-            var state = Opacity(new MotionRepeat(2f, TransitionRepeatType.Loop, 0.25f), element);
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, 200f, 13f, Mass, new MotionRepeat(1f, TransitionRepeatType.Loop, 0.25f));
 
             // Act — a plan that resolved no channel leaves (true, false).
             var (beforeEnd, atEnd) = (true, false);
             if (state != null)
             {
-                beforeEnd = MotionSpringDriver.Step(element, state, 3.75f);
-                atEnd = MotionSpringDriver.Step(element, state, 0.05f);
+                beforeEnd = MotionSpringDriver.Step(element, state, 2f);
+                atEnd = MotionSpringDriver.Step(element, state, 0.25f);
             }
 
             // Assert
             Assert.That((beforeEnd, atEnd), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AChannelStartingPartWay_When_ItsPassIsMeasured_Then_ItIsTheSpringOverTheDistanceLeft()
+        {
+            // Arrange — opacity 0.5 → 1 travels 0.5, which rests at 1.05 s; a travel of 1.5 would rest at 1.4 s.
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-50" }, new[] { "opacity-100" });
+
+            // Act — NaN for a plan that resolved no channel.
+            var state = MotionSpringDriver.Create(plan, Stiffness, Damping, Mass,
+                new MotionRepeat(1f, TransitionRepeatType.Loop, 0f));
+            var pass = state?.Opacity?.PassSec ?? float.NaN;
+
+            // Assert
+            Assert.That(pass, Is.EqualTo(1.05f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AChannelStartingPartWay_When_ItsPlaySpanIsRead_Then_ItIsTheSpringOverTheDistanceLeft()
+        {
+            // Arrange
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-50" }, new[] { "opacity-100" });
+
+            // Act
+            var span = MotionSpringDriver.SpanSec(plan, Stiffness, Damping, Mass, default);
+
+            // Assert
+            Assert.That(span, Is.EqualTo(1.05).Within(1e-5));
+        }
+
+        [Test]
+        public void Given_EveryAxisAndALength_When_ARepeatingPlayIsHalfwayThroughItsFirstPass_Then_EachHasLeftItsFromValue()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(
+                new[] { "translate-x-0", "translate-y-0", "scale-50", "rotate-0", "w-0" },
+                new[] { "translate-x-4", "translate-y-4", "scale-100", "rotate-45", "w-32" });
+            var state = MotionSpringDriver.Create(plan, Stiffness, Damping, Mass,
+                new MotionRepeat(1f, TransitionRepeatType.Loop, 0f));
+
+            // Act — a channel the plan did not resolve reads as "missing".
+            var moved = "no state";
+            if (state != null)
+            {
+                MotionSpringDriver.Step(element, state, 0.5f);
+                string Moved(SpringChannel? c) => c == null ? "missing" : (c.Integrator.Value != c.RestingTarget).ToString();
+                moved = string.Join(",", Moved(state.TranslateX), Moved(state.TranslateY), Moved(state.Scale),
+                    Moved(state.Rotate), state.Lengths is { Count: 1 } lengths ? Moved(lengths[0].Value) : "missing");
+            }
+
+            // Assert
+            Assert.That(moved, Is.EqualTo("True,True,True,True,True"));
         }
 
         [Test]

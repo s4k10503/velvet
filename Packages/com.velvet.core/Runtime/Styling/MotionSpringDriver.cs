@@ -166,6 +166,8 @@ namespace Velvet
                 }
                 state.Lengths = lengths;
             }
+            // MUTANT_SURVIVES(equivalent, boundary): only StepRepeating reads a pass length, and it runs only under a
+            // repeat, so one measured for a play that does not repeat is never read.
             if (repeat.Count > 0f)
             {
                 // Framer Motion runs each value as an animation of its own, so each channel's pass lasts as long as
@@ -215,8 +217,8 @@ namespace Velvet
         private static bool Rests(double delta, double displacement, double velocity)
         {
             var granular = System.Math.Abs(delta) < 5.0;
-            // MUTANT_SURVIVES(equivalent): `<` differs only on a sample landing exactly on a threshold, and no
-            // sample of the springs the cases time lands on one.
+            // MUTANT_SURVIVES(equivalent, boundary): `<` differs only on a sample landing exactly on a threshold, and
+            // no sample of the springs the cases time lands on one.
             return System.Math.Abs(velocity) <= (granular ? 0.01 : 2.0)
                 && System.Math.Abs(displacement) <= (granular ? 0.005 : 0.5);
         }
@@ -378,13 +380,11 @@ namespace Velvet
         // Framer Motion's repeat over a spring: each pass samples the channel's spring at the time MotionRepeat gives,
         // a mirrored pass a spring from the to-value back to the from-value, and a channel past its last pass holds
         // the value MotionRepeat.EndsAtFrom names. Every channel reaching that end is the play's settle. The
-        // integrator takes each sample, with the velocity since the last, so a Retarget carries on from it.
+        // integrator takes each sample, with the velocity since the last, so a Retarget carries on from it; the
+        // scheduler's tick and pre-roll step by a positive time, which that velocity divides by.
         private static bool StepRepeating(VisualElement element, MotionSpringState state, float dtSec)
         {
-            if (dtSec > 0f)
-            {
-                state.ElapsedSec += dtSec;
-            }
+            state.ElapsedSec += dtSec;
             var settled = true;
             if (state.Opacity != null) settled &= SampleRepeating(state, state.Opacity, dtSec);
             if (state.TranslateX != null) settled &= SampleRepeating(state, state.TranslateX, dtSec);
@@ -423,7 +423,7 @@ namespace Velvet
                     ? SampleSpring(channel.Target, channel.RestingTarget, channel.Scale, passTime, state)
                     : SampleSpring(channel.RestingTarget, channel.Target, channel.Scale, passTime, state);
             }
-            channel.Integrator.Set(value, dtSec > 0f ? (value - previous) / dtSec : channel.Integrator.Velocity);
+            channel.Integrator.Set(value, (value - previous) / dtSec);
             return ended;
         }
 

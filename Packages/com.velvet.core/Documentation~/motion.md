@@ -746,7 +746,7 @@ Three consequences worth knowing:
 - **A pose's transition carries the child-orchestration knobs too.** `StaggerChildrenSec`,
   `DelayChildrenSec` and `When` are read off whichever config drives the swap, so a coordinator's
   pose can orchestrate its inheriting descendants — and a `When = BeforeChildren` wait is measured
-  from that pose's own `DelaySec + DurationSec` span.
+  from that pose's own delay and play (see *Orchestration*).
 - **`transition-*` utilities are optional for variant swaps.** They still govern property
   changes outside the variant system (a `hover:` state flipping, an arbitrary class toggle); a
   variant swap's inline transition simply takes precedence while it plays and is released
