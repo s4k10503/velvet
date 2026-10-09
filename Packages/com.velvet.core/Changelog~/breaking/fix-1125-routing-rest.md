@@ -11,8 +11,8 @@
   does, so a relative navigation from a route matched case-insensitively keeps the URL's case. It used to
   take the route pattern's spelling.
 
-- `NavigationLifecycle` and `RouterStatus` each have a `Submitting` member, reported while a submission's
-  guards and action run.
+- `NavigationLifecycle` has a `Submitting` member, reported while a submission's guards and action run.
+<!-- corrects: - `NavigationLifecycle` and `RouterStatus` each have a `Submitting` member, reported while a submission's -->
 
 - A `Proceeding` Blocker stays `Proceeding` when the navigation it released is blocked by a Blocker
   registered after it, as React Router's does. It used to return to `Idle`.
