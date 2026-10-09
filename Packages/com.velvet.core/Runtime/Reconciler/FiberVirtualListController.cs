@@ -262,21 +262,25 @@ namespace Velvet
         private void RenderRange(int newFirst, int newLast)
         {
             // A row's layout effects read the row, which is in the list only once RebuildVisibleContainer places it.
-            var held = _reconciler.HoldRowLayoutEffects();
-            var placed = false;
+            _reconciler.HoldRowLayoutEffects();
             try
             {
-                placed = PlaceRange(newFirst, newLast);
+                PlaceRange(newFirst, newLast);
             }
             finally
             {
-                if (held) _reconciler.ReleaseRowLayoutEffects(placed);
+                try
+                {
+                    _reconciler.CommitHeldRowLayoutEffects();
+                }
+                finally
+                {
+                    _reconciler.CommitStrandedLayoutWorkForController();
+                }
             }
-            _reconciler.CommitStrandedLayoutWorkForController();
         }
 
-        // False where a Dispose reached the list while the range rendered.
-        private bool PlaceRange(int newFirst, int newLast)
+        private void PlaceRange(int newFirst, int newLast)
         {
             var newCount = newLast - newFirst + 1;
 
@@ -317,14 +321,13 @@ namespace Velvet
             if (_isDisposed)
             {
                 ClearRenderedItems();
-                return false;
+                return;
             }
 
             // After DisposeUntakenRows, so a recycled item's ref cleanup runs before the setup of
             // whatever took its place, and after the container rebuild, so a setup reads an item that is
             // already in the list.
             _reconciler.DrainRefAttachesForController();
-            return true;
         }
 
         // Indexes the still-rendered items into the two old-row tables, for RenderRange's reuse/patch

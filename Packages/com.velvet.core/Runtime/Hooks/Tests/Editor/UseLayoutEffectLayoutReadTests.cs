@@ -29,8 +29,11 @@ namespace Velvet.Tests
     /// that commits synchronously has the elements that commit adds laid out before their own refs read them.</item>
     /// <item>The commit computes that box without sending its <see cref="GeometryChangedEvent"/>s, which the panel's
     /// next layout visit sends, so a callback that mounts a tree runs once and an element the commit laid out
-    /// still receives its event.</item>
-    /// <item>A virtual list's row commits its layout effects once the list holds it.</item>
+    /// still receives its event. A control that settles from those events, a ScrollView showing its scroller,
+    /// settles in that visit, after the commit.</item>
+    /// <item>The world position of an element an update moved is current in the commit's layout effects.</item>
+    /// <item>A virtual list's row, and a component inside it, commit their layout effects once the list holds the
+    /// row.</item>
     /// <item>A commit made from inside the style updater's traversal lays nothing out.</item>
     /// </list>
     /// </summary>
@@ -67,6 +70,10 @@ namespace Velvet.Tests
             s_rowsFoundInLayoutEffect.Clear();
             s_rowHeightsReadInRef.Clear();
             s_geometryEventsReceived = 0;
+            s_setAnchorOffset = default;
+            s_anchorWorldOffsetInLayoutEffect = float.NaN;
+            s_scrollView = null;
+            s_scrollerDisplayInLayoutEffect = null;
             s_hiddenInsertionRuns = 0;
             s_neverResolves = new VelvetTaskCompletionSource<string>();
         }
@@ -251,7 +258,8 @@ namespace Velvet.Tests
             }
 
             // Assert
-            Assert.That($"{thrown?.GetType().Name ?? "none"} | {s_widthReadInLayoutEffect}", Is.EqualTo($"none | {float.NaN}"));
+            Assert.That($"{thrown?.GetType().Name ?? "none"} | {_mountedFromLayoutPass.Count} | {s_widthReadInLayoutEffect}",
+                Is.EqualTo($"none | 1 | {float.NaN}"));
         }
 
         // GREEN_ON_BASE(characterization): the base lays out no panel from an update commit at all.
@@ -325,6 +333,59 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ReadRow(s_rowHeightsReadInRef, "a"), Is.EqualTo(RowHeight).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowWithAComponentInsideIt_When_ThePanelLaysTheListOut_Then_TheInnerLayoutEffectFindsItsRowInThePanel()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.VirtualList(new List<string> { "a" }, item => item,
+                itemHeight: 40f, renderer: item => V.Component(RowWithInnerRender, item, key: item),
+                name: "vlist", className: "h-[200px]"));
+
+            // Act
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(s_rowsFoundInLayoutEffect.Contains("inner-a"), Is.True);
+        }
+
+        [Test]
+        public void Given_AnAnchorTheLastFrameLaidOut_When_AnUpdateMovesIt_Then_TheLayoutEffectReadsItsNewWorldPosition()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(MovingAnchorRender, key: "moving"));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            s_setAnchorOffset.Invoke(AnchorOffset);
+
+            // Act
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_anchorWorldOffsetInLayoutEffect, Is.EqualTo(AnchorOffset).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's layout effect inside a ScrollView reads its scroller unsettled.
+        // A ScrollView shows its scrollers from its own GeometryChangedEvents, which the panel's layout pass sends
+        // after the commit, so the commit's layout computation leaves them as they were and that pass settles them.
+        [Test]
+        public void Given_ALayoutEffectInsideAScrollViewItsContentOverflows_When_TheTreeMountsAndThePanelUpdates_Then_TheEffectReadsTheScrollerHiddenAndThePassShowsIt()
+        {
+            // Arrange
+            var scrollView = new ScrollView();
+            scrollView.style.width = 200f;
+            scrollView.style.height = 100f;
+            _window.rootVisualElement.Add(scrollView);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            s_scrollView = scrollView;
+
+            // Act
+            _mounted = V.Mount(scrollView.contentContainer, V.Component(OverflowingContentRender, key: "overflow"));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That($"{s_scrollerDisplayInLayoutEffect} | {scrollView.verticalScroller.resolvedStyle.display}",
+                Is.EqualTo($"{DisplayStyle.None} | {DisplayStyle.Flex}"));
         }
 
         // GREEN_ON_BASE(characterization): the base runs a GeometryChangedEvent callback that mounts a tree once.
@@ -527,6 +588,55 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        private const float AnchorOffset = 40f;
+        private static StateUpdater<float> s_setAnchorOffset;
+        private static float s_anchorWorldOffsetInLayoutEffect;
+
+        // An existing anchor whose left margin an update moves; its layout effect reads where the panel draws it.
+        [Component]
+        private static VNode MovingAnchorRender()
+        {
+            var (offset, setOffset) = Hooks.UseState(0f);
+            s_setAnchorOffset = setOffset;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                var anchor = s_root.Q<VisualElement>("moving-anchor");
+                s_anchorWorldOffsetInLayoutEffect = anchor.worldBound.x - anchor.parent.worldBound.x;
+                return null;
+            }), new object[] { offset });
+            return V.Div(className: $"ml-[{offset}px] w-[20px] h-[20px]", name: "moving-anchor");
+        }
+
+        private static ScrollView s_scrollView;
+        private static DisplayStyle? s_scrollerDisplayInLayoutEffect;
+
+        [Component]
+        private static VNode OverflowingContentRender()
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_scrollerDisplayInLayoutEffect = s_scrollView.verticalScroller.resolvedStyle.display;
+                return null;
+            }), Array.Empty<object>());
+            return V.Div(className: "h-[300px]");
+        }
+
+        [Component]
+        private static VNode RowWithInnerRender(string label)
+            => V.Div(className: $"h-[{RowHeight}px]", name: $"row-{label}",
+                children: new VNode[] { V.Component(InnerRowRender, label, key: "inner") });
+
+        [Component]
+        private static VNode InnerRowRender(string label)
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                if (s_root.Q<VisualElement>($"row-{label}") != null) s_rowsFoundInLayoutEffect.Add($"inner-{label}");
+                return null;
+            }), new object[] { label });
+            return V.Div();
+        }
 
         private static int s_geometryEventsReceived;
 

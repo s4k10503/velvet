@@ -106,6 +106,7 @@ namespace Velvet
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";
         private const string UpdatePhaseShape = "enum:" + UpdatePhaseType;
         private const string LayoutNodeType = "UnityEngine.UIElements.Layout.LayoutNode";
+        private const string VersionChangeType = "UnityEngine.UIElements.VersionChangeType";
 
         internal static readonly EngineMember PanelGetUpdater = Method(UIElements, "UnityEngine.UIElements.Panel",
             "GetUpdater", "UnityEngine.UIElements.IVisualTreeUpdater", UpdatePhaseShape);
@@ -129,6 +130,20 @@ namespace Velvet
 
         internal static readonly EngineMember LayoutNodeDirty =
             WrittenProperty(UIElements, LayoutNodeType, "IsDirty", "System.Boolean");
+
+        internal static readonly EngineMember LayoutNodeHasNewLayout =
+            ReadProperty(UIElements, LayoutNodeType, "HasNewLayout", "System.Boolean");
+
+        internal static readonly EngineMember ElementLastLayout = Field(UIElements, VisualElementType, "lastLayout", "UnityEngine.Rect");
+
+        internal static readonly EngineMember ElementIncrementVersion = Method(UIElements, VisualElementType,
+            "IncrementVersion", "System.Void", "enum:" + VersionChangeType);
+
+        internal static readonly EngineMember TransformVersionChange =
+            Field(UIElements, VersionChangeType, "Transform", "enum:" + VersionChangeType);
+
+        internal static readonly EngineMember PanelDuringLayoutPhase = ReadProperty(UIElements,
+            "UnityEngine.UIElements.BaseVisualElementPanel", "duringLayoutPhase", "System.Boolean");
 
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;

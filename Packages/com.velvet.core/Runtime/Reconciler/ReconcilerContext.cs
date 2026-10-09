@@ -1656,7 +1656,7 @@ namespace Velvet
                     // React attaches refs in its layout phase, after its mutation phase ran the commit's insertion
                     // effects, and a callback that reads its element's box there reads it laid out.
                     FiberEffects.RunInsertionEffectsAheadOfRef(owner);
-                    FiberLayoutReflow.LayOutFor(this, element);
+                    FiberLayoutReflow.LayOutFor(this, element, owner);
                     System.Action? cleanup = null;
                     try
                     {
@@ -2378,6 +2378,11 @@ namespace Velvet
         // run inline. See FiberEffects.CommitSubtreeEffects / FlushDeferredDrainLayoutEffects.
         internal bool DeferDrainLayoutEffects;
         internal readonly List<(ComponentFiber fiber, bool mountDoubleInvoke)> PendingDrainLayoutEffects = new();
+
+        // One list per virtual-list range render in progress, holding the effect commits of the rows it creates or
+        // patches until it has placed them; a drain neither takes nor flushes them. See
+        // FiberVirtualListController.RenderRange.
+        internal readonly Stack<List<(ComponentFiber fiber, bool mountDoubleInvoke)>> HeldRowLayoutEffects = new();
 
         // Returns the snapshot pinned for store within the current drain wave, capturing
         // liveSnapshot on the first read that finds no pin. Returns liveSnapshot

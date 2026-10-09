@@ -18,11 +18,11 @@ namespace Velvet
         void DrainRefAttachesForController();
 
         // A row the item loop creates or patches commits its layout work once the controller has placed it in the
-        // list, as a drain's fibers commit theirs at the drain's end. Hold returns false where a drain already holds
-        // that work, and then the drain's end commits it. Release commits what Hold held where the range was placed
-        // and drops it where the range threw, as a render that throws commits nothing.
-        bool HoldRowLayoutEffects();
-        void ReleaseRowLayoutEffects(bool placed);
+        // list. Hold opens a list of its own for one range render, which Commit closes and commits; a row the range
+        // discarded, because the range threw or the list was disposed while it rendered, is unmounted by then and
+        // runs nothing. Inside a drain the rows' work is the drain's, which commits it at the drain's end.
+        void HoldRowLayoutEffects();
+        void CommitHeldRowLayoutEffects();
 
         // A range rendered outside a reconcile pass has no enclosing entry to end with
         // FiberEffects.CommitStrandedLayoutWork, so the controller calls this where a range render returns.

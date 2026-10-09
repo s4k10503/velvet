@@ -58,6 +58,11 @@ namespace Velvet
             }
             // A fiber without a reconciler has been unmounted.
             if (ctx == null) return;
+            if (ctx.HeldRowLayoutEffects.Count > 0)
+            {
+                ctx.HeldRowLayoutEffects.Peek().Add((fiber, mountDoubleInvoke));
+                return;
+            }
             CommitLayoutBatch(ctx, fiber, new List<(ComponentFiber Fiber, bool IsMount)>(1) { (fiber, mountDoubleInvoke) });
         }
 
@@ -68,7 +73,16 @@ namespace Velvet
         internal static void FlushDeferredDrainLayoutEffects(ReconcilerContext ctx)
         {
             ctx.DeferDrainLayoutEffects = false;
-            var pending = ctx.PendingDrainLayoutEffects;
+            CommitDeferred(ctx, ctx.PendingDrainLayoutEffects);
+        }
+
+        // Runs the effect commits of the rows the innermost range render held, once it has placed them, as one
+        // commit in the same way. A row a failed or disposed range discarded is unmounted and runs nothing.
+        internal static void CommitHeldRowLayoutEffects(ReconcilerContext ctx)
+            => CommitDeferred(ctx, ctx.HeldRowLayoutEffects.Pop());
+
+        private static void CommitDeferred(ReconcilerContext ctx, List<(ComponentFiber fiber, bool mountDoubleInvoke)> pending)
+        {
             // Clear in a finally so a throwing effect (e.g. an imperative-handle factory, which is unguarded
             // user code) does not leave entries to accumulate / re-run on the next drain.
             try
@@ -171,6 +185,7 @@ namespace Velvet
             => FiberAmbientStack.Current != null
                 || ctx.SharedReconcileDepth > 0
                 || ctx.DeferDrainLayoutEffects
+                || ctx.HeldRowLayoutEffects.Count > 0
                 || ctx.EffectCommitDepth > 0
                 || ctx.IsDrainingRefAttaches;
 
