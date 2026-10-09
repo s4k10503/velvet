@@ -76,10 +76,10 @@ The boundary behaves the same in all four forms:
   mechanism: `PointerDown`/`PointerUpEvent`/`Move`, `Wheel`, `KeyDownEvent`/`KeyUpEvent`, and
   `FocusIn`/`Out` bindings on an `events:` prop bubble to the logical ancestor chain outside the
   portal boundary (React's own root-level event delegation, walking the logical parent chain
-  rather than the DOM). `PointerEnterBinding` and `PointerLeaveBinding` are not carried to a
-  logical ancestor. A `Button`'s `onClick` (`ClickedBinding`)
-  answers a click raised inside the portal, and a field's `onValueChanged` (`ChangeEventBinding<T>`) a value change of that type, the
-  way React's `onClick` and `onChange` bubble out of a portal. For `V.Portal(targetId:)` the target's
+  rather than the DOM). Pointer `Enter`/`Leave` bindings (`PointerEnterBinding`,
+  `PointerLeaveBinding`) are not carried to a logical ancestor. A `Button`'s `onClick`
+  (`ClickedBinding`) answers a click raised inside the portal, and a field's `onValueChanged`
+  (`ChangeEventBinding<T>`) a value change of that type, the way React's `onClick` and `onChange` bubble out of a portal. For `V.Portal(targetId:)` the target's
   physical ancestors already receive the event through ordinary native bubbling and the bridge adds
   the LOGICAL chain on top, so a physical ancestor of the target that is no logical ancestor of the
   call site receives it as well, which React does not do; an element that is both — a physical
