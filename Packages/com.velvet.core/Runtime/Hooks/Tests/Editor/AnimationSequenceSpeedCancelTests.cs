@@ -159,6 +159,30 @@ namespace Velvet.Tests
             Assert.That((held, Opacity().keyword == StyleKeyword.Undefined), Is.EqualTo((StyleKeyword.Undefined, false)));
         }
 
+        // The first reseed's commit releases what the first cancel held, and only that commit: what the second
+        // cancel holds stays through a later render's commit.
+        [Test]
+        public void Given_ASequenceCancelledRestartedAndCancelledAgain_When_ItRendersAgain_Then_TheSecondCancelsOpacityStaysHeld()
+        {
+            // Arrange
+            MountInitialCoordinator();
+            PlayIntoTheFade();
+            Controls.Cancel();
+            Controls.Restart();
+            Flush();
+            Controls.Play();
+            PlayIntoTheFade();
+            Controls.Cancel();
+
+            // Act
+            RenderAgain();
+            Flush();
+
+            // Assert
+            var opacity = Opacity();
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
         private static int s_stepZeroCalls;
 
         [Test]

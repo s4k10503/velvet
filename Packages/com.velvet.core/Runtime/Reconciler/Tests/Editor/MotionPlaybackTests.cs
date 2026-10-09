@@ -444,6 +444,172 @@ namespace Velvet.Tests
             Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 1f)));
         }
 
+        // The first playback still lists a running play of its own on the element whose held play is the second's.
+        [Test]
+        public void Given_AnotherPlaybacksHeldPlayAndARunningPlayOnTheSameElement_When_TheRunningPlaysPlaybackReleasesItsHeldPlays_Then_TheHeldOpacityStays()
+        {
+            // Arrange
+            var element = OnPanel("shared-held");
+            var holder = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: holder);
+            Ticks(5);
+            holder.CancelPlays();
+            var runner = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[10px]" },
+                Linear(), playback: runner);
+            Ticks(2);
+
+            // Act
+            runner.ReleaseHeldPlays();
+
+            // Assert
+            var opacity = element.style.opacity;
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        // The playback lists only its held play, whose element's enter is now a play on no playback.
+        [Test]
+        public void Given_AHeldPlayAndALaterPlayOnNoPlaybackOnItsElement_When_TheHeldPlaysPlaybackCancelsItsPlaysAgain_Then_TheLaterPlayRunsOn()
+        {
+            // Arrange
+            var element = OnPanel("cancelled-twice");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[100px]" },
+                Linear());
+            Ticks(2);
+
+            // Act
+            playback.CancelPlays();
+            Ticks(2);
+
+            // Assert
+            Assert.That(element.style.translate.value.x.value, Is.EqualTo(100f * 4 * 0.016f).Within(1e-2f));
+        }
+
+        // Its channels all spring together from 0 to 1 of their run, so each one's share of its run is the opacity
+        // channel's value, which goes from 0 to 1.
+        [Test]
+        public void Given_ASpringPlayOnEveryKindOfChannel_When_ItRunsOnAPlayback_Then_EachChannelIsAsFarThroughItsRunAsTheOpacity()
+        {
+            // Arrange
+            var element = OnPanel("every-channel");
+            _scheduler.PlayVariantEnter(element,
+                new[] { "opacity-0", "translate-x-[0px]", "translate-y-[0px]", "scale-50", "rotate-0", "bg-[#000000]", "w-[0px]" },
+                new[] { "opacity-100", "translate-x-[10px]", "translate-y-[10px]", "scale-150", "rotate-90", "bg-[#ffffff]", "w-[100px]" },
+                new StyleTransitionConfig { Type = TransitionType.Spring }, playback: new MotionPlayback());
+
+            // Act
+            Ticks(10);
+
+            // Assert
+            var share = Opacity(element);
+            var translate = element.style.translate.value;
+            var shares = new[]
+            {
+                translate.x.value / 10f, translate.y.value / 10f, element.style.scale.value.value.x - 0.5f,
+                element.style.rotate.value.angle.value / 90f, element.style.backgroundColor.value.r,
+                element.style.width.value.value / 100f,
+            };
+            Assert.That(share > 0.05f ? shares : new[] { float.NaN },
+                Is.EqualTo(new[] { share, share, share, share, share, share }).Within(1e-3f));
+        }
+
+        // The held fade started from opacity-0; the spring's own from-side is opacity-100.
+        [Test]
+        public void Given_APlayACancelHolds_When_TheNextOpacityPlayIsASpring_Then_ItStartsFromTheHeldOpacity()
+        {
+            // Arrange
+            var element = OnPanel("spring-continued");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+
+            // Act
+            _scheduler.PlayVariantEnter(element, s_visible, new[] { "opacity-50" },
+                new StyleTransitionConfig { Type = TransitionType.Spring });
+
+            // Assert
+            Assert.That((element.style.opacity.keyword, Opacity(element)), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        // The spring's held opacity is the channel the next play takes, which leaves it nothing to hold.
+        [Test]
+        public void Given_ASpringPlayACancelHolds_When_TheNextOpacityPlayStarts_Then_ThePlaybackListsNothing()
+        {
+            // Arrange
+            var element = OnPanel("spring-taken");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible,
+                new StyleTransitionConfig { Type = TransitionType.Spring }, playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+
+            // Act
+            _scheduler.PlayVariantEnter(element, s_visible, new[] { "opacity-50" }, Linear());
+
+            // Assert
+            Assert.That(ListedPlays(playback), Is.Zero);
+        }
+
+        // The width held at 0 is written as an inline-resolved class, w-[100px], which the later play's finish or
+        // stop writes back over it; the held value has to come back after that.
+        private VisualElement HeldWidthBesideATranslate(StyleTransitionConfig translate)
+        {
+            var element = OnPanel("held-width");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, new[] { "w-[0px]" }, new[] { "w-[100px]" }, Linear(),
+                playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[10px]" },
+                translate);
+            Ticks(2);
+            return element;
+        }
+
+        [Test]
+        public void Given_AHeldWidthBesideASpringTranslate_When_TheSpringRunsToItsEnd_Then_TheWidthIsStillHeld()
+        {
+            // Arrange
+            var element = HeldWidthBesideATranslate(new StyleTransitionConfig { Type = TransitionType.Spring });
+
+            // Act
+            AdvancePast(5f);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_AHeldWidthBesideASpringTranslate_When_TheSpringIsStopped_Then_TheWidthIsStillHeld()
+        {
+            // Arrange
+            var element = HeldWidthBesideATranslate(new StyleTransitionConfig { Type = TransitionType.Spring });
+
+            // Act
+            _scheduler.CancelEnter(element);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_AHeldWidthBesideABezierTranslate_When_TheBezierIsStopped_Then_TheWidthIsStillHeld()
+        {
+            // Arrange
+            var element = HeldWidthBesideATranslate(Linear());
+
+            // Act
+            _scheduler.CancelEnter(element);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(0f));
+        }
+
         [Test]
         public void Given_APlayACancelHolds_When_ThePlaybackReleasesItsHeldPlays_Then_TheElementCarriesNoInlineOpacity()
         {
