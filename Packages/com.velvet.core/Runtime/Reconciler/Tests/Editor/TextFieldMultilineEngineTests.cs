@@ -4,9 +4,10 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the UI Toolkit behaviour <c>FiberPropApplier.ApplyTextField</c>'s multiline-after-delayed ordering
-    /// and <c>FiberPropApplier.WriteMultiline</c>'s single-line comparison are written against, so a case here
-    /// fails, rather than the code going quietly wrong or unneeded, if the engine stops doing it.
+    /// Pins the UI Toolkit behaviour <c>FiberPropApplier.ApplyTextField</c>'s multiline-after-delayed ordering,
+    /// <c>FiberPropApplier.ShowsItsValue</c>'s forms and arrangements in
+    /// <see cref="TextFieldMultilineKeyboardPropTests"/> are written against, so a case
+    /// here fails, rather than the code going quietly wrong or unneeded, if the engine stops doing it.
     /// </summary>
     internal sealed class TextFieldMultilineEngineTests
     {
@@ -46,6 +47,36 @@ namespace Velvet.Tests
             Assert.That(
                 (before, ((TextElement)field.textEdition).text),
                 Is.EqualTo(("abcdef", "a\nb")));
+        }
+
+        // GREEN_ON_BASE(characterization): a value written under a limit drops the break before the cut.
+        // UI Toolkit did so before this change as after it.
+        [Test]
+        public void Given_ASingleLineFieldWithALimit_When_AValueWithALineBreakIsWrittenSilently_Then_TheShownTextIsTheValueWithoutItsBreakCut()
+        {
+            // Arrange
+            var field = new TextField { maxLength = 3 };
+
+            // Act
+            field.SetValueWithoutNotify("a\nbcdef");
+
+            // Assert
+            Assert.That(((TextElement)field.textEdition).text, Is.EqualTo("abc"));
+        }
+
+        // GREEN_ON_BASE(characterization): a multi-line field shows a value written under a limit cut with its break.
+        // UI Toolkit did so before this change as after it.
+        [Test]
+        public void Given_AMultilineFieldWithALimit_When_AValueWithALineBreakIsWrittenSilently_Then_TheShownTextIsTheValueCutWithItsBreak()
+        {
+            // Arrange
+            var field = new TextField { multiline = true, maxLength = 3 };
+
+            // Act
+            field.SetValueWithoutNotify("a\nbcdef");
+
+            // Assert
+            Assert.That(((TextElement)field.textEdition).text, Is.EqualTo("a\nb"));
         }
     }
 }
