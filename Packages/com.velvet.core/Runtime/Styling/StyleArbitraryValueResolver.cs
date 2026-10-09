@@ -1994,6 +1994,8 @@ namespace Velvet
             // One set reused across calls, filled through the key collection's own enumerator: a property nothing
             // else shares a longhand with — a StyleOverrides colour beside unrelated layers — allocates nothing.
             var remaining = s_remainingWriters;
+            // MUTANT_SURVIVES(equivalent): a member left by an earlier call is either a key of this map, added again
+            // here, or sits unremoved through every pass, and a pass compares the count only against its own start.
             remaining.Clear();
             foreach (var key in map.Keys)
             {
@@ -2540,9 +2542,11 @@ namespace Velvet
                     return true;
                 case ArbitraryProperty.BackgroundRepeat:
                     StyleAnimateDriver.WriteBackgroundRepeat(element, StyleKeyword.Null);
+                    // MUTANT_SURVIVES(equivalent): background repeat has no entry in the fallback setter tables ClearInline reads.
                     return true;
                 case ArbitraryProperty.SliceType:
                     element.style.unitySliceType = StyleKeyword.Null;
+                    // MUTANT_SURVIVES(equivalent): slice type has no entry in the fallback setter tables ClearInline reads.
                     return true;
             }
 

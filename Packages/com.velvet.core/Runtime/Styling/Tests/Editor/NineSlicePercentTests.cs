@@ -3,6 +3,7 @@ using System.Globalization;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -163,6 +164,88 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((before, root.ElementAt(0).ClassListContains(marker)), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_APercentSliceBesideAPixelEdge_When_ThePercentSliceIsRemoved_Then_ItsMarkerClassGoes()
+        {
+            // Arrange — the pixel edge is still there when the percentage goes.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var oldTree = new VNode[] { V.Div(className: "slice-[25%] slice-t-[10]", styles: Showing(_tall)) };
+            var newTree = new VNode[] { V.Div(className: "slice-t-[10]", styles: Showing(_tall)) };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), oldTree);
+            var marker = StyleArbitraryValueResolver.ShownImageMarkerClass;
+            var before = root.ElementAt(0).ClassListContains(marker);
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            Assert.That((before, root.ElementAt(0).ClassListContains(marker)), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_APercentSliceThatWasRemoved_When_ItIsWrittenAgain_Then_ItsMarkerClassReturns()
+        {
+            // Arrange — the marker is read while the slice is gone, so a watch that was never released cannot pass.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var withSlice = new VNode[] { V.Div(className: "slice-[25%]", styles: Showing(_tall)) };
+            var withoutSlice = new VNode[] { V.Div(className: "", styles: Showing(_tall)) };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), withSlice);
+            reconciler.Reconcile(root, withSlice, withoutSlice);
+            var marker = StyleArbitraryValueResolver.ShownImageMarkerClass;
+            var removed = root.ElementAt(0).ClassListContains(marker);
+
+            // Act
+            reconciler.Reconcile(root, withoutSlice, withSlice);
+
+            // Assert
+            Assert.That((removed, root.ElementAt(0).ClassListContains(marker)), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_APercentSlice_When_ItsElementIsRemoved_Then_ItsMarkerClassGoes()
+        {
+            // Arrange — a plain div is not one of the pooled types, whose reset empties the class list, so here the
+            // teardown is what takes the marker off.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var oldTree = new VNode[] { V.Div(className: "slice-[25%]", styles: Showing(_tall)) };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), oldTree);
+            var element = root.ElementAt(0);
+            var marker = StyleArbitraryValueResolver.ShownImageMarkerClass;
+            var before = element.ClassListContains(marker);
+
+            // Act
+            reconciler.Reconcile(root, oldTree, Array.Empty<VNode>());
+
+            // Assert
+            Assert.That((before, element.ClassListContains(marker)), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnImageVelvetWroteAndAnotherWrittenFromOutside_When_TheElementsGeometryChanges_Then_TheInsetsFollowTheLastOne()
+        {
+            // Arrange — the slice is first resolved against no image, then Velvet writes one, and the element is
+            // read there; withdrawing the image from outside returns it to the state the slice was first
+            // resolved against, so a watch that still remembers that first state sees no change.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var bare = new VNode[] { V.Div(className: "slice-[25%]") };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), bare);
+            reconciler.Reconcile(root, bare, new VNode[] { V.Div(className: "slice-[25%]", styles: Showing(_tall)) });
+            var element = root.ElementAt(0);
+            var before = Insets(element);
+            element.style.backgroundImage = StyleKeyword.Null;
+            using var geometry = GeometryChangedEvent.GetPooled(Rect.zero, new Rect(0f, 0f, 10f, 10f));
+
+            // Act
+            element.SimulateEvent(geometry);
+
+            // Assert
+            Assert.That((before, Insets(element)), Is.EqualTo(("20,10,20,10", "0,0,0,0")));
         }
 
         [Test]

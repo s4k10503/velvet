@@ -1,6 +1,8 @@
 using System;
 using System.Globalization;
+using System.IO;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -104,6 +106,43 @@ namespace Velvet.Tests
 
             // Assert — no image shows now, so every percentage is of nothing.
             Assert.That((before, Insets(Card)), Is.EqualTo(("20,10,20,10", "0,0,0,0")));
+        }
+
+        [Test]
+        public void Given_APercentSliceOverNoInlineImage_When_AStylesheetGivesTheElementOne_Then_ThePercentIsOfThatImage()
+        {
+            // Arrange — the image lives only in a stylesheet of the application's own, so the element's inline
+            // slot never holds it. The image is 64×128.
+            const string imagePath = "Assets/VelvetNineSliceStylesheetImage.png";
+            const string sheetPath = "Assets/VelvetNineSliceStylesheetImage.uss";
+            var texture = new Texture2D(64, 128);
+            File.WriteAllBytes(imagePath, texture.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(texture);
+            AssetDatabase.ImportAsset(imagePath, ImportAssetOptions.ForceSynchronousImport);
+            File.WriteAllText(sheetPath, ".nine-slice-sheet-image { background-image: url(\"/" + imagePath + "\"); }\n");
+            AssetDatabase.ImportAsset(sheetPath, ImportAssetOptions.ForceSynchronousImport);
+            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(sheetPath);
+            try
+            {
+                VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+                _window.rootVisualElement.styleSheets.Add(sheet);
+                _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderCard));
+                ForcePanelUpdate(Card.panel);
+                var before = Insets(Card);
+
+                // Act
+                Card.AddToClassList("nine-slice-sheet-image");
+                ForcePanelUpdate(Card.panel);
+
+                // Assert — a quarter of the height for the top and bottom, of the width for the sides.
+                Assert.That((before, Insets(Card)), Is.EqualTo(("0,0,0,0", "32,16,32,16")));
+            }
+            finally
+            {
+                _window.rootVisualElement.styleSheets.Remove(sheet);
+                AssetDatabase.DeleteAsset(sheetPath);
+                AssetDatabase.DeleteAsset(imagePath);
+            }
         }
 
         private static string Insets(VisualElement element)
