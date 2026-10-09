@@ -35,14 +35,14 @@ V.Motion(key: "card", className: "w-24 h-24 rounded-xl bg-sky-500",
 A pose is a *class delta*: classes present in the resting variant and absent from another are
 removed/added on swap, and anything not mentioned falls back to the element's base `className`.
 
-A tween temporarily replaces the element's inline transition duration, delay, and easing. When it
-finishes or is interrupted, it restores the element's own lists, including a `duration-[...]`
-value. Where tweens overlap on one element — an exit started over an enter, or an exit restarted
-while it plays — the latest one still playing times the element: when it ends first, the tween
-started before it takes its own timing back, and the end of the last restores the element's own
-lists. When Velvet next writes or releases the tween's timing, it preserves a slot whose keyword or
-list entries differ from its last temporary value. An identical reassignment, or a change undone
-before that observation, does not replace the saved timing.
+A tween temporarily replaces the element's inline transition duration and easing, and its transition
+delay only where that tween sets one. When it finishes or is interrupted, it restores the element's
+own lists, including a `duration-[...]` value. When Velvet next writes or releases a tween's timing, a
+slot whose keyword or list entries differ from the value Velvet last wrote there is taken as code's: it
+becomes the element's own, and no tween already playing puts its own value for that slot back. An
+identical reassignment, or a change undone before that observation, is not taken. If tween plays
+overlap on one element, each slot holds the value of the latest one still playing that wrote it, and
+the end of the last restores the element's own lists.
 
 **Label inheritance (Framer's variant propagation):** a Motion naming none of `animate`, `initial` and
 `exit` follows the nearest ancestor Motion's active label and takes that ancestor's `initial` label with

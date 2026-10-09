@@ -1210,7 +1210,7 @@ namespace Velvet
                 }
             }
             element.style.transitionProperty = names;
-            MotionTweenTiming.Write(element, durations, easings, delays);
+            MotionTweenTiming.Write(element, durations, easings, delays, pending.Timing);
         }
 
         private static void AppendLanding(List<StylePropertyName> names, List<TimeValue> durations,
@@ -1349,8 +1349,8 @@ namespace Velvet
         }
 
         // C# becomes the Single Source of Truth, so they need not be defined in USS.
-        // GC tuning: the EasingFunction list is cached statically per EasingMode; TimeValue lists are
-        // reused via TimeValueListPool.
+        // The EasingFunction lists are cached per EasingMode and the TimeValue lists rented from TimeValueListPool,
+        // and the element receives MotionTweenTiming's copy of each, never one of these.
         private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
             new() { new UnityEngine.UIElements.StylePropertyName("all") };
 
@@ -1371,8 +1371,8 @@ namespace Velvet
 
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
             VisualElement element, float durationSec, EasingMode easing, out MotionTweenTiming.Play timing,
-            float delaySec = 0f, bool allProperties = false,
-            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null, float delayOffsetSec = 0f)
+            float delaySec, bool allProperties, IReadOnlyList<StylePropertyTransition>? propertyOverrides,
+            float delayOffsetSec)
         {
             timing = MotionTweenTiming.Begin(element);
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only

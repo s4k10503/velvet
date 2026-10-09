@@ -6,26 +6,23 @@ namespace Velvet
 {
     internal static class MotionTweenTiming
     {
-        // One tween's timing as it last wrote it, which the element takes back while that tween is the latest
-        // still playing.
+        // One layer of an element's timing: the element's own, which sets all three slots, or one tween's, which
+        // sets those the tween wrote and no code has written since. A null slot is one the layer leaves alone.
         internal sealed class Play
         {
-            public StyleList<TimeValue> Duration;
-            public StyleList<TimeValue> Delay;
-            public StyleList<EasingFunction> Curve;
+            public StyleList<TimeValue>? Duration;
+            public StyleList<TimeValue>? Delay;
+            public StyleList<EasingFunction>? Curve;
         }
 
         private sealed class Hold
         {
-            public StyleList<TimeValue> Duration;
-            public StyleList<TimeValue> Delay;
-            public StyleList<EasingFunction> Curve;
+            public readonly Play Own = new();
             public StyleList<TimeValue> WrittenDuration;
             public StyleList<TimeValue> WrittenDelay;
             public StyleList<EasingFunction> WrittenCurve;
-            // An enter and an exit can play on one element at once, and a cancelled exit's reversal carries its
-            // play on. In start order: the last one times the element, and the saved timing goes back only once
-            // none remains.
+            // In start order. An enter and an exit can play on one element at once, and a cancelled exit's
+            // reversal carries its play on.
             public readonly List<Play> Plays = new();
         }
 
@@ -42,61 +39,74 @@ namespace Velvet
         private static Hold Save(VisualElement element)
         {
             var style = element.style;
-            var hold = new Hold
-            {
-                Duration = Copy(style.transitionDuration),
-                Delay = Copy(style.transitionDelay),
-                Curve = Copy(style.transitionTimingFunction),
-            };
-            // MUTANT_SURVIVES(equivalent, line removed): ApplyTransitionStyles, Begin's only caller, writes timing
-            // before anything else can, and that write's Adopt leaves each saved slot equal to the one read above.
+            var hold = new Hold();
+            (hold.Own.Duration, hold.Own.Delay, hold.Own.Curve) =
+                (Copy(style.transitionDuration), Copy(style.transitionDelay), Copy(style.transitionTimingFunction));
+            // MUTANT_SURVIVES(equivalent, line removed): the next Adopt runs before any slot is written, in the Write
+            // that made this hold or in the one ApplyTransitionStyles makes straight after Begin. With nothing
+            // recorded it saves the values read above again, and no play has set a slot yet for it to clear.
             Record(style, hold);
             return hold;
         }
 
+        // Writes into play's layer, or the latest play's where none is named, or the element's own while none
+        // plays.
         internal static void Write(VisualElement element, List<TimeValue>? duration,
-            List<EasingFunction>? curve, List<TimeValue>? delay)
+            List<EasingFunction>? curve, List<TimeValue>? delay, Play? play = null)
         {
-            var style = element.style;
-            var holding = s_holds.TryGetValue(element, out var hold);
-            if (holding) Adopt(style, hold);
+            var hold = s_holds.GetValue(element, s_save);
+            Adopt(element.style, hold);
+            var layer = play ?? (hold.Plays.Count > 0 ? hold.Plays[hold.Plays.Count - 1] : hold.Own);
             // Copies, so no slot is ever written from a list the scheduler pools or caches, whatever the engine
             // keeps of an assigned list.
-            if (duration != null) style.transitionDuration = new List<TimeValue>(duration);
-            if (curve != null) style.transitionTimingFunction = new List<EasingFunction>(curve);
-            if (delay != null) style.transitionDelay = new List<TimeValue>(delay);
-            if (!holding) return;
-            Record(style, hold);
-            var latest = hold.Plays[hold.Plays.Count - 1];
-            (latest.Duration, latest.Delay, latest.Curve) = (hold.WrittenDuration, hold.WrittenDelay, hold.WrittenCurve);
+            if (duration != null) layer.Duration = new StyleList<TimeValue>(new List<TimeValue>(duration));
+            if (curve != null) layer.Curve = new StyleList<EasingFunction>(new List<EasingFunction>(curve));
+            if (delay != null) layer.Delay = new StyleList<TimeValue>(new List<TimeValue>(delay));
+            Apply(element.style, hold);
         }
 
         internal static void End(VisualElement element, Play? play)
         {
             if (!s_holds.TryGetValue(element, out var hold) || !hold.Plays.Remove(play!)) return;
-            var style = element.style;
-            Adopt(style, hold);
-            if (hold.Plays.Count > 0)
-            {
-                var latest = hold.Plays[hold.Plays.Count - 1];
-                (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
-                    (latest.Duration, latest.Delay, latest.Curve);
-                Record(style, hold);
-                return;
-            }
-            s_holds.Remove(element);
-            (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) =
-                (hold.Duration, hold.Delay, hold.Curve);
+            Adopt(element.style, hold);
+            Apply(element.style, hold);
         }
 
         internal static void Forget(VisualElement element) => s_holds.Remove(element);
 
-        // Only differences still observable from the last temporary value replace saved timing.
+        // A slot that differs from the value last written is code's: it becomes the element's own, and no tween
+        // already playing sets that slot again.
         private static void Adopt(IStyle style, Hold hold)
         {
-            if (!Same(style.transitionDuration, hold.WrittenDuration)) hold.Duration = Copy(style.transitionDuration);
-            if (!Same(style.transitionDelay, hold.WrittenDelay)) hold.Delay = Copy(style.transitionDelay);
-            if (!Same(style.transitionTimingFunction, hold.WrittenCurve)) hold.Curve = Copy(style.transitionTimingFunction);
+            if (!Same(style.transitionDuration, hold.WrittenDuration))
+            {
+                hold.Own.Duration = Copy(style.transitionDuration);
+                foreach (var play in hold.Plays) play.Duration = null;
+            }
+            if (!Same(style.transitionDelay, hold.WrittenDelay))
+            {
+                hold.Own.Delay = Copy(style.transitionDelay);
+                foreach (var play in hold.Plays) play.Delay = null;
+            }
+            if (!Same(style.transitionTimingFunction, hold.WrittenCurve))
+            {
+                hold.Own.Curve = Copy(style.transitionTimingFunction);
+                foreach (var play in hold.Plays) play.Curve = null;
+            }
+        }
+
+        // Each slot takes the latest play's value for it, or the element's own where no play sets it.
+        private static void Apply(IStyle style, Hold hold)
+        {
+            var (duration, delay, curve) = (hold.Own.Duration!.Value, hold.Own.Delay!.Value, hold.Own.Curve!.Value);
+            foreach (var play in hold.Plays)
+            {
+                duration = play.Duration ?? duration;
+                delay = play.Delay ?? delay;
+                curve = play.Curve ?? curve;
+            }
+            (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction) = (duration, delay, curve);
+            Record(style, hold);
         }
 
         private static void Record(IStyle style, Hold hold)
@@ -105,7 +115,6 @@ namespace Velvet
                 (Copy(style.transitionDuration), Copy(style.transitionDelay), Copy(style.transitionTimingFunction));
         }
 
-        // Keep snapshots independent of the lists returned to the scheduler's pool.
         private static StyleList<T> Copy<T>(StyleList<T> list) =>
             list.value is { } value ? new StyleList<T>(new List<T>(value)) : list;
 
@@ -113,12 +122,9 @@ namespace Velvet
         {
             var (x, y) = (a.value, b.value);
             if (a.keyword != b.keyword || x?.Count != y?.Count) return false;
-            // MUTANT_SURVIVES(equivalent, literal): a slot recorded with no list is one the hold already saved
-            // under the same keyword, so adopting it again saves what the hold holds.
-            if (x == null) return true;
-            for (var i = 0; i < x.Count; i++)
+            for (var i = 0; i < x?.Count; i++)
             {
-                if (!EqualityComparer<T>.Default.Equals(x[i], y![i])) return false;
+                if (!EqualityComparer<T>.Default.Equals(x![i], y![i])) return false;
             }
             return true;
         }

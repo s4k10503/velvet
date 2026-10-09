@@ -290,13 +290,43 @@ namespace Velvet.Tests
         private static readonly string[] s_hiddenPose = { "opacity-0" };
         private static readonly string[] s_visiblePose = { "opacity-100" };
 
-        private static StyleTransitionConfig LinearTween(float durationSec) =>
-            new() { DurationSec = durationSec, Easing = EasingMode.Linear };
+        private static StyleTransitionConfig LinearTween(float durationSec, float delaySec = 0f) =>
+            new() { DurationSec = durationSec, DelaySec = delaySec, Easing = EasingMode.Linear };
 
-        private static StyleTransitionConfig LinearExit(float durationSec) => new()
+        private static StyleTransitionConfig LinearExit(float durationSec, float delaySec = 0f) => new()
         {
-            DurationSec = durationSec, Easing = EasingMode.Linear, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+            DurationSec = durationSec, DelaySec = delaySec, Easing = EasingMode.Linear,
+            ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
         };
+
+        private static void WriteTimingSlot(VisualElement element, string slot)
+        {
+            switch (slot)
+            {
+                case "duration":
+                    element.style.transitionDuration = new List<TimeValue> { new(250f, TimeUnit.Millisecond) };
+                    break;
+                case "delay":
+                    element.style.transitionDelay = new List<TimeValue> { new(70f, TimeUnit.Millisecond) };
+                    break;
+                default:
+                    element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseIn) };
+                    break;
+            }
+        }
+
+        private static string TimingSlot(VisualElement element, string slot)
+        {
+            if (slot == "curve")
+            {
+                var curves = element.style.transitionTimingFunction;
+                var modes = new List<string>();
+                foreach (var curve in curves.value ?? new List<EasingFunction>()) modes.Add(curve.mode.ToString());
+                return curves.keyword + ":" + string.Join(",", modes);
+            }
+            var times = slot == "duration" ? element.style.transitionDuration : element.style.transitionDelay;
+            return times.keyword + ":" + (times.value == null ? "" : string.Join(",", times.value));
+        }
 
         // A Div whose duration-[400ms] the resolver writes inline, for a scheduler of the case's own to play on.
         private VisualElement ElementWithItsOwnDuration()
@@ -366,6 +396,43 @@ namespace Velvet.Tests
             Assert.That((durations.keyword,
                     durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(600f, TimeUnit.Millisecond))),
                 Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [TestCase("duration", "Undefined:250ms")]
+        [TestCase("delay", "Undefined:70ms")]
+        [TestCase("curve", "Undefined:EaseIn")]
+        public void Given_TwoTweensOverlappingWhenCodeWritesATimingSlot_When_TheLaterEnds_Then_TheSlotKeepsTheCodesValue(
+            string slot, string expected)
+        {
+            // Arrange — both tweens write all three slots.
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(0.6f, delaySec: 0.01f));
+            scheduler.PlayExit(element, LinearExit(0.1f, delaySec: 0.01f), onComplete: null);
+            WriteTimingSlot(element, slot);
+
+            // Act — past the exit's end, short of the enter's.
+            AdvancePast(0.2f);
+
+            // Assert
+            Assert.That(TimingSlot(element, slot), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AnExitWhoseDelayCodeWroteBeforeItRestarted_When_TheRestartEndsBeforeTheReversal_Then_TheDelayIsTheCodes()
+        {
+            // Arrange — the exits write no delay of their own.
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayExit(element, LinearExit(0.6f), onComplete: null);
+            WriteTimingSlot(element, "delay");
+            scheduler.PlayExit(element, LinearExit(0.1f), onComplete: null);
+
+            // Act — past the restarted exit's end, short of the reversal's.
+            AdvancePast(0.2f);
+
+            // Assert
+            Assert.That(TimingSlot(element, "delay"), Is.EqualTo("Undefined:70ms"));
         }
 
         [Test]
