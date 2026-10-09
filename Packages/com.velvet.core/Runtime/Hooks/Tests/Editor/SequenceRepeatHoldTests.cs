@@ -3,14 +3,15 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the hold a <see cref="AnimationSequenceStep.To"/> step derives from a <see cref="TransitionType.Bezier"/>
-    /// transition that repeats: the walker stays on the step for every pass the label's play makes and the waits
-    /// between them, and for one pass of an endless repeat. Drives <see cref="SequenceWalker"/> directly.
+    /// Pins how a <see cref="AnimationSequenceStep.To"/> step treats a transition that repeats, as Framer Motion's
+    /// sequence treats a segment's repeat: a repeat below 20 lengthens the hold it derives by every pass and the
+    /// waits between them, and one of 20 or more, an endless one included, is dropped from the transition the step
+    /// hands out, which then plays and holds once. Drives <see cref="SequenceWalker"/> directly.
     /// </summary>
     [TestFixture]
     internal sealed class SequenceRepeatHoldTests
     {
-        private static int[] StepIndexAfter(StyleTransitionConfig transition, params float[] advances)
+        private static SequenceWalker Walk(StyleTransitionConfig transition)
         {
             var walker = new SequenceWalker();
             walker.Reset(new[]
@@ -18,6 +19,12 @@ namespace Velvet.Tests
                 AnimationSequenceStep.To("up", transition),
                 AnimationSequenceStep.To("down"),
             });
+            return walker;
+        }
+
+        private static int[] StepIndexAfter(StyleTransitionConfig transition, params float[] advances)
+        {
+            var walker = Walk(transition);
             var indices = new int[advances.Length];
             for (var i = 0; i < advances.Length; i++)
             {
@@ -43,19 +50,45 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AToStepOnAnEndlesslyRepeatingBezier_When_OnePassElapses_Then_TheCursorMovesOn()
+        public void Given_AToStepOnARepeatingSpring_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnOnlyAtTheEnd()
         {
-            // Arrange
-            var transition = new StyleTransitionConfig
-            {
-                Type = TransitionType.Bezier, DurationSec = 0.5f, Repeat = float.PositiveInfinity,
-            };
+            // Arrange — the sequence's spring travels 100 and rests at 1.05 s on Framer's default spring: two passes.
+            var transition = new StyleTransitionConfig { Type = TransitionType.Spring, Repeat = 1f };
 
             // Act
-            var indices = StepIndexAfter(transition, 0.4f, 0.2f);
+            var indices = StepIndexAfter(transition, 2f, 0.2f);
 
             // Assert
             Assert.That(indices, Is.EqualTo(new[] { 0, 1 }));
+        }
+
+        [Test]
+        public void Given_AToStepRepeating19Times_When_ItsTwentyPassesAreAboutToEndAndThenEnd_Then_TheCursorMovesOnOnlyAtTheEnd()
+        {
+            // Arrange — the largest repeat a sequence step plays: twenty half-second passes.
+            var transition = new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 0.5f, Repeat = 19f };
+
+            // Act
+            var indices = StepIndexAfter(transition, 9.9f, 0.2f);
+
+            // Assert
+            Assert.That(indices, Is.EqualTo(new[] { 0, 1 }));
+        }
+
+        [TestCase(20f)]
+        [TestCase(float.PositiveInfinity)]
+        public void Given_AToStepRepeating20TimesOrMore_When_OnePassElapses_Then_ItHandedOutNoRepeatAndMovesOn(float repeat)
+        {
+            // Arrange
+            var transition = new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 0.5f, Repeat = repeat };
+            var walker = Walk(transition);
+            var handedOut = walker.ToState().CurrentTransition?.Repeat ?? float.NaN;
+
+            // Act
+            var index = walker.Advance(0.6f);
+
+            // Assert
+            Assert.That((handedOut, index), Is.EqualTo((0f, 1)));
         }
     }
 }

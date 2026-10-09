@@ -3,9 +3,9 @@ using System;
 namespace Velvet
 {
     /// <summary>
-    /// The repeat timing of a play whose single pass runs a fixed-duration curve from its from-values to its
-    /// to-values: Framer Motion's <c>repeat</c> / <c>repeatType</c> / <c>repeatDelay</c>, ported from the tick of
-    /// its main-thread animation and from its <c>getFinalKeyframe</c>. See
+    /// The repeat timing of a play whose single pass runs a generator — a bezier curve, or a spring — from its
+    /// from-values to its to-values: Framer Motion's <c>repeat</c> / <c>repeatType</c> / <c>repeatDelay</c>,
+    /// ported from the tick of its main-thread animation and from its <c>getFinalKeyframe</c>. See
     /// <see cref="StyleTransitionConfig.Repeat"/> for the public contract.
     /// </summary>
     internal readonly struct MotionRepeat
@@ -38,17 +38,21 @@ namespace Velvet
 
         /// <summary>
         /// Framer's <c>totalDuration</c>: every pass, and a delay between each two of them. Infinite for an endless
-        /// repeat.
+        /// repeat whose pass or delay takes any time; a pass and a delay of no time end at once.
         /// </summary>
-        public double TotalSec(float passSec) => ((double)passSec + DelaySec) * ((double)Count + 1.0) - DelaySec;
+        public double TotalSec(float passSec)
+        {
+            var resolved = (double)passSec + DelaySec;
+            return resolved == 0.0 ? 0.0 : resolved * ((double)Count + 1.0) - DelaySec;
+        }
 
         /// <summary>
-        /// The fraction of its curve's time a pass shows <paramref name="elapsedSec"/> after the play started, for a
-        /// time short of <see cref="TotalSec"/>, and whether that pass runs the curve from the to-values back to the
-        /// from-values (a mirrored pass). A delay between passes reads above 1, or below 0 after a reversed pass,
-        /// where the curve holds its end.
+        /// The time into its generator a pass shows <paramref name="elapsedSec"/> after the play started, for a time
+        /// short of <see cref="TotalSec"/>: Framer's <c>elapsed</c>, which runs past <paramref name="passSec"/>
+        /// through a delay between passes. <paramref name="mirrored"/> says the pass runs its generator from the
+        /// to-values back to the from-values.
         /// </summary>
-        public double PassProgress(double elapsedSec, float passSec, out bool mirrored)
+        public double PassTime(double elapsedSec, float passSec, out bool mirrored)
         {
             mirrored = false;
             var resolved = (double)passSec + DelaySec;
@@ -72,7 +76,8 @@ namespace Velvet
                     mirrored = true;
                 }
             }
-            return iterationProgress * resolved / passSec;
+            // Framer clamps the iteration progress to [0, 1]; it never exceeds 1, so only the floor can bind.
+            return Math.Max(0.0, iterationProgress) * resolved;
         }
 
         /// <summary>

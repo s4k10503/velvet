@@ -56,6 +56,16 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Puts the spring where a play sampling its trajectory by time has it, so a later <see cref="Step"/>
+        /// carries on from there.
+        /// </summary>
+        public void Set(float value, float velocity)
+        {
+            Value = value;
+            Velocity = velocity;
+        }
+
+        /// <summary>
         /// Advances the spring by one tick toward <paramref name="target"/>. <paramref name="dtSec"/> is clamped
         /// to <see cref="MaxDtSec"/> (a no-op or negative dt does nothing).
         /// </summary>

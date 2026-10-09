@@ -140,9 +140,9 @@ namespace Velvet
         /// The passes a play makes after its first — Framer Motion's <c>repeat</c>, so <c>Repeat = 2</c> plays three
         /// times. <c>float.PositiveInfinity</c> repeats until a later play, an exit or an unmount replaces it; 0,
         /// the default, plays once. <see cref="RepeatType"/> decides each later pass's direction and
-        /// <see cref="RepeatDelaySec"/> the wait between passes. Played only when <see cref="Type"/> is
-        /// <see cref="TransitionType.Bezier"/>; a <see cref="TransitionType.Tween"/> or
-        /// <see cref="TransitionType.Spring"/> play plays once, and the first in a mounted tree logs a warning.
+        /// <see cref="RepeatDelaySec"/> the wait between passes. Played when <see cref="Type"/> is
+        /// <see cref="TransitionType.Bezier"/> or <see cref="TransitionType.Spring"/>; a
+        /// <see cref="TransitionType.Tween"/> play plays once, and the first in a mounted tree logs a warning.
         /// <c>Documentation~/motion.md</c> owns the full contract, including where a play ends and what a
         /// <c>layoutId</c> move does with it.
         /// </summary>
@@ -186,14 +186,6 @@ namespace Velvet
                 _repeatDelaySec = value;
             }
         }
-
-        // What a reader that waits on a play's end waits from the end of its delay: every pass a Bezier play
-        // repeats and the waits between them, as Framer Motion's totalDuration. An endless repeat never ends, and
-        // those readers wait one pass of it rather than a delay that never runs out.
-        internal float PlayedDurationSec
-            => Type == TransitionType.Bezier && DurationSec > 0f && !float.IsPositiveInfinity(_repeat)
-                ? DurationSec * (_repeat + 1f) + _repeatDelaySec * _repeat
-                : DurationSec;
 
         /// <summary>
         /// Optional per-property transition overrides layered on top of the top-level <see cref="DurationSec"/> /
@@ -284,6 +276,13 @@ namespace Velvet
             EasingMode? easing = null,
             EasingMode? exitEasing = null,
             float? delaySec = null)
+            => Copy(durationSec ?? DurationSec, easing ?? Easing, exitEasing ?? ExitEasing, delaySec ?? DelaySec, Repeat);
+
+        // This config with no repeat, for a sequence step whose repeat Framer Motion's sequence ignores.
+        internal StyleTransitionConfig WithoutRepeat() => Copy(DurationSec, Easing, ExitEasing, DelaySec, 0f);
+
+        private StyleTransitionConfig Copy(float durationSec, EasingMode easing, EasingMode? exitEasing, float delaySec,
+            float repeat)
         {
             return new StyleTransitionConfig
             {
@@ -291,10 +290,10 @@ namespace Velvet
                 EnterToClass = EnterToClass,
                 ExitFromClass = ExitFromClass,
                 ExitToClass = ExitToClass,
-                DurationSec = durationSec ?? DurationSec,
-                Easing = easing ?? Easing,
-                ExitEasing = exitEasing ?? ExitEasing,
-                DelaySec = delaySec ?? DelaySec,
+                DurationSec = durationSec,
+                Easing = easing,
+                ExitEasing = exitEasing,
+                DelaySec = delaySec,
                 // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
                 // the child-orchestration knobs, the spring model, the repeat, or the transition a layoutId move takes.
                 PropertyOverrides = PropertyOverrides,
@@ -310,7 +309,7 @@ namespace Velvet
                 BezierY1 = BezierY1,
                 BezierX2 = BezierX2,
                 BezierY2 = BezierY2,
-                Repeat = Repeat,
+                Repeat = repeat,
                 RepeatType = RepeatType,
                 RepeatDelaySec = RepeatDelaySec,
                 // Class names are identical, so share the parsed arrays (avoids re-parsing).
@@ -445,14 +444,15 @@ namespace Velvet
         Loop,
 
         /// <summary>
-        /// Every second pass plays the one before it backwards in time, its easing reversed with it, so an
-        /// ease-out pass returns as an ease-in one — CSS's <c>animation-direction: alternate</c>.
+        /// Every second pass plays the one before it backwards in time — CSS's
+        /// <c>animation-direction: alternate</c>. A bezier's easing comes back reversed, so an ease-out pass
+        /// returns as an ease-in one, and a spring retraces its path.
         /// </summary>
         Reverse,
 
         /// <summary>
-        /// Every second pass runs from the to-values back to the from-values on the same easing, so an ease-out pass
-        /// returns ease-out.
+        /// Every second pass runs from the to-values back to the from-values: a bezier on the same easing, so an
+        /// ease-out pass returns ease-out, and a spring released from the to-values.
         /// </summary>
         Mirror,
     }

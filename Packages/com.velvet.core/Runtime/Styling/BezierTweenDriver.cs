@@ -332,7 +332,8 @@ namespace Velvet
             {
                 return state.Repeat.EndsAtFrom ? 0f : 1f;
             }
-            var progress = (float)state.Repeat.PassProgress(state.ElapsedSec, state.DurationSec, out var mirrored);
+            var progress = (float)(state.Repeat.PassTime(state.ElapsedSec, state.DurationSec, out var mirrored)
+                / state.DurationSec);
             var eased = CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress);
             return mirrored ? 1f - eased : eased;
         }

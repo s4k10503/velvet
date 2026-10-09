@@ -395,21 +395,24 @@ namespace Velvet.Tests
                 Is.EqualTo((3f, TransitionRepeatType.Mirror, 0.25f)));
         }
 
+        private static readonly string[] s_hidden = { "opacity-0" };
+        private static readonly string[] s_visible = { "opacity-100" };
+
         [Test]
-        public void Given_ARepeatingBezierConfig_When_ItsPlayedDurationIsRead_Then_ItCoversEveryPassAndTheWaitsBetween()
+        public void Given_ARepeatingBezierConfig_When_ItsPlaySpanIsRead_Then_ItCoversEveryPassAndTheWaitsBetween()
         {
             // Arrange
             var config = Repeating();
 
             // Act
-            var played = config.PlayedDurationSec;
+            var span = MotionPlaySpan.Of(config, s_hidden, s_visible);
 
             // Assert — four half-second passes and three quarter-second waits.
-            Assert.That(played, Is.EqualTo(2.75f).Within(1e-5f));
+            Assert.That(span, Is.EqualTo(2.75).Within(1e-5));
         }
 
         [Test]
-        public void Given_AnEndlesslyRepeatingBezierConfig_When_ItsPlayedDurationIsRead_Then_ItIsOnePass()
+        public void Given_AnEndlesslyRepeatingBezierConfig_When_ItsPlaySpanIsRead_Then_ItNeverEnds()
         {
             // Arrange
             var config = new StyleTransitionConfig
@@ -418,14 +421,14 @@ namespace Velvet.Tests
             };
 
             // Act
-            var played = config.PlayedDurationSec;
+            var span = MotionPlaySpan.Of(config, s_hidden, s_visible);
 
             // Assert
-            Assert.That(played, Is.EqualTo(0.5f));
+            Assert.That(span, Is.EqualTo(double.PositiveInfinity));
         }
 
         [Test]
-        public void Given_AZeroDurationRepeatingBezierConfig_When_ItsPlayedDurationIsRead_Then_ItIsZero()
+        public void Given_AZeroDurationRepeatingBezierConfig_When_ItsPlaySpanIsRead_Then_ItIsZero()
         {
             // Arrange — a zero-duration bezier lands at once, so its repeat delay never runs.
             var config = new StyleTransitionConfig
@@ -434,23 +437,62 @@ namespace Velvet.Tests
             };
 
             // Act
-            var played = config.PlayedDurationSec;
+            var span = MotionPlaySpan.Of(config, s_hidden, s_visible);
 
             // Assert
-            Assert.That(played, Is.EqualTo(0f));
+            Assert.That(span, Is.EqualTo(0.0));
         }
 
         [Test]
-        public void Given_ARepeatingSpringConfig_When_ItsPlayedDurationIsRead_Then_ItIsItsDurationAlone()
+        public void Given_ASpringConfig_When_ItsPlaySpanIsRead_Then_ItIsTheTimeItsChannelTakesToRestNotItsDuration()
         {
-            // Arrange — a spring does not play a repeat, so nothing waits on one.
-            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0.5f, Repeat = 2f };
+            // Arrange — an opacity travel of 1 rests at 1.1 s on Framer's default spring; DurationSec is not read.
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0.5f };
 
             // Act
-            var played = config.PlayedDurationSec;
+            var span = MotionPlaySpan.Of(config, s_hidden, s_visible);
 
             // Assert
-            Assert.That(played, Is.EqualTo(0.5f));
+            Assert.That(span, Is.EqualTo(1.1).Within(1e-5));
+        }
+
+        [Test]
+        public void Given_ARepeatingSpringConfig_When_ItsPlaySpanIsRead_Then_ItsSlowestChannelsPassesDecide()
+        {
+            // Arrange — the color rests at 1.05 s and the opacity at 1.1 s: two passes and a wait of the latter.
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, Repeat = 1f, RepeatDelaySec = 0.25f };
+
+            // Act
+            var span = MotionPlaySpan.Of(config, new[] { "opacity-0", "bg-black" }, new[] { "opacity-100", "bg-white" });
+
+            // Assert
+            Assert.That(span, Is.EqualTo(2.45).Within(1e-5));
+        }
+
+        [Test]
+        public void Given_ASpringWithParametersAPlayRefuses_When_ItsPlaySpanIsRead_Then_ItIsZero()
+        {
+            // Arrange — such a play completes at once.
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 0f, Repeat = 1f };
+
+            // Act
+            var span = MotionPlaySpan.Of(config, s_hidden, s_visible);
+
+            // Assert
+            Assert.That(span, Is.EqualTo(0.0));
+        }
+
+        [Test]
+        public void Given_ATweenConfig_When_ItsPlaySpanIsRead_Then_ItIsItsDuration()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { DurationSec = 0.3f };
+
+            // Act
+            var span = MotionPlaySpan.Of(config, s_hidden, s_visible);
+
+            // Assert
+            Assert.That(span, Is.EqualTo(0.3).Within(1e-6));
         }
     }
 }

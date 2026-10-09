@@ -5,10 +5,11 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins what <see cref="StyleAnimationScheduler"/> does with a repeating transition: a bezier play that ends on
-    /// its from-values holds them past its completion until a cancel, one that ends on its to-values hands them
-    /// back to the classes, and a tween or spring play warns that it does not repeat. Also pins the wait
-    /// <see cref="TransitionWhen.BeforeChildren"/> derives from a repeating swap.
+    /// Pins what <see cref="StyleAnimationScheduler"/> does with a repeating transition: a bezier or spring play that
+    /// ends on its from-values holds them past its completion until a cancel, one that ends on its to-values hands
+    /// them back to the classes, and a tween play warns that it does not repeat. Also pins the wait
+    /// <see cref="TransitionWhen.BeforeChildren"/> derives from a repeating swap, and a play whose delay never runs
+    /// out, which is what a child waiting on an endless one is handed.
     /// </summary>
     [TestFixture]
     internal sealed class MotionRepeatSchedulerTests : MotionSimulatedPanelTestsBase
@@ -148,7 +149,29 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARepeatingSpring_When_AnExitPlays_Then_AWarningSaysItPlaysOnce()
+        public void Given_AnOddMirrorRepeatSpringEnter_When_ItCompletes_Then_TheElementKeepsItsFromOpacityInline()
+        {
+            // Arrange — the opacity spring rests at 1.1 s, so two passes take 2.2 s.
+            _scheduler = new StyleAnimationScheduler();
+            var element = OnPanel();
+            var completed = false;
+            var spring = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Repeat = 1f, RepeatType = TransitionRepeatType.Mirror,
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, spring,
+                onComplete: () => completed = true);
+
+            // Act
+            AdvancePast(2.2f);
+
+            // Assert
+            var opacity = element.style.opacity;
+            Assert.That((completed, opacity.keyword, opacity.value), Is.EqualTo((true, StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_ARepeatingSpring_When_AnExitPlays_Then_NoRepeatWarningIsLogged()
         {
             // Arrange
             _scheduler = new StyleAnimationScheduler();
@@ -161,7 +184,7 @@ namespace Velvet.Tests
                 _scheduler.PlayExit(element, spring, onComplete: null, restoreFromOnCancel: true));
 
             // Assert
-            Assert.That(warnings, Is.EqualTo(1));
+            Assert.That(warnings, Is.EqualTo(0));
         }
 
         [Test]
@@ -202,6 +225,117 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(delay, Is.EqualTo(1.35f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_BeforeChildrenOnAnEndlesslyRepeatingSwap_When_AChildClaimsItsSlot_Then_ItsWaitNeverRunsOut()
+        {
+            // Arrange
+            var swap = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 0.5f, Repeat = float.PositiveInfinity,
+                When = TransitionWhen.BeforeChildren,
+            };
+
+            // Act
+            var frame = FiberNodePatcher.ResolveChildOrchestration(V.Motion(), swap, childLabelChanged: true,
+                ambientOrchestration: null, extraDelaySec: 0f);
+            var delay = frame?.ClaimNextChildDelaySec() ?? float.NaN;
+
+            // Assert
+            Assert.That(delay, Is.EqualTo(float.PositiveInfinity));
+        }
+
+        [Test]
+        public void Given_BeforeChildrenOnASpringSwap_When_AChildClaimsItsSlot_Then_ItWaitsUntilTheSpringRests()
+        {
+            // Arrange — an opacity travel of 1 rests at 1.1 s on Framer's default spring; DurationSec is not read.
+            var swap = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, DurationSec = 0.3f, DelaySec = 0.1f, When = TransitionWhen.BeforeChildren,
+            };
+
+            // Act
+            var frame = FiberNodePatcher.ResolveChildOrchestration(V.Motion(), swap, childLabelChanged: true,
+                ambientOrchestration: null, extraDelaySec: 0f, new[] { "opacity-0" }, new[] { "opacity-100" });
+            var delay = frame?.ClaimNextChildDelaySec() ?? float.NaN;
+
+            // Assert
+            Assert.That(delay, Is.EqualTo(1.2f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ABezierEnterWhoseDelayNeverRunsOut_When_ThePanelTicks_Then_ItHoldsItsFromPose()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var element = OnPanel();
+            var completed = false;
+            var bezier = new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 0.2f };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, bezier,
+                onComplete: () => completed = true, additionalDelaySec: float.PositiveInfinity);
+
+            // Act
+            AdvancePast(0.5f);
+
+            // Assert
+            var opacity = element.style.opacity;
+            Assert.That((completed, opacity.keyword, opacity.value), Is.EqualTo((false, StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_ASpringEnterWhoseDelayNeverRunsOut_When_ThePanelTicks_Then_ItHoldsItsFromPose()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var element = OnPanel();
+            var completed = false;
+            var spring = new StyleTransitionConfig { Type = TransitionType.Spring };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, spring,
+                onComplete: () => completed = true, additionalDelaySec: float.PositiveInfinity);
+
+            // Act
+            AdvancePast(1.5f);
+
+            // Assert
+            var opacity = element.style.opacity;
+            Assert.That((completed, opacity.keyword, opacity.value), Is.EqualTo((false, StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_ATweenEnterWhoseDelayNeverRunsOut_When_ThePanelTicks_Then_ItKeepsItsFromClasses()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var element = OnPanel();
+            var tween = new StyleTransitionConfig { DurationSec = 0.2f };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, tween,
+                additionalDelaySec: float.PositiveInfinity);
+
+            // Act
+            AdvancePast(0.5f);
+
+            // Assert
+            Assert.That((element.ClassListContains("opacity-0"), element.ClassListContains("opacity-100")),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ATweenExitWhoseDelayNeverRunsOut_When_ThePanelTicks_Then_ItNeverCompletes()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var element = OnPanel();
+            var completed = false;
+            var tween = new StyleTransitionConfig { DurationSec = 0.2f }.WithExitClasses("opacity-100", "opacity-0");
+            _scheduler.PlayExit(element, tween, () => completed = true, restoreFromOnCancel: true,
+                additionalDelaySec: float.PositiveInfinity);
+
+            // Act
+            AdvancePast(0.5f);
+
+            // Assert — still at its resting class, the exit's swap never run.
+            Assert.That((completed, element.ClassListContains("opacity-0")), Is.EqualTo((false, false)));
         }
     }
 }

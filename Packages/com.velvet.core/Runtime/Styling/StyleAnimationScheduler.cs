@@ -184,7 +184,7 @@ namespace Velvet
             WarnRepeatNotPlayed(type, repeat);
             if (type == TransitionType.Spring)
             {
-                StartSpringVariant(in play, stiffness, damping, mass);
+                StartSpringVariant(in play, stiffness, damping, mass, repeat);
                 return;
             }
 
@@ -222,6 +222,7 @@ namespace Velvet
 
             var (staggerDelayMs, delayOffsetSec) = SplitNativeDelay(play.DelaySec, play.AdditionalDelaySec,
                 variantMode ? propertyOverrides : null);
+            var neverStarts = NeverStarts(play.AdditionalDelaySec);
 
             // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
             // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
@@ -279,6 +280,10 @@ namespace Velvet
                 }
                 var host = panel.visualTree;
 
+                if (neverStarts)
+                {
+                    return;
+                }
                 var startAction = new Action(() =>
                     RunEnterStartAction(pending, host, variantMode, onComplete));
 
@@ -412,7 +417,7 @@ namespace Velvet
                 // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
                 // detached by a keyed reorder (see the tween exit's own ScheduleOnHost below) and this exit must
                 // still eventually complete so the reconciler's ghost-removal re-render fires.
-                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass);
+                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config));
                 return;
             }
 
@@ -489,6 +494,10 @@ namespace Velvet
 
                 var panel = element.panel;
                 if (panel == null)
+                {
+                    return;
+                }
+                if (NeverStarts(additionalDelaySec))
                 {
                     return;
                 }
@@ -600,7 +609,8 @@ namespace Velvet
         // during element creation (FiberNodeFactory), and a presence enter plays before the entering element is
         // placed into the tree (GeneralPathReconciler) — so BOTH, like a presence exit, can start while still
         // detached (see PlayExit's own ScheduleOnHost/AttachToPanelEvent for the same rationale on the exit side).
-        private void StartSpringVariant(in VariantPlay play, float stiffness, float damping, float mass)
+        private void StartSpringVariant(in VariantPlay play, float stiffness, float damping, float mass,
+            MotionRepeat repeat)
         {
             // Copied out because a local function cannot capture an `in` parameter.
             var element = play.Element;
@@ -624,7 +634,7 @@ namespace Velvet
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
             var state = ValidateSpringParameters(stiffness, damping, mass)
-                ? MotionSpringDriver.Create(plan, stiffness, damping, mass)
+                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, repeat)
                 : null;
 
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
@@ -675,6 +685,10 @@ namespace Velvet
                     return;
                 }
                 var totalDelaySec = delaySec + additionalDelaySec;
+                if (NeverStarts(totalDelaySec))
+                {
+                    return;
+                }
                 if (totalDelaySec <= 0f)
                 {
                     StartSpringTick(element, pending, -totalDelaySec);
@@ -784,6 +798,10 @@ namespace Velvet
                     return;
                 }
                 var totalDelaySec = delaySec + additionalDelaySec;
+                if (NeverStarts(totalDelaySec))
+                {
+                    return;
+                }
                 if (totalDelaySec <= 0f)
                 {
                     StartBezierTick(element, pending, -totalDelaySec);
@@ -883,6 +901,12 @@ namespace Velvet
         {
             state.Tick?.Pause();
             state.Tick = null;
+            if (MotionSpringDriver.EndsAtFrom(state))
+            {
+                // Held as FinishBezier holds a bezier play that ends on its from-values.
+                state.OnSettled?.Invoke();
+                return;
+            }
             // Removes this entry from whichever of the two bookkeeping maps currently owns it — ordinarily
             // the map this play was started into, but an exit-cancel reversal hand-off (CancelPending) can
             // have MOVED it into _pendingEnters since then, so both are probed rather than assuming the
@@ -1112,8 +1136,8 @@ namespace Velvet
         }
 
         // Whether a spring or bezier enter is still running on the element, whose settle re-applies the inline
-        // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens). A bezier enter holding its
-        // from-values after its last pass counts, and its cancel is what re-applies them.
+        // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens). A bezier or spring enter
+        // holding its from-values after its last pass counts, and its cancel is what re-applies them.
         internal bool IsDriving(VisualElement element)
             => _pendingEnters.TryGetValue(element, out var enter) && (enter.Spring != null || enter.Bezier != null);
 
@@ -1300,19 +1324,19 @@ namespace Velvet
             // They are the only values where durationSec < 0f and durationSec <= 0f disagree.
             => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
 
-        // Once per scheduler. Only the bezier driver plays a repeat.
+        // Once per scheduler. A tween hands its interpolation to UI Toolkit's transitions, which play it once.
         private bool _warnedRepeatNotPlayed;
 
         private void WarnRepeatNotPlayed(TransitionType type, MotionRepeat repeat)
         {
-            if (type == TransitionType.Bezier || repeat.Count == 0f || _warnedRepeatNotPlayed)
+            if (type != TransitionType.Tween || repeat.Count == 0f || _warnedRepeatNotPlayed)
             {
                 return;
             }
             _warnedRepeatNotPlayed = true;
             FiberLogger.LogWarning("Motion",
-                $"StyleTransitionConfig.Repeat is played only by TransitionType.Bezier; this {type} transition plays "
-                + "once. Use Type = TransitionType.Bezier for a play that repeats.");
+                "StyleTransitionConfig.Repeat is not played by TransitionType.Tween; this transition plays once. Use "
+                + "Type = TransitionType.Bezier or TransitionType.Spring for a play that repeats.");
         }
 
         internal static bool ValidateDuration(float durationSec, Action? onComplete)
@@ -1390,9 +1414,18 @@ namespace Velvet
         private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
             new() { new UnityEngine.UIElements.StylePropertyName("all") };
 
+        // A delay that never runs out — a BeforeChildren wait on a parent repeating without end — leaves the play
+        // registered at its from-pose and never starts it, as Framer Motion never starts a child animation that waits
+        // on one. A cancel still finds it.
+        private static bool NeverStarts(float delaySec) => float.IsPositiveInfinity(delaySec);
+
         private static (long swapDelayMs, float transitionOffsetSec) SplitNativeDelay(float delaySec,
             float additionalDelaySec, IReadOnlyList<StylePropertyTransition>? overrides)
         {
+            if (NeverStarts(additionalDelaySec))
+            {
+                return (0, 0f);
+            }
             var earliestDelaySec = Math.Min(0f, delaySec);
             if (overrides != null)
             {

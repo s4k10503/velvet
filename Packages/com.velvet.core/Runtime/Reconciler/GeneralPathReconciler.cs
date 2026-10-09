@@ -2141,6 +2141,7 @@ namespace Velvet
         {
             var label = MotionVariantResolver.IsControlling(motion) ? motion.Exit : inheritedExit;
             StyleTransitionConfig? exitTransition = null;
+            string? exitPoseClass = null;
             var claimSec = MotionVariantResolver.IsVariantChild(motion) && frame != null
                 ? frame.ClaimNextChildDelaySec()
                 : 0f;
@@ -2153,6 +2154,7 @@ namespace Velvet
                 // anchor's does; an inherited one names nothing this Motion can play.
                 exitTransition = hasPose ? pose.Transition ?? motion.Transition
                     : motion.Exit != null ? motion.Transition : null;
+                exitPoseClass = hasPose ? pose.ClassName : null;
                 if (exitTransition?.HasExitAnimation == true)
                 {
                     if (!ReferenceEquals(motion, walk.Anchor))
@@ -2173,7 +2175,8 @@ namespace Velvet
             if (walk.Into != null)
             {
                 frame = FiberNodePatcher.ResolveChildOrchestration(motion, exitTransition,
-                    childLabelChanged: label != null, frame, claimSec);
+                    childLabelChanged: label != null, frame, claimSec,
+                    V.ParseClassNames(RestingVariantClass(element)), V.ParseClassNames(exitPoseClass));
             }
             return plays;
         }
