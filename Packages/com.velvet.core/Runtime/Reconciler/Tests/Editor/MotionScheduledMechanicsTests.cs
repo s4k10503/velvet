@@ -4609,6 +4609,31 @@ namespace Velvet.Tests
             Assert.That(opacity, Is.GreaterThan(0f));
         }
 
+        // GREEN_ON_BASE(characterization): an undelayed bezier play starts its tick as it plays, on the default clock.
+        // One parked behind a zero delay would start it only on the frame after.
+        [Test]
+        public void Given_AnUndelayedBezierPlayOnTheDefaultClock_When_ThePanelTicksOnce_Then_ItHasMovedThatFrame()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            Tick();
+
+            // Assert
+            var opacity = element.style.opacity.value;
+            scheduler.CancelAll();
+            Assert.That(opacity, Is.GreaterThan(0f));
+        }
+
         [Component]
         private static VNode LateMountHost()
         {

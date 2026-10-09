@@ -333,7 +333,9 @@ namespace Velvet
         /// <summary>
         /// A USS <c>transition-*</c> class swap: <see cref="StyleTransitionConfig.DurationSec"/> /
         /// <see cref="StyleTransitionConfig.Easing"/> drive a fixed-duration tween between the from/to classes.
-        /// The default.
+        /// The default. On a mount whose <see cref="MountOptions.MotionClock"/> is not
+        /// <see cref="MotionClock.Realtime"/>, the per-frame driver <see cref="Bezier"/> plays on runs it instead,
+        /// on that clock; <c>Documentation~/motion.md</c>'s "Clocks" owns what that covers.
         /// </summary>
         Tween,
 

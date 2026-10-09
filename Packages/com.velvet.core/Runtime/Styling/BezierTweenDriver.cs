@@ -16,6 +16,8 @@ namespace Velvet
         public float From;
         public float To;
         public readonly float RestingTarget;
+        // Set on a driven Tween's channel whose property a PropertyOverrides entry names (DrivenTweenTiming).
+        public TweenChannelTiming? Timing;
 
         public BezierTweenChannel(float from, float to)
         {
@@ -92,6 +94,17 @@ namespace Velvet
         public float DurationSec;
         public float ElapsedSec;
 
+        // Set for a Tween a mount's clock drives (StyleAnimationScheduler.StartDrivenTween): the curve UI Toolkit
+        // eases that tween's transition by, which takes the control points' place.
+        public EasingMode? Easing;
+        // How long after the tick starts a channel with no Timing of its own begins its curve.
+        public float DelaySec;
+        // The latest end among the channels' own Timing.
+        public float SlowestTimingEndSec;
+
+        // The elapsed time the play completes at, once its slowest channel has landed.
+        public float EndSec => Mathf.Max(DelaySec + DurationSec, SlowestTimingEndSec);
+
         // The recurring tick, scheduled on the panel root. Paused (and nulled) once the tween completes, or on cancel.
         public IVisualElementScheduledItem? Tick;
 
@@ -126,14 +139,59 @@ namespace Velvet
             {
                 return null;
             }
-            var state = new BezierTweenState
+            var state = Build(plan);
+            state.X1 = x1;
+            state.Y1 = y1;
+            state.X2 = x2;
+            state.Y2 = y2;
+            state.DurationSec = durationSec;
+            return state;
+        }
+
+        /// <summary>
+        /// Builds the running state of a Tween a mount's clock drives in place of UI Toolkit's transition. An empty
+        /// plan still builds one: it moves nothing and completes once <paramref name="timing"/> has run out, as the
+        /// transition's own completion waits for its timing.
+        /// </summary>
+        public static BezierTweenState CreateTween(MotionSpringClassParser.SpringPlan plan, DrivenTweenTiming timing)
+        {
+            var state = Build(plan);
+            state.Easing = timing.Easing;
+            state.DurationSec = timing.DurationSec;
+            state.DelaySec = timing.DelaySec;
+            var translate = timing.For(StyleLonghandSet.Of(StyleLonghand.Translate));
+            AssignTiming(state, state.Opacity, timing.For(StyleLonghandSet.Of(StyleLonghand.Opacity)));
+            AssignTiming(state, state.TranslateX, translate);
+            AssignTiming(state, state.TranslateY, translate);
+            AssignTiming(state, state.Scale, timing.For(StyleLonghandSet.Of(StyleLonghand.Scale)));
+            AssignTiming(state, state.Rotate, timing.For(StyleLonghandSet.Of(StyleLonghand.Rotate)));
+            foreach (var c in state.Colors ?? s_noColors)
             {
-                X1 = x1,
-                Y1 = y1,
-                X2 = x2,
-                Y2 = y2,
-                DurationSec = durationSec,
-            };
+                AssignTiming(state, c.Progress, timing.For(StyleArbitraryLonghands.Of(c.Property)));
+            }
+            foreach (var l in state.Lengths ?? s_noLengths)
+            {
+                AssignTiming(state, l.Value, timing.For(StyleArbitraryLonghands.Of(l.Property)));
+            }
+            return state;
+        }
+
+        private static readonly List<BezierColorChannel> s_noColors = new();
+        private static readonly List<BezierLengthChannel> s_noLengths = new();
+
+        private static void AssignTiming(BezierTweenState state, BezierTweenChannel? channel, TweenChannelTiming? timing)
+        {
+            if (channel == null || !timing.HasValue)
+            {
+                return;
+            }
+            channel.Timing = timing;
+            state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, timing.Value.DelaySec + timing.Value.DurationSec);
+        }
+
+        private static BezierTweenState Build(MotionSpringClassParser.SpringPlan plan)
+        {
+            var state = new BezierTweenState();
             if (plan.Opacity is { } o) state.Opacity = new BezierTweenChannel(o.from, o.to);
             if (plan.TranslateX is { } tx) state.TranslateX = new BezierTweenChannel(tx.from, tx.to);
             if (plan.TranslateY is { } ty) state.TranslateY = new BezierTweenChannel(ty.from, ty.to);
@@ -173,7 +231,7 @@ namespace Velvet
             MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
                 MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
-            ApplyEased(element, state, CurrentEased(state));
+            ApplyEased(element, state);
         }
 
         private static void SyncLayoutOwner(VisualElement element, BezierTweenState state)
@@ -204,8 +262,8 @@ namespace Velvet
             {
                 state.ElapsedSec += dtSec;
             }
-            ApplyEased(element, state, CurrentEased(state));
-            return state.ElapsedSec >= state.DurationSec;
+            ApplyEased(element, state);
+            return state.ElapsedSec >= state.EndSec;
         }
 
         /// <summary>
@@ -280,74 +338,85 @@ namespace Velvet
         /// </summary>
         public static void Retarget(BezierTweenState state)
         {
-            var eased = CurrentEased(state);
-            RetargetChannel(state.Opacity, eased);
-            RetargetChannel(state.TranslateX, eased);
-            RetargetChannel(state.TranslateY, eased);
-            RetargetChannel(state.Scale, eased);
-            RetargetChannel(state.Rotate, eased);
+            RetargetChannel(state, state.Opacity);
+            RetargetChannel(state, state.TranslateX);
+            RetargetChannel(state, state.TranslateY);
+            RetargetChannel(state, state.Scale);
+            RetargetChannel(state, state.Rotate);
             if (state.Colors != null)
             {
-                foreach (var c in state.Colors) RetargetChannel(c.Progress, eased);
+                foreach (var c in state.Colors) RetargetChannel(state, c.Progress);
             }
             if (state.Lengths != null)
             {
-                foreach (var l in state.Lengths) RetargetChannel(l.Value, eased);
+                foreach (var l in state.Lengths) RetargetChannel(state, l.Value);
             }
             state.ElapsedSec = 0f;
         }
 
-        private static void RetargetChannel(BezierTweenChannel? channel, float eased)
+        private static void RetargetChannel(BezierTweenState state, BezierTweenChannel? channel)
         {
             if (channel == null)
             {
                 return;
             }
-            channel.From = Mathf.LerpUnclamped(channel.From, channel.To, eased);
+            channel.From = Value(state, channel);
             channel.To = channel.RestingTarget;
         }
 
-        // The eased output for the current elapsed fraction. A zero duration reads as complete (eased at
-        // progress 1) rather than dividing by zero — the scheduler never builds one (ValidateBezierParameters
-        // rejects a zero duration), but a direct driver caller might.
-        private static float CurrentEased(BezierTweenState state)
+        // The channel's value at the current elapsed time. LerpUnclamped (not Lerp): an overshoot/anticipate curve
+        // samples eased values outside [0,1], and the channel value must actually pass its target for that to be
+        // visible — clamping would silently flatten it.
+        private static float Value(BezierTweenState state, BezierTweenChannel channel)
+            => Mathf.LerpUnclamped(channel.From, channel.To, Eased(state, channel));
+
+        // The eased output for the channel at the current elapsed time: its own Timing where it has one, else the
+        // state's delay, duration and curve. A zero duration reads as complete once its delay has passed rather than
+        // dividing by zero — the scheduler builds one only from a PropertyOverrides entry of no positive duration,
+        // but a direct driver caller might.
+        private static float Eased(BezierTweenState state, BezierTweenChannel channel)
         {
-            var progress = state.DurationSec > 0f
-                ? Mathf.Clamp01(state.ElapsedSec / state.DurationSec)
-                : 1f;
-            return CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress);
+            if (channel.Timing is { } own)
+            {
+                return UssEasing.Evaluate(own.Easing, Progress(state.ElapsedSec - own.DelaySec, own.DurationSec));
+            }
+            var progress = Progress(state.ElapsedSec - state.DelaySec, state.DurationSec);
+            return state.Easing is { } mode
+                ? UssEasing.Evaluate(mode, progress)
+                : CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress);
         }
 
-        // LerpUnclamped (not Lerp): an overshoot/anticipate curve samples eased values outside [0,1], and the
-        // channel value must actually pass its target for that to be visible — clamping would silently flatten it.
-        private static void ApplyEased(VisualElement element, BezierTweenState state, float eased)
+        private static float Progress(float activeSec, float durationSec)
+            => durationSec > 0f ? Mathf.Clamp01(activeSec / durationSec) : activeSec >= 0f ? 1f : 0f;
+
+        private static void ApplyEased(VisualElement element, BezierTweenState state)
         {
             SyncLayoutOwner(element, state);
             if (state.Opacity != null)
             {
-                MotionOpacity.Write(element, Mathf.LerpUnclamped(state.Opacity.From, state.Opacity.To, eased));
+                MotionOpacity.Write(element, Value(state, state.Opacity));
             }
             if (state.TranslateX != null || state.TranslateY != null)
             {
-                var x = state.TranslateX != null ? Mathf.LerpUnclamped(state.TranslateX.From, state.TranslateX.To, eased) : 0f;
-                var y = state.TranslateY != null ? Mathf.LerpUnclamped(state.TranslateY.From, state.TranslateY.To, eased) : 0f;
+                var x = state.TranslateX != null ? Value(state, state.TranslateX) : 0f;
+                var y = state.TranslateY != null ? Value(state, state.TranslateY) : 0f;
                 element.style.translate = new Translate(new Length(x), new Length(y));
             }
             if (state.Scale != null)
             {
-                var v = Mathf.LerpUnclamped(state.Scale.From, state.Scale.To, eased);
+                var v = Value(state, state.Scale);
                 element.style.scale = new Scale(new Vector2(v, v));
             }
             if (state.Rotate != null)
             {
-                var v = Mathf.LerpUnclamped(state.Rotate.From, state.Rotate.To, eased);
+                var v = Value(state, state.Rotate);
                 element.style.rotate = new Rotate(Angle.Degrees(v));
             }
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors)
                 {
-                    var progress = Mathf.LerpUnclamped(c.Progress.From, c.Progress.To, eased);
+                    var progress = Value(state, c.Progress);
                     StyleArbitraryValueResolver.ApplyInline(element,
                         new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, progress)));
                 }
@@ -356,7 +425,7 @@ namespace Velvet
             {
                 foreach (var l in state.Lengths)
                 {
-                    var v = MotionPropertyInterpolation.LerpLength(l.Property, l.Value.From, l.Value.To, eased);
+                    var v = MotionPropertyInterpolation.LerpLength(l.Property, l.Value.From, l.Value.To, Eased(state, l.Value));
                     StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
