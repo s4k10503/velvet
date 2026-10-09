@@ -2193,6 +2193,7 @@ namespace Velvet
                 OnError: options.OnError)
             {
                 OnSettled = options.OnSettled is { } onSettled ? (_, ex, v) => onSettled(ex, v) : null,
+                Retry = options.Retry,
             });
         }
 
@@ -2214,6 +2215,7 @@ namespace Velvet
                 OnError: options.OnError is { } onError ? (ex, _) => onError(ex) : null)
             {
                 OnSettled = options.OnSettled is { } onSettled ? (_, ex, _) => onSettled(ex) : null,
+                Retry = options.Retry,
             });
         }
 
@@ -2283,7 +2285,18 @@ namespace Velvet
                 // After MarkPending and inside the try, which is TanStack's order: OnMutate reads the handle
                 // as this call's pending one, and a throw from it fails the call before MutationFn is reached.
                 context = slot.InvokeOnMutate(variables);
-                var data = await slot.InvokeMutationFn(variables, cts.Token);
+                // OnMutate ran once above, outside the retries. Each attempt reads the slot's MutationFn, the
+                // latest render's, as v5's retryer reads options.mutationFn on every run.
+                var data = await (slot.Retry ?? RetryPolicy.NoRetry).RunWithStateAsync(
+                    static (call, token) => call.Slot.InvokeMutationFn(call.Variables, token),
+                    new MutationCall<TVariables, TData, TContext>(fiber, slot, variables, mine),
+                    new RetryCallbacks<MutationCall<TVariables, TData, TContext>>
+                    {
+                        OnFail = static (call, error) => call.ShowIfOwned(result => result.MarkRetrying(error)),
+                        OnPause = static call => call.ShowIfOwned(static result => result.MarkPaused()),
+                        OnContinue = static call => call.ShowIfOwned(static result => result.MarkContinued()),
+                    },
+                    cts.Token);
                 // The handlers run before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess and OnSettled read is the handle as it stands rather than
                 // their own result. Either one throwing leaves the call a failure with nothing of its own
@@ -2372,6 +2385,34 @@ namespace Velvet
             }
             RequestRender(fiber);
             return owns;
+        }
+
+        private readonly struct MutationCall<TVariables, TData, TContext>
+        {
+            public ComponentFiber Fiber { get; }
+            public HookMutationSlot<TVariables, TData, TContext> Slot { get; }
+            public TVariables Variables { get; }
+            public long Generation { get; }
+
+            public MutationCall(
+                ComponentFiber fiber,
+                HookMutationSlot<TVariables, TData, TContext> slot,
+                TVariables variables,
+                long generation)
+            {
+                Fiber = fiber;
+                Slot = slot;
+                Variables = variables;
+                Generation = generation;
+            }
+
+            // A call writes the handle only while it still holds the current generation, as at its outcome.
+            public void ShowIfOwned(Action<MutationResult<TVariables, TData>> write)
+            {
+                if (Fiber.IsDisposed || Generation != Slot.Generation) return;
+                write(Slot.Result);
+                RequestRender(Fiber);
+            }
         }
 
         private static void ResetMutation<TVariables, TData, TContext>(
