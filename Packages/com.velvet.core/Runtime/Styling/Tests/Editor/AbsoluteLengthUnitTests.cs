@@ -33,12 +33,12 @@ namespace Velvet.Tests
             Assert.That((ok, s.Property, s.Unit), Is.EqualTo((true, ArbitraryProperty.Top, UnityEngine.UIElements.LengthUnit.Pixel)));
         }
 
-        // GREEN_ON_BASE(characterization): a unit needing element or panel context was never read, and still is not.
+        // GREEN_ON_BASE(characterization): a font-metric unit other than em was never read, and still is not.
         [Test]
         public void Given_AnUnknownUnitTop_When_Parsed_Then_TheClassIsDeclined()
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("top-[1vw]", out _);
+            var ok = StyleArbitraryValueResolver.TryParse("top-[1ex]", out _);
 
             // Assert
             Assert.That(ok, Is.False);

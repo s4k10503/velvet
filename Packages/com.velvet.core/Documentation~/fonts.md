@@ -232,7 +232,8 @@ re-resolves the text whenever that size changes. Until the panel has resolved it
 not yet on a panel — the text carries the em tag. `tracking-*` is the contrast: USS `letter-spacing` has no
 `em` unit (see `_typography.uss`), so its em scale had to be **baked to px at Tailwind's 16px root
 font** — `tracking-wide`'s 0.4px is only 0.025em at exactly 16px and drifts off-ratio at any other
-size. `leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
+size. A bracketed `tracking-[0.025em]` is measured on the element's own font size instead
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). `leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
 ancestor's `leading-*` overrides a farther one's). It has no reset utility, unlike the other three
 axes: Tailwind defines no `leading-auto` below `leading-none`, and every preset — `leading-none`'s
 multiplier of 1 included — is already a real value, so there is nothing to reset back to.

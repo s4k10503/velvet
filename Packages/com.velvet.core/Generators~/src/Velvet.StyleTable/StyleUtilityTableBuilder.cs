@@ -66,7 +66,11 @@ namespace Velvet.StyleTable
 
             var entries = accumulator.Entries.Values
                 .OrderBy(e => e.ClassName, StringComparer.Ordinal)
-                .Select(e => new StyleUtilityTableEntry(e.ClassName, e.Gate, e.Word0, e.Word1, e.CascadePosition))
+                .Select(e => new StyleUtilityTableEntry(e.ClassName, e.Gate, e.Word0, e.Word1, e.CascadePosition)
+                {
+                    Percentages = (e.PercentWord0, e.PercentWord1),
+                    Keywords = (e.KeywordWord0, e.KeywordWord1),
+                })
                 .ToImmutableArray();
 
             return new StyleUtilityTableResult(
@@ -274,9 +278,10 @@ namespace Velvet.StyleTable
                         declaration.Offset));
                     continue;
                 }
+                var kind = ValueKindOf(declaration.Value);
                 foreach (var longhand in longhands)
                 {
-                    entry.Set(accumulator.BitOf[longhand]);
+                    entry.Set(accumulator.BitOf[longhand], kind);
                 }
                 if (!string.Equals(declaration.Property, TransitionProperty, StringComparison.Ordinal))
                 {
@@ -347,6 +352,25 @@ namespace Velvet.StyleTable
             accumulator.Transitions.Add(new StyleTransitionTableEntry(className, word0, word1));
         }
 
+        /// <summary>
+        /// What a declaration's value is, read off its text: a percentage, an identifier (<c>auto</c>, <c>none</c>,
+        /// …), or anything else. A value of several words — a shorthand's per-side list — is read as
+        /// anything else, so no longhand of it is marked a percentage or a keyword.
+        /// </summary>
+        internal static UssValueKind ValueKindOf(string value)
+        {
+            var text = value.Trim();
+            if (text.Length == 0 || text.IndexOfAny(new[] { ' ', '\t', ',' }) >= 0)
+            {
+                return UssValueKind.Other;
+            }
+            if (text.EndsWith("%", StringComparison.Ordinal))
+            {
+                return UssValueKind.Percentage;
+            }
+            return char.IsLetter(text[0]) && text.IndexOf('(') < 0 ? UssValueKind.Keyword : UssValueKind.Other;
+        }
+
         private static void Set(int bit, ref ulong word0, ref ulong word1)
         {
             if (bit < 64)
@@ -404,7 +428,15 @@ namespace Velvet.StyleTable
 
             public ulong Word1 { get; private set; }
 
-            public void Set(int bit)
+            public ulong PercentWord0;
+
+            public ulong PercentWord1;
+
+            public ulong KeywordWord0;
+
+            public ulong KeywordWord1;
+
+            public void Set(int bit, UssValueKind kind)
             {
                 if (bit < 64)
                 {
@@ -413,6 +445,14 @@ namespace Velvet.StyleTable
                 else
                 {
                     Word1 |= 1UL << (bit - 64);
+                }
+                if (kind == UssValueKind.Percentage)
+                {
+                    StyleUtilityTableBuilder.Set(bit, ref PercentWord0, ref PercentWord1);
+                }
+                else if (kind == UssValueKind.Keyword)
+                {
+                    StyleUtilityTableBuilder.Set(bit, ref KeywordWord0, ref KeywordWord1);
                 }
             }
         }
@@ -452,6 +492,20 @@ namespace Velvet.StyleTable
         public ulong Word1 { get; }
 
         public int CascadePosition { get; }
+
+        /// <summary>The longhands among the class's properties whose declared value is a percentage.</summary>
+        public (ulong Word0, ulong Word1) Percentages { get; init; }
+
+        /// <summary>The longhands among the class's properties whose declared value is a keyword.</summary>
+        public (ulong Word0, ulong Word1) Keywords { get; init; }
+    }
+
+    /// <summary>What a declared value is, as far as a reader deciding between a length and not needs.</summary>
+    internal enum UssValueKind
+    {
+        Other,
+        Percentage,
+        Keyword,
     }
 
     /// <summary>One utility's <c>transition-property</c> declaration: the properties its value names.</summary>
