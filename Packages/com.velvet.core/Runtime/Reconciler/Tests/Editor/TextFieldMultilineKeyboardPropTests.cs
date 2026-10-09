@@ -343,7 +343,7 @@ namespace Velvet.Tests
         public void Given_AFieldThatIsNotDelayedWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValueUpToTheLimit()
         {
             // Arrange — turning multiline off drops the break from the multi-line display, which leaves the
-            // shown text in neither form SingleLineDisplay or a limit write produces.
+            // shown text in neither form a value write or a limit write produces on a single-line field.
             var multilineTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: true) };
             var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: false) };
             var newTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, multiline: true) };
@@ -359,6 +359,129 @@ namespace Velvet.Tests
             Assert.That(
                 (whileSingleLine, ((TextElement)element.textEdition).text),
                 Is.EqualTo(("ab", "a\nb")));
+        }
+
+        // The delayed counterpart of the case above, where the text multiline coming off leaves is what the
+        // next write has to tell from an edit: held on screen, a blur would commit it.
+        [Test]
+        public void Given_ADelayedFieldWithNoEditWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValueUpToTheLimit()
+        {
+            // Arrange
+            var multilineTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
+            };
+            var oldTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: false),
+            };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), multilineTree);
+            Reconciler.Reconcile(Root, multilineTree, oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var whileSingleLine = ((TextElement)element.textEdition).text;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — same single-line term as the case above, and for the same reason.
+            Assert.That(
+                (whileSingleLine, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("ab", "a\nb")));
+        }
+
+        // The other write that tells the shown text from an edit is the limit's. The control is the engine
+        // driven with no edit through the writes each render makes, in the order ApplyTextField makes them,
+        // as TextFieldInputPropTests' line-break limit case does.
+        [Test]
+        public void Given_ADelayedFieldWithNoEditWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndALaterRenderWidensTheLimit_Then_TheFieldShowsWhatTheEngineAloneWould()
+        {
+            // Arrange
+            const string value = "a\nbcdef";
+            var multilineTree = new VNode[]
+            {
+                V.TextField(value: value, maxLength: 3, isDelayed: true, multiline: true),
+            };
+            var oldTree = new VNode[]
+            {
+                V.TextField(value: value, maxLength: 3, isDelayed: true, multiline: false),
+            };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: value, maxLength: 5, isDelayed: true, multiline: false),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), multilineTree);
+            Reconciler.Reconcile(Root, multilineTree, oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var control = new TextField();
+            control.SetValueWithoutNotify(value);
+            control.maxLength = 3;
+            control.isDelayed = true;
+            control.multiline = true;
+            control.multiline = false;
+            control.maxLength = 5;
+            control.multiline = false;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(element.text, Is.EqualTo(control.text));
+        }
+
+        // GREEN_ON_BASE(characterization): turning multiline on, the base carries shown text that differs from
+        // its single-line form of the value, and "ab" differs from "abc". It pins that the branch's record
+        // carries an edit equal to the value cut to its limit with the break removed, which a comparison
+        // against that form would read as no edit.
+        [Test]
+        public void Given_AnEditEqualToTheValueCutWithItsBreakRemoved_When_ALaterRenderTurnsMultilineOn_Then_TheEditStaysUncommitted()
+        {
+            // Arrange — the value arrives after the limit, as in the limit case above, so the field shows
+            // "abc" and the typing deletes its last character.
+            var mountTree = new VNode[] { V.TextField(value: "x", maxLength: 3, isDelayed: true) };
+            var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true) };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: "a\nbcdef", maxLength: 3, isDelayed: true, multiline: true),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mountTree);
+            Reconciler.Reconcile(Root, mountTree, oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "ab";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is read beside the shown text, so the edit has to stay uncommitted as well as
+            // on screen.
+            Assert.That(
+                (element.value, ((TextElement)element.textEdition).text),
+                Is.EqualTo(("a\nbcdef", "ab")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes the flag alone as multiline comes off. It pins
+        // that the branch carries nothing across that write, where the engine has already dropped the
+        // edit's break.
+        [Test]
+        public void Given_AMultilineEditTheDelayedFieldHasNotCommitted_When_ALaterRenderTurnsMultilineOff_Then_TheEditStaysWithoutItsBreak()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true, multiline: true) };
+            var newTree = new VNode[] { V.TextField(isDelayed: true, multiline: false) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "first\nsecond";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the value is folded in: the edit stays uncommitted.
+            Assert.That(
+                (element.value, ((TextElement)element.textEdition).text),
+                Is.EqualTo((string.Empty, "firstsecond")));
         }
 
         [Test]

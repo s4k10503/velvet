@@ -5,8 +5,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins the UI Toolkit behaviour <c>FiberPropApplier.ApplyTextField</c>'s multiline-after-delayed ordering
-    /// and <c>FiberPropApplier.WriteMultiline</c>'s single-line comparison are written against, so a case here
-    /// fails, rather than the code going quietly wrong or unneeded, if the engine stops doing it.
+    /// and arrangements in <see cref="TextFieldMultilineKeyboardPropTests"/> are written against, so a case
+    /// here fails, rather than the code going quietly wrong or unneeded, if the engine stops doing it.
     /// </summary>
     internal sealed class TextFieldMultilineEngineTests
     {

@@ -357,40 +357,26 @@ namespace Velvet
         }
 
         // Turning multiline on puts the field's value back on screen, which on a delayed field holding an
-        // uncommitted edit replaces the typed text with the value it has not received yet. So the shown text
-        // is carried across the write when it differs from SingleLineDisplay — and only then, since the value
-        // is what brings back line breaks and characters the single-line display left out.
-        // SingleLineDisplay is what ApplyFieldValue's silent value write leaves on a single-line field. A
-        // write that changes the limit leaves the value cut with its breaks still in it instead: where a break
-        // survives the cut, that differs and is carried, and it is the text the restore would have written.
-        // TextFieldMultilineEngineTests pins the limit write's form, and TextFieldMultilineKeyboardPropTests
-        // the value write's and the restore.
-        // The silent setter, because the carried text is not a new edit.
+        // uncommitted edit replaces the typed text with the value it has not received yet, so that edit is
+        // carried across the write through the silent setter. Turning it off carries nothing, since the engine
+        // leaves the edit there without its line breaks. With no edit pending, what the write left on screen
+        // becomes the record; left unrecorded, the text multiline coming off leaves reads as typed to the next
+        // multiline or limit write, which then holds it on screen for a blur to commit.
+        // Rejected: comparing the shown text with the forms the value takes on a single-line display. An edit
+        // equal to one of them reads as no edit, and which forms exist depends on which write last cut the
+        // value. TextFieldMultilineKeyboardPropTests pins each of these.
         private static void WriteMultiline(TextField field, bool value)
         {
-            if (!value || !field.isDelayed)
+            var edit = HasUncommittedEdit(field) ? field.text : null;
+            field.multiline = value;
+            if (edit == null)
             {
-                field.multiline = value;
-                return;
+                RecordShownText(field);
             }
-
-            var shown = field.text;
-            var uncommitted = shown != SingleLineDisplay(field);
-            field.multiline = true;
-            if (uncommitted)
+            else if (value)
             {
-                ((INotifyValueChanged<string>)(TextElement)field.textEdition).SetValueWithoutNotify(shown);
+                ((INotifyValueChanged<string>)(TextElement)field.textEdition).SetValueWithoutNotify(edit);
             }
-        }
-
-        private static string SingleLineDisplay(TextField field)
-        {
-            var display = (field.value ?? string.Empty).Replace("\n", string.Empty);
-            // MUTANT_SURVIVES(equivalent, boundary): a cut to the display's own length returns it unchanged,
-            // and a field limited to no characters shows nothing whether its display is cut or carried.
-            return field.maxLength >= 0 && display.Length > field.maxLength
-                ? display.Substring(0, field.maxLength)
-                : display;
         }
 
         // The engine writes keyboardType back to Default and autoCorrection back to false when the field
@@ -561,7 +547,8 @@ namespace Velvet
         // holds the user's typing in the shown text while the value lags, and nothing else tells that
         // apart from a rewrite: a single-line field shows its value with line breaks stripped, so shown
         // text differing from the value does not mean anyone typed. Every Velvet write that can change the
-        // shown text records it — ApplyFieldValue, WriteMaxLength and the baseline ApplyTextField takes —
+        // shown text records it — ApplyFieldValue, WriteMaxLength, WriteMultiline and the baseline
+        // ApplyTextField takes —
         // and a commit records it through the callback below, since an edit that was committed and then
         // changed again is an edit against the committed text. ForgetRecordedDefaults forgets the record and
         // its callback on every removal, so a recycled field carries neither.
