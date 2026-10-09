@@ -19,10 +19,9 @@ namespace Velvet.Tests
     /// of failing silently — for CompilerWeaver when <c>Velvet.Hooks</c> / <c>Velvet.VNode</c> is unresolvable,
     /// and for MetadataRegistrationWeaver when <c>Velvet.ComponentMethodRegistry</c> is unresolvable.</item>
     /// <item>Open-dispatch hook-safety classification: an open virtual / interface dispatch whose declaring type
-    /// is outside the BCL/Unity carve-out must be classified as unverifiable / non-SAFE regardless of
-    /// whether its own declaring assembly references Velvet, because an override reaching a hook can be declared
-    /// in a third assembly that does. The two private classifier methods
-    /// (<c>ReachesNonSafeHook</c>/<c>CallsHookTransitively</c>) must agree on this classification.</item>
+    /// is outside the BCL/Unity carve-out is not read as reaching a non-SAFE hook, whichever assembly declares
+    /// it — where the call sits decides instead. A <c>Velvet.Hooks</c> member whose body reaches nothing but
+    /// such a dispatch is still a hook call, its value captured ahead of the gate.</item>
     /// <item>Metadata-registration E2E: the woven <c>&lt;Module&gt;.cctor</c> of THIS test assembly carries the
     /// <c>ComponentMethodRegistry.Register*</c> calls the weaver actually injected for the
     /// <c>[Component(...)]</c>-flagged methods declared below, keyed by the declaring type's runtime
@@ -71,11 +70,8 @@ namespace Velvet.Tests
                 + " dropping the [Component] metadata registrations");
         }
 
-        // GREEN_ON_BASE(refactor): the synthetic probe type sits outside every carve-out root on both sides.
-        // Dropping "Cysharp." from NonVelvetNamespaceRoots retires a root that Probe.Base never matched, so
-        // this case reads the base's answer for the base's reason, and what changed here is its wording.
         [Test]
-        public void Given_OpenVirtualOutsideCarveOutInNonVelvetReferencingAssembly_When_ReachesNonSafeHookClassifies_Then_TreatsCalleeAsNonSafe()
+        public void Given_OpenVirtualOutsideCarveOutInNonVelvetReferencingAssembly_When_ReachesNonSafeHookClassifies_Then_DoesNotReadItAsNonSafe()
         {
             // Arrange
             using var module = BuildNonVelvetReferencingModuleWithOpenVirtual(out var handler);
@@ -86,25 +82,9 @@ namespace Velvet.Tests
             var isNonSafe = (bool)InvokeClassifier("ReachesNonSafeHook", handler);
 
             // Assert
-            Assert.That(isNonSafe, Is.True,
-                "An open dispatch outside the BCL/Unity carve-out is unverifiable regardless of whether"
-                + " its declaring assembly references Velvet, because an override composing a hook can live in"
-                + " a third assembly that does");
-        }
-
-        [Test]
-        public void Given_OpenVirtualOutsideCarveOutInNonVelvetReferencingAssembly_When_CallsHookTransitivelyClassifies_Then_TreatsCalleeAsMayReachHook()
-        {
-            // Arrange
-            using var module = BuildNonVelvetReferencingModuleWithOpenVirtual(out var handler);
-
-            // Act
-            var mayReachHook = (bool)InvokeClassifier("CallsHookTransitively", handler);
-
-            // Assert
-            Assert.That(mayReachHook, Is.True,
-                "CallsHookTransitively must classify the same open dispatch identically to ReachesNonSafeHook,"
-                + " or the two walkers would disagree about whether the call is a hook call");
+            Assert.That(isNonSafe, Is.False,
+                "The declared body of an open dispatch need not be the one that runs, so it proves nothing either way;"
+                + " where the call sits decides instead");
         }
 
         // Synthesizes a module carrying one method with [Component(Memoize = true)] so the metadata weaver
@@ -172,10 +152,16 @@ namespace Velvet.Tests
         private static ModuleDefinition BuildNonVelvetReferencingModuleWithOpenVirtual(out MethodDefinition handler)
         {
             var module = ModuleDefinition.CreateModule("NonVelvetReferencingProbe", ModuleKind.Dll);
+            handler = AddOpenVirtual(module);
+            return module;
+        }
+
+        private static MethodDefinition AddOpenVirtual(ModuleDefinition module)
+        {
             var baseType = new TypeDefinition("Probe", "Base",
                 Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class,
                 module.TypeSystem.Object);
-            handler = new MethodDefinition("Handler",
+            var handler = new MethodDefinition("Handler",
                 Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Virtual
                     | Mono.Cecil.MethodAttributes.NewSlot | Mono.Cecil.MethodAttributes.HideBySig,
                 module.TypeSystem.Void);
@@ -183,7 +169,7 @@ namespace Velvet.Tests
             handler.Body.GetILProcessor().Append(Instruction.Create(OpCodes.Ret));
             baseType.Methods.Add(handler);
             module.Types.Add(baseType);
-            return module;
+            return handler;
         }
 
         // Invokes CompilerWeaver's private static bool <name>(MethodReference, Dictionary<string, bool>)
@@ -414,6 +400,46 @@ namespace Velvet.Tests
             // Assert
             Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
                 "A discarded hook result is not captured in the deps array and must be left unwoven");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a Velvet.Hooks member reaching a dispatch as a hook too.
+        // What it pins is that reading surviving the Opaque class: deleting the Velvet.Hooks branch at the end
+        // of `ReachOf` leaves the member Opaque ahead of the gate, and reddens it.
+        [Test]
+        public void Given_AHooksMemberReachingOnlyADispatchAheadOfAHook_When_CompilerWeaverRuns_Then_MethodIsWoven()
+        {
+            // Arrange — `var value = Hooks.ReadThrough(); var id = Hooks.UseId(null);`, where ReadThrough's
+            // body makes one open virtual call.
+            using var module = BuildHookShapeProbeModule("HooksMemberDispatchProbe",
+                out var method, out var useId, out _, out _);
+            var handler = AddOpenVirtual(module);
+            var readThrough = new MethodDefinition("ReadThrough",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Object);
+            readThrough.Body = new Mono.Cecil.Cil.MethodBody(readThrough);
+            var readIl = readThrough.Body.GetILProcessor();
+            readIl.Append(Instruction.Create(OpCodes.Ldnull));
+            readIl.Append(Instruction.Create(OpCodes.Callvirt, handler));
+            readIl.Append(Instruction.Create(OpCodes.Ldnull));
+            readIl.Append(Instruction.Create(OpCodes.Ret));
+            module.Types.Single(type => type.FullName == "Velvet.Hooks").Methods.Add(readThrough);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Object));
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, readThrough));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_1));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "A Velvet.Hooks member is classified a hook whatever its body dispatches to, so its value is captured");
         }
 
         // --- CompilerWeaver gate placement on a body with no hook, which the weaver gates at method entry ---

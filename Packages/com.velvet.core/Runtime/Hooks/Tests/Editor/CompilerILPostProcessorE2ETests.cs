@@ -23,17 +23,18 @@ namespace Velvet.Tests
     /// value keys the cache on its own, even where Roslyn stores two hooks' results into one local.</item>
     /// <item>A props-only body — parameters and no hook — is woven too, keyed on its parameters alone with the
     /// gate at method entry, unless it sets <c>Memoize = true</c>.</item>
+    /// <item>An open virtual / interface dispatch outside the BCL / Unity carve-out — made directly or through a
+    /// helper — is woven past the gate: after the last hook call, or anywhere in a body with no hook.</item>
     /// <item>A body the weaver cannot prove correct is left unwoven (graceful bailout): neither a parameter nor a
     /// hook to key a cache on, a props-only body left to its props bail, a discarded hook value, a whole-tuple
     /// capture (compared structurally, not by reference, so a fresh-but-equal record would be a stale hit), a
     /// body with void hooks alone and no parameter (empty deps would freeze it on an unconditional hit), a body
     /// that reaches the suspend-unsafe <c>Use</c> hook or
     /// <c>UseMutation</c> — directly or transitively through a custom hook — a hook inside a loop (head-tested
-    /// or do-while), a hook section overlapping a try/catch region, and an open virtual / interface dispatch
-    /// outside the BCL / Unity carve-out (the runtime override could compose a hook the static
-    /// target does not show, regardless of whether the declaring assembly itself references Velvet — an
-    /// override can live in a third assembly that does). A delegate invocation (virtual Invoke on a sealed
-    /// type) is not an open dispatch and does not bail.</item>
+    /// or do-while), a hook section overlapping a try/catch region, and an open dispatch — made directly or
+    /// through a helper — ahead of a hook call, where a hook its runtime target composes would feed the body a
+    /// value the deps array does not capture. A delegate invocation (virtual Invoke on a sealed type) is not an
+    /// open dispatch.</item>
     /// <item>A body opting out with <c>[Component(Compiler = false)]</c> is left unwoven even when it is provably
     /// analyzable; the opt-out is honored ahead of analysis.</item>
     /// <item>Every component — woven, opted-out, or bailed — still renders normally and produces visible output
@@ -260,10 +261,7 @@ namespace Velvet.Tests
         }
 
         // UseService returns a stable service reference (DI-resolved) that does not self-trigger a re-render. It
-        // is on the value allow-list, so the body is woven. The body deliberately does not CALL a member
-        // through the interface-typed reference: an open interface dispatch in a Velvet-referencing assembly
-        // is unverifiable and would bail (see InterfaceDispatchComponent) — the stable reference itself is
-        // the captured dep.
+        // is on the value allow-list, so the body is woven, and the stable reference itself is the captured dep.
         [Component]
         public static VNode UseServiceComponent()
         {
@@ -322,19 +320,76 @@ namespace Velvet.Tests
             string Value();
         }
 
-        // Deliberately never assigned: analysis is static, so the bail happens regardless of the runtime
-        // value, and the null-propagated call keeps the render test NPE-free.
+        // Deliberately never assigned: analysis is static, so the outcome does not depend on the runtime value.
         private static readonly IDispatchService? s_dispatchService = null;
 
-        // A call through an interface declared in a Velvet-referencing assembly: the statically resolved
-        // target has no body, but the runtime implementation could compose any hook, so the weaver must
-        // treat the call as unverifiable and bail rather than weave against the declared (empty) target.
+        // A call through an interface declared in a Velvet-referencing assembly, after the only hook call.
         [Component]
         public static VNode InterfaceDispatchComponent()
         {
             var (count, _) = Hooks.UseState(0);
             var extra = s_dispatchService?.Value() ?? "none";
             return V.Label(text: extra + count.ToString());
+        }
+
+        // The same dispatch ahead of the hook call.
+        [Component]
+        public static VNode InterfaceDispatchAheadOfHookComponent()
+        {
+            var extra = s_dispatchService?.Value() ?? "none";
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: extra + count.ToString());
+        }
+
+        // The dispatch sits in a static helper rather than in the body.
+        private static string DescribeDispatchService() => s_dispatchService?.Value() ?? "none";
+
+        [Component]
+        public static VNode HelperDispatchComponent()
+        {
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: DescribeDispatchService() + count.ToString());
+        }
+
+        [Component]
+        public static VNode HelperDispatchAheadOfHookComponent()
+        {
+            var extra = DescribeDispatchService();
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: extra + count.ToString());
+        }
+
+        // A custom hook composing a hook and the dispatch: a hook call, so it runs ahead of the gate.
+        private static string UseNameWithDispatch()
+        {
+            var (name, _) = Hooks.UseState("name");
+            return name + DescribeDispatchService();
+        }
+
+        [Component]
+        public static VNode CustomHookWithDispatchComponent()
+        {
+            var name = UseNameWithDispatch();
+            return V.Label(text: name);
+        }
+
+        // The lambda's body makes the dispatch when it is called, not while the component body runs.
+        [Component]
+        public static VNode DispatchInsideHookArgumentLambdaComponent()
+        {
+            var describe = Hooks.UseCallback<System.Func<string>>(() => s_dispatchService?.Value() ?? "none",
+                System.Array.Empty<object>());
+            return V.Label(text: describe());
+        }
+
+        // A helper calling itself: the walk classifying it meets it again before it has finished reading it.
+        private static string Repeat(string text, int times) => times <= 0 ? text : Repeat(text + "!", times - 1);
+
+        [Component]
+        public static VNode RecursiveHelperComponent()
+        {
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: Repeat(count.ToString(), 2));
         }
 
         public class OverridableFormatter
@@ -344,8 +399,7 @@ namespace Velvet.Tests
 
         private static readonly OverridableFormatter s_formatter = new();
 
-        // A virtual method on a non-sealed class in a Velvet-referencing assembly: an override could call a
-        // hook the statically resolved body does not show, so the call is unverifiable and the weaver bails.
+        // A virtual method on a non-sealed class in a Velvet-referencing assembly, after the only hook call.
         [Component]
         public static VNode VirtualDispatchComponent()
         {
@@ -358,9 +412,7 @@ namespace Velvet.Tests
         private static readonly TextProvider s_textProvider = static () => "delegate";
 
         // Invoking a delegate declared in a Velvet-referencing assembly: a delegate type is sealed and its
-        // runtime-implemented Invoke cannot be overridden by user code, so the call is not an open dispatch
-        // and must not bail the component. Pins that the open-dispatch bail does not over-reach into
-        // delegate invocations — the callback pattern component bodies use everywhere.
+        // runtime-implemented Invoke cannot be overridden by user code, so the call is not an open dispatch.
         [Component]
         public static VNode DelegateInvokeComponent()
         {
@@ -673,6 +725,60 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_PropsOnlyComponentWithInterfaceDispatch_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(PropsInterfaceDispatchComponent))), Is.True,
+                "A body with no hook is gated at entry, so its interface dispatch runs past the gate");
+        }
+
+        [Test]
+        public void Given_InterfaceDispatchAfterTheHook_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(InterfaceDispatchComponent))), Is.True,
+                "An interface dispatch after the last hook call runs past the gate");
+        }
+
+        [Test]
+        public void Given_VirtualDispatchAfterTheHook_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(VirtualDispatchComponent))), Is.True,
+                "A call to an overridable virtual method after the last hook call runs past the gate");
+        }
+
+        [Test]
+        public void Given_HelperDispatchingAfterTheHook_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HelperDispatchComponent))), Is.True,
+                "A helper whose only reach is a dispatch is not a hook call, so its value needs no capture");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads only call instructions too, so it weaves this body.
+        // What it pins is the ahead-of-gate check doing the same: dropping the call-opcode filter from
+        // `HasOpaqueCallAhead` lets it walk the lambda the `ldftn` names, and reddens it.
+        [Test]
+        public void Given_DispatchInsideALambdaHandedToAHook_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(DispatchInsideHookArgumentLambdaComponent))), Is.True,
+                "A lambda's body does not run while the component body builds, so its dispatch is not ahead of the gate");
+        }
+
+        // GREEN_ON_BASE(characterization): the base classifies a recursive helper as well.
+        // What it pins is the reach walk's cycle guard: removing the provisional None that `ReachOf` writes
+        // before reading a body leaves the walk recursing through `Repeat` without end.
+        [Test]
+        public void Given_RecursiveHelperAfterTheHook_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(RecursiveHelperComponent))), Is.True,
+                "A helper that calls itself is classified once, and reaches no hook");
+        }
+
+        [Test]
         public void Given_HookNestedInArgumentList_When_Woven_Then_HitPathPopsTheOperandUnderTheGate()
         {
             // Act
@@ -715,18 +821,6 @@ namespace Velvet.Tests
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(MemoizedPropsComponent))), Is.False,
                 "A props-only body with Memoize = true is left to the props bail");
-        }
-
-        // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so it leaves this one alone too.
-        // Two readings bail it: the safety gate, and the hook scan taking the dispatch for a hook call whose
-        // value nothing captures. Measured, cutting either leaves it green and cutting both reddens it: the
-        // `ReachesAnyNonSafeHook` call disabled, and the open-dispatch arm of `CallsHookTransitively` answering false.
-        [Test]
-        public void Given_PropsOnlyComponentWithInterfaceDispatch_When_Analyzed_Then_IsLeftUnwoven()
-        {
-            // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(PropsInterfaceDispatchComponent))), Is.False,
-                "An open interface dispatch bails a body with no hook as it bails one with a hook");
         }
 
         // GREEN_ON_BASE(characterization): the base leaves this body unwoven too, and this change keeps it so.
@@ -789,22 +883,37 @@ namespace Velvet.Tests
                 "A custom hook that transitively reaches UseMutation forces the component to bail");
         }
 
+        // GREEN_ON_BASE(characterization): the base bails a body making an open dispatch, and this one stays bailed.
+        // What it pins is the ahead-of-gate refusal: removing the `HasOpaqueCallAhead` check from `TryAnalyze`
+        // reddens it.
         [Test]
-        public void Given_InterfaceDispatchComponent_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_InterfaceDispatchAheadOfTheHook_When_Analyzed_Then_IsLeftUnwoven()
         {
             // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(InterfaceDispatchComponent))), Is.False,
-                "An interface dispatch in a Velvet-referencing assembly resolves only to the body-less"
-                + " declaration; the runtime implementation could compose a hook, so the weaver bails");
+            Assert.That(IsWoven(LoadMethod(nameof(InterfaceDispatchAheadOfHookComponent))), Is.False,
+                "A dispatch ahead of the gate runs whether or not the gate hits, and a hook it reached would go uncaptured");
         }
 
+        // GREEN_ON_BASE(characterization): the base bails a body whose helper makes an open dispatch, as this one.
+        // What it pins is the helper taking Opaque from its dispatch: masking the Opaque flag off a callee's reach
+        // in `ReachOfDefinition` reddens it.
         [Test]
-        public void Given_VirtualDispatchComponent_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_HelperDispatchingAheadOfTheHook_When_Analyzed_Then_IsLeftUnwoven()
         {
             // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(VirtualDispatchComponent))), Is.False,
-                "A virtual call on a non-sealed class in a Velvet-referencing assembly may dispatch to an"
-                + " override that composes a hook, so the weaver bails");
+            Assert.That(IsWoven(LoadMethod(nameof(HelperDispatchAheadOfHookComponent))), Is.False,
+                "A helper whose only reach is a dispatch is Opaque, and Opaque ahead of the gate bails the body");
+        }
+
+        // GREEN_ON_BASE(characterization): the base bails a custom hook reaching a dispatch, and so does this change.
+        // What it pins is a hook call still carrying its dispatch: testing `HasOpaqueCallAhead` for a reach of
+        // exactly Opaque instead of for the Opaque flag reddens it.
+        [Test]
+        public void Given_CustomHookComposingADispatch_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(CustomHookWithDispatchComponent))), Is.False,
+                "A custom hook runs ahead of the gate, so a dispatch inside it bails the body as a direct one does");
         }
 
         [Test]
@@ -961,17 +1070,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That(_root.Q<Label>()?.text, Is.EqualTo("17"),
                 "A bailed try/catch component still renders normally through the non-throwing path");
-        }
-
-        [Test]
-        public void Given_BailedInterfaceDispatchComponent_When_FirstRender_Then_ProducesVisibleOutput()
-        {
-            // Act — the service field is left null, so the null-propagated call yields the fallback text.
-            using var mounted = V.Mount(_root, V.Component(InterfaceDispatchComponent, key: "iface"));
-
-            // Assert
-            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("none0"),
-                "A bailed interface-dispatch component still renders normally");
         }
 
         [Test]

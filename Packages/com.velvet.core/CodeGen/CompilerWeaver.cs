@@ -14,7 +14,7 @@ namespace Velvet.CodeGen
     // The weaver only transforms a method when its body matches an analyzable shape it can prove correct:
     //   Static, returns Velvet.VNode, and carries [Component]. Parameters (props) are
     //   allowed: each is prepended to the deps array so a prop change is detected like any other input.
-    //   Every hook the body reaches — directly or transitively through a custom hook — is on the SAFE
+    //   Every hook the scan sees the body reach — directly or transitively through a custom hook — is on the SAFE
     //   allow-list (MemoSafeValueHookNames ∪ MemoSafeVoidHookNames). A hook that is
     //   not on the allow-list (a known memo-unsafe hook, or an unknown / future hook) bails the whole method.
     //   The allow-list is the safety contract: a hook is admitted only when its re-render trigger is soundly
@@ -33,18 +33,18 @@ namespace Velvet.CodeGen
     // compared with Object.is, the same strictness the reconciler and Provider use to drive a re-render,
     // so a fresh record prop or a changed context value is treated as a miss rather than a stale hit.
     // Any shape the weaver cannot prove correct — a discarded hook result, a deconstruction that drops the
-    // value element, a body that reaches a non-allow-listed hook, a call whose hook safety cannot be confirmed
-    // (Resolve() fails, or the call is an open virtual / interface dispatch outside the known BCL / Unity
-    // carve-out — an override composing a hook can live in an assembly this scan never sees, regardless
-    // of whether the statically declared base/interface's own assembly references Velvet), a return before the
-    // hook section, a hook skipped or repeated by a branch, a hook return consumed by an unsupported pattern, or
-    // a protected region overlapping the hook section — is left byte-for-byte unchanged
+    // value element, a body that reaches a non-allow-listed hook, a callee whose body Resolve() cannot reach,
+    // a return before the hook section, a hook skipped or repeated by a branch, a hook return consumed by an
+    // unsupported pattern, or a protected region overlapping the hook section — is left byte-for-byte unchanged
     // (graceful bailout). The allow-list defaults unknown hooks to bail, so correctness is never traded for
-    // coverage; no diagnostic is emitted for a bailout. The goal is "memoize less but never wrong". The one
-    // dispatch this static model still cannot see through is an override of a BCL / Unity virtual signature
-    // (e.g. object.ToString) that itself calls a hook: the carve-out treats the base signature as hook-free
-    // because the BCL/Unity type declaring it cannot itself compose a hook, but a user override of it can —
-    // that stays outside this static model and is a rules-of-hooks violation the analyzer layer reports.
+    // coverage; no diagnostic is emitted for a bailout. The goal is "memoize less but never wrong".
+    // An open virtual / interface dispatch outside the BCL / Unity carve-out is opaque rather than a bail: an
+    // override composing a hook can live in an assembly this scan never sees, so whether it reaches one is
+    // decided where it runs. Ahead of the gate it bails the method, since a hook there would feed the body a
+    // value the deps array does not capture; past the gate, Hooks.TryGetMemoizedVNode stops serving hits to a
+    // body once a hook has run between its gate and its commit. An override of a BCL / Unity virtual signature
+    // (object.ToString, say) is not opaque: the carve-out reads it as hook-free without resolving it, so a hook
+    // such an override calls ahead of the gate is outside this model.
     // A body that already contains a Velvet.Hooks.TryGetMemoizedVNode call (a hand-written memoization,
     // e.g. in a test fixture) is skipped so the weaver does not memoize it a second time.
     internal static class CompilerWeaver
@@ -149,12 +149,12 @@ namespace Velvet.CodeGen
 
             // Per-weave cache keyed by MethodReference.FullName for transitive hook detection.
             // IsHookCall is invoked for every Call/Callvirt instruction across every candidate
-            // method body; the recursive scan inside CallsHookTransitively walks callee bodies and
+            // method body; the recursive scan inside ReachOf walks callee bodies and
             // would re-Resolve metadata for repeated targets (V.Label / V.Div / store accessors /
             // recursive custom-hook helpers) on every visit without this cache. FullName is used
             // because MethodReference does not implement value equality, and Resolve() returns a
             // fresh MethodDefinition per call.
-            var transitiveHookCache = new Dictionary<string, bool>();
+            var transitiveHookCache = new Dictionary<string, HookReach>();
 
             // Separate cache: "reaches any hook" and "reaches a non-safe (unsafe / unknown / unverifiable) hook"
             // are distinct predicates and must not share memoized results.
@@ -257,7 +257,7 @@ namespace Velvet.CodeGen
             return false;
         }
 
-        private static bool TryWeaveMethod(MethodDefinition method, WeaverContext context, Dictionary<string, bool> transitiveHookCache, Dictionary<string, bool> nonSafeHookCache)
+        private static bool TryWeaveMethod(MethodDefinition method, WeaverContext context, Dictionary<string, HookReach> transitiveHookCache, Dictionary<string, bool> nonSafeHookCache)
         {
             if (!TryAnalyze(method, transitiveHookCache, nonSafeHookCache, out var analysis))
             {
@@ -268,7 +268,7 @@ namespace Velvet.CodeGen
             return true;
         }
 
-        private static bool TryAnalyze(MethodDefinition method, Dictionary<string, bool> transitiveHookCache, Dictionary<string, bool> nonSafeHookCache, out HookAnalysis analysis)
+        private static bool TryAnalyze(MethodDefinition method, Dictionary<string, HookReach> transitiveHookCache, Dictionary<string, bool> nonSafeHookCache, out HookAnalysis analysis)
         {
             analysis = default!;
             var body = method.Body;
@@ -328,6 +328,11 @@ namespace Velvet.CodeGen
             // runtime rules-of-hooks backstop report the violation. (A benign branch — a ternary in a hook arg or
             // between hooks — converges BEFORE the next hook, so its target is not past a hook and is not flagged.)
             if (HasConditionallySkippedHook(body, hookCalls))
+            {
+                return false;
+            }
+
+            if (HasOpaqueCallAhead(instructions, lastHookBoundary, transitiveHookCache))
             {
                 return false;
             }
@@ -481,7 +486,7 @@ namespace Velvet.CodeGen
         // Walks the hook section once, recording every call site and the local each hook result is piped
         // into. False means the shape is unweavable and the whole method bails; a true result with a null
         // boundary means the body reached no hook at all.
-        private static bool TryScanHookSection(MethodBody body, Dictionary<string, bool> transitiveHookCache,
+        private static bool TryScanHookSection(MethodBody body, Dictionary<string, HookReach> transitiveHookCache,
             List<(VariableDefinition Local, Instruction Stored)> hookPipedLocals, List<Instruction> hookCalls,
             out Instruction? lastHookBoundary)
         {
@@ -679,7 +684,7 @@ namespace Velvet.CodeGen
                 && (rangeEnd == null || target.Offset < rangeEnd.Offset);
         }
 
-        private static bool IsHookCall(Instruction instr, Dictionary<string, bool> transitiveHookCache, out MethodReference? target, out bool isDirect)
+        private static bool IsHookCall(Instruction instr, Dictionary<string, HookReach> transitiveHookCache, out MethodReference? target, out bool isDirect)
         {
             target = null;
             isDirect = false;
@@ -700,7 +705,7 @@ namespace Velvet.CodeGen
             // hops). By design, custom hooks (functions that compose hooks via plain method calls)
             // participate in deps capture without any opt-in attribute — custom-hook chains are
             // tracked transparently.
-            if (CallsHookTransitively(method, transitiveHookCache))
+            if ((ReachOf(method, transitiveHookCache) & HookReach.Hook) != 0)
             {
                 target = method;
                 return true;
@@ -734,25 +739,50 @@ namespace Velvet.CodeGen
             => method.DeclaringType.FullName == HooksTypeFullName
                 && (MemoSafeValueHookNames.Contains(method.Name) || MemoSafeVoidHookNames.Contains(method.Name));
 
-        // Returns true when method's body (recursively, across plain method calls)
-        // reaches a direct HooksTypeFullName hook call. Cache by FullName: per-weave
-        // memoization is essential because the same V.* DSL factories and store accessors appear in
-        // every component body, and Resolve() walks metadata each invocation.
-        // Cycle safety: each method is provisionally marked false before its body is scanned,
-        // so a recursive self-reference (or a cycle in the call graph) returns false on the
-        // re-entrance and the final result is committed only after the scan completes. The cache is
-        // fully populated by the recursive descent, so the second visit returns in O(1).
-        private static bool CallsHookTransitively(MethodReference method, Dictionary<string, bool> cache)
+        // What a call is known to reach, as flags: Hook for a hook the scan sees, Opaque for an open dispatch,
+        // whose runtime target the scan cannot enumerate. Whether an Opaque call runs a hook is decided by where
+        // it sits: TryAnalyze refuses one ahead of the gate — a custom hook reaching one included — and the
+        // gate's runtime check covers one past it.
+        [System.Flags]
+        private enum HookReach
+        {
+            None = 0,
+            Opaque = 1,
+            Hook = 2,
+        }
+
+        // Classifies what method's body reaches, recursively across plain method calls.
+        // Cache by FullName: per-weave memoization is essential because the same V.* DSL factories and store
+        // accessors appear in every component body, and Resolve() walks metadata each invocation.
+        // Cycle safety: each method is provisionally marked None before its body is scanned,
+        // so a recursive self-reference (or a cycle in the call graph) reads None on the
+        // re-entrance and the final result is committed only after the scan completes.
+        private static HookReach ReachOf(MethodReference method, Dictionary<string, HookReach> cache)
         {
             // A call into a well-known framework namespace (BCL / Unity) cannot reach a Velvet hook,
             // so it calls no hook and needs neither Resolve() nor a body walk. This mirrors the namespace
             // short-circuit ReachesNonSafeHook already relies on, scoping the Resolve()/descent below to calls
             // that could plausibly compose a Velvet hook (Velvet DSL / app-defined custom hooks).
-            if (CannotReachVelvetHook(method)) return false;
+            if (CannotReachVelvetHook(method)) return HookReach.None;
 
             var key = method.FullName;
             if (cache.TryGetValue(key, out var cached)) return cached;
 
+            cache[key] = HookReach.None;
+            var reach = ReachOfDefinition(method, cache);
+            // ReachesNonSafeHook reads a Velvet.Hooks member by its name and never descends it, so a dispatch
+            // inside one does not count here either: any reach makes the member a Hook alone, its value captured
+            // ahead of the gate rather than bailing the body there.
+            if (reach != HookReach.None && method.DeclaringType.FullName == HooksTypeFullName)
+            {
+                reach = HookReach.Hook;
+            }
+            cache[key] = reach;
+            return reach;
+        }
+
+        private static HookReach ReachOfDefinition(MethodReference method, Dictionary<string, HookReach> cache)
+        {
             // Resolve() requires the referenced assembly to be reachable from the IL post-processor.
             // Cross-assembly failures (or body-less non-virtual methods — pinvoke / runtime impls) are
             // treated as "does not call hooks" and never block weaving on their own; the safety gate
@@ -764,48 +794,45 @@ namespace Velvet.CodeGen
             }
             catch (System.Exception)
             {
-                cache[key] = false;
-                return false;
+                return HookReach.None;
             }
-            if (def == null)
-            {
-                cache[key] = false;
-                return false;
-            }
+            if (def == null) return HookReach.None;
             if (IsDispatchOpen(def))
             {
                 // An open virtual / interface dispatch resolves only to the statically declared method — the
                 // runtime override's body is not the one below, and that override can be declared in an
                 // assembly that references Velvet even when the statically declared base/interface's own
                 // assembly does not — checking the DECLARING assembly for a Velvet reference proves nothing
-                // about where an override can live. The CannotReachVelvetHook check above already excluded the
-                // only case this method can rule out (a BCL / Unity namespace root); every other
-                // open dispatch reached this far is treated as reaching a hook, consistent with the safety
-                // gate below, which applies the identical rule.
-                cache[key] = true;
-                return true;
+                // about where an override can live. The CannotReachVelvetHook check in ReachOf already excluded
+                // the only case this method can rule out (a BCL / Unity namespace root).
+                return HookReach.Opaque;
             }
-            if (!def.HasBody)
-            {
-                cache[key] = false;
-                return false;
-            }
+            if (!def.HasBody) return HookReach.None;
 
-            // Provisionally mark false so a recursive re-entrance for the same method short-circuits
-            // without re-walking its body. The final result is written back after the full body scan.
-            cache[key] = false;
+            var reach = HookReach.None;
             foreach (var instr in def.Body.Instructions)
             {
                 if (instr.OpCode != OpCodes.Call && instr.OpCode != OpCodes.Callvirt) continue;
                 if (instr.Operand is not MethodReference callee) continue;
 
-                if (IsDirectHookCall(callee) || CallsHookTransitively(callee, cache))
-                {
-                    cache[key] = true;
-                    return true;
-                }
+                reach |= IsDirectHookCall(callee) ? HookReach.Hook : ReachOf(callee, cache);
             }
-            cache[key] = false;
+            return reach;
+        }
+
+        // A call ahead of the gate runs whether or not the gate hits, so a hook an open dispatch reaches there would
+        // feed the body a value the deps array does not capture, and the gate's runtime check reads only what runs
+        // past it.
+        private static bool HasOpaqueCallAhead(Collection<Instruction> instructions, Instruction boundary,
+            Dictionary<string, HookReach> cache)
+        {
+            foreach (var instr in instructions)
+            {
+                if (instr == boundary) break;
+                if (instr.OpCode != OpCodes.Call && instr.OpCode != OpCodes.Callvirt) continue;
+                if (instr.Operand is not MethodReference callee) continue;
+                if ((ReachOf(callee, cache) & HookReach.Opaque) != 0) return true;
+            }
             return false;
         }
 
@@ -850,7 +877,7 @@ namespace Velvet.CodeGen
         // True when a call to this definition may dispatch to an override the static resolution does not
         // reveal: the method is virtual (interface members are virtual in metadata) and still overridable —
         // neither sealed itself nor declared on a sealed class, where no further override can exist. The
-        // sealed-type carve-out is what keeps delegate invocations out of the bail: a delegate's Invoke is
+        // sealed-type carve-out is what keeps delegate invocations from reading as Opaque: a delegate's Invoke is
         // virtual in metadata but declared on a sealed type. A hook reached only through delegate
         // indirection stays outside this static model (as it always has), which is a rules-of-hooks
         // violation the analyzer layer reports.
@@ -864,8 +891,8 @@ namespace Velvet.CodeGen
         // (known memo-unsafe or unknown / future), or when hook safety cannot be confirmed because
         // Resolve() fails for a callee whose body the weaver must inspect. Treating an unverifiable callee
         // as non-SAFE keeps the allow-list a closed safety contract: the weaver only weaves a body whose every
-        // reachable hook is proven SAFE. A custom hook that composes UseMutation / Use is caught
-        // here. Cycle safety follows the same rules as CallsHookTransitively.
+        // hook the walk can see is proven SAFE. A custom hook that composes UseMutation / Use is caught
+        // here. Cycle safety follows the same rules as ReachOf.
         private static bool ReachesNonSafeHook(MethodReference method, Dictionary<string, bool> cache)
         {
             // A direct Velvet.Hooks.* call is classified by name alone: never descend into a hook's own body,
@@ -908,33 +935,9 @@ namespace Velvet.CodeGen
             }
             if (IsDispatchOpen(def))
             {
-                // Resolve() on a virtual / abstract / interface target returns only the statically declared
-                // method; the runtime dispatch may land on an override whose body the weaver cannot
-                // enumerate, and that override can be declared in an assembly that references Velvet even
-                // when the statically declared base/interface's own assembly does not — checking the
-                // DECLARING assembly for a Velvet reference proves nothing about where an override can live.
-                // The only case this weaver can rule out is the CannotReachVelvetHook namespace carve-out
-                // checked above (a BCL / Unity virtual signature — e.g. ToString — cannot itself
-                // declare a hook call, though a user override of one still could, which stays outside this
-                // static model and is a rules-of-hooks violation the analyzer layer reports). Every other
-                // open dispatch reached this far is unverifiable and folds into the non-SAFE bucket like a
-                // Resolve() failure.
-                //
-                // This also bails the common `var svc = Hooks.UseService<IFoo>(); svc.Method()` pattern even
-                // when IFoo is an internal interface implemented only inside this same module — a case that
-                // could in principle be proven hook-free from Cecil metadata alone (enumerate every type in
-                // the module implementing IFoo, require the interface to lack an InternalsVisibleTo friend,
-                // and verify every implementer's body reaches no hook). That proof was judged too fragile to
-                // add here: it would have to separately rule out an implementation inherited through a base
-                // class this module also declares, a further override of a non-sealed public implementer
-                // from outside the module, generic interfaces/methods, and explicit interface
-                // implementations, while reconciling two different recursive predicates (CallsHookTransitively's
-                // "reaches any hook" and this method's "reaches a non-SAFE hook") over the same implementer
-                // set without the two walkers disagreeing. Getting any one of those wrong would silently
-                // reopen the exact soundness hole this bail exists to close, so the pattern stays bailed;
-                // wrap the interface call in UseMemo/UseCallback to capture it as an explicit dep instead.
-                cache[key] = true;
-                return true;
+                // Opaque to this walk as it is to ReachOf: the declared body need not be the one that runs, so it
+                // proves nothing either way. Where the call sits decides instead — see HookReach.
+                return false;
             }
             if (!def.HasBody)
             {
