@@ -122,10 +122,10 @@ namespace Velvet
                 s_textFieldDefaults.Remove(textField);
                 ForgetShownText(textField);
             }
-            else if (element is Slider slider)
+            else if (element is Slider or SliderInt)
             {
-                s_sliderDefaults.Remove(slider);
-                FiberSliderKeyboard.ForgetStep(slider);
+                s_sliderDefaults.Remove(element);
+                FiberSliderKeyboard.ForgetStep(element);
             }
         }
 
@@ -208,11 +208,6 @@ namespace Velvet
         // every call would rewrite a range a refCallback set each time a render changes only the direction
         // or the flag. Those two take ApplyTextField's recorded-default shape, for the reason given there.
         // SliderDirectionPropTests measures both.
-        //
-        // A declared value that arrives with a range change is written in between: the range widens to hold
-        // both ranges, the value is placed inside the new one without a notification, and only then do the
-        // bounds narrow, so the value neither falls to the old range nor reports a clamp the render never asked
-        // for. SliderDirectionPropTests measures both.
         public static void ApplySlider(
             VisualElement element, SliderSettings? previous, SliderSettings? settings, object? declaredValue = null)
         {
@@ -224,35 +219,72 @@ namespace Velvet
             FiberSliderKeyboard.SetStep(sliderEl, settings?.Step);
             if (previous?.LowValue != settings?.LowValue || previous?.HighValue != settings?.HighValue)
             {
-                var low = Resolve(settings?.LowValue, 0f);
-                var high = Resolve(settings?.HighValue, 10f);
-                if (declaredValue is float value)
-                {
-                    sliderEl.lowValue = UnityEngine.Mathf.Min(sliderEl.lowValue, low);
-                    sliderEl.highValue = UnityEngine.Mathf.Max(sliderEl.highValue, high);
-                    sliderEl.SetValueWithoutNotify(UnityEngine.Mathf.Clamp(value, low, high));
-                }
-
-                sliderEl.lowValue = low;
-                sliderEl.highValue = high;
+                WriteRange(sliderEl, Resolve(settings?.LowValue, 0f), Resolve(settings?.HighValue, 10f), declaredValue,
+                    default(FloatSliderNumber));
             }
 
-            if (!s_sliderDefaults.TryGetValue(sliderEl, out var built))
+            ApplyOrientation(sliderEl, settings?.Direction, settings?.Inverted);
+        }
+
+        // ApplySlider's rules over SliderInt's members; SliderIntPropTests measures them on this path.
+        public static void ApplySliderInt(
+            VisualElement element, SliderIntSettings? previous, SliderIntSettings? settings, object? declaredValue = null)
+        {
+            if (element is not SliderInt sliderEl)
             {
-                if (settings?.Direction == null && settings?.Inverted == null)
+                return;
+            }
+
+            FiberSliderKeyboard.SetStep(sliderEl, settings?.Step);
+            if (previous?.LowValue != settings?.LowValue || previous?.HighValue != settings?.HighValue)
+            {
+                WriteRange(sliderEl, Resolve(settings?.LowValue, 0), Resolve(settings?.HighValue, 10), declaredValue,
+                    default(IntSliderNumber));
+            }
+
+            ApplyOrientation(sliderEl, settings?.Direction, settings?.Inverted);
+        }
+
+        // A declared value that arrives with a range change is written in between: the range widens to hold
+        // both ranges, the value is placed inside the new one without a notification, and only then do the
+        // bounds narrow, so narrowing them does not clamp the old value and report a change the render never
+        // asked for. SliderDirectionPanelTests and SliderIntPanelTests measure that on a panel, the only place
+        // the clamp notifies.
+        private static void WriteRange<T, TNumber>(BaseSlider<T> slider, T low, T high, object? declaredValue, TNumber number)
+            where T : struct, System.IComparable<T>
+            where TNumber : struct, ISliderNumber<T>
+        {
+            if (declaredValue is T value)
+            {
+                slider.lowValue = number.Min(slider.lowValue, low);
+                slider.highValue = number.Max(slider.highValue, high);
+                slider.SetValueWithoutNotify(number.Clamp(value, low, high));
+            }
+
+            slider.lowValue = low;
+            slider.highValue = high;
+        }
+
+        private static void ApplyOrientation<T>(BaseSlider<T> slider, SliderDirection? direction, bool? inverted)
+            where T : System.IComparable<T>
+        {
+            if (!s_sliderDefaults.TryGetValue(slider, out var built))
+            {
+                if (direction == null && inverted == null)
                 {
                     return;
                 }
 
                 built = new SliderDefaults();
-                s_sliderDefaults.Add(sliderEl, built);
+                s_sliderDefaults.Add(slider, built);
             }
 
-            ApplyDirection(sliderEl, settings?.Direction, built);
-            ApplyInverted(sliderEl, settings?.Inverted, built);
+            ApplyDirection(slider, direction, built);
+            ApplyInverted(slider, inverted, built);
         }
 
-        private static void ApplyDirection(Slider slider, SliderDirection? declared, SliderDefaults built)
+        private static void ApplyDirection<T>(BaseSlider<T> slider, SliderDirection? declared, SliderDefaults built)
+            where T : System.IComparable<T>
         {
             if (declared is { } value)
             {
@@ -265,7 +297,8 @@ namespace Velvet
             }
         }
 
-        private static void ApplyInverted(Slider slider, bool? declared, SliderDefaults built)
+        private static void ApplyInverted<T>(BaseSlider<T> slider, bool? declared, SliderDefaults built)
+            where T : System.IComparable<T>
         {
             if (declared is { } value)
             {
@@ -284,7 +317,7 @@ namespace Velvet
             public Recorded<bool>? Inverted;
         }
 
-        private static readonly ConditionalWeakTable<Slider, SliderDefaults> s_sliderDefaults = new();
+        private static readonly ConditionalWeakTable<VisualElement, SliderDefaults> s_sliderDefaults = new();
 
         public static void ApplyScrollView(VisualElement element, ScrollViewSettings? settings)
         {

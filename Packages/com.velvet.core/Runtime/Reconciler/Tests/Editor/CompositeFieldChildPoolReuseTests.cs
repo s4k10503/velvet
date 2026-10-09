@@ -75,7 +75,7 @@ namespace Velvet.Tests
             // Act — a slider is rented back.
             var rented = VNodePool.RentSlider();
 
-            // Assert — same instance, and only the dragger container its constructor made.
+            // Assert — same instance, and only the input container its constructor made.
             Assert.That(
                 (ReferenceEquals(rented, returned), rented.childCount, ReferenceEquals(rented.ElementAt(0), ownInput)),
                 Is.EqualTo((true, 1, true)));

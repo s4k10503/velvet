@@ -56,7 +56,7 @@ namespace Velvet
         // for the context's whole lifetime. A genuine poolable leaf is also reclaimed to the pool:
         // a Button or a Label only when childless, since either can be given children — V.Button's own DSL,
         // or V.Custom<T> for both — which CreateElement inline-expands into the element itself, while this
-        // branch releases resources for the orphan alone. Toggle / Slider / TextField are reclaimed
+        // branch releases resources for the orphan alone. Toggle / Slider / SliderInt / TextField are reclaimed
         // unconditionally: each already holds its own constructed sub-element, so a count cannot separate
         // that from a V.Custom child — their reset detaches one by exclusion instead
         // (FiberElementPoolReset.DetachForeignChildren), on this path and on ordinary unmount alike. A
@@ -80,6 +80,7 @@ namespace Velvet
 
             var exactType = element.GetType();
             if (exactType == typeof(Toggle) || exactType == typeof(Slider) || exactType == typeof(TextField)
+                || exactType == typeof(SliderInt)
                 || ((exactType == typeof(Button) || exactType == typeof(Label)) && element.childCount == 0))
             {
                 CleanupElementResources(element);
@@ -121,6 +122,10 @@ namespace Velvet
             else if (type == typeof(Slider))
             {
                 VNodePool.ReturnSlider((Slider)element);
+            }
+            else if (type == typeof(SliderInt))
+            {
+                VNodePool.ReturnSliderInt((SliderInt)element);
             }
             else if (type == typeof(Button))
             {
