@@ -35,6 +35,17 @@ V.Motion(key: "card", className: "w-24 h-24 rounded-xl bg-sky-500",
 A pose is a *class delta*: classes present in the resting variant and absent from another are
 removed/added on swap, and anything not mentioned falls back to the element's base `className`.
 
+A tween temporarily replaces the element's inline transition duration and easing, and its transition
+delay only where that tween sets one. When it finishes or is interrupted, it restores the element's
+own lists, including a `duration-[...]` value; an exit interrupted on a panel hands its timing on to
+the reversal that plays it back, and the restore waits until that reversal ends. When Velvet next writes or
+releases a tween's timing, a slot whose keyword or list entries differ from the value the tween timing
+last wrote there is taken as code's: it becomes the element's own, and the tweens already playing stop
+supplying that slot until one of them writes it again. An identical reassignment, or a change undone
+before that observation, is not taken. If tween plays overlap on one element, each slot holds the value
+of the latest one still playing that wrote it, and the end of the last restores the element's own
+lists.
+
 **Label inheritance (Framer's variant propagation):** a Motion naming none of `animate`, `initial` and
 `exit` follows the nearest ancestor Motion's active label and takes that ancestor's `initial` label with
 it. A Motion naming any of the three takes neither, as Framer treats a Motion naming any variant label
