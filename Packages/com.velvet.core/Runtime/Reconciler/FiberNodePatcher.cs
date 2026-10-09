@@ -257,8 +257,8 @@ namespace Velvet
             // The shared post-children passes run after PatchCommon (which reconciles children) AND
             // DiffStyles — keeping gap after DiffStyles preserves the ordering invariant that the
             // manipulator's container-margin writes are never clobbered by a later inline-style diff on
-            // the same element. (Today DiffStyles only touches color properties, but the invariant must
-            // hold if a margin-writing StyleOverride is ever added.)
+            // the same element. (No StyleOverrides member writes a margin today, but the invariant must
+            // hold if one is ever added.)
             ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames,
                 paintTail: true, clipActive);
         }
@@ -2003,55 +2003,57 @@ namespace Velvet
                 SceneViewElement.WriteBackground(element, newStyles.BackgroundImage ?? StyleKeyword.Null);
             }
 
-            DiffBackgroundFill(element.style, oldStyles, newStyles);
-
-            if (!Equals(oldStyles.BackgroundColor, newStyles.BackgroundColor))
-            {
-                element.style.backgroundColor = newStyles.BackgroundColor ?? StyleKeyword.Null;
-            }
-
-            if (!Equals(oldStyles.Color, newStyles.Color))
-            {
-                element.style.color = newStyles.Color ?? StyleKeyword.Null;
-            }
-        }
-
-        // DiffStyles' background-repeat and nine-slice members, apart so neither method passes VEL501's limit.
-        private static void DiffBackgroundFill(IStyle style, StyleOverrides oldStyles, StyleOverrides newStyles)
-        {
             if (!Equals(oldStyles.BackgroundRepeat, newStyles.BackgroundRepeat))
             {
-                style.backgroundRepeat = newStyles.BackgroundRepeat ?? StyleKeyword.Null;
-            }
-
-            if (!Equals(oldStyles.UnitySliceTop, newStyles.UnitySliceTop))
-            {
-                style.unitySliceTop = newStyles.UnitySliceTop ?? StyleKeyword.Null;
-            }
-
-            if (!Equals(oldStyles.UnitySliceRight, newStyles.UnitySliceRight))
-            {
-                style.unitySliceRight = newStyles.UnitySliceRight ?? StyleKeyword.Null;
-            }
-
-            if (!Equals(oldStyles.UnitySliceBottom, newStyles.UnitySliceBottom))
-            {
-                style.unitySliceBottom = newStyles.UnitySliceBottom ?? StyleKeyword.Null;
-            }
-
-            if (!Equals(oldStyles.UnitySliceLeft, newStyles.UnitySliceLeft))
-            {
-                style.unitySliceLeft = newStyles.UnitySliceLeft ?? StyleKeyword.Null;
-            }
-
-            if (!Equals(oldStyles.UnitySliceScale, newStyles.UnitySliceScale))
-            {
-                style.unitySliceScale = newStyles.UnitySliceScale ?? StyleKeyword.Null;
+                StyleAnimateDriver.WriteBackgroundRepeat(element, newStyles.BackgroundRepeat ?? StyleKeyword.Null);
             }
 
             if (!Equals(oldStyles.UnitySliceType, newStyles.UnitySliceType))
             {
-                style.unitySliceType = newStyles.UnitySliceType ?? StyleKeyword.Null;
+                element.style.unitySliceType = newStyles.UnitySliceType ?? StyleKeyword.Null;
+            }
+
+            // The members an arbitrary value can also write go through StyleOverridesLayer, which ranks them.
+            if (!Equals(oldStyles.BackgroundColor, newStyles.BackgroundColor))
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.BackgroundColor, newStyles.BackgroundColor,
+                    static (s, v) => s.backgroundColor = v);
+            }
+
+            if (!Equals(oldStyles.Color, newStyles.Color))
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.TextColor, newStyles.Color,
+                    static (s, v) => s.color = v);
+            }
+
+            if (!Equals(oldStyles.UnitySliceTop, newStyles.UnitySliceTop))
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceTop, newStyles.UnitySliceTop,
+                    static (s, v) => s.unitySliceTop = v);
+            }
+
+            if (!Equals(oldStyles.UnitySliceRight, newStyles.UnitySliceRight))
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceRight, newStyles.UnitySliceRight,
+                    static (s, v) => s.unitySliceRight = v);
+            }
+
+            if (!Equals(oldStyles.UnitySliceBottom, newStyles.UnitySliceBottom))
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceBottom, newStyles.UnitySliceBottom,
+                    static (s, v) => s.unitySliceBottom = v);
+            }
+
+            if (!Equals(oldStyles.UnitySliceLeft, newStyles.UnitySliceLeft))
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceLeft, newStyles.UnitySliceLeft,
+                    static (s, v) => s.unitySliceLeft = v);
+            }
+
+            if (!Equals(oldStyles.UnitySliceScale, newStyles.UnitySliceScale))
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceScale, newStyles.UnitySliceScale,
+                    static (s, v) => s.unitySliceScale = v);
             }
         }
 

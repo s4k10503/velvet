@@ -37,6 +37,10 @@ no utility for either, so Velvet's family follows Tailwind's naming for an edge 
 
 An inset is a whole, non-negative number, written bare as `border-image-slice` writes it (`slice-[12]`) or
 in pixels (`slice-[12px]`); a fraction, a percentage, another unit or a negative number is declined.
+`slice-[…]` also takes `border-image-slice`'s two, three and four values, with `_` for the space between
+them: `slice-[12_8]` sets the top and bottom to 12 and the right and left to 8, `slice-[12_8_4]` the top,
+the right and left, and the bottom, and `slice-[12_8_4_2]` the top, right, bottom and left. The edge
+classes take one value.
 `slice-scale-[N]` takes a non-negative number with no unit and declines a negative one or one with a unit.
 A declined class writes nothing.
 
@@ -48,18 +52,27 @@ same edge of an earlier `slice-[N]` and gives it back when it is removed, as `pt
 On a field control the family goes to the input box with the other background utilities
 ([styling-variants.md](styling-variants.md)).
 
-### Where it differs from `border-image-slice`
-
-- One value per class. The two-, three- and four-value forms (`border-image-slice: 12 8`) have no spelling;
-  combine the edge classes (`slice-y-[12] slice-x-[8]`).
-- No percentage and no `fill` keyword.
+`border-image-slice`'s percentages and its `fill` keyword have no spelling.
 
 ## `StyleOverrides`
 
 For a value computed at runtime, `StyleOverrides` carries the same properties: `BackgroundRepeat`,
 `UnitySliceTop`, `UnitySliceRight`, `UnitySliceBottom`, `UnitySliceLeft`, `UnitySliceScale` and
-`UnitySliceType`. Like its other members they are written inline on mount and on every change, and an
-override that goes away is cleared.
+`UnitySliceType`. They are written inline on mount and on every change, and an override that goes away is
+cleared.
+
+`StyleOverrides` is Velvet's `style` prop, and it ranks against the utilities as React's `style` does
+against `className`: a member wins over a utility writing the same property whichever was written last,
+including a variant one (`hover:bg-[#…]`) — except an important one (`!bg-[#…]`), which wins as an
+`!important` rule wins over a `style` attribute. An override that goes away hands the property back to the
+utility. That holds for `BackgroundColor`, `Color`, the slice insets and `UnitySliceScale`, which arbitrary
+values also write; `BackgroundRepeat` and `UnitySliceType` meet only stylesheet rules (`bg-repeat-*`,
+`slice-tiled`) and are written inline over them. `BackgroundImage` is not ranked: `bg-[addr:…]` and the
+gradient utilities write that slot directly, so the last write stands there.
+
+An `animate-gradient` or `animate-shimmer` pan holds `background-repeat` at `no-repeat` while it runs; when
+it stops, the element's own value returns — the current `BackgroundRepeat` override, or
+none, which leaves the property to the `bg-repeat-*` classes.
 
 ```csharp
 V.Div(className: "w-64 h-32", styles: new StyleOverrides

@@ -71,8 +71,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): compares the type's members with what a patch removing them clears.
-        // Writing `newStyles.UnitySliceScale ?? 1f` in the `UnitySliceScale` branch of `FiberNodePatcher.DiffStyles`
-        // reddens it.
+        // Deleting the `StyleArbitraryValueResolver.Clear` call from the StyleFloat overload of
+        // `StyleOverridesLayer.Write` reddens it.
         [Test]
         public void Given_EveryStyleOverridesMemberRemovedByAPatch_When_Reconciled_Then_EachInlineSlotIsUnset()
         {
@@ -92,6 +92,61 @@ namespace Velvet.Tests
             // Assert
             problems.AddRange(Mismatches(root.ElementAt(0), overrides, written: false));
             Assert.That(string.Join("; ", problems), Is.Empty);
+        }
+
+        // GREEN_ON_BASE(construction): compares the type's members with what mounting writes for a keyword value.
+        // Deleting the `writeKeyword` call from the StyleInt overload of `StyleOverridesLayer.Write` reddens it.
+        [Test]
+        public void Given_EveryStyleOverridesMemberSetToAKeyword_When_Mounted_Then_EachSlotCarriesTheKeyword()
+        {
+            // Arrange — Initial has no layer form, so it takes the path a value does not.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var overrides = new StyleOverrides();
+            foreach (var member in Members())
+            {
+                var type = Nullable.GetUnderlyingType(member.PropertyType) ?? member.PropertyType;
+                member.SetValue(overrides, Activator.CreateInstance(type, StyleKeyword.Initial));
+            }
+
+            // Act
+            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Div(styles: overrides) });
+
+            // Assert
+            var problems = new List<string>();
+            foreach (var member in Members())
+            {
+                var slot = typeof(IStyle).GetProperty(char.ToLowerInvariant(member.Name[0]) + member.Name.Substring(1));
+                var actual = slot?.GetValue(root.ElementAt(0).style);
+                var keyword = actual?.GetType().GetProperty("keyword").GetValue(actual);
+                if (!Equals(keyword, StyleKeyword.Initial))
+                {
+                    problems.Add($"{member.Name}: reads {keyword}");
+                }
+            }
+            Assert.That(string.Join("; ", problems), Is.Empty);
+        }
+
+        [Test]
+        public void Given_SliceOverrides_When_TheSliceUtilitiesBesideThemChange_Then_TheOverridesKeepTheirSlots()
+        {
+            // Arrange — the same overrides on both sides, so the patch writes the utilities and not the overrides.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var styles = new StyleOverrides { UnitySliceTop = 12, UnitySliceScale = 3f };
+            var oldTree = new VNode[] { V.Div(className: "slice-[4] slice-scale-[1]", styles: styles) };
+            var newTree = new VNode[] { V.Div(className: "slice-[6] slice-scale-[2]", styles: styles) };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), oldTree);
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert — top, right, bottom, left, scale: the overrides' top and scale, the utility's other edges.
+            var style = root.ElementAt(0).style;
+            var read = string.Join(",", style.unitySliceTop.value, style.unitySliceRight.value,
+                style.unitySliceBottom.value, style.unitySliceLeft.value,
+                style.unitySliceScale.value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Assert.That(read, Is.EqualTo("12,6,6,6,3"));
         }
 
         private static PropertyInfo[] Members() =>

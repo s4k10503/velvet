@@ -326,44 +326,52 @@ namespace Velvet
                 element.style.backgroundRepeat = styles.BackgroundRepeat.Value;
             }
 
-            if (styles.UnitySliceTop.HasValue)
-            {
-                element.style.unitySliceTop = styles.UnitySliceTop.Value;
-            }
-
-            if (styles.UnitySliceRight.HasValue)
-            {
-                element.style.unitySliceRight = styles.UnitySliceRight.Value;
-            }
-
-            if (styles.UnitySliceBottom.HasValue)
-            {
-                element.style.unitySliceBottom = styles.UnitySliceBottom.Value;
-            }
-
-            if (styles.UnitySliceLeft.HasValue)
-            {
-                element.style.unitySliceLeft = styles.UnitySliceLeft.Value;
-            }
-
-            if (styles.UnitySliceScale.HasValue)
-            {
-                element.style.unitySliceScale = styles.UnitySliceScale.Value;
-            }
-
             if (styles.UnitySliceType.HasValue)
             {
                 element.style.unitySliceType = styles.UnitySliceType.Value;
             }
 
+            // The members an arbitrary value can also write go through StyleOverridesLayer, which ranks them.
+            if (styles.UnitySliceTop.HasValue)
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceTop, styles.UnitySliceTop,
+                    static (s, v) => s.unitySliceTop = v);
+            }
+
+            if (styles.UnitySliceRight.HasValue)
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceRight, styles.UnitySliceRight,
+                    static (s, v) => s.unitySliceRight = v);
+            }
+
+            if (styles.UnitySliceBottom.HasValue)
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceBottom, styles.UnitySliceBottom,
+                    static (s, v) => s.unitySliceBottom = v);
+            }
+
+            if (styles.UnitySliceLeft.HasValue)
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceLeft, styles.UnitySliceLeft,
+                    static (s, v) => s.unitySliceLeft = v);
+            }
+
+            if (styles.UnitySliceScale.HasValue)
+            {
+                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceScale, styles.UnitySliceScale,
+                    static (s, v) => s.unitySliceScale = v);
+            }
+
             if (styles.BackgroundColor.HasValue)
             {
-                element.style.backgroundColor = styles.BackgroundColor.Value;
+                StyleOverridesLayer.Write(element, ArbitraryProperty.BackgroundColor, styles.BackgroundColor,
+                    static (s, v) => s.backgroundColor = v);
             }
 
             if (styles.Color.HasValue)
             {
-                element.style.color = styles.Color.Value;
+                StyleOverridesLayer.Write(element, ArbitraryProperty.TextColor, styles.Color,
+                    static (s, v) => s.color = v);
             }
         }
 

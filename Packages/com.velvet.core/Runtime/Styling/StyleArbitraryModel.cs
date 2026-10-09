@@ -104,6 +104,10 @@ namespace Velvet
         public static long ImportantOf(long priority) => Important | priority;
         #endregion
 
+        // StyleOverrides, Velvet's style attribute. CSS ranks a declaration there above every rule that is not
+        // important and below every important one, so this is the top of the ordinary band.
+        public const long InlineStyle = Important - 1;
+
         internal static long ForVariant(StyleVariantKind kind) => s_forVariant[kind];
 
         private static readonly VariantKindTable<long> s_forVariant = new(

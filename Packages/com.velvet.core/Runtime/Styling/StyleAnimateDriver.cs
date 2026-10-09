@@ -72,6 +72,10 @@ namespace Velvet
         // the slots adds these to its own frame.
         public Vector2 LiftPx;
         public float PingFactor = 1f;
+        // A pan mode's no-repeat stands over the element's own inline background-repeat (a
+        // StyleOverrides.BackgroundRepeat, or none, leaving the slot to its classes); this is that value, written
+        // back when the loop lets go.
+        public StyleBackgroundRepeat RepeatUnderPan = StyleKeyword.Null;
     }
 
     // Drives the animate-* motions. The texture is baked ONCE (the static gradient path); this only writes a
@@ -318,6 +322,7 @@ namespace Velvet
             // transparent-ended band can sweep fully in and out. Both disable repeat so off-box is empty.
             if (spec.Mode == AnimateMode.Gradient || spec.Mode == AnimateMode.Shimmer)
             {
+                binding.RepeatUnderPan = element.style.backgroundRepeat;
                 ApplyPanSizing(element, spec.Mode, panVertical);
             }
 
@@ -370,6 +375,19 @@ namespace Velvet
         };
 #pragma warning restore CS8524
 
+        // An inline background-repeat written from outside the loop. While a pan mode holds the slot the value
+        // waits for Detach to write it, so the pan keeps its no-repeat and the element ends on the newest value.
+        public static void WriteBackgroundRepeat(VisualElement element, StyleBackgroundRepeat value)
+        {
+            if (s_running.TryGetValue(element, out var binding)
+                && (binding.Spec.Mode == AnimateMode.Gradient || binding.Spec.Mode == AnimateMode.Shimmer))
+            {
+                binding.RepeatUnderPan = value;
+                return;
+            }
+            element.style.backgroundRepeat = value;
+        }
+
         // Tears down a running motion: hands back any transition suspension, pauses the tick, removes any
         // deferred-attach callback, and restores the styles the motion drove. Pan modes restore the gradient's
         // stretch-to-fill (the gradient itself may still be bound) and clear the panned position; each
@@ -400,7 +418,7 @@ namespace Velvet
                     new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
                 element.style.backgroundPositionX = StyleKeyword.Null;
                 element.style.backgroundPositionY = StyleKeyword.Null;
-                element.style.backgroundRepeat = StyleKeyword.Null;
+                element.style.backgroundRepeat = binding.RepeatUnderPan;
             }
             else if (binding.Spec.Mode == AnimateMode.Hue)
             {
