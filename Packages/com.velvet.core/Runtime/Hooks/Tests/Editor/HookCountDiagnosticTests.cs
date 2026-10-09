@@ -120,13 +120,17 @@ namespace Velvet.Tests
             });
         }
 
+        // The shape VEL102 reports at edit time; this fixture pins what the runtime reports for it.
+#pragma warning disable VEL102
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static VNode DetailSheet()
         {
             var (tab, _) = Hooks.UseState(0);
             return V.Text(tab.ToString());
         }
+#pragma warning restore VEL102
 
+        // GREEN_ON_BASE(refactor): the VEL102 suppression around DetailSheet changes no code that this case runs.
         [Test]
         public void Given_AHelperCallingUseStateOnlyWhileOpen_When_TheButtonOpensIt_Then_TheErrorNamesTheComponentAndTheRule()
         {
@@ -142,6 +146,7 @@ namespace Velvet.Tests
                 " (UseState / UseReducer: 1 before, 2 now)."));
         }
 
+        // GREEN_ON_BASE(refactor): the VEL102 suppression around DetailSheet changes no code that this case runs.
         [Test]
         public void Given_AHelperCallingUseStateOnlyWhileOpen_When_TheButtonOpensIt_Then_TheErrorIsThrownFromTheHelper()
         {
@@ -172,6 +177,7 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(refactor): the VEL102 suppression around DetailSheet changes no code that this case runs.
         [TestCase("V.Component")]
         [TestCase("V.Memo")]
         public void Given_APropsComponentWhoseHelperCallsUseStateOnlyWhileOpen_When_Opened_Then_TheErrorNamesTheComponent(
@@ -220,6 +226,7 @@ namespace Velvet.Tests
             return $"{head} | thrown inside {nameof(HookedSheet)}: {exception.StackTrace?.Contains(nameof(HookedSheet)) == true}";
         }
 
+        // GREEN_ON_BASE(refactor): this case never reaches DetailSheet, and a pragma around it is this file's only code change.
         [TestCase("UseCallback", "UseCallback", 0, 1)]
         [TestCase("UseCallback with deps", "UseCallback", 0, 1)]
         [TestCase("UseBlocker beneath a router", "UseBlocker", 0, 1)]
@@ -260,6 +267,7 @@ namespace Velvet.Tests
                 $" ({kind}: {before} before, {now} now) | thrown inside {nameof(HookedSheet)}: True"));
         }
 
+        // GREEN_ON_BASE(refactor): this case never reaches DetailSheet, and a pragma around it is this file's only code change.
         [TestCase("UseCallback", "UseCallback", 1, 0)]
         [TestCase("UseBlocker beneath a router", "UseBlocker", 1, 0)]
         [TestCase("UseLayoutEffect", "UseLayoutEffect", 1, 0)]
@@ -294,6 +302,7 @@ namespace Velvet.Tests
                 $"HookCountDiagnosticTests.HostRender: Rendered fewer hooks than expected ({kind}: {before} before, {now} now)."));
         }
 
+        // GREEN_ON_BASE(refactor): this case never reaches DetailSheet, and a pragma around it is this file's only code change.
         [TestCase("UseState")]
         [TestCase("UseReducer with init")]
         [TestCase("UseStore")]
@@ -338,6 +347,7 @@ namespace Velvet.Tests
             return V.Label(text: count.ToString());
         }
 
+        // GREEN_ON_BASE(refactor): this case never reaches DetailSheet, and a pragma around it is this file's only code change.
         [Test]
         public void Given_ARenderRefusedForFewerHooksWithNoBoundary_When_TheCountsMatchAgain_Then_TheEffectRunsForTheNewDeps()
         {
@@ -375,7 +385,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base also resets its hook-count baselines on unmount.
-        // HasCommittedHookCounts takes that reset over, and deleting its line in Unmount reddens this case.
+        // HasCommittedHookCounts takes that reset over, and deleting its line in Unmount reddens this case. The
+        // VEL102 suppression around DetailSheet changes no code that this case runs.
         [Test]
         public void Given_AFiberUnmounted_When_MountedAgainWithAnotherHookCount_Then_ItRendersAsAMount()
         {

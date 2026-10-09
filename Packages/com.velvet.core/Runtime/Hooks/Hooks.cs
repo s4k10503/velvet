@@ -817,11 +817,8 @@ namespace Velvet
         internal static int UseBaseRouteIndex() => UseContext(RouterContext.Depth) - 1;
 
         /// <summary>
-        /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Submitting"/> while
-        /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller runs a submission's
-        /// guards or action, <see cref="NavigationLifecycle.Loading"/> while it is matching or loading the next
-        /// location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as the
-        /// router's status transitions.
+        /// Returns <see cref="Router.Navigation"/> of the <see cref="Router"/> <c>V.RouterProvider</c> publishes
+        /// above the caller, and re-renders the component as it changes.
         /// </summary>
         public static NavigationState UseNavigation()
         {
@@ -830,53 +827,22 @@ namespace Velvet
             // The state only schedules the re-render: what is returned is read from the router at render, so the
             // render in which the provider's router changes reads the new router rather than the old one's
             // last state.
-            var (_, setState) = UseState(ReadNavigationState(router));
+            var (_, setState) = UseState(router.Navigation);
 
             UseEffect(() =>
             {
-                void Sync() => setState.Invoke(ReadNavigationState(router));
-                void OnStatus(RouterStatus _) => Sync();
-                void OnLocation(RouterLocation _) => Sync();
+                void OnNavigation(NavigationState navigation) => setState.Invoke(navigation);
 
-                router.OnStatusChanged += OnStatus;
-                router.OnLocationChanged += OnLocation;
+                router.OnNavigationChanged += OnNavigation;
                 // Reconcile any transition that happened between render and effect attach.
-                Sync();
+                setState.Invoke(router.Navigation);
                 return () =>
                 {
-                    router.OnStatusChanged -= OnStatus;
-                    router.OnLocationChanged -= OnLocation;
+                    router.OnNavigationChanged -= OnNavigation;
                 };
             }, new object[] { router });
 
-            return ReadNavigationState(router);
-        }
-
-        private static NavigationState ReadNavigationState(Router router)
-        {
-#pragma warning disable CS8524 // no discard arm: a new status has to say which phase it reports
-            var lifecycle = router.Status switch
-            {
-                RouterStatus.Matching or RouterStatus.Loading => NavigationLifecycle.Loading,
-                RouterStatus.Submitting => NavigationLifecycle.Submitting,
-                RouterStatus.Idle or RouterStatus.Ready or RouterStatus.NotFound or RouterStatus.Error =>
-                    NavigationLifecycle.Idle,
-            };
-#pragma warning restore CS8524
-            if (lifecycle == NavigationLifecycle.Idle)
-            {
-                return default;
-            }
-
-            var submission = router.PendingSubmission;
-            return new NavigationState
-            {
-                State = lifecycle,
-                Location = router.PendingLocation,
-                FormMethod = submission?.FormMethod,
-                FormAction = submission?.Action,
-                FormData = submission?.FormData,
-            };
+            return router.Navigation;
         }
 
         /// <summary>
@@ -1000,7 +966,7 @@ namespace Velvet
         {
             _ = Resolve("UseActionData");
             _ = UseRouterOrThrow("UseActionData");
-            var routeId = CurrentRouteId();
+            var routeId = UseCurrentRouteId();
             var data = UseContext(RouterContext.ActionData);
             if (routeId == null)
             {
@@ -1019,12 +985,12 @@ namespace Velvet
         {
             _ = Resolve("UseLoaderData");
             _ = UseRouterOrThrow("UseLoaderData");
-            var routeId = CurrentRouteId();
+            var routeId = UseCurrentRouteId();
+            var data = UseContext(RouterContext.LoaderData);
             if (routeId == null)
             {
                 return default;
             }
-            var data = UseContext(RouterContext.LoaderData);
             return data != null && data.TryGetValue(routeId, out var value) && value is T typed ? typed : default;
         }
 
@@ -1074,7 +1040,7 @@ namespace Velvet
         /// an Outlet sees <see cref="RouterContext.Depth"/> incremented to depth+1, so its own match is
         /// <c>Matches[Depth - 1]</c>. Returns null when there is no enclosing matched route.
         /// </summary>
-        private static string? CurrentRouteId()
+        private static string? UseCurrentRouteId()
         {
             var location = UseContext(RouterContext.Location);
             var depth = UseContext(RouterContext.Depth);
@@ -1197,7 +1163,9 @@ namespace Velvet
         /// is always the one invoked — a re-render swaps the callback without re-subscribing — so
         /// per-frame data flows without touching component state (the escape hatch for
         /// simulation-driven visuals; setting state per frame would re-render the world every tick).
-        /// Frames tick while the component's host is attached to a panel and pause while it is not.
+        /// Frames tick while the component's host is attached to a panel and pause while it is not. The elapsed
+        /// time is measured on the mount's <see cref="MountOptions.MotionClock"/>, and a frame over which that
+        /// clock did not move invokes nothing.
         /// <paramref name="priority"/> orders callbacks within the SAME panel — lower runs earlier,
         /// equal priorities run in subscription (mount) order, and this stays true across a keyed
         /// reorder of the host. A positive priority has no side effect beyond ordering: Unity's
@@ -1289,7 +1257,7 @@ namespace Velvet
                             // the nearest error boundary must receive user-callback failures either way.
                             ComponentBoundarySearch.PropagateException(fiber, ex);
                         }
-                    });
+                    }, fiber.Reconciler?.Context.StyleAnimationScheduler.Clock);
                     subscriptionRef.Set(subscription);
                 }
 
@@ -1350,7 +1318,7 @@ namespace Velvet
         /// list.</param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay = true, bool loop = false)
-            => PlayAnimationSequence(steps, deps, autoplay, loop ? (int?)null : 1, 0f);
+            => UseAnimationSequenceCore(steps, deps, autoplay, loop ? (int?)null : 1, 0f);
 
         /// <summary>
         /// Plays <paramref name="steps"/> as the overload taking <c>loop</c> does, a fixed number of times: the
@@ -1390,11 +1358,11 @@ namespace Velvet
                 throw new ArgumentOutOfRangeException(nameof(repeatDelaySec), repeatDelaySec,
                     "A gap between passes is a finite number of seconds, zero or more.");
             }
-            return PlayAnimationSequence(steps, deps, autoplay, iterations, repeatDelaySec);
+            return UseAnimationSequenceCore(steps, deps, autoplay, iterations, repeatDelaySec);
         }
 
         // A null iterations plays without end.
-        private static (AnimationSequenceState state, AnimationSequenceControls controls) PlayAnimationSequence(
+        private static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequenceCore(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay, int? iterations,
             float repeatDelaySec)
         {

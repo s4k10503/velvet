@@ -172,6 +172,7 @@ namespace Velvet.Tests
             ("Button", k => V.Button(key: k, onClick: () => { })),
             ("Label", k => V.Label(key: k, text: "x")),
             ("Slider", k => V.Slider(key: k, onValueChanged: value => { })),
+            ("SliderInt", k => V.SliderInt(key: k, onValueChanged: value => { })),
             ("Toggle", k => V.Toggle(key: k, onValueChanged: value => { })),
             ("TextField", k => V.TextField(key: k, onValueChanged: value => { })),
             ("SceneView", k => V.SceneView(camera: null, key: k)),

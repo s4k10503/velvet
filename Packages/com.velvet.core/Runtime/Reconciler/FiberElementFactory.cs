@@ -74,6 +74,11 @@ namespace Velvet
                 return VNodePool.RentSlider();
             }
 
+            if (type == typeof(SliderInt))
+            {
+                return VNodePool.RentSliderInt();
+            }
+
             if (type == typeof(ScrollView))
             {
                 return new ScrollView();
@@ -225,6 +230,14 @@ namespace Velvet
 
         internal static void ApplyProps(VisualElement element, FiberElementProps? props)
         {
+            // Ordering: before anything can type into the field, and whether or not any props are declared.
+            // A field a refCallback makes delayed can hold typing by the first render that declares a limit
+            // or multiline, and a record taken then would take that typing for Velvet's own text.
+            if (element is TextField field)
+            {
+                FiberPropApplier.RecordShownText(field);
+            }
+
             if (props == null)
             {
                 return;
@@ -268,6 +281,11 @@ namespace Velvet
             if (props.Slider != null)
             {
                 FiberPropApplier.ApplySlider(element, null, props.Slider, props.FieldValue);
+            }
+
+            if (props.SliderInt != null)
+            {
+                FiberPropApplier.ApplySliderInt(element, null, props.SliderInt, props.FieldValue);
             }
 
             if (props.FieldValue != null)

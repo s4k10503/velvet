@@ -133,6 +133,24 @@ namespace Velvet.Tests
             Assert.That(landed, Is.EqualTo(0.5f).Within(1e-3f));
         }
 
+        [Test]
+        public void Given_ATweenSwapWhoseDurationCodeRewrote_When_AZeroDurationPoseLandsAndTheTweenEnds_Then_ThatDurationIsTheElementsOwn()
+        {
+            // Arrange
+            var (box, _, mounted) = PlayThenLand(new Poses(s_tween, "opacity-0", "opacity-100", "opacity-50"),
+                Opacity, element => element.style.transitionDuration = new List<TimeValue> { new(0.25f, TimeUnit.Second) });
+            using var owned = mounted;
+
+            // Act
+            AdvancePast(0.4f);
+
+            // Assert
+            var durations = box.style.transitionDuration;
+            Assert.That((durations.keyword,
+                    durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(0.25f, TimeUnit.Second))),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
         // The tween's target writes no opacity, so the pose's opacity is a change the landing has to time rather than a
         // value it repeats: left out of the list, opacity would rest at the tween's old target
         // (HeldTransitionOverrideEngineTests).

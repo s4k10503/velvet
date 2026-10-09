@@ -17,6 +17,7 @@ namespace Velvet
     internal sealed class EngineMember
     {
         private static readonly Assembly UIElements = typeof(VisualElement).Assembly;
+        private static readonly Assembly IMGUI = typeof(UnityEngine.GUIUtility).Assembly;
 
         private const string FocusControllerType = "UnityEngine.UIElements.FocusController";
         private const string VisualElementType = "UnityEngine.UIElements.VisualElement";
@@ -50,6 +51,16 @@ namespace Velvet
         // FocusManager's composite-field scope.
         internal static readonly EngineMember IsCompositeRoot =
             ReadProperty(UIElements, VisualElementType, "isCompositeRoot", "System.Boolean");
+
+        // V.TextField's onSubmit: — the input's record of an open IME composition.
+        internal static readonly EngineMember TextEditingManipulator = ReadProperty(UIElements,
+            "UnityEngine.UIElements.TextElement", "editingManipulator", "UnityEngine.UIElements.TextEditingManipulator");
+
+        internal static readonly EngineMember TextEditingUtilities = Field(UIElements,
+            "UnityEngine.UIElements.TextEditingManipulator", "editingUtilities", "UnityEngine.TextEditingUtilities");
+
+        internal static readonly EngineMember TextCompositionActive =
+            Field(IMGUI, "UnityEngine.TextEditingUtilities", "isCompositionActive", "System.Boolean");
 
         // EnabledSelfWrites.
         internal static readonly EngineMember PropertyChangedEvent = ConstructedType(UIElements,

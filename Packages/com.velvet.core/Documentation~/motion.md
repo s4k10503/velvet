@@ -35,6 +35,17 @@ V.Motion(key: "card", className: "w-24 h-24 rounded-xl bg-sky-500",
 A pose is a *class delta*: classes present in the resting variant and absent from another are
 removed/added on swap, and anything not mentioned falls back to the element's base `className`.
 
+A tween temporarily replaces the element's inline transition duration and easing, and its transition
+delay only where that tween sets one. When it finishes or is interrupted, it restores the element's
+own lists, including a `duration-[...]` value; an exit interrupted on a panel hands its timing on to
+the reversal that plays it back, and the restore waits until that reversal ends. When Velvet next writes or
+releases a tween's timing, a slot whose keyword or list entries differ from the value the tween timing
+last wrote there is taken as code's: it becomes the element's own, and the tweens already playing stop
+supplying that slot until one of them writes it again. An identical reassignment, or a change undone
+before that observation, is not taken. If tween plays overlap on one element, each slot holds the value
+of the latest one still playing that wrote it, and the end of the last restores the element's own
+lists.
+
 **Label inheritance (Framer's variant propagation):** a Motion naming none of `animate`, `initial` and
 `exit` follows the nearest ancestor Motion's active label and takes that ancestor's `initial` label with
 it. A Motion naming any of the three takes neither, as Framer treats a Motion naming any variant label
@@ -365,8 +376,8 @@ resolved start described above.
   Motion**, which takes over only the values it animates and leaves the element's other CSS
   transitions running. Two overlapping plays each hold
   their own claim, so the first to finish cannot un-suspend the second, and the suspension lifts as
-  soon as the last one settles or is cancelled. Reach for `Tween` when you want the class's own
-  transition to do the work instead.
+  soon as the last one settles or is cancelled. Reach for `Tween` on the default clock when you want the
+  class's own transition to do the work instead; on any other, a `Tween` is driven too (*Clocks* below).
 
 ## Cubic-bezier easing
 
@@ -529,6 +540,47 @@ inline value, and so does a `V.Motion` variant swap's own transition, which belo
 swap driving the same slot as the mode is shadowed too. While such a swap is running the element's
 inline `transition-property` is the swap's: the suspension is neither taken nor handed back for the
 swap's length, and the swap's own completion puts back whichever of the two the element still needs.
+
+## Clocks (holding motion with game time)
+
+A mount chooses the clock its motion advances on, through `MountOptions.MotionClock`:
+
+```csharp
+V.Mount(root, tree, new MountOptions { MotionClock = MotionClock.GameTime });
+```
+
+- `MotionClock.Realtime`, the default: a `Tween` runs on UI Toolkit's own transitions, spring and bezier
+  plays, `layoutId` moves and `Hooks.UseFrame` step by the panel scheduler's own interval, and the
+  `animate-*` loops and `filter-*` transitions read `Time.realtimeSinceStartupAsDouble`.
+- `MotionClock.GameTime` reads `Time.timeAsDouble`, Unity's scaled game time.
+- A class deriving from `MotionClock` and overriding `NowSec` is a clock the application drives itself,
+  such as one a frame-step capture advances by a fixed step.
+
+On any other clock the tree's motion steps by the distance `MotionClock.NowSec` moved since its previous
+frame, so a clock that holds still holds it where it is, and one that moves a frame's worth moves it a
+frame's worth:
+
+- **Every `V.Motion` play** — a mount enter, an exit, a label change — whatever its `Type`, including the
+  wait for its `DelaySec` and stagger slot; a step that passes the delay carries what it passed it by into
+  the play. A `Tween` is played by the per-frame driver a `Bezier` plays on, rather than by UI Toolkit's
+  transition, which would run on the panel's time: on the tween's own duration, delay and
+  `PropertyOverrides`, eased by the curve UI Toolkit eases that transition by for each `Easing`. So it
+  animates the channels *Driven channels* lists, a `StyleTransition` preset's opacity, translate and scale
+  among them. A property outside them lands with the swap where the play suspends the element's own
+  transitions, which it does while they name a property one of its channels writes (`transition-all` does);
+  transitions naming no such property, `transition-filter` among them, are left running. The play
+  completes once its slowest `PropertyOverrides` entry has run, whether or not a channel plays that entry's property, and an exit cancelled part-way
+  reverses over the shortened timing UI Toolkit gives a reversed transition.
+- **A `layoutId` move**, and the opacity a crossfade hands back as it ends.
+- **A `filter-*` transition**, including one UI Toolkit would animate itself on the default clock
+  ([styling-filters.md](styling-filters.md#transitions)).
+- **The `animate-*` loops**, which show the phase of the distance since they started.
+- **`Hooks.UseFrame`**, whose delta is the distance the clock moved; a frame over which it did not move
+  invokes nothing. `Hooks.UseAnimationSequence` walks its steps on that delta, so its holds wait for the
+  clock too.
+
+Any other transition an element's own utility classes declare (`transition-colors` under a `hover:`
+colour, say) is UI Toolkit's, and runs on the panel's time on any clock.
 
 ## Timelines (`Hooks.UseAnimationSequence`)
 

@@ -148,6 +148,347 @@ namespace Velvet.Tests
             Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AMotionWithAnArbitraryDuration_When_CodeReassignsItsTweensDurationBeforeItIsObserved_Then_ItsOwnDurationReturns(
+            bool changeFirst)
+        {
+            // Arrange — "a" carrying duration-[400ms], visible on its variants.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition, s_aClasses) = ("visible", s_quickTween, "duration-[400ms]");
+            using var mounted = MountAAlone();
+
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            var a = Root.Q<VisualElement>("a");
+            var temporary = a.style.transitionDuration;
+            var tweenHoldsItsDuration = temporary.keyword == StyleKeyword.Undefined
+                && temporary.value?.Count == 1 && temporary.value[0].unit == TimeUnit.Millisecond
+                && Mathf.Approximately(temporary.value[0].value, 100f);
+
+            // Act — reassign the temporary value, optionally after a change undone before timing is observed.
+            if (changeFirst) a.style.transitionDuration = new List<TimeValue> { new(200f, TimeUnit.Millisecond) };
+            a.style.transitionDuration = new List<TimeValue> { new(100f, TimeUnit.Millisecond) };
+            AdvancePast(0.3f);
+
+            // Assert
+            var durations = a.style.transitionDuration;
+            Assert.That((tweenHoldsItsDuration, durations.keyword,
+                    durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
+                Is.EqualTo((true, StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWithAnArbitraryDuration_When_AVariantTweenWithAPropertyOverrideEnds_Then_ItsDurationIsItsOwnAgain()
+        {
+            // Arrange — "a" carrying duration-[400ms], visible on its variants.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aClasses) = ("visible", "duration-[400ms]");
+            s_aTransition = new StyleTransitionConfig
+            {
+                DurationSec = 0.1f, Easing = EasingMode.Linear,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.15f) },
+            };
+            using var mounted = MountAAlone();
+
+            // Act — a swap to its hidden pose, its opacity on an override of its own, and past its end.
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            AdvancePast(0.4f);
+
+            // Assert — its own four tenths, rather than none.
+            var durations = Root.Q<VisualElement>("a").style.transitionDuration;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f)),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseCodeWritesItsDurationMidVariantTween_When_ASecondSwapStartsAndEnds_Then_ThatDurationIsItsOwn()
+        {
+            // Arrange
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition) = ("visible", s_slowTween);
+            using var mounted = MountAAlone();
+            var a = Root.Q<VisualElement>("a");
+            a.style.transitionDuration = new List<TimeValue> { new(0.4f, TimeUnit.Second) };
+            a.style.transitionDelay = new List<TimeValue> { new(0.02f, TimeUnit.Second) };
+            a.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseOut) };
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            a.style.transitionDuration = new List<TimeValue> { new(0.25f, TimeUnit.Second) };
+            a.style.transitionDelay = new List<TimeValue> { new(0.07f, TimeUnit.Second) };
+            a.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseIn) };
+
+            // Act — a swap back to its visible pose; past that tween's end.
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(1.2f);
+
+            // Assert
+            var durations = a.style.transitionDuration;
+            var delays = a.style.transitionDelay;
+            var curves = a.style.transitionTimingFunction;
+            Assert.That((durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.25f),
+                    delays.keyword, delays.value?.Count == 1 && Mathf.Approximately(delays.value[0].value, 0.07f),
+                    curves.keyword, curves.value?.Count == 1 && curves.value[0].Equals(new EasingFunction(EasingMode.EaseIn))),
+                Is.EqualTo((StyleKeyword.Undefined, true, StyleKeyword.Undefined, true, StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseCodeWritesAPrefixOfItsOverrideTweensDurations_When_ThatTweenEnds_Then_ThatPrefixIsItsOwn()
+        {
+            // Arrange — the tween writes 100ms for its catch-all and 150ms for opacity.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            s_aPose = "visible";
+            s_aTransition = new StyleTransitionConfig
+            {
+                DurationSec = 0.1f, Easing = EasingMode.Linear,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.15f) },
+            };
+            using var mounted = MountAAlone();
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            var a = Root.Q<VisualElement>("a");
+
+            // Act — its first entry alone, and past the tween's end.
+            a.style.transitionDuration = new List<TimeValue> { new(100f, TimeUnit.Millisecond) };
+            AdvancePast(0.4f);
+
+            // Assert
+            var durations = a.style.transitionDuration;
+            Assert.That((durations.keyword,
+                    durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(100f, TimeUnit.Millisecond))),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AMotionWhoseCodeWritesTheLastTweensDurationAfterItEnded_When_ANextTweenEnds_Then_ThatDurationIsItsOwn()
+        {
+            // Arrange — a 100ms tween that ends with no timing of the element's own.
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("card", 0, true, false);
+            (s_aPose, s_aTransition) = ("visible", s_quickTween);
+            using var mounted = MountAAlone();
+            s_aPose = "hidden";
+            RenderShared(mounted);
+            AdvancePast(0.3f);
+            var a = Root.Q<VisualElement>("a");
+            a.style.transitionDuration = new List<TimeValue> { new(100f, TimeUnit.Millisecond) };
+
+            // Act — a swap back on the same tween, and past its end.
+            s_aPose = "visible";
+            RenderShared(mounted);
+            AdvancePast(0.3f);
+
+            // Assert
+            var durations = a.style.transitionDuration;
+            Assert.That((durations.keyword,
+                    durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(100f, TimeUnit.Millisecond))),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        private static readonly string[] s_hiddenPose = { "opacity-0" };
+        private static readonly string[] s_visiblePose = { "opacity-100" };
+
+        private static StyleTransitionConfig LinearTween(float durationSec, float delaySec = 0f) =>
+            new() { DurationSec = durationSec, DelaySec = delaySec, Easing = EasingMode.Linear };
+
+        private static StyleTransitionConfig LinearExit(float durationSec, float delaySec = 0f) => new()
+        {
+            DurationSec = durationSec, DelaySec = delaySec, Easing = EasingMode.Linear,
+            ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+        };
+
+        private static void WriteTimingSlot(VisualElement element, string slot)
+        {
+            switch (slot)
+            {
+                case "duration":
+                    element.style.transitionDuration = new List<TimeValue> { new(250f, TimeUnit.Millisecond) };
+                    break;
+                case "delay":
+                    element.style.transitionDelay = new List<TimeValue> { new(70f, TimeUnit.Millisecond) };
+                    break;
+                default:
+                    element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseIn) };
+                    break;
+            }
+        }
+
+        private static string TimingSlot(VisualElement element, string slot)
+        {
+            if (slot == "curve")
+            {
+                var curves = element.style.transitionTimingFunction;
+                var modes = new List<string>();
+                foreach (var curve in curves.value ?? new List<EasingFunction>()) modes.Add(curve.mode.ToString());
+                return curves.keyword + ":" + string.Join(",", modes);
+            }
+            var times = slot == "duration" ? element.style.transitionDuration : element.style.transitionDelay;
+            return times.keyword + ":" + (times.value == null ? "" : string.Join(",", times.value));
+        }
+
+        // A Div whose duration-[400ms] the resolver writes inline, for a scheduler of the case's own to play on.
+        private VisualElement ElementWithItsOwnDuration()
+        {
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(),
+                new VNode[] { V.Div(name: "own", className: "duration-[400ms]") });
+            return Root.Q<VisualElement>("own");
+        }
+
+        private static (StyleKeyword, bool) OwnDurationReading(VisualElement element)
+        {
+            var durations = element.style.transitionDuration;
+            return (durations.keyword, durations.value?.Count == 1 && Mathf.Approximately(durations.value[0].value, 0.4f));
+        }
+
+        [TestCase(0.1f, 0.3f)]
+        [TestCase(0.3f, 0.1f)]
+        public void Given_AnElementWithItsOwnDuration_When_AnEnterAndAnExitTweenOverlapOnItAndBothEnd_Then_ItsDurationIsItsOwn(
+            float enterSec, float exitSec)
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+
+            // Act — an enter, an exit started on top of it, and past both ends in the order the durations give.
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(enterSec));
+            scheduler.PlayExit(element, LinearExit(exitSec), onComplete: null);
+            AdvancePast(0.8f);
+
+            // Assert
+            Assert.That(OwnDurationReading(element), Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AnEnterTweenWithAnExitTweenStartedOnTopOfIt_When_TheEnterEnds_Then_TheExitsDurationStillTimesTheElement()
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(0.1f));
+            scheduler.PlayExit(element, LinearExit(0.6f), onComplete: null);
+
+            // Act — past the enter's end, short of the exit's.
+            AdvancePast(0.2f);
+
+            // Assert
+            var durations = element.style.transitionDuration;
+            Assert.That((durations.keyword,
+                    durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(600f, TimeUnit.Millisecond))),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [Test]
+        public void Given_AnEnterTweenWithAnExitTweenStartedOnTopOfIt_When_TheExitEnds_Then_TheEntersDurationTimesTheElementAgain()
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(0.6f));
+            scheduler.PlayExit(element, LinearExit(0.1f), onComplete: null);
+
+            // Act — past the exit's end, short of the enter's.
+            AdvancePast(0.2f);
+
+            // Assert
+            var durations = element.style.transitionDuration;
+            Assert.That((durations.keyword,
+                    durations.value?.Count == 1 && durations.value[0].Equals(new TimeValue(600f, TimeUnit.Millisecond))),
+                Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [TestCase("duration", "Undefined:250ms")]
+        [TestCase("delay", "Undefined:70ms")]
+        [TestCase("curve", "Undefined:EaseIn")]
+        public void Given_TwoTweensOverlappingWhenCodeWritesATimingSlot_When_TheLaterEnds_Then_TheSlotKeepsTheCodesValue(
+            string slot, string expected)
+        {
+            // Arrange — both tweens write all three slots.
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(0.6f, delaySec: 0.01f));
+            scheduler.PlayExit(element, LinearExit(0.1f, delaySec: 0.01f), onComplete: null);
+            WriteTimingSlot(element, slot);
+
+            // Act — past the exit's end, short of the enter's.
+            AdvancePast(0.2f);
+
+            // Assert
+            Assert.That(TimingSlot(element, slot), Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes a landing straight into the slot on screen.
+        // With tween timing layered, a landing for an enter under a later tween must still reach that slot.
+        [Test]
+        public void Given_AnExitTweenStartedOverAVariantEnter_When_AZeroDurationPoseLandsOnTheEnter_Then_TheLandingIsOnScreen()
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, LinearTween(0.5f));
+            scheduler.PlayExit(element, LinearExit(0.6f), onComplete: null);
+
+            // Act
+            scheduler.LandNamedProperties(element, new[] { "opacity-50" }, StyleTransitionConfig.None);
+
+            // Assert — the exit's 600ms, with opacity's 1ms landing entry after it.
+            var durations = element.style.transitionDuration.value;
+            Assert.That(durations == null ? "" : string.Join(",", durations), Is.EqualTo("600ms,1ms"));
+        }
+
+        [Test]
+        public void Given_AnExitWhoseDelayCodeWroteBeforeItRestarted_When_TheRestartEndsBeforeTheReversal_Then_TheDelayIsTheCodes()
+        {
+            // Arrange — the exits write no delay of their own.
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayExit(element, LinearExit(0.6f), onComplete: null);
+            WriteTimingSlot(element, "delay");
+            scheduler.PlayExit(element, LinearExit(0.1f), onComplete: null);
+
+            // Act — past the restarted exit's end, short of the reversal's.
+            AdvancePast(0.2f);
+
+            // Assert
+            Assert.That(TimingSlot(element, "delay"), Is.EqualTo("Undefined:70ms"));
+        }
+
+        [Test]
+        public void Given_AnElementWithItsOwnDuration_When_AnExitTweenRestartsWhileItPlays_Then_ItsDurationIsItsOwnOnceBothEnd()
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.PlayExit(element, LinearExit(0.3f), onComplete: null);
+
+            // Act — the restart hands the first exit to a reversal; past both ends.
+            scheduler.PlayExit(element, LinearExit(0.3f), onComplete: null);
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(OwnDurationReading(element), Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Tween)]
+        public void Given_AnElementWithItsOwnDuration_When_CancelAllStopsAPlayOnIt_Then_ItsDurationIsItsOwn(TransitionType type)
+        {
+            // Arrange
+            var element = ElementWithItsOwnDuration();
+            var scheduler = new StyleAnimationScheduler();
+            var config = type == TransitionType.Spring
+                ? new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 200f, Damping = 26f }
+                : LinearTween(0.3f);
+            scheduler.PlayVariantEnter(element, s_hiddenPose, s_visiblePose, config);
+
+            // Act
+            scheduler.CancelAll();
+
+            // Assert
+            Assert.That(OwnDurationReading(element), Is.EqualTo((StyleKeyword.Undefined, true)));
+        }
+
         // Where the replacement sits after the move across parents; the mounted element sits at left 200.
         private static int s_movedLeft;
 
@@ -4557,6 +4898,105 @@ namespace Velvet.Tests
             // Assert — the swap did fire on the following tick (the enter must still make progress,
             // not park the from-state forever).
             Assert.That(element.ClassListContains("opacity-0"), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a delayed bezier play on the default clock honours its delay.
+        [Test]
+        public void Given_ADelayedBezierPlayOnTheDefaultClock_When_LessThanTheDelayHasPassed_Then_ItHasNotMoved()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.5f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 10; i++) Tick();
+
+            // Assert — held at the from-pose the play wrote inline, rather than carrying no inline opacity.
+            var opacity = element.style.opacity;
+            scheduler.CancelAll();
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the default clock counts a delay on the panel's own time, which the
+        // simulated frames below carry past it; a delay counted on wall time would still be waiting unless the
+        // frames took half a second to run.
+        [Test]
+        public void Given_ADelayedBezierPlayOnTheDefaultClock_When_MoreThanTheDelayHasPassedOnThePanel_Then_ItHasMoved()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.5f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 40; i++) Tick();
+
+            // Assert
+            var opacity = element.style.opacity.value;
+            scheduler.CancelAll();
+            Assert.That(opacity, Is.GreaterThan(0f));
+        }
+
+        // 16 ms frames: the fourth passes the 50 ms delay by 14 ms, and the fifth steps 16 ms more.
+        [Test]
+        public void Given_ADelayedBezierPlayOnTheDefaultClock_When_TheFrameAfterItsDelayEnds_Then_ItHasMovedByWhatThatFramePassedItBy()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.05f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 5; i++) Tick();
+
+            // Assert — 30 ms in; counted from the frame that ended the delay, 16.
+            var opacity = element.style.opacity.value;
+            scheduler.CancelAll();
+            Assert.That(opacity, Is.EqualTo(0.030f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): an undelayed bezier play starts its tick as it plays, on the default clock.
+        // One parked behind a zero delay would start it only on the frame after.
+        [Test]
+        public void Given_AnUndelayedBezierPlayOnTheDefaultClock_When_ThePanelTicksOnce_Then_ItHasMovedThatFrame()
+        {
+            // Arrange
+            var element = new VisualElement();
+            Root.Add(element);
+            var scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            Tick();
+
+            // Assert
+            var opacity = element.style.opacity.value;
+            scheduler.CancelAll();
+            Assert.That(opacity, Is.GreaterThan(0f));
         }
 
         [Component]

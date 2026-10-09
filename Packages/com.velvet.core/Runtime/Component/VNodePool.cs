@@ -86,6 +86,7 @@ namespace Velvet
                         break;
                     case FiberEventBinding[] events:
                         s_ownedSingleEventArrays.Remove(events);
+                        s_ownedMultiEventArrays.Remove(events);
                         break;
                     case VNode?[] nodes:
                         s_ownedNodeArrays.Remove(nodes);
@@ -179,6 +180,7 @@ namespace Velvet
             props.DragOverlay = null;
             props.NoDrag = false;
             props.Slider = null;
+            props.SliderInt = null;
             props.ScrollView = null;
             props.TextField = null;
             props.Choices = null;
@@ -200,6 +202,7 @@ namespace Velvet
             if (node is not BaseElementNode element) return;
             if (element.Props != null) s_ownedProps.Remove(element.Props);
             if (element.Events is { Length: 1 }) s_ownedSingleEventArrays.Remove(element.Events);
+            if (element.Events is { Length: > 1 }) s_ownedMultiEventArrays.Remove(element.Events);
         }
 
         #region FiberEventBinding[]
@@ -220,8 +223,30 @@ namespace Velvet
             return rented;
         }
 
+        // Arrays of more than one binding (V.TextField's handlers) are pooled per length, on the same
+        // rent-scoped membership as the single arrays above.
+        private static readonly Dictionary<int, Stack<FiberEventBinding[]>> s_multiEventPools = new();
+        private static readonly HashSet<FiberEventBinding[]> s_ownedMultiEventArrays = new();
+
+        public static FiberEventBinding[] RentEventArray(int length)
+        {
+            if (length == 1) return RentSingleEventArray();
+            var rented = s_multiEventPools.TryGetValue(length, out var pool) && pool.Count > 0
+                ? pool.Pop()
+                : new FiberEventBinding[length];
+            s_ownedMultiEventArrays.Add(rented);
+            Journal(rented);
+            return rented;
+        }
+
         public static void ReturnEventArray(FiberEventBinding[] array)
         {
+            if (array is { Length: > 1 })
+            {
+                ReturnMultiEventArray(array);
+                return;
+            }
+
             if (array == null || array.Length != 1) return;
             // Only recycle arrays rented out by the pool; a caller-owned or already-returned array is
             // left untouched — Remove doubles as the membership test.
@@ -236,11 +261,30 @@ namespace Velvet
 
         internal static void DisownEventArray(FiberEventBinding[]? array)
         {
-            if (array != null) s_ownedSingleEventArrays.Remove(array);
+            if (array == null) return;
+            s_ownedSingleEventArrays.Remove(array);
+            s_ownedMultiEventArrays.Remove(array);
+        }
+
+        private static void ReturnMultiEventArray(FiberEventBinding[] array)
+        {
+            if (!s_ownedMultiEventArrays.Remove(array)) return;
+            if (s_releaseScopeDepth > 0)
+            {
+                s_stagedEventArrays.Add(array);
+                return;
+            }
+            ReleaseEventArray(array);
         }
 
         private static void ReleaseEventArray(FiberEventBinding[] array)
         {
+            if (array.Length > 1)
+            {
+                ReleaseMultiEventArray(array);
+                return;
+            }
+
             if (s_singleEventPool.Count >= MaxPoolSize)
             {
                 return;
@@ -248,6 +292,23 @@ namespace Velvet
 
             array[0] = null!;
             s_singleEventPool.Push(array);
+        }
+
+        private static void ReleaseMultiEventArray(FiberEventBinding[] array)
+        {
+            if (!s_multiEventPools.TryGetValue(array.Length, out var pool))
+            {
+                pool = new Stack<FiberEventBinding[]>();
+                s_multiEventPools[array.Length] = pool;
+            }
+
+            if (pool.Count >= MaxPoolSize)
+            {
+                return;
+            }
+
+            Array.Clear(array, 0, array.Length);
+            pool.Push(array);
         }
 
         #endregion
@@ -420,6 +481,21 @@ namespace Velvet
 
         #endregion
 
+        #region SliderInt pool
+
+        private static readonly ElementPool<SliderInt> s_sliderIntPool =
+            new(FiberSliderKeyboard.CreateInt, FiberSliderPoolHelper.ResetSliderIntForReuse, MaxSliderPoolSize);
+
+        public static SliderInt RentSliderInt() => s_sliderIntPool.Rent();
+
+        public static void ReturnSliderInt(SliderInt slider)
+        {
+            if (!FiberSliderPoolHelper.CanReuse(slider)) return;
+            s_sliderIntPool.Return(slider);
+        }
+
+        #endregion
+
         #region TextField pool
 
         // Pooled TextFields have been reset via FiberTextFieldPoolHelper.ResetTextFieldForReuse,
@@ -449,12 +525,15 @@ namespace Velvet
             s_ownedProps.Clear();
             s_singleEventPool.Clear();
             s_ownedSingleEventArrays.Clear();
+            s_multiEventPools.Clear();
+            s_ownedMultiEventArrays.Clear();
             s_nodeArrayPools.Clear();
             s_ownedNodeArrays.Clear();
             s_labelPool.Clear();
             s_buttonPool.Clear();
             s_togglePool.Clear();
             s_sliderPool.Clear();
+            s_sliderIntPool.Clear();
             s_textFieldPool.Clear();
         }
 #endif

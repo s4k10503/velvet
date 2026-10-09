@@ -33,6 +33,34 @@ namespace Velvet
             return events;
         }
 
+        // V.TextField's handlers in a fixed order, which FiberEventBindingManager.HasSameBindings relies on to
+        // match one render's array against the last.
+        private static FiberEventBinding[] TextFieldEvents(
+            Action<string>? onValueChanged,
+            Action<string>? onSubmit,
+            EventCallback<KeyDownEvent>? onKeyDown,
+            EventCallback<KeyUpEvent>? onKeyUp,
+            EventCallback<FocusInEvent>? onFocus,
+            EventCallback<FocusOutEvent>? onBlur)
+        {
+            var count = (onValueChanged != null ? 1 : 0) + (onSubmit != null ? 1 : 0) + (onKeyDown != null ? 1 : 0)
+                        + (onKeyUp != null ? 1 : 0) + (onFocus != null ? 1 : 0) + (onBlur != null ? 1 : 0);
+            if (count == 0)
+            {
+                return EmptyEvents;
+            }
+
+            var events = VNodePool.RentEventArray(count);
+            var next = 0;
+            if (onValueChanged != null) events[next++] = new ChangeEventBinding<string> { Handler = onValueChanged };
+            if (onSubmit != null) events[next++] = new TextFieldSubmitBinding { Handler = onSubmit };
+            if (onKeyDown != null) events[next++] = new KeyDownBinding { Handler = onKeyDown };
+            if (onKeyUp != null) events[next++] = new KeyUpBinding { Handler = onKeyUp };
+            if (onFocus != null) events[next++] = new TextFieldFocusBinding { Handler = onFocus };
+            if (onBlur != null) events[next] = new TextFieldBlurBinding { Handler = onBlur };
+            return events;
+        }
+
         private static readonly ClassNameParseCache s_classNameCache = new();
 
 #if UNITY_EDITOR
@@ -454,12 +482,7 @@ namespace Velvet
         {
             VNode.RequireKey(key);
             // Above both rents below, so a refusal here strands no event array or bag this factory rented.
-            if (direction is not (null or SliderDirection.Horizontal or SliderDirection.Vertical))
-            {
-                throw new ArgumentOutOfRangeException(nameof(direction), direction,
-                    "V.Slider takes a member of SliderDirection as its direction.");
-            }
-
+            RequireSliderDirection(direction, "V.Slider takes a member of SliderDirection as its direction.");
             if (step is { } stepValue && !(stepValue > 0f && float.IsFinite(stepValue)))
             {
                 throw new ArgumentOutOfRangeException(nameof(step), step,
@@ -496,6 +519,100 @@ namespace Velvet
                 WhileTapClass = whileTapClass,
                 WhileFocusClass = whileFocusClass,
             };
+        }
+
+        /// <summary>
+        /// Creates a SliderInt: <see cref="Slider"/> over whole numbers, reporting an <c>int</c>.
+        /// </summary>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="value">Current slider value (controlled).</param>
+        /// <param name="lowValue">Minimum value of the slider range.</param>
+        /// <param name="highValue">Maximum value of the slider range.</param>
+        /// <param name="onValueChanged">Handler invoked when the slider value changes.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="enabled">When false, disables the slider input.</param>
+        /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="onCreated">Callback invoked once when the SliderInt VisualElement is first created.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="direction">Axis the slider runs along, as <see cref="Slider"/>'s <c>direction</c>.</param>
+        /// <param name="inverted">When true, swaps the ends the low and high values sit at, as
+        /// <see cref="Slider"/>'s <c>inverted</c>.</param>
+        /// <param name="step">Distance one arrow key moves the value, and the grid Home, End and the paging keys
+        /// land on, counted from <paramref name="lowValue"/>. Null is Radix's default of 1.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="direction"/> names no member of
+        /// <see cref="SliderDirection"/>, or <paramref name="step"/> is not above zero.</exception>
+        /// <returns>The created <see cref="ElementNode"/> representing this slider.</returns>
+        public static ElementNode SliderInt(
+            string? className = null,
+            int? value = null,
+            int? lowValue = null,
+            int? highValue = null,
+            Action<int>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
+            bool? enabled = null,
+            Func<VisualElement, Action>? refCallback = null,
+            Action<VisualElement>? onCreated = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null,
+            SliderDirection? direction = null,
+            bool? inverted = null,
+            int? step = null)
+        {
+            VNode.RequireKey(key);
+            // Above both rents below, for V.Slider's reason.
+            RequireSliderDirection(direction, "V.SliderInt takes a member of SliderDirection as its direction.");
+            if (step is <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(step), step, "V.SliderInt takes a step above zero.");
+            }
+            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null);
+
+            FiberElementProps? props = null;
+            if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue
+                || direction.HasValue || inverted.HasValue || step.HasValue)
+            {
+                props = VNodePool.RentProps();
+                props.FieldValue = value;
+                props.Enabled = enabled;
+                props.SliderInt = (lowValue.HasValue || highValue.HasValue || direction.HasValue || inverted.HasValue
+                        || step.HasValue)
+                    ? new SliderIntSettings(lowValue, highValue, direction, inverted, step)
+                    : null;
+            }
+            props = WithAttributes(props, data, aria);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(SliderInt),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = props,
+                Children = EmptyChildren,
+                Events = events,
+                RefCallback = refCallback,
+                OnCreated = onCreated,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        private static void RequireSliderDirection(SliderDirection? direction, string message)
+        {
+            if (direction is not (null or SliderDirection.Horizontal or SliderDirection.Vertical))
+            {
+                throw new ArgumentOutOfRangeException(nameof(direction), direction, message);
+            }
         }
 
         /// <summary>
@@ -589,6 +706,12 @@ namespace Velvet
         /// <param name="multiline">When true, the field is multi-line (HTML <c>&lt;textarea&gt;</c>).</param>
         /// <param name="keyboardType">Written to the field's <c>keyboardType</c> (HTML <c>inputmode</c>).</param>
         /// <param name="autoCorrection">Written to the field's <c>autoCorrection</c> (HTML <c>autocorrect</c>).</param>
+        /// <param name="onSubmit">Handler invoked with the field's value when Enter commits a single-line field (a form's <c>onSubmit</c> from Enter in its <c>&lt;input&gt;</c>). Not invoked in a multi-line field.</param>
+        /// <param name="onKeyDown">Handler invoked for each key pressed while the field holds focus, before the field takes the key; stopping the event's propagation keeps the key out of the field.</param>
+        /// <param name="onKeyUp">Handler invoked for each key released while the field holds focus.</param>
+        /// <param name="onFocus">Handler invoked when focus enters the field from outside it.</param>
+        /// <param name="onBlur">Handler invoked when focus leaves the field for somewhere outside it.</param>
+        /// <param name="onCreated">Callback invoked once when the TextField VisualElement is first created.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -614,10 +737,16 @@ namespace Velvet
             bool? isDelayed = null,
             bool? multiline = null,
             TouchScreenKeyboardType? keyboardType = null,
-            bool? autoCorrection = null)
+            bool? autoCorrection = null,
+            Action<string>? onSubmit = null,
+            EventCallback<KeyDownEvent>? onKeyDown = null,
+            EventCallback<KeyUpEvent>? onKeyUp = null,
+            EventCallback<FocusInEvent>? onFocus = null,
+            EventCallback<FocusOutEvent>? onBlur = null,
+            Action<VisualElement>? onCreated = null)
         {
             VNode.RequireKey(key);
-            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
+            var events = TextFieldEvents(onValueChanged, onSubmit, onKeyDown, onKeyUp, onFocus, onBlur);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
                                     || isReadOnly.HasValue || isDelayed.HasValue || multiline.HasValue
@@ -650,6 +779,7 @@ namespace Velvet
                 Props = props,
                 Children = EmptyChildren,
                 Events = events,
+                OnCreated = onCreated,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -1904,6 +2034,8 @@ namespace Velvet
         /// the scope's first focusable descendant.</param>
         /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
         /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
+        /// <param name="orientation">With <paramref name="singleTabStop"/>, the axis arrow/dpad moves travel;
+        /// a move on the other axis is ignored. Not read without <paramref name="singleTabStop"/>.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode FocusScope(
             string? className = null,
@@ -1921,11 +2053,15 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FocusScopeOrientation orientation = FocusScopeOrientation.Both)
         {
             VNode.RequireKey(key);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
-            mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop);
+            mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop)
+            {
+                Orientation = orientation,
+            };
 
             return new ElementNode
             {

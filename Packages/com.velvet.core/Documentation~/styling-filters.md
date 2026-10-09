@@ -17,7 +17,7 @@ Every filter utility on an element — built-in or custom — composes into the 
 
 | Utility | Values | Notes |
 |---|---|---|
-| `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`) or a bare number (px); no `%`, as CSS `blur()` takes none. Other CSS lengths (`em`, `vw`, …) are not recognized |
+| `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`) or a bare number (px); no `%`, as CSS `blur()` takes none. A math function that comes to pixels is read ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). Other CSS lengths (`em`, `vw`, …) are not recognized |
 | `contrast-<n>` / `contrast-[N]` | presets 0–200 (× 0.01); bracket ≥ 0, or a percentage | |
 | `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
 | `invert` / `invert-0` / `invert-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
@@ -108,15 +108,20 @@ Two animators run these changes:
 
 | The entry that runs for `filter` | Set by | Who animates |
 |---|---|---|
-| has the duration, delay and curve of the entry that runs for `background-size` or `-unity-background-scale-mode` | `transition-all`, a bare `duration-*` | UI Toolkit's own transition system |
-| any other | `transition-filter`, a hand-authored list | Velvet's scheduler-driven tween (`StyleFilterTransitionDriver`) |
+| has the duration, delay and curve of the entry that runs for `background-size` or `-unity-background-scale-mode`, on a mount on the default `MotionClock` | `transition-all`, a bare `duration-*` | UI Toolkit's own transition system |
+| any other | `transition-filter`, a hand-authored list, either of the above on any other clock | Velvet's scheduler-driven tween (`StyleFilterTransitionDriver`) |
 
 UI Toolkit's inline-filter setter animates a filter list write by the entry for `background-size`, whatever the
 list says about `filter`. Where that entry's timing is the one `filter`'s entry gives (an `all` covering both, say),
-Velvet leaves the engine's animation in place, which keeps UI Toolkit's shortening of a reversed transition.
+Velvet leaves the engine's animation in place, which keeps UI Toolkit's shortening of a reversed transition,
+on a mount whose `MotionClock` is the default; on any other the engine's animation would run on the panel's
+time, so Velvet's tween runs the change on the mount's clock
+([motion.md](motion.md#clocks-holding-motion-with-game-time)).
 Anywhere else Velvet's tween runs the change, and a filter write the setter would animate — a tween frame or an
 instant write — is made with transitions suspended, so a list naming `background-size` never animates a filter
-utility's change on its behalf. The tween eases by the same curve a USS transition takes for each `ease-*` value.
+utility's change on its behalf. The tween eases by the same curve a USS transition takes for each `ease-*` value,
+and a change back to where a running tween started reverses it over the shortened duration and negative delay
+the engine gives a reversed transition.
 
 While `animate-hue` drives an element's filter, the motion shows: a filter utility's change under it starts no
 transition and is not painted, and a filter transition already running keeps its clock unseen. When the motion

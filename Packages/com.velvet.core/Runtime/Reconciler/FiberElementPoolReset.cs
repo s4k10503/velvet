@@ -38,7 +38,7 @@ namespace Velvet
         // constructor-call order (base first, subclass last) keeps the resulting class list identical
         // to a freshly constructed instance.
         // Fixed-arity overloads cover every call shape in this codebase (two USS classes for
-        // Label/Button/Toggle, three for Slider/TextField, whose constructor chains run one field
+        // Label/Button/Toggle, three for Slider/SliderInt/TextField, whose constructor chains run one field
         // class deeper). Do not collapse them into a `params` signature: this runs once per recycled
         // element on the reconciler's steady-state hot path, and a params array would put a heap
         // allocation on every widget pool-return.
@@ -134,6 +134,8 @@ namespace Velvet
 
             // A filter tween still ticking would write its frames and its target onto the next consumer.
             StyleFilterTransitionDriver.Release(element);
+            // The clock its last mount recorded would otherwise answer for the next consumer's filter tweens.
+            MotionClock.Forget(element);
             ResetInlineStyle(element.style);
 
             element.userData = null;

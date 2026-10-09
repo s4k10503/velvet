@@ -28,7 +28,7 @@ namespace Velvet
             //
             // Only Button and Label may do this, and the split is not about which DSL factory takes a
             // `children:` argument — V.Custom<T> takes one for any T. It is about what the child container
-            // already holds: Toggle, Slider and TextField each construct a sub-element into the very
+            // already holds: Toggle, Slider, SliderInt and TextField each construct a sub-element into the very
             // container FiberNodePatcher.GetChildContainer hands children to, so Clear() there would delete
             // the control's own structure rather than a previous tenant's content. They reach the same
             // outcome by exclusion instead (FiberElementPoolReset.DetachForeignChildren).
@@ -78,61 +78,63 @@ namespace Velvet
     }
 
     // Same split as FiberButtonPoolHelper.
-    // Slider inherits from BaseSlider<float> which inherits from BaseField<float>.
+    // Slider and SliderInt inherit from BaseSlider<T> which inherits from BaseField<T>.
     // The constructor chain adds three USS classes in order:
     //   BaseField.ussClassName = "unity-base-field" (BaseField.cs:354)
     //   BaseSlider.ussClassName = "unity-base-slider" (BaseSlider.cs:442)
-    //   Slider.ussClassName = "unity-slider" (Slider.cs:171)
+    //   Slider.ussClassName = "unity-slider" (Slider.cs:171), or SliderInt.ussClassName = "unity-slider-int"
     // All three must be restored after ClearClassList.
     // Sub-elements (dragger, tracker, labelElement) retain their own USS classes
     // through the pool cycle for the same reason described in FiberTogglePoolHelper.
-    // Default range (lowValue=0f, highValue=10f) matches Unity's Slider() default
-    // constructor (Slider.cs). SetValueWithoutNotify(0f) avoids firing ChangeEvent.
+    // Default range (lowValue=0, highValue=10) matches the parameterless constructor of
+    // both. SetValueWithoutNotify avoids firing ChangeEvent.
     internal static class FiberSliderPoolHelper
     {
-        private const float DefaultLowValue = 0f;
-        private const float DefaultHighValue = 10f;
-
         // A slider that carries its numeric input field cannot be made to give it up. The teardown behind
         // showInputField only runs while that field is on a panel, and every pool return detaches first, so
         // writing the flag false here would strand the sub-element AND consume the one write that removes
         // it — leaving no state from which any later write can. Such a slider is dropped rather than pooled;
         // VNodePool asks before returning one. SliderPoolAdmissionTests pins both directions.
-        public static bool CanReuse(Slider slider)
+        public static bool CanReuse<T>(BaseSlider<T> slider) where T : IComparable<T>
         {
             if (slider == null) return false;
 
             for (var i = 0; i < slider.childCount; i++)
             {
                 var input = slider.ElementAt(i);
-                if (!input.ClassListContains(BaseField<float>.inputUssClassName)) continue;
+                if (!input.ClassListContains(BaseField<T>.inputUssClassName)) continue;
                 for (var j = 0; j < input.childCount; j++)
                 {
-                    if (input.ElementAt(j).ClassListContains(Slider.textFieldClassName)) return false;
+                    if (input.ElementAt(j).ClassListContains(BaseSlider<T>.textFieldClassName)) return false;
                 }
             }
             return true;
         }
 
-        public static void ResetSliderForReuse(Slider slider)
+        public static void ResetSliderForReuse(Slider slider) => Reset(slider, 0f, 10f, Slider.ussClassName);
+
+        public static void ResetSliderIntForReuse(SliderInt slider) => Reset(slider, 0, 10, SliderInt.ussClassName);
+
+        private static void Reset<T>(BaseSlider<T> slider, T lowValue, T highValue, string ussClassName)
+            where T : IComparable<T>
         {
             if (slider == null) return;
 
             FiberElementPoolReset.DetachForeignChildren(
-                slider, BaseField<float>.inputUssClassName, BaseField<float>.labelUssClassName);
+                slider, BaseField<T>.inputUssClassName, BaseField<T>.labelUssClassName);
             FiberElementPoolReset.ResetClassListAndCommon(
                 slider,
-                BaseField<float>.ussClassName,
-                BaseSlider<float>.ussClassName,
-                Slider.ussClassName);
+                BaseField<T>.ussClassName,
+                BaseSlider<T>.ussClassName,
+                ussClassName);
 
-            slider.lowValue = DefaultLowValue;
-            slider.highValue = DefaultHighValue;
-            slider.SetValueWithoutNotify(DefaultLowValue);
+            slider.lowValue = lowValue;
+            slider.highValue = highValue;
+            slider.SetValueWithoutNotify(lowValue);
             slider.label = string.Empty;
             // ClearClassList drops the variant a label-less constructor added, and the label write
             // above cannot put it back: its setter compares against the empty text already there.
-            slider.EnableInClassList(BaseField<float>.noLabelVariantUssClassName, true);
+            slider.EnableInClassList(BaseField<T>.noLabelVariantUssClassName, true);
             slider.direction = SliderDirection.Horizontal;
             slider.pageSize = 0f;
             slider.inverted = false;
