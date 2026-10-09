@@ -338,6 +338,46 @@ namespace Velvet.Experimental
     }
 
     /// <summary>
+    /// <b>EXPERIMENTAL.</b> Initializer-style builder for a whole-number slider. Maps to
+    /// <see cref="V.SliderInt"/>. Sliders are leaves; children added via the collection initializer are ignored.
+    /// </summary>
+    public sealed class VSliderInt : VBuilder
+    {
+        /// <summary>Current value (controlled).</summary>
+        public int? Value { get; set; }
+
+        /// <summary>Lower bound of the slider range.</summary>
+        public int? LowValue { get; set; }
+
+        /// <summary>Upper bound of the slider range.</summary>
+        public int? HighValue { get; set; }
+
+        /// <summary>Handler invoked when the value changes.</summary>
+        public Action<int>? OnChange { get; set; }
+
+        /// <summary>When false, disables user interaction.</summary>
+        public bool? Enabled { get; set; }
+
+        /// <summary>Axis the slider runs along.</summary>
+        public UnityEngine.UIElements.SliderDirection? Direction { get; set; }
+
+        /// <summary>When true, swaps the ends the low and high values sit at.</summary>
+        public bool? Inverted { get; set; }
+
+        /// <summary>Distance one arrow key moves the value; null is 1.</summary>
+        public int? Step { get; set; }
+
+        /// <param name="className">Utility class string applied to the slider.</param>
+        public VSliderInt(string? className = null) : base(className) { }
+
+        /// <inheritdoc/>
+        public override VNode Build() =>
+            V.SliderInt(className: Class, value: Value, lowValue: LowValue, highValue: HighValue,
+                onValueChanged: OnChange, key: Key, name: Name, enabled: Enabled, direction: Direction,
+                inverted: Inverted, step: Step);
+    }
+
+    /// <summary>
     /// <b>EXPERIMENTAL.</b> Initializer-style builder for a toggle. Maps to <see cref="V.Toggle"/>.
     /// Toggles are leaves; children added via the collection initializer are ignored.
     /// </summary>
