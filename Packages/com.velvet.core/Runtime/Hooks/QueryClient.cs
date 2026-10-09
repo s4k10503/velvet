@@ -395,6 +395,9 @@ namespace Velvet
         private CancellationTokenSource? _inFlight;
         private bool _retriesStopped;
         private TimeSpan _dataUpdatedAt;
+        // TanStack's query.options: what the last query to commit over the entry, or to start a request for it,
+        // handed it. An invalidation's refetch runs with them, whichever observer they came from.
+        private QueryFetchOptions<T>? _options;
 
         internal QueryEntry(QueryClient client, QueryKey key, TimeSpan gcTime) : base(client, key, gcTime)
         {
@@ -415,6 +418,8 @@ namespace Velvet
 
         internal bool IsStaleFor(TimeSpan staleTime)
             => !HasData || IsInvalidated || Client.Now - _dataUpdatedAt >= staleTime;
+
+        internal void SetOptions(QueryFetchOptions<T> options) => _options = options;
 
         internal void Subscribe(QueryEntryObserver<T> observer)
         {
@@ -453,6 +458,8 @@ namespace Velvet
                 }
                 CancelInFlight();
             }
+            // v5's fetch takes the options it is handed only once it is not joining a request in flight.
+            _options = options;
 
             var request = new CancellationTokenSource();
             _inFlight = request;
@@ -645,7 +652,8 @@ namespace Velvet
             foreach (var observer in _observers)
             {
                 if (!observer.Enabled) continue;
-                Fetch(observer.FetchOptions, cancelRefetch: true);
+                // An observer hands the entry its options when it subscribes, so an entry with one holds some.
+                Fetch(_options!, cancelRefetch: true);
                 return;
             }
         }
