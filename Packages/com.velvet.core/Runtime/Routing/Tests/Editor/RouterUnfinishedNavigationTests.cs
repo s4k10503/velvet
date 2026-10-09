@@ -24,7 +24,7 @@ namespace Velvet.Tests
         public IEnumerator Given_AGuardThatThrows_When_TheExceptionReachesTheCaller_Then_TheRouterIsNoLongerInFlight()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // The exception propagates, but the attempt must release its in-flight Status first.
+            // The exception propagates, but the attempt must end its navigation first.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[]
@@ -45,8 +45,8 @@ namespace Velvet.Tests
             }
 
             // Assert
-            Assert.That($"threw={caught != null} status={router.Status}", Is.EqualTo("threw=True status=Error"),
-                "A navigation that died on an exception reports the failure and stops reporting itself as in flight");
+            Assert.That($"threw={caught != null} state={router.Navigation.State}", Is.EqualTo("threw=True state=Idle"),
+                "A navigation that died on an exception stops reporting itself as in flight");
         });
 
         // GREEN_ON_BASE(characterization): the base maps an OperationCanceledException to Cancelled only when
@@ -78,6 +78,36 @@ namespace Velvet.Tests
             // Assert
             Assert.That($"threw={caught != null} result={result?.ToString() ?? "none"}", Is.EqualTo("threw=True result=none"),
                 "A Guard's own cancellation is its failure, not a cancellation of the navigation");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AGuardThatThrowsACancellationOfItsOwn_When_TheExceptionReachesTheCaller_Then_TheRouterIsNoLongerInFlight()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // An OperationCanceledException takes a handler of its own in the attempt, apart from the one the
+            // InvalidOperationException of the first case reaches.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("/", children: new[]
+                {
+                    Route("home"),
+                    Route("guarded", guard: _ => throw new OperationCanceledException("guard-cancelled")),
+                }));
+            Exception caught = null;
+
+            // Act
+            try
+            {
+                await router.NavigateAsync("/guarded");
+            }
+            catch (OperationCanceledException ex)
+            {
+                caught = ex;
+            }
+
+            // Assert
+            Assert.That($"threw={caught != null} state={router.Navigation.State}", Is.EqualTo("threw=True state=Idle"),
+                "A navigation its Guard cancelled stops reporting itself as in flight");
         });
 
         [UnityTest]
@@ -131,7 +161,7 @@ namespace Velvet.Tests
             }
 
             // Assert
-            Assert.That($"threw={caught != null} status={router.Status}", Is.EqualTo("threw=True status=Error"),
+            Assert.That($"threw={caught != null} state={router.Navigation.State}", Is.EqualTo("threw=True state=Idle"),
                 "A navigation that died in its commit stops reporting itself as in flight, like one that died earlier");
         });
 
@@ -166,7 +196,9 @@ namespace Velvet.Tests
             }
 
             // Assert
-            Assert.That($"threw={caught != null} status={router.Status}", Is.EqualTo("threw=False status=Ready"),
+            Assert.That(
+                $"threw={caught != null} path={router.CurrentLocation?.Path} state={router.Navigation.State}",
+                Is.EqualTo("threw=False path=/other state=Idle"),
                 "A Loader's own cancellation callback must not take down the commit that ends its round");
         }
 
@@ -202,7 +234,9 @@ namespace Velvet.Tests
             }
 
             // Assert
-            Assert.That($"threw={caught != null} status={router.Status}", Is.EqualTo("threw=False status=Ready"),
+            Assert.That(
+                $"threw={caught != null} path={router.CurrentLocation?.Path} state={router.Navigation.State}",
+                Is.EqualTo("threw=False path=/other state=Idle"),
                 "A Loader's own cancellation callback must not take down the navigation superseding its round");
         }
 
@@ -273,11 +307,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALoaderThatNavigates_When_TheCancelledAttemptUnwinds_Then_TheCommittedLocationKeepsItsStatus()
+        public void Given_ALoaderThatNavigates_When_TheCancelledAttemptUnwinds_Then_TheNavigationItStartedIsStillReported()
         {
-            // Same run as the loader-data case, one field over: the cancelled attempt reaches its unwind after
-            // the navigation started from inside it has already published its own Ready.
+            // The loader-data case's run with the inner navigation parked on its own loader, so the cancelled
+            // attempt reaches its unwind while the navigation that took over from it is still in flight.
             // Arrange
+            var parked = new VelvetTaskCompletionSource<object>();
             Router router = null!;
             router = BuildRouter("/home",
                 Route("home"),
@@ -286,14 +321,16 @@ namespace Velvet.Tests
                     router.NavigateAsync("/target").Forget();
                     return VelvetTask.FromResult<object>("trigger-data");
                 }),
-                Route("target"));
+                Route("target", loader: (ctx, ct) => parked.Task));
 
             // Act
             var result = router.NavigateAsync("/trigger").GetAwaiter().GetResult();
 
             // Assert
-            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Cancelled status=Ready"),
-                "An attempt that has lost the claim must not report its own outcome as the router's state");
+            Assert.That(
+                $"result={result} state={router.Navigation.State} location={router.Navigation.Location?.Path ?? "none"}",
+                Is.EqualTo("result=Cancelled state=Loading location=/target"),
+                "An attempt that has lost the claim must not end the navigation that holds it");
         }
     }
 }
