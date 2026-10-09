@@ -353,7 +353,10 @@ namespace Velvet
         // partially dead record (scene unload) still releases the rest.
         public static void Destroy(PanelHostRecord record)
         {
+            // Cleared once released, so the record gives up its hold at most once and never one a portal on
+            // the same root holds.
             record.ReleaseBridge?.Invoke();
+            record.ReleaseBridge = null;
             var settings = record.Settings;
             var host = record.Host;
             if (host != null)

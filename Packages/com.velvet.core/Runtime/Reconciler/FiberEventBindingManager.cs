@@ -60,8 +60,6 @@ namespace Velvet
         internal void SetBridge(VisualElement anchor, Func<EventBase, bool> bubblePrelude, Action rebound, Action detach) =>
             _bridges[anchor] = new PortalBridge { BubblePrelude = bubblePrelude, Rebound = rebound, Detach = detach };
 
-        // Returns for an anchor holding no bridge rather than throwing, which would stop a teardown sweep
-        // calling it midway.
         internal void ReleaseBridge(VisualElement anchor)
         {
             if (!_bridges.TryGetValue(anchor, out var bridge)) return;
@@ -309,9 +307,8 @@ namespace Velvet
         // runtime type and invokes its raw Handler directly, bypassing UI Toolkit's dispatcher entirely:
         // native RegisterCallback<T> plumbing never runs here, since element may not even share a panel
         // with evt's original target. A capture walk runs only capture bindings, and a bubble walk every
-        // other binding. Returns true when a matching pointer, key, focus or geometry binding was invoked
-        // (informational only; the caller's walk continues regardless — a miss here does not stop
-        // propagation up the logical chain).
+        // other binding. Returns true when a matching binding was invoked (informational only; the caller's
+        // walk continues regardless — a miss here does not stop propagation up the logical chain).
         internal bool TryInvokeSynthetic(VisualElement element, EventBase evt, bool capture)
         {
             if (element == null || evt == null || !_bindingsByElement.TryGetValue(element, out var bindings))
@@ -413,17 +410,8 @@ namespace Velvet
                 case PointerMoveBinding b when evt is PointerMoveEvent pe:
                     b.Handler?.Invoke(pe);
                     return true;
-                case PointerEnterBinding b when evt is PointerEnterEvent pe:
-                    b.Handler?.Invoke(pe);
-                    return true;
-                case PointerLeaveBinding b when evt is PointerLeaveEvent pe:
-                    b.Handler?.Invoke(pe);
-                    return true;
                 case WheelBinding b when evt is WheelEvent we:
                     b.Handler?.Invoke(we);
-                    return true;
-                case GeometryChangedBinding b when evt is GeometryChangedEvent ge:
-                    b.Handler?.Invoke(ge);
                     return true;
                 default:
                     return false;

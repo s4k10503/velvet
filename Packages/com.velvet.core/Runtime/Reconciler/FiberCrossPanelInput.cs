@@ -49,16 +49,14 @@ namespace Velvet
     {
         // Each event the bridge carries, registered on bridgeAnchor TrickleDown and, where it bubbles,
         // BubbleUp. Matches the event set FiberEventBindingManager.TryInvokeSynthetic supports.
-        // FocusEvent/BlurEvent trickle down and do not bubble up, per Unity's own UIElements API docs;
-        // GeometryChangedEvent neither trickles nor bubbles, reaching only the element whose geometry
-        // changed, and is not carried.
+        // FocusEvent/BlurEvent trickle down and do not bubble up, per Unity's own UIElements API docs.
+        // Pointer enter and leave and geometry changes are not carried to a logical ancestor
+        // (Documentation~/portals.md states it), so none is registered.
         private static readonly System.Action<VisualElement, Bridge, Registrations>[] Listeners =
         {
             TrickleAndBubble<PointerDownEvent>,
             TrickleAndBubble<PointerUpEvent>,
             TrickleAndBubble<PointerMoveEvent>,
-            TrickleAndBubble<PointerEnterEvent>,
-            TrickleAndBubble<PointerLeaveEvent>,
             TrickleAndBubble<WheelEvent>,
             TrickleAndBubble<KeyDownEvent>,
             TrickleAndBubble<KeyUpEvent>,
@@ -108,9 +106,9 @@ namespace Velvet
         internal static System.Action AttachBridge(VisualElement bridgeAnchor, ReconcilerContext ctx)
         {
             System.Action release = () => ctx.EventManager.ReleaseBridge(bridgeAnchor);
-            // A portal can render into a layer or world-space host's root, which carries the host's bridge
-            // already; a second set of listeners there would carry each ancestor twice, so a later hold shares
-            // the first one's.
+            // More than one hold can land on one anchor — a portal into a host panel's root is one way — and a
+            // second set of listeners there would carry each ancestor twice, so a later hold shares the first
+            // one's.
             if (ctx.EventManager.HoldBridge(bridgeAnchor)) return release;
             var bridge = new Bridge(bridgeAnchor, ctx);
             var registrations = new Registrations();
@@ -159,11 +157,17 @@ namespace Velvet
             {
                 _bubbled = null;
                 var owned = Walk(evt);
-                for (var index = owned.Count - 1; index >= 0 && !evt.isPropagationStopped; index--)
+                try
                 {
-                    _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: true);
+                    for (var index = owned.Count - 1; index >= 0 && !evt.isPropagationStopped; index--)
+                    {
+                        _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: true);
+                    }
                 }
-                Spare(owned);
+                finally
+                {
+                    Spare(owned);
+                }
             }
 
             public void Bubble(EventBase evt) => RunBubble(evt);
@@ -175,12 +179,18 @@ namespace Velvet
                 _bubbled = evt;
                 var owned = Walk(evt);
                 _stopped = false;
-                for (var index = 0; index < owned.Count && !_stopped; index++)
+                try
                 {
-                    _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: false);
-                    _stopped = evt.isPropagationStopped;
+                    for (var index = 0; index < owned.Count && !_stopped; index++)
+                    {
+                        _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: false);
+                        _stopped = evt.isPropagationStopped;
+                    }
                 }
-                Spare(owned);
+                finally
+                {
+                    Spare(owned);
+                }
                 return _stopped;
             }
 

@@ -287,6 +287,23 @@ namespace Velvet.Tests
             Assert.That((root.Q<VisualElement>("root-child") == null, s_ancestorRuns), Is.EqualTo((true, 1)));
         }
 
+        [Test]
+        public void Given_APortalIntoALayerHostsRoot_When_TheHostIsDestroyedTwice_Then_TheRootKeepsThePortalsBridge()
+        {
+            // Arrange
+            var root = MountPortalIntoTheLayerRoot().rootVisualElement;
+            var context = _mounted.Root.Reconciler!.Context;
+            PanelHostRecord record = null;
+            foreach (var host in context.LayerHosts.Values) record = host;
+
+            // Act
+            PanelHostFactory.Destroy(record);
+            PanelHostFactory.Destroy(record);
+
+            // Assert
+            Assert.That(context.EventManager.IsBridgeAnchor(root), Is.True);
+        }
+
         private UIDocument FindHostDocumentContaining(string childName)
         {
             foreach (var doc in UnityEngine.Resources.FindObjectsOfTypeAll<UIDocument>())
