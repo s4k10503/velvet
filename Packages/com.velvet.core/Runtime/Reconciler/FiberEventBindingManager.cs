@@ -31,7 +31,7 @@ namespace Velvet
         }
 
         // The portal bridges FiberCrossPanelEventDispatcher.AttachBridge put on their anchors, one per anchor
-        // however many targets resolve to it, each held until the last of them releases it.
+        // however many hosts and portal targets attach one there, each held until the last of them releases it.
         private readonly Dictionary<VisualElement, PortalBridge> _bridges = new();
 
         private sealed class PortalBridge
@@ -52,17 +52,19 @@ namespace Velvet
         // Answers whether anchor already carries a bridge, taking one more hold on it where it does.
         internal bool HoldBridge(VisualElement anchor)
         {
-            if (!_bridges.TryGetValue(anchor, out var bridge)) return false;
-            bridge.Holds++;
-            return true;
+            var held = _bridges.TryGetValue(anchor, out var bridge);
+            if (held) bridge!.Holds++;
+            return held;
         }
 
         internal void SetBridge(VisualElement anchor, Func<EventBase, bool> bubblePrelude, Action rebound, Action detach) =>
             _bridges[anchor] = new PortalBridge { BubblePrelude = bubblePrelude, Rebound = rebound, Detach = detach };
 
+        // Returns for an anchor holding no bridge rather than throwing, which would stop a teardown sweep
+        // calling it midway.
         internal void ReleaseBridge(VisualElement anchor)
         {
-            var bridge = _bridges[anchor];
+            if (!_bridges.TryGetValue(anchor, out var bridge)) return;
             bridge.Holds--;
             if (bridge.Holds > 0) return;
             _bridges.Remove(anchor);

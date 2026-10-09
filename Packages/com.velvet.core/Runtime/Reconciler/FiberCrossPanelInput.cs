@@ -108,8 +108,9 @@ namespace Velvet
         internal static System.Action AttachBridge(VisualElement bridgeAnchor, ReconcilerContext ctx)
         {
             System.Action release = () => ctx.EventManager.ReleaseBridge(bridgeAnchor);
-            // Two targets can share an anchor — a ScrollView and its contentContainer — and a second set of
-            // listeners there would carry each ancestor twice, so a later hold shares the first one's.
+            // A portal can render into a layer or world-space host's root, which carries the host's bridge
+            // already; a second set of listeners there would carry each ancestor twice, so a later hold shares
+            // the first one's.
             if (ctx.EventManager.HoldBridge(bridgeAnchor)) return release;
             var bridge = new Bridge(bridgeAnchor, ctx);
             var registrations = new Registrations();
@@ -127,8 +128,8 @@ namespace Velvet
             return release;
         }
 
-        // One anchor's share of a dispatch. The target's logical chain is walked once, and where it leaves
-        // the target's physical path, the ancestors up to where it rejoins belong to the nearest anchor
+        // One anchor's share of a dispatch. Each phase walks the target's logical chain once, and where it
+        // leaves the target's physical path, the ancestors up to where it rejoins belong to the nearest anchor
         // physically above the element it left from. Each anchor runs only those that belong to it, so an
         // ancestor runs once however many anchors the physical path crosses.
         private sealed class Bridge
@@ -143,6 +144,10 @@ namespace Velvet
             private EventBase? _bubbled;
             private bool _stopped;
 
+            // Spare lists for Walk. A walk takes one off the stack rather than sharing one list per bridge, so
+            // no walk reads a list another walk refilled before it finished.
+            private readonly Stack<List<VisualElement>> _spare = new();
+
             public Bridge(VisualElement anchor, ReconcilerContext ctx)
             {
                 _anchor = anchor;
@@ -153,15 +158,12 @@ namespace Velvet
             public void Capture(EventBase evt)
             {
                 _bubbled = null;
-                var target = evt.target as VisualElement;
-                Owned(target, -1, out var count);
-                // MUTANT_SURVIVES(equivalent, arithmetic): an index past the last names no ancestor, and
-                // TryInvokeSynthetic invokes nothing for a null element.
-                for (var index = count - 1; index >= 0; index--)
+                var owned = Walk(evt);
+                for (var index = owned.Count - 1; index >= 0 && !evt.isPropagationStopped; index--)
                 {
-                    if (evt.isPropagationStopped) return;
-                    _ctx.EventManager.TryInvokeSynthetic(Owned(target, index, out _)!, evt, capture: true);
+                    _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: true);
                 }
+                Spare(owned);
             }
 
             public void Bubble(EventBase evt) => RunBubble(evt);
@@ -171,36 +173,39 @@ namespace Velvet
             {
                 if (ReferenceEquals(_bubbled, evt)) return _stopped;
                 _bubbled = evt;
-                var target = evt.target as VisualElement;
+                var owned = Walk(evt);
                 _stopped = false;
-                for (var index = 0; !_stopped; index++)
+                for (var index = 0; index < owned.Count && !_stopped; index++)
                 {
-                    var ancestor = Owned(target, index, out _);
-                    if (ancestor == null) break;
-                    _ctx.EventManager.TryInvokeSynthetic(ancestor, evt, capture: false);
+                    _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: false);
                     _stopped = evt.isPropagationStopped;
                 }
+                Spare(owned);
                 return _stopped;
             }
 
-            // The wanted-th logical ancestor of target, innermost first, that belongs to this anchor, and how
-            // many belong to it. Walked again for each one, which keeps a dispatch from allocating.
-            private VisualElement? Owned(VisualElement? target, int wanted, out int count)
+            // The logical ancestors of the event's target that belong to this anchor, innermost first, from one
+            // walk up the target's logical chain.
+            private List<VisualElement> Walk(EventBase evt)
             {
-                count = 0;
-                VisualElement? found = null;
+                if (!_spare.TryPop(out var owned)) owned = new List<VisualElement>();
+                var target = evt.target as VisualElement;
                 VisualElement? owner = null;
-                for (var current = target; current != null;)
+                VisualElement? next = null;
+                for (var current = target; current != null; current = next)
                 {
-                    var next = LogicalParent(current, _ctx);
-                    if (OffPath(next, target))
-                    {
-                        if (IsPhysicalAncestorOrSelf(current, target)) owner = AnchorAbove(current);
-                        if (ReferenceEquals(owner, _anchor) && count++ == wanted) found = next;
-                    }
-                    current = next;
+                    next = LogicalParent(current, _ctx);
+                    if (!OffPath(next, target)) continue;
+                    if (IsPhysicalAncestorOrSelf(current, target)) owner = AnchorAbove(current);
+                    if (ReferenceEquals(owner, _anchor)) owned.Add(next!);
                 }
-                return found;
+                return owned;
+            }
+
+            private void Spare(List<VisualElement> owned)
+            {
+                owned.Clear();
+                _spare.Push(owned);
             }
 
             private VisualElement? AnchorAbove(VisualElement element)

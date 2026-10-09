@@ -73,17 +73,20 @@ The boundary behaves the same in all four forms:
 - **Context crosses.** A `V.Provider` above the portal call site is visible to the children.
 - **Stores cross.** `UseStore` subscriptions are independent of panels.
 - **`events:` handlers cross in every portal form**, through one synthetic-bubbling
-  mechanism: `PointerDown`/`PointerUpEvent`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDownEvent`/`KeyUpEvent`, and
+  mechanism: `PointerDown`/`PointerUpEvent`/`Move`, `Wheel`, `KeyDownEvent`/`KeyUpEvent`, and
   `FocusIn`/`Out` bindings on an `events:` prop bubble to the logical ancestor chain outside the
   portal boundary (React's own root-level event delegation, walking the logical parent chain
-  rather than the DOM). A `Button`'s `onClick` (`ClickedBinding`) answers a click raised inside the
-  portal, and a field's `onValueChanged` (`ChangeEventBinding<T>`) a value change of that type, the
+  rather than the DOM). `PointerEnter`/`PointerLeave` bindings are not carried: they run only on the
+  elements UI Toolkit sends those events to, so a logical ancestor of the call site receives them only
+  for the pointer entering or leaving that ancestor itself. A `Button`'s `onClick` (`ClickedBinding`)
+  answers a click raised inside the portal, and a field's `onValueChanged` (`ChangeEventBinding<T>`) a value change of that type, the
   way React's `onClick` and `onChange` bubble out of a portal. For `V.Portal(targetId:)` the target's
   physical ancestors already receive the event through ordinary native bubbling and the bridge adds
-  the LOGICAL chain on top; an element that is both — a physical ancestor of the target AND a
-  logical ancestor of the call site — still fires exactly once, and so does a logical ancestor
-  reached through portals nested in each other's content. A portal's child need not be a component:
-  an element written straight into the portal bubbles the same way. `FocusEvent`/`BlurEvent` do not
+  the LOGICAL chain on top, so a physical ancestor of the target that is no logical ancestor of the
+  call site receives it as well, which React does not do; an element that is both — a physical
+  ancestor of the target AND a logical ancestor of the call site — still fires exactly once, and so
+  does a logical ancestor reached through portals nested in each other's content. A portal's child
+  need not be a component: an element written straight into the portal bubbles the same way. `FocusEvent`/`BlurEvent` do not
   bubble, in a portal or out of one, as the DOM's `focus`/`blur` do not; React's bubbling
   `onFocus`/`onBlur` correspond to `FocusInEvent`/`FocusOutEvent`. See "Cross-panel input routing"
   below for what this shared mechanism does not cover. A capture binding (`Capture = true`) on a logical

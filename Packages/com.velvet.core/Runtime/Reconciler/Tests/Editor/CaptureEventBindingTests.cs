@@ -13,8 +13,7 @@ namespace Velvet.Tests
     /// own included; one delegate bound in both phases runs in both; a render that moves a handler between
     /// phases rebinds it; and a logical ancestor of a portal's call site captures ahead of the portal's
     /// content and bubbles after it, in the order of the logical chain where one portal renders into
-    /// another's content, and once however many bridges the content's physical path crosses or how many
-    /// targets share one.
+    /// another's content, and once however many bridges the content's physical path crosses.
     /// </summary>
     [TestFixture]
     internal sealed class CaptureEventBindingTests : PanelTestBase
@@ -36,7 +35,6 @@ namespace Velvet.Tests
             s_setContainer = default;
             s_setMoveBindings = default;
             s_setRender = default;
-            s_scrollView = null;
             RuntimeStateProbe.ClearPortalRegistry();
             _portalTarget = new VisualElement();
             _window.rootVisualElement.Add(_portalTarget);
@@ -434,56 +432,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("L<,C2<,B<,Q<"));
-        }
-
-        private static ScrollView s_scrollView;
-
-        // One portal into a ScrollView and one into its contentContainer: both targets resolve to the
-        // ScrollView as their anchor.
-        [Component]
-        private static VNode PortalsIntoAScrollViewAndItsContent()
-        {
-            var (show, setShow) = Hooks.UseState(true);
-            s_showPortal = setShow;
-            return V.Div(children: new VNode[]
-            {
-                show ? V.Portal(s_scrollView, children: new VNode[] { V.Div(name: "first") }) : null,
-                V.Portal(s_scrollView.contentContainer, children: new VNode[] { V.Div(name: "content") }),
-            });
-        }
-
-        [Test]
-        public void Given_TwoPortalsWhoseTargetsShareAnAnchor_When_APointerDownReachesOnesContent_Then_TheCapturingAncestorRunsOnce()
-        {
-            // Arrange
-            s_scrollView = new ScrollView();
-            _window.rootVisualElement.Add(s_scrollView);
-            MountCaptureAroundPortal(Log("ancestor", true), V.Component(PortalsIntoAScrollViewAndItsContent));
-
-            // Act
-            Dispatch(s_scrollView.Q<VisualElement>("content"));
-
-            // Assert
-            Assert.That(string.Join(",", s_log), Is.EqualTo("ancestor"));
-        }
-
-        [Test]
-        public void Given_TwoPortalsWhoseTargetsShareAnAnchor_When_OneUnmountsAndAPointerDownReachesTheOthersContent_Then_TheAncestorStillCaptures()
-        {
-            // Arrange
-            s_scrollView = new ScrollView();
-            _window.rootVisualElement.Add(s_scrollView);
-            MountCaptureAroundPortal(Log("ancestor", true), V.Component(PortalsIntoAScrollViewAndItsContent));
-            s_showPortal.Invoke(false);
-            _mounted.FlushStateForTest();
-
-            // Act
-            Dispatch(s_scrollView.Q<VisualElement>("content"));
-
-            // Assert — the first portal's content is folded in, so a portal that never unmounted cannot pass.
-            Assert.That(
-                (s_scrollView.Q<VisualElement>("first") == null, string.Join(",", s_log)),
-                Is.EqualTo((true, "ancestor")));
         }
 
         [Component]
