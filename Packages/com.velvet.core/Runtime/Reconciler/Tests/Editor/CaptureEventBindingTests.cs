@@ -437,7 +437,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode StoppingCallSiteInsideItsTarget()
         {
-            var (container, setContainer) = Hooks.UseState<VisualElement>(null);
+            var (container, setContainer) = Hooks.UseState((VisualElement)null);
             var (show, setShow) = Hooks.UseState(true);
             s_setContainer = setContainer;
             s_showPortal = setShow;
@@ -508,7 +508,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode PortalIntoItsOwnAncestor()
         {
-            var (container, setContainer) = Hooks.UseState<VisualElement>(null);
+            var (container, setContainer) = Hooks.UseState((VisualElement)null);
             s_setContainer = setContainer;
             return V.Div(
                 events: Logged("Z", capture: false, bubble: true),
@@ -692,7 +692,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode MovePortalIntoItsOwnAncestor()
         {
-            var (container, setContainer) = Hooks.UseState<VisualElement>(null);
+            var (container, setContainer) = Hooks.UseState((VisualElement)null);
             s_setContainer = setContainer;
             return V.Div(
                 events: new FiberEventBinding[] { new PointerMoveBinding { Handler = _ => s_log.Add("Z<") } },
@@ -730,7 +730,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode CapturingContainerItsOwnPortalRendersInto()
         {
-            var (container, setContainer) = Hooks.UseState<VisualElement>(null);
+            var (container, setContainer) = Hooks.UseState((VisualElement)null);
             var (render, setRender) = Hooks.UseState(0);
             var (show, setShow) = Hooks.UseState(true);
             s_setContainer = setContainer;

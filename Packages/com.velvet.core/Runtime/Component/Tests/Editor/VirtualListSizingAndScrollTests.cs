@@ -238,15 +238,14 @@ namespace Velvet.Tests
 
         #region ScrollToItem
 
-        // GREEN_ON_BASE(characterization): the existing public signatures bind these delegate types.
         [Test]
-        public void Given_TheExistingPublicSignatures_When_BoundAsMethodGroups_Then_TheirParameterCountsRemain()
+        public void Given_ThePublicSignatures_When_BoundAsMethodGroups_Then_TheyTakeTheEventsArrayLast()
         {
             // Arrange
             Func<IReadOnlyList<string>, Func<string, string>, float, Func<string, VNode>, int,
-                string, string, string, Ref<VirtualListHandle>, VirtualListNode> fixedFactory = V.VirtualList;
+                string, string, string, Ref<VirtualListHandle>, FiberEventBinding[], VirtualListNode> fixedFactory = V.VirtualList;
             Func<IReadOnlyList<string>, Func<string, string>, Func<int, float>, Func<string, VNode>, int,
-                string, string, string, Ref<VirtualListHandle>, VirtualListNode> variableFactory = V.VirtualList;
+                string, string, string, Ref<VirtualListHandle>, FiberEventBinding[], VirtualListNode> variableFactory = V.VirtualList;
             var (_, handle) = MountScrollable();
             Action<int, VirtualListAlign> scroll = handle.ScrollToItem;
 
@@ -255,7 +254,7 @@ namespace Velvet.Tests
                 variableFactory.Method.GetParameters().Length, scroll.Method.GetParameters().Length };
 
             // Assert
-            Assert.That(parameterCounts, Is.EqualTo(new[] { 9, 9, 2 }));
+            Assert.That(parameterCounts, Is.EqualTo(new[] { 10, 10, 2 }));
         }
 
         [Test]

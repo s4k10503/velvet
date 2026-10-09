@@ -230,7 +230,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode PortalIntoTheLayerRootRender()
         {
-            var (root, setRoot) = Hooks.UseState<VisualElement>(null);
+            var (root, setRoot) = Hooks.UseState((VisualElement)null);
             s_setLayerRoot = setRoot;
             return V.Fragment(
                 V.Portal(UILayer.Overlay, children: new VNode[] { V.Motion(name: "layer-child") }),
@@ -275,7 +275,7 @@ namespace Velvet.Tests
             s_ancestorRuns = 0;
             var hostDoc = MountPortalIntoTheLayerRoot();
             var root = hostDoc.rootVisualElement;
-            s_setLayerRoot.Invoke(null);
+            s_setLayerRoot.Invoke((VisualElement)null);
             _mounted.FlushStateForTest();
 
             // Act
