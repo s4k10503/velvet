@@ -391,6 +391,8 @@ namespace Velvet
             StructuralSharing = options.StructuralSharing;
             return this;
         }
+
+        internal QueryFetchOptions<T> Copy() => (QueryFetchOptions<T>)MemberwiseClone();
     }
 
     // What an entry knows of the observers reading it, whatever the type they read its data as.
@@ -471,25 +473,29 @@ namespace Velvet
             var wasEnabled = Enabled;
             var interval = _settings.RefetchInterval;
             var options = settings.Options;
+            var key = options.QueryKey;
+            var current = Entry;
+            var staying = current != null && !current.IsRemoved && ReferenceEquals(current.Client, client) && current.Key.Equals(key);
+            // Leaving before the options below are rewritten in place lets the entry left keep the ones it was
+            // handed: QueryEntry.Unsubscribe copies them.
+            if (!staying) Unsubscribe();
             _settings = settings;
             StaleTime = settings.StaleTime;
             Enabled = settings.Enabled;
             RefetchOnWindowFocus = settings.RefetchOnWindowFocus;
             RefetchOnReconnect = settings.RefetchOnReconnect;
             FetchOptions.Assign(options, client);
-            var key = options.QueryKey;
-            var current = Entry;
-            if (current != null && !current.IsRemoved && ReferenceEquals(current.Client, client) && current.Key.Equals(key))
+            if (staying)
             {
 #if UNITY_EDITOR
                 _reprintedKeyCommits = 0;
 #endif
                 // v5's setOptions hands the entry this commit's options at every commit.
-                current.SetOptions(FetchOptions);
+                current!.SetOptions(FetchOptions);
                 // TanStack's shouldFetchOptionally: a query turned on over stale data fetches it.
-                if (!wasEnabled && Enabled && current.IsStaleFor(StaleTime))
+                if (!wasEnabled && Enabled && current!.IsStaleFor(StaleTime))
                 {
-                    current.Fetch(FetchOptions, cancelRefetch: false);
+                    current!.Fetch(FetchOptions, cancelRefetch: false);
                 }
                 // Over the same entry, v5's setOptions restarts the interval only when the query was turned on or
                 // off or the interval changed, so a re-render does not push the next refetch back.
@@ -501,7 +507,6 @@ namespace Velvet
             WarnOnReprintedKey(current, key);
 #endif
 
-            Unsubscribe();
             var entry = client.Build<TQueryFnData>(key, settings.GcTime);
             Entry = entry;
             entry.SetOptions(FetchOptions);

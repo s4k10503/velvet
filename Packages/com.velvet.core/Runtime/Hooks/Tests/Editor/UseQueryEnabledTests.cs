@@ -14,7 +14,8 @@ namespace Velvet.Tests
     /// <item>A disabled query fetches nothing when it mounts and reports itself pending and idle with nothing
     /// cached, and not stale over stale data.</item>
     /// <item>Invalidating its key fetches nothing for it, and an entry read by a disabled and an enabled query is
-    /// fetched with the options it was last handed; <c>Refetch</c> still fetches.</item>
+    /// fetched with the options it was last handed, which are a disabled query's where it mounted after the
+    /// enabled one; <c>Refetch</c> still fetches.</item>
     /// <item>Turning it on fetches stale data, joining a refetch in flight, and the render that turns it on
     /// already reports the fetch, while fresh data stays as it is.</item>
     /// </list>
@@ -29,6 +30,7 @@ namespace Velvet.Tests
         private static readonly QueryKey Todos = new("todos");
 
         private VisualElement _root = null!;
+        private VisualElement _secondRoot = null!;
         private static QueryClient s_client = null!;
         private static TimeSpan s_now;
         private static TimeSpan? s_staleTime;
@@ -42,6 +44,7 @@ namespace Velvet.Tests
         public void SetUp()
         {
             _root = new VisualElement();
+            _secondRoot = new VisualElement();
             s_now = TimeSpan.Zero;
             s_staleTime = null;
             s_client = new QueryClient(new QueryClientOptions { Clock = () => s_now });
@@ -102,6 +105,40 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_fetched, Is.Empty, "Invalidation refetches active queries, and a disabled one is not active");
+        }
+
+        [Test]
+        public void Given_AnEnabledQueryThenADisabledOneUnderAnotherRoot_When_TheEntryIsInvalidated_Then_TheDisabledQuerysFunctionRuns()
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            s_client.SetQueryData(Todos, 1);
+            using var first = MountUnder(_root, EnabledReader);
+            using var second = MountUnder(_secondRoot, DisabledReader);
+
+            // Act
+            s_client.InvalidateQueries(Todos);
+
+            // Assert
+            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("disabled"),
+                "The enabled query makes the entry active, and the options it was last handed are the disabled one's, as in v5");
+        }
+
+        [Test]
+        public void Given_ADisabledQueryThenAnEnabledOneUnderAnotherRoot_When_TheEntryIsInvalidated_Then_TheEnabledQuerysFunctionRuns()
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            s_client.SetQueryData(Todos, 1);
+            using var first = MountUnder(_root, DisabledReader);
+            using var second = MountUnder(_secondRoot, EnabledReader);
+
+            // Act
+            s_client.InvalidateQueries(Todos);
+
+            // Assert
+            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("enabled"),
+                "The enabled query makes the entry active, and it handed the entry its options last");
         }
 
         [Test]
@@ -202,6 +239,13 @@ namespace Velvet.Tests
         #region Components and helpers
 
         private static QueryResult<int> Last() => s_renders[s_renders.Count - 1];
+
+        private static MountedTree MountUnder(VisualElement root, Func<VNode> reader)
+        {
+            var mounted = V.Mount(root, V.Component(reader, key: "reader"));
+            mounted.FlushEffectsForTest();
+            return mounted;
+        }
 
         private static void TurnOn(MountedTree mounted)
         {
