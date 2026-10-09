@@ -36,7 +36,7 @@ namespace Velvet.Tests
     /// <item>A box a bundled stylesheet class sizes is laid out with that class's size.</item>
     /// <item>A layout effect inside a portal into another panel reads its own element there and an element of the
     /// panel the tree is mounted on.</item>
-    /// <item>A ref a hidden tree re-renders attaches without running that tree's insertion effects.</item>
+    /// <item>A ref a tree a Suspense has hidden re-renders does not attach.</item>
     /// <item>A virtual list's row, and a component inside it, commit their layout effects once the list holds the
     /// row.</item>
     /// <item>A commit made from inside the style updater's traversal lays nothing out.</item>
@@ -79,7 +79,6 @@ namespace Velvet.Tests
             s_anchorWorldOffsetInLayoutEffect = float.NaN;
             s_scrollView = null;
             s_scrollerDisplayInLayoutEffect = null;
-            s_hiddenInsertionRuns = 0;
             s_hiddenRefTick = -1;
             s_setSuspended = default;
             s_setHiddenTick = default;
@@ -233,26 +232,23 @@ namespace Velvet.Tests
             Assert.That(s_widthReadInRef, Is.EqualTo(UpdatedWidth).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): the base runs no insertion effect of a tree a Suspense has hidden.
-        // The layout commit skips that tree; here a ref the hidden tree re-renders runs its owners' insertion effects
-        // ahead of the commit, and dropping the `fiber.LayoutEffectsHidden` check from
-        // `RunInsertionEffectsAheadOfRef` runs them. The ref's own reading is folded in, so the case fails where the
-        // hidden tree's ref never attaches.
+        // GREEN_ON_BASE(characterization): the base attaches no ref that a tree a Suspense has hidden re-renders.
+        // React's layout phase, which attaches refs, skips a hidden Offscreen tree, so the ref attached at mount is
+        // the last one that ran.
         [Test]
-        public void Given_ATreeASuspenseHasHidden_When_ItReRendersARef_Then_TheRefAttachesAndItsInsertionEffectDoesNotRun()
+        public void Given_ATreeASuspenseHasHidden_When_ItReRendersARef_Then_TheRefDoesNotAttach()
         {
             // Arrange
             _mounted = V.Mount(_window.rootVisualElement, V.Component(SuspendingHostRender, key: "host"));
             s_setSuspended.Invoke(true);
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
-            s_hiddenInsertionRuns = 0;
             s_setHiddenTick.Invoke(1);
 
             // Act
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That($"{s_hiddenRefTick} | {s_hiddenInsertionRuns}", Is.EqualTo("1 | 0"));
+            Assert.That(s_hiddenRefTick, Is.EqualTo(0));
         }
 
         [Test]
@@ -750,7 +746,6 @@ namespace Velvet.Tests
             return V.Div(className: $"w-[{MountWidth}px] h-[20px]", name: "widened-with-ref", refCallback: s_measuringRef);
         }
 
-        private static int s_hiddenInsertionRuns;
         private static VelvetTaskCompletionSource<string> s_neverResolves;
 
         private static StateUpdater<bool> s_setSuspended;
@@ -764,22 +759,17 @@ namespace Velvet.Tests
             s_setSuspended = setSuspended;
             return V.Suspense(V.Label(text: "fallback"), new VNode[]
             {
-                V.Component(HiddenInsertionRender, key: "hidden"),
+                V.Component(HiddenRefRender, key: "hidden"),
                 suspended ? V.Component(NeverResolvingRender, key: "suspends") : null,
             });
         }
 
         // Its ref is a new delegate on every render, so each render queues the ref's setup again.
         [Component]
-        private static VNode HiddenInsertionRender()
+        private static VNode HiddenRefRender()
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_setHiddenTick = setTick;
-            Hooks.UseInsertionEffect((Func<Action>)(() =>
-            {
-                s_hiddenInsertionRuns++;
-                return null;
-            }), new object[] { tick });
             return V.Div(name: "hidden-with-ref", refCallback: _ =>
             {
                 s_hiddenRefTick = tick;

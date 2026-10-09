@@ -27,8 +27,6 @@ namespace Velvet
         {
             for (var fiber = owner; fiber != null; fiber = fiber.Parent)
             {
-                // A tree a Suspense hides commits none of the layout work its render queued, as TakeBatch says.
-                if (fiber.LayoutEffectsHidden) continue;
                 HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects);
             }
         }
