@@ -34,6 +34,8 @@ namespace Velvet.Tests
     /// Keys are compared against the last committed render, so a discarded render's keys reset nothing, and a
     /// replay of the commit after an attempt that threw keeps the committed render's keys and <c>onReset</c>, as
     /// the StrictMode re-run of a render does.</item>
+    /// <item>Taking a reset drops the Suspense fallbacks recorded against the boundary, and leaves a boundary that
+    /// holds no offscreen child, or no reconciler, to carry on.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -488,6 +490,50 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo(nameof(InvalidOperationException)));
         }
 
+        [Test]
+        public void Given_ABoundaryWhoseFallbackIsAComponentAndWhoseChildrenAreNotOffscreen_When_ItsResetIsInvoked_Then_ItsChildrenRenderAgain()
+        {
+            // Arrange
+            s_childThrowsLeft = 1;
+            using var mounted = V.Mount(_root, V.Component(ComponentFallbackHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            Settle(mounted, () => s_reset.Invoke());
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("child"));
+        }
+
+        [Test]
+        public void Given_ABoundaryFiberWithNoReconciler_When_ItTakesAQueuedReset_Then_ItsBodyOutputStands()
+        {
+            // Arrange
+            var boundary = new ComponentFiber { QueuedReset = QueuedErrorBoundaryReset.AnyLane };
+            var bodyOutput = new VNode[] { V.Label(text: "body") };
+
+            // Act
+            var output = FiberErrorBoundary.OutputOf(boundary, bodyOutput);
+
+            // Assert
+            Assert.That(output, Is.SameAs(bodyOutput));
+        }
+
+        [Test]
+        public void Given_ABoundaryWithASuspenseFallbackRecordedAgainstIt_When_ItTakesAQueuedReset_Then_TheRecordIsGone()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var boundary = new ComponentFiber { Reconciler = reconciler, QueuedReset = QueuedErrorBoundaryReset.AnyLane };
+            var suspense = new SuspenseNode { Fallback = V.Label(text: "loading") };
+            reconciler.Context.SetSuspenseFallbackShown(boundary, null, null, 0, suspense, shown: true);
+
+            // Act
+            FiberErrorBoundary.OutputOf(boundary, Array.Empty<VNode>());
+
+            // Assert
+            Assert.That(reconciler.Context.IsBoundaryShowingFallback(boundary), Is.False);
+        }
+
         private static string Describe(ErrorBoundaryResetDetails details)
             => details.Reason + "|" + string.Join(",", details.Args) + "|" + Join(details.Prev) + "|" + Join(details.Next);
 
@@ -564,6 +610,18 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode SelfKeyedHostRender()
             => V.Div(children: new VNode[] { V.Component(SelfKeyedBoundaryRender, key: "boundary") });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode ComponentFallbackBoundaryRender()
+        {
+            s_reset = Hooks.UseErrorBoundaryReset();
+            Hooks.UseFallback(ex => V.Component(FallbackRender, ex.Message, key: "fallback"));
+            return V.Component(ThrowOnceRender, key: "child");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ComponentFallbackHostRender()
+            => V.Div(children: new VNode[] { V.Component(ComponentFallbackBoundaryRender, key: "boundary") });
 
         [Component(Compiler = false)]
         private static VNode NoBoundaryAboveRender()
