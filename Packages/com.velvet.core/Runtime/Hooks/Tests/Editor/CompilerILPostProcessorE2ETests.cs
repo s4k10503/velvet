@@ -320,16 +320,20 @@ namespace Velvet.Tests
             string Value();
         }
 
-        // Deliberately never assigned: analysis is static, so the outcome does not depend on the runtime value.
-        private static readonly IDispatchService? s_dispatchService = null;
+        private sealed class ConstantDispatchService : IDispatchService
+        {
+            public string Value() => "svc";
+        }
+
+        private static readonly IDispatchService? s_dispatchService = new ConstantDispatchService();
 
         // A call through an interface declared in a Velvet-referencing assembly, after the only hook call.
         [Component]
-        public static VNode InterfaceDispatchComponent()
+        public static VNode InterfaceDispatchComponent(GreetProps p)
         {
             var (count, _) = Hooks.UseState(0);
             var extra = s_dispatchService?.Value() ?? "none";
-            return V.Label(text: extra + count.ToString());
+            return V.Label(text: extra + count.ToString() + p.Name);
         }
 
         // The same dispatch ahead of the hook call.
@@ -382,8 +386,7 @@ namespace Velvet.Tests
             return V.Label(text: describe());
         }
 
-        // A hook value passed straight as an argument stays on the stack, as Roslyn's optimizing build leaves
-        // any value it reads once: the call is followed by the next argument, not by a store.
+        // A hook value passed straight as an argument, with no local of its own.
         private static int s_stackBuilds;
 
         private static string CountStackBuild()
@@ -409,7 +412,18 @@ namespace Velvet.Tests
         // Item1 read off the returned tuple without storing either.
         [Component]
         public static VNode StateItem1AsArgumentComponent()
-            => V.Label(text: Hooks.UseState("first").Item1);
+            => V.Label(text: Hooks.UseState("first").Item1, name: CountStackBuild());
+
+        private static System.Func<VNode> s_stackChild = null!;
+
+        // Renders whichever component a case names and re-renders it with nothing about it changed.
+        [Component]
+        public static VNode StackChildParent()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_stackParentSetTick = setTick;
+            return V.Component(s_stackChild, key: "stack-child");
+        }
 
         internal static StateUpdater<int> s_stackSetter;
 
@@ -479,21 +493,45 @@ namespace Velvet.Tests
             return V.Label(text: (count + offset).ToString());
         }
 
+        // A reference local over that hook's result: a managed pointer, which the deps array cannot hold.
+        [Component]
+        public static VNode RefLocalFromCustomHookComponent()
+        {
+            ref var count = ref UseCountSlot();
+            var (offset, _) = Hooks.UseState(0);
+            return V.Label(text: (count + offset).ToString());
+        }
+
+        // A custom hook returning a pair whose second element changes between renders.
+        private static (int count, int total) UseCountAndTotal()
+        {
+            var count = Hooks.UseStore(s_firstStore, value => value);
+            var total = Hooks.UseStore(s_secondStore, value => value);
+            return (count, total);
+        }
+
+        [Component]
+        public static VNode CustomPairDeconstructedComponent()
+        {
+            var (count, total) = UseCountAndTotal();
+            return V.Label(text: count.ToString() + "/" + total.ToString());
+        }
+
         // A custom hook returning an array, its value indexed straight off the stack.
         private static string[] UseNames()
         {
-            var (name, _) = Hooks.UseState("named");
-            return new[] { name };
+            var name = Hooks.UseStore(s_firstStore, value => value.ToString());
+            return Hooks.UseMemo(() => new[] { name }, name);
         }
 
         [Component]
         public static VNode ArrayFromCustomHookComponent()
-            => V.Label(text: UseNames()[0]);
+            => V.Label(text: UseNames()[0], name: CountStackBuild());
 
         // A Ref<object> read straight off the stack: the copy's type is a generic instance built from the call.
         [Component]
         public static VNode RefValueOffTheStackComponent()
-            => V.Label(text: Hooks.UseRef<object>() != null ? "ref" : "none");
+            => V.Label(text: Hooks.UseRef<object>() != null ? "ref" : "none", name: CountStackBuild());
 
         // A helper calling itself: the walk classifying it meets it again before it has finished reading it.
         private static string Repeat(string text, int times) => times <= 0 ? text : Repeat(text + "!", times - 1);
@@ -627,10 +665,22 @@ namespace Velvet.Tests
 
         // A virtual method on a non-sealed class in a Velvet-referencing assembly, after the only hook call.
         [Component]
-        public static VNode VirtualDispatchComponent()
+        public static VNode VirtualDispatchComponent(GreetProps p)
         {
             var (count, _) = Hooks.UseState(0);
-            return V.Label(text: s_formatter.Format(count));
+            return V.Label(text: s_formatter.Format(count) + p.Name);
+        }
+
+        private static System.Func<GreetProps, VNode> s_propChild = null!;
+        private static System.Action<string> s_propParentSetName = null!;
+
+        // Renders whichever props component a case names, with a name the case can change.
+        [Component]
+        public static VNode PropChildParent()
+        {
+            var (name, setName) = Hooks.UseState("a");
+            s_propParentSetName = setName;
+            return V.Component(s_propChild, new GreetProps(name), key: "prop-child");
         }
 
         public delegate string TextProvider();
@@ -983,8 +1033,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reads only call instructions too, so it weaves this body.
-        // What it pins is the ahead-of-gate check doing the same: dropping the call-opcode filter from
-        // `IsOpaqueCall` lets it walk the lambda the `ldftn` names, and reddens it.
+        // What it pins is the ahead-of-gate check doing the same: also accepting `OpCodes.Ldftn` in the opcode
+        // test of `IsOpaqueCall` reads the lambda the `ldftn` names, and reddens it.
         [Test]
         public void Given_DispatchInsideALambdaHandedToAHook_When_Woven_Then_InjectsBothMemoCalls()
         {
@@ -1288,6 +1338,24 @@ namespace Velvet.Tests
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(RefReturningCustomHookComponent))), Is.False,
                 "The caller reads through the returned reference, so there is no value to copy");
+        }
+
+        // Not green on the base: the base captures a reference local like any other, and boxes nothing for it.
+        [Test]
+        public void Given_AReferenceLocalOverACustomHook_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(RefLocalFromCustomHookComponent))), Is.False,
+                "A managed pointer cannot be stored into the deps array");
+        }
+
+        // Not green on the base: the base captures only the first element of a custom hook's pair.
+        [Test]
+        public void Given_ACustomHookPairDeconstructedWhole_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(CustomPairDeconstructedComponent))), Is.False,
+                "The second element of a custom hook's pair can change, and only the first would key the cache");
         }
 
         [Test]
@@ -1609,6 +1677,156 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.Q<Label>()?.text, Is.EqualTo("ref"), "The copy of the Ref<object> keys the memo");
+        }
+
+        [Test]
+        public void Given_Item1ReadOffTheStack_When_TheParentReRendersWithItUnchanged_Then_TheBodyDoesNotRun()
+        {
+            // Arrange
+            s_stackBuilds = 0;
+            s_stackChild = StateItem1AsArgumentComponent;
+            using var mounted = V.Mount(_root, V.Component(StackChildParent, key: "stack-parent"));
+
+            // Act
+            s_stackParentSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_stackBuilds, Is.EqualTo(1), "An equal copied Item1 is a hit, so the counter past the gate runs once");
+        }
+
+        [Test]
+        public void Given_AnArrayFromACustomHookIndexedOffTheStack_When_TheParentReRendersWithItUnchanged_Then_TheBodyDoesNotRun()
+        {
+            // Arrange
+            using var first = new SettableStore(1);
+            s_firstStore = first;
+            s_stackBuilds = 0;
+            s_stackChild = ArrayFromCustomHookComponent;
+            using var mounted = V.Mount(_root, V.Component(StackChildParent, key: "stack-parent"));
+
+            // Act
+            s_stackParentSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_stackBuilds, Is.EqualTo(1), "The same array is an equal copy, so the counter past the gate runs once");
+        }
+
+        [Test]
+        public void Given_AnArrayFromACustomHookIndexedOffTheStack_When_TheStoreChanges_Then_TheLabelShowsItsNewValue()
+        {
+            // Arrange
+            using var first = new SettableStore(1);
+            s_firstStore = first;
+            using var mounted = V.Mount(_root, V.Component(ArrayFromCustomHookComponent, key: "array-stack"));
+
+            // Act
+            first.Set(9);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("9"), "The copied array keys the memo");
+        }
+
+        [Test]
+        public void Given_ARefValueReadOffTheStack_When_TheParentReRendersWithItUnchanged_Then_TheBodyDoesNotRun()
+        {
+            // Arrange
+            s_stackBuilds = 0;
+            s_stackChild = RefValueOffTheStackComponent;
+            using var mounted = V.Mount(_root, V.Component(StackChildParent, key: "stack-parent"));
+
+            // Act
+            s_stackParentSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_stackBuilds, Is.EqualTo(1), "The same Ref is an equal copy, so the counter past the gate runs once");
+        }
+
+        [Test]
+        public void Given_InterfaceDispatchAfterTheHook_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Arrange
+            s_propChild = InterfaceDispatchComponent;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(PropChildParent, key: "prop-parent"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("svc0a"), "The dispatch runs on the first render");
+        }
+
+        [Test]
+        public void Given_InterfaceDispatchAfterTheHook_When_ThePropChanges_Then_TheLabelShowsItsNewValue()
+        {
+            // Arrange
+            s_propChild = InterfaceDispatchComponent;
+            using var mounted = V.Mount(_root, V.Component(PropChildParent, key: "prop-parent"));
+
+            // Act
+            s_propParentSetName("b");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("svc0b"), "The prop keys the memo ahead of the dispatch");
+        }
+
+        [Test]
+        public void Given_VirtualDispatchAfterTheHook_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Arrange
+            s_propChild = VirtualDispatchComponent;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(PropChildParent, key: "prop-parent"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("0a"), "The dispatch runs on the first render");
+        }
+
+        [Test]
+        public void Given_VirtualDispatchAfterTheHook_When_ThePropChanges_Then_TheLabelShowsItsNewValue()
+        {
+            // Arrange
+            s_propChild = VirtualDispatchComponent;
+            using var mounted = V.Mount(_root, V.Component(PropChildParent, key: "prop-parent"));
+
+            // Act
+            s_propParentSetName("b");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("0b"), "The prop keys the memo ahead of the dispatch");
+        }
+
+        [Test]
+        public void Given_ACustomHookPairDeconstructedWhole_When_TheSecondElementChanges_Then_TheLabelShowsItsNewValue()
+        {
+            // Arrange
+            using var first = new SettableStore(1);
+            using var second = new SettableStore(2);
+            s_firstStore = first;
+            s_secondStore = second;
+            using var mounted = V.Mount(_root, V.Component(CustomPairDeconstructedComponent, key: "custom-pair"));
+
+            // Act
+            second.Set(9);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("1/9"), "The second element of the pair reaches the label");
+        }
+
+        [Test]
+        public void Given_AReferenceLocalOverACustomHook_When_FirstRender_Then_ProducesVisibleOutput()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(RefLocalFromCustomHookComponent, key: "ref-local"));
+
+            // Assert
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("0"), "The body runs unwoven, reading through the reference");
         }
 
         [Test]

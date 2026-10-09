@@ -27,9 +27,8 @@ namespace Velvet.CodeGen
     //   Each value-returning hook result captured via var x = Hooks.UseXxx(...) (IL
     //   call → stloc) or a single-element deconstruction var (x, _, _) = Hooks.UseXxx(...)
     //   (IL call → ldfld → stloc), or left on the stack for whatever reads it next (IL call, or call → ldfld
-    //   Item1, where no shape above matches and the next instruction is neither a pop nor a dup) — the shape
-    //   Roslyn's optimizing build gives a value it reads once, and a Debug build a hook value passed straight
-    //   as an argument. A void hook
+    //   Item1, where no shape above matches and the next instruction is neither a pop nor a dup) — a hook value
+    //   read once, or passed straight as an argument. A void hook
     //   (UseEffect and friends) captures no dep but still advances the hook boundary so the cache gate is
     //   injected after it.
     //   No hook call or return inside a try/catch/finally region (the Leave protocol is not woven).
@@ -47,8 +46,9 @@ namespace Velvet.CodeGen
     // decided where it runs. Ahead of the gate it bails the method, since a hook there would feed the body a
     // value the deps array does not capture; past the gate, Hooks.TryGetMemoizedVNode stops serving hits to a
     // body once a hook has run between its gate and its commit. An override of a BCL / Unity virtual signature
-    // (object.ToString, say) is not opaque: the carve-out reads it as hook-free without resolving it, so a hook
-    // such an override calls ahead of the gate is outside this model.
+    // (object.ToString, say) is not opaque where the call names the BCL / Unity declaration: the carve-out reads
+    // it as hook-free without resolving it, so a hook such an override calls ahead of the gate is outside this
+    // model.
     // A body that already contains a Velvet.Hooks.TryGetMemoizedVNode call (a hand-written memoization,
     // e.g. in a test fixture) is skipped so the weaver does not memoize it a second time.
     internal static class CompilerWeaver
@@ -517,7 +517,7 @@ namespace Velvet.CodeGen
                     return false;
                 }
 
-                var capture = TryCaptureHookResult(next, body, out var local, out var boundary);
+                var capture = TryCaptureHookResult(next, body, isDirect, out var local, out var boundary);
                 if (capture == HookCaptureMatch.Bail)
                 {
                     return false;
@@ -545,7 +545,7 @@ namespace Velvet.CodeGen
         // The shapes are tried in this order because each is a strictly narrower read of the same
         // instruction, and the first one that recognizes the shape owns the verdict — including a Bail,
         // which means the shape matched but is unsound and a later matcher must not get to claim it.
-        private static HookCaptureMatch TryCaptureHookResult(Instruction next, MethodBody body,
+        private static HookCaptureMatch TryCaptureHookResult(Instruction next, MethodBody body, bool isDirect,
             out VariableDefinition? local, out Instruction? boundary)
         {
             var direct = TryMatchDirectCapture(next, body, out local, out boundary);
@@ -560,12 +560,11 @@ namespace Velvet.CodeGen
                 return item1;
             }
 
-            return TryMatchTwoElementDeconstruction(next, body, out local, out boundary);
+            return TryMatchTwoElementDeconstruction(next, body, isDirect, out local, out boundary);
         }
 
-        // Roslyn's optimizing build leaves a value it reads once on the stack instead of storing it, so a hook call
-        // can be followed directly by whatever reads its value. Such a value is copied where it is produced: at
-        // the call, or at the ldfld taking a tuple's Item1. A whole tuple is refused for the reason
+        // A hook call can be followed directly by whatever reads its value, with no store between. Such a value is
+        // copied where it is produced: at the call, or at the ldfld taking a tuple's Item1. A whole tuple is refused for the reason
         // TryMatchDirectCapture gives and a later element because only Item1 is a sound dep; a void call, or a
         // value whose type cannot be named in the caller's terms, leaves nothing to copy.
         private static bool TryCaptureStackValue(Instruction call, Instruction next,
@@ -649,7 +648,8 @@ namespace Velvet.CodeGen
             {
                 return HookCaptureMatch.NotMatched;
             }
-            if (IsValueTupleType(local.VariableType))
+            // A `ref var` local holds a managed pointer, which cannot be stored into the object[] of deps.
+            if (IsValueTupleType(local.VariableType) || local.VariableType.IsByReference)
             {
                 return HookCaptureMatch.Bail;
             }
@@ -691,13 +691,20 @@ namespace Velvet.CodeGen
         // Item2 has to be consumed before the gate runs). Without this branch the leading `dup` matched no
         // shape and bailed the whole component — disabling auto-memo for every `var (x, setX) = ...` site.
         private static HookCaptureMatch TryMatchTwoElementDeconstruction(
-            Instruction next, MethodBody body, out VariableDefinition? capturedLocal, out Instruction? newBoundary)
+            Instruction next, MethodBody body, bool isDirect, out VariableDefinition? capturedLocal,
+            out Instruction? newBoundary)
         {
             capturedLocal = null;
             newBoundary = null;
             if (next.OpCode != OpCodes.Dup)
             {
                 return HookCaptureMatch.NotMatched;
+            }
+            // Item2 is left out of the deps, which is sound only for a Velvet.Hooks tuple, whose second element is
+            // a reference-stable setter. A custom hook's second element can change between renders.
+            if (!isDirect)
+            {
+                return HookCaptureMatch.Bail;
             }
             var item1Ldfld = next.Next;
             var valueStore = item1Ldfld?.Next;
@@ -844,7 +851,11 @@ namespace Velvet.CodeGen
                     Lower(caller!, openIndex);
                     return 0;
                 }
-                if (TryLeaf(callee, out var leaf, out var definition)) return leaf;
+                if (TryLeaf(callee, out var leaf, out var definition))
+                {
+                    _final[key] = leaf;
+                    return leaf;
+                }
                 Visit(callee, key, definition!);
                 if (_final.TryGetValue(key, out done)) return done;
                 Lower(caller!, _low[key]);

@@ -70,7 +70,8 @@ namespace Velvet
         /// cannot memoize safely, and <c>VelvetCompilerILPostProcessor.WillProcess</c> decides which
         /// assemblies it reaches at all. A call whose target the build cannot enumerate — through an interface,
         /// or to a virtual method an override can replace — is cached with the rest of the body where it follows
-        /// every hook call the body makes, and declines the component where it precedes one. Once such a call
+        /// every hook call the body makes, and declines the component where it precedes one or sits inside a
+        /// custom hook, even after that hook's own <c>UseState</c>. Once such a call
         /// runs a hook while the body builds its tree, the component's body runs on every render from then on.
         /// <para>
         /// Set to <c>false</c> to opt this component out of the transform, so its body then runs in full on
