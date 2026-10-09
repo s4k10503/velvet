@@ -484,6 +484,11 @@ namespace Velvet
         }
 
         private static bool TryParseNumber(string token, out double value)
+            // MUTANT_SURVIVES(unreachable): every token here comes from the lowercased body, and Mono's parser
+            // reads none of `infinity`, `nan` or an overflowing `1e999` as a number (measured on Mono 6.8).
+            // On .NET's own parser, which reads them as non-finite, the `rgb(0_0_infinity)` and
+            // `rgb(0_0_1e999)` rows of Given_AValueTheGrammarDeclines_When_Parsed_Then_OnlyItsReadableNeighbourParses
+            // fail without the clause.
             => double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && double.IsFinite(value);
     }
 }
