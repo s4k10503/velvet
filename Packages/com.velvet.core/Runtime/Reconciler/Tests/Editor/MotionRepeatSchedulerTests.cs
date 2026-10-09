@@ -133,6 +133,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARepeatingTween_When_AnExitPlays_Then_AWarningSaysItPlaysOnce()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var leaving = OnPanel();
+            var tween = new StyleTransitionConfig { DurationSec = 0.2f, Repeat = 1f };
+
+            // Act
+            var warnings = RepeatWarnings(() => _scheduler.PlayExit(leaving,
+                tween.WithExitClasses("opacity-100", "opacity-0"), onComplete: null, restoreFromOnCancel: true));
+
+            // Assert
+            Assert.That(warnings, Is.EqualTo(1));
+        }
+
+        [Test]
         public void Given_ATweenWithNoRepeat_When_AnEnterPlays_Then_NoRepeatWarningIsLogged()
         {
             // Arrange

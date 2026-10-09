@@ -74,6 +74,26 @@ namespace Velvet.Tests
             Assert.That(pass, Is.EqualTo(float.PositiveInfinity));
         }
 
+        // Framer's spring generator rests where the speed is no more than restSpeed and the distance left no more
+        // than restDelta, both inclusive: 2 and 0.5 for a travel of 5 or more, 0.01 and 0.005 under it.
+        [TestCase(10.0, 0.5, 0.0)]
+        [TestCase(10.0, 0.0, 2.0)]
+        [TestCase(1.0, 0.005, 0.0)]
+        [TestCase(1.0, 0.0, 0.01)]
+        public void Given_ASampleExactlyOnARestThreshold_When_TheRestTestReadsIt_Then_ItRests(double delta,
+            double displacement, double velocity)
+        {
+            // Arrange — the rest test is the driver's private one, reached by reflection.
+            var rests = typeof(MotionSpringDriver).GetMethod("Rests",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+            // Act — false for a driver that has no such test.
+            var result = rests?.Invoke(null, new object[] { delta, displacement, velocity }) is true;
+
+            // Assert
+            Assert.That(result, Is.True);
+        }
+
         [Test]
         public void Given_ALoopRepeat_When_ItIsPartWayIntoItsSecondPass_Then_ItShowsTheSpringAsFarFromItsStart()
         {

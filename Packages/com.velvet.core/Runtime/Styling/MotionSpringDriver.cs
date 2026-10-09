@@ -230,8 +230,6 @@ namespace Velvet
         private static bool Rests(double delta, double displacement, double velocity)
         {
             var granular = System.Math.Abs(delta) < 5.0;
-            // MUTANT_SURVIVES(equivalent, boundary): `<` differs only on a sample landing exactly on a threshold, and
-            // no sample of the springs the cases time lands on one.
             return System.Math.Abs(velocity) <= (granular ? 0.01 : 2.0)
                 && System.Math.Abs(displacement) <= (granular ? 0.005 : 0.5);
         }
