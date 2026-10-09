@@ -1374,7 +1374,7 @@ namespace Velvet
         // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again.
         internal void OpenSuspensePrimary(bool retains) => _suspensePrimaries.Add(new SuspensePrimaryFrame(retains, false));
 
-        // Returns whether a suspend inside the primary was held by HoldSuspendInPrimary.
+        // Returns whether the primary suspended, at its own expansion or where HoldSuspendInPrimary held it.
         internal bool CloseSuspensePrimary()
         {
             var last = _suspensePrimaries.Count - 1;
@@ -1389,9 +1389,12 @@ namespace Velvet
         {
             var last = _suspensePrimaries.Count - 1;
             if (last < 0 || !_suspensePrimaries[last].Retains) return false;
-            _suspensePrimaries[last] = _suspensePrimaries[last] with { Suspended = true };
+            MarkSuspensePrimarySuspended();
             return true;
         }
+
+        internal void MarkSuspensePrimarySuspended()
+            => _suspensePrimaries[^1] = _suspensePrimaries[^1] with { Suspended = true };
 
         private readonly record struct SuspensePrimaryFrame(bool Retains, bool Suspended);
 

@@ -1476,12 +1476,17 @@ namespace Velvet.Tests
         private static VNode RootlessReaderRender()
             => V.Label(text: "rootless:" + Hooks.Use<int>(_ => s_rootlessSource.Task, "rootless"));
 
+        // The outside reader sits under a component: a fiber with no parent that suspends gives up its own render
+        // alone, and the reconcile goes on.
         private static VNode[] RootlessAbandonTree(bool waiting)
             => new VNode[]
             {
                 V.Suspense(V.Label(text: "loading"), new VNode[] { V.Component(TickReaderRender, waiting ? 1 : 0, key: "inside") }),
-                V.Component(TickReaderRender, waiting ? 1 : 0, key: "outside"),
+                V.Component(OutsideWrapperRender, waiting ? 1 : 0, key: "outside"),
             };
+
+        [Component]
+        private static VNode OutsideWrapperRender(int tick) => V.Component(TickReaderRender, tick, key: "reader");
 
         private static int RootlessFallbackCount(Reconciler reconciler)
         {

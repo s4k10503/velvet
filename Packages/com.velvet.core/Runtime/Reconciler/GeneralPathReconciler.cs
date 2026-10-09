@@ -1436,7 +1436,7 @@ namespace Velvet
         private bool ExpandSuspensePrimary(InlineWalk walk, VNode?[]? children, bool retains, WalkPosition primaryPosition)
         {
             _ctx.OpenSuspensePrimary(retains);
-            var suspended = false;
+            bool suspended;
             try
             {
                 ExpandInlineRecursive(walk, children ?? Array.Empty<VNode>(), primaryPosition);
@@ -1445,11 +1445,11 @@ namespace Velvet
             // and a VirtualList row's, so one reaching here is a primary's that discards.
             catch (FiberSuspendSignal)
             {
-                suspended = true;
+                _ctx.MarkSuspensePrimarySuspended();
             }
             finally
             {
-                if (_ctx.CloseSuspensePrimary()) suspended = true;
+                suspended = _ctx.CloseSuspensePrimary();
             }
             return suspended;
         }
@@ -1527,8 +1527,6 @@ namespace Velvet
         private void SetPrimaryHidden(
             InlineWalk walk, GeneralCommitState commit, int from, int to, ComponentFiber? boundaryFiber, bool hidden)
         {
-            // MUTANT_SURVIVES(equivalent, guard removed): an empty range adds no root, and no fiber is under none.
-            if (from == to) return;
             var roots = new HashSet<VisualElement>();
             for (var i = from; i < to; i++)
             {
