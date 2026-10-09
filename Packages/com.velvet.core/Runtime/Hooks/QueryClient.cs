@@ -49,7 +49,7 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Provides a <see cref="QueryClient"/> to the <see cref="Hooks.UseQuery{T}"/> calls below it:
+    /// Provides a <see cref="QueryClient"/> to the <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> calls below it:
     /// <c>V.Provider(QueryClientContext.Ref, value: client, children: ...)</c>, TanStack Query's
     /// <c>QueryClientProvider</c>. Read it with <c>Hooks.UseContext(QueryClientContext.Ref)</c> to reach the
     /// client from a component, as <c>useQueryClient()</c> does.
@@ -57,7 +57,7 @@ namespace Velvet
     public static class QueryClientContext
     {
         /// <summary>
-        /// The context <see cref="Hooks.UseQuery{T}"/> reads. Its default is null, so a query with no
+        /// The context <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> reads. Its default is null, so a query with no
         /// Provider above it and no client passed to it throws rather than sharing a hidden one.
         /// </summary>
         public static readonly ComponentContext<QueryClient?> Ref
@@ -66,15 +66,15 @@ namespace Velvet
 
     /// <summary>
     /// TanStack Query's <c>QueryClient</c>: a cache of query results keyed by <see cref="QueryKey"/>, shared
-    /// by every <see cref="Hooks.UseQuery{T}"/> that reaches it. One entry holds one result and at most one
+    /// by every <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> that reaches it. One entry holds one result and at most one
     /// request in flight, whichever component started it, and keeps both after the components reading it
     /// unmount, until it is collected.
     /// </summary>
     /// <remarks>
     /// Main thread only, like the rest of Velvet. <b>Deviation:</b> garbage collection runs no timer. An
     /// entry whose time has run out reads as absent from then on, and is removed, cancelling its request,
-    /// the next time a query subscribes to this client or <see cref="InvalidateQueries"/> runs, where
-    /// TanStack Query removes it when its timer fires.
+    /// the next time a query subscribes to this client, <see cref="InvalidateQueries"/> runs or
+    /// <see cref="SetQueryData{T}(QueryKey, T)"/> writes, where TanStack Query removes it when its timer fires.
     /// </remarks>
     public sealed class QueryClient
     {
@@ -143,6 +143,49 @@ namespace Velvet
         }
 
         /// <summary>
+        /// The data the entry <paramref name="queryKey"/> names holds, TanStack Query's <c>getQueryData</c>:
+        /// default when there is no such entry, it has no data yet, or it has gone unread past its
+        /// garbage-collection time. Placeholder data is never an entry's.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The entry holds data of another type.</exception>
+        public T? GetQueryData<T>(QueryKey queryKey)
+        {
+            if (queryKey == null) throw new ArgumentNullException(nameof(queryKey));
+            var entry = _entries.TryGetValue(queryKey, out var found) && !IsExpired(found, Now) ? Typed<T>(found) : null;
+            return entry != null ? entry.Data : default;
+        }
+
+        /// <summary>
+        /// Writes <paramref name="data"/> into the entry <paramref name="queryKey"/> names, creating it when there
+        /// is none, TanStack Query's <c>setQueryData</c>: the entry becomes <see cref="QueryStatus.Success"/>
+        /// with fresh data and no error, and every query reading it re-renders for what changed. The data is
+        /// shared structurally with what the entry held, as a request landing is. A request in flight is left
+        /// running and lands over it. A new entry nothing reads expires after
+        /// <see cref="DefaultGcTime"/>. A null <paramref name="data"/> writes nothing.
+        /// </summary>
+        /// <returns>The data the entry holds afterwards; default when nothing was written.</returns>
+        /// <exception cref="InvalidOperationException">The entry holds data of another type.</exception>
+        public T? SetQueryData<T>(QueryKey queryKey, T data)
+        {
+            if (queryKey == null) throw new ArgumentNullException(nameof(queryKey));
+            if (data is null) return default;
+            return Ensure<T>(queryKey, DefaultGcTime).SetData(data);
+        }
+
+        /// <summary>
+        /// <see cref="SetQueryData{T}(QueryKey, T)"/> with the data <paramref name="updater"/> makes of the data
+        /// the entry holds, default when it holds none, as TanStack Query's functional updater. An updater
+        /// returning null writes nothing.
+        /// </summary>
+        /// <returns>The data the entry holds afterwards; default when nothing was written.</returns>
+        /// <exception cref="InvalidOperationException">The entry holds data of another type.</exception>
+        public T? SetQueryData<T>(QueryKey queryKey, Func<T?, T> updater)
+        {
+            if (updater == null) throw new ArgumentNullException(nameof(updater));
+            return SetQueryData<T>(queryKey, updater(GetQueryData<T>(queryKey)));
+        }
+
+        /// <summary>
         /// Removes every entry and cancels every request in flight, as TanStack Query's <c>clear()</c>. A
         /// mounted query re-renders without data and fetches into a new entry.
         /// </summary>
@@ -187,6 +230,20 @@ namespace Velvet
 
             var entry = new QueryEntry<T>(this, key, gcTime);
             _entries.Add(key, entry);
+            return entry;
+        }
+
+        // TanStack's queryCache.build outside a subscription: an entry made here has no reader yet, so it is
+        // collected after its gcTime unless one subscribes, as v5 schedules a new query's removal at once.
+        internal QueryEntry<T> Ensure<T>(QueryKey key, TimeSpan gcTime)
+        {
+            CollectGarbage();
+            // An entry that exists is returned as it is, gcTime included, as v5's build returns the query it finds.
+            if (_entries.TryGetValue(key, out var existing)) return Typed<T>(existing);
+
+            var entry = new QueryEntry<T>(this, key, gcTime);
+            _entries.Add(key, entry);
+            MarkInactive(entry);
             return entry;
         }
 
@@ -269,7 +326,7 @@ namespace Velvet
     // component that started it, so an observer leaving takes nothing from the observers that stay.
     internal sealed class QueryEntry<T> : QueryEntry
     {
-        private readonly List<QueryObserver<T>> _observers = new();
+        private readonly List<QueryEntryObserver<T>> _observers = new();
         private CancellationTokenSource? _inFlight;
         private bool _retriesStopped;
         private TimeSpan _dataUpdatedAt;
@@ -294,19 +351,19 @@ namespace Velvet
         internal bool IsStaleFor(TimeSpan staleTime)
             => !HasData || IsInvalidated || Client.Now - _dataUpdatedAt >= staleTime;
 
-        internal void Subscribe(QueryObserver<T> observer)
+        internal void Subscribe(QueryEntryObserver<T> observer)
         {
             _observers.Add(observer);
             if (_observers.Count == 1) Client.MarkActive(this);
-            if (IsStaleFor(observer.StaleTime))
+            if (observer.Enabled && IsStaleFor(observer.StaleTime))
             {
-                Fetch(observer, cancelRefetch: false);
+                Fetch(observer.FetchOptions, cancelRefetch: false);
             }
         }
 
         // With the last observer gone, a request in flight finishes but is not retried: TanStack's
         // removeObserver calls cancelRetry where it leaves the request running.
-        internal void Unsubscribe(QueryObserver<T> observer)
+        internal void Unsubscribe(QueryEntryObserver<T> observer)
         {
             if (!_observers.Remove(observer) || _observers.Count > 0 || IsRemoved) return;
             _retriesStopped = true;
@@ -316,7 +373,7 @@ namespace Velvet
         // cancelRefetch is TanStack's fetch option of the same name: an explicit refetch over an entry that
         // holds data starts over, and every other request joins the one in flight, which retries again if
         // its retries had been stopped.
-        internal void Fetch(QueryObserver<T> observer, bool cancelRefetch)
+        internal void Fetch(QueryFetchOptions<T> options, bool cancelRefetch)
         {
             if (IsRemoved) return;
             if (_inFlight != null)
@@ -341,14 +398,15 @@ namespace Velvet
             }
 
             Notify();
-            RunAsync(observer, request).Forget();
+            RunAsync(options, request).Forget();
         }
 
-        private async VelvetTask RunAsync(QueryObserver<T> observer, CancellationTokenSource request)
+        private async VelvetTask RunAsync(QueryFetchOptions<T> options, CancellationTokenSource request)
         {
-            var queryFn = observer.QueryFn;
-            var maxRetries = observer.MaxRetries;
-            var retryDelay = observer.RetryDelay;
+            var queryFn = options.QueryFn;
+            var maxRetries = options.MaxRetries;
+            var retryDelay = options.RetryDelay;
+            var sharing = options.StructuralSharing;
             for (var failures = 0; ; failures++)
             {
                 T data = default!;
@@ -378,7 +436,7 @@ namespace Velvet
                 if (request.IsCancellationRequested) return;
                 if (failure == null)
                 {
-                    Succeed(request, data, observer.StructuralSharing, failures);
+                    Succeed(request, data, sharing, failures);
                     return;
                 }
 
@@ -465,6 +523,23 @@ namespace Velvet
             Notify();
         }
 
+        // TanStack's setData with manual set, as setQueryData calls it: the data lands as a request's would, but a
+        // request in flight keeps running and its failure count stays.
+        internal T SetData(T data)
+        {
+            var held = HasData ? Data : default;
+            var sharing = _observers.Count > 0 ? _observers[0].FetchOptions.StructuralSharing : null;
+            var shared = sharing != null ? sharing(held, data) : QueryStructuralSharing.Replace(held, data);
+            Data = shared;
+            HasData = true;
+            Error = null;
+            Status = QueryStatus.Success;
+            IsInvalidated = false;
+            _dataUpdatedAt = Client.Now;
+            Notify();
+            return shared;
+        }
+
         private void Fail(CancellationTokenSource request, Exception error, int failures)
         {
             if (!ReferenceEquals(_inFlight, request)) return;
@@ -494,10 +569,16 @@ namespace Velvet
             request.Dispose();
         }
 
+        // Only an entry an enabled query reads is fetched, as v5 refetches the active queries.
         internal override void Invalidate()
         {
             IsInvalidated = true;
-            if (_observers.Count > 0) Fetch(_observers[0], cancelRefetch: true);
+            foreach (var observer in _observers)
+            {
+                if (!observer.Enabled) continue;
+                Fetch(observer.FetchOptions, cancelRefetch: true);
+                return;
+            }
         }
 
         internal override void Remove()
@@ -533,7 +614,7 @@ namespace Velvet
         {
             foreach (var observer in _observers.ToArray())
             {
-                observer.Update();
+                observer.OnQueryUpdate();
             }
         }
     }

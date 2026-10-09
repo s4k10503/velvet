@@ -212,11 +212,15 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `useQuery({ queryKey: ['todos', id], queryFn })` | `Hooks.UseQuery(new QueryOptions<T>(new QueryKey("todos", id), ct => ...))` |
 | `useQuery(options, queryClient)` | `Hooks.UseQuery(options, client)` |
 | `staleTime` / `gcTime` on one query | `new QueryOptions<T>(...) { StaleTime = ..., GcTime = ... }` |
+| `enabled` | `new QueryOptions<T>(...) { Enabled = ... }` |
+| `select: (data) => ...` | `new QueryOptions<TQueryFnData, TData>(...) { Select = data => ... }` |
+| `placeholderData: keepPreviousData` / `(previousData, previousQuery) => ...` | `new QueryOptions<T>(...) { PlaceholderData = QueryPlaceholder.KeepPreviousData }` / `(previousData, previousKey) => ...` |
 | `retry` / `retryDelay` as a number and a function | `new QueryOptions<T>(...) { Retry = ..., RetryDelay = ... }`, or `QueryClientOptions.Retry` / `RetryDelay` for every query |
 | `structuralSharing` as a function | `new QueryOptions<T>(...) { StructuralSharing = (held, arrived) => ... }` |
 | `notifyOnChangeProps: ['data']` / `'all'` | `new QueryOptions<T>(...) { NotifyOnChangeProps = QueryProperties.Data }` / `QueryProperties.All` |
-| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` / `failureCount` / `failureReason` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` / `FailureCount` / `FailureReason` |
+| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` / `failureCount` / `failureReason` / `isPlaceholderData` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` / `FailureCount` / `FailureReason` / `IsPlaceholderData` |
 | `refetch()` | `result.Refetch()` |
+| `queryClient.getQueryData(queryKey)` / `setQueryData(queryKey, updater)` | `client.GetQueryData<T>(key)` / `client.SetQueryData(key, data)` or `SetQueryData<T>(key, held => ...)` |
 | `queryClient.invalidateQueries({ queryKey })` | `client.InvalidateQueries(new QueryKey(...))` |
 | `queryClient.clear()` | `client.Clear()` |
 
@@ -277,8 +281,47 @@ of that with a function of the data held, default when there is none, and the da
 throws fails the request.
 
 **Changing the key** moves the component to that key's entry: it renders that entry's data, or none,
-and a result the old key's request delivers afterwards is never shown as the new key's. There is no
-`placeholderData` yet, so a key with nothing cached renders `Pending`.
+and a result the old key's request delivers afterwards is never shown as the new key's. A key with
+nothing cached renders `Pending`, or the placeholder below.
+
+**Turning a query off.** `Enabled = false` fetches nothing on its own: not on mount and not when its key
+is invalidated. It reports `IsStale` false and, with nothing cached, `Pending` without `IsFetching`;
+`Refetch` still fetches. Turning it on fetches when the entry's data is stale, joining a request in
+flight, and the render that turns it on already reports the fetch. Invalidating an entry read by a
+disabled and an enabled query fetches it with the enabled one's function.
+
+**Selecting.** `Select` turns the entry's data into the result's, so a component can read part of an
+entry, or another type through `QueryOptions<TQueryFnData, TData>`, which then needs a `Select`. The entry
+keeps what the query function returned, and `GetQueryData` reads that. Over the entry's data the select
+runs again only when that data's instance or the select's own instance changes, as v5 compares both with
+`===`: a delegate held in a field runs once for each new instance of the data, and one built afresh each
+render runs every render. What it returns is shared structurally with the result's previous data, so an
+equal selection keeps its instance. A select that throws makes the result `Error` with its exception.
+
+**Placeholder data.** While the entry is pending with no data, `PlaceholderData` stands in: the result is
+`Success` with `IsPlaceholderData` true and `IsFetching` true, and the entry stays without data, so
+`GetQueryData` reads none. A failure with no data shows the error, not the placeholder. The function is
+handed the data and key of the last entry this component read that had data — default and null when there
+is none — and returns `QueryPlaceholder<T>`, to which a value converts; a null value is no placeholder.
+`QueryPlaceholder.KeepPreviousData` returns the previous data, so paging keeps the old page on screen until
+the new one lands. While the result before showed the placeholder, the function is asked again only when
+its instance changes. A `Select` applies to the placeholder too, and one that throws there makes an error
+that is still flagged `IsPlaceholderData`, as v5's is.
+
+```csharp
+var page = Hooks.UseQuery(new QueryOptions<Todo[]>(new QueryKey("todos", pageIndex), ct => api.Page(pageIndex, ct))
+{
+    PlaceholderData = QueryPlaceholder.KeepPreviousData,
+});
+// page.Data is the previous page, with page.IsPlaceholderData true, until this page lands.
+```
+
+**Reading and writing the cache by hand.** `GetQueryData` returns an entry's data, default when it has
+none or has expired unread. `SetQueryData` writes data as a request landing would: the entry is `Success`
+with no error, its data is fresh from that moment, shared structurally with what it held, and clears an
+invalidation, and the components reading it re-render for what changed. A request in flight keeps running
+and lands over it. A key with no entry gets one, which expires after the client's `GcTime` unless a query
+reads it. The updater form is handed the data held; a null data or updater result writes nothing.
 
 **Invalidating after a mutation.** `InvalidateQueries` takes a filter, as v5's non-exact
 `partialMatchKey` does: `new QueryKey("todos")` matches `["todos", 1]` and `["todos"]` alike. A filter part
@@ -287,7 +330,7 @@ holding at least the entries it names, each value matched the same way, and any 
 included, must equal its counterpart whole. A matching entry a
 mounted component reads is fetched again; a request already in flight for it is cancelled and started
 over when the entry holds data, so a result fetched before the write does not land as current. An entry
-nothing reads is only marked stale, and is fetched by the next component that mounts over it.
+no enabled query reads is only marked stale, and is fetched by the next component that mounts over it.
 
 ```csharp
 var client = Hooks.UseContext(QueryClientContext.Ref)!;
@@ -299,8 +342,8 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 **Deviations from v5:**
 
 - Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
-  absent from then on, and is removed the next time a query subscribes to the client or
-  `InvalidateQueries` runs; removing it cancels the request it still has in flight.
+  absent from then on, and is removed the next time a query subscribes to the client, `InvalidateQueries`
+  runs or `SetQueryData` writes; removing it cancels the request it still has in flight.
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
   share one request; v5's result arrives a microtask later.
@@ -315,9 +358,12 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
   whose function read its signal.
 - `UseQuery` never suspends: with no data yet it returns `Pending`. There is no `useSuspenseQuery`.
 - A key holds one data type. A query reading it as another throws `InvalidOperationException`.
+- A `StructuralSharing` function is typed for the query function's data, so with a `Select` that changes
+  the type the selected data is not passed through it; the default sharing still applies when none is set.
+- The placeholder function is handed the previous entry's key rather than v5's query object.
 - Not yet available: `retry` as a function or `true`, retries that pause while the application is
-  unfocused or offline (`networkMode`), `enabled`, `select`, `placeholderData`, `refetchInterval`,
-  `refetchOnWindowFocus` and `refetchOnReconnect`, and `getQueryData` / `setQueryData`.
+  unfocused or offline (`networkMode`), `refetchInterval`, `refetchOnWindowFocus` and
+  `refetchOnReconnect`.
 
 ### 1-3. State Management (React + Zustand)
 

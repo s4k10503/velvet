@@ -2389,6 +2389,19 @@ namespace Velvet
         #region UseQuery
 
         /// <summary>
+        /// <see cref="UseQuery{TQueryFnData, TData}"/> for a query whose result holds the data its query function
+        /// returns.
+        /// </summary>
+        /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
+        /// <param name="options">The key, the query function, and the options
+        /// <see cref="QueryOptions{TQueryFnData, TData}"/> lists.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static QueryResult<T> UseQuery<T>(QueryOptions<T> options, QueryClient? client = null)
+            => UseQuery<T, T>(options, client);
+
+        /// <summary>
         /// TanStack Query's <c>useQuery</c>. Reads the entry <paramref name="options"/>' key names in a
         /// <see cref="QueryClient"/>, fetches it with the options' query function when it has no data or its
         /// data is stale, and re-renders the component when a property of the result it reads changes.
@@ -2404,21 +2417,31 @@ namespace Velvet
         /// starts begins there. A change of key moves the subscription to the new key's entry: the result
         /// shows that entry's data, or none, and nothing the old key's request delivers afterwards.
         /// <para/>
-        /// A failed request runs again up to <see cref="QueryOptions{T}.Retry"/> times before the failure is
-        /// the entry's error, and a request that lands is shared structurally with the data the entry held
-        /// (<see cref="QueryOptions{T}.StructuralSharing"/>), as <c>useQuery</c> does.
+        /// A failed request runs again up to <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> times before the
+        /// failure is the entry's error, and a request that lands is shared structurally with the data the entry
+        /// held (<see cref="QueryOptions{TQueryFnData, TData}.StructuralSharing"/>), as <c>useQuery</c> does.
         /// </remarks>
-        /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
-        /// <param name="options">The key, the query function, and optionally the stale and garbage-collection
-        /// times, the retry policy, the structural sharing and the result properties that re-render.</param>
+        /// <typeparam name="TQueryFnData">The entry's data type. Every query sharing a key must use the same
+        /// one.</typeparam>
+        /// <typeparam name="TData">The result's data type, which
+        /// <see cref="QueryOptions{TQueryFnData, TData}.Select"/> makes.</typeparam>
+        /// <param name="options">The key, the query function, and the options
+        /// <see cref="QueryOptions{TQueryFnData, TData}"/> lists.</param>
         /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
         /// provides, and throws when no Provider supplies one.</param>
         /// <returns>The entry's state as this render reads it.</returns>
-        public static QueryResult<T> UseQuery<T>(QueryOptions<T> options, QueryClient? client = null)
+        public static QueryResult<TData> UseQuery<TQueryFnData, TData>(
+            QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (options.QueryKey == null) throw new ArgumentException("QueryOptions.QueryKey must not be null.", nameof(options));
             if (options.QueryFn == null) throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
+            if (options.Select == null && typeof(TQueryFnData) != typeof(TData))
+            {
+                throw new ArgumentException(
+                    $"QueryOptions<{typeof(TQueryFnData).Name}, {typeof(TData).Name}> needs a Select to turn one into the other.",
+                    nameof(options));
+            }
             // Surface "UseQuery" in HookGuard's outside-of-render message instead of "UseContext".
             _ = Resolve("UseQuery");
             var provided = UseContext(QueryClientContext.Ref);
@@ -2427,20 +2450,17 @@ namespace Velvet
                 "above the caller, or pass the client to UseQuery.");
             var (_, setVersion) = UseState(0);
             // MUTANT_SURVIVES(equivalent, arithmetic): any step makes a value the slot does not hold, which is all the re-render asks.
-            var observer = UseMutableRef<QueryObserver<T>>(() => new QueryObserver<T>(() => setVersion.Invoke(v => v + 1))).Current;
-            var staleTime = QueryClient.RequireNonNegative(
-                options.StaleTime ?? queryClient.DefaultStaleTime, nameof(QueryOptions<T>.StaleTime));
-            var gcTime = QueryClient.RequireNonNegative(
-                options.GcTime ?? queryClient.DefaultGcTime, nameof(QueryOptions<T>.GcTime));
+            var observer = UseMutableRef<QueryObserver<TQueryFnData, TData>>(() => new QueryObserver<TQueryFnData, TData>(() => setVersion.Invoke(v => v + 1))).Current;
+            var settings = new QuerySettings<TQueryFnData, TData>(options, queryClient);
 
             UseEffect(observer.UnmountEffect, Array.Empty<object?>());
             UseEffect((Func<Action?>)(() =>
             {
-                observer.Sync(queryClient, options, staleTime, gcTime);
+                observer.Sync(queryClient, settings);
                 return null;
             }));
 
-            return observer.Read(queryClient.Peek<T>(options.QueryKey), staleTime);
+            return observer.Read(queryClient.Peek<TQueryFnData>(options.QueryKey), settings);
         }
 
         #endregion
