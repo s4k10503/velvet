@@ -179,6 +179,7 @@ namespace Velvet
             props.DragOverlay = null;
             props.NoDrag = false;
             props.Slider = null;
+            props.SliderInt = null;
             props.ScrollView = null;
             props.TextField = null;
             props.Choices = null;
@@ -434,6 +435,21 @@ namespace Velvet
 
         #endregion
 
+        #region SliderInt pool
+
+        private static readonly ElementPool<SliderInt> s_sliderIntPool =
+            new(FiberSliderKeyboard.CreateInt, FiberSliderPoolHelper.ResetSliderIntForReuse, MaxSliderPoolSize);
+
+        public static SliderInt RentSliderInt() => s_sliderIntPool.Rent();
+
+        public static void ReturnSliderInt(SliderInt slider)
+        {
+            if (!FiberSliderPoolHelper.CanReuse(slider)) return;
+            s_sliderIntPool.Return(slider);
+        }
+
+        #endregion
+
         #region TextField pool
 
         // Pooled TextFields have been reset via FiberTextFieldPoolHelper.ResetTextFieldForReuse,
@@ -473,6 +489,7 @@ namespace Velvet
             s_buttonPool.Clear();
             s_togglePool.Clear();
             s_sliderPool.Clear();
+            s_sliderIntPool.Clear();
             s_textFieldPool.Clear();
         }
 #endif

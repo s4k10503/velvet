@@ -74,6 +74,11 @@ namespace Velvet
                 return VNodePool.RentSlider();
             }
 
+            if (type == typeof(SliderInt))
+            {
+                return VNodePool.RentSliderInt();
+            }
+
             if (type == typeof(ScrollView))
             {
                 return new ScrollView();
@@ -276,6 +281,11 @@ namespace Velvet
             if (props.Slider != null)
             {
                 FiberPropApplier.ApplySlider(element, null, props.Slider, props.FieldValue);
+            }
+
+            if (props.SliderInt != null)
+            {
+                FiberPropApplier.ApplySliderInt(element, null, props.SliderInt, props.FieldValue);
             }
 
             if (props.FieldValue != null)

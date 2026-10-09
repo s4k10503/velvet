@@ -537,12 +537,7 @@ namespace Velvet
         {
             VNode.RequireKey(key);
             // Above both rents below, so a refusal here strands no event array or bag this factory rented.
-            if (direction is not (null or SliderDirection.Horizontal or SliderDirection.Vertical))
-            {
-                throw new ArgumentOutOfRangeException(nameof(direction), direction,
-                    "V.Slider takes a member of SliderDirection as its direction.");
-            }
-
+            RequireSliderDirection(direction, "V.Slider takes a member of SliderDirection as its direction.");
             if (step is { } stepValue && !(stepValue > 0f && float.IsFinite(stepValue)))
             {
                 throw new ArgumentOutOfRangeException(nameof(step), step,
@@ -579,6 +574,102 @@ namespace Velvet
                 WhileTapClass = whileTapClass,
                 WhileFocusClass = whileFocusClass,
             };
+        }
+
+        /// <summary>
+        /// Creates a SliderInt: <see cref="Slider"/> over whole numbers, reporting an <c>int</c>.
+        /// </summary>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="value">Current slider value (controlled).</param>
+        /// <param name="lowValue">Minimum value of the slider range.</param>
+        /// <param name="highValue">Maximum value of the slider range.</param>
+        /// <param name="onValueChanged">Handler invoked when the slider value changes.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="enabled">When false, disables the slider input.</param>
+        /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="onCreated">Callback invoked once when the SliderInt VisualElement is first created.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="direction">Axis the slider runs along, as <see cref="Slider"/>'s <c>direction</c>.</param>
+        /// <param name="inverted">When true, swaps the ends the low and high values sit at, as
+        /// <see cref="Slider"/>'s <c>inverted</c>.</param>
+        /// <param name="step">Distance one arrow key moves the value, and the grid Home, End and the paging keys
+        /// land on, counted from <paramref name="lowValue"/>. Null is Radix's default of 1.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="direction"/> names no member of
+        /// <see cref="SliderDirection"/>, or <paramref name="step"/> is not above zero.</exception>
+        /// <returns>The created <see cref="ElementNode"/> representing this slider.</returns>
+        public static ElementNode SliderInt(
+            string? className = null,
+            int? value = null,
+            int? lowValue = null,
+            int? highValue = null,
+            Action<int>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
+            bool? enabled = null,
+            Func<VisualElement, Action>? refCallback = null,
+            Action<VisualElement>? onCreated = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null,
+            SliderDirection? direction = null,
+            bool? inverted = null,
+            int? step = null,
+            FiberEventBinding[]? events = null)
+        {
+            VNode.RequireKey(key);
+            // Above both rents below, for V.Slider's reason.
+            RequireSliderDirection(direction, "V.SliderInt takes a member of SliderDirection as its direction.");
+            if (step is <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(step), step, "V.SliderInt takes a step above zero.");
+            }
+            var bindings = Bindings(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null, events);
+
+            FiberElementProps? props = null;
+            if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue
+                || direction.HasValue || inverted.HasValue || step.HasValue)
+            {
+                props = VNodePool.RentProps();
+                props.FieldValue = value;
+                props.Enabled = enabled;
+                props.SliderInt = (lowValue.HasValue || highValue.HasValue || direction.HasValue || inverted.HasValue
+                        || step.HasValue)
+                    ? new SliderIntSettings(lowValue, highValue, direction, inverted, step)
+                    : null;
+            }
+            props = WithAttributes(props, data, aria);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(SliderInt),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = props,
+                Children = EmptyChildren,
+                Events = bindings,
+                RefCallback = refCallback,
+                OnCreated = onCreated,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        private static void RequireSliderDirection(SliderDirection? direction, string message)
+        {
+            if (direction is not (null or SliderDirection.Horizontal or SliderDirection.Vertical))
+            {
+                throw new ArgumentOutOfRangeException(nameof(direction), direction, message);
+            }
         }
 
         /// <summary>
