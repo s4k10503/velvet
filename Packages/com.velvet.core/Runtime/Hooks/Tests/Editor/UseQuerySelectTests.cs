@@ -20,7 +20,8 @@ namespace Velvet.Tests
     /// <item>The select runs again only when the entry's data or the select's instance changes, and what it
     /// returns keeps the instance the result held where the two are deeply equal.</item>
     /// <item>A select that throws makes the result an error carrying its exception, until a key change to an
-    /// uncached entry leaves the result pending; options whose two types differ need a select.</item>
+    /// uncached entry leaves the result pending, and again when the key comes back, whether the selection is a
+    /// reference or a value type; options whose two types differ need a select.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -31,6 +32,8 @@ namespace Velvet.Tests
     internal sealed class UseQuerySelectTests
     {
         private static readonly QueryKey Todos = new("todos");
+        private static readonly Func<int[], List<int>> Failing = _ => throw new InvalidOperationException("select-failed");
+        private static readonly Func<int[], int> FailingCount = _ => throw new InvalidOperationException("select-failed");
         private static readonly Func<int[], List<int>> AboveOne = data =>
         {
             s_selects++;
@@ -181,6 +184,42 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStableSelectThatThrewOverOneKey_When_TheKeyMovesToAnUncachedOneAndBack_Then_TheResultIsAnErrorAgain()
+        {
+            // Arrange
+            using var mounted = Mount(ThrowingPager);
+            Land(mounted, 1);
+            s_setPage.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setPage.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((Last().Status, Last().Error?.Message), Is.EqualTo((QueryStatus.Error, "select-failed")),
+                "The memo goes with the cleared error, so the data that comes back is selected and fails again");
+        }
+
+        [Test]
+        public void Given_AStableValueTypeSelectThatThrewOverOneKey_When_TheKeyMovesToAnUncachedOneAndBack_Then_TheResultIsAnErrorAgain()
+        {
+            // Arrange
+            using var mounted = Mount(CountingPager);
+            Land(mounted, 1);
+            s_setPage.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setPage.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_counts[s_counts.Count - 1].Status, Is.EqualTo(QueryStatus.Error),
+                "A value-type selection fails again too, rather than reading as a success holding default");
+        }
+
+        [Test]
         public void Given_OptionsOfTwoTypesWithoutASelect_When_AQueryRenders_Then_ItThrowsNamingSelect()
         {
             // Arrange
@@ -272,12 +311,28 @@ namespace Velvet.Tests
             s_renders.Add(Hooks.UseQuery(
                 new QueryOptions<int[], List<int>>(new QueryKey("todos", page), Fetch)
                 {
-                    Select = _ => throw new InvalidOperationException("select-failed"),
+                    Select = Failing,
                     Retry = 0,
                     NotifyOnChangeProps = QueryProperties.All,
                 },
                 s_client));
             return V.Label(text: "throwing");
+        }
+
+        [Component]
+        private static VNode CountingPager()
+        {
+            var (page, setPage) = Hooks.UseState(1);
+            s_setPage = setPage;
+            s_counts.Add(Hooks.UseQuery(
+                new QueryOptions<int[], int>(new QueryKey("todos", page), Fetch)
+                {
+                    Select = FailingCount,
+                    Retry = 0,
+                    NotifyOnChangeProps = QueryProperties.All,
+                },
+                s_client));
+            return V.Label(text: "counting");
         }
 
         [Component]

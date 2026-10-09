@@ -321,8 +321,9 @@ namespace Velvet
         internal Func<TQueryFnData, TData>? Select => Options.Select;
     }
 
-    // The options a request runs with. An observer keeps one and rewrites it each commit; a request reads it
-    // when it starts, so a rewrite reaches only the requests after it.
+    // The options a request runs with. An observer keeps one and rewrites it each commit. A request reads its
+    // query function and retries when it starts, and the structural sharing of the options its entry holds when
+    // it lands.
     internal sealed class QueryFetchOptions<T>
     {
         internal Func<CancellationToken, VelvetTask<T>> QueryFn { get; set; } = null!;
@@ -619,8 +620,9 @@ namespace Velvet
             }
 
             // v5 drops a select error once the data it came from is gone, rather than reporting it over the state of
-            // an entry that has none.
-            if (!hasSource && !isPlaceholderData) _selectError = null;
+            // an entry that has none. The memo goes with it: v5 memoizes on the previous result's data, so data
+            // that comes back is selected again and its failure reported again.
+            if (!hasSource && !isPlaceholderData) (_selectError, _selectFn) = (null, null);
             if (_selectError != null)
             {
                 error = _selectError;
