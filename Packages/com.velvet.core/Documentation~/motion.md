@@ -450,7 +450,10 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
 - A `Hooks.UseAnimationSequence` `To` step deriving its hold counts a repeat below 20. Framer's
   sequence ignores a segment's repeat of 20 or more, an endless one included, and so does a `To`
   step: it hands out its transition without the repeat, holds for one pass and logs a warning, once
-  per transition.
+  per transition. A spring step's pass is Framer's sequence duration over a travel of 100, which is
+  also the play's for a channel Framer hands to the browser; under a mirrored or waiting repeat, or
+  for a channel on Framer's main thread, the play can run longer or shorter, since a label tells the
+  sequence nothing of the classes it plays between.
 
 A `Tween` does not play a repeat yet: a play on one with `Repeat` above zero plays once, and the first
 such play in a mounted tree logs a warning. A `layoutId` move plays once whatever its transition
