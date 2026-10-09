@@ -286,6 +286,21 @@ namespace Velvet.Experimental
         /// <summary>When false, disables user input.</summary>
         public bool? Enabled { get; set; }
 
+        /// <summary>Handler invoked with the value when Enter commits a single-line field.</summary>
+        public Action<string>? OnSubmit { get; set; }
+
+        /// <summary>Handler invoked for each key pressed while the field holds focus, before the field takes it.</summary>
+        public UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.KeyDownEvent>? OnKeyDown { get; set; }
+
+        /// <summary>Handler invoked for each key released while the field holds focus.</summary>
+        public UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.KeyUpEvent>? OnKeyUp { get; set; }
+
+        /// <summary>Handler invoked when focus enters the field from outside it.</summary>
+        public UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.FocusInEvent>? OnFocus { get; set; }
+
+        /// <summary>Handler invoked when focus leaves the field for somewhere outside it.</summary>
+        public UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.FocusOutEvent>? OnBlur { get; set; }
+
         /// <param name="className">Utility class string applied to the field.</param>
         public VTextField(string? className = null) : base(className) { }
 
@@ -294,7 +309,8 @@ namespace Velvet.Experimental
             V.TextField(className: Class, value: Value, onValueChanged: OnChange, key: Key, name: Name,
                 label: Label, isPasswordField: IsPasswordField, placeholder: Placeholder, maxLength: MaxLength,
                 isReadOnly: IsReadOnly, isDelayed: IsDelayed, multiline: Multiline, keyboardType: KeyboardType,
-                autoCorrection: AutoCorrection, enabled: Enabled);
+                autoCorrection: AutoCorrection, enabled: Enabled, onSubmit: OnSubmit, onKeyDown: OnKeyDown,
+                onKeyUp: OnKeyUp, onFocus: OnFocus, onBlur: OnBlur);
     }
 
     /// <summary>
@@ -333,6 +349,46 @@ namespace Velvet.Experimental
         /// <inheritdoc/>
         public override VNode Build() =>
             V.Slider(className: Class, value: Value, lowValue: LowValue, highValue: HighValue,
+                onValueChanged: OnChange, key: Key, name: Name, enabled: Enabled, direction: Direction,
+                inverted: Inverted, step: Step);
+    }
+
+    /// <summary>
+    /// <b>EXPERIMENTAL.</b> Initializer-style builder for a whole-number slider. Maps to
+    /// <see cref="V.SliderInt"/>. Sliders are leaves; children added via the collection initializer are ignored.
+    /// </summary>
+    public sealed class VSliderInt : VBuilder
+    {
+        /// <summary>Current value (controlled).</summary>
+        public int? Value { get; set; }
+
+        /// <summary>Lower bound of the slider range.</summary>
+        public int? LowValue { get; set; }
+
+        /// <summary>Upper bound of the slider range.</summary>
+        public int? HighValue { get; set; }
+
+        /// <summary>Handler invoked when the value changes.</summary>
+        public Action<int>? OnChange { get; set; }
+
+        /// <summary>When false, disables user interaction.</summary>
+        public bool? Enabled { get; set; }
+
+        /// <summary>Axis the slider runs along.</summary>
+        public UnityEngine.UIElements.SliderDirection? Direction { get; set; }
+
+        /// <summary>When true, swaps the ends the low and high values sit at.</summary>
+        public bool? Inverted { get; set; }
+
+        /// <summary>Distance one arrow key moves the value; null is 1.</summary>
+        public int? Step { get; set; }
+
+        /// <param name="className">Utility class string applied to the slider.</param>
+        public VSliderInt(string? className = null) : base(className) { }
+
+        /// <inheritdoc/>
+        public override VNode Build() =>
+            V.SliderInt(className: Class, value: Value, lowValue: LowValue, highValue: HighValue,
                 onValueChanged: OnChange, key: Key, name: Name, enabled: Enabled, direction: Direction,
                 inverted: Inverted, step: Step);
     }

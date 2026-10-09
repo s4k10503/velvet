@@ -966,7 +966,7 @@ namespace Velvet
         {
             _ = Resolve("UseActionData");
             _ = UseRouterOrThrow("UseActionData");
-            var routeId = CurrentRouteId();
+            var routeId = UseCurrentRouteId();
             var data = UseContext(RouterContext.ActionData);
             if (routeId == null)
             {
@@ -985,12 +985,12 @@ namespace Velvet
         {
             _ = Resolve("UseLoaderData");
             _ = UseRouterOrThrow("UseLoaderData");
-            var routeId = CurrentRouteId();
+            var routeId = UseCurrentRouteId();
+            var data = UseContext(RouterContext.LoaderData);
             if (routeId == null)
             {
                 return default;
             }
-            var data = UseContext(RouterContext.LoaderData);
             return data != null && data.TryGetValue(routeId, out var value) && value is T typed ? typed : default;
         }
 
@@ -1040,7 +1040,7 @@ namespace Velvet
         /// an Outlet sees <see cref="RouterContext.Depth"/> incremented to depth+1, so its own match is
         /// <c>Matches[Depth - 1]</c>. Returns null when there is no enclosing matched route.
         /// </summary>
-        private static string? CurrentRouteId()
+        private static string? UseCurrentRouteId()
         {
             var location = UseContext(RouterContext.Location);
             var depth = UseContext(RouterContext.Depth);
@@ -1316,7 +1316,7 @@ namespace Velvet
         /// list.</param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay = true, bool loop = false)
-            => PlayAnimationSequence(steps, deps, autoplay, loop ? (int?)null : 1, 0f);
+            => UseAnimationSequenceCore(steps, deps, autoplay, loop ? (int?)null : 1, 0f);
 
         /// <summary>
         /// Plays <paramref name="steps"/> as the overload taking <c>loop</c> does, a fixed number of times: the
@@ -1356,11 +1356,11 @@ namespace Velvet
                 throw new ArgumentOutOfRangeException(nameof(repeatDelaySec), repeatDelaySec,
                     "A gap between passes is a finite number of seconds, zero or more.");
             }
-            return PlayAnimationSequence(steps, deps, autoplay, iterations, repeatDelaySec);
+            return UseAnimationSequenceCore(steps, deps, autoplay, iterations, repeatDelaySec);
         }
 
         // A null iterations plays without end.
-        private static (AnimationSequenceState state, AnimationSequenceControls controls) PlayAnimationSequence(
+        private static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequenceCore(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay, int? iterations,
             float repeatDelaySec)
         {

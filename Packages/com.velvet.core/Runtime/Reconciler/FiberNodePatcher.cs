@@ -1878,6 +1878,12 @@ namespace Velvet
                     element, oldProps.Slider, newProps.Slider, fieldValueChanged ? newProps.FieldValue : null);
             }
 
+            if (oldProps.SliderInt != newProps.SliderInt)
+            {
+                FiberPropApplier.ApplySliderInt(
+                    element, oldProps.SliderInt, newProps.SliderInt, fieldValueChanged ? newProps.FieldValue : null);
+            }
+
             if (fieldValueChanged)
             {
                 FiberPropApplier.ApplyFieldValue(element, newProps.FieldValue);

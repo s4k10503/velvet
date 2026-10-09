@@ -8,7 +8,7 @@ namespace Velvet.SourceGenerators.Diagnostics
     internal static class MemoizeDiagnostics
     {
         private const string Category = DiagnosticCategories.Memoize;
-        // Per-analyzer category split: VEL100 / VEL101 are hook-rule diagnostics and must not be
+        // Per-analyzer category split: VEL100 to VEL103 are hook-rule diagnostics and must not be
         // silenced by a blanket Velvet.Memoize category suppression (e.g.
         // `dotnet_analyzer_diagnostic.category-Velvet.Memoize.severity = none`).
         private const string HookCategory = DiagnosticCategories.Hooks;
@@ -86,6 +86,19 @@ namespace Velvet.SourceGenerators.Diagnostics
             "VEL101",
             "Hook call inside conditional control flow",
             "'{0}' must not be called inside {1}; hooks must be called unconditionally at the top level so the per-fiber hook index aligns across renders",
-            "Flags `Hooks.UseXxx` calls inside if/else, loops, short-circuit operators (&&/||/??), conditional expressions (?:), switch sections, or nested lambdas/anonymous methods. The runtime guards against silent corruption via the positional HookIndexTable (throws when hook counts differ across renders), but the static check surfaces the violation at edit time.");
+            "Flags `Hooks.UseXxx` calls inside if/else, loops, short-circuit operators (&&/||/??/??=), null-conditional access (?.), conditional expressions (?:), switch sections, a catch whose try can complete, a try with a catch after something that may throw, or nested lambdas/anonymous methods, and a call after a conditional early return. The runtime guards against silent corruption via the positional HookIndexTable (throws when hook counts differ across renders), but the static check surfaces the violation at edit time. As in eslint-plugin-react-hooks, a lambda counts only where it sits inside a component or a custom hook, a lambda that is a component's render body is the function the hook belongs to, and a member call is a hook call only on a receiver that is a single name starting with an uppercase letter, or a qualified name that binds to a namespace or a type. A hook in an if's condition, a conditional expression's condition or the left operand of &&, || or ?? is evaluated before the branch is chosen and is not reported.");
+
+        public static readonly DiagnosticDescriptor Vel102HookOutsideComponentOrHook = HookWarn(
+            "VEL102",
+            "Hook call in a method that is neither a component nor a custom hook",
+            "'{0}' is called in '{1}', which is neither a [Component] method nor a custom hook; mark it [Component], or rename it Use followed by an uppercase letter or a digit so VEL101 checks where it is called",
+            "A hook called from a plain helper belongs to whichever component calls the helper, so a helper called on some renders only changes which hooks that component calls from one render to the next, and VEL101 reports nothing at that call because the helper is not named like a hook. Hooks belong in a component — a [Component] method, or a method handed by name to V.Component or V.Memo in the same compilation — or in a method or local function named Use followed by an uppercase letter or a digit, the shape VEL101 checks at each call site. A hook in a field or property initializer is reported naming that member. A hook whose nearest enclosing function is a lambda is not reported here, and nor is VEL101 asked of a hook this reports.");
+
+        public static readonly DiagnosticDescriptor Vel103ComponentCalledDirectly = HookWarn(
+            "VEL103",
+            "Component called directly",
+            "Component '{0}' calls hooks and is called here as a plain method, so its hooks run as part of the caller; mount it with V.Component instead",
+            "A component's hooks belong to the fiber that renders it. Called as a plain method, it renders no fiber of its own: its hooks run against the calling component's fiber, so calling it on some renders only changes the hooks that component calls, and its state is the caller's. Reported where the call names a component this compilation declares, by a bare name from within its declaring type or qualified by that type's simple name, and the component's declaration contains a hook call. That scan reads hook calls without binding: a member call on a qualified receiver counts there where every name in the qualifier starts with an uppercase letter, so a callee calling Config.Logger.UseDefaults() on a static field counts as calling a hook here although VEL101 and VEL102 do not read that call as one. A call that names it otherwise (through using static, an alias, a base class or an instance), a component declared in another assembly, one calling no hook, and a call that is the whole render body of a lambda handed to V.Component are not reported.");
+
     }
 }
