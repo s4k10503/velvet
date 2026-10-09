@@ -4,6 +4,8 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using UnityEngine.UIElements.TestFramework;
+using UnityEditor.UIElements.TestFramework;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -13,8 +15,8 @@ namespace Velvet.Tests
     /// frame-boundary drain for a later update, and for an update queued before the exception left. Once a bounded
     /// run of drains in a row has thrown, what is still queued is dropped with an error instead, and nothing is
     /// reported where nothing is queued; a drain that completes starts that run again, and a dropped component's
-    /// next update commits. A Transition-tier callback whose immediate drain throws leaves the transitions waiting
-    /// for it with a callback registered.
+    /// next update commits. A Transition-tier callback whose immediate drain throws commits the transition it served in a
+    /// later pass, and leaves one waiting on another admission where it was.
     /// </summary>
     /// <remarks>
     /// The exception is thrown by an imperative-handle factory in the drain's layout commit, which nothing between
@@ -35,6 +37,8 @@ namespace Velvet.Tests
             s_setOther = default;
             s_setTransitioned = default;
             s_startTransition = default;
+            s_setSecond = default;
+            s_startSecond = default;
             s_queueOtherBeforeThrowing = false;
             s_queueSelfBeforeThrowing = false;
             s_selfQueuesLeft = int.MaxValue;
@@ -176,25 +180,61 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallback_When_ItsPassEnds_Then_TheWaitingTransitionHasADrainRegistered()
+        public void Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallback_When_TheNextPassesRun_Then_OnlyTheTransitionItServedCommits()
         {
-            // Arrange — the transition waits for the callback that runs, and the immediate update that callback
-            // commits first is the one whose factory throws
+            // Arrange — the callback that runs serves "transition"; "second" waits for an earlier admission than the
+            // one the next pass runs; the immediate update that callback commits first is the one whose factory throws
             using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
             var scheduler = mounted.GetSchedulerForTest();
-            s_startTransition.Invoke(() => s_setTransitioned.Invoke(1));
-            scheduler.DrainImmediateForTest();
-            scheduler.RunAdmitCallbackForTest();
-            s_setTick.Invoke(1);
+            QueueTwoTransitionsAndAThrowingUpdate(scheduler);
             var callbacksBefore = scheduler.ScheduledCallbackCount;
 
             // Act
             var threw = DrainThrows(scheduler.RunDelayedCallbackForTest);
+            var registered = scheduler.ScheduledCallbackCount - callbacksBefore;
+            scheduler.RunAdmitCallbackForTest();
+            scheduler.RunDelayedCallbackForTest();
 
             // Assert
-            Assert.That((threw, scheduler.ScheduledCallbackCount - callbacksBefore), Is.EqualTo((true, 1)),
-                "A transition left waiting for a callback that has run is moved to one that will");
+            Assert.That((threw, registered, Text(_root, "transition"), Text(_root, "second")),
+                Is.EqualTo((true, 1, "transition:1", "second:0")),
+                "A transition left waiting for a callback that has run is moved to one that will, and no other is");
         }
+
+        [Test]
+        public void Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallbackOnAPanel_When_TheNextPassRuns_Then_OnlyTheTransitionItServedCommits()
+        {
+            // Arrange — on a panel, a request made inside a pass is admitted to a drain registered directly
+            using var sim = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
+            using var mounted = V.Mount(sim.rootVisualElement, V.Component(HostRender, key: "host"));
+            var scheduler = mounted.GetSchedulerForTest();
+            QueueTwoTransitionsAndAThrowingUpdate(scheduler);
+            var callbacksBefore = scheduler.ScheduledCallbackCount;
+
+            // Act
+            var threw = DrainThrows(scheduler.RunDelayedCallbackForTest);
+            var registered = scheduler.ScheduledCallbackCount - callbacksBefore;
+            scheduler.RunDelayedCallbackForTest();
+
+            // Assert
+            Assert.That((threw, registered, Text(sim.rootVisualElement, "transition"), Text(sim.rootVisualElement, "second")),
+                Is.EqualTo((true, 1, "transition:1", "second:0")),
+                "A transition left waiting for a callback that has run is moved to the drain the pass it ran in registered");
+        }
+
+        private static void QueueTwoTransitionsAndAThrowingUpdate(FiberBatchScheduler scheduler)
+        {
+            s_throwsLeft = 1;
+            s_startSecond.Invoke(() => s_setSecond.Invoke(1));
+            scheduler.DrainImmediateForTest();
+            scheduler.RunAdmitCallbackForTest();
+            s_startTransition.Invoke(() => s_setTransitioned.Invoke(1));
+            scheduler.DrainImmediateForTest();
+            scheduler.RunAdmitCallbackForTest();
+            s_setTick.Invoke(1);
+        }
+
+        private static string Text(VisualElement root, string name) => root.Q<Label>(name).text;
 
         private static bool DrainThrows(FiberBatchScheduler scheduler) => DrainThrows(scheduler.RunImmediateCallbackForTest);
 
@@ -221,6 +261,8 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setOther;
         private static StateUpdater<int> s_setTransitioned;
         private static TransitionStarter s_startTransition;
+        private static StateUpdater<int> s_setSecond;
+        private static TransitionStarter s_startSecond;
         private static bool s_queueOtherBeforeThrowing;
         private static bool s_queueSelfBeforeThrowing;
         private static int s_selfQueuesLeft;
@@ -233,6 +275,7 @@ namespace Velvet.Tests
                 V.Component(HandleOwnerRender, key: "owner"),
                 V.Component(OtherRender, key: "other"),
                 V.Component(TransitionRender, key: "transition"),
+                V.Component(SecondTransitionRender, key: "second"),
             });
 
         [Component(Compiler = false)]
@@ -242,7 +285,17 @@ namespace Velvet.Tests
             s_setTransitioned = setValue;
             var (_, start) = Hooks.UseTransition();
             s_startTransition = start;
-            return V.Label(text: "transition:" + value);
+            return V.Label(name: "transition", text: "transition:" + value);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SecondTransitionRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_setSecond = setValue;
+            var (_, start) = Hooks.UseTransition();
+            s_startSecond = start;
+            return V.Label(name: "second", text: "second:" + value);
         }
 
         private static VNode HandleOwnerRender()

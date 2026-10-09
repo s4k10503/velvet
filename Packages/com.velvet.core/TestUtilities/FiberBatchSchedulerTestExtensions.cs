@@ -9,7 +9,7 @@ namespace Velvet.TestUtilities
     /// callback that never fires in EditMode. Reached by reflection because production types carry no
     /// test-only members.
     /// <para>
-    /// Each method throws <see cref="MissingMethodException"/> when the method it reflects for is gone.
+    /// Each method throws <see cref="MissingMethodException"/> (<see cref="MissingFieldException"/> for a field) when the member it reflects for is gone.
     /// Throwing is the point: a caller drains to observe the re-render a queued fiber produces, so a drain
     /// that quietly reached nothing would leave it asserting on the tree as it stood before the update.
     /// </para>
@@ -42,9 +42,9 @@ namespace Velvet.TestUtilities
 
         private static void RunWithAdmission(FiberBatchScheduler scheduler, string fieldName, string methodName)
         {
-            var admission = typeof(FiberBatchScheduler)
-                .GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
-                ?.GetValue(scheduler)
+            var field = typeof(FiberBatchScheduler).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new MissingFieldException(typeof(FiberBatchScheduler).FullName, fieldName);
+            var admission = field.GetValue(scheduler)
                 ?? throw new InvalidOperationException($"No admission is held in {fieldName}");
             var method = typeof(FiberBatchScheduler).GetMethod(
                 methodName, BindingFlags.Instance | BindingFlags.NonPublic)
