@@ -321,6 +321,41 @@ namespace Velvet
                 element.style.backgroundImage = styles.BackgroundImage.Value;
             }
 
+            if (styles.BackgroundRepeat.HasValue)
+            {
+                element.style.backgroundRepeat = styles.BackgroundRepeat.Value;
+            }
+
+            if (styles.UnitySliceTop.HasValue)
+            {
+                element.style.unitySliceTop = styles.UnitySliceTop.Value;
+            }
+
+            if (styles.UnitySliceRight.HasValue)
+            {
+                element.style.unitySliceRight = styles.UnitySliceRight.Value;
+            }
+
+            if (styles.UnitySliceBottom.HasValue)
+            {
+                element.style.unitySliceBottom = styles.UnitySliceBottom.Value;
+            }
+
+            if (styles.UnitySliceLeft.HasValue)
+            {
+                element.style.unitySliceLeft = styles.UnitySliceLeft.Value;
+            }
+
+            if (styles.UnitySliceScale.HasValue)
+            {
+                element.style.unitySliceScale = styles.UnitySliceScale.Value;
+            }
+
+            if (styles.UnitySliceType.HasValue)
+            {
+                element.style.unitySliceType = styles.UnitySliceType.Value;
+            }
+
             if (styles.BackgroundColor.HasValue)
             {
                 element.style.backgroundColor = styles.BackgroundColor.Value;

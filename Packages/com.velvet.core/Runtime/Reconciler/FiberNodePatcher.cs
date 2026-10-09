@@ -2003,6 +2003,8 @@ namespace Velvet
                 SceneViewElement.WriteBackground(element, newStyles.BackgroundImage ?? StyleKeyword.Null);
             }
 
+            DiffBackgroundFill(element.style, oldStyles, newStyles);
+
             if (!Equals(oldStyles.BackgroundColor, newStyles.BackgroundColor))
             {
                 element.style.backgroundColor = newStyles.BackgroundColor ?? StyleKeyword.Null;
@@ -2011,6 +2013,45 @@ namespace Velvet
             if (!Equals(oldStyles.Color, newStyles.Color))
             {
                 element.style.color = newStyles.Color ?? StyleKeyword.Null;
+            }
+        }
+
+        // DiffStyles' background-repeat and nine-slice members, apart so neither method passes VEL501's limit.
+        private static void DiffBackgroundFill(IStyle style, StyleOverrides oldStyles, StyleOverrides newStyles)
+        {
+            if (!Equals(oldStyles.BackgroundRepeat, newStyles.BackgroundRepeat))
+            {
+                style.backgroundRepeat = newStyles.BackgroundRepeat ?? StyleKeyword.Null;
+            }
+
+            if (!Equals(oldStyles.UnitySliceTop, newStyles.UnitySliceTop))
+            {
+                style.unitySliceTop = newStyles.UnitySliceTop ?? StyleKeyword.Null;
+            }
+
+            if (!Equals(oldStyles.UnitySliceRight, newStyles.UnitySliceRight))
+            {
+                style.unitySliceRight = newStyles.UnitySliceRight ?? StyleKeyword.Null;
+            }
+
+            if (!Equals(oldStyles.UnitySliceBottom, newStyles.UnitySliceBottom))
+            {
+                style.unitySliceBottom = newStyles.UnitySliceBottom ?? StyleKeyword.Null;
+            }
+
+            if (!Equals(oldStyles.UnitySliceLeft, newStyles.UnitySliceLeft))
+            {
+                style.unitySliceLeft = newStyles.UnitySliceLeft ?? StyleKeyword.Null;
+            }
+
+            if (!Equals(oldStyles.UnitySliceScale, newStyles.UnitySliceScale))
+            {
+                style.unitySliceScale = newStyles.UnitySliceScale ?? StyleKeyword.Null;
+            }
+
+            if (!Equals(oldStyles.UnitySliceType, newStyles.UnitySliceType))
+            {
+                style.unitySliceType = newStyles.UnitySliceType ?? StyleKeyword.Null;
             }
         }
 
