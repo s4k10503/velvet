@@ -331,20 +331,40 @@ namespace Velvet.Tests
         [Test]
         public void Given_ACaretInsideTheText_When_EnterSubmits_Then_TheInputKeepsFocusAndTheCaret()
         {
-            // Arrange
+            // Arrange — focus is read off the input's own Focus and Blur events: the field is a composite
+            // root, so the controller's focusedElement names the field while its input holds focus.
             Mount(SubmitWithValueHost);
             var field = Q("field");
-            Input(field).Focus();
+            var input = Input(field);
+            input.Focus();
             field.textSelection.SelectRange(2, 2);
+            var inputFocused = true;
+            input.RegisterCallback<FocusEvent>(_ => inputFocused = true);
+            input.RegisterCallback<BlurEvent>(_ => inputFocused = false);
 
             // Act
             SendKey(field, '\n', KeyCode.Return, EventModifiers.None);
 
             // Assert — the submit is read beside the focus, so a dead binding cannot pass as a kept caret.
             Assert.That(
-                (string.Join("|", s_log), field.focusController.focusedElement == Input(field),
-                    field.textSelection.cursorIndex, field.textSelection.selectIndex),
-                Is.EqualTo(("hello", true, 2, 2)));
+                (string.Join("|", s_log), inputFocused, field.textSelection.cursorIndex, field.textSelection.selectIndex),
+                Is.EqualTo(("hello", true, 2, 2)),
+                $"log={string.Join("|", s_log)} inputFocused={inputFocused} cursor={field.textSelection.cursorIndex} select={field.textSelection.selectIndex}");
+        }
+
+        // The reading the case above avoids: an engine fact, held here so it fails when it stops being one.
+        [Test]
+        public void Given_AFieldWhoseInputHoldsFocus_When_TheFocusControllerIsAsked_Then_ItNamesTheField()
+        {
+            // Arrange
+            Mount(SubmitWithValueHost);
+            var field = Q("field");
+
+            // Act
+            Input(field).Focus();
+
+            // Assert
+            Assert.That(field.focusController.focusedElement, Is.SameAs(field));
         }
 
         [Test]
