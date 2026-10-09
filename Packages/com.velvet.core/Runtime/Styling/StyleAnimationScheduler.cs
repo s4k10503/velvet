@@ -2140,8 +2140,6 @@ namespace Velvet
                     return;
                 }
                 // A play has one co-fade tick, so a second start replaces the first rather than leaving it running.
-                // MUTANT_SURVIVES(equivalent): a tick left running writes the same sample the new one writes.
-                // Both stop writing once EndRingCoFade nulls the overlay they read.
                 pending.RingTick?.Pause();
                 pending.RingTick = host.schedule.Execute(() =>
                 {
