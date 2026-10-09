@@ -1594,8 +1594,10 @@ namespace Velvet
 
         // Whether a StyleOverrides.BackgroundImage is the image showing, over the utilities'.
         internal static bool OverrideBackgroundWins(VisualElement element)
-            => s_layers.TryGetValue(element, out var map)
-                && map.BackgroundImage is { Override: not null, UtilityImportant: false };
+            => s_layers.TryGetValue(element, out var map) && OverrideWins(map.BackgroundImage);
+
+        private static bool OverrideWins(BackgroundImageSources? sources)
+            => sources is { Override: not null, UtilityImportant: false };
 
         // A StyleOverrides.BackgroundImage, or null when the node declares none.
         internal static void WriteBackgroundImageOverride(VisualElement element, StyleBackground? value)
