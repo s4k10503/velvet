@@ -6,3 +6,4 @@
   end of a discrete event handler. An update queued in the batch before the exception left it now commits on
   the next frame. After three batches in a row have thrown, the updates still queued are dropped with an error
   log rather than retried on the next frame.
+- A Transition update waiting for the callback that ran such a batch is rescheduled for a later frame, so its `isPending` no longer stays true with nothing left to commit it.
