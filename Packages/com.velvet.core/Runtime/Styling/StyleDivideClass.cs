@@ -26,6 +26,18 @@ namespace Velvet
         Bottom,
     }
 
+    // The slots of a divide whose winning token carries the important modifier. An important slot is written
+    // over the divided child's own plain border width or colour instead of giving way to it, as Tailwind's
+    // `!important` divide declaration does, and yields to the child's own important one. The line style has no
+    // bit because the style never yields to a child's slot.
+    [Flags]
+    internal enum DivideImportance
+    {
+        None = 0,
+        Width = 1,
+        Color = 2,
+    }
+
     // A resolved divide-* utility: the axis + width of the inter-child border, an optional color, the line
     // style, and whether the divider is reversed onto the axis's start edge. A divide is only active when
     // an axis class (divide-x / divide-y / divide-x-N / divide-x-[..]) is present — a lone divide-{color},
@@ -37,6 +49,7 @@ namespace Velvet
         public readonly bool HasColor;
         public readonly Color Color;
         public readonly BorderLineStyle Style;
+        public readonly DivideImportance Important;
 
         // The divide-x-reverse / divide-y-reverse marker FOR THE AXIS THIS SPEC RESOLVED TO. A divide always
         // names its axis in the class itself, so the cross-axis marker can never become relevant later and is
@@ -44,14 +57,16 @@ namespace Velvet
         // reversed.
         public readonly bool Reverse;
 
-        public DivideSpec(DivideAxis axis, float width, bool hasColor, Color color, BorderLineStyle style, bool reverse)
+        public DivideSpec(DivideAxis axis, float width, Color? color, BorderLineStyle style, bool reverse,
+            DivideImportance important)
         {
             Axis = axis;
             Width = width;
-            HasColor = hasColor;
-            Color = color;
+            HasColor = color.HasValue;
+            Color = color.GetValueOrDefault();
             Style = style;
             Reverse = reverse;
+            Important = important;
         }
     }
 
@@ -65,8 +80,8 @@ namespace Velvet
     //   - divide-dashed / divide-dotted have no UI Toolkit border-style, so they are painted by
     //     DivideDashPainter on each divided child's own generateVisualContent (the manipulator still writes
     //     the real gutter width and masks the color with the sentinel). divide-double is still unsupported.
-    //   - A single element resolves ONE axis (last axis class wins, CSS-cascade order); divide-x and
-    //     divide-y are not combined onto the same element.
+    //   - A single element resolves ONE axis (an important axis class first, then the last one, CSS-cascade
+    //     order); divide-x and divide-y are not combined onto the same element.
     internal static class StyleDivideClass
     {
         // Divide width scale: divide-x-0/2/4/8; the bare divide-x is 1px.
@@ -81,10 +96,12 @@ namespace Velvet
         // Single-token half of HasDivideClass. Its own predicate so the prefix has ONE definition — both
         // the array scan below and the variant-payload gate (StyleVariantPayload) resolve the family here.
         public static bool IsDivideToken(string cls)
-            => !string.IsNullOrEmpty(cls) && cls.StartsWith("divide-", StringComparison.Ordinal);
+            => !string.IsNullOrEmpty(cls)
+                && StyleArbitraryValueResolver.StripImportant(cls, out _).StartsWith("divide-", StringComparison.Ordinal);
 
-        // Cheap early-out gate: true when ANY class begins with the divide- prefix. No allocation —
-        // used to skip the full TryExtract scan on the ~99% of elements with no divide class.
+        // Cheap early-out gate: true when ANY class belongs to the divide family, important tokens included.
+        // Allocates only for a token that carries a bang. Used to skip the full TryExtract scan on the ~99%
+        // of elements with no divide class.
         public static bool HasDivideClass(string[] classNames)
         {
             if (classNames == null)
@@ -102,7 +119,9 @@ namespace Velvet
         }
 
         // Scans classNames for the divide utilities and accumulates the axis + width (last axis class
-        // wins), color (last color class wins) and the per-axis reverse markers. Returns false when no axis
+        // wins), color (last color class wins), style (last style class wins) and the per-axis reverse
+        // markers. Within the axis, the color and the style slot, an important token beats a plain one
+        // whatever their order, and the last of equal importance wins. Returns false when no axis
         // class is present — a lone divide-{color}, or a lone divide-x-reverse, is inert.
         public static bool TryExtract(string[] classNames, out DivideSpec spec)
         {
@@ -120,9 +139,13 @@ namespace Velvet
             var style = BorderLineStyle.Solid;
             var xReverse = false;
             var yReverse = false;
+            var axisImportant = false;
+            var colorImportant = false;
+            var styleImportant = false;
 
-            foreach (var cls in classNames)
+            foreach (var raw in classNames)
             {
+                var cls = StyleArbitraryValueResolver.StripImportant(raw, out var important);
                 if (string.IsNullOrEmpty(cls) || !cls.StartsWith("divide-", StringComparison.Ordinal))
                 {
                     continue;
@@ -144,18 +167,27 @@ namespace Velvet
                 }
                 else if (TryParseAxisWidth(cls, out var a, out var w))
                 {
-                    foundAxis = true;
-                    axis = a;
-                    width = w;
+                    if (Outranks(important, ref axisImportant))
+                    {
+                        foundAxis = true;
+                        axis = a;
+                        width = w;
+                    }
                 }
                 else if (TryParseStyle(cls, out var st))
                 {
-                    style = st;
+                    if (Outranks(important, ref styleImportant))
+                    {
+                        style = st;
+                    }
                 }
                 else if (TryParseColor(cls, out var c))
                 {
-                    hasColor = true;
-                    color = c;
+                    if (Outranks(important, ref colorImportant))
+                    {
+                        hasColor = true;
+                        color = c;
+                    }
                 }
                 // Otherwise an unsupported divide-* (divide-double, …): skip it without disturbing the
                 // accumulated spec.
@@ -168,7 +200,21 @@ namespace Velvet
             // The marker on the OTHER axis is discarded here: the axis is final by now, and a marker that
             // does not name it can never apply.
             var reverse = axis == DivideAxis.Horizontal ? xReverse : yReverse;
-            spec = new DivideSpec(axis, width, hasColor, color, style, reverse);
+            var importance = (axisImportant ? DivideImportance.Width : DivideImportance.None)
+                | (hasColor && colorImportant ? DivideImportance.Color : DivideImportance.None);
+            spec = new DivideSpec(axis, width, hasColor ? color : null, style, reverse, importance);
+            return true;
+        }
+
+        // True when a token of the given importance takes a slot whose current holder has heldImportant, and
+        // records it as the new holder. A plain token never displaces an important one.
+        private static bool Outranks(bool important, ref bool heldImportant)
+        {
+            if (heldImportant && !important)
+            {
+                return false;
+            }
+            heldImportant = important;
             return true;
         }
 
