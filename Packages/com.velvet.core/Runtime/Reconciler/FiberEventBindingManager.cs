@@ -36,9 +36,8 @@ namespace Velvet
 
         private sealed class PortalBridge
         {
-            // Run ahead of the anchor's own bubble bindings, since the logical ancestors the bridge adds sit
-            // below the anchor in React's return path; answers whether one of them stopped propagation,
-            // which keeps the anchor's own from running.
+            // Run ahead of the anchor's own bubble bindings; answers whether an ancestor it ran stopped
+            // propagation, which keeps the anchor's own from running.
             public Func<EventBase, bool> BubblePrelude = null!;
 
             // Moves the bridge's capture listeners behind the anchor's own capture bindings once those are

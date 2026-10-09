@@ -116,7 +116,7 @@ namespace Velvet
             // The capture segment runs after the anchor's own capture bindings because the listener is
             // registered after them; a rebind of those bindings registers them again, and the listeners are
             // moved back behind them then.
-            ctx.EventManager.SetBridge(bridgeAnchor, bridge.RunBubble, () =>
+            ctx.EventManager.SetBridge(bridgeAnchor, bridge.Prelude, () =>
             {
                 foreach (var retrickle in registrations.Retrickle) retrickle();
             }, () =>
@@ -136,15 +136,15 @@ namespace Velvet
             private readonly ReconcilerContext _ctx;
 
             // The dispatch whose bubble segment already ran, and whether a handler in it stopped
-            // propagation. The anchor's own bubble bindings run that segment first through the prelude the
-            // manager calls, and the anchor's BubbleUp listener after them must not run it again; Capture
-            // clears it as each dispatch trickles through.
+            // propagation. Where the anchor's own bubble bindings run that segment first through Prelude, the
+            // anchor's BubbleUp listener after them must not run it again; Capture clears it as each dispatch
+            // trickles through.
             private EventBase? _bubbled;
             private bool _stopped;
 
-            // Spare lists for Walk. A walk takes one off the stack rather than sharing one list per bridge, so
-            // no walk reads a list another walk refilled before it finished.
-            private readonly Stack<List<VisualElement>> _spare = new();
+            // What Walk fills, reused by every walk; a walk nested inside another through the same anchor would
+            // refill it under the first.
+            private readonly List<VisualElement> _owned = new();
 
             public Bridge(VisualElement anchor, ReconcilerContext ctx)
             {
@@ -157,39 +157,37 @@ namespace Velvet
             {
                 _bubbled = null;
                 var owned = Walk(evt);
-                try
+                for (var index = owned.Count - 1; index >= 0 && !evt.isPropagationStopped; index--)
                 {
-                    for (var index = owned.Count - 1; index >= 0 && !evt.isPropagationStopped; index--)
-                    {
-                        _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: true);
-                    }
-                }
-                finally
-                {
-                    Spare(owned);
+                    _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: true);
                 }
             }
 
             public void Bubble(EventBase evt) => RunBubble(evt);
 
-            // Innermost first, after everything below the anchor and before the anchor's own bubble bindings.
-            public bool RunBubble(EventBase evt)
+            // The anchor's own bubble bindings call this ahead of themselves. The ancestors the bridge carries
+            // sit below the anchor in the logical chain only where the anchor is on that chain; elsewhere the
+            // anchor answers as a physical ancestor of the target, ahead of the bridge.
+            public bool Prelude(EventBase evt)
+            {
+                for (var current = evt.target as VisualElement; current is not null; current = LogicalParent(current, _ctx))
+                {
+                    if (ReferenceEquals(current, _anchor)) return RunBubble(evt);
+                }
+                return false;
+            }
+
+            // Innermost first, after everything below the anchor.
+            private bool RunBubble(EventBase evt)
             {
                 if (ReferenceEquals(_bubbled, evt)) return _stopped;
                 _bubbled = evt;
                 var owned = Walk(evt);
                 _stopped = false;
-                try
+                for (var index = 0; index < owned.Count && !_stopped; index++)
                 {
-                    for (var index = 0; index < owned.Count && !_stopped; index++)
-                    {
-                        _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: false);
-                        _stopped = evt.isPropagationStopped;
-                    }
-                }
-                finally
-                {
-                    Spare(owned);
+                    _ctx.EventManager.TryInvokeSynthetic(owned[index], evt, capture: false);
+                    _stopped = evt.isPropagationStopped;
                 }
                 return _stopped;
             }
@@ -198,7 +196,7 @@ namespace Velvet
             // walk up the target's logical chain.
             private List<VisualElement> Walk(EventBase evt)
             {
-                if (!_spare.TryPop(out var owned)) owned = new List<VisualElement>();
+                _owned.Clear();
                 var target = evt.target as VisualElement;
                 VisualElement? owner = null;
                 VisualElement? next = null;
@@ -207,15 +205,9 @@ namespace Velvet
                     next = LogicalParent(current, _ctx);
                     if (!OffPath(next, target)) continue;
                     if (IsPhysicalAncestorOrSelf(current, target)) owner = AnchorAbove(current);
-                    if (ReferenceEquals(owner, _anchor)) owned.Add(next!);
+                    if (ReferenceEquals(owner, _anchor)) _owned.Add(next!);
                 }
-                return owned;
-            }
-
-            private void Spare(List<VisualElement> owned)
-            {
-                owned.Clear();
-                _spare.Push(owned);
+                return _owned;
             }
 
             private VisualElement? AnchorAbove(VisualElement element)

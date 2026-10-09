@@ -165,8 +165,8 @@ namespace Velvet.Tests
             yield return Kind<WheelEvent>("Wheel", () => new WheelBinding { Handler = _ => s_log.Add("ancestor"), Capture = true });
             yield return Kind<KeyDownEvent>("KeyDown", () => new KeyDownBinding { Handler = _ => s_log.Add("ancestor"), Capture = true });
             yield return Kind<KeyUpEvent>("KeyUp", () => new KeyUpBinding { Handler = _ => s_log.Add("ancestor"), Capture = true });
-            yield return Kind<FocusInEvent>("FocusIn", () => new FocusInBinding { Handler = _ => s_log.Add("ancestor"), Capture = true });
-            yield return Kind<FocusOutEvent>("FocusOut", () => new FocusOutBinding { Handler = _ => s_log.Add("ancestor"), Capture = true });
+            yield return FocusKind<FocusInEvent>("FocusIn", () => new FocusInBinding { Handler = _ => s_log.Add("ancestor"), Capture = true });
+            yield return FocusKind<FocusOutEvent>("FocusOut", () => new FocusOutBinding { Handler = _ => s_log.Add("ancestor"), Capture = true });
             yield return Kind<FocusEvent>("Focus", () => new FocusBinding { Handler = _ => s_log.Add("ancestor"), Capture = true });
             yield return Kind<BlurEvent>("Blur", () => new BlurBinding { Handler = _ => s_log.Add("ancestor"), Capture = true });
         }
@@ -179,6 +179,21 @@ namespace Velvet.Tests
             {
                 using var evt = EventBase<TEvent>.GetPooled();
                 evt.target = target;
+                target.SendEvent(evt);
+            };
+            return (name, binding, dispatch);
+        }
+
+        // FocusInEvent and FocusOutEvent hand the focus change to the event's focus controller once dispatched,
+        // so these carry the panel's.
+        private static (string, Func<FiberEventBinding>, Action<VisualElement>) FocusKind<TEvent>(
+            string name, Func<FiberEventBinding> binding)
+            where TEvent : FocusEventBase<TEvent>, new()
+        {
+            Action<VisualElement> dispatch = target =>
+            {
+                using var evt = FocusEventBase<TEvent>.GetPooled(target, null, FocusChangeDirection.unspecified,
+                    target.focusController);
                 target.SendEvent(evt);
             };
             return (name, binding, dispatch);
@@ -544,23 +559,18 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", s_log), Is.EqualTo("L<,B<,Z<"));
         }
 
-        private static void Ignore(PointerMoveEvent _) { }
-
         [Test]
-        public void Given_ACapturingAncestorOfAPortal_When_PointerMovesReachItsContent_Then_TheBridgeAllocatesNothingAnElementBesideTheContentDoesNot()
+        public void Given_AnAncestorOfAPortal_When_PointerMovesReachItsContent_Then_TheBridgeAllocatesNothingAnElementBesideTheContentDoesNot()
         {
             // Arrange — the plain element shares the content's depth under the target but is no portal row,
-            // so both dispatches cross the anchor and only the content's carries a segment.
+            // so both dispatches cross the anchor and only the content's walk collects an ancestor. The
+            // ancestor holds no binding, so what is measured is the walk rather than the handler it would
+            // invoke.
             var plain = new VisualElement();
             _portalTarget.Add(plain);
             var host = new VisualElement();
             _window.rootVisualElement.Add(host);
             _mounted = V.Mount(host, V.Div(
-                events: new FiberEventBinding[]
-                {
-                    new PointerMoveBinding { Handler = Ignore, Capture = true },
-                    new PointerMoveBinding { Handler = Ignore },
-                },
                 children: new VNode[] { V.Portal(PortalTargetId, children: new VNode[] { V.Div(name: "content") }) }));
             var content = _portalTarget.Q<VisualElement>("content");
             Action toContent = () =>

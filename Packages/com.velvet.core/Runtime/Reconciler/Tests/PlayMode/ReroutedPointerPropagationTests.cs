@@ -57,8 +57,13 @@ namespace Velvet.Tests
             if (entry == s_stopAt) evt.StopPropagation();
         }
 
+        // The outer element covers the press under the layer's content, as CrossPanelPointerRoutingTests'
+        // main-panel target does; with nothing of the main panel's own under it, no case here recorded anything.
         [Component]
-        private static VNode SceneRender() => V.Div(events: Logged("outer"), children: new VNode[]
+        private static VNode SceneRender() => V.Div(
+            events: Logged("outer"),
+            className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
+            children: new VNode[]
         {
             V.Portal(UILayer.Overlay, children: new VNode[]
             {
