@@ -729,8 +729,9 @@ namespace Velvet.Tests
                 out var method, out _, out var useTransition, out _);
             var il = method.Body.GetILProcessor();
             il.Append(Instruction.Create(OpCodes.Call, useTransition));
+            var declaringType = module.Types.Single(type => type.FullName == "Probe.Fixture");
             il.Append(Instruction.Create(OpCodes.Ldfld, new FieldReference("Item1",
-                new GenericParameter(0, GenericParameterType.Type, module), module.TypeSystem.Object)));
+                new GenericParameter("T1", declaringType), module.TypeSystem.Object)));
             il.Append(Instruction.Create(OpCodes.Pop));
             il.Append(Instruction.Create(OpCodes.Ldnull));
             il.Append(Instruction.Create(OpCodes.Ret));
