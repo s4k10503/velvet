@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet;
@@ -145,6 +146,29 @@ namespace Velvet.Tests
             VNode node = new VTextField("field") { Value = "hi", OnChange = _ => { } };
 
             Assert.That(((ElementNode)node).Events.Length, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_VTextFieldWithEveryHandler_When_Built_Then_TheNodeCarriesABindingForEach()
+        {
+            // Arrange
+            var builder = new VTextField("field")
+            {
+                OnChange = _ => { },
+                OnSubmit = _ => { },
+                OnKeyDown = _ => { },
+                OnKeyUp = _ => { },
+                OnFocus = _ => { },
+                OnBlur = _ => { },
+            };
+
+            // Act
+            var node = builder.Build();
+
+            // Assert
+            Assert.That(
+                string.Join(",", Array.ConvertAll(((ElementNode)node).Events, binding => binding.EventId)),
+                Is.EqualTo("change:String,textfield:submit,keydown,keyup,textfield:focus,textfield:blur"));
         }
 
         [Test]
