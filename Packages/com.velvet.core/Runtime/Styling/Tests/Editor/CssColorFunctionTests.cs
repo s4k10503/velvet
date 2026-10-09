@@ -179,7 +179,15 @@ namespace Velvet.Tests
         [TestCase("rgb(0_0_0_/_/_1)", "rgb(0_0_0_/_1)")]
         [TestCase("rgb(0_0_x)", "rgb(0_0_0)")]
         [TestCase("rgb(0_0_infinity)", "rgb(0_0_1e1)")]
-        [TestCase("rgb(0_0_1e999)", "rgb(0_0_1e1)")]
+        [TestCase("rgb(0_0_nan)", "rgb(0_0_1e1)")]
+        [TestCase("rgb(0_0_1.)", "rgb(0_0_1.0)")]
+        [TestCase("rgb(0_0_1e)", "rgb(0_0_1e0)")]
+        [TestCase("rgb(0_0_1e+)", "rgb(0_0_1e+0)")]
+        [TestCase("rgb(0_0_.)", "rgb(0_0_.5)")]
+        [TestCase("rgb(0_0_-)", "rgb(0_0_-0)")]
+        [TestCase("rgb(0_0_1x)", "rgb(0_0_1)")]
+        [TestCase("rgb(0_0_1e1x)", "rgb(0_0_1e1)")]
+        [TestCase("rgb(0_0_1x5)", "rgb(0_0_1e5)")]
         [TestCase("rgb(0_0_x%)", "rgb(0_0_0%)")]
         [TestCase("rgb(0_0_0", "rgb(0_0_0)")]
         [TestCase("rgbx(0_0_0)", "rgb(0_0_0)")]
@@ -200,6 +208,27 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(parsed, Is.EqualTo((false, true)));
+        }
+
+        // Each literal is past double's range, and reads as Chromium reads it: a channel, a percentage or an alpha
+        // clamps to its end, and a hue reads as 0deg.
+        [TestCase("rgb(1e999_0_0)", 1f, 0f, 0f, 1f)]
+        [TestCase("rgb(+1e999,0,0)", 1f, 0f, 0f, 1f)]
+        [TestCase("rgb(1e999%_0_0)", 1f, 0f, 0f, 1f)]
+        [TestCase("rgb(-1e999_0_0)", 0f, 0f, 0f, 1f)]
+        [TestCase("rgb(255_0_0_/_-1e999)", 1f, 0f, 0f, 0f)]
+        [TestCase("hsl(0_1e999%_50%)", 1f, 0f, 0f, 1f)]
+        [TestCase("hsl(90_1e999%_50%)", 0.5f, 1f, 0f, 1f)]
+        [TestCase("hsl(1e999_100%_50%)", 1f, 0f, 0f, 1f)]
+        [TestCase("hsl(-1e999deg_100%_50%)", 1f, 0f, 0f, 1f)]
+        [TestCase("hsl(1e307turn_100%_50%)", 1f, 0f, 0f, 1f)]
+        public void Given_ALiteralPastDoublesRange_When_Parsed_Then_ItReadsAsChromiumReadsIt(string value, float r, float g, float b, float a)
+        {
+            // Act
+            var color = Parse(value);
+
+            // Assert
+            Assert.That(color, Is.EqualTo(new[] { r, g, b, a }).Within(Tolerance));
         }
 
         [Test]

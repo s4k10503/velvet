@@ -35,6 +35,9 @@ The functions follow CSS Color 4:
 - **Out-of-range values are clamped as CSS clamps them when it parses**: `rgb()` channels to 0–255, alpha to
   0–1, and a negative saturation to 0. A whiteness and blackness summing to 100% or more give the gray
   `whiteness / (whiteness + blackness)`.
+- **A number** is a CSS `<number>`: `.5`, `+1e2` and `-0` read, `1.` and `1e` do not, and neither do `infinity` or
+  `nan`. One past double precision's range (`1e999`) reads as the largest value of its sign, as Chromium reads
+  it, so `rgb(1e999_0_0)` is red, `rgb(-1e999_0_0)` black, and such a hue 0deg.
 - **Function names, `none` and angle units** are read in any case.
 - **The opacity modifier** (`bg-[…]/50`, `bg-red-500/50`, `text-…/[0.3]`) multiplies the colour's alpha, as
   Tailwind v4's `color-mix(in oklab, <colour> 50%, transparent)` does: `bg-[#ff000080]/50` has an alpha of a

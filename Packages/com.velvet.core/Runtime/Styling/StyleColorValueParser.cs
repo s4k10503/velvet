@@ -479,16 +479,77 @@ namespace Velvet
             {
                 return false;
             }
-            degrees = CssColorMath.NormalizeHue(number * scale);
+            // A hue at or past double's largest, which an overflowing literal reads as, is 0deg, as Chromium reads it.
+            var hue = number * scale;
+            degrees = Math.Abs(hue) < double.MaxValue ? CssColorMath.NormalizeHue(hue) : 0;
             return true;
         }
 
+        // A literal past double's range reads as double's largest of its sign, which a channel then clamps, as
+        // Chromium reads one: Mono's parser declines such a literal and .NET's returns an infinity, so neither
+        // result is kept.
         private static bool TryParseNumber(string token, out double value)
-            // MUTANT_SURVIVES(unreachable): every token here comes from the lowercased body, and Mono's parser
-            // reads none of `infinity`, `nan` or an overflowing `1e999` as a number (measured on Mono 6.8).
-            // On .NET's own parser, which reads them as non-finite, the `rgb(0_0_infinity)` and
-            // `rgb(0_0_1e999)` rows of Given_AValueTheGrammarDeclines_When_Parsed_Then_OnlyItsReadableNeighbourParses
-            // fail without the clause.
-            => double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && double.IsFinite(value);
+        {
+            value = 0;
+            if (!IsCssNumber(token))
+            {
+                return false;
+            }
+            // MUTANT_SURVIVES(unreachable): Mono's parser returns no infinity for a CSS <number> (measured on
+            // Mono 6.8), so on Mono only the decline reaches the largest. On .NET's own parser, which returns one,
+            // the hsl(90_1e999%_50%) row of Given_ALiteralPastDoublesRange_When_Parsed_Then_ItReadsAsChromiumReadsIt
+            // fails without the infinity clause.
+            if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out value) || double.IsInfinity(value))
+            {
+                value = token[0] == '-' ? -double.MaxValue : double.MaxValue;
+            }
+            return true;
+        }
+
+        // A CSS <number>: an optional sign, then digits with an optional fraction or a fraction alone, then an optional
+        // exponent. double.TryParse alone would also take "1.", surrounding spaces and "Infinity", which CSS does not.
+        private static bool IsCssNumber(string token)
+        {
+            var i = 0;
+            SkipSign(token, ref i);
+            var digits = SkipDigits(token, ref i);
+            if (i < token.Length && token[i] == '.')
+            {
+                i++;
+                var fraction = SkipDigits(token, ref i);
+                if (fraction == 0)
+                {
+                    return false;
+                }
+                digits += fraction;
+            }
+            if (i < token.Length && token[i] == 'e')
+            {
+                i++;
+                SkipSign(token, ref i);
+                if (SkipDigits(token, ref i) == 0)
+                {
+                    return false;
+                }
+            }
+            return digits > 0 && i == token.Length;
+        }
+
+        private static void SkipSign(string token, ref int i)
+        {
+            if (i < token.Length && (token[i] == '+' || token[i] == '-'))
+            {
+                i++;
+            }
+        }
+
+        private static int SkipDigits(string token, ref int i)
+        {
+            var start = i;
+            for (; i < token.Length && token[i] >= '0' && token[i] <= '9'; i++)
+            {
+            }
+            return i - start;
+        }
     }
 }
