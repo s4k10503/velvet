@@ -721,6 +721,58 @@ namespace Velvet.Tests
                 Is.EqualTo(0.75f + 0.25f * (float)((FrameSec + 0.0625) / 0.25)).Within(1e-4f));
         }
 
+        // A quarter of the way out of the override's two seconds the opacity is at 0.75, and the cancel shortens the
+        // override's duration to half a second, not the top-level second to a quarter.
+        [Test]
+        public void Given_ATweenExitWhoseOpacityOverrideIsLonger_When_ItIsCancelledAQuarterOfTheWayOut_Then_TheReversalRunsOnTheOverridesShortenedDuration()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = OnPanel("leaving");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 2f) },
+            };
+            _scheduler.PlayExit(element, config, onComplete: null, restoreFromOnCancel: true);
+            Step(clock, 0.5);
+
+            // Act
+            _scheduler.CancelExit(element);
+            Step(clock, FrameSec);
+
+            // Assert — from 0.75 toward 1 over half a second, a frame in.
+            Assert.That(element.style.opacity.value, Is.EqualTo(0.75f + 0.25f * (float)(FrameSec / 0.5)).Within(1e-4f));
+        }
+
+        // The forward play's override ran to two seconds; the reversal ends with its own half second.
+        [Test]
+        public void Given_ATweenExitWhoseOpacityOverrideIsLonger_When_ItIsCancelledAQuarterOfTheWayOut_Then_TheReversalCompletesOnlyOnceItsShortenedDurationHasRun()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = OnPanel("leaving");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 2f) },
+            };
+            _scheduler.PlayExit(element, config, onComplete: null, restoreFromOnCancel: true);
+            Step(clock, 0.5);
+            _scheduler.CancelExit(element);
+
+            // Act — a quarter of a second in, then a further three eighths, past the half second.
+            Step(clock, 0.25);
+            var midway = element.style.opacity.keyword;
+            Step(clock, 0.375);
+
+            // Assert — held while the reversal runs, released once it ends.
+            Assert.That(new[] { midway, element.style.opacity.keyword },
+                Is.EqualTo(new[] { StyleKeyword.Undefined, StyleKeyword.Null }));
+        }
+
         // --- completion and delays under PropertyOverrides ---
 
         [Test]

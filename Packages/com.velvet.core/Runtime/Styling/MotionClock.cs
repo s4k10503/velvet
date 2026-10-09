@@ -92,7 +92,14 @@ namespace Velvet
             s_recorded.AddOrUpdate(element, clock);
         }
 
-        internal static void Forget(VisualElement element) => s_recorded.Remove(element);
+        internal static void Forget(VisualElement element)
+        {
+            if (s_liveMounts == 0)
+            {
+                return;
+            }
+            s_recorded.Remove(element);
+        }
 
         internal static MotionClock Of(VisualElement element)
         {

@@ -2008,6 +2008,32 @@ namespace Velvet.Tests
             Assert.That(InlineBlur(element), Is.EqualTo(5.25f).Within(1e-3f));
         }
 
+        // The reversal scales a negative delay by the factor as well as the duration: 0.75 × −0.5 s.
+        [Test]
+        public void Given_AFilterTweenWithANegativeDelayThreeQuartersRun_When_TheChangeIsUndone_Then_TheReversalSkipsTheShortenedDelay()
+        {
+            // Arrange — 0 to 12 over a linear second that starts half run, then a quarter of a second on, at 9.
+            var clock = new HeldMotionClock();
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card", className: "transition-filter"),
+                new MountOptions { MotionClock = clock });
+            var element = _window.rootVisualElement.Q<VisualElement>("card");
+            ForcePanelUpdate(element.panel);
+            SetInlineTransition(element, new[] { "filter" }, new[] { new TimeValue(1f) }, new[] { new TimeValue(-0.5f) });
+            ApplyBlur(element, 12f);
+            PanelFrames(element.panel, 1);
+            clock.Now += 0.25;
+            PanelFrames(element.panel, 1);
+
+            // Act — the blur is taken away again, and three sixteenths of a second pass.
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+            clock.Now += 0.1875;
+            PanelFrames(element.panel, 1);
+
+            // Assert — over 0.75 s from 9 to 0 with 0.375 s already skipped, 0.5625 s in is three quarters of the way.
+            // With the delay left at −0.5 s, that time is 0.6875 s in, at 0.75.
+            Assert.That(InlineBlur(element), Is.EqualTo(2.25f).Within(1e-3f));
+        }
+
         [Test]
         public void Given_AFilterTweenHalfWay_When_ADifferentValueIsWritten_Then_TheChangeTakesTheFullDuration()
         {

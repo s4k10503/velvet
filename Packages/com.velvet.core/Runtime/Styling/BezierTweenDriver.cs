@@ -349,6 +349,11 @@ namespace Velvet
         public static void Retarget(BezierTweenState state)
         {
             var shared = SharedEased(state);
+            if (state.Easing.HasValue)
+            {
+                // The forward play's slowest end no longer applies: only the shortened timings Shorten gathers do.
+                state.SlowestTimingEndSec = 0f;
+            }
             RetargetChannel(state, state.Opacity, shared);
             RetargetChannel(state, state.TranslateX, shared);
             RetargetChannel(state, state.TranslateY, shared);

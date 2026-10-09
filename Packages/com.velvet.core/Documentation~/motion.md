@@ -566,9 +566,10 @@ frame's worth:
   transition, which would run on the panel's time: on the tween's own duration, delay and
   `PropertyOverrides`, eased by the curve UI Toolkit eases that transition by for each `Easing`. So it
   animates the channels *Driven channels* lists, a `StyleTransition` preset's opacity, translate and scale
-  among them. A property outside them lands with the swap: while the play runs, the element's own
-  transitions are suspended whatever they name. The play completes once its slowest `PropertyOverrides`
-  entry has run, whether or not a channel plays that entry's property, and an exit cancelled part-way
+  among them. A property outside them lands with the swap where the play suspends the element's own
+  transitions, which it does while they name a property one of its channels writes (`transition-all` does);
+  transitions naming no such property, `transition-filter` among them, are left running. The play
+  completes once its slowest `PropertyOverrides` entry has run, whether or not a channel plays that entry's property, and an exit cancelled part-way
   reverses over the shortened timing UI Toolkit gives a reversed transition.
 - **A `layoutId` move**, and the opacity a crossfade hands back as it ends.
 - **A `filter-*` transition**, including one UI Toolkit would animate itself on the default clock
