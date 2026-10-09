@@ -315,7 +315,7 @@ namespace Velvet.Tests
             AdvancePast(0f);
 
             // Assert
-            Assert.That(s_state.CurrentTransition, Is.SameAs(StyleTransition.Fade));
+            Assert.That(s_state.CurrentTransition?.PlaybackOrigin, Is.SameAs(StyleTransition.Fade));
         }
 
         [Test]
@@ -332,7 +332,7 @@ namespace Velvet.Tests
             AdvancePast(0f);
 
             // Assert
-            Assert.That(s_state.CurrentTransition, Is.SameAs(StyleTransition.SlideUp));
+            Assert.That(s_state.CurrentTransition?.PlaybackOrigin, Is.SameAs(StyleTransition.SlideUp));
         }
 
         [Test]
@@ -349,7 +349,7 @@ namespace Velvet.Tests
             AdvancePast(0f);
 
             // Assert
-            Assert.That(s_state.CurrentTransition, Is.SameAs(StyleTransition.SlideDown));
+            Assert.That(s_state.CurrentTransition?.PlaybackOrigin, Is.SameAs(StyleTransition.SlideDown));
         }
 
         [Test]

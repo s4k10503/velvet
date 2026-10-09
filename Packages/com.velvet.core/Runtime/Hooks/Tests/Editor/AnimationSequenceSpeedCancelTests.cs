@@ -1,0 +1,174 @@
+using System;
+using NUnit.Framework;
+using UnityEngine.UIElements;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Pins <c>AnimationSequenceControls.Speed</c> and <c>Cancel</c>: Framer Motion's <c>speed</c> re-times the
+    /// sequence's timeline and the Bezier play a step's label started, and the Web Animations API's
+    /// <c>cancel()</c> stops both, with <c>Play</c> starting the sequence again from step 0.
+    /// </summary>
+    internal sealed class AnimationSequenceSpeedCancelTests : AnimationSequenceMotionTestsBase
+    {
+        [Test]
+        public void Given_ASequenceAtSpeedTwo_When_TenFramesRun_Then_TimeSecIsTwiceTheTimeElapsed()
+        {
+            // Arrange
+            MountCoordinator();
+            Controls.Speed = 2f;
+
+            // Act
+            Frames(10);
+
+            // Assert
+            Assert.That(Controls.TimeSec, Is.EqualTo(0.32f).Within(1e-4f));
+        }
+
+        // Step 0 holds for no time, so a frame that advances the cursor at all, by however little, crosses it.
+        [Test]
+        public void Given_ASequenceAtSpeedZero_When_RestartedOntoAStepWithNoHoldAndFramesRun_Then_TheCursorStaysOnIt()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            Controls.Speed = 0f;
+
+            // Act
+            Controls.Restart();
+            Frames(3);
+
+            // Assert
+            Assert.That((State.StepIndex, State.CurrentLabel), Is.EqualTo((0, "hidden")));
+        }
+
+        [Test]
+        public void Given_ASequencePartWayThroughABezierFade_When_ItsSpeedIsHalvedForFourFrames_Then_TheMotionMovesByTwoFramesWorth()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            var moving = Opacity().value;
+
+            // Act
+            Controls.Speed = 0.5f;
+            Frames(4);
+
+            // Assert
+            Assert.That(moving > 0f ? Opacity().value - moving : float.NaN, Is.EqualTo(0.032f).Within(1e-4f));
+        }
+
+        [TestCase(-1f)]
+        [TestCase(float.NaN)]
+        [TestCase(float.PositiveInfinity)]
+        public void Given_AMountedSequence_When_ItsSpeedIsSetOutsideZeroOrMore_Then_ItThrows(float speed)
+        {
+            // Arrange
+            MountCoordinator();
+
+            // Act
+            TestDelegate set = () => Controls.Speed = speed;
+
+            // Assert
+            Assert.That(set, Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        [Test]
+        public void Given_ASequencePartWayThroughABezierFade_When_Cancelled_Then_TheMotionCarriesNoInlineOpacity()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            var moving = Opacity();
+
+            // Act
+            Controls.Cancel();
+            Frames(2);
+
+            // Assert
+            Assert.That((moving.keyword, moving.value > 0f, Opacity().keyword == StyleKeyword.Undefined),
+                Is.EqualTo((StyleKeyword.Undefined, true, false)));
+        }
+
+        [Test]
+        public void Given_ASequenceOnAStepWithAShortHold_When_CancelledAndFramesRunPastTheHold_Then_TheCursorStays()
+        {
+            // Arrange
+            Steps = new[]
+            {
+                AnimationSequenceStep.To("hidden", Instant),
+                AnimationSequenceStep.To("visible", Linear(0.1f)),
+                AnimationSequenceStep.To("hidden", Instant),
+            };
+            MountCoordinator();
+            PlayIntoTheFade();
+            var cancelledAt = State.StepIndex;
+
+            // Act
+            Controls.Cancel();
+            Frames(20);
+
+            // Assert
+            Assert.That((cancelledAt, State.StepIndex), Is.EqualTo((1, 1)));
+        }
+
+        private static int s_stepZeroCalls;
+
+        [Test]
+        public void Given_ACancelledSequenceOnItsSecondStep_When_Played_Then_ItRendersStepZerosLabel()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            var cancelledOn = State.CurrentLabel;
+            Controls.Cancel();
+
+            // Act
+            Controls.Play();
+            Flush();
+
+            // Assert
+            Assert.That((cancelledOn, State.CurrentLabel), Is.EqualTo(("visible", "hidden")));
+        }
+
+        // A restart reseeds the sequence, which ends the cancel, so Play only resumes it.
+        [Test]
+        public void Given_ACancelledSequenceThatWasRestarted_When_Played_Then_StepZeroIsNotCommittedAgain()
+        {
+            // Arrange
+            s_stepZeroCalls = 0;
+            Steps = new[]
+            {
+                AnimationSequenceStep.Call(() => s_stepZeroCalls++),
+                AnimationSequenceStep.To("visible", Linear(1f)),
+            };
+            MountCoordinator();
+            Controls.Cancel();
+            var beforeRestart = s_stepZeroCalls;
+            Controls.Restart();
+            var afterRestart = s_stepZeroCalls;
+
+            // Act
+            Controls.Play();
+
+            // Assert
+            Assert.That((afterRestart - beforeRestart, s_stepZeroCalls - afterRestart), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_ACancelledSequence_When_Played_Then_ItStartsAgainFromStepZero()
+        {
+            // Arrange
+            MountCoordinator();
+            PlayIntoTheFade();
+            var cancelledAt = Controls.TimeSec;
+            Controls.Cancel();
+
+            // Act
+            Controls.Play();
+
+            // Assert
+            Assert.That((cancelledAt > 0f, Controls.TimeSec), Is.EqualTo((true, 0f)));
+        }
+    }
+}
