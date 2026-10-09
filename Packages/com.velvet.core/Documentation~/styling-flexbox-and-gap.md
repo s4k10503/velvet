@@ -78,8 +78,11 @@ a space on one element both apply, as they do in Tailwind: on an edge both write
 
 Tailwind writes `space-*` and `divide-*` at zero specificity (`:where()`), so a class of the child's own
 that sets the same edge wins there: `mr-2` or `mr-[5px]` on a child of a `space-x-4` row keeps its own
-right margin, and `border-r-4` or a `border-red-500` on a divided child keeps its own width or color. A
-gap is not a margin in CSS and adds to one instead; see the residual edge cases below.
+right margin, and `border-r-4` or a `border-red-500` on a divided child keeps its own width or color. An
+important divide width or color (`!divide-x-4`, `divide-gray-200!`) is drawn over the child's own instead,
+as the `!important` Tailwind emits for it does, unless the child's own is important too
+(`!border-r-[3px]`), which wins as its higher specificity does in CSS. A gap is not a margin in CSS and
+adds to one instead; see the residual edge cases below.
 
 ### Reversed containers (`flex-row-reverse` / `flex-col-reverse`) and `space-*-reverse`
 
