@@ -8,7 +8,7 @@ namespace Velvet.SourceGenerators.Diagnostics
     internal static class MemoizeDiagnostics
     {
         private const string Category = DiagnosticCategories.Memoize;
-        // Per-analyzer category split: VEL100 / VEL101 are hook-rule diagnostics and must not be
+        // Per-analyzer category split: VEL100 / VEL101 / VEL102 are hook-rule diagnostics and must not be
         // silenced by a blanket Velvet.Memoize category suppression (e.g.
         // `dotnet_analyzer_diagnostic.category-Velvet.Memoize.severity = none`).
         private const string HookCategory = DiagnosticCategories.Hooks;
@@ -87,5 +87,11 @@ namespace Velvet.SourceGenerators.Diagnostics
             "Hook call inside conditional control flow",
             "'{0}' must not be called inside {1}; hooks must be called unconditionally at the top level so the per-fiber hook index aligns across renders",
             "Flags `Hooks.UseXxx` calls inside if/else, loops, short-circuit operators (&&/||/??), conditional expressions (?:), switch sections, or nested lambdas/anonymous methods. The runtime guards against silent corruption via the positional HookIndexTable (throws when hook counts differ across renders), but the static check surfaces the violation at edit time.");
+
+        public static readonly DiagnosticDescriptor Vel102HookOutsideComponentOrHook = HookWarn(
+            "VEL102",
+            "Hook call in a method that is neither a component nor a custom hook",
+            "'{0}' is called in '{1}', which is neither a [Component] method nor a custom hook; mark it [Component], or rename it Use followed by an uppercase letter so VEL101 checks where it is called",
+            "A hook called from a plain helper belongs to whichever component calls the helper, so a helper called on some renders only changes which hooks that component calls from one render to the next, and VEL101 reports nothing at that call because the helper is not named like a hook. Hooks belong in a [Component] method or in a method or local function named Use followed by an uppercase letter, the shape VEL101 checks at each call site. A hook whose nearest enclosing function is a lambda is not reported here.");
     }
 }

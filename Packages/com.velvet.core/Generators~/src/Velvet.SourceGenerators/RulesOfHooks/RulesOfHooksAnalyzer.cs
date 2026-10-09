@@ -1,9 +1,11 @@
 using System.Collections.Immutable;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Velvet.SourceGenerators.Diagnostics;
+using Velvet.SourceGenerators.Shared;
 
 namespace Velvet.SourceGenerators.RulesOfHooks
 {
@@ -19,7 +21,10 @@ namespace Velvet.SourceGenerators.RulesOfHooks
     /// Two passes: a syntax-ancestor walk flags hooks inside a control-flow construct, and a control-flow
     /// analysis pass (<see cref="TryReportConditionalEarlyExit"/>) flags a hook that follows a conditional early
     /// return (<c>if (x) return; UseState(...);</c>) — a case the syntax walk cannot see. A conditional
-    /// <c>throw</c> is not treated as a skip (it aborts the render rather than skipping the hook). This
+    /// <c>throw</c> is not treated as a skip (it aborts the render rather than skipping the hook). Both passes
+    /// recognise a hook call by its name, so a helper not named like a hook hides the hooks it calls from them;
+    /// <see cref="TryReportHookOutsideComponentOrHook"/> (VEL102) reports the hook where it is written unless
+    /// that helper is a <c>[Component]</c> method. This
     /// analyzer's naming-convention check is a syntax-only signal; the auto-memoization IL weaver
     /// (CompilerWeaver, under CodeGen/) is what actually verifies a called method transitively composes
     /// a hook.
@@ -28,7 +33,9 @@ namespace Velvet.SourceGenerators.RulesOfHooks
     internal sealed class RulesOfHooksAnalyzer : DiagnosticAnalyzer
     {
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-            ImmutableArray.Create(MemoizeDiagnostics.Vel101HookInConditional);
+            ImmutableArray.Create(
+                MemoizeDiagnostics.Vel101HookInConditional,
+                MemoizeDiagnostics.Vel102HookOutsideComponentOrHook);
 
         public override void Initialize(AnalysisContext context)
         {
@@ -57,6 +64,8 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             // built-ins internally. The uppercase-ASCII-4th-char check (PascalCase hook style)
             // filters "Useless" / "Used" / non-Latin scripts.
             if (!IsHookLikeName(hookName)) return;
+
+            TryReportHookOutsideComponentOrHook(ctx, inv, hookName);
 
             // Walk ancestors from the invocation up to the enclosing method declaration / local
             // function. Stop at the first control-flow-altering ancestor and report it. Sequential
@@ -122,6 +131,34 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                     "after a conditional early return (the hook is not reached on every path)"));
             }
         }
+
+        /// <remarks>
+        /// A conditional hook in such a host draws this and VEL101 both, where eslint-plugin-react-hooks reports
+        /// only that the host is neither: renaming the host to <c>UseXxx</c> then clears this one and leaves
+        /// VEL101 on the conditional hook.
+        /// </remarks>
+        private static void TryReportHookOutsideComponentOrHook(
+            SyntaxNodeAnalysisContext ctx, InvocationExpressionSyntax inv, string hookName)
+        {
+            if (ctx.SemanticModel.GetEnclosingSymbol(inv.SpanStart, ctx.CancellationToken) is not IMethodSymbol host)
+                return;
+            if (host.MethodKind == MethodKind.AnonymousFunction) return;
+            if (IsHookLikeName(host.Name) || IsComponent(host)) return;
+
+            var hostName = host.AssociatedSymbol?.Name
+                ?? (host.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor
+                    ? host.ContainingType.Name
+                    : host.Name);
+            ctx.ReportDiagnostic(Diagnostic.Create(
+                MemoizeDiagnostics.Vel102HookOutsideComponentOrHook,
+                inv.GetLocation(),
+                hookName,
+                hostName));
+        }
+
+        private static bool IsComponent(IMethodSymbol method) =>
+            method.GetAttributes().Any(attribute =>
+                attribute.AttributeClass?.ToDisplayString() == VelvetWellKnownNames.ComponentAttributeFullName);
 
         /// <summary>
         /// `Use` + uppercase-letter naming convention check.
