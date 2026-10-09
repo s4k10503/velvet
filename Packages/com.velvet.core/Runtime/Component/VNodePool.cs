@@ -212,7 +212,7 @@ namespace Velvet
             new() { [1] = s_singleEventPool };
 
         // Identity set mirroring s_ownedProps (rent-scoped membership): only arrays currently rented
-        // out by RentEventArray may be cleared and recycled — every element factory accepts a raw
+        // out by RentEventArray may be cleared and recycled — every factory returning an element node accepts a raw
         // `events:` array a consumer may cache and reuse across renders, and clearing its slots would
         // sever the caller's handlers in place.
         private static readonly HashSet<FiberEventBinding[]> s_ownedSingleEventArrays = new();

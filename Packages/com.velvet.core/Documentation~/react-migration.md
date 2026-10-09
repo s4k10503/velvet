@@ -533,6 +533,47 @@ A render changing `maxLength:` while an edit is pending keeps the edit on screen
 and leaves it uncommitted and unreported. When the same render also takes `isDelayed:` off, the cut edit
 is released as above.
 
+### 2-1a. Event props
+
+| React (JSX) | Velvet |
+|-------------|--------|
+| `<div onPointerDown={fn}>` | `V.Div(events: new FiberEventBinding[] { new PointerDownBinding { Handler = fn } })` |
+| `<button onClick={a} onKeyDown={b}>` | `V.Button(onClick: a, events: new FiberEventBinding[] { new KeyDownBinding { Handler = b } })` |
+
+Every `V.*` factory that returns an element node (`ElementNode` or `MotionNode`) takes an `events:`
+array, the way every host element takes every event prop in React: `V.Div`, `V.Custom<T>`, `V.Label`,
+`V.Image`, the controls, `V.ScrollView`, `V.ListView`, `V.SceneView`, `V.Particles`, `V.Anchored`,
+`V.FocusScope`, `V.DndContext`, `V.Draggable`, `V.Droppable` and `V.Motion`.
+`ElementFactoryEventsInventoryTests` finds these factories by their return type, so one added later is
+held to the parameter too. `V.Text` returns a text node and takes none, as a React text node takes no
+props. `V.Link`, `V.NavLink` and `V.VirtualList` return other nodes that build their element inside, and
+take none either. The initializer builders under `Velvet.Experimental` carry the same array as `Events`.
+
+The binding types are declared in `Runtime/Reconciler/FiberEventBinding.cs`. A `ClickedBinding` binds
+only on a `Button`, and a `ChangeEventBinding<T>` only on an element whose value is a `T` of `float`,
+`bool`, `string` or `int`; on any other element each binds nothing.
+
+A factory's own `onClick:` or `onValueChanged:` is bound ahead of the array, so both run, the factory's
+own first; a delegate an element already holds is not bound a second time, so one passed both ways runs
+once. The array is read and never written, so a component may keep one across renders. A render
+passing different handlers rebinds the element, and one passing no array unbinds what an earlier render
+bound. How a binding crosses a portal is [portals.md](portals.md)'s.
+
+```csharp compile
+public static class PointerSurface
+{
+    [Component]
+    public static VNode Render()
+    {
+        var (presses, setPresses) = Hooks.UseState(0);
+        return V.SceneView(null, className: "w-full h-64", events: new FiberEventBinding[]
+        {
+            new PointerDownBinding { Handler = _ => setPresses.Invoke(presses + 1) },
+        });
+    }
+}
+```
+
 ### 2-2. Conditionals and Lists
 
 | React | Velvet | Notes |
