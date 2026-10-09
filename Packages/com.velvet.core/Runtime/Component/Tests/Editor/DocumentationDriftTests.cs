@@ -744,6 +744,37 @@ namespace Velvet.Tests
             Assert.That(kept.Contains("StillHere"), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the reading under test sits in this same file, which the base lane carries.
+        // No base run can separate the two; `CorrectionLinePattern` made to match nothing fails it, which is
+        // the reading.
+        [Test]
+        public void Given_ACorrectionLineUnderAnEntry_When_TheProseIsRead_Then_OnlyTheEntryIsThere()
+        {
+            // Arrange — the entry riding along, because a reading that dropped the fragment whole would
+            // satisfy the absence too.
+            const string fragment = "### Changed\n\n- `StillHere` replaces the old member.\n"
+                                    + "<!-- corrects: - `GoneNow` was the member. -->\n";
+
+            // Act
+            var kept = WithoutCorrections(fragment);
+
+            // Assert
+            Assert.That((kept.Contains("StillHere"), kept.Contains("GoneNow")), Is.EqualTo((true, false)));
+        }
+
+        // The line `release_notes.CORRECTS` reads, trailing whitespace included as its caller strips it.
+        private static readonly Regex CorrectionLinePattern =
+            new(@"^<!-- corrects: - .*\S -->[^\S\n]*$", RegexOptions.Multiline);
+
+        /// <summary>The text with every correction line taken out.</summary>
+        /// <remarks>
+        /// A correction quotes, as written, the first line of an entry the change rewrote, so the release
+        /// check can read the old entry as carried by the new one. What it quotes names the tree the old
+        /// entry was written against, for the reason a dated section does, and a rewrite that removed a
+        /// name could not record itself if the quote had to resolve.
+        /// </remarks>
+        private static string WithoutCorrections(string text) => CorrectionLinePattern.Replace(text, string.Empty);
+
         // A CHANGELOG heading a date closes. `## [Unreleased]` and `## [Unreleased — breaking]` carry none,
         // which is the whole of the difference this reads.
         private static readonly Regex ShippedHeadingPattern =
@@ -802,7 +833,7 @@ namespace Velvet.Tests
             foreach (var path in DocumentationCorpus.Files())
             {
                 var prose = FencedBlockPattern.Replace(
-                    WithoutShippedSections(path, File.ReadAllText(path)), "\n");
+                    WithoutCorrections(WithoutShippedSections(path, File.ReadAllText(path))), "\n");
                 foreach (Match span in BacktickSpanPattern.Matches(prose))
                 {
                     var reference = string.Join(" ", span.Groups[1].Value.Split((char[])null!,
