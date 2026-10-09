@@ -716,9 +716,10 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (WatcherCount(), IsPolling(), GetSignalsStatic("s_visibleFailureLogged"), GetSignalsStatic("s_onlineFailureLogged")),
-                Is.EqualTo((0, false, (object)false, (object)false)),
-                "A domain reload starts with no client watched, no poll running and no failure logged");
+                (WatcherCount(), IsPolling(), GetSignalsStatic("s_visibleFailureLogged"), GetSignalsStatic("s_onlineFailureLogged"),
+                    NetworkSignals.IsVisible == null, NetworkSignals.IsOnline == null),
+                Is.EqualTo((0, false, (object)false, (object)false, true, true)),
+                "A domain reload starts with no client watched, no poll running, no failure logged and no override");
         }
 
         #endregion

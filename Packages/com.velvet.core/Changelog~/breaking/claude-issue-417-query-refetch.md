@@ -1,7 +1,8 @@
 ### Changed
 
-- A mounted `Hooks.UseQuery` fetches again when the application becomes visible after being hidden, or the
-  device comes back online, while its data is stale, as TanStack Query v5's `refetchOnWindowFocus` and
-  `refetchOnReconnect` default to. With the default `StaleTime` of zero that is every enabled one; set
+- A mounted, enabled `Hooks.UseQuery` whose data is stale fetches again when the device comes back online,
+  and, on a mobile platform or where `NetworkSignals.IsVisible` is set, when the application becomes visible
+  after being hidden, as TanStack Query v5's `refetchOnReconnect` and `refetchOnWindowFocus` default to. Off
+  a mobile platform the default visibility never changes, so no focus refetch fires there. Set
   `QueryClientOptions.RefetchOnWindowFocus` / `RefetchOnReconnect` to `QueryRefetchMode.Never` to keep the
   earlier behaviour.

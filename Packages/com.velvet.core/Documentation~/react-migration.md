@@ -329,11 +329,12 @@ is shown; `RefetchIntervalInBackground` fetches anyway. When the application bec
 hidden, or the device comes back online, a mounted query fetches again under `RefetchOnWindowFocus` /
 `RefetchOnReconnect`: `IfStale`, the default, when its data is stale, `Always` whatever its age, `Never`
 not at all; set them on one query or for every query on `QueryClientOptions`. That refetch joins a request
-in flight. `NetworkSignals` holds both readings: online is `Application.internetReachability`, and the
-application counts as visible unless it is a mobile application that has lost focus.
+in flight. `NetworkSignals` holds both readings: online is `Application.internetReachability`, and visible
+is `Application.isFocused` on a mobile platform and always true on every other.
 `NetworkSignals.IsVisible` / `IsOnline` replace them, for a desktop application that reads its window's
-state, or one whose server `internetReachability` does not describe. A reading that throws is counted as
-visible or online, and only the first failure of each reading is logged.
+state, or one whose server `internetReachability` does not describe. A reading that throws is no reading
+to the poll, which then reports no change, and counts as visible or online where one is needed: an interval's
+wait and a client's first reading. Only the first failure of each reading is logged.
 
 **Reading and writing the cache by hand.** `GetQueryData` returns an entry's data, default when it has
 none or has expired unread. `SetQueryData` writes data as a request landing would: the entry is `Success`

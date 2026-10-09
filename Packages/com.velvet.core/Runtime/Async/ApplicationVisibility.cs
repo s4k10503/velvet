@@ -3,9 +3,9 @@ using UnityEngine;
 namespace Velvet
 {
     /// <summary>
-    /// Whether the application is on screen, as TanStack's focus manager reads <c>document.visibilityState</c>.
-    /// On a mobile platform a backgrounded application is the one that has lost focus; every other platform
-    /// counts as visible.
+    /// Whether the application counts as on screen, where TanStack's focus manager reads
+    /// <c>document.visibilityState</c>: <c>Application.isFocused</c> on a mobile platform, and visible on every
+    /// other.
     /// </summary>
     internal static class ApplicationVisibility
     {

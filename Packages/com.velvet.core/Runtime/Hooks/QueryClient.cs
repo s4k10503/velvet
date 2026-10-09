@@ -88,7 +88,7 @@ namespace Velvet
     /// subscribes to this client, <see cref="InvalidateQueries"/> runs or
     /// <see cref="SetQueryData{T}(QueryKey, T)"/> writes, where TanStack Query removes it when its timer fires.
     /// An entry with a request in flight has not run out, as v5 puts its removal off while it fetches: it runs
-    /// out at the first garbage-collection time after the request settles.
+    /// out a whole garbage-collection time after the request settles.
     /// </remarks>
     public sealed class QueryClient
     {
@@ -731,7 +731,7 @@ namespace Velvet
         }
 
         private static readonly List<Watcher> s_watchers = new();
-        // The watchers as a poll found them, refilled each frame rather than copied, so a poll allocates nothing.
+        // The watchers as a poll found them, refilled each frame rather than copied anew.
         private static readonly List<Watcher> s_polled = new();
         private static readonly Func<bool> s_readVisible = NetworkSignals.ReadVisible;
         private static readonly Func<bool> s_readOnline = NetworkSignals.ReadOnline;
@@ -749,6 +749,8 @@ namespace Velvet
             s_polling = false;
             s_visibleFailureLogged = false;
             s_onlineFailureLogged = false;
+            NetworkSignals.IsVisible = null;
+            NetworkSignals.IsOnline = null;
         }
 
         internal static void Watch(QueryClient client)

@@ -742,7 +742,7 @@ namespace Velvet.Tests
             Assert.That(entry?.Data, Is.EqualTo(7), "A request in flight at the gcTime itself puts the removal off");
         }
 
-        // GREEN_ON_BASE(characterization): with a gcTime of zero the base reads the entry as expired at once too; this case pins that putting the removal off divides by no gcTime of zero.
+        // GREEN_ON_BASE(characterization): with a gcTime of zero the base reads the entry as expired at once too; this case pins that a zero gcTime restarted at the settle still removes the entry at once.
         [Test]
         public void Given_AZeroGcTimeAndARequestInFlight_When_ItLandsAfterTheReaderLeft_Then_TheEntryIsCollected()
         {
