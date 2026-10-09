@@ -403,16 +403,74 @@ namespace Velvet
         /// </summary>
         public static bool SeekTo(VisualElement element, MotionSpringState state, float timeSec)
         {
-            var spring = ((double)state.Stiffness, (double)state.Damping, (double)state.Mass);
+            // Walked by hand rather than through ForEachActiveChannel, whose capturing lambda would allocate on
+            // every frame a play runs (MotionPlaybackAllocationTests).
             var t = Mathf.Max(0f, timeSec);
-            ForEachActiveChannel(state, c =>
+            SampleChannel(state.Opacity, state, t);
+            SampleChannel(state.TranslateX, state, t);
+            SampleChannel(state.TranslateY, state, t);
+            SampleChannel(state.Scale, state, t);
+            SampleChannel(state.Rotate, state, t);
+            if (state.Colors != null)
             {
-                var (displacement, velocity) = SpringIntegrator.Solve(c.RestingTarget - c.Target, 0.0, t, spring);
-                c.Integrator = new SpringIntegrator((float)(c.Target + displacement), (float)velocity);
-            });
+                foreach (var c in state.Colors) SampleChannel(c.Progress, state, t);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) SampleChannel(l.Value, state, t);
+            }
             // A zero step moves no integrator, so this writes the channels and reads their settle.
             return Step(element, state, 0f);
         }
+
+        private static void SampleChannel(SpringChannel? channel, MotionSpringState state, float timeSec)
+        {
+            if (channel == null)
+            {
+                return;
+            }
+            var (displacement, velocity) = SpringIntegrator.Solve(channel.RestingTarget - channel.Target, 0.0,
+                timeSec, (state.Stiffness, state.Damping, state.Mass));
+            channel.Integrator = new SpringIntegrator((float)(channel.Target + displacement), (float)velocity);
+        }
+
+        /// <summary>
+        /// The values a play started from on each channel, as a plan of from-to pairs that both hold them: what
+        /// <c>StyleAnimationScheduler</c> starts the next play on a held element from.
+        /// </summary>
+        public static MotionSpringClassParser.SpringPlan StartValues(MotionSpringState state)
+        {
+            var plan = new MotionSpringClassParser.SpringPlan
+            {
+                Opacity = Resting(state.Opacity),
+                TranslateX = Resting(state.TranslateX),
+                TranslateY = Resting(state.TranslateY),
+                Scale = Resting(state.Scale),
+                Rotate = Resting(state.Rotate),
+            };
+            if (state.Colors != null)
+            {
+                plan.Colors = new List<MotionSpringClassParser.ColorChannelPlan>();
+                foreach (var c in state.Colors)
+                {
+                    plan.Colors.Add(new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From));
+                }
+            }
+            if (state.Lengths != null)
+            {
+                plan.Lengths = new List<MotionSpringClassParser.LengthChannelPlan>();
+                foreach (var l in state.Lengths)
+                {
+                    plan.Lengths.Add(new MotionSpringClassParser.LengthChannelPlan(l.Property, l.Value.RestingTarget,
+                        l.Value.RestingTarget, l.Unit));
+                }
+            }
+            return plan;
+        }
+
+        private static (float from, float to)? Resting(SpringChannel? channel)
+            => channel == null ? null : (channel.RestingTarget, channel.RestingTarget);
+
 
         /// <summary>
         /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref

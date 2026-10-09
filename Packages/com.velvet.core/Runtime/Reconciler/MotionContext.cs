@@ -42,7 +42,7 @@ namespace Velvet
 
         // What a Motion establishes for the subtree it reconciles, pushed together and popped together by
         // FiberNodeFactory.CreateForMotionNode and FiberNodePatcher.PatchMotion. FiberContextSpine rebuilds the
-        // two labels, and not the orchestration, for an isolated render.
+        // two labels and the playback, and not the orchestration, for an isolated render.
         public static void PushForChildren(ComponentContextStack stack, string label, string? initialLabel,
             MotionOrchestrationFrame? orchestration, MotionPlayback? playback)
         {

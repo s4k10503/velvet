@@ -206,6 +206,38 @@ namespace Velvet
             return plan;
         }
 
+        // `plan`, each channel `start` also holds starting from `start`'s value rather than its own from-side.
+        internal static SpringPlan StartingFrom(SpringPlan plan, SpringPlan start)
+        {
+            plan.Opacity = StartingFrom(plan.Opacity, start.Opacity);
+            plan.TranslateX = StartingFrom(plan.TranslateX, start.TranslateX);
+            plan.TranslateY = StartingFrom(plan.TranslateY, start.TranslateY);
+            plan.Scale = StartingFrom(plan.Scale, start.Scale);
+            plan.Rotate = StartingFrom(plan.Rotate, start.Rotate);
+            if (plan.Colors != null && start.Colors != null)
+            {
+                for (var i = 0; i < plan.Colors.Count; i++)
+                {
+                    var c = plan.Colors[i];
+                    var held = start.Colors.FindIndex(s => s.Property == c.Property);
+                    if (held >= 0) plan.Colors[i] = new ColorChannelPlan(c.Property, start.Colors[held].From, c.To);
+                }
+            }
+            if (plan.Lengths != null && start.Lengths != null)
+            {
+                for (var i = 0; i < plan.Lengths.Count; i++)
+                {
+                    var l = plan.Lengths[i];
+                    var held = start.Lengths.FindIndex(s => s.Property == l.Property && s.Unit == l.Unit);
+                    if (held >= 0) plan.Lengths[i] = new LengthChannelPlan(l.Property, start.Lengths[held].From, l.To, l.Unit);
+                }
+            }
+            return plan;
+        }
+
+        private static (float from, float to)? StartingFrom((float from, float to)? channel, (float from, float to)? start)
+            => channel is { } c && start is { } s ? (s.from, c.to) : channel;
+
         private static (float from, float to)? PairAxis(in SideScan from, in SideScan to,
             ArbitraryProperty axis, float identity, MotionSlotContext? context)
         {

@@ -80,6 +80,44 @@ namespace Velvet.Tests
             Assert.That(moving > 0f ? Opacity().value : float.NaN, Is.EqualTo(moving));
         }
 
+        // The child mounts in a render of its own component alone, which rebuilds the coordinator's context
+        // around it rather than reconciling the coordinator.
+        [Test]
+        public void Given_AChildMountedByItsOwnComponentsStatePartWayThroughItsMountEnter_When_PausedForFiveFrames_Then_ItsOpacityHolds()
+        {
+            // Arrange
+            MountSelfMount();
+            PlayIntoTheFade();
+            SetChildMounted.Invoke(true);
+            Frames(3);
+            var moving = Opacity().value;
+
+            // Act
+            Controls.Pause();
+            Frames(5);
+
+            // Assert
+            Assert.That(moving > 0f ? Opacity().value : float.NaN, Is.EqualTo(moving));
+        }
+
+        [Test]
+        public void Given_APresenceChildMountedByItsOwnComponentsStatePartWayThroughItsEnter_When_PausedForFiveFrames_Then_ItsOpacityHolds()
+        {
+            // Arrange
+            MountSelfPresence();
+            PlayIntoTheFade();
+            SetChildMounted.Invoke(true);
+            Frames(3);
+            var moving = Opacity().value;
+
+            // Act
+            Controls.Pause();
+            Frames(5);
+
+            // Assert
+            Assert.That(moving > 0f ? Opacity().value : float.NaN, Is.EqualTo(moving));
+        }
+
         // GREEN_ON_BASE(characterization): a Motion beside the coordinator plays on through a pause, as every play
         // does on the base, where Pause reaches none; the change has to hand the sequence's playback to the
         // coordinator's descendants alone.

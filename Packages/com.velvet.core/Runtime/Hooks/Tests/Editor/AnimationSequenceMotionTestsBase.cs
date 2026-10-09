@@ -26,6 +26,7 @@ namespace Velvet.Tests
         private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["hidden"] = "opacity-0",
+            ["half"] = "opacity-50",
             ["visible"] = "opacity-100",
         };
 
@@ -144,6 +145,67 @@ namespace Velvet.Tests
         protected void MountMidMount() => Mount(MidMountHost);
 
         protected void MountPresence() => Mount(PresenceHost);
+
+        // The coordinator rests at hidden until the sequence's first label arrives, so a first step to visible
+        // plays from hidden.
+        [Component]
+        private static VNode InitialCoordinatorHost()
+        {
+            var (state, controls) = Hooks.UseAnimationSequence(Steps, deps: Array.Empty<object>());
+            State = state;
+            Controls = controls;
+            return V.Motion(key: "m", name: "m", variants: s_fade, initial: "hidden", animate: state.CurrentLabel,
+                transition: state.CurrentTransition);
+        }
+
+        protected void MountInitialCoordinator() => Mount(InitialCoordinatorHost);
+
+        // Set by ChildToggler's own render: mounting the child through it re-renders that component alone.
+        protected static StateUpdater<bool> SetChildMounted;
+
+        [Component]
+        private static VNode ChildToggler()
+        {
+            var (mounted, setMounted) = Hooks.UseState(false);
+            SetChildMounted = setMounted;
+            return V.Div(name: "toggler", children: mounted
+                ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade) }
+                : Array.Empty<VNode>());
+        }
+
+        [Component]
+        private static VNode PresenceToggler()
+        {
+            var (mounted, setMounted) = Hooks.UseState(false);
+            SetChildMounted = setMounted;
+            return V.AnimatePresence(children: mounted
+                ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade) }
+                : Array.Empty<VNode>());
+        }
+
+        [Component]
+        private static VNode SelfMountHost()
+        {
+            var (state, controls) = Hooks.UseAnimationSequence(Steps, deps: Array.Empty<object>());
+            State = state;
+            Controls = controls;
+            return V.Motion(key: "coordinator", name: "coordinator", initial: "hidden", animate: state.CurrentLabel,
+                transition: state.CurrentTransition, children: new VNode[] { V.Component(ChildToggler, key: "t") });
+        }
+
+        [Component]
+        private static VNode SelfPresenceHost()
+        {
+            var (state, controls) = Hooks.UseAnimationSequence(Steps, deps: Array.Empty<object>());
+            State = state;
+            Controls = controls;
+            return V.Motion(key: "coordinator", name: "coordinator", initial: "hidden", animate: state.CurrentLabel,
+                transition: state.CurrentTransition, children: new VNode[] { V.Component(PresenceToggler, key: "t") });
+        }
+
+        protected void MountSelfMount() => Mount(SelfMountHost);
+
+        protected void MountSelfPresence() => Mount(SelfPresenceHost);
 
         protected void RenderAgain() => _mounted.Render(V.Component(_rendered, key: "root"));
 

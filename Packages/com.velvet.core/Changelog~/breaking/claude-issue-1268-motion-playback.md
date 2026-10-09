@@ -9,4 +9,9 @@
   rather than the instance the step was given: a comparison by reference against the step's config no longer
   holds.
 - A `Spring` play on a sequence is sampled at its time rather than stepped frame by frame, so a frame longer
-  than 1/30 s no longer slows it.
+  than 1/30 s no longer slows it, and a heavily overdamped spring reaches the cap Framer Motion's spring
+  generator puts on its hyperbolic argument (300) and lands on its target there, as Framer's does, where
+  stepping never reached it.
+- After `Cancel`, `Play` or `Restart` starts each new `Spring` or `Bezier` play from the values the cancel left
+  rather than from its pose's own, and an exit starts from them too; the held values on an element no new play
+  takes over come off once the reseed commits.

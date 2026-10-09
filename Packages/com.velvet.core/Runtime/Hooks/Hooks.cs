@@ -1450,6 +1450,12 @@ namespace Velvet
             // abandons the wait in the walker's own reseed, so this one is for unmount.
             UseEffect(() => walker.Current.AbandonAwait, Array.Empty<object>());
 
+            UseLayoutEffect(() =>
+            {
+                walker.Current.AfterCommit();
+                return (Action?)null;
+            });
+
             var controls = new AnimationSequenceControls(
                 play: () =>
                 {

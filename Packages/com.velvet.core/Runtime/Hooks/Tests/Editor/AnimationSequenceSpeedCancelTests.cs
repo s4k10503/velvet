@@ -112,6 +112,53 @@ namespace Velvet.Tests
             Assert.That((cancelledAt, State.StepIndex), Is.EqualTo((1, 1)));
         }
 
+        // The cancelled fade to visible started from half, so its held opacity is 0.5, where the reseed's fade
+        // back to half has to start rather than from visible's 1.
+        [Test]
+        public void Given_ACancelledFade_When_RestartedOntoAStepFadingAnotherWay_Then_TheNewFadeStartsFromTheHeldOpacity()
+        {
+            // Arrange
+            Steps = new[]
+            {
+                AnimationSequenceStep.To("half", Linear(0.1f)),
+                AnimationSequenceStep.To("visible", Linear(1f)),
+            };
+            MountInitialCoordinator();
+            for (var i = 0; i < 20 && State.CurrentLabel != "visible"; i++)
+            {
+                Frames(1);
+            }
+            Frames(3);
+            Controls.Cancel();
+            var held = Opacity().value;
+
+            // Act
+            Controls.Restart();
+            Flush();
+
+            // Assert
+            Assert.That((held, State.CurrentLabel, Opacity().value), Is.EqualTo((0.5f, "half", 0.5f)));
+        }
+
+        // A reseed that leaves the label where it is starts no play, so nothing takes the held values over.
+        [Test]
+        public void Given_ACancelledFade_When_RestartedOntoTheSameLabel_Then_TheHeldOpacityComesOffAfterTheCommit()
+        {
+            // Arrange
+            Steps = new[] { AnimationSequenceStep.To("visible", Linear(1f)) };
+            MountInitialCoordinator();
+            PlayIntoTheFade();
+            Controls.Cancel();
+            var held = Opacity().keyword;
+
+            // Act
+            Controls.Restart();
+            Flush();
+
+            // Assert
+            Assert.That((held, Opacity().keyword == StyleKeyword.Undefined), Is.EqualTo((StyleKeyword.Undefined, false)));
+        }
+
         private static int s_stepZeroCalls;
 
         [Test]

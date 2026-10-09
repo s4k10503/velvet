@@ -43,7 +43,7 @@ namespace Velvet
         }
 
         // Framer Motion's cancel() on each play: it returns to its starting values and stops there, without its
-        // completion (StyleAnimationScheduler.CancelPlay). The held plays stay listed for ClearPlays.
+        // completion (StyleAnimationScheduler.CancelPlay). The held plays stay listed for ReleaseHeldPlays.
         public void CancelPlays()
         {
             foreach (var (scheduler, element, play) in _plays.ToArray())
@@ -52,16 +52,17 @@ namespace Velvet
             }
         }
 
-        // Stops every play, held ones included, and takes its values off its element, which then shows the pose
-        // its classes name.
-        public void ClearPlays()
+        // Takes the held plays' values off their elements, which then show the poses their classes name: what a
+        // reseed does, once its own plays have started from them, to the ones none of its plays replaced.
+        public void ReleaseHeldPlays()
         {
-            var plays = _plays.ToArray();
-            _plays.Clear();
-            foreach (var (scheduler, element, play) in plays)
+            foreach (var (scheduler, element, play) in _plays.ToArray())
             {
-                scheduler.ClearPlay(element, play);
+                scheduler.ReleaseHeldPlay(element, play);
             }
         }
+
+        // Drops a held play its scheduler released, so one a teardown released stays listed nowhere.
+        public void Untrack(object play) => _plays.RemoveAll(entry => ReferenceEquals(entry.Play, play));
     }
 }

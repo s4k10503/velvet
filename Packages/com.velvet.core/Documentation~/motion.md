@@ -601,10 +601,13 @@ the step's transition for that reason: equal to it in every setting, but not the
   Setting it re-times the plays already running from the next frame, delays included. A negative, NaN or
   infinite value throws `ArgumentOutOfRangeException`: reverse is not offered (see below).
 - `controls.Cancel()` is Framer Motion's `cancel()`: the cursor stops where it is, and each of those plays
-  returns to the values it started from and stops there, without its completion running. Those values stay
-  on the element until the next play on it replaces them, as a cancelled Framer animation leaves its value
-  at its start; the label stays the step's. `controls.Play()` after a cancel starts the sequence again from
-  step 0, and `controls.Restart()` reseeds it at step 0 still paused; either takes the held values off.
+  returns to the values it started from and stops there, without its completion running, as a cancelled
+  Framer animation leaves its value at its start; the label stays the step's. The next `Spring` or `Bezier`
+  play on the element, an exit included, starts from those values on the channels both drive, as Framer's
+  next animation starts from where the value sits; a play of no duration, a `Tween` or a teardown takes them
+  off instead. `controls.Play()` after a cancel starts the sequence again from step 0, and
+  `controls.Restart()` reseeds it at step 0 still paused; the held values on an element whose label the
+  reseed leaves unchanged come off once it commits.
 
 A `Tween` play -- the default `Type`, and that of `StyleTransition.Fade`, which a sequence takes until a step
 names a transition -- is UI Toolkit's own transition, and none of the three reaches it: it runs on to its end.

@@ -51,6 +51,8 @@ namespace Velvet
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingEnters = new();
+        // The Spring and Bezier plays CancelPlay stopped at their starting values, kept until ReleaseHeld.
+        private readonly Dictionary<VisualElement, PendingAnimation> _held = new();
         // Scoped to this scheduler instance so a leaked or double-returned rent stays contained to it instead
         // of corrupting a pool every other scheduler instance also draws from (see TimeValueListPool).
         private readonly TimeValueListPool _listPool = new();
@@ -215,6 +217,8 @@ namespace Velvet
             var fromClasses = play.FromClasses;
             var toClasses = play.ToClasses;
             var onComplete = play.OnComplete;
+            // A tween starts from the values the element resolves, which a held play's would override.
+            ReleaseHeld(element);
 
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
@@ -430,6 +434,8 @@ namespace Velvet
                 return;
             }
 
+            // As PlayEnterInternal's.
+            ReleaseHeld(element);
             // StyleTransitionConfig.None (DurationSec=0): complete immediately (no warning).
             if (!ValidateDuration(config.DurationSec, onComplete))
             {
@@ -625,6 +631,7 @@ namespace Velvet
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
                 restingTranslate.x.value, restingTranslate.y.value,
                 MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
+            plan = StartFromHeld(element, plan);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
@@ -754,6 +761,7 @@ namespace Velvet
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
                 restingTranslate.x.value, restingTranslate.y.value,
                 MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
+            plan = StartFromHeld(element, plan);
             // An invalid configuration (see ValidateBezierParameters) degrades exactly like an empty plan below:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
@@ -1031,8 +1039,11 @@ namespace Velvet
         private static bool SeekOnPlayback(VisualElement element, PendingAnimation pending)
         {
             var inDelay = pending.PlayTimeSec < 0f;
+            // MUTANT_SURVIVES(equivalent, clause removed): a co-fade started again replaces its earlier tick.
+            // StartRingCoFadeTick pauses that one, and the new one samples the same caster.
             if (!inDelay && !pending.CoFadeStarted)
             {
+                // MUTANT_SURVIVES(equivalent): as the clause above, every frame restarts the one co-fade tick.
                 pending.CoFadeStarted = true;
                 RingCoFadeCoordinator.StartRingCoFadeTick(pending);
             }
@@ -1055,56 +1066,88 @@ namespace Velvet
             }
         }
 
-        // Whether `play` is still the element's entry in the enter map, running or held by CancelPlay.
+        // Whether `play` is still the element's enter, running, or held by CancelPlay.
         internal bool IsRunning(VisualElement element, object play)
-            => _pendingEnters.TryGetValue(element, out var pending) && ReferenceEquals(pending, play);
+            => (_pendingEnters.TryGetValue(element, out var pending) && ReferenceEquals(pending, play))
+                || (_held.TryGetValue(element, out var held) && ReferenceEquals(held, play));
 
         // Framer Motion's cancel(): the play returns to its time-0 values, its starting ones, and stops there with
-        // no completion. Its entry stays as the element's enter, its inline values held, so the next play on the
-        // element replaces it as it replaces a running one and CancelEnter clears it on teardown.
+        // no completion. It leaves the enter map for _held, its inline values and its ring co-fade kept, so the
+        // next play on the element starts from those values (StartFromHeld) and a later play of no duration,
+        // a reseed or a teardown takes them off (ReleaseHeld).
         internal void CancelPlay(VisualElement element, object play)
         {
-            if (!IsRunning(element, play))
+            if (!_pendingEnters.TryGetValue(element, out var pending) || !ReferenceEquals(pending, play))
             {
                 return;
             }
-            var pending = (PendingAnimation)play;
+            _pendingEnters.Remove(element);
             pending.ScheduledItem?.Pause();
-            if (pending.PendingAttach != null)
+            // MUTANT_SURVIVES(equivalent): the deferred start finds a held entry in neither map and returns.
+            // That identity check in ScheduleStart is what keeps a held play from starting on attach.
+            if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
+            if (pending.Spring != null)
             {
-                element.UnregisterCallback(pending.PendingAttach);
-                pending.PendingAttach = null;
+                pending.Spring.Tick?.Pause();
+                MotionSpringDriver.SeekTo(element, pending.Spring, 0f);
             }
-            RingCoFadeCoordinator.EndRingCoFade(pending);
-            pending.Playback = null;
-            pending.Held = true;
-            if (pending.Spring is { } spring)
+            else
             {
-                spring.Tick?.Pause();
-                spring.Tick = null;
-                spring.OnSettled = null;
-                MotionSpringDriver.SeekTo(element, spring, 0f);
+                pending.Bezier!.Tick?.Pause();
+                BezierTweenDriver.SeekTo(element, pending.Bezier, 0f);
             }
-            else if (pending.Bezier is { } bezier)
-            {
-                bezier.Tick?.Pause();
-                bezier.Tick = null;
-                bezier.OnSettled = null;
-                BezierTweenDriver.SeekTo(element, bezier, 0f);
-            }
+            _held[element] = pending;
         }
 
-        // Stops `play` as CancelEnter does, held or running, where it is still the element's entry.
-        internal void ClearPlay(VisualElement element, object play)
+        // A held play's values are the ones the element's next Spring or Bezier play on the channels both drive
+        // starts from, as Framer Motion's next animation starts from where a cancelled one left its value.
+        private MotionSpringClassParser.SpringPlan StartFromHeld(VisualElement element,
+            MotionSpringClassParser.SpringPlan plan)
         {
-            if (IsRunning(element, play))
+            if (!_held.TryGetValue(element, out var held))
             {
-                CancelEnter(element);
+                return plan;
+            }
+            var start = held.Spring != null
+                ? MotionSpringDriver.StartValues(held.Spring)
+                : BezierTweenDriver.StartValues(held.Bezier!);
+            ReleaseHeld(element);
+            return MotionSpringClassParser.StartingFrom(plan, start);
+        }
+
+        // Takes a held play's values off its element, which then shows the pose its classes name.
+        private void ReleaseHeld(VisualElement element)
+        {
+            if (!_held.Remove(element, out var held))
+            {
+                return;
+            }
+            RingCoFadeCoordinator.EndRingCoFade(held);
+            if (held.Spring != null)
+            {
+                MotionSpringDriver.ClearInlineOverrides(element, held.Spring);
+            }
+            else
+            {
+                BezierTweenDriver.ClearInlineOverrides(element, held.Bezier!);
+            }
+            ReapplyMotionOwnedInlineValues(element);
+            held.Playback!.Untrack(held);
+        }
+
+        // ReleaseHeld for `play`, where it is still the element's held play.
+        internal void ReleaseHeldPlay(VisualElement element, object play)
+        {
+            if (_held.TryGetValue(element, out var held) && ReferenceEquals(held, play))
+            {
+                ReleaseHeld(element);
             }
         }
 
+        // A held play counts, so the slots it holds read as its values rather than as resting inline holders.
         private bool DrivenByRunningPlay(VisualElement element, ArbitraryProperty slot)
-            => Drives(_pendingEnters, element, slot) || Drives(_pendingExits, element, slot);
+            => Drives(_pendingEnters, element, slot) || Drives(_pendingExits, element, slot)
+                || Drives(_held, element, slot);
 
         private static bool Drives(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
             ArbitraryProperty slot)
@@ -1198,8 +1241,12 @@ namespace Velvet
         // panel-root-scheduled tick keeps calling MotionSpringDriver.Step and writing inline styles — nothing
         // ever calls CancelEnter on this element again to catch that re-added entry, so it would otherwise
         // keep corrupting whatever the pooled element is reused for next.
-        public void CancelExitForTeardown(VisualElement element) =>
+        public void CancelExitForTeardown(VisualElement element)
+        {
             CancelPending(_pendingExits, element, animateReversal: true, forTeardown: true);
+            // A held play's values would otherwise go to the pool with the element.
+            ReleaseHeld(element);
+        }
 
         // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
         public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
@@ -1252,11 +1299,10 @@ namespace Velvet
         }
 
         // Whether a spring or bezier enter is still running on the element, whose settle re-applies the inline
-        // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens). One CancelPlay holds never
-        // settles, so it is not running.
+        // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens). One CancelPlay holds is in _held,
+        // since it never settles.
         internal bool IsDriving(VisualElement element)
-            => _pendingEnters.TryGetValue(element, out var enter) && !enter.Held
-                && (enter.Spring != null || enter.Bezier != null);
+            => _pendingEnters.TryGetValue(element, out var enter) && (enter.Spring != null || enter.Bezier != null);
 
         // A zero-duration pose lands the properties it names: the enter or reversal still running on the element
         // stops animating them and keeps animating the rest. The caller runs this before it writes the pose, so
@@ -1427,6 +1473,10 @@ namespace Velvet
         {
             CancelAllInMap(_pendingExits);
             CancelAllInMap(_pendingEnters);
+            foreach (var element in new List<VisualElement>(_held.Keys))
+            {
+                ReleaseHeld(element);
+            }
         }
 
         private static void RunOnSwap(PendingAnimation pending)
@@ -1973,13 +2023,11 @@ namespace Velvet
             // DESCENDANT is a child of a descendant, so UI Toolkit's opacity compositing already fades it.
             public VisualElement? RingOverlay;
 
-            // A spring or bezier play's MotionPlayback; null for one on none, and for one CancelPlay holds. The
-            // play's time on it, negative inside its delay.
+            // A spring or bezier play's MotionPlayback, null for one on none, and the play's time on it, negative
+            // inside its delay.
             public MotionPlayback? Playback;
             public float PlayTimeSec;
             public bool CoFadeStarted;
-            // Set by CancelPlay: the play stopped at its starting values and stays only to hold them.
-            public bool Held;
         }
 
         // Ring-band co-fade bookkeeping for every StyleAnimationScheduler play (tween / spring / bezier, enter /
@@ -2028,6 +2076,10 @@ namespace Velvet
                 {
                     return;
                 }
+                // A play has one co-fade tick, so a second start replaces the first rather than leaving it running.
+                // MUTANT_SURVIVES(equivalent): a tick left running writes the same sample the new one writes.
+                // Both stop writing once EndRingCoFade nulls the overlay they read.
+                pending.RingTick?.Pause();
                 pending.RingTick = host.schedule.Execute(() =>
                 {
                     var overlay = pending.RingOverlay;

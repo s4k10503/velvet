@@ -61,6 +61,18 @@ namespace Velvet
         // True from Cancel until the next reseed.
         public bool IsCancelled { get; private set; }
 
+        private bool _releaseHeldAfterCommit;
+
+        // Called after every commit of the hook's component.
+        public void AfterCommit()
+        {
+            if (_releaseHeldAfterCommit)
+            {
+                _releaseHeldAfterCommit = false;
+                Playback.ReleaseHeldPlays();
+            }
+        }
+
         // Framer Motion's cancel() over the sequence: the cursor stops where it is, and each Spring or Bezier play
         // its steps started returns to its starting values and stops there (MotionPlayback.CancelPlays).
         public void Cancel()
@@ -321,12 +333,10 @@ namespace Velvet
             _stepIndex = 0;
             _passesCompleted = 0;
             HasReseeded = true;
-            // A cancel holds its plays at their starting values, which the reseed's own plays replace only on the
-            // elements whose label it changes.
-            if (IsCancelled)
-            {
-                Playback.ClearPlays();
-            }
+            // A cancel holds its plays at their starting values. The reseed's own plays start from them on the
+            // elements whose label it changes, which they can do only in the commit that renders the reseed, so
+            // the rest are released after it (AfterCommit).
+            _releaseHeldAfterCommit |= IsCancelled;
             IsCancelled = false;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
