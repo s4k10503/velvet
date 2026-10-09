@@ -9,19 +9,13 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins the spring-driven variant enter/exit (<c>StyleTransitionConfig.Type == Spring</c>) end to end: the
     /// from→to class swap lands at rest IMMEDIATELY (no CSS-transition-triggering frame boundary the tween path
-    /// needs), the per-frame physics tick (<see cref="MotionSpringDriver.Step"/>) moves the inline style toward
-    /// the target and reports settled once it arrives, an exit-cancel retarget
-    /// (<see cref="MotionSpringDriver.Retarget"/>) redirects a channel toward its resting value without resetting
-    /// its integrator; the axis-scope holes <c>Documentation~/motion.md</c>'s "Driven channels" documents
-    /// (percentage-based translate, per-axis <c>scale-x-</c>/<c>scale-y-</c>), which resolve as utilities but
-    /// plan no channel; the underlying pure physics of <see cref="SpringIntegrator"/> — it converges to its target
-    /// given enough time, an underdamped configuration overshoots before settling (Framer Motion's spring is
-    /// underdamped by default), and retargeting an in-flight spring carries its CURRENT value/velocity forward
-    /// instead of resetting them (the continuity an interrupted AnimatePresence exit/enter needs); validation of
-    /// user-supplied spring parameters, mirroring the tween path's duration guard, since a spring that can never
-    /// satisfy its settle predicate (zero/negative stiffness never approaches the target; NaN diverges into the
-    /// styles it writes) must warn and complete immediately instead of scheduling a forever tick whose completion
-    /// callback — on a presence exit, the only thing that removes the ghost — never fires; and
+    /// needs), the per-frame tick (<see cref="MotionSpringDriver.Step"/>) moves the inline style toward the target
+    /// and reports settled when the pass Framer Motion measures for the spring has run, an exit-cancel retarget
+    /// (<see cref="MotionSpringDriver.Retarget"/>) redirects a channel toward its resting value; the axis-scope
+    /// holes <c>Documentation~/motion.md</c>'s "Driven channels" documents (percentage-based translate, per-axis
+    /// <c>scale-x-</c>/<c>scale-y-</c>), which resolve as utilities but plan no channel; validation of
+    /// user-supplied spring parameters, mirroring the tween path's duration guard (see
+    /// <c>StyleAnimationScheduler.ValidateSpringParameters</c>); and
     /// <see cref="MotionLayoutIdDriver.ComputeDelta"/>'s pure old-rect/new-rect math behind
     /// V.Motion's layoutId (Framer's shared-element layout animation parity).
     /// </summary>
@@ -31,8 +25,7 @@ namespace Velvet.Tests
     /// resolution pass), and the recurring tick this scheduler registers (<c>schedule.Execute(...).Every(16)</c>)
     /// needs a live panel clock to FIRE automatically, which the EditMode batchmode PlayerLoop never drives. So
     /// the scheduler's synchronous setup is asserted directly (no tick needed to observe it), and the
-    /// recurring tick's own math — along with
-    /// the standalone integrator and the layoutId delta math, neither of which involves a panel or VisualElement
+    /// recurring tick's own math — along with the layoutId delta math, which involves no panel or VisualElement
     /// at all — is exercised by calling the driver directly in a loop instead of trying to pump a real/simulated
     /// scheduler clock. GWT, one assert per case: every fact a case depends on — channel recognition,
     /// settle/convergence, or a captured intermediate reading — folds into that single assertion via a
@@ -260,6 +253,27 @@ namespace Velvet.Tests
             // its goal flipped to the value it originally started from (its RestingTarget, 1) afterward —
             // not a fresh 0/1 default or the exit value it was still short of.
             Assert.That((targetMidExit, targetAfterRetarget), Is.EqualTo((0f, 1f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base settles a spring already at rest on its target on the next step.
+        [Test]
+        public void Given_ASpringExitRetargetedBeforeItHasMoved_When_ItIsStepped_Then_ItHasNoTravelLeftAndEnds()
+        {
+            // Arrange — the opacity is still on the value the reversal heads back to, so it travels nothing.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f);
+
+            // Act
+            var settled = false;
+            if (state != null)
+            {
+                MotionSpringDriver.Retarget(state);
+                settled = MotionSpringDriver.Step(element, state, FixedDeltaSec);
+            }
+
+            // Assert
+            Assert.That(settled, Is.True);
         }
 
         [Test]

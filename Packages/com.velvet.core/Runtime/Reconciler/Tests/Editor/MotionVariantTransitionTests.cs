@@ -60,8 +60,8 @@ namespace Velvet.Tests
                 new StyleTransitionConfig { DurationSec = 0.5f, When = TransitionWhen.BeforeChildren }),
         };
 
-        // The coordinator's resting pose springs: an opacity travel of 1 on Framer's default spring rests at 1.1 s,
-        // while its DurationSec, which a spring does not read, declares 0.05 s.
+        // The coordinator's resting pose springs an opacity, which Framer's default spring ends at 1.05 s on the
+        // browser, while its DurationSec, which a spring does not read, declares 0.05 s.
         private static readonly Dictionary<string, MotionVariant> s_springCoordinatorPoses = new()
         {
             ["hidden"] = "opacity-0",
@@ -786,7 +786,7 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             Tick();
 
-            // Act — sample past the 0.05 s the pose declares and well inside the spring's 1.1 s.
+            // Act — sample past the 0.05 s the pose declares and well inside the spring's 1.05 s.
             labels.Set("visible");
             scheduler.DrainImmediateForTest();
             Advance(0.3f);
@@ -809,7 +809,7 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             Tick();
 
-            // Act — past the spring's 1.1 s.
+            // Act — past the spring's 1.05 s.
             labels.Set("visible");
             scheduler.DrainImmediateForTest();
             Advance(1.4f);

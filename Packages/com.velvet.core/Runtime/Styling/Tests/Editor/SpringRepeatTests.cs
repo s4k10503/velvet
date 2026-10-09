@@ -75,7 +75,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALoopRepeat_When_TheSecondPassIsATenthIn_Then_ItShowsTheSpringATenthIn()
+        public void Given_ALoopRepeat_When_ItIsPartWayIntoItsSecondPass_Then_ItShowsTheSpringAsFarFromItsStart()
         {
             // Arrange
             var repeat = new MotionRepeat(1f, TransitionRepeatType.Loop, 0f);
@@ -88,7 +88,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AReverseRepeat_When_TheSecondPassIsATenthIn_Then_ItShowsTheFirstPassATenthBeforeItsEnd()
+        public void Given_AReverseRepeat_When_ItIsPartWayIntoItsSecondPass_Then_ItShowsTheFirstPassAsFarBeforeItsEnd()
         {
             // Arrange
             var repeat = new MotionRepeat(1f, TransitionRepeatType.Reverse, 0f);
@@ -96,12 +96,12 @@ namespace Velvet.Tests
             // Act
             var opacity = OpacityAt(repeat, 1.2f);
 
-            // Assert — the first pass's frame at 0.9 s, still overshooting.
+            // Assert — 0.15 s into the reversed pass, the first pass's frame at 0.9 s.
             Assert.That(opacity, Is.EqualTo(0.9929342635f).Within(1e-5f));
         }
 
         [Test]
-        public void Given_AMirrorRepeat_When_TheSecondPassIsATenthIn_Then_ItShowsTheSpringBackATenthIn()
+        public void Given_AMirrorRepeat_When_ItIsPartWayIntoItsSecondPass_Then_ItShowsTheSpringBackAsFarFromItsStart()
         {
             // Arrange
             var repeat = new MotionRepeat(1f, TransitionRepeatType.Mirror, 0f);
@@ -109,7 +109,7 @@ namespace Velvet.Tests
             // Act
             var opacity = OpacityAt(repeat, 1.2f);
 
-            // Assert
+            // Assert — 0.1 s into the second 1.1 s pass, since a mirror keeps the opacity on Framer's main thread.
             Assert.That(opacity, Is.EqualTo(0.6597001534f).Within(1e-5f));
         }
 
@@ -332,6 +332,38 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ATranslateSpring_When_ItsPassIsMeasured_Then_ItIsTheSpringOverItsOwnTravel()
+        {
+            // Arrange — Framer keeps x on its main thread, where a travel of 5 rests at 0.65 s; over the browser's
+            // travel of 100 it would rest at 1.05 s.
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-[0px]" }, new[] { "translate-x-[5px]" });
+
+            // Act — NaN for a plan that resolved no translate.
+            var pass = MotionSpringDriver.Create(plan, Stiffness, Damping, Mass)?.TranslateX?.PassSec ?? float.NaN;
+
+            // Assert
+            Assert.That(pass, Is.EqualTo(0.65f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ABackgroundAndABorderColorThatDoNotRestWithin20Seconds_When_TheirPassesAreMeasured_Then_OnlyTheBackgroundIsCut()
+        {
+            // Arrange — Framer hands a background color to the browser, which cuts its easing at 20 s, and keeps a
+            // border color on its main thread, where a spring that does not rest has no end.
+            var plan = MotionSpringClassParser.Resolve(new[] { "bg-black", "border-black" },
+                new[] { "bg-white", "border-white" });
+
+            // Act — a color the plan did not resolve reads as NaN.
+            var colors = MotionSpringDriver.Create(plan, Stiffness, 0.1f, Mass)?.Colors;
+            float PassOf(ArbitraryProperty property)
+                => colors?.Find(c => c.Property == property)?.Progress.PassSec ?? float.NaN;
+            var passes = (PassOf(ArbitraryProperty.BackgroundColor), PassOf(ArbitraryProperty.BorderColor));
+
+            // Assert
+            Assert.That(passes, Is.EqualTo((20f, float.PositiveInfinity)));
+        }
+
+        [Test]
         public void Given_ALengthThatDoesNotRestWithin20Seconds_When_ItPlaysOnce_Then_ItNeverEnds()
         {
             // Arrange — Framer runs a width on its main thread, whose spring that never rests never finishes.
@@ -379,10 +411,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_EveryAxisMovingPartWay_When_ALabelChangeInheritsItsVelocity_Then_EachAxisMovesOtherwiseThanFromRest()
+        public void Given_EveryAxisRisingPartWay_When_ALabelChangeSendsItBackWithItsVelocity_Then_EachMovesAsFramerCarriesThatVelocity()
         {
-            // Arrange — every axis springing toward its target, 0.1 s in; then the same new springs twice, one of
-            // which inherits.
+            // Arrange — every axis 0.1 s into springing up toward its target, before its first peak; then the same
+            // new springs back down twice, one of which inherits.
             var element = new VisualElement();
             var moving = MotionSpringDriver.Create(MotionSpringClassParser.Resolve(
                 new[] { "opacity-0", "translate-x-0", "translate-y-0", "scale-50", "rotate-0" },
@@ -395,22 +427,25 @@ namespace Velvet.Tests
             var (inheriting, atRest) = (Back(), Back());
 
             // Act — an axis the plans did not resolve reads as "missing".
-            var differs = "no state";
+            var side = "no state";
             if (moving != null && inheriting != null && atRest != null)
             {
                 MotionSpringDriver.Step(element, moving, 0.1f);
                 MotionSpringDriver.InheritVelocity(inheriting, moving);
                 MotionSpringDriver.Step(element, inheriting, 1f / 60f);
                 MotionSpringDriver.Step(element, atRest, 1f / 60f);
-                string Differs(SpringChannel? a, SpringChannel? b)
-                    => a == null || b == null ? "missing" : (a.Integrator.Value != b.Integrator.Value).ToString();
-                differs = string.Join(",", Differs(inheriting.Opacity, atRest.Opacity),
-                    Differs(inheriting.TranslateX, atRest.TranslateX), Differs(inheriting.TranslateY, atRest.TranslateY),
-                    Differs(inheriting.Scale, atRest.Scale), Differs(inheriting.Rotate, atRest.Rotate));
+                string Side(SpringChannel? a, SpringChannel? b) => a == null || b == null ? "missing"
+                    : a.Integrator.Value > b.Integrator.Value ? "above"
+                    : a.Integrator.Value < b.Integrator.Value ? "below" : "level";
+                side = string.Join(",", Side(inheriting.Opacity, atRest.Opacity),
+                    Side(inheriting.TranslateX, atRest.TranslateX), Side(inheriting.TranslateY, atRest.TranslateY),
+                    Side(inheriting.Scale, atRest.Scale), Side(inheriting.Rotate, atRest.Rotate));
             }
 
-            // Assert
-            Assert.That(differs, Is.EqualTo("True,True,True,True,True"));
+            // Assert — each axis on Framer's main thread carries its upward velocity on, above the spring released at
+            // rest. The opacity goes to the browser, where Framer hands the same velocity unscaled to the easing as a
+            // progress toward the new target, so it falls ahead of the spring from rest.
+            Assert.That(side, Is.EqualTo("below,above,above,above,above"));
         }
 
         [Test]
@@ -479,6 +514,29 @@ namespace Velvet.Tests
 
             // Assert — a frame of motion, not a jump back to the resting value.
             Assert.That(jump, Is.LessThan(0.1f));
+        }
+
+        [Test]
+        public void Given_AColorExitATenthOfTheWay_When_ItIsRetargeted_Then_TheReversalIsAFreshSpringOverATravelOf100()
+        {
+            // Arrange — a border color, which Framer keeps on its main thread, 0.05 s in and 10.4 % of the way. Framer
+            // mixes from the color it shows to the resting one over a fresh 0 → 100, which rests at 1.05 s; a travel
+            // of 10.4 would rest at 0.7 s.
+            var element = new VisualElement();
+            var state = MotionSpringDriver.Create(
+                MotionSpringClassParser.Resolve(new[] { "border-black" }, new[] { "border-white" }), Stiffness, Damping, Mass);
+
+            // Act — NaN for a plan that resolved no color.
+            var pass = float.NaN;
+            if (state?.Colors is { Count: 1 } colors)
+            {
+                MotionSpringDriver.Step(element, state, 0.05f);
+                MotionSpringDriver.Retarget(state);
+                pass = colors[0].Progress.PassSec;
+            }
+
+            // Assert
+            Assert.That(pass, Is.EqualTo(1.05f).Within(1e-5f));
         }
 
         [Test]

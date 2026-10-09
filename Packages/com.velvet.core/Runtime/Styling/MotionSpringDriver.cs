@@ -25,10 +25,12 @@ namespace Velvet
         // against.
         public float PassSec;
         public float Scale = 1f;
-        // A color's progress, which Framer Motion springs over a fixed travel of 100 with no velocity of its own.
+        // A color's progress, which Framer Motion springs over a fixed travel of 100 with no velocity of its own,
+        // an interrupted color's included, since Framer mixes from the color it was showing.
         public bool Normalized;
-        // A value Framer Motion animates on the browser's own animation where the repeat allows it: an opacity, a
-        // transform, a background color.
+        // A value Framer Motion animates on the browser's own animation where the repeat allows it: an opacity or a
+        // background color. Framer's x, y, scale and rotate are values of their own, which it keeps on its main
+        // thread.
         public bool Acceleratable;
 
         public SpringChannel(float initialValue, float target)
@@ -63,7 +65,7 @@ namespace Velvet
             // Framer Motion springs a color from 0 to 100 and mixes the endpoints at that percentage.
             Progress = new SpringChannel(0f, 1f)
             {
-                Scale = 100f, Normalized = true, Acceleratable = property == ArbitraryProperty.BackgroundColor,
+                Normalized = true, Acceleratable = property == ArbitraryProperty.BackgroundColor,
             };
         }
     }
@@ -146,10 +148,10 @@ namespace Velvet
             }
             var state = new MotionSpringState { Stiffness = stiffness, Damping = damping, Mass = mass, Repeat = repeat };
             if (plan.Opacity is { } o) state.Opacity = new SpringChannel(o.from, o.to) { Acceleratable = true };
-            if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to) { Acceleratable = true };
-            if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to) { Acceleratable = true };
-            if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to) { Acceleratable = true };
-            if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to) { Acceleratable = true };
+            if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to);
+            if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to);
+            if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to);
+            if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to);
             if (plan.Colors != null)
             {
                 var colors = new List<SpringColorChannel>(plan.Colors.Count);
@@ -176,17 +178,15 @@ namespace Velvet
         // Target, as Framer Motion starts a value's animation. Framer runs each value as an animation of its own, so
         // each channel's pass lasts as long as its own spring takes to rest. One it can hand to the browser — an
         // acceleratable value whose repeat neither mirrors nor waits — becomes an easing over a travel of 100 cut at
-        // 20 s, onto which the value's velocity is carried unscaled; any other is measured over its own travel.
+        // 20 s, onto which the value's velocity is carried unscaled; any other is measured over its own travel, a
+        // color's progress over 100.
         private static void Release(MotionSpringState state, SpringChannel c, float origin, float velocity)
         {
             c.Origin = origin;
             var travel = c.Target - origin;
             var accelerated = c.Acceleratable && state.Repeat.Type != TransitionRepeatType.Mirror
                 && state.Repeat.DelaySec == 0f;
-            if (!c.Normalized)
-            {
-                c.Scale = accelerated && travel != 0f ? 100f / System.Math.Abs(travel) : 1f;
-            }
+            c.Scale = (c.Normalized || accelerated) && travel != 0f ? 100f / System.Math.Abs(travel) : 1f;
             c.StartVelocity = c.Normalized ? 0f : accelerated ? System.Math.Sign(travel) * velocity : velocity * c.Scale;
             var pass = PassDurationSec(travel * c.Scale, state.Stiffness, state.Damping, state.Mass, c.StartVelocity);
             c.PassSec = accelerated ? System.Math.Min(pass, MaxPassMs / 1000f) : pass;

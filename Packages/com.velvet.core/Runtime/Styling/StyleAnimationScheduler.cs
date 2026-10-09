@@ -641,9 +641,10 @@ namespace Velvet
                 ? MotionSpringDriver.Create(plan, stiffness, damping, mass, repeat)
                 : null;
             // A spring this one interrupts hands on its velocity, read before the cancel below ends it.
-            if (state != null && map.TryGetValue(element, out var interrupted) && interrupted.Spring != null)
+            var interrupted = map.GetValueOrDefault(element)?.Spring;
+            if (state != null && interrupted != null)
             {
-                MotionSpringDriver.InheritVelocity(state, interrupted.Spring);
+                MotionSpringDriver.InheritVelocity(state, interrupted);
             }
 
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
@@ -855,9 +856,9 @@ namespace Velvet
         // (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
         // own time source, which a test's simulated panel overrides) rather than sampling a different clock
         // (e.g. Time.realtimeSinceStartupAsDouble) that could disagree with it, so the elapsed time always matches
-        // what actually elapsed on the clock this tick is scheduled against; a reversal's integrator clamps a
-        // hitch. No-op if there is no host (should not happen for the on-panel /
-        // already-deferred-to-attach cases this is called from, but this guards rather than throws).
+        // what actually elapsed on the clock this tick is scheduled against. No-op if there is no host (should
+        // not happen for the on-panel / already-deferred-to-attach cases this is called from, but this guards
+        // rather than throws).
         private void StartSpringTick(VisualElement element, PendingAnimation pending, float preRollSec = 0f)
         {
             var state = pending.Spring;
@@ -1363,14 +1364,11 @@ namespace Velvet
             return true;
         }
 
-        // Mirrors ValidateDuration's guard, for the spring path: a non-finite or non-positive stiffness/damping
-        // makes SpringIntegrator.Step's settle predicate unsatisfiable forever — zero/negative stiffness never
-        // pulls the value toward its target, zero/negative damping never dissipates velocity, and NaN
-        // propagates into every inline style write and never compares equal to anything (including itself), so
-        // IsSettled never returns true. Left unvalidated, the panel-root tick this drives would run
-        // indefinitely and its completion callback — the ONLY thing that removes a presence exit's ghost —
-        // would never fire. A non-positive or non-finite mass does the same through the square roots
-        // SpringIntegrator.Solve takes.
+        // Mirrors ValidateDuration's guard, for the spring path: under a non-finite or non-positive stiffness,
+        // damping or mass, MotionSpringDriver.PassDurationSec finds no sample at which a spring the play has to
+        // move rests, so a channel on Framer's main-thread rule never ends. Left unvalidated, the panel-root tick
+        // this drives would run indefinitely and its completion callback — the ONLY thing that removes a
+        // presence exit's ghost — would never fire.
         internal static bool ValidateSpringParameters(float stiffness, float damping, float mass)
         {
             if (SpringIntegrator.AreValidParameters(stiffness, damping, mass))
@@ -1648,12 +1646,11 @@ namespace Velvet
             if (!forTeardown && animateReversal && element.panel != null && spring.Tick != null)
             {
                 // Hand off to a reversal spring: retarget every channel toward the value it STARTED
-                // from (continuity — each channel's SpringIntegrator instance, and therefore its
-                // current value/velocity, is untouched by this), drop the original completion (a
-                // reversal settling is not "finishing" anything the original caller asked for), and
-                // move ownership into the enter map — mirroring the tween reversal's own move into
-                // _pendingEnters below. The recurring tick keeps running uninterrupted throughout;
-                // only its targets and its eventual finalize action change. Requires a tick that has
+                // from, released from the value and velocity it was last sampled at (see
+                // MotionSpringDriver.Retarget), drop the original completion (a reversal settling is
+                // not "finishing" anything the original caller asked for), and move ownership into the
+                // enter map — mirroring the tween reversal's own move into _pendingEnters below. The recurring tick keeps running uninterrupted throughout;
+                // only the springs it samples and its eventual finalize action change. Requires a tick that has
                 // actually started (spring.Tick != null): a cancel that lands before then — still
                 // parked behind its delay — has no running tick to keep alive, and nothing would ever
                 // start one for it (its ScheduledItem was already paused above, and a still-off-panel

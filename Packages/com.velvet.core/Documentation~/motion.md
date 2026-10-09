@@ -200,7 +200,10 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
 - `When = Together` (default): children start at `DelayChildrenSec` + their stagger slot.
 - `When = BeforeChildren`: children additionally wait out the parent's own delay and play: its
   `DurationSec` for a tween or a bezier, the time its slowest channel takes to rest for a spring
-  (measured as *Repeating a play* gives), and every repeat of either (see *Repeating a play*).
+  (measured as *Repeating a play* gives), and every repeat of either (see *Repeating a play*). A
+  spring's wait is measured from the pose classes at rest, so a spring that interrupts a running
+  one, starting where that one stood and with its velocity, can end before or after its children
+  start, where Framer's children wait for the animation itself.
 - `When = AfterChildren` is not orchestratable under label propagation; it warns once and falls
   back to `Together`.
 - Each Motion numbers its own inheriting children, as Framer numbers each variant parent's: a child
@@ -428,12 +431,14 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
 - A spring's pass is the duration Framer measures for it, which also ends a play that does not
   repeat: the first 50 ms sample at which the spring rests, within 0.5 of its target and moving at
   no more than 2 per second over a travel of 5 or more, within 0.005 and at 0.01 per second under it.
-  Framer hands an opacity, a translate, scale or rotate, and a background color to the browser
-  unless the repeat mirrors or waits between passes. There the spring becomes an easing over a
-  travel of 100, cut at 20 s, onto which the value's velocity is carried unscaled, so an opacity on
-  the default spring ends at 1.05 s. Any other channel, and any channel under a mirrored or waiting
-  repeat, runs on Framer's main thread over its own travel, a color's being 100: one that has not
-  rested by 20 s never ends, and under a repeat plays its first pass on. Framer animates each value
+  Framer hands an opacity and a background color to the browser unless the repeat mirrors or waits
+  between passes. There the spring becomes an easing over a travel of 100, cut at 20 s, onto which
+  the value's velocity is carried unscaled, so an opacity on the default spring ends at 1.05 s. Any
+  other channel — a translate, scale or rotate among them, since Framer's `x`, `y`, `scale` and
+  `rotate` are values of their own that it keeps on its main thread — and any channel under a
+  mirrored or waiting repeat, runs on Framer's main thread over its own travel, a color's being 100,
+  an interrupted color's too: one that has not rested by 20 s never ends, and under a repeat plays
+  its first pass on. Framer animates each value
   on its own, so the channels can fall out of step; the play ends when its slowest channel does.
 - A play of an odd `Repeat` under `Reverse` or `Mirror` ends on its from-pose, as Framer's does, and
   holds it there although the element's classes are the to-pose's, until a later play, an exit or a

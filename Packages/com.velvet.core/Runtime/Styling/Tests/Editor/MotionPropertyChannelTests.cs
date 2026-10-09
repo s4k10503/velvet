@@ -252,7 +252,7 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — w-32 is --space-32 (128px); the tolerance is the driver's own pixel rest epsilon.
+            // Assert — w-32 is --space-32 (128px).
             Assert.That(restingWidth, Is.EqualTo(128f).Within(0.1f));
         }
 

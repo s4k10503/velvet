@@ -133,6 +133,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARingedSpringEnterHoldingItsFromPose_When_ItsElementsOpacityChangesLater_Then_TheBandNoLongerFollows()
+        {
+            // Arrange — a spring enter whose odd Reverse repeat ends on its from-pose, opacity 0, after two 1.05 s
+            // passes, and holds it.
+            var binding = AttachRingedElement(out var target);
+            target.AddToClassList("opacity-100");
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Repeat = 1f, RepeatType = TransitionRepeatType.Reverse,
+            };
+            _scheduler.PlayVariantEnter(target, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+            for (var i = 0; i < 150; i++) Tick();
+
+            // Act — something else writes the element's opacity once the play has ended.
+            target.style.opacity = 0.5f;
+            Tick();
+            Tick();
+
+            // Assert — the band stays at the opacity the hold left, since no co-fade tick is running.
+            Assert.That((binding.Overlay.style.opacity.keyword, binding.Overlay.style.opacity.value),
+                Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
         public void Given_ARingedExit_When_ItIsCancelled_Then_TheBandsInlineOpacityIsReleased()
         {
             // Arrange — an exit that has already seeded the band's inline opacity.

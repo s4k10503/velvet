@@ -32,8 +32,9 @@ namespace Velvet.Tests
             ["hidden"] = new MotionVariant("", new StyleTransitionConfig { StaggerChildrenSec = 0.1f }),
         };
 
-        // A coordinator whose exit pose springs its opacity 1 → 0, resting at 1.1 s on Framer's default spring, and
-        // holds its inheriting children until then. DurationSec, which a spring does not read, declares 0.05 s.
+        // A coordinator whose exit pose springs its opacity 1 → 0, which Framer's default spring ends at 1.05 s on
+        // the browser, and holds its inheriting children until then. DurationSec, which a spring does not read,
+        // declares 0.05 s.
         private static readonly Dictionary<string, MotionVariant> s_springCoordinator = new()
         {
             ["visible"] = "opacity-100",
@@ -548,7 +549,7 @@ namespace Velvet.Tests
             using var mounted = MountSettled("coordinator-spring", "a");
             using var keys = s_keyStore;
 
-            // Act — past the 0.05 s the pose declares, well short of the spring's 1.1 s.
+            // Act — past the 0.05 s the pose declares, well short of the spring's 1.05 s.
             keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             Frames(20);
