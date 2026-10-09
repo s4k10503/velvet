@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -407,6 +409,59 @@ namespace Velvet.Tests
             // Assert
             Assert.That((before, ColorUtility.ToHtmlStringRGBA(child.style.borderBottomColor.value)),
                 Is.EqualTo((StyleKeyword.Null, "EF4444FF")));
+        }
+    }
+
+    /// <summary>
+    /// Where Tailwind's property order places a per-side color: how two of them compare, and the property indexes a
+    /// token sorts by.
+    /// </summary>
+    [TestFixture]
+    internal sealed class BorderSideColorOrderTests
+    {
+        private static readonly string[] Tokens =
+        {
+            "border-t-red-500", "border-r-red-500", "border-b-red-500", "border-l-red-500", "border-x-red-500",
+            "border-y-red-500", "border-s-red-500", "border-e-red-500", "border-bs-red-500", "border-be-red-500",
+        };
+
+        [TestCase(ArbitraryProperty.BorderBottomColor, ArbitraryProperty.Width)]
+        [TestCase(ArbitraryProperty.Width, ArbitraryProperty.BorderBottomColor)]
+        public void Given_ABorderColorAndAPropertyThatIsNone_When_Compared_Then_TheyAreLeftToArrival(
+            ArbitraryProperty a, ArbitraryProperty z)
+        {
+            // Act
+            var order = StyleBorderSideColor.CompareCascade(a, z);
+
+            // Assert
+            Assert.That(order, Is.Zero);
+        }
+
+        [Test]
+        public void Given_EveryBorderColorFamilyAndTheShorthand_When_ItsSortPropertyIsPlaced_Then_ItsIndexIsAboveZero()
+        {
+            // Act
+            var lowest = Tokens.Select(token => StyleRuleOrder.TailwindIndexOf(StyleBorderSideColor.SortPropertyOf(token)!))
+                .Append(StyleRuleOrder.TailwindIndexOf("border-color")).Min();
+
+            // Assert
+            Assert.That(lowest, Is.GreaterThan(0));
+        }
+
+        [TestCase("border-b-red-500", "border-bottom-color")]
+        [TestCase("border-x-red-500", "border-inline-color")]
+        [TestCase("border-s-red-500", "border-inline-start-color")]
+        public void Given_APerSideColor_When_ItsSortIndexesAreRead_Then_ItIsPlacedByTheOnePropertyTailwindDeclares(
+            string utility, string property)
+        {
+            // Arrange
+            var sortOf = typeof(StyleRuleOrder).GetMethod("PropertySortOf", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+            // Act
+            var (order, _) = ((List<int> Order, int Count))sortOf.Invoke(null, new object[] { utility })!;
+
+            // Assert
+            Assert.That(string.Join(",", order), Is.EqualTo(StyleRuleOrder.TailwindIndexOf(property).ToString()));
         }
     }
 }

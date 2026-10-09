@@ -57,6 +57,8 @@ namespace Velvet
         {
             var aRank = CascadeRankOf(a);
             var zRank = CascadeRankOf(z);
+            // MUTANT_SURVIVES(equivalent): a rank of 0 would need a border color property first in Tailwind's order, so
+            // `< 0` and `<= 0` agree. BorderSideColorOrderTests holds every family's index above 0.
             return aRank < 0 || zRank < 0 ? 0 : aRank.CompareTo(zRank);
         }
 
