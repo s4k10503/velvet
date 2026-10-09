@@ -114,6 +114,7 @@ namespace Velvet.Tests
             return result;
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_FreshFiber_When_FirstRender_Then_MissesAndBuildsOnce()
         {
@@ -125,6 +126,7 @@ namespace Velvet.Tests
                 "The first render exercises the cache-miss path (pure build + store)");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_RenderPhaseOscillation_When_ValueSettlesToCommitted_Then_DoesNotRebuildMemo()
         {
@@ -144,6 +146,7 @@ namespace Velvet.Tests
                 "The settled attempt reuses the committed memo instead of rebuilding a third time");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_OutsideOfRender_When_StoreMemoizedVNodeCalled_Then_Throws()
         {
@@ -152,6 +155,7 @@ namespace Velvet.Tests
                 Hooks.StoreMemoizedVNode(0, Array.Empty<object>(), null));
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_OutsideOfRender_When_TryGetMemoizedVNodeCalled_Then_GrantsNoSlot()
         {
@@ -181,6 +185,7 @@ namespace Velvet.Tests
             return V.Label(text: "rendered");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_AStoreIndexAtTheSlotCount_When_Rendered_Then_ReportsAnInvalidSlot()
         {
@@ -215,6 +220,7 @@ namespace Velvet.Tests
             return V.Component(WovenPropsChild, s_childProps(tick), key: "child");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_SamePropInstance_When_ParentReRenders_Then_ChildDoesNotRebuild()
         {
@@ -233,6 +239,7 @@ namespace Velvet.Tests
                 "A reference-identical prop and unchanged hook value is a cache hit, so the body does not rebuild");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_ChangedPropValue_When_ParentReRenders_Then_ChildRebuilds()
         {
@@ -250,6 +257,7 @@ namespace Velvet.Tests
                 "A changed prop value is not ObjectIs-equal -> cache miss, so the body rebuilds");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_ChangedPropValue_When_ParentReRenders_Then_ChildDisplaysNewLabel()
         {
@@ -267,11 +275,10 @@ namespace Velvet.Tests
                 "The rebuilt child renders the new prop value");
         }
 
-        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects the
-        // arrangement comment, which stated the keying rule in a form that is false for a string input —
-        // so the case is green on both sides. What shows it can fail is the reference fall-through of
-        // ObjectIs.AreEqualObjects perturbed to return true, measured: the fresh instance is then a memo
-        // hit and the child does not rebuild.
+        // GREEN_ON_BASE(characterization): the base already rebuilds a child handed a fresh but equal props instance.
+        // The VEL103 suppression in SwitchingParent changes no code this case runs. What shows it can fail is the
+        // reference fall-through of ObjectIs.AreEqualObjects perturbed to return true, measured: the fresh
+        // instance is then a memo hit and the child does not rebuild.
         [Test]
         public void Given_FreshPropInstanceWithEqualValues_When_ParentReRenders_Then_ChildRebuilds()
         {
@@ -321,6 +328,7 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_UnchangedContextValue_When_HostReRenders_Then_ConsumerDoesNotRebuild()
         {
@@ -338,6 +346,7 @@ namespace Velvet.Tests
                 "An unchanged context value is ObjectIs-equal -> cache hit, so the consumer does not rebuild");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_ChangedContextValue_When_HostReRenders_Then_ConsumerRebuilds()
         {
@@ -355,6 +364,7 @@ namespace Velvet.Tests
                 "A changed context value is not ObjectIs-equal -> cache miss, so the consumer rebuilds");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_ChangedContextValue_When_HostReRenders_Then_ConsumerDisplaysNewValue()
         {
@@ -398,6 +408,7 @@ namespace Velvet.Tests
             return V.Component(WovenTupleChild, s_stableProps, key: "child");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_ATwoElementUseStateBinding_When_ParentReRendersWithSameProps_Then_TheChildIsMemoizedAndDoesNotRebuild()
         {
@@ -439,9 +450,13 @@ namespace Velvet.Tests
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_switchSetTick = setTick;
+            // The shape VEL103 reports at edit time; this case pins what the woven memo does with it.
+#pragma warning disable VEL103
             return tick == 0 ? RedHookLeaf("x") : BlueHookLeaf("x");
+#pragma warning restore VEL103
         }
 
+        // GREEN_ON_BASE(refactor): the VEL103 suppression in SwitchingParent changes no code that this case runs.
         [Test]
         public void Given_AParentCallingOneOfTwoHookComponentsAsAMethod_When_ItsChoiceFlips_Then_TheNewComponentsTreeIsShown()
         {
@@ -480,6 +495,7 @@ namespace Velvet.Tests
             return V.Component(ConditionalHookChild, s_conditionalProps, key: "child");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_AHookBodyReturningAConditionalsSecondArm_When_TheParentReRendersWithTheSameInputs_Then_TheBodyDoesNotRun()
         {
@@ -514,6 +530,7 @@ namespace Velvet.Tests
             return V.Component(MemoizedRatioChild, new RatioProps(tick == 0 ? 0f : -0f), key: "ratio");
         }
 
+        // GREEN_ON_BASE(refactor): this case never mounts SwitchingParent, and a pragma inside it is this file's only code change.
         [Test]
         public void Given_AMemoizedHookComponentWhoseFloatFieldChangesOnlyItsSign_When_TheParentReRenders_Then_TheNewSignIsShown()
         {
