@@ -192,12 +192,12 @@ namespace Velvet.Tests
             // Act
             var threw = DrainThrows(scheduler.RunDelayedCallbackForTest);
             var registered = scheduler.ScheduledCallbackCount - callbacksBefore;
-            scheduler.RunAdmitCallbackForTest();
+            var admitted = scheduler.TryRunAdmitCallbackForTest();
             scheduler.RunDelayedCallbackForTest();
 
             // Assert
-            Assert.That((threw, registered, Text(_root, "transition"), Text(_root, "second")),
-                Is.EqualTo((true, 1, "transition:1", "second:0")),
+            Assert.That((threw, registered, admitted, Text(_root, "transition"), Text(_root, "second")),
+                Is.EqualTo((true, 1, true, "transition:1", "second:0")),
                 "A transition left waiting for a callback that has run is moved to one that will, and no other is");
         }
 

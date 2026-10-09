@@ -33,19 +33,34 @@ namespace Velvet.TestUtilities
         /// <summary>Runs the callback the Transition tier registered for the admission its next pass runs.</summary>
         // Bypasses: the panel scheduler that decides when it runs; the entry must already wait for that admission, which RunAdmitCallbackForTest arranges for one requested outside every pass.
         internal static void RunDelayedCallbackForTest(this FiberBatchScheduler scheduler)
-            => RunWithAdmission(scheduler, "_admittedForNextPass", "RunDelayedCallback");
+        {
+            if (!RunWithAdmission(scheduler, "_admittedForNextPass", "RunDelayedCallback"))
+            {
+                throw new InvalidOperationException("No admission is held in _admittedForNextPass");
+            }
+        }
 
         /// <summary>Runs the callback that moves entries requested outside every pass onto the next pass's admission.</summary>
         // Bypasses: the panel scheduler that decides when it runs.
         internal static void RunAdmitCallbackForTest(this FiberBatchScheduler scheduler)
+        {
+            if (!scheduler.TryRunAdmitCallbackForTest())
+            {
+                throw new InvalidOperationException("No admission is held in _unadmitted");
+            }
+        }
+
+        /// <summary>As <see cref="RunAdmitCallbackForTest"/>, returning false rather than throwing when no entry waits outside every pass.</summary>
+        // Bypasses: the panel scheduler that decides when it runs.
+        internal static bool TryRunAdmitCallbackForTest(this FiberBatchScheduler scheduler)
             => RunWithAdmission(scheduler, "_unadmitted", "RunAdmitCallback");
 
-        private static void RunWithAdmission(FiberBatchScheduler scheduler, string fieldName, string methodName)
+        private static bool RunWithAdmission(FiberBatchScheduler scheduler, string fieldName, string methodName)
         {
             var field = typeof(FiberBatchScheduler).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
                 ?? throw new MissingFieldException(typeof(FiberBatchScheduler).FullName, fieldName);
-            var admission = field.GetValue(scheduler)
-                ?? throw new InvalidOperationException($"No admission is held in {fieldName}");
+            var admission = field.GetValue(scheduler);
+            if (admission == null) return false;
             var method = typeof(FiberBatchScheduler).GetMethod(
                 methodName, BindingFlags.Instance | BindingFlags.NonPublic)
                 ?? throw new MissingMethodException(typeof(FiberBatchScheduler).FullName, methodName);
@@ -57,6 +72,7 @@ namespace Velvet.TestUtilities
             {
                 ExceptionDispatchInfo.Capture(wrapped.InnerException).Throw();
             }
+            return true;
         }
 
         /// <summary>Drains every Transition-tier entry, after whatever the Normal / Urgent tier still holds.</summary>
