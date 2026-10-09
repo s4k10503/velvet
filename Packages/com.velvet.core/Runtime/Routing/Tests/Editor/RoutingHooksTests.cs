@@ -543,8 +543,7 @@ namespace Velvet.Tests
                 RenderCount = 0;
             }
 
-            // Counts how often its body runs.
-            [Component(Compiler = false)]
+            [Component]
             public static VNode Render()
             {
                 State = Hooks.UseNavigation();

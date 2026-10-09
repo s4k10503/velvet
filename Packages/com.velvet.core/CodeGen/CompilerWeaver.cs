@@ -566,7 +566,8 @@ namespace Velvet.CodeGen
         // A hook call can be followed directly by whatever reads its value, with no store between. Such a value
         // is copied where it is produced: at the call, or at the ldfld taking a tuple's Item1. A whole tuple is
         // refused for the reason TryMatchDirectCapture gives, and a later element because only Item1 is a sound
-        // dep. A void call, or a value whose type cannot be named in the caller's terms, leaves nothing to copy.
+        // dep. A void call, or a value whose type cannot be named in the caller's terms, leaves nothing to copy, and a
+        // value stored to a field is left to the body, whose store a hit would skip.
         private static bool TryCaptureStackValue(Instruction call, Instruction next,
             out TypeReference? type, out Instruction producer)
         {
@@ -575,14 +576,19 @@ namespace Velvet.CodeGen
             type = InCallerTerms(callee.ReturnType, callee as GenericInstanceMethod,
                 callee.DeclaringType as GenericInstanceType);
             if (type == null || type.MetadataType == MetadataType.Void) return false;
-            if (!IsValueTupleType(type)) return true;
-            type = null;
-            if (next.OpCode != OpCodes.Ldfld) return false;
-            if (next.Operand is not FieldReference field) return false;
-            if (field.Name != "Item1") return false;
-            producer = next;
-            type = InCallerTerms(field.FieldType, null, field.DeclaringType as GenericInstanceType);
-            return type != null;
+            if (IsValueTupleType(type))
+            {
+                type = null;
+                if (next.OpCode != OpCodes.Ldfld) return false;
+                if (next.Operand is not FieldReference field) return false;
+                if (field.Name != "Item1") return false;
+                producer = next;
+                type = InCallerTerms(field.FieldType, null, field.DeclaringType as GenericInstanceType);
+                if (type == null) return false;
+            }
+            // A value stored straight to a field is a side effect of the body, which a cache hit would skip.
+            var consumer = producer.Next;
+            return consumer == null || (consumer.OpCode != OpCodes.Stsfld && consumer.OpCode != OpCodes.Stfld);
         }
 
         // A callee's signature names its own generic parameters; the copy's local needs the arguments the call

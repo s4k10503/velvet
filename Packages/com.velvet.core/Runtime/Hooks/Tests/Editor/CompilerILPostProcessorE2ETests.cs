@@ -462,6 +462,16 @@ namespace Velvet.Tests
             return V.Label(text: TupleSlot.Item1.value);
         }
 
+        private static string s_storedHookValue = "";
+
+        // The hook value stored straight to a static field.
+        [Component]
+        public static VNode HookValueStoredToAFieldComponent()
+        {
+            s_storedHookValue = Hooks.UseStore(s_firstStore, value => value.ToString());
+            return V.Label(text: "stored");
+        }
+
         // A custom hook returning nothing: no value to capture, however the call is followed.
         private static void UseMountLog()
         {
@@ -1316,6 +1326,17 @@ namespace Velvet.Tests
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(TupleStoredToAFieldNamedItem1Component))), Is.False,
                 "The field holds the whole tuple, which compares structurally, so the weaver bails");
+        }
+
+        // GREEN_ON_BASE(characterization): the base bails a hook value stored to a field, and so does this change.
+        // What it pins is the stack capture leaving that store to the body: deleting the `Stsfld` clause from the
+        // consumer test at the end of `TryCaptureStackValue` weaves it.
+        [Test]
+        public void Given_AHookValueStoredToAStaticField_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookValueStoredToAFieldComponent))), Is.False,
+                "A hit would skip the store, leaving the field at an earlier render's value");
         }
 
         // GREEN_ON_BASE(characterization): the base bails a void custom hook, and so does this change.
