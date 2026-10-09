@@ -221,6 +221,12 @@ namespace Velvet
             style.backgroundPositionX = StyleKeyword.Null;
             style.backgroundPositionY = StyleKeyword.Null;
             style.backgroundRepeat = StyleKeyword.Null;
+            style.unitySliceTop = StyleKeyword.Null;
+            style.unitySliceRight = StyleKeyword.Null;
+            style.unitySliceBottom = StyleKeyword.Null;
+            style.unitySliceLeft = StyleKeyword.Null;
+            style.unitySliceScale = StyleKeyword.Null;
+            style.unitySliceType = StyleKeyword.Null;
             // animate-pulse drives opacity each frame; scrubbing it here keeps a pooled element from ghosting a
             // mid-pulse opacity onto its next consumer (also covers opacity-* arbitrary values).
             style.opacity = StyleKeyword.Null;
