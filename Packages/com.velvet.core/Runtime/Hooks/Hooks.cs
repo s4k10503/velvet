@@ -818,11 +818,8 @@ namespace Velvet
         internal static int UseBaseRouteIndex() => UseContext(RouterContext.Depth) - 1;
 
         /// <summary>
-        /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Submitting"/> while
-        /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller runs a submission's
-        /// guards or action, <see cref="NavigationLifecycle.Loading"/> while it is matching or loading the next
-        /// location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as the
-        /// router's status transitions.
+        /// Returns <see cref="Router.Navigation"/> of the <see cref="Router"/> <c>V.RouterProvider</c> publishes
+        /// above the caller, and re-renders the component as it changes.
         /// </summary>
         public static NavigationState UseNavigation()
         {
@@ -831,53 +828,22 @@ namespace Velvet
             // The state only schedules the re-render: what is returned is read from the router at render, so the
             // render in which the provider's router changes reads the new router rather than the old one's
             // last state.
-            var (_, setState) = UseState(ReadNavigationState(router));
+            var (_, setState) = UseState(router.Navigation);
 
             UseEffect(() =>
             {
-                void Sync() => setState.Invoke(ReadNavigationState(router));
-                void OnStatus(RouterStatus _) => Sync();
-                void OnLocation(RouterLocation _) => Sync();
+                void OnNavigation(NavigationState navigation) => setState.Invoke(navigation);
 
-                router.OnStatusChanged += OnStatus;
-                router.OnLocationChanged += OnLocation;
+                router.OnNavigationChanged += OnNavigation;
                 // Reconcile any transition that happened between render and effect attach.
-                Sync();
+                setState.Invoke(router.Navigation);
                 return () =>
                 {
-                    router.OnStatusChanged -= OnStatus;
-                    router.OnLocationChanged -= OnLocation;
+                    router.OnNavigationChanged -= OnNavigation;
                 };
             }, new object[] { router });
 
-            return ReadNavigationState(router);
-        }
-
-        private static NavigationState ReadNavigationState(Router router)
-        {
-#pragma warning disable CS8524 // no discard arm: a new status has to say which phase it reports
-            var lifecycle = router.Status switch
-            {
-                RouterStatus.Matching or RouterStatus.Loading => NavigationLifecycle.Loading,
-                RouterStatus.Submitting => NavigationLifecycle.Submitting,
-                RouterStatus.Idle or RouterStatus.Ready or RouterStatus.NotFound or RouterStatus.Error =>
-                    NavigationLifecycle.Idle,
-            };
-#pragma warning restore CS8524
-            if (lifecycle == NavigationLifecycle.Idle)
-            {
-                return default;
-            }
-
-            var submission = router.PendingSubmission;
-            return new NavigationState
-            {
-                State = lifecycle,
-                Location = router.PendingLocation,
-                FormMethod = submission?.FormMethod,
-                FormAction = submission?.Action,
-                FormData = submission?.FormData,
-            };
+            return router.Navigation;
         }
 
         /// <summary>

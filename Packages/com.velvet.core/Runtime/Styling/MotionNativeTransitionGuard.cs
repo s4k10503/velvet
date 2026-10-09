@@ -70,8 +70,7 @@ namespace Velvet
     internal static class MotionNativeTransitionGuard
     {
         // A property name that resolves to no style property computes to zero transitions, which is exactly
-        // "transition-property: none". A shared, never-mutated list: StyleList retains the reference as-is
-        // (mirroring StyleAnimationScheduler's own transition-property: all list), and the release frees it.
+        // "transition-property: none".
         private static readonly StylePropertyName s_noneName = new("none");
         private static readonly List<StylePropertyName> s_none = new() { s_noneName };
 
@@ -397,11 +396,11 @@ namespace Velvet
             var heldCount = held.Count;
             element.style.transitionProperty = names;
             WriteRealigned(element.style.transitionDuration.value, heldCount, sources,
-                list => element.style.transitionDuration = list);
+                list => MotionTweenTiming.Write(element, list, null, null));
             WriteRealigned(element.style.transitionTimingFunction.value, heldCount, sources,
-                list => element.style.transitionTimingFunction = list);
+                list => MotionTweenTiming.Write(element, null, list, null));
             WriteRealigned(element.style.transitionDelay.value, heldCount, sources,
-                list => element.style.transitionDelay = list);
+                list => MotionTweenTiming.Write(element, null, null, list));
         }
 
         private static bool NamesADrivenLonghand(StylePropertyName name, StyleLonghandSet driven)
@@ -509,6 +508,7 @@ namespace Velvet
             if (element != null)
             {
                 s_suspensions.Remove(element);
+                MotionTweenTiming.Forget(element);
             }
         }
     }

@@ -23,9 +23,10 @@ namespace Velvet
         // so its '!' is accepted but inert. Returns the input unchanged when no modifier is present.
         //
         // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). Of the
-        // array-scanned subsystem utilities, the font, text-effect, z-* and gap-* families strip the bang themselves
-        // and let an important token win over the element's plain ones (StyleFontClass.TryExtract,
-        // StyleTextEffectClass.Parse, StyleZIndexClass.TryExtract, StyleGridClass.ExtractGaps); divide-*/shadow-*/clip-path-* do not
+        // array-scanned subsystem utilities, the font, text-effect, z-*, gap-* and divide-* families strip
+        // the bang themselves and let an important token win over the element's plain ones
+        // (StyleFontClass.TryExtract, StyleTextEffectClass.Parse, StyleZIndexClass.TryExtract,
+        // StyleGridClass.ExtractGaps, StyleDivideClass.TryExtract); shadow-* and clip-path-* do not
         // recognize the bang at all.
         public static string StripImportant(string className, out bool important)
         {
@@ -1211,11 +1212,13 @@ namespace Velvet
         // Makes the hold just taken on slot give way to a layer of the element's own: while one writes the slot,
         // that layer's value stands, and the held one returns once the last such layer goes. That is how a
         // zero-specificity Tailwind write (space, divide) gives way to the element's own arbitrary value for as
-        // long as it has one. The next Hold on the slot takes the yield back.
-        internal static void Yield(VisualElement element, HeldSlot slot)
+        // long as it has one. With importantOnly it gives way to an important layer alone, which is how an
+        // important divide still yields to a child's own important declaration. The next Hold on the slot takes
+        // the yield back.
+        internal static void Yield(VisualElement element, HeldSlot slot, bool importantOnly = false)
         {
             var map = s_layers.GetValue(element, static _ => new LayerMap());
-            map.Holds?.SetYield(slot);
+            map.Holds?.SetYield(slot, importantOnly);
             ReassertHolds(element, map, StyleHeldSlots.Bit(slot));
         }
 
@@ -1235,7 +1238,8 @@ namespace Velvet
                 {
                     continue;
                 }
-                if (!TryLayeredWinner(map, slot, out var winner))
+                if (!TryLayeredWinner(map, slot, out var winner, out var rank)
+                    || (holds.YieldsOnlyToImportant(slot) && (rank & StyleLayerPriority.Important) == 0))
                 {
                     continue;
                 }
@@ -1284,6 +1288,12 @@ namespace Velvet
                 HandBack(element, slot);
             }
         }
+
+        // Whether the highest priority an ungated class of the element's own claims on slot's longhand lies in
+        // the important band. Inline layers are not consulted.
+        internal static bool DeclaresImportantOwn(VisualElement element, HeldSlot slot)
+            => TryGetProjection(element) is { } model
+                && (model.ClaimOf(HeldSlotGroups.LonghandOf(slot)) & StyleLayerPriority.Important) != 0;
 
         // Whether a utility on element's class list sets slot through an ungated bundled USS rule. Tailwind
         // writes space and divide at zero specificity, so such a class of the element's own wins over them
@@ -1383,8 +1393,12 @@ namespace Velvet
         }
 
         private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner)
+            => TryLayeredWinner(map, slot, out winner, out _);
+
+        private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner, out long rank)
         {
             winner = default;
+            rank = long.MinValue;
             var best = long.MinValue;
             var latest = long.MinValue;
             var found = false;
@@ -1402,6 +1416,7 @@ namespace Velvet
                 if (priority > best || priority == best && isNewerArrival)
                 {
                     winner = style;
+                    rank = priority;
                     best = priority;
                     latest = arrival;
                     found = true;
