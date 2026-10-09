@@ -78,34 +78,21 @@ namespace Velvet
 
         private sealed class PanelUpdaters
         {
-            private readonly System.Func<uint> _version;
-            private readonly System.Action _styles;
-            private readonly object _styleUpdater;
-            private readonly FieldInfo _applyingStyles;
-            private readonly System.Action _layout;
-            private readonly object _layoutUpdater;
-            private readonly FieldInfo _changeEvents;
-            private readonly FieldInfo _missedHierarchyEvents;
+            // Set once by Resolve's initializer.
+            private System.Func<uint> _version = null!;
+            private System.Action _styles = null!;
+            private object _styleUpdater = null!;
+            private FieldInfo _applyingStyles = null!;
+            private System.Action _layout = null!;
+            private object _layoutUpdater = null!;
+            private FieldInfo _changeEvents = null!;
+            private FieldInfo _missedHierarchyEvents = null!;
             // One pair per nesting depth: a pass this class runs can dispatch an event whose commit runs another.
             private readonly List<(IList ChangeEvents, IList MissedHierarchyEvents)> _spares = new();
             private int _depth;
             private bool _laidOut;
             private uint _laidOutVersion;
             private bool _warnedNesting;
-
-            private PanelUpdaters(
-                System.Func<uint> version, System.Action styles, object styleUpdater, FieldInfo applyingStyles,
-                System.Action layout, object layoutUpdater, FieldInfo changeEvents, FieldInfo missedHierarchyEvents)
-            {
-                _version = version;
-                _styles = styles;
-                _styleUpdater = styleUpdater;
-                _applyingStyles = applyingStyles;
-                _layout = layout;
-                _layoutUpdater = layoutUpdater;
-                _changeEvents = changeEvents;
-                _missedHierarchyEvents = missedHierarchyEvents;
-            }
 
             // Every member it reads is an EngineMember, which a player build keeps and EngineMemberResolutionTests
             // resolves against the editor.
@@ -134,8 +121,17 @@ namespace Velvet
                     return null;
                 }
                 var readVersion = (System.Func<uint>)System.Delegate.CreateDelegate(typeof(System.Func<uint>), panel, version);
-                return new PanelUpdaters(readVersion, stylesUpdate, styles!, applyingStyles, layoutUpdate, layout!,
-                    changeEvents, missedHierarchyEvents);
+                return new PanelUpdaters
+                {
+                    _version = readVersion,
+                    _styles = stylesUpdate,
+                    _styleUpdater = styles!,
+                    _applyingStyles = applyingStyles,
+                    _layout = layoutUpdate,
+                    _layoutUpdater = layout!,
+                    _changeEvents = changeEvents,
+                    _missedHierarchyEvents = missedHierarchyEvents,
+                };
             }
 
             // An unchanged panel version is taken as a layout this class has already brought up to date: the panel
@@ -159,9 +155,9 @@ namespace Velvet
                     return;
                 }
                 Run();
-                // MUTANT_SURVIVES(equivalent): as above.
+                // MUTANT_SURVIVES(equivalent): an unrecorded version only sends the next read through a pass.
                 _laidOutVersion = _version();
-                // MUTANT_SURVIVES(equivalent): as above.
+                // MUTANT_SURVIVES(equivalent): an unrecorded pass only sends the next read through another.
                 _laidOut = true;
             }
 
@@ -190,7 +186,7 @@ namespace Velvet
                     // MUTANT_SURVIVES(equivalent, line removed): the layout updater clears a list before it fills it;
                     // this only lets go of the elements the pass left in it.
                     spare.ChangeEvents.Clear();
-                    // MUTANT_SURVIVES(equivalent, line removed): as above.
+                    // MUTANT_SURVIVES(equivalent, line removed): the other list is cleared before it is filled too.
                     spare.MissedHierarchyEvents.Clear();
                 }
             }
