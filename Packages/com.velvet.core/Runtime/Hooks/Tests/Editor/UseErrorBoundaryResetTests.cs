@@ -31,7 +31,9 @@ namespace Velvet.Tests
     /// error, and <c>ShowBoundary</c> refuses null.</item>
     /// <item>A reset is queued as a state update: two in one handler both call <c>onReset</c>, one in the commit that
     /// changes the keys calls it beside the keys reset, and one beside a key change in a handler is the only call.
-    /// Keys are compared against the last committed render, so a discarded render's keys reset nothing.</item>
+    /// Keys are compared against the last committed render, so a discarded render's keys reset nothing, and a
+    /// replay of the commit after an attempt that threw keeps the committed render's keys and <c>onReset</c>, as
+    /// the StrictMode re-run of a render does.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -72,6 +74,12 @@ namespace Velvet.Tests
             s_childThrowsLeft = 0;
             s_resetFromFallbackCommit = false;
             s_setOwnKey = null;
+            FiberStrictMode.Enabled = false;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
             FiberStrictMode.Enabled = false;
         }
 
@@ -428,6 +436,46 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Texts(), Is.EqualTo(nameof(InvalidOperationException)));
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseLastAttemptThrewWithNewKeys_When_ItsLayoutEffectIsReplayedWithoutARender_Then_TheCommittedRenderStands()
+        {
+            // Arrange — a render that ran to the end and its commit, then an attempt that threw before
+            // RenderAndReconcile counted it; the act is the replay a Suspense reveal that does not render the
+            // boundary makes of the commit
+            var boundary = new ComponentFiber();
+            var slot = new HookErrorBoundaryKeysSlot(boundary);
+            var calls = new List<string>();
+            Action<ErrorBoundaryResetDetails> committedOnReset = _ => calls.Add("committed");
+            Action<ErrorBoundaryResetDetails> discardedOnReset = _ => calls.Add("discarded");
+            slot.Record(new object[] { 0 }, committedOnReset, afterACatch: false);
+            boundary.RenderCount++;
+            slot.Commit();
+            boundary.CaughtError = (new InvalidOperationException("caught"), new ErrorInfo(string.Empty));
+            slot.Record(new object[] { 1 }, discardedOnReset, afterACatch: true);
+
+            // Act
+            slot.Commit();
+
+            // Assert
+            Assert.That(
+                (ReferenceEquals(boundary.OnErrorBoundaryReset, committedOnReset), boundary.QueuedReset, calls.Count),
+                Is.EqualTo((true, QueuedErrorBoundaryReset.None, 0)));
+        }
+
+        [Test]
+        public void Given_StrictModeAndABoundaryThatCaughtAFailedLoad_When_ItsResetIsInvoked_Then_OnResetIsCalled()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            using var mounted = MountFailedLoad();
+
+            // Act
+            Settle(mounted, () => s_reset.Invoke("strict"));
+
+            // Assert
+            Assert.That(string.Join(";", s_resetDetails), Is.EqualTo("ImperativeApi|strict|null|null"));
         }
 
         [Test]

@@ -2052,13 +2052,10 @@ namespace Velvet
             var slotRef = UseMutableRef((HookErrorBoundaryKeysSlot?)null);
             var slot = slotRef.Current ??= new HookErrorBoundaryKeysSlot(fiber);
 
-            // Overwritten by each attempt and read at commit, so a commit that follows a render of the boundary reads
-            // that render rather than an attempt discarded before it. An error caught before this render is
-            // react-error-boundary's prevState.error; one a child throws below this render is caught after the body
-            // has run, so it is not.
-            slot.RenderedKeys = resetKeys;
-            slot.RenderedOnReset = onReset;
-            slot.RenderedAfterACatch = fiber.CaughtError != null;
+            // An error caught before this render is react-error-boundary's prevState.error; one a child throws below
+            // this render is caught after the body has run, so it is not. The StrictMode re-run of a render that has
+            // already been counted would record itself as a render still to come.
+            if (!IsStrictDiagnosticPass(fiber)) slot.Record(resetKeys, onReset, fiber.CaughtError != null);
             UseLayoutEffect(slot.Commit);
             return fiber.ResetHandle;
         }
