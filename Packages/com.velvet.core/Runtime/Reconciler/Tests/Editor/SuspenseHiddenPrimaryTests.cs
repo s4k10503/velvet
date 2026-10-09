@@ -369,8 +369,6 @@ namespace Velvet.Tests
                 "A boundary's catch takes the hidden primary back, and nothing hides an element after it");
         }
 
-        // GREEN_ON_BASE(characterization): the base forgets no catch of a boundary outside the Suspense's walk.
-        // What this pins is that a Suspense keeping its primary hidden forgets only catches inside that primary.
         [Test]
         public void Given_ABoundaryAboveASuspenseOwnerCatchingAnElementCallbackErrorInAPrimaryItHides_When_ThatRenderCommits_Then_TheCatchIsReported()
         {
@@ -575,23 +573,26 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AReaderBesideARevealedBoundaryInItsHost_When_ItsReadResolvesAfterThePassItSuspendedIsGivenUp_Then_ItShowsTheValue()
+        public void Given_AReaderBesideARevealedBoundaryWhosePassItGaveUpHasResolved_When_AChildOfTheBoundarySuspends_Then_TheBoundaryHidesIt()
         {
             // Arrange — the host renders the Suspense, so it is the nearest boundary fiber above the reader beside it
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             using var mounted = V.Mount(_root, V.Component(AbandonHostRender, key: "abandon-host"));
+            var primary = _root.Q<VisualElement>("primary");
             s_setAbandonTick.Invoke(1);
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Act
             s_outsideSource.TrySetResult(7);
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert
-            Assert.That(_root.Q<Label>("outside")?.text, Is.EqualTo("outside:7"),
-                "No Suspense is around the reader, so its resolve retries the pass it gave up, as React retries it");
+            // Act
+            Resuspend(mounted);
+
+            // Assert — the reader's value is read with it, since a host never rendered again shows neither
+            Assert.That((_root.Q<Label>("outside")?.text, primary.style.display.value),
+                Is.EqualTo(("outside:7", DisplayStyle.None)),
+                "The resolve retries the pass the reader gave up, as React retries it, so the host no longer waits on it");
         }
 
         [Test]
