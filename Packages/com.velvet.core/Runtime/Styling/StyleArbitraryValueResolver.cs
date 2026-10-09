@@ -2323,7 +2323,7 @@ namespace Velvet
                     NumberStyles.Float,
                     CultureInfo.InvariantCulture,
                     out value)
-                    || (valueStr.EndsWith(")".AsSpan()) && StyleLengthExpression.TryParse(valueStr, out var expression)
+                    || (StyleLengthExpression.OpensMathFunction(valueStr) && StyleLengthExpression.TryParse(valueStr, out var expression)
                         && expression!.TryFoldConstant(out value, out unit));
             }
 

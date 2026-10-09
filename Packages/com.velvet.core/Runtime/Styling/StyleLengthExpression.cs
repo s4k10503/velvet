@@ -46,6 +46,12 @@ namespace Velvet
 
         // Parses a single dimension (1rem, 25%) or a math function. A bare number, and anything left over after
         // the dimension or the function's closing parenthesis, is declined.
+        // Asked before TryParse, so that var(), rgb() and the other functions this does not read are declined
+        // without being tokenized.
+        public static bool OpensMathFunction(ReadOnlySpan<char> text)
+            => text.StartsWith("calc(".AsSpan()) || text.StartsWith("min(".AsSpan())
+                || text.StartsWith("max(".AsSpan()) || text.StartsWith("clamp(".AsSpan());
+
         public static bool TryParse(ReadOnlySpan<char> text, out StyleLengthExpression? expression)
         {
             var parser = new Parser(text.ToString());
@@ -346,12 +352,12 @@ namespace Velvet
             }
 
             // Where a number starting at start ends, or start when none does: an optional sign, digits with an
-            // optional fraction (or a fraction alone), then an optional exponent. A dot with no digit after it
-            // ends the number before the dot, and an e with no digit after it is left to be read as a unit.
+            // optional fraction (or a fraction alone), then an optional exponent. Text ending in a dot is no number,
+            // and an e with no digit after it is left to be read as a unit.
             private static int NumberEnd(string text, int start)
             {
                 var whole = Span(text, Is(text, start, "+-") ? start + 1 : start, Digits);
-                var end = Is(text, whole, ".") && Is(text, whole + 1, Digits) ? Span(text, whole + 1, Digits) : whole;
+                var end = Is(text, whole, ".") ? Span(text, whole + 1, Digits) : whole;
                 if (end == start || !Is(text, end - 1, Digits))
                 {
                     return start;

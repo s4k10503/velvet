@@ -20,9 +20,11 @@ A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a
 on both sides of a binary `+` or `-`; Tailwind writes `calc(2rem-4px)` and adds the spaces itself, so a
 space on neither side reads as one on both, and `calc(2rem-4px)` and `calc(2rem_-_4px)` are the same
 length. A space on one side only is declined: `calc(1px_-2px)` is `1px` followed by a second value `-2px`.
-A sign belongs to a number (`-2px`, `+.5rem`, `1e3px`), never to a parenthesis or a function, so `-(1px)`
-and `-calc(1px)` are declined, and so is a space before the function. Functions nest, `(` groups, and `*`
-and `/` take a plain number on one side. `clamp(low, value, high)` is `max(low, min(value, high))`, so a
+A sign belongs to a number (`-2px`, `+.5rem`, `-1e3px`), never to a parenthesis or a function, so `-(1px)`
+and `-calc(1px)` are declined, and so is a space before the function. Functions nest and `(` groups; `*`
+takes a plain number on one side, and `/` a plain number on its right. Up to 63 nested functions, and a run of
+up to 63 terms, factors or arguments, are read; 64 is declined. The two count against one bound, so a run
+inside nested functions is declined sooner. `clamp(low, value, high)` is `max(low, min(value, high))`, so a
 `low` above `high` wins. What CSS rejects is declined and leaves the class inert: adding a number to a length
 (`calc(1px+2)`), multiplying two lengths, dividing by a length, a result that is a plain number (`calc(4)`)
 and `clamp()` without three arguments. Valid CSS that is not read here is declined too: any function other

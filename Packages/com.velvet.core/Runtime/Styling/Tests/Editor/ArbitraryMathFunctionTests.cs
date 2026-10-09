@@ -213,9 +213,7 @@ namespace Velvet.Tests
         [TestCase("calc(1px/2px)")]
         [TestCase("calc(1px/0)")]
         [TestCase("calc(4)")]
-        [TestCase("calc(1px")]
         [TestCase("calc(1px))")]
-        [TestCase("calc(1px)px")]
         [TestCase("min()")]
         [TestCase("min(1px,2)")]
         [TestCase("clamp(1px,2px)")]
@@ -226,19 +224,14 @@ namespace Velvet.Tests
         [TestCase("calc(1px,2px)")]
         [TestCase("calc(1px+)")]
         [TestCase("min(1px,2px,)")]
-        [TestCase("(1px)")]
-        [TestCase("calc(1px)_")]
         [TestCase("calc(1px)#)")]
         [TestCase("calc(1px_-2px)")]
         [TestCase("calc(1px-_2px)")]
         [TestCase("calc(1px_+2px)")]
-        [TestCase("-(1px)")]
-        [TestCase("-calc(1px)")]
-        [TestCase("_calc(1px)")]
         [TestCase("calc(1px---1px)")]
         [TestCase("calc(20.px)")]
         [TestCase("calc(2e)")]
-        [TestCase("calc(1px)(")]
+        [TestCase("calc(1PX)")]
         public void Given_AMalformedMathFunction_When_ParsedAsAnArbitraryTop_Then_TheClassIsDeclined(string length)
         {
             // Act
@@ -246,6 +239,89 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ok, Is.False);
+        }
+
+        // Declined input as a class sees it. None of these opens with a function the parser reads, so none is
+        // handed to it; StyleLengthExpressionParseTests asks the parser itself.
+        // GREEN_ON_BASE(characterization): a bracket that is no single math function was never read, and still is not.
+        [TestCase("calc(1px")]
+        [TestCase("calc(1px)px")]
+        [TestCase("calc(1px)_")]
+        [TestCase("calc(1px)(")]
+        [TestCase("(1px)")]
+        [TestCase("-(1px)")]
+        [TestCase("-calc(1px)")]
+        [TestCase("_calc(1px)")]
+        public void Given_ABracketThatIsNoSingleMathFunction_When_ParsedAsAnArbitraryTop_Then_TheClassIsDeclined(string length)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("top-[" + length + "]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        private static string Run(string kind, int count)
+            => kind == "terms" ? "calc(" + string.Join("+", System.Linq.Enumerable.Repeat("1px", count)) + ")"
+                : kind == "args" ? "min(" + string.Join(",", System.Linq.Enumerable.Repeat("1px", count)) + ")"
+                : "calc(1px" + string.Concat(System.Linq.Enumerable.Repeat("*1", count - 1)) + ")";
+
+        [TestCase("terms")]
+        [TestCase("args")]
+        [TestCase("factors")]
+        public void Given_ARunOfSixtyThree_When_ParsedAsAnArbitraryTop_Then_TheClassIsRead(string kind)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("top-[" + Run(kind, 63) + "]", out _);
+
+            // Assert
+            Assert.That(ok, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): a run of sixty-four was never read, and still is not.
+        [TestCase("terms")]
+        [TestCase("args")]
+        [TestCase("factors")]
+        public void Given_ARunOfSixtyFour_When_ParsedAsAnArbitraryTop_Then_TheClassIsDeclined(string kind)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("top-[" + Run(kind, 64) + "]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [TestCase("min(50%,25%)")]
+        [TestCase("max(10%,25%)")]
+        [TestCase("clamp(10%,50%,25%)")]
+        [TestCase("clamp(25%,10%,50%)")]
+        public void Given_AnExtremumOfPercentages_When_ParsedAsAnArbitraryWidth_Then_ItIsAQuarter(string length)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("w-[" + length + "]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Value, s.Unit), Is.EqualTo((true, 25f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_ANegativeZero_When_ParsedAsAnArbitraryTop_Then_ItIsZeroPixels()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("top-[calc(-0px)]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Value, s.Unit), Is.EqualTo((true, 0f, LengthUnit.Pixel)));
+        }
+
+        [Test]
+        public void Given_AMathFunctionOrigin_When_Parsed_Then_ItsXIsTwentyPixels()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[calc(1rem+4px)]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Value, s.Unit), Is.EqualTo((true, 20f, LengthUnit.Pixel)));
         }
 
         // GREEN_ON_BASE(characterization): a gap mixing a percentage with pixels was never read, nor is it now.
