@@ -438,6 +438,52 @@ namespace Velvet.Tests
                 Is.EqualTo(("hello", "hel")));
         }
 
+        // A render repeating the multiline declaration over typing turns nothing, so it holds nothing: the
+        // typing later reaches the value's single-line display and a limit change then reads it as the
+        // engine's. The field goes through the on and off renders of
+        // Given_ADelayedFieldWithNoEditWhoseLimitCutsALineBreakValue_When_MultilineComesOffAndBackOn_Then_TheFieldShowsTheValueUpToTheLimit,
+        // after which the record is no form of that display.
+        [Test]
+        public void Given_TypingOnAFieldAfterMultilineCameOff_When_ARenderRepeatsTheDeclarationAndTheTypingReachesTheValuesDisplay_Then_ALimitChangeShowsWhatTheEngineAloneWould()
+        {
+            // Arrange
+            const string value = "a\nbcdef";
+            var multilineTree = new VNode[]
+            {
+                V.TextField(value: value, maxLength: 3, isDelayed: true, multiline: true),
+            };
+            var singleLineTree = new VNode[]
+            {
+                V.TextField(value: value, maxLength: 3, isDelayed: true, multiline: false),
+            };
+            var repeatedTree = new VNode[]
+            {
+                V.TextField(value: value, maxLength: 3, isDelayed: true, multiline: false, placeholder: "p"),
+            };
+            var widenedTree = new VNode[]
+            {
+                V.TextField(value: value, maxLength: 5, isDelayed: true, multiline: false, placeholder: "p"),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), multilineTree);
+            Reconciler.Reconcile(Root, multilineTree, singleLineTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "x";
+            Reconciler.Reconcile(Root, singleLineTree, repeatedTree);
+            ((TextElement)element.textEdition).text = "abc";
+            // The control is the engine taking the value, the wider limit and the repeated declaration, the
+            // last two in the order the last render writes them.
+            var control = new TextField();
+            control.SetValueWithoutNotify(value);
+            control.maxLength = 5;
+            control.multiline = false;
+
+            // Act
+            Reconciler.Reconcile(Root, repeatedTree, widenedTree);
+
+            // Assert
+            Assert.That(((TextElement)element.textEdition).text, Is.EqualTo(control.text));
+        }
+
         // The deletion of the value's line break survives multiline coming off unchanged, and is then what
         // the value's single-line display shows.
         [Test]

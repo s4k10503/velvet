@@ -353,18 +353,26 @@ namespace Velvet
 
         // Turning multiline on puts the field's value back on screen, which on a delayed field holding an
         // uncommitted edit replaces the typed text with the value it has not received yet, so that edit is
-        // carried across the write through the silent setter. Turning it off carries nothing, since the engine
-        // leaves the edit there without its line breaks. With no edit pending, what the write left on screen
-        // becomes the record; left unrecorded, the text multiline coming off leaves reads as typed to the next
-        // multiline or limit write, which then holds it on screen for a blur to commit.
-        // TextFieldMultilineKeyboardPropTests pins each of these.
+        // carried across the write through the silent setter. Turning it off carries nothing across the
+        // write, since the engine leaves the edit there without its line breaks, but it does hold the edit:
+        // without them it can equal the value's single-line display. A write leaving the flag as it was holds
+        // nothing, so a render that only repeats the declaration does not hold typing Velvet never carried.
+        // With no edit pending, what the write left on screen becomes the record; left unrecorded, the text
+        // multiline coming off leaves reads as typed to the next multiline or limit write, which then holds it
+        // on screen for a blur to commit. TextFieldMultilineKeyboardPropTests pins each of these.
         private static void WriteMultiline(TextField field, bool value)
         {
             var edit = HasUncommittedEdit(field) ? field.text : null;
+            var turns = field.multiline != value;
             field.multiline = value;
             if (edit == null)
             {
                 RecordShownText(field);
+                return;
+            }
+
+            if (!turns)
+            {
                 return;
             }
 
@@ -540,8 +548,8 @@ namespace Velvet
 
         // A delayed field holds the user's typing in the shown text while the value lags. Shown text is an
         // edit when it differs from the record — the text Velvet's own writes and the engine's commits last
-        // left on screen — and, unless Velvet already carried it as an edit, both from that record as
-        // multiline coming off since would leave it and from the field's display of its own value.
+        // left on screen — and, unless ShownText holds it, both from that record as multiline coming off
+        // since would leave it and from the field's display of its own value.
         // The record is taken by each write of Velvet's own text — ApplyFieldValue, WriteMaxLength and
         // WriteMultiline when no edit is pending, and the baseline FiberElementFactory.ApplyProps takes as
         // the element is created — and by a commit through ShownText's callback, since an edit that was
@@ -550,8 +558,9 @@ namespace Velvet
         // The display is asked because code outside Velvet can write the value silently, which moves the
         // shown text and not the record, where typing moves the text and not the value. It is not asked
         // alone: where the limit cuts the value after a line break, the text multiline coming off leaves
-        // matches no form of it. Nor is it asked of an edit Velvet carried, whose cut to a narrower limit
-        // can equal the value's display under that limit; the hold ShownText keeps answers that.
+        // matches no form of it. Nor is it asked while ShownText holds an edit: a limit change or a turn of
+        // multiline over a pending edit holds it, since the cut to a narrower limit, or the line breaks
+        // multiline coming off drops, can leave it equal to the value's display.
         internal static bool HasUncommittedEdit(TextField field)
         {
             if (!field.isDelayed || !s_shownText.TryGetValue(field, out var left))
@@ -597,7 +606,7 @@ namespace Velvet
             left.Take();
         }
 
-        // Called by a write that carried an edit across itself, after the write.
+        // Called after a write that turned multiline or changed the limit over a pending edit.
         private static void HoldEdit(TextField field)
         {
             if (s_shownText.TryGetValue(field, out var left))
@@ -629,11 +638,14 @@ namespace Velvet
             {
                 _text = _field.text;
                 _multiline = _field.multiline;
+                _holding = false;
             }
 
-            // The hold lasts while the field's value is the one the edit was carried over, so a commit or a
-            // value write, silent or not, ends it when it moves the value. Typing on does not end it, since
-            // what the user types over that value is still theirs.
+            // A record ends the hold, so a write of Velvet's own text or a commit does. It does not apply while
+            // the value differs from the one the edit was held over, or while the shown text equals the value.
+            // Typing on does not end it, since what the user types over that value is still theirs. Code
+            // outside Velvet writing the value away and back silently takes no record, so the hold applies
+            // again once the value is back.
             public void Hold()
             {
                 _holding = true;
@@ -647,7 +659,8 @@ namespace Velvet
             public bool ShowsWithoutBreaks(TextField field)
                 => _multiline && !field.multiline && field.text == _text?.Replace("\n", string.Empty);
 
-            public bool HoldsEditOver(TextField field) => _holding && field.value == _heldOver;
+            public bool HoldsEditOver(TextField field)
+                => _holding && field.value == _heldOver && field.text != field.value;
 
             // Only the field's own event is a commit of the value; TextFieldInputPropTests pins that an
             // event from the inner element does not move the record.

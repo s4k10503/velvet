@@ -462,6 +462,59 @@ namespace Velvet.Tests
             Assert.That((element.text, element.value), Is.EqualTo(("hel", "hello")));
         }
 
+        // The user types the carried deletion back to the value, so the field shows what it would with no
+        // edit at all, and the limit changes after that are the engine's.
+        [Test]
+        public void Given_ACarriedDeletionTypedBackToTheValue_When_MaxLengthNarrowsThenWidens_Then_TheFieldShowsTheValue()
+        {
+            // Arrange
+            var mounted = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 4) };
+            var widenedAgain = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "he";
+            Reconciler.Reconcile(Root, mounted, widened);
+            ((TextElement)element.textEdition).text = "hello";
+
+            // Act
+            Reconciler.Reconcile(Root, widened, narrowed);
+            Reconciler.Reconcile(Root, narrowed, widenedAgain);
+
+            // Assert
+            Assert.That((element.text, element.value), Is.EqualTo(("hello", "hello")));
+        }
+
+        // A value written away and back by renders takes a record each time, which ends the hold on the
+        // edit carried before them. Code outside Velvet then turns multiline on, which shows the value cut
+        // with its line break, a form of the value's display the record does not hold.
+        [Test]
+        public void Given_AHeldEditWhoseValueRendersWroteAwayAndBack_When_CodeOutsideVelvetShowsTheValueAndTheLimitWidens_Then_TheFieldShowsTheValueUpToIt()
+        {
+            // Arrange
+            const string value = "a\nbcdef";
+            var mounted = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 5) };
+            var narrowed = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 3) };
+            var away = new VNode[] { V.TextField(value: "zz", isDelayed: true, maxLength: 3) };
+            var back = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 5) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "xy";
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            Reconciler.Reconcile(Root, narrowed, away);
+            Reconciler.Reconcile(Root, away, back);
+            element.multiline = true;
+            var shownByTheCode = element.text;
+
+            // Act
+            Reconciler.Reconcile(Root, back, widened);
+
+            // Assert — what the code left is folded in because the case is about that form.
+            Assert.That((shownByTheCode, element.text), Is.EqualTo(("a\nb", "a\nbcd")));
+        }
+
         // The value written silently after the edit was carried replaces what the field shows, so the hold
         // on the carried edit ends with it. The silent write stands in for an effect's.
         [Test]
