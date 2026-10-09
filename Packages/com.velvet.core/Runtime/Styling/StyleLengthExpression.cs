@@ -224,11 +224,11 @@ namespace Velvet
                 return accepted;
             }
 
-            // Repetition in the grammar recurses through Enter rather than looping, so an Accept that stops consuming
-            // fails at MaxDepth instead of spinning.
-            private bool Enter() => ++_depth <= MaxDepth;
+            // Repetition in the grammar recurses through Descend rather than looping, so an Accept that stops
+            // consuming fails at MaxDepth instead of spinning.
+            private bool Descend() => ++_depth <= MaxDepth;
 
-            private T Leave<T>(T value)
+            private T Ascend<T>(T value)
             {
                 _depth--;
                 return value;
@@ -239,35 +239,35 @@ namespace Velvet
             // A sign glued to the number after an operand is the operator: the term is that signed number.
             private Operand MoreTerms(Operand left)
             {
-                if (!Enter())
+                if (!Descend())
                 {
                     return default;
                 }
                 if (Is(Token.Number) && !Spaced() && "+-".IndexOf(_tokens[_at].Text[0]) >= 0)
                 {
-                    return Leave(MoreTerms(Operand.Add(left, Product(), 1f)));
+                    return Ascend(MoreTerms(Operand.Add(left, Product(), 1f)));
                 }
                 var sign = Peek('+') ? 1f : Peek('-') ? -1f : 0f;
                 if (sign == 0f)
                 {
-                    return Leave(left);
+                    return Ascend(left);
                 }
                 var spaced = Spaced();
                 _at++;
-                return Leave(spaced == Spaced() ? MoreTerms(Operand.Add(left, Product(), sign)) : default);
+                return Ascend(spaced == Spaced() ? MoreTerms(Operand.Add(left, Product(), sign)) : default);
             }
 
             private Operand Product() => MoreFactors(Value());
 
             private Operand MoreFactors(Operand left)
-                => !Enter() ? default
-                    : Accept('*') ? Leave(MoreFactors(Operand.Multiply(left, Value())))
-                    : Accept('/') ? Leave(MoreFactors(Operand.Divide(left, Value())))
-                    : Leave(left);
+                => !Descend() ? default
+                    : Accept('*') ? Ascend(MoreFactors(Operand.Multiply(left, Value())))
+                    : Accept('/') ? Ascend(MoreFactors(Operand.Divide(left, Value())))
+                    : Ascend(left);
 
             private Operand Value()
-                => !Enter() ? default
-                    : Leave(Accept('(') ? Closed(Sum())
+                => !Descend() ? default
+                    : Ascend(Accept('(') ? Closed(Sum())
                         : Is(Token.Function) ? Function()
                         : Dimension());
 
@@ -276,7 +276,7 @@ namespace Velvet
             private List<Operand>? Arguments(List<Operand> args)
             {
                 args.Add(Sum());
-                return !Enter() ? null : Leave(Accept(',') ? Arguments(args) : args);
+                return !Descend() ? null : Ascend(Accept(',') ? Arguments(args) : args);
             }
 
             private Operand Function()
