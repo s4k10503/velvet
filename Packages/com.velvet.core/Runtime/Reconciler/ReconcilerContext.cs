@@ -1842,12 +1842,6 @@ namespace Velvet
             return keys.TryGetValue(position, out var record) ? record : null;
         }
 
-        // Puts back a record SuspenseRecordAt read, null being no fallback shown.
-        internal void RestoreSuspenseRecord(ComponentFiber? boundary, VisualElement? container,
-            VisualElement? portalScope, long positionKey, SuspenseFallbackRecord? record)
-            => SetSuspenseFallbackShown(boundary, container, portalScope, positionKey, record?.Node!, record.HasValue,
-                record.GetValueOrDefault().HidesPrimary);
-
         internal bool IsSuspensePrimaryHidden(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope, long positionKey)
             => SuspenseRecordAt(boundary, container, portalScope, positionKey).GetValueOrDefault().HidesPrimary;
 
@@ -1866,25 +1860,25 @@ namespace Velvet
             return false;
         }
 
+        // A null record is no fallback shown, which is what SuspenseRecordAt reads back for it.
         internal void SetSuspenseFallbackShown(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope,
-            long positionKey, SuspenseNode node, bool shown, bool hidesPrimary)
+            long positionKey, SuspenseFallbackRecord? record)
         {
             var position = (container, portalScope, positionKey);
-            var record = new SuspenseFallbackRecord(node, hidesPrimary);
             if (boundary == null)
             {
-                if (shown) _rootlessSuspenseFallbackKeys[position] = record;
+                if (record is { } rootless) _rootlessSuspenseFallbackKeys[position] = rootless;
                 else _rootlessSuspenseFallbackKeys.Remove(position);
                 return;
             }
-            if (shown)
+            if (record is { } shown)
             {
                 if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys))
                 {
                     keys = new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>();
                     _suspenseFallbackKeys[boundary] = keys;
                 }
-                keys[position] = record;
+                keys[position] = shown;
                 return;
             }
             RemoveSuspenseFallback(boundary, position);
@@ -1933,7 +1927,7 @@ namespace Velvet
         {
             if (boundary == null)
             {
-                // MUTANT_SURVIVES(unreachable): rootless fallback retirement goes through SetSuspenseFallbackShown's shown=false arm instead.
+                // MUTANT_SURVIVES(unreachable): rootless fallback retirement goes through SetSuspenseFallbackShown's null-record arm instead.
                 _rootlessSuspenseFallbackKeys.Remove(position);
                 return;
             }
