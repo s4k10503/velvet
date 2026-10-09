@@ -31,7 +31,10 @@ namespace Velvet
             _batchScheduler = batchScheduler;
         }
 
-        // Skips re-registration if the same delegate is already registered.
+        // Skips re-registration if the same delegate is already registered for the same kind of binding. The
+        // kind is part of the match because one factory can take one delegate in two places of the same
+        // delegate type — V.TextField's onValueChanged: and onSubmit: are both Action<string> — and those are
+        // two registrations.
         public void Bind(VisualElement element, FiberEventBinding binding)
         {
             if (element == null || binding == null)
@@ -40,11 +43,11 @@ namespace Velvet
             }
 
             var newDelegate = GetDelegate(binding);
-            if (newDelegate != null && _boundDelegates.TryGetValue(element, out var existingDelegates))
+            if (newDelegate != null && _bindingsByElement.TryGetValue(element, out var existingBindings))
             {
-                foreach (var d in existingDelegates)
+                foreach (var existing in existingBindings)
                 {
-                    if (d == newDelegate)
+                    if (existing.GetType() == binding.GetType() && GetDelegate(existing) == newDelegate)
                     {
                         return;
                     }
@@ -78,7 +81,8 @@ namespace Velvet
         }
 
         // The bindings that ride an element-specific hook (Button.clicked, INotifyValueChanged<T>) rather
-        // than the event dispatcher, so each is gated on the element implementing that hook. A binding
+        // than the event dispatcher, so each is gated on the element implementing that hook, and the
+        // TextField ones, gated on a TextField for the composite RegisterTextFieldBinding reads. A binding
         // whose element does not falls through to RegisterEventBinding, which matches none of its cases
         // either, and registers nothing.
         private void RegisterFieldBinding(List<Action> actions, VisualElement element, FiberEventBinding binding)
@@ -105,11 +109,141 @@ namespace Velvet
                 case ChangeEventBinding<int> intChange when element is INotifyValueChanged<int> intField:
                     BindDiscreteValueChanged(actions, intField, intChange.Handler);
                     break;
+                case TextFieldBinding when element is TextField field:
+                    RegisterTextFieldBinding(actions, field, binding);
+                    break;
                 default:
                     RegisterEventBinding(actions, element, binding);
                     break;
             }
         }
+
+        // A TextField is a composite whose input is the text element inside it. Focus and blur answer for
+        // focus entering and leaving the field as a whole: the field hands focus from its input to itself on
+        // Enter, and back again later, and a DOM input has no such step, so a move whose other end is inside
+        // the field is not reported.
+        // Submit is read on the input's own bubble pass, after the input has handled the key, so the value it
+        // reads already holds what that Enter committed. Whether an IME composition was open is read on the
+        // field's trickle-down pass instead, before the input acts on the key, which is the moment a
+        // browser's isComposing describes.
+        // The soft keyboard's Done reaches no key handler: the engine closes the keyboard and blurs the input.
+        // So the keyboard is held from focus-in and its status read once the field has committed on the
+        // focus-out that blur sends.
+        // TextFieldEventPropTests pins the focus, blur, Enter and composition readings against the engine, and
+        // the Done reading through SoftKeyboard, since an editor opens no soft keyboard.
+        private void RegisterTextFieldBinding(List<Action> actions, TextField field, FiberEventBinding binding)
+        {
+            switch (binding)
+            {
+                case TextFieldFocusBinding b:
+                    BindFocusCrossing(actions, field, b.Handler);
+                    break;
+                case TextFieldBlurBinding b:
+                    BindFocusCrossing(actions, field, b.Handler);
+                    break;
+                case TextFieldSubmitBinding b when field.textEdition is TextElement input:
+                    BindSubmit(actions, field, input, b.Handler);
+                    break;
+            }
+        }
+
+        private void BindSubmit(List<Action> actions, TextField field, TextElement input, Action<string>? handler)
+        {
+            var composingAtKeyDown = false;
+            UnityEngine.TouchScreenKeyboard? keyboard = null;
+            EventCallback<KeyDownEvent> beforeInput = _ => composingAtKeyDown = IsComposing(input);
+            EventCallback<KeyDownEvent> afterInput = evt =>
+            {
+                if (evt.target == input && !composingAtKeyDown && IsSubmitKey(field, evt))
+                {
+                    RunDiscrete(() => handler?.Invoke(field.value));
+                }
+            };
+            EventCallback<FocusInEvent> keyboardOpened = _ => keyboard = SoftKeyboard.Of(field);
+            EventCallback<FocusOutEvent> keyboardClosed = _ =>
+            {
+                if (keyboard != null && SoftKeyboard.StatusOf(keyboard) == UnityEngine.TouchScreenKeyboard.Status.Done
+                    && !field.multiline)
+                {
+                    RunDiscrete(() => handler?.Invoke(field.value));
+                }
+            };
+            field.RegisterCallback(beforeInput, TrickleDown.TrickleDown);
+            input.RegisterCallback(afterInput);
+            field.RegisterCallback(keyboardOpened);
+            field.RegisterCallback(keyboardClosed);
+            actions.Add(() =>
+            {
+                field.UnregisterCallback(beforeInput, TrickleDown.TrickleDown);
+                input.UnregisterCallback(afterInput);
+                field.UnregisterCallback(keyboardOpened);
+                field.UnregisterCallback(keyboardClosed);
+            });
+        }
+
+        // The input's own record of an open IME composition, which the engine keeps from the composition
+        // string as keys and IME events arrive. False where an engine no longer has the members.
+        private static bool IsComposing(TextElement input)
+        {
+            var manipulator = s_editingManipulator?.GetValue(input);
+            var utilities = manipulator == null ? null : s_editingUtilities?.GetValue(manipulator);
+            return utilities != null && s_compositionActive?.GetValue(utilities) is true;
+        }
+
+        private static readonly System.Reflection.PropertyInfo? s_editingManipulator =
+            EngineMember.TextEditingManipulator.ResolveProperty();
+
+        private static readonly System.Reflection.FieldInfo? s_editingUtilities =
+            EngineMember.TextEditingUtilities.ResolveField();
+
+        private static readonly System.Reflection.FieldInfo? s_compositionActive =
+            EngineMember.TextCompositionActive.ResolveField();
+
+        // A text input's own editor stops the propagation of the keys it takes, so a key callback on the
+        // control's bubble pass misses what the user types. On the trickle-down pass it reaches them before
+        // the input does, as React's onKeyDown reaches a key before the browser acts on it, and a handler
+        // stopping propagation there keeps the input from taking the key. TextFieldEventPropTests pins both
+        // through V.TextField, and TextInputKeyBindingTests the first through V.Motion.
+        private static TrickleDown KeyPhase(VisualElement element)
+            => IsTextInput(element.GetType()) ? TrickleDown.TrickleDown : TrickleDown.NoTrickleDown;
+
+        private static bool IsTextInput(Type elementType)
+        {
+            var type = elementType;
+            while (type != null && !(type.IsGenericType && type.GetGenericTypeDefinition() == typeof(TextInputBaseField<>)))
+            {
+                type = type.BaseType;
+            }
+            return type != null;
+        }
+
+        private void BindFocusCrossing<T>(List<Action> actions, TextField field, EventCallback<T>? handler)
+            where T : FocusEventBase<T>, new()
+        {
+            EventCallback<T> wrapped = evt =>
+            {
+                if (!IsWithin(field, evt.relatedTarget))
+                {
+                    RunDiscrete(() => handler?.Invoke(evt));
+                }
+            };
+            field.RegisterCallback(wrapped, TrickleDown.TrickleDown);
+            actions.Add(() => field.UnregisterCallback(wrapped, TrickleDown.TrickleDown));
+        }
+
+        private static bool IsWithin(TextField field, Focusable? other)
+        {
+            var element = other as VisualElement;
+            return element == field || field.Contains(element);
+        }
+
+        // The Enter an editable single-line field commits on, so a submit reads the value that key committed:
+        // the command modifier held without Alt is the one that does not commit, and TextFieldEventPropTests
+        // pins it and Alt. In a multi-line field Enter submits nothing, as in a <textarea>.
+        private static bool IsSubmitKey(TextField field, KeyDownEvent evt)
+            => !field.multiline
+               && (evt.character == '\n' || evt.character == '\r')
+               && !(evt.actionKey && !evt.altKey);
 
         private void RegisterEventBinding(List<Action> actions, VisualElement element, FiberEventBinding binding)
         {
@@ -119,8 +253,8 @@ namespace Velvet
                 // Urgent lane and the immediate batch flushes synchronously when the handler returns.
                 case PointerDownBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
                 case PointerUpBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
-                case KeyDownBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
-                case KeyUpBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
+                case KeyDownBinding b: BindDiscreteCallback(actions, element, b.Handler, KeyPhase(element)); break;
+                case KeyUpBinding b: BindDiscreteCallback(actions, element, b.Handler, KeyPhase(element)); break;
                 case FocusInBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
                 case FocusOutBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
                 case FocusBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
@@ -340,12 +474,13 @@ namespace Velvet
         // hook updates it triggers take the Urgent lane and flush synchronously at the handler's end.
         // Used for the discrete events (pointer down/up, key down/up, focus/blur); continuous events
         // (pointer move/enter/leave, wheel, geometry) keep the plain BindCallback<T>.
-        private void BindDiscreteCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)
+        private void BindDiscreteCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler,
+            TrickleDown phase = TrickleDown.NoTrickleDown)
             where T : EventBase<T>, new()
         {
             EventCallback<T> wrapped = evt => RunDiscrete(() => handler?.Invoke(evt));
-            element.RegisterCallback(wrapped);
-            actions.Add(() => element.UnregisterCallback(wrapped));
+            element.RegisterCallback(wrapped, phase);
+            actions.Add(() => element.UnregisterCallback(wrapped, phase));
         }
 
         // Registers a discrete value-changed callback (text / toggle / slider input counts as a discrete interaction),
@@ -391,6 +526,7 @@ namespace Velvet
                 FocusBinding b => b.Handler,
                 BlurBinding b => b.Handler,
                 GeometryChangedBinding b => b.Handler,
+                TextFieldBinding b => b.HandlerDelegate,
                 _ => null,
             };
         }
