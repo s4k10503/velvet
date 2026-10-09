@@ -145,6 +145,26 @@ namespace Velvet.Tests
             }
         }
 
+        [TestCase("")]
+        [TestCase("slice-[10]")]
+        public void Given_APercentSlice_When_ItIsRemovedOrMadePixels_Then_ItsMarkerClassGoes(string replacement)
+        {
+            // Arrange — read while the percentage stands, so a marker never added cannot pass.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var oldTree = new VNode[] { V.Div(className: "slice-[25%]", styles: Showing(_tall)) };
+            var newTree = new VNode[] { V.Div(className: replacement, styles: Showing(_tall)) };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), oldTree);
+            var marker = StyleArbitraryValueResolver.ShownImageMarkerClass;
+            var before = root.ElementAt(0).ClassListContains(marker);
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            Assert.That((before, root.ElementAt(0).ClassListContains(marker)), Is.EqualTo((true, false)));
+        }
+
         [Test]
         public void Given_APercentSliceOverNoImage_When_Mounted_Then_EveryEdgeIsZero()
         {

@@ -1242,6 +1242,7 @@ namespace Velvet
                 if (layers.Count == 0) map.Remove(property);
             }
             ResolveAndApply(element, property, map);
+            ReleaseUnusedShownImageWatch(element, map);
             Reproject(element, map);
         }
 
@@ -1631,8 +1632,8 @@ namespace Velvet
                 : sources.Utility ?? new StyleBackground(StyleKeyword.Null);
             SceneViewElement.WriteBackground(element, winner);
             sources.Written = winner;
-            // NineSlicePercentPanelTests pins that the resolved style lets go of a withdrawn inline image at once,
-            // so the percentages are resolved now rather than after the next style pass.
+            // Resolved now rather than after the next style pass: NineSlicePercentPanelTests pins that an element
+            // the panel has styled lets go of a withdrawn inline image in its resolved style at once.
             ReresolvePercentSlices(element, map);
         }
 
@@ -1641,8 +1642,8 @@ namespace Velvet
             public Background Seen;
         }
 
-        // Static, so registering one again is a no-op and a pooled element's next consumer finds the callbacks
-        // already in place; each looks the element's current layer map up rather than holding one.
+        // Static, so registering one again is a no-op; each looks the element's current layer map up rather than
+        // holding one.
         private static readonly EventCallback<GeometryChangedEvent> s_recheckOnGeometry =
             evt => RecheckShownImage((VisualElement)evt.currentTarget);
 
@@ -1667,6 +1668,29 @@ namespace Velvet
             element.AddToClassList(ShownImageMarkerClass);
             element.RegisterCallback(s_recheckOnGeometry);
             element.RegisterCallback(s_recheckOnStyle);
+        }
+
+        // The watch and its marker go with the last percentage inset layer, wherever it sat in the stack.
+        private static void ReleaseUnusedShownImageWatch(VisualElement element, LayerMap map)
+        {
+            if (map.ImageWatch == null || Array.Exists(s_sliceInsetProperties,
+                    property => map.TryGetValue(property, out var layers)
+                        && System.Linq.Enumerable.Any(layers.Values, layer => layer.PercentEdges != 0)))
+            {
+                return;
+            }
+            map.ImageWatch = null;
+            ReleaseShownImageWatch(element);
+        }
+
+        // Also the cleaner's, beside ClearAll, which drops the watch with the rest of the layer map.
+        internal static void ReleaseShownImageWatch(VisualElement element)
+        {
+            element.RemoveFromClassList(ShownImageMarkerClass);
+            // MUTANT_SURVIVES(equivalent, line removed): a callback left registered finds no watch and returns.
+            element.UnregisterCallback(s_recheckOnGeometry);
+            // MUTANT_SURVIVES(equivalent, line removed): the style callback returns the same way.
+            element.UnregisterCallback(s_recheckOnStyle);
         }
 
         private static void RecheckShownImage(VisualElement element)
@@ -1952,30 +1976,38 @@ namespace Velvet
         // The winning layer of every property connected to property through a shared longhand, however many
         // steps away — a writer re-written can reach a longhand property never touches — with its key; null
         // when nothing else shares one.
+        private static readonly HashSet<ArbitraryProperty> s_remainingWriters = new();
+
         private static List<(long Key, ArbitraryStyle Style)>? ConnectedWriters(ArbitraryProperty property,
             LayerMap map)
         {
             var reached = StyleArbitraryLonghands.Of(property);
-            // Allocated at the first writer found: a property nothing else shares a longhand with — a
-            // StyleOverrides colour beside unrelated layers — allocates nothing.
+            // One set reused across calls, filled through the key collection's own enumerator: a property nothing
+            // else shares a longhand with — a StyleOverrides colour beside unrelated layers — allocates nothing.
+            var remaining = s_remainingWriters;
+            remaining.Clear();
+            foreach (var key in map.Keys)
+            {
+                remaining.Add(key);
+            }
+            remaining.Remove(property);
             HashSet<ArbitraryProperty>? taken = null;
             // MUTANT_SURVIVES(equivalent, boundary): each productive pass consumes a candidate;
             // an extra pass cannot add a writer after the map-sized closure has finished.
             for (var pass = 0; pass < map.Count; pass++)
             {
-                var grew = false;
+                var previousCount = remaining.Count;
                 foreach (var pair in map)
                 {
                     var longhands = StyleArbitraryLonghands.Of(pair.Key);
-                    if (pair.Key == property || !longhands.Overlaps(reached)
-                        || !(taken ??= new HashSet<ArbitraryProperty>()).Add(pair.Key))
+                    if (!longhands.Overlaps(reached) || !remaining.Remove(pair.Key))
                     {
                         continue;
                     }
+                    (taken ??= new HashSet<ArbitraryProperty>()).Add(pair.Key);
                     reached = reached.Union(longhands);
-                    grew = true;
                 }
-                if (!grew)
+                if (remaining.Count == previousCount)
                 {
                     break;
                 }

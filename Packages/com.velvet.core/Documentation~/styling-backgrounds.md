@@ -46,7 +46,9 @@ withdraws an image, when the element's geometry changes, and, with the bundled s
 the element is restyled. Those are the only times it is read again, so an image written inline from outside
 Velvet is followed at the next of them; without the stylesheet, so is a stylesheet image a class change
 swaps, since the restyle is not one of them there. A fraction of a pixel, another unit or a negative number
-is declined.
+is declined. Withdrawing an image override resolves them against the image that shows without it;
+`NineSlicePercentPanelTests` measures that for an element the panel has already styled, with no stylesheet
+image behind the override.
 `slice-[…]` also takes `border-image-slice`'s two, three and four values, with `_` for the space between
 them: `slice-[12_8]` sets the top and bottom to 12 and the right and left to 8, `slice-[12_8_4]` the top,
 the right and left, and the bottom, and `slice-[12_8_4_2]` the top, right, bottom and left. Pixels and
@@ -56,13 +58,15 @@ A declined class writes nothing.
 
 The insets and the scale are resolved in C# and written inline, so they work without the stylesheet;
 `slice-sliced` and `slice-tiled` are stylesheet rules. UI Toolkit tiles only an image imported as a Sprite
-whose Mesh Type is Full Rect, as `SliceType.Tiled`'s own documentation states. Both kinds take variants and the `!` modifier like the
-other utilities (`hover:slice-[4]`, `md:slice-tiled`, `!slice-[8]`), and a later edge class overrides the
-same edge of an earlier `slice-[N]` and gives it back when it is removed, as `pt-[…]` does beside `p-[…]`.
+whose Mesh Type is Full Rect, as `SliceType.Tiled`'s own documentation states. Both kinds take variants and
+the `!` modifier like the other utilities (`hover:slice-[4]`, `md:slice-tiled`, `!slice-[8]`), and a later
+edge class overrides the same edge of an earlier `slice-[N]` and gives it back when it is removed, as
+`pt-[…]` does beside `p-[…]`.
 
 On a field control the family goes to the input box with the other background utilities, `bg-[addr:…]`
-included ([styling-variants.md](styling-variants.md)), so `V.TextField(className: "bg-[addr:panel] slice-[12]")`
-slices the box's image. No field factory takes `styles:`, so a field control a factory builds carries no `StyleOverrides`.
+included ([styling-variants.md](styling-variants.md)), so
+`V.TextField(className: "bg-[addr:panel] slice-[12]")` slices the box's image. No field factory takes
+`styles:`, so a field control a factory builds carries no `StyleOverrides`.
 
 `fill` is accepted before or after the values (`slice-[12_fill]`) and changes nothing, because UI Toolkit
 paints a sliced background's centre either way (`NineSlicePlaybackTests` pins it). So a slice **without**

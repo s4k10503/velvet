@@ -774,11 +774,16 @@ namespace Velvet
             {
                 style.backgroundRepeat = binding.RepeatUnderPan;
             }
-            if (binding.PanVertical && style.backgroundPositionY.Equals(binding.PanPosition))
+            var panned = binding.PanVertical ? style.backgroundPositionY : style.backgroundPositionX;
+            if (!panned.Equals(binding.PanPosition))
+            {
+                return;
+            }
+            if (binding.PanVertical)
             {
                 style.backgroundPositionY = binding.PositionUnderPan;
             }
-            else if (!binding.PanVertical && style.backgroundPositionX.Equals(binding.PanPosition))
+            else
             {
                 style.backgroundPositionX = binding.PositionUnderPan;
             }
