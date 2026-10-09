@@ -68,7 +68,8 @@ namespace Velvet
                 return false;
             }
 
-            if (StyleLogicalUtilities.TryParse(className, out result))
+            if (StyleBorderSideColor.TryParse(className, out result)
+                || StyleLogicalUtilities.TryParse(className, out result))
             {
                 return true;
             }
@@ -280,8 +281,10 @@ namespace Velvet
             {
                 return true;
             }
-            // Logical-direction utilities (ms-4, start-1/2, rounded-ss-lg) have no USS class at all.
-            if (IsFractionToken(cls) || StyleLogicalUtilities.TryParse(cls, out _))
+            // Logical-direction utilities (ms-4, start-1/2, rounded-ss-lg) and per-side border colors
+            // (border-b-red-500) have no USS class at all.
+            if (IsFractionToken(cls) || StyleLogicalUtilities.TryParse(cls, out _)
+                || StyleBorderSideColor.TryParse(cls, out _))
             {
                 return true;
             }
@@ -732,6 +735,22 @@ namespace Velvet
                 (s, v) => s.borderTopColor = v, (s, v) => s.borderRightColor = v,
                 (s, v) => s.borderBottomColor = v, (s, v) => s.borderLeftColor = v,
             },
+            [ArbitraryProperty.BorderTopColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderTopColor = v },
+            [ArbitraryProperty.BorderRightColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderRightColor = v },
+            [ArbitraryProperty.BorderBottomColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderBottomColor = v },
+            [ArbitraryProperty.BorderLeftColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderLeftColor = v },
+            [ArbitraryProperty.BorderXColor] = new Action<IStyle, StyleColor>[]
+            {
+                (s, v) => s.borderLeftColor = v, (s, v) => s.borderRightColor = v,
+            },
+            [ArbitraryProperty.BorderYColor] = new Action<IStyle, StyleColor>[]
+            {
+                (s, v) => s.borderTopColor = v, (s, v) => s.borderBottomColor = v,
+            },
+            [ArbitraryProperty.BorderInlineStartColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderLeftColor = v },
+            [ArbitraryProperty.BorderInlineEndColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderRightColor = v },
+            [ArbitraryProperty.BorderBlockStartColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderTopColor = v },
+            [ArbitraryProperty.BorderBlockEndColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderBottomColor = v },
         };
 
         // Float-valued counterpart to PropertySetters. Border widths are
@@ -1413,7 +1432,8 @@ namespace Velvet
                 var arrival = map.ArrivalOf(writer, priority);
                 // MUTANT_SURVIVES(equivalent, boundary): live arrivals are positive and unique, including after compaction; distinct writers cannot tie each other or the initial MinValue sentinel.
                 var isNewerArrival = arrival > latest;
-                if (priority > best || priority == best && isNewerArrival)
+                var byCascade = found ? StyleBorderSideColor.CompareCascade(writer, winner.Property) : 0;
+                if (priority > best || priority == best && (byCascade > 0 || byCascade == 0 && isNewerArrival))
                 {
                     winner = style;
                     rank = priority;
@@ -1605,7 +1625,12 @@ namespace Velvet
             writers.Sort((a, z) =>
             {
                 var byKey = a.Key.CompareTo(z.Key);
-                return byKey != 0 ? byKey : map.ArrivalOf(a.Style.Property, a.Key)
+                if (byKey != 0)
+                {
+                    return byKey;
+                }
+                var byCascade = StyleBorderSideColor.CompareCascade(a.Style.Property, z.Style.Property);
+                return byCascade != 0 ? byCascade : map.ArrivalOf(a.Style.Property, a.Key)
                     .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
             });
             var slots = 0;
@@ -2188,7 +2213,8 @@ namespace Velvet
             ["rounded-bl-"] = ArbitraryProperty.BorderBottomLeftRadius,
             ["rounded-br-"] = ArbitraryProperty.BorderBottomRightRadius,
 
-            // A color value for `border-` is claimed earlier, in TryParseBracketValue; here it is the width form.
+            // A color value is claimed earlier, for `border-` in TryParseBracketValue and for a side in
+            // StyleBorderSideColor; here it is the width form.
             ["border-"] = ArbitraryProperty.BorderWidth,
             ["border-t-"] = ArbitraryProperty.BorderTopWidth,
             ["border-r-"] = ArbitraryProperty.BorderRightWidth,

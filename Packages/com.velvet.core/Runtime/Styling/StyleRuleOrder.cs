@@ -13,8 +13,8 @@ namespace Velvet
     internal static class StyleRuleOrder
     {
         // Tailwind v4's property-order.ts (tailwindcss@fa81d697), kept to the properties a UI Toolkit longhand
-        // maps to, the shorthand and logical properties s_shorthandIndexes and StyleLogicalUtilities place tokens
-        // by, plus line-height (see s_lineHeightIndex), in that file's order. Tailwind leaves a property it does
+        // maps to, the shorthand and logical properties s_shorthandIndexes, StyleLogicalUtilities and
+        // StyleBorderSideColor place tokens by, plus line-height (see s_lineHeightIndex), in that file's order. Tailwind leaves a property it does
         // not list out of the sort, and so does PropertySortOf.
         private static readonly string[] s_tailwindPropertyOrder =
         {
@@ -30,7 +30,9 @@ namespace Velvet
             "border-bottom-right-radius", "border-bottom-left-radius", "border-width", "border-inline-width",
             "border-block-width", "border-inline-start-width",
             "border-inline-end-width", "border-block-start-width", "border-block-end-width", "border-top-width",
-            "border-right-width", "border-bottom-width", "border-left-width", "border-top-color",
+            "border-right-width", "border-bottom-width", "border-left-width", "border-color", "border-inline-color",
+            "border-block-color", "border-inline-start-color", "border-inline-end-color", "border-block-start-color",
+            "border-block-end-color", "border-top-color",
             "border-right-color", "border-bottom-color", "border-left-color", "background-color", "background-image", "background-size",
             "background-position", "background-repeat", "padding", "padding-inline", "padding-block", "padding-inline-start", "padding-inline-end",
             "padding-block-start", "padding-block-end", "padding-top", "padding-right", "padding-bottom",
@@ -61,6 +63,7 @@ namespace Velvet
                 (new[] { StyleLonghand.BorderTopWidth, StyleLonghand.BorderRightWidth, StyleLonghand.BorderBottomWidth, StyleLonghand.BorderLeftWidth }, "border-width"),
                 (new[] { StyleLonghand.BorderLeftWidth, StyleLonghand.BorderRightWidth }, "border-inline-width"),
                 (new[] { StyleLonghand.BorderTopWidth, StyleLonghand.BorderBottomWidth }, "border-block-width"),
+                (new[] { StyleLonghand.BorderTopColor, StyleLonghand.BorderRightColor, StyleLonghand.BorderBottomColor, StyleLonghand.BorderLeftColor }, "border-color"),
             };
             var indexes = new (StyleLonghandSet, int)[sets.Length];
             for (var i = 0; i < sets.Length; i++)
@@ -308,6 +311,8 @@ namespace Velvet
         private static string SelectorOf(string token, string? payload)
             => token.Substring(0, Math.Max(0, token.Length - (payload?.Length ?? 0) - 1));
 
+        internal static int TailwindIndexOf(string property) => Array.IndexOf(s_tailwindPropertyOrder, property);
+
         private static int? ShorthandIndexOf(StyleLonghandSet set)
         {
             foreach (var (shorthandSet, index) in s_shorthandIndexes)
@@ -362,10 +367,16 @@ namespace Velvet
                     order.Add(s_tailwindIndex[i]);
                 }
             }
-            if (inline && StyleLogicalUtilities.SortPropertiesOf(core) is { } logical)
+            // Tailwind places a per-side color or a logical token by the property it declares, not by the
+            // physical edges the longhands above name.
+            var side = inline ? StyleBorderSideColor.SortPropertyOf(core) : null;
+            if (side != null)
             {
-                // Tailwind places the token by the logical property it declares, not by the physical edges
-                // the longhands above name.
+                order.Clear();
+                order.Add(Array.IndexOf(s_tailwindPropertyOrder, side));
+            }
+            else if (inline && StyleLogicalUtilities.SortPropertiesOf(core) is { } logical)
+            {
                 order.Clear();
                 foreach (var name in logical)
                 {

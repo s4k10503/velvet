@@ -658,7 +658,7 @@ It excludes hand-written UXML/USS from its design and expresses all styles with 
 | cva's slot support | `StyleSlotRecipe` | Variant management for multiple slots |
 | `theme.extend` in `tailwind.config.ts` | `:root` variables in `_tokens.uss` | Design token extension |
 | Tailwind JIT's `w-[120px]` | Same syntax + `StyleArbitraryValueResolver` | Arbitrary values can be used as-is |
-| Fractions (`w-1/2`, `left-1/2`, `-translate-x-1/2`) | Same syntax | Resolved as an inline percent. Sizing (`w-`, `h-`, `size-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `basis-`), position (`top-`, `right-`, `bottom-`, `left-`, `inset-`, `inset-x-`, `inset-y-`) and per-axis translate (`translate-x-`, `translate-y-`) take any `a/b` of whole numbers with a non-zero denominator, as Tailwind does (`left-3/2` is 150%). Position and translate also take the negated form (`-left-1/2`); position also takes `full` / `-full` (`left-full` is 100%, `-left-full` is -100%) and `auto` (`top-auto`, written inline, so it overrides a `top-4` the stylesheet supplies and leaves the element where one with no offset sits; it is not a `V.Motion` length channel). `auto` resets the offset to the engine's unset value, UI Toolkit's initial value for these properties; where the engine places an element whose offsets are all unset is its own layout's rule, and is not claimed to match CSS's static position. Not supported: the logical `inset-s-`, `inset-e-`, `inset-bs-`, `inset-be-` and `1/0` |
+| Fractions (`w-1/2`, `left-1/2`, `-translate-x-1/2`) | Same syntax | Resolved as an inline percent. Sizing (`w-`, `h-`, `size-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `basis-`), position (`top-`, `right-`, `bottom-`, `left-`, `inset-`, `inset-x-`, `inset-y-`) and per-axis translate (`translate-x-`, `translate-y-`) take any `a/b` of whole numbers with a non-zero denominator, as Tailwind does (`left-3/2` is 150%). Position and translate also take the negated form (`-left-1/2`); position also takes `full` / `-full` (`left-full` is 100%, `-left-full` is -100%) and `auto` (`top-auto`, written inline, so it overrides a `top-4` the stylesheet supplies and leaves the element where one with no offset sits; it is not a `V.Motion` length channel). `auto` resets the offset to the engine's unset value, UI Toolkit's initial value for these properties; where the engine places an element whose offsets are all unset is its own layout's rule, and is not claimed to match CSS's static position. The logical `inset-s-`, `inset-e-`, `inset-bs-` and `inset-be-` take the fractions, `full` and `auto` an inset takes ([§4-1a](#4-1a-logical-direction-utilities)). Not supported: `1/0` |
 | `hover:` / `focus:` / `active:` / `checked:` state variants | Same prefixes | Driven by the element's own pointer / focus state (the payload is an ordinary utility) |
 | `dark:` theme variant | Same prefix | Driven by `VelvetTheme.IsDark` |
 | `sm:` / `md:` / `lg:` / `xl:` / `2xl:` responsive variants | Same prefixes | Min-width breakpoints; evaluated against the panel root by default (or a `@container` scope) |
@@ -697,8 +697,37 @@ stylesheet that redefines `--space-4` moves `ml-4` and leaves `ms-4` where it wa
   utilities on one edge still tie as [styling-variants.md](styling-variants.md) describes, and an inline-resolved
   one outranks a stylesheet class: `ml-8 ms-4` gives the edge to `ms-4`, where Tailwind gives it to `ml-8`.
 - **Not resolved.** `scroll-ms-*` and the other `scroll-m*` / `scroll-p*` utilities, because UI Toolkit has no
-  scroll-margin or scroll-padding and the physical `scroll-ml-*` is not resolved either; and
-  `border-s-` followed by a color, as the physical per-side border colors are not.
+  scroll-margin or scroll-padding and the physical `scroll-ml-*` is not resolved either. `border-s-` followed by
+  a color is a per-side border color, in [§4-1b](#4-1b-per-side-border-colors).
+
+### 4-1b. Per-side border colors
+
+| Tailwind | Colors |
+|----------|--------|
+| `border-t-*` `border-r-*` `border-b-*` `border-l-*` | the top, right, bottom and left side |
+| `border-x-*` `border-y-*` | the left and right sides; the top and bottom sides |
+| `border-s-*` `border-e-*` `border-bs-*` `border-be-*` | the left, right, top and bottom side, read as [§4-1a](#4-1a-logical-direction-utilities) reads them |
+
+Each takes a palette name (`border-b-red-500`, `border-x-white`, `border-y-transparent`), a bracketed color
+(`border-t-[#1e293b]`, `border-s-[rgb(255,0,0)]`), and either of them with an opacity modifier
+(`border-b-red-500/40`, `border-e-[#ffffff]/[0.4]`). A bracketed value that is not a color stays the side's
+width, so `border-t-[3px]` is unchanged. Variants and the `!` modifier apply.
+
+- **Ranking.** A side's color wins on that side over a `border-{color}` class of the same variant rank,
+  whichever is written first, as Tailwind's property order has it: `border-2 border-slate-300 border-b-red-500` and
+  `border-b-red-500 border-slate-300` both leave the bottom red and the other sides slate. Two rules of one
+  variant rank order by the property Tailwind sorts each by — `border-color`, then the axis, then the logical
+  side, then the physical side — so `hover:border-l-[#00f] hover:border-s-red-500` leaves the left side `#00f`.
+  A higher rank outranks a lower one as [styling-variants.md](styling-variants.md) describes:
+  `border-b-red-500 hover:border-blue-500` is blue all round while hovered, and `!border-b-red-500` keeps the
+  bottom red under it.
+  Two of these at the base rank order the same way, whichever is written first: `border-b-red-500 border-[#00f]`
+  leaves the bottom red, and `border-s-red-500 border-l-[#00f]` the left `#00f`.
+- **Where it differs.** A palette name is read from a C# copy of the bundled palette rather than from the
+  `--color-*` token, so a custom stylesheet that redefines `--color-red-500` moves `border-red-500` and leaves
+  `border-b-red-500` where it was. A per-side color is not itself one of the `V.Motion` color channels
+  [motion.md](motion.md) lists. `current`, `inherit` and the semantic tokens are not resolved yet, for the
+  sides or for the shorthand.
 
 ### 4-2. Styling Conventions (Important)
 

@@ -204,6 +204,18 @@ namespace Velvet
         TextColor,
         BackgroundColor,
         BorderColor, // all four sides
+        BorderTopColor,
+        BorderRightColor,
+        BorderBottomColor,
+        BorderLeftColor,
+        BorderXColor, // left + right
+        BorderYColor, // top + bottom
+        // The logical sides write the physical one they read as (StyleBorderSideColor), and are members of their
+        // own so a physical and a logical color on one side are two layers Tailwind's property order can rank.
+        BorderInlineStartColor, // left
+        BorderInlineEndColor,   // right
+        BorderBlockStartColor,  // top
+        BorderBlockEndColor,    // bottom
         #endregion
 
         #region Transform (independent UITK properties; not StyleLength)

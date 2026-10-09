@@ -30,7 +30,7 @@ namespace Velvet.Tests
         // does not hold out. A literal rather than the complement of the family, so a family that swallowed
         // a mapped member cannot shrink both sides of the comparison together. Updated deliberately when a
         // MAPPED property is added; a filter member added to the resolver's set leaves it where it is.
-        private const int MappedPropertyCount = 60;
+        private const int MappedPropertyCount = 70;
 
         private readonly List<UnityEngine.Object> _spawned = new();
 
@@ -117,8 +117,9 @@ namespace Velvet.Tests
             Assert.That(string.Join("; ", problems), Is.Empty);
         }
 
-        // GREEN_ON_BASE(characterization): the vocabulary already reaches every inline slot one-to-one; the
-        // case keeps a later gap or a mis-aimed accessor from reading as agreement.
+        // GREEN_ON_BASE(characterization): the vocabulary reaches every inline slot one-to-one on the base too.
+        // The case reads no ArbitraryProperty member, so the fixture's member count moving leaves it as it was;
+        // it keeps a later gap or a mis-aimed accessor from reading as agreement.
         [Test]
         public void Given_EveryInlineStyleSlot_When_ReachedThroughTheLonghandVocabulary_Then_ExactlyOneLonghandReachesEach()
         {
