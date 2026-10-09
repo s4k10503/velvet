@@ -599,11 +599,12 @@ firing a `Call` step 0's callback again) without implicitly resuming a paused se
 `controls` carry part of Framer Motion's sequence playback controls: `play`, `pause`, `speed`, `cancel` and
 a read-only `time`. Framer's `stop`, `complete`, `duration` and `then` (its `finished` promise) are not
 offered. They drive the sequence's own timeline -- its step cursor and its clock -- and the `Spring` and
-`Bezier` plays its steps' labels start, as Framer Motion's controls reach every animation of a sequence. A play is the sequence's when it starts on a Motion
-handed `state.CurrentTransition`, or on a descendant taking its label from that Motion (see "Label
-inheritance" above), whichever transition the swap itself plays -- a descendant's mount enter, and a
-presence child's enter, included when it mounts part-way through. `state.CurrentTransition` is a copy of
-the step's transition for that reason: equal to it in every setting, but not the same instance.
+`Bezier` plays its steps' labels start, as Framer Motion's controls reach every animation of a sequence. A
+play is the sequence's when it starts on a Motion handed `state.CurrentTransition`, or on a descendant
+taking its label from that Motion (see "Label inheritance" above), whichever transition the swap itself
+plays -- a descendant's mount enter, and a presence child's enter, included when it mounts part-way through.
+`state.CurrentTransition` is a copy of the step's transition for that reason: equal to it in every setting,
+but not the same instance.
 
 - `controls.Pause()` freezes the cursor and holds those plays where they are, their delays included;
   `controls.Play()` resumes both. A play a step starts while the sequence is paused, such as step 0's under
