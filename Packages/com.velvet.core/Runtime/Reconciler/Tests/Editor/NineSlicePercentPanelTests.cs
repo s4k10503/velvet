@@ -8,9 +8,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// A percentage slice inset against an image Velvet does not write — here one a <c>refCallback</c> sets,
-    /// which reaches the element the way a stylesheet's does, without passing through Velvet — and against the
-    /// image that shows once an override goes away.
+    /// A percentage slice inset against an image Velvet does not write — here one written straight into the
+    /// element's inline style, which reaches it the way a stylesheet's does, without passing through Velvet — and
+    /// against the image that shows once an override goes away. Every event is the panel's own.
     /// </summary>
     [TestFixture]
     internal sealed class NineSlicePercentPanelTests : PanelTestBase
@@ -48,12 +48,11 @@ namespace Velvet.Tests
 
         private VisualElement Card => _window.rootVisualElement.Q<VisualElement>("card");
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Given_AnImageTheRefCallbackSets_When_TheElementsGeometryOrStyleResolves_Then_ThePercentFollowsIt(
-            bool geometry)
+        [Test]
+        public void Given_AnImageTheRefCallbackSets_When_TheElementIsFirstLaidOut_Then_ThePercentFollowsIt()
         {
-            // Arrange — read before the event, so a slice resolved against the image at once cannot pass.
+            // Arrange — no stylesheet, so the first layout's geometry change is the only event that arrives;
+            // read before it, so a slice resolved against the image at once cannot pass.
             var tall = _tall;
             s_ref = element =>
             {
@@ -64,16 +63,26 @@ namespace Velvet.Tests
             var before = Insets(Card);
 
             // Act
-            if (geometry)
-            {
-                using var evt = GeometryChangedEvent.GetPooled(Rect.zero, new Rect(0f, 0f, 100f, 40f));
-                Card.SimulateEvent(evt);
-            }
-            else
-            {
-                using var evt = CustomStyleResolvedEvent.GetPooled();
-                Card.SimulateEvent(evt);
-            }
+            ForcePanelUpdate(Card.panel);
+
+            // Assert
+            Assert.That((before, Insets(Card)), Is.EqualTo(("0,0,0,0", "20,10,20,10")));
+        }
+
+        [Test]
+        public void Given_AnImageWrittenAfterLayout_When_TheElementIsRestyled_Then_ThePercentFollowsIt()
+        {
+            // Arrange — the bundled stylesheet is attached and the box is laid out before the image is written,
+            // so the restyle a class change causes is the event, with no geometry change beside it.
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderCard));
+            ForcePanelUpdate(Card.panel);
+            Card.style.backgroundImage = new StyleBackground(_tall);
+            var before = Insets(Card);
+
+            // Act
+            Card.AddToClassList("restyled");
+            ForcePanelUpdate(Card.panel);
 
             // Assert
             Assert.That((before, Insets(Card)), Is.EqualTo(("0,0,0,0", "20,10,20,10")));
@@ -82,18 +91,16 @@ namespace Velvet.Tests
         [Test]
         public void Given_APercentSliceOverAnImageOverride_When_TheOverrideIsRemoved_Then_ItResolvesAgainstWhatShowsNow()
         {
-            // Arrange — a style pass while the override shows leaves the resolved style holding its image.
+            // Arrange — a style pass while the override shows leaves the computed style holding its image.
             var tall = _tall;
             s_stylesFor = step => step == 0 ? new StyleOverrides { BackgroundImage = new StyleBackground(tall) } : null;
             _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderCard));
             ForcePanelUpdate(Card.panel);
             var before = Insets(Card);
 
-            // Act
+            // Act — no style pass and no scheduler tick follow the patch.
             s_setStep.Invoke(1);
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
-            ForcePanelUpdate(Card.panel);
-            EditorPanelTestHelpers.DriveSchedulerOnce(Card.panel);
 
             // Assert — no image shows now, so every percentage is of nothing.
             Assert.That((before, Insets(Card)), Is.EqualTo(("20,10,20,10", "0,0,0,0")));

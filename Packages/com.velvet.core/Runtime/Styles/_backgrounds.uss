@@ -28,3 +28,7 @@
    (slice-[12], slice-scale-[2]); Documentation~/styling-backgrounds.md owns the family. */
 .slice-sliced { -unity-slice-type: sliced; }
 .slice-tiled { -unity-slice-type: tiled; }
+
+/* Gives an element declaring a percentage slice inset the custom property that makes UI Toolkit send it
+   CustomStyleResolvedEvent; see StyleArbitraryValueResolver.WatchShownImage. */
+.velvet-slice-percent { --velvet-slice-percent: 1; }

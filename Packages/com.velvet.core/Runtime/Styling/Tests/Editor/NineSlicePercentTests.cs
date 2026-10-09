@@ -104,6 +104,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APercentSliceOverAVectorImage_When_Mounted_Then_EachEdgeIsThatShareOfItsSize()
+        {
+            // Arrange — a filled 40×80 rectangle, whose saved size is what the percentage is of; the expected
+            // insets are read off that size, which is required to be non-zero so a percentage of nothing cannot
+            // pass.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var image = ScriptableObject.CreateInstance<VectorImage>();
+            try
+            {
+                using (var painter = new Painter2D())
+                {
+                    painter.BeginPath();
+                    painter.MoveTo(Vector2.zero);
+                    painter.LineTo(new Vector2(40f, 0f));
+                    painter.LineTo(new Vector2(40f, 80f));
+                    painter.LineTo(new Vector2(0f, 80f));
+                    painter.ClosePath();
+                    painter.Fill();
+                    painter.SaveToVectorImage(image);
+                }
+                var vertical = Mathf.RoundToInt(image.height / 4f);
+                var horizontal = Mathf.RoundToInt(image.width / 4f);
+
+                // Act
+                reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[]
+                {
+                    V.Div(className: "slice-[25%]",
+                        styles: new StyleOverrides { BackgroundImage = new StyleBackground(image) }),
+                });
+
+                // Assert
+                Assert.That((vertical > 0 && horizontal > 0, Insets(root.ElementAt(0))),
+                    Is.EqualTo((true, $"{vertical},{horizontal},{vertical},{horizontal}")));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(image);
+            }
+        }
+
+        [Test]
         public void Given_APercentSliceOverNoImage_When_Mounted_Then_EveryEdgeIsZero()
         {
             // Arrange

@@ -1631,13 +1631,8 @@ namespace Velvet
                 : sources.Utility ?? new StyleBackground(StyleKeyword.Null);
             SceneViewElement.WriteBackground(element, winner);
             sources.Written = winner;
-            // With no inline image the stylesheet's shows, and the resolved style reads the old one until the
-            // panel next resolves styles, so the percentages wait for that.
-            if (winner.keyword == StyleKeyword.Null && map.ImageWatch != null)
-            {
-                element.schedule.Execute(() => RecheckShownImage(element));
-                return;
-            }
+            // NineSlicePercentPanelTests pins that the resolved style lets go of a withdrawn inline image at once,
+            // so the percentages are resolved now rather than after the next style pass.
             ReresolvePercentSlices(element, map);
         }
 
@@ -1654,9 +1649,12 @@ namespace Velvet
         private static readonly EventCallback<CustomStyleResolvedEvent> s_recheckOnStyle =
             evt => RecheckShownImage((VisualElement)evt.currentTarget);
 
+        internal const string ShownImageMarkerClass = "velvet-slice-percent";
+
         // An image Velvet does not write — a stylesheet's, or one a refCallback set — reaches the resolved style
         // or the inline slot without passing through ResolveBackgroundImage, so a percentage inset is checked
-        // again whenever the element's geometry or custom style resolves.
+        // again whenever the element is restyled or its geometry changes. The restyle arrives only through the
+        // marker class's custom property in _backgrounds.uss, the way LeadingLengthProbe's does.
         private static void WatchShownImage(VisualElement element)
         {
             var map = s_layers.GetValue(element, static _ => new LayerMap());
@@ -1666,6 +1664,7 @@ namespace Velvet
                 return;
             }
             map.ImageWatch = new ShownImageWatch { Seen = ShownImage(element) };
+            element.AddToClassList(ShownImageMarkerClass);
             element.RegisterCallback(s_recheckOnGeometry);
             element.RegisterCallback(s_recheckOnStyle);
         }
@@ -1705,8 +1704,8 @@ namespace Velvet
             ArbitraryProperty.SliceRight, ArbitraryProperty.SliceBottom, ArbitraryProperty.SliceLeft,
         };
 
-        // The background image's size in pixels, which a percentage inset is of: the inline image, else the
-        // resolved one. Zero when there is none, or when it is a vector image, which has no pixel size.
+        // The background image's size, which a percentage inset is of: the inline image, else the resolved one.
+        // Zero when there is none.
         private static Vector2 BackgroundImagePixels(VisualElement element)
         {
             var image = ShownImage(element);
@@ -1717,6 +1716,10 @@ namespace Velvet
             if (image.sprite != null)
             {
                 return image.sprite.rect.size;
+            }
+            if (image.vectorImage != null)
+            {
+                return new Vector2(image.vectorImage.width, image.vectorImage.height);
             }
             return image.renderTexture != null
                 ? new Vector2(image.renderTexture.width, image.renderTexture.height)
@@ -1953,25 +1956,26 @@ namespace Velvet
             LayerMap map)
         {
             var reached = StyleArbitraryLonghands.Of(property);
-            var remaining = new HashSet<ArbitraryProperty>(map.Keys);
-            remaining.Remove(property);
+            // Allocated at the first writer found: a property nothing else shares a longhand with — a
+            // StyleOverrides colour beside unrelated layers — allocates nothing.
             HashSet<ArbitraryProperty>? taken = null;
             // MUTANT_SURVIVES(equivalent, boundary): each productive pass consumes a candidate;
             // an extra pass cannot add a writer after the map-sized closure has finished.
             for (var pass = 0; pass < map.Count; pass++)
             {
-                var previousCount = remaining.Count;
+                var grew = false;
                 foreach (var pair in map)
                 {
                     var longhands = StyleArbitraryLonghands.Of(pair.Key);
-                    if (!longhands.Overlaps(reached) || !remaining.Remove(pair.Key))
+                    if (pair.Key == property || !longhands.Overlaps(reached)
+                        || !(taken ??= new HashSet<ArbitraryProperty>()).Add(pair.Key))
                     {
                         continue;
                     }
-                    (taken ??= new HashSet<ArbitraryProperty>()).Add(pair.Key);
                     reached = reached.Union(longhands);
+                    grew = true;
                 }
-                if (remaining.Count == previousCount)
+                if (!grew)
                 {
                     break;
                 }

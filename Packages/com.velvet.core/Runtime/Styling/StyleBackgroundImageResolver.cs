@@ -78,7 +78,11 @@ namespace Velvet
         internal static void Apply(VisualElement element, Texture2D? texture, bool important)
             => StyleArbitraryValueResolver.WriteBackgroundImageUtility(element, new StyleBackground(texture), important);
 
-        /// <summary>Reverts the inline background-image to the USS default (same gate as Apply).</summary>
+        /// <summary>
+        /// Withdraws the utilities' background image — the one <see cref="Apply(VisualElement, Texture2D?)"/>
+        /// sets, which a gradient utility's bake shares (same gate as Apply): a
+        /// <see cref="StyleOverrides.BackgroundImage"/> shows if the element declares one, else the stylesheet's.
+        /// </summary>
         public static void Clear(VisualElement element)
             => StyleArbitraryValueResolver.ClearBackgroundImageUtility(element);
     }

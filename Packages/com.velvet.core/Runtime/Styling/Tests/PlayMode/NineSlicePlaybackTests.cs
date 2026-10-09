@@ -10,7 +10,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins, by real GPU pixel readback, that <c>slice-[N]</c> nine-slices the background image: a corner keeps
-    /// its size when the element grows, where a stretched image's corner grows with it.
+    /// its size when the element grows, where a stretched image's corner grows with it; and that
+    /// <c>slice-scale-[N]</c> paints that corner N times as large.
     /// </summary>
     /// <remarks>
     /// The image is 30×30 texels with a red 10×10 square in each corner and blue elsewhere, point-filtered so a
@@ -141,6 +142,35 @@ namespace Velvet.Tests
             Assert.That((geometry, slicedSmall.Across > 0, acrossKept, downKept),
                 Is.EqualTo((true, true, true, true)),
                 $"sliced {slicedSmall} -> {slicedLarge}, unsliced {plainSmallRun} -> {plainLargeRun}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ASliceScale_When_TheBoxIsPainted_Then_ItsCornerIsThatMultipleOfTheInset()
+        {
+            // Arrange
+            var image = CornerImage();
+            _host = new RenderTexturePanelHost("NineSliceScale", Width, Height);
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            const string geometry = "w-[150px] h-[120px]";
+
+            // Act
+            _mounted = V.Mount(_host.Root, V.Div(name: "frame", className: "w-[400px] h-[240px]", children: new[]
+            {
+                Box("plain", "left-[10px] top-[10px] " + geometry, "slice-[10]", image),
+                Box("scaled", "left-[200px] top-[10px] " + geometry, "slice-[10] slice-scale-[2]", image),
+            }));
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+            var pixels = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(0, 0, Width, Height));
+            Rect Bound(string name) => _host.Root.Q<VisualElement>(name).worldBound;
+            var plain = CornerRun(pixels, Bound("plain"));
+            var scaled = CornerRun(pixels, Bound("scaled"));
+
+            // Assert — both boxes at their declared size; the unscaled corner is the inset's 10 pixels, which a
+            // stretch (50 across) would not give, and the scaled one is twice it, where 15 separates 10 from 20.
+            var laidOut = Bound("plain").size == new Vector2(150f, 120f) && Bound("scaled").size == new Vector2(150f, 120f);
+            Assert.That((laidOut, plain.Across > 0 && 2 * plain.Across < 30, 2 * scaled.Across > 3 * plain.Across,
+                    2 * scaled.Down > 3 * plain.Down), Is.EqualTo((true, true, true, true)),
+                $"unscaled {plain}, scaled {scaled}");
         }
 
         // Pins the engine fact styling-backgrounds.md's note on `fill` rests on.

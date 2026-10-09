@@ -31,7 +31,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): compares the type's members with what mounting writes for them.
-        // Deleting the `UnitySliceLeft` branch of `StyleOverridesLayer.Diff` reddens it.
+        // Its perturbation: deleting the `UnitySliceLeft` branch of `StyleOverridesLayer.Diff`.
         [Test]
         public void Given_EveryStyleOverridesMemberSet_When_Mounted_Then_EachLandsInItsInlineSlot()
         {
@@ -50,7 +50,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): compares the type's members with what a patch adding them writes.
-        // Deleting the `UnitySliceType` branch of `StyleOverridesLayer.Diff` reddens it.
+        // Its perturbation: deleting the `UnitySliceType` branch of `StyleOverridesLayer.Diff`.
         [Test]
         public void Given_EveryStyleOverridesMemberAddedByAPatch_When_Reconciled_Then_EachLandsInItsInlineSlot()
         {
@@ -71,7 +71,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): compares the type's members with what a patch removing them clears.
-        // Deleting the `StyleArbitraryValueResolver.Clear` call from `StyleOverridesLayer.Write` reddens it.
+        // Its perturbation: deleting the `StyleArbitraryValueResolver.Clear` call from `StyleOverridesLayer.Write`.
         [Test]
         public void Given_EveryStyleOverridesMemberRemovedByAPatch_When_Reconciled_Then_EachInlineSlotIsUnset()
         {
@@ -94,8 +94,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): compares the type's members with what mounting writes for a keyword value.
-        // Writing `new StyleInt((int)value)` in place of `new StyleInt(style.Keyword)` in
-        // `StyleArbitraryValueResolver.SliceInset` reddens it.
+        // Its perturbation: writing `new StyleInt((int)value)` in place of `new StyleInt(style.Keyword)` in
+        // `StyleArbitraryValueResolver.SliceInset`.
         [Test]
         public void Given_EveryStyleOverridesMemberSetToAKeyword_When_Mounted_Then_EachSlotCarriesTheKeyword()
         {

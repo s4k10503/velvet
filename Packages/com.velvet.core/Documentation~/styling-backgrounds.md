@@ -39,12 +39,14 @@ An inset is a whole, non-negative number, written bare as `border-image-slice` w
 in pixels (`slice-[12px]`), or a non-negative percentage of the background image's size on that axis
 (`slice-[25%]`): its height for the top and bottom, its width for the left and right, rounded to a whole
 pixel; a percentage past 100 is read as 100, as `border-image-slice` reads an inset larger than the image.
-A percentage is resolved against the image the element shows — a `StyleOverrides.BackgroundImage`, a
-`bg-[addr:…]` image, a baked gradient, one a `refCallback` set, or else the one its stylesheet resolves —
-and again whenever Velvet writes a new one or the element's geometry or custom style resolves with another
-image showing. Once an image override goes away, the percentages wait for the panel's next style pass and
-resolve against what shows then. A vector image has no pixel size, and a percentage of it is 0. A fraction of
-a pixel, another unit or a negative number is declined.
+A vector image's size is its saved width and height. A percentage is resolved against the image the element
+shows — a `StyleOverrides.BackgroundImage`, a `bg-[addr:…]` image, a baked gradient, one a `refCallback`
+set, or else the one its stylesheet resolves — when the inset is applied, and again when Velvet writes or
+withdraws an image, when the element's geometry changes, and, with the bundled stylesheet attached, when
+the element is restyled. Those are the only times it is read again, so an image written inline from outside
+Velvet is followed at the next of them; without the stylesheet, so is a stylesheet image a class change
+swaps, since the restyle is not one of them there. A fraction of a pixel, another unit or a negative number
+is declined.
 `slice-[…]` also takes `border-image-slice`'s two, three and four values, with `_` for the space between
 them: `slice-[12_8]` sets the top and bottom to 12 and the right and left to 8, `slice-[12_8_4]` the top,
 the right and left, and the bottom, and `slice-[12_8_4_2]` the top, right, bottom and left. Pixels and
@@ -53,7 +55,8 @@ percentages mix (`slice-[25%_8]`). The edge classes take one value.
 A declined class writes nothing.
 
 The insets and the scale are resolved in C# and written inline, so they work without the stylesheet;
-`slice-sliced` and `slice-tiled` are stylesheet rules. Both kinds take variants and the `!` modifier like the
+`slice-sliced` and `slice-tiled` are stylesheet rules. UI Toolkit tiles only an image imported as a Sprite
+whose Mesh Type is Full Rect, as `SliceType.Tiled`'s own documentation states. Both kinds take variants and the `!` modifier like the
 other utilities (`hover:slice-[4]`, `md:slice-tiled`, `!slice-[8]`), and a later edge class overrides the
 same edge of an earlier `slice-[N]` and gives it back when it is removed, as `pt-[…]` does beside `p-[…]`.
 
