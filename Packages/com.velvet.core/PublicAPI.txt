@@ -370,6 +370,7 @@
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T, T): T
 [Velvet] method Velvet.Hooks.UseEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseErrorBoundaryReset(System.Object?[]?): System.Action
 [Velvet] method Velvet.Hooks.UseFallback(System.Func`2[System.Exception, Velvet.VNode]): System.Void
 [Velvet] method Velvet.Hooks.UseFallback(System.Func`3[System.Exception, Velvet.ErrorInfo, Velvet.VNode]): System.Void
 [Velvet] method Velvet.Hooks.UseFocusManager(): Velvet.FocusManager

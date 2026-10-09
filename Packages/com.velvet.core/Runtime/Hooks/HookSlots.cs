@@ -30,6 +30,20 @@ namespace Velvet
         }
     }
 
+    internal sealed class HookErrorBoundaryResetSlot
+    {
+        public HookErrorBoundaryResetSlot(Action reset)
+        {
+            Reset = reset;
+        }
+
+        public object?[]? Keys { get; set; }
+
+        public object? HandledRequest { get; set; }
+
+        public Action Reset { get; }
+    }
+
     internal sealed class HookCallbackSlot
     {
         public Delegate? Callback { get; set; }

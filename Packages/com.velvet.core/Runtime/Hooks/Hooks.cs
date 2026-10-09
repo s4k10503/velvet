@@ -2016,7 +2016,8 @@ namespace Velvet
         /// <para/>
         /// Once the component has caught, each later render of it invokes the factory again with the error
         /// it caught and renders what it returns in place of its children, until the component remounts —
-        /// give it a new <c>key</c> to render its children again. On those renders a factory that returns
+        /// give it a new <c>key</c> to render its children again — or is reset through
+        /// <see cref="UseErrorBoundaryReset"/>. On those renders a factory that returns
         /// <c>null</c> or throws passes the error to the boundary above, as it does at the catch.
         /// </remarks>
         /// <param name="factory">Factory that receives the caught exception and returns the fallback VNode. Must not be null.</param>
@@ -2042,6 +2043,60 @@ namespace Velvet
             var fiber = Resolve(nameof(UseFallback));
             fiber.FallbackFactory = factory;
         }
+
+        /// <summary>
+        /// Lets an error boundary that has caught render its children again: react-error-boundary's
+        /// <c>resetErrorBoundary</c> as the returned action, and its <c>resetKeys</c> as
+        /// <paramref name="resetKeys"/>. Call it inside Render() of an `[Component(IsErrorBoundary = true)]`
+        /// component.
+        /// </summary>
+        /// <remarks>
+        /// Invoking the returned action while the boundary shows its fallback schedules a render of the boundary
+        /// in which it renders its children instead. Invoking it while the boundary shows its children does
+        /// nothing. The action is reference-stable across renders.
+        /// <para/>
+        /// A render of the boundary that passes <paramref name="resetKeys"/> differing from those its previous
+        /// render passed — in length, or in any element compared with <c>Object.is</c> semantics — renders its
+        /// children where it would otherwise render its fallback. Keys that change in the render in which a child
+        /// throws do not undo that catch, since they are what that render passed.
+        /// <para/>
+        /// The children the fallback replaced were unmounted, so they mount again: their state starts over, and
+        /// a <see cref="Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/> among them starts its resource
+        /// again. This is how a failed <c>Use</c> load is retried.
+        /// </remarks>
+        /// <param name="resetKeys">Values whose change resets the boundary. Null is the same as none.</param>
+        /// <returns>The reset action.</returns>
+        /// <exception cref="InvalidOperationException">The calling component is not an error boundary.</exception>
+        public static Action UseErrorBoundaryReset(params object?[]? resetKeys)
+        {
+            var fiber = Resolve(nameof(UseErrorBoundaryReset));
+            if (!fiber.IsErrorBoundary)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(UseErrorBoundaryReset)} must be called from an [Component(IsErrorBoundary = true)] component.");
+            }
+            var keys = resetKeys ?? Array.Empty<object?>();
+            var (request, setRequest) = UseState((object?)null);
+            var slotRef = UseMutableRef((HookErrorBoundaryResetSlot?)null);
+            var slot = slotRef.Current ??= CreateErrorBoundaryResetSlot(fiber, setRequest);
+
+            // Taken in the boundary's own render, before FiberErrorBoundary.OutputOf reads what it caught, as
+            // RouteErrorBoundary takes its location reset.
+            var reset = request != slot.HandledRequest || !ObjectIs.AreEqualDeps(slot.Keys, keys);
+            slot.HandledRequest = request;
+            slot.Keys = keys;
+            if (reset) fiber.CaughtError = null;
+            return slot.Reset;
+        }
+
+        // Kept out of UseErrorBoundaryReset so that its renders after the first allocate no closure.
+        private static HookErrorBoundaryResetSlot CreateErrorBoundaryResetSlot(
+            ComponentFiber fiber, StateUpdater<object?> setRequest)
+            => new(() =>
+            {
+                if (fiber.IsDisposed || fiber.CaughtError == null) return;
+                setRequest.Invoke(new object());
+            });
 
         #endregion
 
