@@ -37,6 +37,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AShorthandWithEventsAndAnEmptyChildrenArray_When_Built_Then_ItHoldsTheChildrenTheShorthandWithoutEventsHolds()
+        {
+            // Arrange — a new array, so only the empty-children reading can make the two nodes share it.
+            var events = new FiberEventBinding[] { new PointerDownBinding { Handler = _ => { } } };
+
+            // Act
+            var node = V.Div("p-4", events, new VNode[0]);
+
+            // Assert
+            Assert.That(ReferenceEquals(node.Children, V.Div("p-4").Children), Is.True);
+        }
+
+        [Test]
         public void Given_ASceneViewDeclaringAPointerDownBinding_When_APointerDownReachesIt_Then_TheHandlerRuns()
         {
             // Arrange — the shape that used to need a V.Motion wrapper animating nothing.

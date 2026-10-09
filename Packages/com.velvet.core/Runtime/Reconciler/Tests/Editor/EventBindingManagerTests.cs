@@ -310,6 +310,43 @@ namespace Velvet.Tests
             Assert.That(_manager.HasSameBindings(button, newEvents), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base reads a binding without a handler as a mismatch.
+        // The repeat-aware comparison must keep that; answering true there is what reddens this.
+        [Test]
+        public void Given_ABoundDelegate_When_ComparedWithABindingWithoutAHandler_Then_NotSameBindings()
+        {
+            // Arrange
+            var button = new Button();
+            _manager.Bind(button, new ClickedBinding { Handler = () => { } });
+
+            // Act
+            var same = _manager.HasSameBindings(button, new FiberEventBinding[] { new ClickedBinding() });
+
+            // Assert
+            Assert.That(same, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads more delegates than are bound as a mismatch.
+        // The repeat-aware comparison must keep that; reading past the bound list is what reddens this.
+        [Test]
+        public void Given_OneBoundDelegate_When_ComparedWithItAndAnother_Then_NotSameBindings()
+        {
+            // Arrange
+            var button = new Button();
+            Action first = () => { };
+            _manager.Bind(button, new ClickedBinding { Handler = first });
+
+            // Act
+            var same = _manager.HasSameBindings(button, new FiberEventBinding[]
+            {
+                new ClickedBinding { Handler = first },
+                new ClickedBinding { Handler = () => { } },
+            });
+
+            // Assert
+            Assert.That(same, Is.False);
+        }
+
         [Test]
         public void Given_TwoBoundDelegates_When_ComparedWithThemAndTheFirstAgain_Then_HasSameBindings()
         {
