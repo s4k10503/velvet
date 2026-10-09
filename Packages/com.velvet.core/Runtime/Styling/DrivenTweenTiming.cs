@@ -38,18 +38,23 @@ namespace Velvet
             DurationSec = durationSec;
             Easing = easing;
             var earliest = delaySec;
-            if (overrides != null)
+            // The top-level entry's delay stands in for an end where there is no entry, which EndSec outlasts.
+            var slowestEnd = delaySec;
+            foreach (var entry in overrides ?? Array.Empty<StylePropertyTransition>())
             {
-                foreach (var entry in overrides)
-                {
-                    earliest = Math.Min(earliest, Entry(entry).delaySec);
-                }
+                var (entryDelaySec, entryDurationSec) = Entry(entry);
+                earliest = Math.Min(earliest, entryDelaySec);
+                slowestEnd = Math.Max(slowestEnd, entryDelaySec + entryDurationSec);
             }
             StartDelaySec = earliest;
             DelaySec = delaySec - earliest;
+            SlowestEntryEndSec = slowestEnd - earliest;
         }
 
         public float StartDelaySec { get; }
+        // Where the slowest PropertyOverrides entry ends, whether or not a channel plays its property, as the native
+        // transition's completion waits for every entry it wrote (StyleAnimationScheduler.SlowestPropertyTimeoutMs).
+        public float SlowestEntryEndSec { get; }
         public float DelaySec { get; }
         public float DurationSec { get; }
         public EasingMode Easing { get; }

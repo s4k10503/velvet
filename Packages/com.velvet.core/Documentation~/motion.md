@@ -561,12 +561,15 @@ frame, so a clock that holds still holds it where it is, and one that moves a fr
 frame's worth:
 
 - **Every `V.Motion` play** — a mount enter, an exit, a label change — whatever its `Type`, including the
-  wait for its `DelaySec` and stagger slot. A `Tween` is played by the per-frame driver a `Bezier` plays on,
-  rather than by UI Toolkit's transition, which would run on the panel's time: on the tween's own duration,
-  delay and `PropertyOverrides`, eased by the curve UI Toolkit eases that transition by for each `Easing`.
-  So it animates the channels *Driven channels* lists, a `StyleTransition` preset's opacity, translate and
-  scale among them; a property outside them lands with the swap, and the play still completes once its
-  duration has run on the clock.
+  wait for its `DelaySec` and stagger slot; a step that passes the delay carries what it passed it by into
+  the play. A `Tween` is played by the per-frame driver a `Bezier` plays on, rather than by UI Toolkit's
+  transition, which would run on the panel's time: on the tween's own duration, delay and
+  `PropertyOverrides`, eased by the curve UI Toolkit eases that transition by for each `Easing`. So it
+  animates the channels *Driven channels* lists, a `StyleTransition` preset's opacity, translate and scale
+  among them. A property outside them lands with the swap: while the play runs, the element's own
+  transitions are suspended whatever they name. The play completes once its slowest `PropertyOverrides`
+  entry has run, whether or not a channel plays that entry's property, and an exit cancelled part-way
+  reverses over the shortened timing UI Toolkit gives a reversed transition.
 - **A `layoutId` move**, and the opacity a crossfade hands back as it ends.
 - **A `filter-*` transition**, including one UI Toolkit would animate itself on the default clock
   ([styling-filters.md](styling-filters.md#transitions)).

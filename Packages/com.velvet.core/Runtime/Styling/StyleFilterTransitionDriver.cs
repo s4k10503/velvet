@@ -23,6 +23,10 @@ namespace Velvet
         public float DurationSec;
         public float DelaySec;
         public EasingMode Easing;
+        // The value a change has to return to for it to reverse this tween, and the tween's reversing shortening
+        // factor (TryStartOrRedirect).
+        public List<FilterFunction>? AdjustedStart;
+        public float ReversingFactor = 1f;
         // Precomputed aligned interpolation slots. Parameters are snapshotted at start (decoupled from the
         // live inline list the tick overwrites every frame).
         public StyleFilterTransitionDriver.Channel[] Channels = Array.Empty<StyleFilterTransitionDriver.Channel>();
@@ -147,11 +151,25 @@ namespace Velvet
                 return false;
             }
 
+            // A change back to where the running tween started reverses it as the engine reverses a transition: CSS
+            // Transitions' reversing shortening, whose factor is the running tween's eased output weighted by that
+            // tween's own factor, and which shortens the duration and a negative delay.
+            var factor = 1f;
+            var adjustedStart = element.style.filter.value;
+            if (bound?.Scheduled != null && SameList(bound.AdjustedStart, to))
+            {
+                var eased = UssEasing.Evaluate(bound.Easing, Progress(bound));
+                factor = Mathf.Clamp01(Mathf.Abs(eased * bound.ReversingFactor + 1f - bound.ReversingFactor));
+                adjustedStart = bound.Target;
+            }
             var b = bound ?? Bind(element);
             b.Channels = channels;
             b.Target = to;
-            b.DurationSec = Mathf.Max(0, durationMs) / 1000f;
-            b.DelaySec = delayMs / 1000f;
+            b.AdjustedStart = adjustedStart;
+            b.ReversingFactor = factor;
+            b.DurationSec = Mathf.Max(0, durationMs) / 1000f * factor;
+            // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
+            b.DelaySec = delayMs < 0 ? delayMs / 1000f * factor : delayMs / 1000f;
             b.Easing = easing;
             b.Clock = clock;
             b.StartTime = clock.NowSec;

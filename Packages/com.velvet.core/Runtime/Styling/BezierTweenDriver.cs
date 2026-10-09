@@ -16,7 +16,8 @@ namespace Velvet
         public float From;
         public float To;
         public readonly float RestingTarget;
-        // Set on a driven Tween's channel whose property a PropertyOverrides entry names (DrivenTweenTiming).
+        // Set on a driven Tween's channel whose property a PropertyOverrides entry names (DrivenTweenTiming), and on
+        // each of its channels once it reverses (BezierTweenDriver.Retarget).
         public TweenChannelTiming? Timing;
 
         public BezierTweenChannel(float from, float to)
@@ -99,7 +100,9 @@ namespace Velvet
         public EasingMode? Easing;
         // How long after the tick starts a channel with no Timing of its own begins its curve.
         public float DelaySec;
-        // The latest end among the channels' own Timing.
+        // Added to a channel's delay to give the transition-delay it stands for, which a reversal shortens.
+        public float DelayBaseSec;
+        // The latest end among the transition's entries other than the top-level one, driven by a channel or not.
         public float SlowestTimingEndSec;
 
         // The elapsed time the play completes at, once its slowest channel has landed.
@@ -159,19 +162,21 @@ namespace Velvet
             state.Easing = timing.Easing;
             state.DurationSec = timing.DurationSec;
             state.DelaySec = timing.DelaySec;
+            state.DelayBaseSec = timing.StartDelaySec;
+            state.SlowestTimingEndSec = timing.SlowestEntryEndSec;
             var translate = timing.For(StyleLonghandSet.Of(StyleLonghand.Translate));
-            AssignTiming(state, state.Opacity, timing.For(StyleLonghandSet.Of(StyleLonghand.Opacity)));
-            AssignTiming(state, state.TranslateX, translate);
-            AssignTiming(state, state.TranslateY, translate);
-            AssignTiming(state, state.Scale, timing.For(StyleLonghandSet.Of(StyleLonghand.Scale)));
-            AssignTiming(state, state.Rotate, timing.For(StyleLonghandSet.Of(StyleLonghand.Rotate)));
+            AssignTiming(state.Opacity, timing.For(StyleLonghandSet.Of(StyleLonghand.Opacity)));
+            AssignTiming(state.TranslateX, translate);
+            AssignTiming(state.TranslateY, translate);
+            AssignTiming(state.Scale, timing.For(StyleLonghandSet.Of(StyleLonghand.Scale)));
+            AssignTiming(state.Rotate, timing.For(StyleLonghandSet.Of(StyleLonghand.Rotate)));
             foreach (var c in state.Colors ?? s_noColors)
             {
-                AssignTiming(state, c.Progress, timing.For(StyleArbitraryLonghands.Of(c.Property)));
+                AssignTiming(c.Progress, timing.For(StyleArbitraryLonghands.Of(c.Property)));
             }
             foreach (var l in state.Lengths ?? s_noLengths)
             {
-                AssignTiming(state, l.Value, timing.For(StyleArbitraryLonghands.Of(l.Property)));
+                AssignTiming(l.Value, timing.For(StyleArbitraryLonghands.Of(l.Property)));
             }
             return state;
         }
@@ -179,14 +184,12 @@ namespace Velvet
         private static readonly List<BezierColorChannel> s_noColors = new();
         private static readonly List<BezierLengthChannel> s_noLengths = new();
 
-        private static void AssignTiming(BezierTweenState state, BezierTweenChannel? channel, TweenChannelTiming? timing)
+        private static void AssignTiming(BezierTweenChannel? channel, TweenChannelTiming? timing)
         {
-            if (channel == null || !timing.HasValue)
+            if (channel != null)
             {
-                return;
+                channel.Timing = timing;
             }
-            channel.Timing = timing;
-            state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, timing.Value.DelaySec + timing.Value.DurationSec);
         }
 
         private static BezierTweenState Build(MotionSpringClassParser.SpringPlan plan)
@@ -230,6 +233,13 @@ namespace Velvet
         {
             MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
                 MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
+            if (state.Easing.HasValue)
+            {
+                // A driven Tween's swap also changes what its channels do not write, which a transition the element's
+                // own classes declare would animate on the panel's time; the suspension lands it with the swap.
+                MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, MotionTransitionSlots.All,
+                    StyleLonghandSet.Empty);
+            }
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             ApplyEased(element, state);
         }
@@ -332,54 +342,84 @@ namespace Velvet
         /// <summary>
         /// Freezes each active channel's CURRENT sampled value as its new <see cref="BezierTweenChannel.From"/>,
         /// points its <see cref="BezierTweenChannel.To"/> back at <see cref="BezierTweenChannel.RestingTarget"/>,
-        /// and resets <see cref="BezierTweenState.ElapsedSec"/> to zero — a fresh full-duration reversal from
-        /// wherever the forward tween currently is (exactly how a re-triggered CSS transition behaves, not a
-        /// time-reversed replay). The exit-cancel hand-off.
+        /// and resets <see cref="BezierTweenState.ElapsedSec"/> to zero — a fresh reversal from wherever the forward
+        /// tween currently is, not a time-reversed replay: over the full duration for a bezier, and for a driven Tween
+        /// over the shortened timing its native transition's reversal takes. The exit-cancel hand-off.
         /// </summary>
         public static void Retarget(BezierTweenState state)
         {
-            RetargetChannel(state, state.Opacity);
-            RetargetChannel(state, state.TranslateX);
-            RetargetChannel(state, state.TranslateY);
-            RetargetChannel(state, state.Scale);
-            RetargetChannel(state, state.Rotate);
+            var shared = SharedEased(state);
+            RetargetChannel(state, state.Opacity, shared);
+            RetargetChannel(state, state.TranslateX, shared);
+            RetargetChannel(state, state.TranslateY, shared);
+            RetargetChannel(state, state.Scale, shared);
+            RetargetChannel(state, state.Rotate, shared);
             if (state.Colors != null)
             {
-                foreach (var c in state.Colors) RetargetChannel(state, c.Progress);
+                foreach (var c in state.Colors) RetargetChannel(state, c.Progress, shared);
             }
             if (state.Lengths != null)
             {
-                foreach (var l in state.Lengths) RetargetChannel(state, l.Value);
+                foreach (var l in state.Lengths) RetargetChannel(state, l.Value, shared);
+            }
+            if (state.Easing.HasValue)
+            {
+                // Every channel carries its own shortened timing from here on.
+                state.DurationSec = state.DelaySec = state.DelayBaseSec = 0f;
             }
             state.ElapsedSec = 0f;
         }
 
-        private static void RetargetChannel(BezierTweenState state, BezierTweenChannel? channel)
+        private static void RetargetChannel(BezierTweenState state, BezierTweenChannel? channel, float shared)
         {
             if (channel == null)
             {
                 return;
             }
-            channel.From = Value(state, channel);
+            var eased = Eased(state, channel, shared);
+            if (state.Easing is { } easing)
+            {
+                Shorten(state, channel, eased, easing);
+            }
+            channel.From = Mathf.LerpUnclamped(channel.From, channel.To, eased);
             channel.To = channel.RestingTarget;
+        }
+
+        // A driven Tween's reversal takes the transition its native counterpart would start: CSS Transitions' reversing
+        // shortening, which shortens the duration and a negative delay by the old transition's eased output. That is
+        // the whole factor here, since only a forward play reverses (StyleAnimationScheduler.CancelBezierPending).
+        // FilterTransitionPanelTests' reversal cases pin UI Toolkit shortening a reversed linear transition so.
+        private static void Shorten(BezierTweenState state, BezierTweenChannel channel, float eased, EasingMode easing)
+        {
+            var factor = Mathf.Clamp01(Mathf.Abs(eased));
+            var own = channel.Timing ?? new TweenChannelTiming(state.DelaySec, state.DurationSec, easing);
+            var delaySec = own.DelaySec + state.DelayBaseSec;
+            // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
+            var shortened = new TweenChannelTiming(delaySec < 0f ? delaySec * factor : delaySec,
+                own.DurationSec * factor, own.Easing);
+            channel.Timing = shortened;
+            state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, shortened.DelaySec + shortened.DurationSec);
         }
 
         // The channel's value at the current elapsed time. LerpUnclamped (not Lerp): an overshoot/anticipate curve
         // samples eased values outside [0,1], and the channel value must actually pass its target for that to be
         // visible — clamping would silently flatten it.
-        private static float Value(BezierTweenState state, BezierTweenChannel channel)
-            => Mathf.LerpUnclamped(channel.From, channel.To, Eased(state, channel));
+        private static float Value(BezierTweenState state, BezierTweenChannel channel, float shared)
+            => Mathf.LerpUnclamped(channel.From, channel.To, Eased(state, channel, shared));
 
-        // The eased output for the channel at the current elapsed time: its own Timing where it has one, else the
-        // state's delay, duration and curve. A zero duration reads as complete once its delay has passed rather than
-        // dividing by zero — the scheduler builds one only from a PropertyOverrides entry of no positive duration,
+        // The eased output for the channel at the current elapsed time: its own Timing where it has one, else
+        // shared, the state's curve at the state's delay and duration (SharedEased), evaluated once a frame for
+        // every channel taking it.
+        private static float Eased(BezierTweenState state, BezierTweenChannel channel, float shared)
+            => channel.Timing is { } own
+                ? UssEasing.Evaluate(own.Easing, Progress(state.ElapsedSec - own.DelaySec, own.DurationSec))
+                : shared;
+
+        // A zero duration reads as complete once its delay has passed rather than dividing by zero — the scheduler
+        // builds one only from a PropertyOverrides entry of no positive duration or a reversal at its very start,
         // but a direct driver caller might.
-        private static float Eased(BezierTweenState state, BezierTweenChannel channel)
+        private static float SharedEased(BezierTweenState state)
         {
-            if (channel.Timing is { } own)
-            {
-                return UssEasing.Evaluate(own.Easing, Progress(state.ElapsedSec - own.DelaySec, own.DurationSec));
-            }
             var progress = Progress(state.ElapsedSec - state.DelaySec, state.DurationSec);
             return state.Easing is { } mode
                 ? UssEasing.Evaluate(mode, progress)
@@ -392,31 +432,32 @@ namespace Velvet
         private static void ApplyEased(VisualElement element, BezierTweenState state)
         {
             SyncLayoutOwner(element, state);
+            var shared = SharedEased(state);
             if (state.Opacity != null)
             {
-                MotionOpacity.Write(element, Value(state, state.Opacity));
+                MotionOpacity.Write(element, Value(state, state.Opacity, shared));
             }
             if (state.TranslateX != null || state.TranslateY != null)
             {
-                var x = state.TranslateX != null ? Value(state, state.TranslateX) : 0f;
-                var y = state.TranslateY != null ? Value(state, state.TranslateY) : 0f;
+                var x = state.TranslateX != null ? Value(state, state.TranslateX, shared) : 0f;
+                var y = state.TranslateY != null ? Value(state, state.TranslateY, shared) : 0f;
                 element.style.translate = new Translate(new Length(x), new Length(y));
             }
             if (state.Scale != null)
             {
-                var v = Value(state, state.Scale);
+                var v = Value(state, state.Scale, shared);
                 element.style.scale = new Scale(new Vector2(v, v));
             }
             if (state.Rotate != null)
             {
-                var v = Value(state, state.Rotate);
+                var v = Value(state, state.Rotate, shared);
                 element.style.rotate = new Rotate(Angle.Degrees(v));
             }
             if (state.Colors != null)
             {
                 foreach (var c in state.Colors)
                 {
-                    var progress = Value(state, c.Progress);
+                    var progress = Value(state, c.Progress, shared);
                     StyleArbitraryValueResolver.ApplyInline(element,
                         new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, progress)));
                 }
@@ -425,7 +466,7 @@ namespace Velvet
             {
                 foreach (var l in state.Lengths)
                 {
-                    var v = MotionPropertyInterpolation.LerpLength(l.Property, l.Value.From, l.Value.To, Eased(state, l.Value));
+                    var v = MotionPropertyInterpolation.LerpLength(l.Property, l.Value.From, l.Value.To, Eased(state, l.Value, shared));
                     StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }

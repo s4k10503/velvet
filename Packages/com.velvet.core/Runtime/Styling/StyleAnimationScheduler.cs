@@ -56,6 +56,27 @@ namespace Velvet
 
         // Set once by the mount before its first render, which is what lets a mount enter take it.
         internal MotionClock Clock { get; set; } = MotionClock.Realtime;
+        private bool _retainsClock;
+
+        // A mount's own clock. One other than Realtime keeps MotionClock's element record live until ReleaseClock.
+        internal void MountOn(MotionClock clock)
+        {
+            Clock = clock;
+            if (!clock.StepsOnPanelTime)
+            {
+                MotionClock.RetainMount();
+                _retainsClock = true;
+            }
+        }
+
+        internal void ReleaseClock()
+        {
+            if (_retainsClock)
+            {
+                _retainsClock = false;
+                MotionClock.ReleaseMount();
+            }
+        }
 
         // The next-frame class swap (EnterFromClass -> EnterToClass) is what fires the CSS transition.
         // additionalDelaySec: extra delay (seconds) added on top of the StyleTransitionConfig delay, used by
@@ -716,13 +737,13 @@ namespace Velvet
                 {
                     return;
                 }
-                pending.ScheduledItem = ScheduleDelayedStart(host, totalDelaySec, () =>
+                pending.ScheduledItem = ScheduleDelayedStart(host, totalDelaySec, pastSec =>
                 {
                     // Re-check on fire, not just on schedule: the host outlives a transient detach, so this
                     // closure can still run after a later cancel/supersede replaced this exact pending.
                     if (map.TryGetValue(element, out var stillCurrent) && ReferenceEquals(stillCurrent, pending))
                     {
-                        StartSpringTick(element, pending);
+                        StartSpringTick(element, pending, pastSec);
                     }
                 });
             }
@@ -840,11 +861,11 @@ namespace Velvet
                 {
                     return;
                 }
-                pending.ScheduledItem = ScheduleDelayedStart(host, startDelaySec, () =>
+                pending.ScheduledItem = ScheduleDelayedStart(host, startDelaySec, pastSec =>
                 {
                     if (map.TryGetValue(element, out var stillCurrent) && ReferenceEquals(stillCurrent, pending))
                     {
-                        StartBezierTick(element, pending);
+                        StartBezierTick(element, pending, pastSec);
                     }
                 });
             }
@@ -919,13 +940,15 @@ namespace Velvet
         private const float PreRollStepSec = StyleAnimateDriver.TickMs / 1000f;
 
         // A clock other than the panel's counts the delay itself, polled at the tick cadence, so a clock that
-        // holds still holds the delay too rather than letting it run out on the panel's time.
-        private IVisualElementScheduledItem ScheduleDelayedStart(VisualElement host, float delaySec, Action start)
+        // holds still holds the delay too rather than letting it run out on the panel's time. start takes how far
+        // past the delay the play already is when it fires, which its first step carries.
+        private IVisualElementScheduledItem ScheduleDelayedStart(VisualElement host, float delaySec, Action<float> start)
         {
             var clock = Clock;
             if (clock.StepsOnPanelTime)
             {
-                var scheduled = host.schedule.Execute(start);
+                var scheduled = host.schedule.Execute((TimerState ts) =>
+                    start(Math.Max(0f, (ts.now - ts.start) / 1000f - delaySec)));
                 scheduled.ExecuteLater((long)(delaySec * 1000));
                 return scheduled;
             }
@@ -933,12 +956,13 @@ namespace Velvet
             IVisualElementScheduledItem? polling = null;
             polling = host.schedule.Execute(() =>
             {
-                if (clock.NowSec - startSec < delaySec)
+                var pastSec = clock.NowSec - startSec - delaySec;
+                if (pastSec < 0d)
                 {
                     return;
                 }
                 polling!.Pause();
-                start();
+                start((float)pastSec);
             }).Every(StyleAnimateDriver.TickMs);
             return polling;
         }

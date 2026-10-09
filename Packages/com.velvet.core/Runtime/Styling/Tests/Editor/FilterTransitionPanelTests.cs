@@ -1930,6 +1930,103 @@ namespace Velvet.Tests
             Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
         }
 
+        // UI Toolkit shortens a reversed transition (the reversal cases above), and so does Velvet's tween.
+        [Test]
+        public void Given_AFilterTweenOnAHeldClockHalfWay_When_TheChangeIsUndone_Then_TheReversalTakesHalfTheDuration()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = BlurTweenOnHeldClock(clock, "filter");
+            PanelFrames(element.panel, 1);
+            clock.Now += 0.5;
+            PanelFrames(element.panel, 1);
+
+            // Act — the blur is taken away again, and an eighth of a second passes.
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+            clock.Now += 0.125;
+            PanelFrames(element.panel, 1);
+
+            // Assert — a quarter of the way from 6 back to 0 over half a second; over the full second, 5.25.
+            Assert.That(InlineBlur(element), Is.EqualTo(4.5f).Within(1e-3f));
+        }
+
+        // A write no transition runs ends the running tween, so the next change starts afresh even where it returns to
+        // where that tween started.
+        [Test]
+        public void Given_AFilterTweenEndedByAnInstantWrite_When_ItsStartValueIsWrittenAgain_Then_TheChangeTakesTheFullDuration()
+        {
+            // Arrange — a blur of 4 written while nothing transitions filter, a tween to 12 half run, then a 2 written
+            // while nothing transitions filter.
+            var clock = new HeldMotionClock();
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card", className: "transition-filter"),
+                new MountOptions { MotionClock = clock });
+            var element = _window.rootVisualElement.Q<VisualElement>("card");
+            var none = new[] { "opacity" };
+            var filter = new[] { "filter" };
+            var second = new[] { new TimeValue(1f) };
+            var noDelay = new[] { new TimeValue(0f) };
+            SetInlineTransition(element, none, second, noDelay);
+            ApplyBlur(element, 4f);
+            SetInlineTransition(element, filter, second, noDelay);
+            ApplyBlur(element, 12f);
+            clock.Now += 0.5;
+            PanelFrames(element.panel, 1);
+            SetInlineTransition(element, none, second, noDelay);
+            ApplyBlur(element, 2f);
+            SetInlineTransition(element, filter, second, noDelay);
+
+            // Act
+            ApplyBlur(element, 4f);
+            clock.Now += 0.25;
+            PanelFrames(element.panel, 1);
+
+            // Assert — a quarter of the way from 2 to 4; as a reversal of the ended tween, half way.
+            Assert.That(InlineBlur(element), Is.EqualTo(2.5f).Within(1e-3f));
+        }
+
+        // The first reversal shortens to half a second; its own half way back, the second weighs that half by the
+        // first's factor: 0.5 × 0.5 + 1 − 0.5, three quarters of a second.
+        [Test]
+        public void Given_AReversedFilterTweenHalfWayBack_When_TheChangeIsMadeAgain_Then_ItReversesOverTheChainedFactor()
+        {
+            // Arrange — 0 to 12 half run, cleared, and half way back to 0, at 3.
+            var clock = new HeldMotionClock();
+            var element = BlurTweenOnHeldClock(clock, "filter");
+            PanelFrames(element.panel, 1);
+            clock.Now += 0.5;
+            PanelFrames(element.panel, 1);
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+            clock.Now += 0.25;
+            PanelFrames(element.panel, 1);
+
+            // Act — the blur comes back, and a quarter of three quarters of a second passes.
+            ApplyBlur(element, 12f);
+            clock.Now += 0.1875;
+            PanelFrames(element.panel, 1);
+
+            // Assert — a quarter of the way from 3 to 12; over the first reversal's half second, 6.375.
+            Assert.That(InlineBlur(element), Is.EqualTo(5.25f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AFilterTweenHalfWay_When_ADifferentValueIsWritten_Then_TheChangeTakesTheFullDuration()
+        {
+            // Arrange — 0 to 12 half run, at 6.
+            var clock = new HeldMotionClock();
+            var element = BlurTweenOnHeldClock(clock, "filter");
+            PanelFrames(element.panel, 1);
+            clock.Now += 0.5;
+            PanelFrames(element.panel, 1);
+
+            // Act — 4, which is not where the tween started, and a quarter of a second.
+            ApplyBlur(element, 4f);
+            clock.Now += 0.25;
+            PanelFrames(element.panel, 1);
+
+            // Assert — a quarter of the way from 6 to 4; shortened as a reversal, half way.
+            Assert.That(InlineBlur(element), Is.EqualTo(5.5f).Within(1e-3f));
+        }
+
         #endregion
     }
 }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -37,6 +38,17 @@ namespace Velvet.Tests
             _scheduler?.CancelAll();
             _scheduler = null;
             base.TearDown();
+            ResetMountCount();
+        }
+
+        // A case that retains a mount itself, or fails before its mount is disposed, would otherwise leave every later
+        // fixture paying for and reading the element record.
+        private static void ResetMountCount()
+        {
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            typeof(MotionClock).GetField("s_liveMounts", flags)!.SetValue(null, 0);
+            var recorded = typeof(MotionClock).GetField("s_recorded", flags)!.GetValue(null);
+            recorded.GetType().GetMethod("Clear")!.Invoke(recorded, null);
         }
 
         private VisualElement OnPanel(string name)
@@ -636,9 +648,10 @@ namespace Velvet.Tests
             Assert.That(RestFractions(element), Is.EqualTo(new float[7].Select(_ => (float)(2 * FrameSec)).ToArray()).Within(1e-4f));
         }
 
-        // A quarter of the way out, the cancel turns every channel back toward the rest pose from where it stands.
+        // A quarter of the way out on a linear curve, the cancel turns every channel back toward the rest pose from where
+        // it stands, over a quarter of the duration: the reversal its native transition would take.
         [Test]
-        public void Given_ATweenExitOfEveryChannelKindOnAHeldClock_When_ItIsCancelledAQuarterOfTheWayOut_Then_EachTurnsBackFromWhereItStood()
+        public void Given_ATweenExitOfEveryChannelKindOnAHeldClock_When_ItIsCancelledAQuarterOfTheWayOut_Then_EachTurnsBackOverTheShortenedDuration()
         {
             // Arrange
             var clock = new HeldMotionClock();
@@ -658,7 +671,54 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(RestFractions(element),
-                Is.EqualTo(new float[7].Select(_ => 0.75f + 0.25f * (float)FrameSec).ToArray()).Within(1e-4f));
+                Is.EqualTo(new float[7].Select(_ => 0.75f + 0.25f * (float)(FrameSec / 0.25)).ToArray()).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ATweenExitCancelledAQuarterOfTheWayOut_When_TheClockRunsPastItsShortenedReversal_Then_ItHandsItsSlotBack()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = OnPanel("leaving");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+            };
+            _scheduler.PlayExit(element, config, onComplete: null, restoreFromOnCancel: true);
+            Step(clock, 0.25);
+            _scheduler.CancelExit(element);
+
+            // Act — past the quarter second the reversal takes, short of the second the exit took.
+            Step(clock, 0.5);
+
+            // Assert — the inline opacity is released, which the reversal does as it ends.
+            Assert.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // The exit starts a quarter of the way in, and its cancel turns back at once: the reversal's delay, a quarter
+        // of a second before its start, is shortened with its duration, so it starts a sixteenth of a second in.
+        [Test]
+        public void Given_ATweenExitWithANegativeDelayOnAHeldClock_When_ItIsCancelledAtOnce_Then_TheReversalStartsOnItsShortenedDelay()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = OnPanel("leaving");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, DelaySec = -0.25f,
+                ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+            };
+            _scheduler.PlayExit(element, config, onComplete: null, restoreFromOnCancel: true);
+
+            // Act
+            _scheduler.CancelExit(element);
+            Step(clock, FrameSec);
+
+            // Assert — from 0.75 toward 1 over a quarter second, a frame and a sixteenth of a second in.
+            Assert.That(element.style.opacity.value,
+                Is.EqualTo(0.75f + 0.25f * (float)((FrameSec + 0.0625) / 0.25)).Within(1e-4f));
         }
 
         // --- completion and delays under PropertyOverrides ---
@@ -856,6 +916,7 @@ namespace Velvet.Tests
             var ancestor = new VisualElement();
             var element = new VisualElement();
             ancestor.Add(element);
+            MotionClock.RetainMount();
             MotionClock.Record(ancestor, clock);
 
             // Act
@@ -870,6 +931,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = new VisualElement();
+            MotionClock.RetainMount();
             MotionClock.Record(element, new HeldMotionClock());
 
             // Act
@@ -877,6 +939,157 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(MotionClock.Of(element), Is.SameAs(MotionClock.Realtime));
+        }
+
+        // A later mount on such a clock reads the record afresh, so one the disposed mount made would answer for it.
+        [Test]
+        public void Given_TheOnlyMountOnAHeldClock_When_ItIsDisposedAndAnotherMounts_Then_TheElementsItRecordedAnswerWithTheDefaultClock()
+        {
+            // Arrange
+            var mounted = V.Mount(Root, V.Div(name: "card"), new MountOptions { MotionClock = new HeldMotionClock() });
+            var element = Root.Q<VisualElement>("card");
+            var held = MotionClock.Of(element);
+
+            // Act
+            mounted.Dispose();
+            MotionClock.RetainMount();
+
+            // Assert
+            Assert.That(new[] { held == MotionClock.Realtime, MotionClock.Of(element) == MotionClock.Realtime },
+                Is.EqualTo(new[] { false, true }));
+        }
+
+        [Test]
+        public void Given_AMountOnAHeldClockBesideOneOnTheDefaultClock_When_TheDefaultOneIsDisposed_Then_TheHeldOnesElementsKeepTheirClock()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var plainRoot = new VisualElement();
+            Root.Add(plainRoot);
+            using var mounted = V.Mount(Root, V.Div(name: "card"), new MountOptions { MotionClock = clock });
+            var plain = V.Mount(plainRoot, V.Div(name: "plain"));
+            var element = Root.Q<VisualElement>("card");
+
+            // Act
+            plain.Dispose();
+
+            // Assert
+            Assert.That(MotionClock.Of(element), Is.SameAs(clock));
+        }
+
+        [Test]
+        public void Given_AMountsClockReleasedTwice_When_AnotherMountsRecordIsAskedFor_Then_ItStillAnswers()
+        {
+            // Arrange — another mount on a held clock recorded the element.
+            var clock = new HeldMotionClock();
+            var element = new VisualElement();
+            MotionClock.RetainMount();
+            MotionClock.Record(element, clock);
+            var scheduler = new StyleAnimationScheduler();
+            scheduler.MountOn(new HeldMotionClock());
+
+            // Act
+            scheduler.ReleaseClock();
+            scheduler.ReleaseClock();
+
+            // Assert
+            Assert.That(MotionClock.Of(element), Is.SameAs(clock));
+        }
+
+        // --- the overshoot past a delay ---
+
+        // 1/30 s steps pass the 0.05 s delay a sixtieth of a second into the second step.
+        private const double ThirtiethSec = 1.0 / 30.0;
+        private const float OvershootDelaySec = 0.05f;
+
+        [Test]
+        public void Given_ABezierPlayWithADelayTheClockStepsPast_When_ItTakesItsNextStep_Then_ItHasMovedByTheOvershootToo()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = OnPanel("overshoot");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = OvershootDelaySec,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 3; i++) Step(clock, ThirtiethSec);
+
+            // Assert — three thirtieths in, less the delay; counted from the step that passed it, a thirtieth.
+            Assert.That(element.style.opacity.value, Is.EqualTo((float)(3 * ThirtiethSec) - OvershootDelaySec).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASpringPlayWithADelayTheClockStepsPast_When_ItTakesItsNextStep_Then_ItHasMovedByTheOvershootToo()
+        {
+            // Arrange — the reference is stepped as the play pre-rolls its overshoot, a frame at a time, then a step.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("overshoot");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DelaySec = OvershootDelaySec };
+            var reference = new VisualElement();
+            var referenceState = MotionSpringDriver.Create(MotionSpringClassParser.Resolve(
+                new[] { "opacity-0" }, new[] { "opacity-100" }), config.Stiffness, config.Damping, config.Mass);
+            var frame = StyleAnimateDriver.TickMs / 1000f;
+            for (var remaining = (float)(2 * ThirtiethSec) - OvershootDelaySec; remaining > 0f; remaining -= frame)
+            {
+                MotionSpringDriver.Step(reference, referenceState, Mathf.Min(remaining, frame));
+            }
+            MotionSpringDriver.Step(reference, referenceState, (float)ThirtiethSec);
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 3; i++) Step(clock, ThirtiethSec);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(reference.style.opacity.value).Within(1e-4f));
+        }
+
+        // --- what the driven Tween does not write ---
+
+        [Test]
+        public void Given_AnElementWhoseClassesTransitionColours_When_ATweenOfItsOpacityPlaysOnAHeldClock_Then_ItsNativeTransitionsAreSuspended()
+        {
+            // Arrange
+            var element = OnPanel("coloured");
+            element.AddToClassList("transition-colors");
+            _scheduler = new StyleAnimationScheduler { Clock = new HeldMotionClock() };
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "bg-primary" }, new[] { "opacity-100", "bg-secondary" },
+                s_linearTween);
+
+            // Assert — an inline transition-property, the suspension's, which lands the colour the swap changes; with
+            // none the class's list runs it.
+            Assert.That(element.style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Undefined));
+        }
+
+        [Test]
+        public void Given_ATweenExitWithALongerOverrideOnAPropertyNoChannelPlays_When_TheClockRunsPastTheTopLevelDuration_Then_ItCompletesOnlyOnceTheOverrideHasRun()
+        {
+            // Arrange — the exit fades opacity; the override times a background colour the swap does not change.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("leaving");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var completions = 0;
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 0.3f, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+                PropertyOverrides = new[] { new StylePropertyTransition("background-color", durationSec: 1f) },
+            };
+            _scheduler.PlayExit(element, config, onComplete: () => completions++, restoreFromOnCancel: true);
+
+            // Act
+            Step(clock, 0.5);
+            var pastTopLevel = completions;
+            Step(clock, 0.5);
+
+            // Assert
+            Assert.That(new[] { pastTopLevel, completions }, Is.EqualTo(new[] { 0, 1 }));
         }
     }
 }

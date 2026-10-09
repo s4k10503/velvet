@@ -7,5 +7,13 @@
   motion moves only as far as game time does; a class deriving from `MotionClock` is a clock the application
   steps itself, such as for a frame-step capture. On any clock but `MotionClock.Realtime`, a `Tween` is
   played frame by frame on its own duration, delay, `PropertyOverrides` and easing instead of by UI
-  Toolkit's transition, which runs on the panel's time. `MotionClock.Realtime`, the default, keeps the
-  timing a tree had before.
+  Toolkit's transition, which runs on the panel's time, and reverses over the shortened timing UI Toolkit
+  gives a reversed transition. `MotionClock.Realtime`, the default, keeps native transitions and the panel's
+  time.
+
+### Fixed
+
+- A delayed `Spring` or `Bezier` play starts as far into its motion as the frame that ends its delay has
+  passed it, rather than from the start of that frame.
+- A `filter-*` change back to where a running Velvet filter tween started reverses it over the shortened
+  duration UI Toolkit gives a reversed transition, instead of the full duration.

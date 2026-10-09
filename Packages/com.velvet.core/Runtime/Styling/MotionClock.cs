@@ -67,30 +67,36 @@ namespace Velvet
         // mount: a filter-* transition starts in the arbitrary-value resolver, which a hover manipulator runs too.
         // An element no mount recorded answers with the nearest recorded ancestor, and Realtime past the root.
         private static readonly ConditionalWeakTable<VisualElement, MotionClock> s_recorded = new();
-        // Set by the first record on any other clock: until then every answer is Realtime, and a record is skipped.
-        private static bool s_anyRecorded;
+        // The mounts on another clock than Realtime still mounted. While there is none every answer is Realtime and
+        // nothing is recorded, so a tree on the default clock pays no table entry per element.
+        private static int s_liveMounts;
 
+        internal static void RetainMount() => s_liveMounts++;
+
+        internal static void ReleaseMount()
+        {
+            if (--s_liveMounts == 0)
+            {
+                s_recorded.Clear();
+            }
+        }
+
+        // Every clock while one is retained, Realtime included: a Realtime mount under an element another mount
+        // recorded answers with its own.
         internal static void Record(VisualElement element, MotionClock clock)
         {
-            if (!s_anyRecorded && clock.StepsOnPanelTime)
+            if (s_liveMounts == 0)
             {
                 return;
             }
-            s_anyRecorded = true;
             s_recorded.AddOrUpdate(element, clock);
         }
 
-        internal static void Forget(VisualElement element)
-        {
-            if (s_anyRecorded)
-            {
-                s_recorded.Remove(element);
-            }
-        }
+        internal static void Forget(VisualElement element) => s_recorded.Remove(element);
 
         internal static MotionClock Of(VisualElement element)
         {
-            if (!s_anyRecorded)
+            if (s_liveMounts == 0)
             {
                 return Realtime;
             }

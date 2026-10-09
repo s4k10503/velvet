@@ -242,7 +242,7 @@ namespace Velvet
             {
                 fiber.Reconciler.Context.BatchScheduler.SetAnchor(mountPoint);
                 if (onCaughtError != null) fiber.Reconciler.Context.OnCaughtError = onCaughtError;
-                if (motionClock != null) fiber.Reconciler.Context.StyleAnimationScheduler.Clock = motionClock;
+                if (motionClock != null) fiber.Reconciler.Context.StyleAnimationScheduler.MountOn(motionClock);
             }
 
             // On the Unmount → Mount path that reuses the same fiber, clear IsDisposed so that setter closures

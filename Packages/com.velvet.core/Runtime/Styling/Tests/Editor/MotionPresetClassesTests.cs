@@ -17,12 +17,13 @@ namespace Velvet.Tests
     {
         private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
 
-        private static string Line(string cls, float opacity, float x, float y, float scale)
-            => string.Join(" ", cls, Number(opacity), Number(x), Number(y), Number(scale));
+        private static string Line(string cls, float opacity, float x, float y, float scaleX, float scaleY)
+            => string.Join(" ", cls, Number(opacity), Number(x), Number(y), Number(scaleX), Number(scaleY));
 
         private static string Number(float value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
-        // The values a class's tokens give, each slot they leave unnamed at its identity.
+        // The values a class's tokens give, each slot they leave unnamed at its identity. A uniform scale token
+        // gives both axes.
         private static string Mirrored(string cls)
         {
             var (opacity, x, y, scale) = (1f, 0f, 0f, 1f);
@@ -37,7 +38,7 @@ namespace Velvet.Tests
                     case SpringAxis.Scale: scale = value; break;
                 }
             }
-            return Line(cls, opacity, x, y, scale);
+            return Line(cls, opacity, x, y, scale, scale);
         }
 
         [Test]
@@ -62,7 +63,8 @@ namespace Velvet.Tests
             var declared = classes.Select((cls, i) =>
             {
                 var resolved = elements[i].resolvedStyle;
-                return Line(cls, resolved.opacity, resolved.translate.x, resolved.translate.y, resolved.scale.value.x);
+                return Line(cls, resolved.opacity, resolved.translate.x, resolved.translate.y, resolved.scale.value.x,
+                    resolved.scale.value.y);
             }).ToArray();
 
             // Assert
