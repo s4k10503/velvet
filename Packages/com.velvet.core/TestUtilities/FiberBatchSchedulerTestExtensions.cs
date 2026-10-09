@@ -30,6 +30,35 @@ namespace Velvet.TestUtilities
         internal static void RunImmediateCallbackForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, RunImmediateCallbackMethodName);
 
+        /// <summary>Runs the callback the Transition tier registered for the admission its next pass runs.</summary>
+        // Bypasses: the panel scheduler that decides when it runs; the entry must already wait for that admission, which RunAdmitCallbackForTest arranges for one requested outside every pass.
+        internal static void RunDelayedCallbackForTest(this FiberBatchScheduler scheduler)
+            => RunWithAdmission(scheduler, "_admittedForNextPass", "RunDelayedCallback");
+
+        /// <summary>Runs the callback that moves entries requested outside every pass onto the next pass's admission.</summary>
+        // Bypasses: the panel scheduler that decides when it runs.
+        internal static void RunAdmitCallbackForTest(this FiberBatchScheduler scheduler)
+            => RunWithAdmission(scheduler, "_unadmitted", "RunAdmitCallback");
+
+        private static void RunWithAdmission(FiberBatchScheduler scheduler, string fieldName, string methodName)
+        {
+            var admission = typeof(FiberBatchScheduler)
+                .GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(scheduler)
+                ?? throw new InvalidOperationException($"No admission is held in {fieldName}");
+            var method = typeof(FiberBatchScheduler).GetMethod(
+                methodName, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new MissingMethodException(typeof(FiberBatchScheduler).FullName, methodName);
+            try
+            {
+                method.Invoke(scheduler, BindingFlags.DoNotWrapExceptions, null, new[] { admission }, null);
+            }
+            catch (TargetInvocationException wrapped) when (wrapped.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(wrapped.InnerException).Throw();
+            }
+        }
+
         /// <summary>Drains every Transition-tier entry, after whatever the Normal / Urgent tier still holds.</summary>
         // Bypasses: the panel callbacks and their admission: a panel callback drains only the entries waiting for its own registration; VelvetPreviewHost.Settle is the production caller that drains the whole tier this way.
         internal static void DrainDelayedForTest(this FiberBatchScheduler scheduler)

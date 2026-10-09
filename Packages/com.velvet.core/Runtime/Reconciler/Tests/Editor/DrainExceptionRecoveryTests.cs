@@ -13,7 +13,8 @@ namespace Velvet.Tests
     /// frame-boundary drain for a later update, and for an update queued before the exception left. Once a bounded
     /// run of drains in a row has thrown, what is still queued is dropped with an error instead, and nothing is
     /// reported where nothing is queued; a drain that completes starts that run again, and a dropped component's
-    /// next update commits.
+    /// next update commits. A Transition-tier callback whose immediate drain throws leaves the transitions waiting
+    /// for it with a callback registered.
     /// </summary>
     /// <remarks>
     /// The exception is thrown by an imperative-handle factory in the drain's layout commit, which nothing between
@@ -32,6 +33,8 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_setTick = default;
             s_setOther = default;
+            s_setTransitioned = default;
+            s_startTransition = default;
             s_queueOtherBeforeThrowing = false;
             s_queueSelfBeforeThrowing = false;
             s_selfQueuesLeft = int.MaxValue;
@@ -172,11 +175,34 @@ namespace Velvet.Tests
             LogAssert.NoUnexpectedReceived();
         }
 
-        private static bool DrainThrows(FiberBatchScheduler scheduler)
+        [Test]
+        public void Given_AnImmediateDrainThatThrowsInsideATransitionTiersCallback_When_ItsPassEnds_Then_TheWaitingTransitionHasADrainRegistered()
+        {
+            // Arrange — the transition waits for the callback that runs, and the immediate update that callback
+            // commits first is the one whose factory throws
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            var scheduler = mounted.GetSchedulerForTest();
+            s_startTransition.Invoke(() => s_setTransitioned.Invoke(1));
+            scheduler.DrainImmediateForTest();
+            scheduler.RunAdmitCallbackForTest();
+            s_setTick.Invoke(1);
+            var callbacksBefore = scheduler.ScheduledCallbackCount;
+
+            // Act
+            var threw = DrainThrows(scheduler.RunDelayedCallbackForTest);
+
+            // Assert
+            Assert.That((threw, scheduler.ScheduledCallbackCount - callbacksBefore), Is.EqualTo((true, 1)),
+                "A transition left waiting for a callback that has run is moved to one that will");
+        }
+
+        private static bool DrainThrows(FiberBatchScheduler scheduler) => DrainThrows(scheduler.RunImmediateCallbackForTest);
+
+        private static bool DrainThrows(Action drain)
         {
             try
             {
-                scheduler.RunImmediateCallbackForTest();
+                drain();
             }
             catch (InvalidOperationException thrown) when (thrown.Message == HandleFailure)
             {
@@ -193,6 +219,8 @@ namespace Velvet.Tests
 
         private static StateUpdater<int> s_setTick;
         private static StateUpdater<int> s_setOther;
+        private static StateUpdater<int> s_setTransitioned;
+        private static TransitionStarter s_startTransition;
         private static bool s_queueOtherBeforeThrowing;
         private static bool s_queueSelfBeforeThrowing;
         private static int s_selfQueuesLeft;
@@ -204,7 +232,18 @@ namespace Velvet.Tests
             {
                 V.Component(HandleOwnerRender, key: "owner"),
                 V.Component(OtherRender, key: "other"),
+                V.Component(TransitionRender, key: "transition"),
             });
+
+        [Component(Compiler = false)]
+        private static VNode TransitionRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_setTransitioned = setValue;
+            var (_, start) = Hooks.UseTransition();
+            s_startTransition = start;
+            return V.Label(text: "transition:" + value);
+        }
 
         private static VNode HandleOwnerRender()
         {

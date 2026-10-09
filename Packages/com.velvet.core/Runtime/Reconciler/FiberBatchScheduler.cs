@@ -395,14 +395,14 @@ namespace Velvet
                 dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Normal);
                 // The promoted marker retires with the dropped Normal it rode, or it would keep
                 // skipping the settle sweep for as long as any surviving lane stays queued.
-                // MUTANT_SURVIVES(unreachable): neither fixture that reaches a drop declares UseTransition, so no lane was ever promoted.
+                // MUTANT_SURVIVES(unreachable): no fiber a fixture drops declares UseTransition, so no lane of a dropped fiber was ever promoted.
                 dropped.HasPromotedTransition = false;
                 // MUTANT_SURVIVES(unreachable, equality): a fiber left dirty with an empty queue is re-enrolled by a Normal update; see IsDirty below.
                 if (dropped.LaneQueue.Count == 0)
                 {
-                    // MUTANT_SURVIVES(unreachable): a Normal update re-enrols a dirty fiber whose queue is empty, and only a Transition one, which neither fixture reaching a drop issues, would be stranded.
+                    // MUTANT_SURVIVES(unreachable): a Normal update re-enrols a dirty fiber whose queue is empty, and only a Transition one, which no fiber a fixture drops issues, would be stranded.
                     dropped.IsDirty = false;
-                    // MUTANT_SURVIVES(unreachable): neither fixture that reaches a drop declares UseTransition, so this call finds no slot and no enrolment to settle.
+                    // MUTANT_SURVIVES(unreachable): no fiber a fixture drops declares UseTransition, so this call finds no slot and no enrolment to settle.
                     dropped.SettleTransitionPending();
                 }
                 // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
@@ -414,12 +414,35 @@ namespace Velvet
         // VelvetPreviewHost.Settle does, to settle a story without the panel.
         internal void DrainDelayed() => DrainDelayedTier(null);
 
+        private void ReadmitEntries(DelayedAdmission spent)
+        {
+            DelayedAdmission? next = null;
+            for (var i = 0; i < _delayedOrder.Count; i++)
+            {
+                var fiber = _delayedOrder[i];
+                var entry = _delayedEntries[fiber];
+                if (entry.Admission != spent) continue;
+                next ??= PanelSchedulerCallback.InPassOf(_anchor) ? AdmissionForNextPass() : Unadmitted();
+                _delayedEntries[fiber] = new DelayedEntry(next, entry.Deferrals);
+            }
+        }
+
         private void DrainDelayedTier(DelayedAdmission? admission)
         {
             // The immediate queue is committed first rather than trusting the panel to run its callback ahead of
             // this one. A Transition lane that pass re-enrols takes a later admission (see ScheduleDelayed), so
             // only a drain of every admission picks it up below.
-            DrainImmediate();
+            try
+            {
+                DrainImmediate();
+            }
+            catch
+            {
+                // This admission's callback has run and registers nothing again, so entries still waiting for it
+                // would wait for a drain that never comes while their fibers stay dirty.
+                if (admission != null) ReadmitEntries(admission);
+                throw;
+            }
             var kept = 0;
             for (var i = 0; i < _delayedOrder.Count; i++)
             {
