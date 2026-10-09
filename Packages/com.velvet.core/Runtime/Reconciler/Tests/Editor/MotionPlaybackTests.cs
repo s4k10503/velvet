@@ -298,6 +298,7 @@ namespace Velvet.Tests
             var element = OnPanel("ringed");
             var band = RingOverlay.Attach(element, new RingSpec(width: 2f, color: UnityEngine.Color.red, offset: 0f,
                 inset: false), Array.Empty<string>()).Overlay;
+            Ticks(2);
             var config = new StyleTransitionConfig
             {
                 Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.2f,

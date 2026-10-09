@@ -326,8 +326,13 @@ namespace Velvet
             }
             plan.TranslateX = x ?? (restingTranslateX, restingTranslateX);
             plan.TranslateY = y ?? (restingTranslateY, restingTranslateY);
-            plan.LoneTranslate = x == null ? (SpringAxis.TranslateY, y!.Value.to)
-                : y == null ? (SpringAxis.TranslateX, x.Value.to) : null;
+            // Read off the swap's classes rather than off x and y, which a resting translate class also fills.
+            var swapped = new SideScan { SwappedAxes = from.SwappedAxes | to.SwappedAxes };
+            var (swapsX, swapsY) = (swapped.WasSwapped(ArbitraryProperty.TranslateX),
+                swapped.WasSwapped(ArbitraryProperty.TranslateY));
+            plan.LoneTranslate = swapsX == swapsY ? null
+                : swapsX ? (SpringAxis.TranslateX, plan.TranslateX.Value.to)
+                : (SpringAxis.TranslateY, plan.TranslateY.Value.to);
         }
 
         /// <summary>

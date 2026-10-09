@@ -935,6 +935,7 @@ namespace Velvet
             RingCoFadeCoordinator.EndRingCoFade(pending);
             MotionSpringDriver.ClearInlineOverrides(element, state);
             ReapplyMotionOwnedInlineValues(element);
+            ReassertHeld(element);
             state.OnSettled?.Invoke();
         }
 
@@ -999,6 +1000,7 @@ namespace Velvet
             RingCoFadeCoordinator.EndRingCoFade(pending);
             BezierTweenDriver.ClearInlineOverrides(element, state);
             ReapplyMotionOwnedInlineValues(element);
+            ReassertHeld(element);
             state.OnSettled?.Invoke();
         }
 
@@ -1117,7 +1119,7 @@ namespace Velvet
         // The held play gives up the channels the starting play's classes name and keeps the rest where the cancel
         // left them, as a Framer Motion value no later animation touches stays there. Translate is one style for
         // both axes, so where the play names one axis alone the pair stays held, that axis at where the play lands
-        // it, for ReapplyMotionOwnedInlineValues to write back once the play has finished.
+        // it, for ReassertHeld to write back once the play has finished.
         private void HandOver(VisualElement element, PendingAnimation held, MotionSpringClassParser.SpringPlan plan,
             MotionSpringClassParser.SpringPlan start, string[]? fromClasses, string[]? toClasses)
         {
@@ -1257,7 +1259,7 @@ namespace Velvet
         // FiberAnimateMotionApplier.RestoreSharedInlineSlot's identical problem for the animate-* motions.
         // Driver-agnostic (takes only the element, reads its own class list), so both the spring and bezier
         // settle/cancel paths share it.
-        private void ReapplyMotionOwnedInlineValues(VisualElement element)
+        private static void ReapplyMotionOwnedInlineValues(VisualElement element)
         {
             List<string>? classes = null;
             foreach (var cls in element.GetClasses())
@@ -1268,14 +1270,12 @@ namespace Velvet
             {
                 FiberNodePatcher.ReapplyArbitraryValues(element, classes.ToArray());
             }
-            // The clear before this and the classes it re-applies can both reach a channel the element's held
-            // play keeps, translate's other axis included.
-            ReassertHeld(element);
         }
 
-        // Writes the element's held play's values back over whatever wrote the same inline slots since: a
-        // clear-and-reapply here, or a hover:, focus: or other variant payload (StyleVariantPayload.Apply), so
-        // the element shows what the next play will start from, as it does while a play runs.
+        // Writes the element's held play's values back over whatever wrote the same inline slots since: another
+        // play's clear and ReapplyMotionOwnedInlineValues as it finishes or is stopped, translate's other axis
+        // included, or a hover:, focus: or other variant payload (StyleVariantPayload.Apply), so the element shows
+        // what the next play will start from, as it does while a play runs.
         internal void ReassertHeld(VisualElement element)
         {
             if (_held.TryGetValue(element, out var held))
@@ -1868,6 +1868,7 @@ namespace Velvet
                 spring.Tick = null;
                 MotionSpringDriver.ClearInlineOverrides(element, spring);
                 ReapplyMotionOwnedInlineValues(element);
+                ReassertHeld(element);
             }
         }
 
@@ -1894,6 +1895,7 @@ namespace Velvet
                 bezier.Tick = null;
                 BezierTweenDriver.ClearInlineOverrides(element, bezier);
                 ReapplyMotionOwnedInlineValues(element);
+                ReassertHeld(element);
             }
         }
 
