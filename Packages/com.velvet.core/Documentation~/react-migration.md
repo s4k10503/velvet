@@ -537,8 +537,9 @@ field; one written from `refCallback:` is not.
 - `onSubmit:` receives the field's value on each Enter in a single-line field, after a field holding
   `isDelayed:` has released the typed text into it. Like the browser's implicit submission:
   - a read-only field submits;
-  - an Enter after the first submits again, although the field rather than its input holds focus by
-    then;
+  - the input keeps focus and its caret across the submitting Enter, so typing goes on where it was,
+    where UI Toolkit alone hands focus to the field on Enter; an Enter that lands on the field itself
+    (after Escape, say) submits too;
   - the Enter that arrives while an IME composition is open does not submit;
   - the soft keyboard's Done submits. This is read from the keyboard's status when it blurs the field,
     and has not yet been verified on a device.

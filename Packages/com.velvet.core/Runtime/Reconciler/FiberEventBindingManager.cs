@@ -123,16 +123,18 @@ namespace Velvet
         // Enter, and back again later, and a DOM input has no such step, so a move whose other end is inside
         // the field is not reported.
         // Submit is read on the input's own bubble pass, after the input has handled the key, so the value it
-        // reads already holds what that Enter committed. After that Enter the field itself holds focus, and a
-        // browser submits again on a later Enter, so a key landing on the field is read on the field's own
-        // pass; a key the input let through reaches the field's callback too, which reads only its own target.
+        // reads already holds what that Enter committed. That Enter has also handed focus to the field, where
+        // a browser keeps it in the input, so focus goes back to the input with the caret and selection the
+        // key found, before the handler runs and can move it elsewhere. Where the field itself still holds
+        // focus (after Escape, say), a key landing on it is read on the field's own pass; a key the input let
+        // through reaches the field's callback too, which reads only its own target.
         // Whether an IME composition was open is read on the field's trickle-down pass instead, before the
         // input acts on the key, which is the moment a browser's isComposing describes.
         // The soft keyboard's Done reaches no key handler: the engine closes the keyboard and blurs the input.
         // So the keyboard is held from focus-in and its status read once the field has committed on the
-        // focus-out that blur sends.
-        // TextFieldEventPropTests pins the focus, blur, Enter and composition readings against the engine, and
-        // the Done reading through SoftKeyboard, since an editor opens no soft keyboard.
+        // focus-out that blur sends. An editor opens no soft keyboard and its status is native, so that
+        // wiring is unmeasured here; SoftKeyboardSubmitTests pins the decision taken on the status.
+        // TextFieldEventPropTests pins the focus, blur, Enter and composition readings against the engine.
         private void RegisterTextFieldBinding(List<Action> actions, TextField field, FiberEventBinding binding)
         {
             switch (binding)
@@ -152,20 +154,34 @@ namespace Velvet
         private void BindSubmit(List<Action> actions, TextField field, TextElement input, Action<string>? handler)
         {
             var composingAtKeyDown = false;
+            var cursorAtKeyDown = 0;
+            var selectAtKeyDown = 0;
             UnityEngine.TouchScreenKeyboard? keyboard = null;
-            EventCallback<KeyDownEvent> beforeInput = _ => composingAtKeyDown = IsComposing(input);
+            EventCallback<KeyDownEvent> beforeInput = _ =>
+            {
+                composingAtKeyDown = IsComposing(input);
+                cursorAtKeyDown = field.textSelection.cursorIndex;
+                selectAtKeyDown = field.textSelection.selectIndex;
+            };
             EventCallback<KeyDownEvent> afterInput = evt =>
             {
-                if (evt.target == evt.currentTarget && !composingAtKeyDown && IsSubmitKey(field, evt))
+                if (evt.target != evt.currentTarget || composingAtKeyDown || !IsSubmitKey(field, evt))
                 {
-                    RunDiscrete(() => handler?.Invoke(field.value));
+                    return;
                 }
+
+                if (evt.target == input && field.focusController?.focusedElement == field)
+                {
+                    input.Focus();
+                    field.textSelection.SelectRange(cursorAtKeyDown, selectAtKeyDown);
+                }
+
+                RunDiscrete(() => handler?.Invoke(field.value));
             };
-            EventCallback<FocusInEvent> keyboardOpened = _ => keyboard = SoftKeyboard.Of(field);
+            EventCallback<FocusInEvent> keyboardOpened = _ => keyboard = field.textEdition.touchScreenKeyboard;
             EventCallback<FocusOutEvent> keyboardClosed = _ =>
             {
-                if (keyboard != null && SoftKeyboard.StatusOf(keyboard) == UnityEngine.TouchScreenKeyboard.Status.Done
-                    && !field.multiline)
+                if (keyboard != null && SubmitsOnKeyboardClose(field.multiline, keyboard.status))
                 {
                     RunDiscrete(() => handler?.Invoke(field.value));
                 }
@@ -184,6 +200,10 @@ namespace Velvet
                 field.UnregisterCallback(keyboardClosed);
             });
         }
+
+        // Done is the status a keyboard the user finished with reports; a multi-line field never submits.
+        internal static bool SubmitsOnKeyboardClose(bool multiline, UnityEngine.TouchScreenKeyboard.Status status)
+            => !multiline && status == UnityEngine.TouchScreenKeyboard.Status.Done;
 
         // The input's own record of an open IME composition, which the engine keeps from the composition
         // string as keys and IME events arrive. False where an engine no longer has the members.
@@ -321,11 +341,14 @@ namespace Velvet
                 return false;
             }
 
+            // The kind is compared beside the delegate for the reason Bind gives: one delegate moving from
+            // onValueChanged: to onSubmit: is a different registration.
+            var kinds = _bindingsByElement[element];
             for (var i = 0; i < newEvents.Length; i++)
             {
                 var newDelegate = GetDelegate(newEvents[i]);
                 // Unknown binding types where GetDelegate returns null are always treated as mismatch (fall back to rebind on the safe side).
-                if (newDelegate == null || delegates[i] != newDelegate)
+                if (newDelegate == null || delegates[i] != newDelegate || kinds[i].GetType() != newEvents[i].GetType())
                 {
                     return false;
                 }

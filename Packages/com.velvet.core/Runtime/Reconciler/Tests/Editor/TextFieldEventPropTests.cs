@@ -139,6 +139,16 @@ namespace Velvet.Tests
             V.TextField(name: "field", value: string.Empty, onValueChanged: s_shared, onSubmit: s_shared);
 
         [Component]
+        private static VNode MovingDelegateHost()
+        {
+            var (useSecond, setUseSecond) = Hooks.UseState(false);
+            s_setUseSecond = setUseSecond;
+            return useSecond
+                ? V.TextField(name: "field", onSubmit: s_shared)
+                : V.TextField(name: "field", onValueChanged: s_shared);
+        }
+
+        [Component]
         private static VNode CreatedHost() => V.TextField(name: "field", onCreated: element => s_created = element);
 
         [Component]
@@ -314,8 +324,31 @@ namespace Velvet.Tests
             Assert.That((afterModifiedEnter, s_log.Count), Is.EqualTo((0, 1)));
         }
 
+        [Component]
+        private static VNode SubmitWithValueHost() =>
+            V.TextField(name: "field", value: "hello", onSubmit: value => s_log.Add(value));
+
         [Test]
-        public void Given_AFieldThatSubmitted_When_EnterIsPressedAgainOnTheFieldHoldingFocus_Then_OnSubmitRunsAgain()
+        public void Given_ACaretInsideTheText_When_EnterSubmits_Then_TheInputKeepsFocusAndTheCaret()
+        {
+            // Arrange
+            Mount(SubmitWithValueHost);
+            var field = Q("field");
+            Input(field).Focus();
+            field.textSelection.SelectRange(2, 2);
+
+            // Act
+            SendKey(field, '\n', KeyCode.Return, EventModifiers.None);
+
+            // Assert — the submit is read beside the focus, so a dead binding cannot pass as a kept caret.
+            Assert.That(
+                (string.Join("|", s_log), field.focusController.focusedElement == Input(field),
+                    field.textSelection.cursorIndex, field.textSelection.selectIndex),
+                Is.EqualTo(("hello", true, 2, 2)));
+        }
+
+        [Test]
+        public void Given_AFieldThatSubmitted_When_AnEnterLandsOnTheFieldItself_Then_OnSubmitRunsAgain()
         {
             // Arrange
             Mount(DelayedSubmitHost);
@@ -323,7 +356,7 @@ namespace Velvet.Tests
             TypeWithoutCommitting(field, "typed");
             PressEnter(field);
 
-            // Act — the field itself holds focus after an Enter, so the next key lands on it.
+            // Act — a key targeted at the field, as one is while the field itself holds focus (after Escape).
             using (var key = KeyDownEvent.GetPooled('\n', KeyCode.Return, EventModifiers.None))
             {
                 key.target = field;
@@ -477,6 +510,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_log.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ADelegateMovedFromOnValueChangedToOnSubmit_When_TheValueChangesAndEnterIsPressed_Then_OnlyOnSubmitRuns()
+        {
+            // Arrange — the same delegate in both renders, so only the binding's kind tells them apart.
+            Mount(MovingDelegateHost);
+            SwitchToTheSecondHandler();
+            var field = Q("field");
+
+            // Act
+            field.value = "set";
+            var afterChange = s_log.Count;
+            PressEnter(field);
+
+            // Assert — a change binding left in place would have logged the value write.
+            Assert.That((afterChange, string.Join("|", s_log)), Is.EqualTo((0, "set")));
         }
 
         [Test]
