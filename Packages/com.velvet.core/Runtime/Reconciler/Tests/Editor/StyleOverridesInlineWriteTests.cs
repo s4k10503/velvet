@@ -132,10 +132,26 @@ namespace Velvet.Tests
             Assert.That(string.Join("; ", problems), Is.Empty);
         }
 
-        // Read back through IStyle, a keyword-only background image is Null and a repeat keyword is its value
-        // alone, which the branch run of the case above measured; the 6000.3 getters return no keyword for them.
+        // Given_AKeywordWrittenToTheImageAndRepeatSlots_When_ReadBack_Then_NeitherReportsIt pins why these two are
+        // read through the resolved style instead.
         private static readonly string[] s_keywordBlindSlots =
             { nameof(StyleOverrides.BackgroundImage), nameof(StyleOverrides.BackgroundRepeat) };
+
+        // GREEN_ON_BASE(characterization): pins the engine's own getters, which this change does not touch.
+        [Test]
+        public void Given_AKeywordWrittenToTheImageAndRepeatSlots_When_ReadBack_Then_NeitherReportsIt()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act
+            element.style.backgroundImage = new StyleBackground(StyleKeyword.Initial);
+            element.style.backgroundRepeat = new StyleBackgroundRepeat(StyleKeyword.Initial);
+
+            // Assert
+            Assert.That((element.style.backgroundImage.keyword, element.style.backgroundRepeat.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Undefined)));
+        }
 
         [Test]
         public void Given_InitialImageAndRepeatOverridesOverAGradient_When_Mounted_Then_TheImageIsHiddenAndTheRepeatWritten()
