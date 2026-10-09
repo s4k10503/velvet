@@ -148,4 +148,35 @@ namespace Velvet
         public override string EventId => "geometrychanged";
         public EventCallback<GeometryChangedEvent>? Handler { get; init; }
     }
+
+    // V.TextField's onFocus:/onBlur:/onSubmit:. Each answers for the field as one input rather than for
+    // the element it lands on; FiberEventBindingManager.RegisterTextFieldBinding owns what that means for
+    // each. Its onKeyDown:/onKeyUp: are KeyDownBinding/KeyUpBinding, which FiberEventBindingManager places
+    // on a text input's trickle-down pass.
+
+    internal abstract class TextFieldBinding : FiberEventBinding
+    {
+        internal abstract Delegate? HandlerDelegate { get; }
+    }
+
+    internal sealed class TextFieldFocusBinding : TextFieldBinding
+    {
+        public override string EventId => "textfield:focus";
+        public EventCallback<FocusInEvent>? Handler { get; init; }
+        internal override Delegate? HandlerDelegate => Handler;
+    }
+
+    internal sealed class TextFieldBlurBinding : TextFieldBinding
+    {
+        public override string EventId => "textfield:blur";
+        public EventCallback<FocusOutEvent>? Handler { get; init; }
+        internal override Delegate? HandlerDelegate => Handler;
+    }
+
+    internal sealed class TextFieldSubmitBinding : TextFieldBinding
+    {
+        public override string EventId => "textfield:submit";
+        public Action<string>? Handler { get; init; }
+        internal override Delegate? HandlerDelegate => Handler;
+    }
 }

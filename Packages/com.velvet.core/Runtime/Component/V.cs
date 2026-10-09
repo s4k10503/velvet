@@ -58,6 +58,37 @@ namespace Velvet
                 Events = events ?? EmptyEvents,
             };
 
+        // V.TextField's handlers in a fixed order, which FiberEventBindingManager.HasSameBindings relies on to
+        // match one render's array against the last, and the caller's events: behind them.
+        private static FiberEventBinding[] TextFieldEvents(
+            Action<string>? onValueChanged,
+            Action<string>? onSubmit,
+            EventCallback<KeyDownEvent>? onKeyDown,
+            EventCallback<KeyUpEvent>? onKeyUp,
+            EventCallback<FocusInEvent>? onFocus,
+            EventCallback<FocusOutEvent>? onBlur,
+            FiberEventBinding[]? callerEvents)
+        {
+            var count = (onValueChanged != null ? 1 : 0) + (onSubmit != null ? 1 : 0) + (onKeyDown != null ? 1 : 0)
+                        + (onKeyUp != null ? 1 : 0) + (onFocus != null ? 1 : 0) + (onBlur != null ? 1 : 0);
+            if (count == 0)
+            {
+                return callerEvents ?? EmptyEvents;
+            }
+
+            var callers = callerEvents ?? EmptyEvents;
+            var events = VNodePool.RentEventArray(count + callers.Length);
+            Array.Copy(callers, 0, events, count, callers.Length);
+            var next = 0;
+            if (onValueChanged != null) events[next++] = new ChangeEventBinding<string> { Handler = onValueChanged };
+            if (onSubmit != null) events[next++] = new TextFieldSubmitBinding { Handler = onSubmit };
+            if (onKeyDown != null) events[next++] = new KeyDownBinding { Handler = onKeyDown };
+            if (onKeyUp != null) events[next++] = new KeyUpBinding { Handler = onKeyUp };
+            if (onFocus != null) events[next++] = new TextFieldFocusBinding { Handler = onFocus };
+            if (onBlur != null) events[next] = new TextFieldBlurBinding { Handler = onBlur };
+            return events;
+        }
+
         private static readonly ClassNameParseCache s_classNameCache = new();
 
 #if UNITY_EDITOR
@@ -765,7 +796,13 @@ namespace Velvet
         /// <param name="multiline">When true, the field is multi-line (HTML <c>&lt;textarea&gt;</c>).</param>
         /// <param name="keyboardType">Written to the field's <c>keyboardType</c> (HTML <c>inputmode</c>).</param>
         /// <param name="autoCorrection">Written to the field's <c>autoCorrection</c> (HTML <c>autocorrect</c>).</param>
-        /// <param name="events">Event bindings applied to the element, bound after <paramref name="onValueChanged"/>'s own (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="onSubmit">Handler invoked with the field's value when Enter commits a single-line field (a form's <c>onSubmit</c> from Enter in its <c>&lt;input&gt;</c>). Not invoked in a multi-line field.</param>
+        /// <param name="onKeyDown">Handler invoked for each key pressed while the field holds focus, before the field takes the key; stopping the event's propagation keeps the key out of the field.</param>
+        /// <param name="onKeyUp">Handler invoked for each key released while the field holds focus.</param>
+        /// <param name="onFocus">Handler invoked when focus enters the field from outside it.</param>
+        /// <param name="onBlur">Handler invoked when focus leaves the field for somewhere outside it.</param>
+        /// <param name="onCreated">Callback invoked once when the TextField VisualElement is first created.</param>
+        /// <param name="events">Event bindings applied to the element, bound after the field's own handlers above (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -792,10 +829,16 @@ namespace Velvet
             bool? multiline = null,
             TouchScreenKeyboardType? keyboardType = null,
             bool? autoCorrection = null,
+            Action<string>? onSubmit = null,
+            EventCallback<KeyDownEvent>? onKeyDown = null,
+            EventCallback<KeyUpEvent>? onKeyUp = null,
+            EventCallback<FocusInEvent>? onFocus = null,
+            EventCallback<FocusOutEvent>? onBlur = null,
+            Action<VisualElement>? onCreated = null,
             FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var bindings = Bindings(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null, events);
+            var bindings = TextFieldEvents(onValueChanged, onSubmit, onKeyDown, onKeyUp, onFocus, onBlur, events);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
                                     || isReadOnly.HasValue || isDelayed.HasValue || multiline.HasValue
@@ -828,6 +871,7 @@ namespace Velvet
                 Props = props,
                 Children = EmptyChildren,
                 Events = bindings,
+                OnCreated = onCreated,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,

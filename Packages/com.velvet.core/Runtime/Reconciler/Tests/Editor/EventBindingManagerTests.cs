@@ -21,7 +21,8 @@ namespace Velvet.Tests
     /// <item>A click binding dispatches to its handler; typed change bindings dispatch the changed value (float,
     /// bool, string) to their handler.</item>
     /// <item>Binding a null element is tolerated and binds nothing.</item>
-    /// <item>Binding the same delegate twice for one element collapses to a single registration.</item>
+    /// <item>Binding the same delegate twice for one element, as the same kind of binding, collapses to a single
+    /// registration; two delegates of one kind stay two.</item>
     /// <item><c>UnbindAll</c> removes every handler for an element and is idempotent; <c>Clear</c> unbinds every
     /// element, after which a per-element unbind is a no-op.</item>
     /// <item><c>HasSameBindings</c> reports equality by delegate identity and count: same delegate(s) is equal,
@@ -213,6 +214,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_manager.HasSameBindings(button, singleEvent), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): two delegates of one binding kind stay two registrations.
+        // The duplicate check now matches the kind as well as the delegate, and this is what it must keep.
+        [Test]
+        public void Given_TwoDelegatesOfOneKind_When_BothAreBound_Then_BothAreRegistered()
+        {
+            // Arrange
+            var button = new Button();
+            Action first = () => { };
+            Action second = () => { };
+            var bothEvents = new FiberEventBinding[]
+            {
+                new ClickedBinding { Handler = first },
+                new ClickedBinding { Handler = second },
+            };
+            _manager.Bind(button, new ClickedBinding { Handler = first });
+
+            // Act
+            _manager.Bind(button, new ClickedBinding { Handler = second });
+
+            // Assert
+            Assert.That(_manager.HasSameBindings(button, bothEvents), Is.True);
         }
 
         #region HasSameBindings
