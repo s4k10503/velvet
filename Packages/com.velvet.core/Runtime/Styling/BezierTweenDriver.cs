@@ -209,6 +209,18 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Writes the tween at <paramref name="timeSec"/> into its run, earlier or later than where it stands, and
+        /// reports whether that time has reached the fixed duration. A play on a <c>MotionPlayback</c> is driven by
+        /// this, and a cancel of one writes it at time 0.
+        /// </summary>
+        public static bool SeekTo(VisualElement element, BezierTweenState state, float timeSec)
+        {
+            state.ElapsedSec = Mathf.Max(0f, timeSec);
+            ApplyEased(element, state, CurrentEased(state));
+            return state.ElapsedSec >= state.DurationSec;
+        }
+
+        /// <summary>
         /// Releases every inline slot this state ever wrote — and the transition suspension
         /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
         /// See <see cref="MotionSpringDriver.ClearInlineOverrides"/> for why the surviving arbitrary-value

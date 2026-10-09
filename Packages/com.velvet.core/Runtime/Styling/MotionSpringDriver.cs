@@ -395,6 +395,26 @@ namespace Velvet
         public static void Retarget(MotionSpringState state) => ForEachActiveChannel(state, static c => c.Target = c.RestingTarget);
 
         /// <summary>
+        /// Puts every channel where a spring released at rest from its <see cref="SpringChannel.RestingTarget"/>
+        /// toward its target stands <paramref name="timeSec"/> later, writes it, and reports whether that is
+        /// settled — Framer Motion's spring generator sampled at a time, earlier or later than where the play
+        /// stands. A play on a <c>MotionPlayback</c> is driven by this; it starts at rest and is never retargeted,
+        /// which is what the sample assumes.
+        /// </summary>
+        public static bool SeekTo(VisualElement element, MotionSpringState state, float timeSec)
+        {
+            var spring = ((double)state.Stiffness, (double)state.Damping, (double)state.Mass);
+            var t = Mathf.Max(0f, timeSec);
+            ForEachActiveChannel(state, c =>
+            {
+                var (displacement, velocity) = SpringIntegrator.Solve(c.RestingTarget - c.Target, 0.0, t, spring);
+                c.Integrator = new SpringIntegrator((float)(c.Target + displacement), (float)velocity);
+            });
+            // A zero step moves no integrator, so this writes the channels and reads their settle.
+            return Step(element, state, 0f);
+        }
+
+        /// <summary>
         /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref
         /// name="state"/> — the five optional axes plus each property channel's own integrator — the single
         /// place that walks the channel set for the callers (like <see cref="Retarget"/>) whose per-channel

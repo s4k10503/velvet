@@ -156,9 +156,8 @@ namespace Velvet
 
         /// <summary>
         /// Resumes advancing (idempotent), the cursor and the <c>Spring</c> and <c>Bezier</c> plays its steps
-        /// started alike. Also what
-        /// <c>autoplay: true</c> starts with on mount. After <see cref="Cancel"/>, starts the sequence again
-        /// from step 0.
+        /// started alike. Also what <c>autoplay: true</c> starts with on mount. After <see cref="Cancel"/>, starts
+        /// the sequence again from step 0.
         /// </summary>
         public Action Play { get; }
 
@@ -172,9 +171,9 @@ namespace Velvet
         public Action Restart { get; }
 
         /// <summary>
-        /// Stops the sequence, the Web Animations API's <c>cancel()</c>: the cursor stays where it is, and each
-        /// <c>Spring</c> or <c>Bezier</c> play its steps started stops and comes off its element, which shows the
-        /// pose its label names. No completion of those plays runs. <see cref="Play"/> starts the sequence again from step 0.
+        /// Stops the sequence, Framer Motion's <c>cancel()</c>: the cursor stays where it is, and each
+        /// <c>Spring</c> or <c>Bezier</c> play its steps started returns to the values it started from and stops
+        /// there, without its completion running. <see cref="Play"/> starts the sequence again from step 0.
         /// </summary>
         public Action Cancel { get; }
 

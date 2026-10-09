@@ -267,24 +267,90 @@ namespace Velvet.Tests
             return reference.style.opacity.value;
         }
 
+        // Framer Motion's cancel() samples the animation at time 0 and tears it down.
         [Test]
-        public void Given_ARunningPlayOnAPlayback_When_ThePlaybackCancelsItsPlays_Then_TheElementRestsAtItsTargetClassWithNoInlineOpacity()
+        public void Given_ARunningPlayOnAPlayback_When_ThePlaybackCancelsItsPlays_Then_ItHoldsItsStartingOpacityBesideItsTargetClass()
         {
             // Arrange
             var element = OnPanel("cancelled");
             var playback = new MotionPlayback();
             _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
             Ticks(5);
-            var moving = element.style.opacity;
+            var moving = Opacity(element);
 
             // Act
             playback.CancelPlays();
+            Ticks(5);
 
             // Assert
             var opacity = element.style.opacity;
-            Assert.That((moving.keyword, moving.value > 0f, opacity.keyword == StyleKeyword.Undefined,
-                    element.ClassListContains("opacity-100")),
-                Is.EqualTo((StyleKeyword.Undefined, true, false, true)));
+            Assert.That((moving > 0f, opacity.keyword, opacity.value, element.ClassListContains("opacity-100")),
+                Is.EqualTo((true, StyleKeyword.Undefined, 0f, true)));
+        }
+
+        [Test]
+        public void Given_APlayACancelHolds_When_AnotherPlayOnItsElementRunsToItsEnd_Then_TheElementCarriesNoInlineOpacity()
+        {
+            // Arrange
+            var element = OnPanel("reconverged");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            var held = element.style.opacity.keyword;
+
+            // Act
+            _scheduler.PlayVariantEnter(element, s_visible, s_hidden, Linear());
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That((held, element.style.opacity.keyword == StyleKeyword.Undefined),
+                Is.EqualTo((StyleKeyword.Undefined, false)));
+        }
+
+        [Test]
+        public void Given_APlayACancelHolds_When_ThePlaybackClearsItsPlays_Then_TheElementCarriesNoInlineOpacity()
+        {
+            // Arrange
+            var element = OnPanel("cleared");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+            var held = element.style.opacity.keyword;
+
+            // Act
+            playback.ClearPlays();
+
+            // Assert
+            Assert.That((held, element.style.opacity.keyword == StyleKeyword.Undefined),
+                Is.EqualTo((StyleKeyword.Undefined, false)));
+        }
+
+        // The band follows its caster's resolved opacity once its co-fade starts, and a translate leaves that at 1;
+        // an ungrouped delayed play starts the co-fade with the tick after its delay.
+        [Test]
+        public void Given_ARingedElementsDelayedPlayOnAPlayback_When_ThePanelTicksInsideAndThenPastTheDelay_Then_TheBandFollowsOnlyPastIt()
+        {
+            // Arrange
+            var element = OnPanel("ringed");
+            var band = RingOverlay.Attach(element, new RingSpec(width: 2f, color: UnityEngine.Color.red, offset: 0f,
+                inset: false), Array.Empty<string>()).Overlay;
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = 0.2f,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[100px]" }, config,
+                playback: new MotionPlayback());
+
+            // Act
+            Ticks(5);
+            var insideDelay = band.style.opacity.value;
+            Ticks(20);
+
+            // Assert
+            Assert.That((insideDelay, band.style.opacity.value), Is.EqualTo((0f, 1f)));
         }
 
         [Test]
@@ -341,17 +407,37 @@ namespace Velvet.Tests
             Assert.That(ListedPlays(playback), Is.EqualTo(1));
         }
 
+        // A play the scheduler reports driving is one whose settle the patcher waits on to re-apply an inline token,
+        // and a held play never settles.
         [Test]
-        public void Given_APlaybackWithARunningPlay_When_ItCancelsItsPlays_Then_ItListsNone()
+        public void Given_ARunningPlayOnAPlayback_When_ThePlaybackCancelsItsPlays_Then_TheSchedulerNoLongerReportsItDriving()
         {
             // Arrange
+            var element = OnPanel("held");
             var playback = new MotionPlayback();
-            _scheduler.PlayVariantEnter(OnPanel("running"), s_hidden, s_visible, Linear(), playback: playback);
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
             Ticks(2);
-            var listed = ListedPlays(playback);
+            var driving = _scheduler.IsDriving(element);
 
             // Act
             playback.CancelPlays();
+
+            // Assert
+            Assert.That((driving, _scheduler.IsDriving(element)), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_APlaybackHoldingACancelledPlay_When_ItClearsItsPlays_Then_ItListsNone()
+        {
+            // Arrange
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(OnPanel("held"), s_hidden, s_visible, Linear(), playback: playback);
+            Ticks(2);
+            playback.CancelPlays();
+            var listed = ListedPlays(playback);
+
+            // Act
+            playback.ClearPlays();
 
             // Assert
             Assert.That((listed, ListedPlays(playback)), Is.EqualTo((1, 0)));

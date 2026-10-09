@@ -61,8 +61,8 @@ namespace Velvet
         // True from Cancel until the next reseed.
         public bool IsCancelled { get; private set; }
 
-        // The Web Animations API's cancel() over the sequence: the cursor stops where it is, and each Spring or
-        // Bezier play its steps started comes off its element (MotionPlayback.CancelPlays).
+        // Framer Motion's cancel() over the sequence: the cursor stops where it is, and each Spring or Bezier play
+        // its steps started returns to its starting values and stops there (MotionPlayback.CancelPlays).
         public void Cancel()
         {
             IsPaused = true;
@@ -321,6 +321,12 @@ namespace Velvet
             _stepIndex = 0;
             _passesCompleted = 0;
             HasReseeded = true;
+            // A cancel holds its plays at their starting values, which the reseed's own plays replace only on the
+            // elements whose label it changes.
+            if (IsCancelled)
+            {
+                Playback.ClearPlays();
+            }
             IsCancelled = false;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;

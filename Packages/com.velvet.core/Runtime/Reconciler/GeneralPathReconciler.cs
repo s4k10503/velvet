@@ -2777,7 +2777,8 @@ namespace Velvet
                 var onSwap = _patcher.HoldInlineForEnter(motionElement!, motion.ClassNames, fromClasses!,
                     enterTransition);
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
-                    enterTransition, ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec, onSwap);
+                    enterTransition, ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec, onSwap,
+                    playback: MotionVariantResolver.PlaybackForChildren(motion, stack.Get(MotionContext.Playback)));
             }
             else if (isVariantMotion)
             {

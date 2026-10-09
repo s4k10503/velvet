@@ -50,6 +50,7 @@ namespace Velvet.Tests
             UseFrameFakeClockHost.Reset();
             Steps = new[] { AnimationSequenceStep.To("hidden", Instant), AnimationSequenceStep.To("visible", Linear(1f)) };
             OuterLabel = "hidden";
+            ChildMounted = false;
         }
 
         [TearDown]
@@ -102,18 +103,57 @@ namespace Velvet.Tests
             });
         }
 
+        protected static bool ChildMounted;
+
+        // The child mounts under the coordinator only once ChildMounted is set, taking its label and the
+        // coordinator's initial label, so it plays a mount enter from hidden to the sequence's current label.
+        [Component(Compiler = false)]
+        private static VNode MidMountHost()
+        {
+            var (state, controls) = Hooks.UseAnimationSequence(Steps, deps: Array.Empty<object>());
+            State = state;
+            Controls = controls;
+            return V.Motion(key: "coordinator", name: "coordinator", initial: "hidden", animate: state.CurrentLabel,
+                transition: state.CurrentTransition, children: ChildMounted
+                    ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade) }
+                    : Array.Empty<VNode>());
+        }
+
+        // MidMountHost's child, keyed under an AnimatePresence, so it mounts through the presence's enter.
+        [Component(Compiler = false)]
+        private static VNode PresenceHost()
+        {
+            var (state, controls) = Hooks.UseAnimationSequence(Steps, deps: Array.Empty<object>());
+            State = state;
+            Controls = controls;
+            return V.Motion(key: "coordinator", name: "coordinator", initial: "hidden", animate: state.CurrentLabel,
+                transition: state.CurrentTransition, children: new VNode[]
+                {
+                    V.AnimatePresence(children: ChildMounted
+                        ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade) }
+                        : Array.Empty<VNode>()),
+                });
+        }
+
         protected void MountCoordinator() => Mount(CoordinatorHost);
 
         protected void MountInheriting() => Mount(InheritingHost);
 
         protected void MountSibling() => Mount(SiblingHost);
 
-        protected void RenderAgain() => _mounted.Render(V.Component(SiblingHost, key: "root"));
+        protected void MountMidMount() => Mount(MidMountHost);
+
+        protected void MountPresence() => Mount(PresenceHost);
+
+        protected void RenderAgain() => _mounted.Render(V.Component(_rendered, key: "root"));
 
         protected void Flush() => _mounted.FlushStateForTest();
 
+        private Func<VNode> _rendered;
+
         private void Mount(Func<VNode> host)
         {
+            _rendered = host;
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
             _mounted = V.Mount(_host.Root, V.Component(host, key: "root"));
             _mounted.FlushEffectsForTest();

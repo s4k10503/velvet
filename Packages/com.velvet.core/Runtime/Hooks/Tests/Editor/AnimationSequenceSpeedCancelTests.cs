@@ -6,8 +6,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins <c>AnimationSequenceControls.Speed</c> and <c>Cancel</c>: Framer Motion's <c>speed</c> re-times the
-    /// sequence's timeline and the Bezier play a step's label started, and the Web Animations API's
-    /// <c>cancel()</c> stops both, with <c>Play</c> starting the sequence again from step 0.
+    /// sequence's timeline and the Bezier play a step's label started, and its <c>cancel()</c> stops both, the play
+    /// back at its starting values, with <c>Play</c> starting the sequence again from step 0.
     /// </summary>
     internal sealed class AnimationSequenceSpeedCancelTests : AnimationSequenceMotionTestsBase
     {
@@ -74,20 +74,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASequencePartWayThroughABezierFade_When_Cancelled_Then_TheMotionCarriesNoInlineOpacity()
+        public void Given_ASequencePartWayThroughABezierFade_When_Cancelled_Then_TheMotionHoldsTheOpacityTheFadeStartedFrom()
         {
             // Arrange
             MountCoordinator();
             PlayIntoTheFade();
-            var moving = Opacity();
+            var moving = Opacity().value;
 
             // Act
             Controls.Cancel();
             Frames(2);
 
             // Assert
-            Assert.That((moving.keyword, moving.value > 0f, Opacity().keyword == StyleKeyword.Undefined),
-                Is.EqualTo((StyleKeyword.Undefined, true, false)));
+            var opacity = Opacity();
+            Assert.That((moving > 0f, opacity.keyword, opacity.value), Is.EqualTo((true, StyleKeyword.Undefined, 0f)));
         }
 
         [Test]

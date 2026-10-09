@@ -589,8 +589,9 @@ firing a `Call` step 0's callback again) without implicitly resuming a paused se
 step cursor and its clock -- and the `Spring` and `Bezier` plays its steps' labels start, as Framer Motion's
 controls reach every animation of a sequence. A play is the sequence's when it starts on a Motion
 handed `state.CurrentTransition`, or on a descendant taking its label from that Motion (see "Label
-inheritance" above), whichever transition the swap itself plays. `state.CurrentTransition` is a copy of the
-step's transition for that reason: equal to it in every setting, but not the same instance.
+inheritance" above), whichever transition the swap itself plays -- a descendant's mount enter, and a
+presence child's enter, included when it mounts part-way through. `state.CurrentTransition` is a copy of
+the step's transition for that reason: equal to it in every setting, but not the same instance.
 
 - `controls.Pause()` freezes the cursor and holds those plays where they are, their delays included;
   `controls.Play()` resumes both. A play a step starts while the sequence is paused, such as step 0's under
@@ -599,14 +600,15 @@ step's transition for that reason: equal to it in every setting, but not the sam
   2 plays the timeline and those plays twice as fast, 0.5 half as fast, and 0 holds both as a pause does.
   Setting it re-times the plays already running from the next frame, delays included. A negative, NaN or
   infinite value throws `ArgumentOutOfRangeException`: reverse is not offered (see below).
-- `controls.Cancel()` is the Web Animations API's `cancel()`: the cursor stops where it is, and each of those
-  plays stops and comes off its element without its completion running, so the element shows the pose its
-  label names, which is what its classes already hold. The label stays the step's. `controls.Play()` after a
-  cancel starts the sequence again from step 0; `controls.Restart()` reseeds it at step 0 still paused.
+- `controls.Cancel()` is Framer Motion's `cancel()`: the cursor stops where it is, and each of those plays
+  returns to the values it started from and stops there, without its completion running. Those values stay
+  on the element until the next play on it replaces them, as a cancelled Framer animation leaves its value
+  at its start; the label stays the step's. `controls.Play()` after a cancel starts the sequence again from
+  step 0, and `controls.Restart()` reseeds it at step 0 still paused; either takes the held values off.
 
 A `Tween` play -- the default `Type`, and that of `StyleTransition.Fade`, which a sequence takes until a step
-names a transition -- is UI Toolkit's own transition, and none of the three reaches it: it runs on to its end. Give the steps a
-`Spring` or `Bezier` transition where the plays have to follow the controls.
+names a transition -- is UI Toolkit's own transition, and none of the three reaches it: it runs on to its end.
+Give the steps a `Spring` or `Bezier` transition where the plays have to follow the controls.
 
 The handle also carries `controls.TimeSec`, the Web Animations API's
 `currentTime` and Framer Motion's `time`, read-only: seconds into the timeline, counting each hold at its

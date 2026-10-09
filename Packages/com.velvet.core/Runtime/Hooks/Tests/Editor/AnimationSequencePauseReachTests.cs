@@ -6,7 +6,7 @@ namespace Velvet.Tests
     /// Pins that <c>AnimationSequenceControls.Pause</c> and <c>Play</c> reach the Bezier play a step's label
     /// started, as Framer Motion's sequence controls reach the animations the sequence started: on the Motion
     /// handed the sequence's transition, and on a child taking its label from that Motion while its own pose names
-    /// the transition it plays.
+    /// the transition it plays, including the mount enter of a child that mounts there part-way through.
     /// </summary>
     internal sealed class AnimationSequencePauseReachTests : AnimationSequenceMotionTestsBase
     {
@@ -32,6 +32,44 @@ namespace Velvet.Tests
             // Arrange
             MountInheriting();
             PlayIntoTheFade();
+            var moving = Opacity().value;
+
+            // Act
+            Controls.Pause();
+            Frames(5);
+
+            // Assert
+            Assert.That(moving > 0f ? Opacity().value : float.NaN, Is.EqualTo(moving));
+        }
+
+        [Test]
+        public void Given_AChildMountingUnderTheCoordinatorPartWayThroughItsMountEnter_When_PausedForFiveFrames_Then_ItsOpacityHolds()
+        {
+            // Arrange
+            MountMidMount();
+            PlayIntoTheFade();
+            ChildMounted = true;
+            RenderAgain();
+            Frames(3);
+            var moving = Opacity().value;
+
+            // Act
+            Controls.Pause();
+            Frames(5);
+
+            // Assert
+            Assert.That(moving > 0f ? Opacity().value : float.NaN, Is.EqualTo(moving));
+        }
+
+        [Test]
+        public void Given_APresenceChildMountingUnderTheCoordinatorPartWayThroughItsEnter_When_PausedForFiveFrames_Then_ItsOpacityHolds()
+        {
+            // Arrange
+            MountPresence();
+            PlayIntoTheFade();
+            ChildMounted = true;
+            RenderAgain();
+            Frames(3);
             var moving = Opacity().value;
 
             // Act
