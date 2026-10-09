@@ -296,17 +296,18 @@ keeps what the query function returned, and `GetQueryData` reads that. Over the 
 runs again only when that data's instance or the select's own instance changes, as v5 compares both with
 `===`: a delegate held in a field runs once for each new instance of the data, and one built afresh each
 render runs every render. What it returns is shared structurally with the result's previous data, so an
-equal selection keeps its instance. A select that throws makes the result `Error` with its exception.
+equal selection keeps its instance. A select that throws makes the result `Error` with its exception,
+until the data it ran on is gone: a key change to an entry with no data shows that entry's state.
 
 **Placeholder data.** While the entry is pending with no data, `PlaceholderData` stands in: the result is
 `Success` with `IsPlaceholderData` true and `IsFetching` true, and the entry stays without data, so
 `GetQueryData` reads none. A failure with no data shows the error, not the placeholder. The function is
-handed the data and key of the last entry this component read that had data — default and null when there
-is none — and returns `QueryPlaceholder<T>`, to which a value converts; a null value is no placeholder.
+handed the data and key of the last entry this component read that had data and still has it — default
+and null when there is none — and returns `QueryPlaceholder<T>`, to which a value converts; a null value is no placeholder.
 `QueryPlaceholder.KeepPreviousData` returns the previous data, so paging keeps the old page on screen until
 the new one lands. While the result before showed the placeholder, the function is asked again only when
 its instance changes. A `Select` applies to the placeholder too, and one that throws there makes an error
-that is still flagged `IsPlaceholderData`, as v5's is.
+that is not flagged `IsPlaceholderData`, as v5's main does.
 
 ```csharp
 var page = Hooks.UseQuery(new QueryOptions<Todo[]>(new QueryKey("todos", pageIndex), ct => api.Page(pageIndex, ct))

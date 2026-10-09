@@ -19,8 +19,8 @@ namespace Velvet.Tests
     /// query function returned.</item>
     /// <item>The select runs again only when the entry's data or the select's instance changes, and what it
     /// returns keeps the instance the result held where the two are deeply equal.</item>
-    /// <item>A select that throws makes the result an error carrying its exception; options whose two types
-    /// differ need a select.</item>
+    /// <item>A select that throws makes the result an error carrying its exception, until a key change to an
+    /// uncached entry leaves the result pending; options whose two types differ need a select.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -45,6 +45,7 @@ namespace Velvet.Tests
         private static readonly List<QueryResult<List<int>>> s_renders = new();
         private static readonly List<QueryResult<int>> s_counts = new();
         private static StateUpdater<int> s_setTick;
+        private static StateUpdater<int> s_setPage;
 
         [SetUp]
         public void SetUp()
@@ -57,6 +58,7 @@ namespace Velvet.Tests
             s_renders.Clear();
             s_counts.Clear();
             s_setTick = default;
+            s_setPage = default;
         }
 
         [Test]
@@ -163,6 +165,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASelectThatThrewOverOneKey_When_TheKeyChangesToAnUncachedOne_Then_TheResultIsPending()
+        {
+            // Arrange
+            using var mounted = Mount(ThrowingPager);
+            Land(mounted, 1);
+
+            // Act
+            s_setPage.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Pending),
+                "A select error goes with the data it ran on, as v5 clears it once the data is undefined");
+        }
+
+        [Test]
         public void Given_OptionsOfTwoTypesWithoutASelect_When_AQueryRenders_Then_ItThrowsNamingSelect()
         {
             // Arrange
@@ -237,6 +255,22 @@ namespace Velvet.Tests
         {
             s_renders.Add(Hooks.UseQuery(
                 new QueryOptions<int[], List<int>>(Todos, Fetch)
+                {
+                    Select = _ => throw new InvalidOperationException("select-failed"),
+                    Retry = 0,
+                    NotifyOnChangeProps = QueryProperties.All,
+                },
+                s_client));
+            return V.Label(text: "throwing");
+        }
+
+        [Component]
+        private static VNode ThrowingPager()
+        {
+            var (page, setPage) = Hooks.UseState(1);
+            s_setPage = setPage;
+            s_renders.Add(Hooks.UseQuery(
+                new QueryOptions<int[], List<int>>(new QueryKey("todos", page), Fetch)
                 {
                     Select = _ => throw new InvalidOperationException("select-failed"),
                     Retry = 0,

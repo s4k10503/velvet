@@ -21,7 +21,7 @@ namespace Velvet.Tests
     /// <item>A placeholder is asked for again on a key change once data had landed in between, and a component
     /// listing only <c>IsPlaceholderData</c> re-renders when the entry's data replaces the placeholder.</item>
     /// <item>A select applies to the placeholder as to the entry's data, and one that throws on it makes the
-    /// result an error that is still flagged as placeholder data, as v5's is.</item>
+    /// result an error that is not flagged as placeholder data, as v5's main does.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -262,7 +262,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APlaceholderAndASelectThatThrows_When_ThePlaceholderShows_Then_TheResultIsFlaggedAsPlaceholderData()
+        public void Given_APlaceholderAndASelectThatThrows_When_ThePlaceholderShows_Then_TheResultIsNotFlaggedAsPlaceholderData()
         {
             // Arrange
             s_select = _ => throw new InvalidOperationException("select-failed");
@@ -271,8 +271,8 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SelectingPager, key: "pager"));
 
             // Assert
-            Assert.That(s_selected[s_selected.Count - 1].IsPlaceholderData, Is.True,
-                "v5 flags the result as placeholder data before its select error replaces the data");
+            Assert.That(s_selected[s_selected.Count - 1].IsPlaceholderData, Is.False,
+                "A select error replaces the placeholder, and v5's main unflags the result with it");
         }
 
         #region Components and helpers
