@@ -446,7 +446,8 @@ namespace Velvet
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }
 
-        internal static void RenderAndReconcile(ComponentFiber fiber, double frameBudgetMs = 0, bool deferReconcile = false)
+        // Returns whether this render's output became the fiber's PreviousTree.
+        internal static bool RenderAndReconcile(ComponentFiber fiber, double frameBudgetMs = 0, bool deferReconcile = false)
         {
             if (fiber.IsRendering)
             {
@@ -458,6 +459,7 @@ namespace Velvet
             // Fiber.IsRendering to determine the Render() context, so set it here.
             fiber.IsRendering = true;
             FiberAmbientStack.Push(fiber);
+            var retainedOutput = false;
 #if UNITY_EDITOR
             // Body output committed by this render, captured for the post-commit double-invoke diagnostic pass.
             // Set only on the success path where the reconciler retained the tree, so the diagnostic never
@@ -549,6 +551,7 @@ namespace Velvet
                     // Commit the new tree BEFORE retiring the old one so the recycle sweep can mark
                     // the committed state live (a memo hit legitimately shares nodes across the two).
                     fiber.PreviousTree = newTree;
+                    retainedOutput = true;
                     // A pass of this fiber that completes renders whatever an earlier one suspended on.
                     fiber.SuspendedOn = null;
                     FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, prevPendingOldTree, deferReconcile);
@@ -597,7 +600,9 @@ namespace Velvet
                         throw;
                     }
                     SuspendWithoutBoundary(fiber);
-                    return;
+                    // MUTANT_SURVIVES(equivalent): the one caller reading the result never renders a parentless fiber.
+                    // That caller is NotifyAsyncResourceCompleted, which renders only below a boundary found from the parent.
+                    return false;
                 }
                 FiberErrorBoundary.OnRenderError(fiber, ex);
             }
@@ -633,6 +638,7 @@ namespace Velvet
                 DoubleInvokeRenderForStrictMode(fiber, diagnosticCommittedTree);
             }
 #endif
+            return retainedOutput;
         }
 
         // Sweeps and removes this fiber's own entries from the context's deferred inline-baseline
@@ -852,9 +858,17 @@ namespace Velvet
             // Read before the render, which can dispose this fiber when an error boundary above it catches.
             var context = fiber.Reconciler!.Context;
             var catchesBeforeTheRender = context.NextCaughtErrorSequence;
+            // The render below is settled as a subsuming one is (SubsumeFiberIntoThisPass), or the boundary's re-walk
+            // finds the fiber still dirty and renders it a second time for work this render already did. Two fibers
+            // keep the unsettled path. A wrapper-mounted one is excluded conservatively. One holding a transition's
+            // work would have it discharged ahead of a render that can suspend again, which can clear isPending
+            // while the content it waits on is still off screen.
+            var settles = fiber.IsInlineMounted && fiber.EnrolledTransitionSlots is not { Count: > 0 };
+            if (settles) fiber.OpenSubsumedRenderWindow();
+            bool retainedOutput;
             try
             {
-                RenderAndReconcile(fiber, deferReconcile: true);
+                retainedOutput = RenderAndReconcile(fiber, deferReconcile: true);
             }
             catch (FiberSuspendSignal)
             {
@@ -868,6 +882,8 @@ namespace Velvet
                 // children instead of bailing out, then schedule it on the Normal lane to commit the reveal.
                 boundary!.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(boundary);
+                // A render whose output was not retained satisfied nothing.
+                if (settles && retainedOutput) SettleSubsumedFiber(fiber);
             }
             FiberEffects.CommitStrandedLayoutWork(context);
         }

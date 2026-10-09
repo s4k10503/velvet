@@ -523,8 +523,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Opens the window <c>FiberRenderer.SubsumeFiberIntoThisPass</c>'s settle reads, resetting both records it
-        /// consumes: which lanes the render asks for again, and which transition slots enrolled work here.
+        /// Opens the window the settle of <c>FiberRenderer.SubsumeFiberIntoThisPass</c> and of
+        /// <c>FiberRenderer.NotifyAsyncResourceCompleted</c> reads, resetting both records it consumes: which lanes
+        /// the render asks for again, and which transition slots enrolled work here.
         /// Everything queued before the window is what that render satisfies, so the settle runs ahead of the
         /// render — as it does in <c>FiberWorkLoop.FlushState</c>, whose commit render is likewise the one
         /// that observes <c>isPending</c> already false.
