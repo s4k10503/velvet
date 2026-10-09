@@ -243,6 +243,46 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStepZeroCallThatPausesTheSequence_When_TimeAdvances_Then_StepIndexDoesNotAdvance()
+        {
+            // Arrange — the callback runs inside the mount effect's own reset.
+            s_steps = new[]
+            {
+                AnimationSequenceStep.Call(() => s_controls.Pause()),
+                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 0.1f }),
+            };
+            Mount();
+
+            // Act
+            AdvancePast(0.2f);
+
+            // Assert
+            Assert.That(s_state.StepIndex, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already reads no transition after a restart onto a Wait.
+        // Leaving the walker's transition unreset in `ApplyStepsReset` is what reddens it.
+        [Test]
+        public void Given_ASequenceOnAToStepAfterAWait_When_Restarted_Then_CurrentTransitionIsNull()
+        {
+            // Arrange
+            s_steps = new[]
+            {
+                AnimationSequenceStep.Wait(0.1f),
+                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 0.5f }),
+            };
+            Mount();
+            AdvancePast(0.1f);
+
+            // Act
+            s_controls.Restart();
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_state.CurrentTransition, Is.Null);
+        }
+
+        [Test]
         public void Given_ALoopingTwoStepSequence_When_TimeAdvancesPastBothHolds_Then_TheCursorWrapsBackToStepZero()
         {
             // Arrange

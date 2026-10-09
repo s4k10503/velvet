@@ -28,6 +28,11 @@ namespace Velvet
         /// element's class list changes (and on creation).
         /// </summary>
         public static void Apply(VisualElement element, string[] classNames)
+            => Apply(element, classNames, null, created: false);
+
+        // A scope makes a weight or italic class without a family class resolve against the family an
+        // ancestor names (FiberFontScope); without one it resolves against DefaultFamily.
+        internal static void Apply(VisualElement element, string[] classNames, FiberFontScope? scope, bool created)
         {
             if (element == null)
             {
@@ -36,11 +41,12 @@ namespace Velvet
 
             if (!StyleFontClass.TryExtract(classNames, out var intent))
             {
+                scope?.Untrack(element);
                 Clear(element);
                 return;
             }
 
-            ApplyIntent(element, intent);
+            ApplyIntent(element, intent, scope, created);
         }
 
         /// <summary>
@@ -50,10 +56,13 @@ namespace Velvet
         /// gap manipulator's <c>HasGapClass</c> early-out). Single source of truth for the create-side gate.
         /// </summary>
         public static void ApplyIfPresent(VisualElement element, string[] classNames)
+            => ApplyIfPresent(element, classNames, null);
+
+        internal static void ApplyIfPresent(VisualElement element, string[] classNames, FiberFontScope? scope)
         {
             if (StyleFontClass.HasFontClass(classNames))
             {
-                Apply(element, classNames);
+                Apply(element, classNames, scope, created: true);
             }
         }
 
@@ -64,10 +73,14 @@ namespace Velvet
         /// source of truth for the patch-side gate.
         /// </summary>
         public static void ApplyOnClassChange(VisualElement element, string[] oldClassNames, string[] newClassNames)
+            => ApplyOnClassChange(element, oldClassNames, newClassNames, null);
+
+        internal static void ApplyOnClassChange(VisualElement element, string[] oldClassNames,
+            string[] newClassNames, FiberFontScope? scope)
         {
             if (StyleFontClass.HasFontClass(newClassNames) || StyleFontClass.HasFontClass(oldClassNames))
             {
-                Apply(element, newClassNames);
+                Apply(element, newClassNames, scope, created: false);
             }
         }
 
@@ -83,15 +96,25 @@ namespace Velvet
             element.style.unityFontStyleAndWeight = StyleKeyword.Null;
         }
 
-        internal static void ApplyIntent(VisualElement element, in FontIntent intent)
+        internal static void ApplyIntent(VisualElement element, in FontIntent intent, FiberFontScope? scope,
+            bool created)
+        {
+            var inherited = intent.HasFamily ? null : scope?.InheritedFamily(element);
+            ApplyResolved(element, intent, inherited);
+            scope?.Track(element, intent, inherited, created);
+        }
+
+        // inherited is the family an ancestor names, read only when the request names none of its own.
+        internal static void ApplyResolved(VisualElement element, in FontIntent intent, string? inherited)
         {
             var weight = intent.HasWeight ? intent.Weight : VelvetFontWeight.Normal;
+            var family = intent.HasFamily ? intent.Family : inherited;
 
             FontAsset? asset;
             bool residualBold;
             bool residualItalic;
 
-            if (intent.HasFamily && TryResolveAddressFamily(intent.Family, out var addrAsset))
+            if (TryResolveAddressFamily(family, out var addrAsset))
             {
                 // font-[addr:<key>] points straight at a single asset: weight/italic have no
                 // per-variant asset here, so any requested bold/italic is emulated.
@@ -101,7 +124,7 @@ namespace Velvet
             }
             else
             {
-                var resolved = VelvetFonts.Resolve(intent.HasFamily ? intent.Family : null, weight, intent.Italic);
+                var resolved = VelvetFonts.Resolve(family, weight, intent.Italic);
                 asset = resolved.Asset;
                 residualBold = resolved.ResidualBold;
                 residualItalic = resolved.ResidualItalic;

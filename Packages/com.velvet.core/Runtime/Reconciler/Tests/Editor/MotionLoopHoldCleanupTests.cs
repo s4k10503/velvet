@@ -23,7 +23,7 @@ namespace Velvet.Tests
             var pulse = StyleAnimateDriver.Attach(leaf, new AnimateSpec(AnimateMode.Pulse, 2f), panVertical: false);
 
             // Act
-            StyleAnimateDriver.ReassertLoop(leaf);
+            StyleAnimateDriver.ReassertLoop(leaf, MotionTransitionSlots.Opacity);
             var opacity = leaf.style.opacity.value;
             StyleAnimateDriver.Detach(leaf, pulse);
 

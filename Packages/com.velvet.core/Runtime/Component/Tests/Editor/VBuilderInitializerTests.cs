@@ -148,11 +148,75 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_VTextFieldWithMultilineAndKeyboardKnobs_When_Built_Then_TheSettingsCarryEach()
+        {
+            // Arrange
+            var builder = new VTextField("field")
+            {
+                Multiline = true,
+                KeyboardType = UnityEngine.TouchScreenKeyboardType.NumberPad,
+                AutoCorrection = false,
+            };
+
+            // Act
+            var node = builder.Build();
+
+            // Assert
+            Assert.That(
+                ((ElementNode)node).Props!.TextField,
+                Is.EqualTo(new TextFieldSettings
+                {
+                    Multiline = true,
+                    KeyboardType = UnityEngine.TouchScreenKeyboardType.NumberPad,
+                    AutoCorrection = false,
+                }));
+        }
+
+        [Test]
         public void Given_VSliderBuilder_When_Built_Then_ProducesSliderElementType()
         {
             VNode node = new VSlider("slider") { Value = 0.5f, LowValue = 0f, HighValue = 1f };
 
             Assert.That(((ElementNode)node).ElementType, Is.EqualTo(typeof(Slider)));
+        }
+
+        [Test]
+        public void Given_VSliderWithADirection_When_Built_Then_TheNodeCarriesIt()
+        {
+            // Arrange
+            var builder = new VSlider("slider") { Direction = SliderDirection.Vertical };
+
+            // Act
+            VNode node = builder;
+
+            // Assert
+            Assert.That(((ElementNode)node).Props?.Slider?.Direction, Is.EqualTo(SliderDirection.Vertical));
+        }
+
+        [Test]
+        public void Given_VSliderInverted_When_Built_Then_TheNodeCarriesIt()
+        {
+            // Arrange
+            var builder = new VSlider("slider") { Inverted = true };
+
+            // Act
+            VNode node = builder;
+
+            // Assert
+            Assert.That(((ElementNode)node).Props?.Slider?.Inverted, Is.True);
+        }
+
+        [Test]
+        public void Given_VSliderWithAStep_When_Built_Then_TheNodeCarriesIt()
+        {
+            // Arrange
+            var builder = new VSlider("slider") { Step = 5f };
+
+            // Act
+            VNode node = builder;
+
+            // Assert
+            Assert.That(((ElementNode)node).Props?.Slider?.Step, Is.EqualTo(5f));
         }
 
         [Test]

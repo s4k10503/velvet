@@ -1,6 +1,5 @@
 #nullable enable
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -9,27 +8,17 @@ namespace Velvet
     // mode belongs to each element rather than being inherited, so it is set across the member's subtree, walked
     // again on every pass for children mounted since, keeping each element's own mode.
     //
-    // The own mode is kept once per element rather than per projection, with the projections holding it counted: a
-    // member nested in another is walked by both, and one restoring what the other had already turned off would
-    // leave it off for good (Given_TwoCardsWithTitlesSharingIds_When_TheFirstLeadsAgain_Then_ItsTitleTakesPointers).
+    // Each projection takes its own PickingHold on an element, never a mode of its own: a member nested in another is
+    // walked by both, and one restoring what the other had already turned off would leave it off for good
+    // (Given_TwoCardsWithTitlesSharingIds_When_TheFirstLeadsAgain_Then_ItsTitleTakesPointers).
     internal static class LayoutIdPicking
     {
-        private sealed class Hold
-        {
-            public PickingMode Own;
-            public int Count;
-        }
-
-        private static readonly ConditionalWeakTable<VisualElement, Hold> s_holds = new();
-
         public static void Ignore(VisualElement element, LayoutIdProjection projection)
         {
             projection.Picking ??= new HashSet<VisualElement>();
             if (projection.Picking.Add(element))
             {
-                var hold = s_holds.GetOrCreateValue(element);
-                if (hold.Count++ == 0) hold.Own = element.pickingMode;
-                element.pickingMode = PickingMode.Ignore;
+                PickingHold.Take(element);
             }
             for (var i = 0; i < element.hierarchy.childCount; i++)
             {
@@ -41,7 +30,7 @@ namespace Velvet
         {
             foreach (var element in projection.Picking ?? s_none)
             {
-                Drop(element);
+                PickingHold.Drop(element);
             }
             projection.Picking = null;
         }
@@ -60,15 +49,9 @@ namespace Velvet
                 foreach (var element in s_released)
                 {
                     projection.Picking!.Remove(element);
-                    Drop(element);
+                    PickingHold.Drop(element);
                 }
             }
-        }
-
-        private static void Drop(VisualElement element)
-        {
-            var hold = s_holds.GetOrCreateValue(element);
-            if (--hold.Count == 0) element.pickingMode = hold.Own;
         }
 
         private static readonly List<VisualElement> s_released = new();

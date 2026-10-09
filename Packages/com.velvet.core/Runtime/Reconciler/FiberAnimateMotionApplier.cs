@@ -1,10 +1,12 @@
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
     // The wrapper-less PAINT layer for animate-* motion utilities. Gradient/Shimmer pan an existing
     // bg-gradient-* (so they defer to FiberGradientApplier's baked spec); the non-pan modes drive their own
-    // shared inline slot (style.filter / style.opacity / style.rotate) directly, independent of any gradient.
+    // shared inline slot (style.filter / style.opacity / style.rotate / style.scale / style.translate) directly,
+    // independent of any gradient.
     internal sealed class FiberAnimateMotionApplier
     {
         private readonly ReconcilerContext _ctx;
@@ -31,8 +33,7 @@ namespace Velvet
                 // A pan utility with no gradient to pan is a no-op (parity with a lone gradient stop).
                 return;
             }
-            _ctx.AnimationBindings[element] = StyleAnimateDriver.Attach(element, spec, ResolvePanVertical(element, spec),
-                _ctx.StyleAnimationScheduler.Clock);
+            AttachMotion(element, spec);
         }
 
         // Patch-time reconciliation of an element's animate-* motion against its new class list. Mirrors the
@@ -64,8 +65,7 @@ namespace Velvet
                         StyleAnimateDriver.Detach(element, binding);
                         RestoreSharedInlineSlot(element, detachedMode, classNames);
                     }
-                    _ctx.AnimationBindings[element] = StyleAnimateDriver.Attach(element, spec, ResolvePanVertical(element, spec),
-                        _ctx.StyleAnimationScheduler.Clock);
+                    AttachMotion(element, spec);
                 }
                 else
                 {
@@ -83,11 +83,32 @@ namespace Velvet
             var teardownMode = binding.Spec.Mode;
             StyleAnimateDriver.Detach(element, binding);
             _ctx.AnimationBindings.Remove(element);
+            SyncGradientBoxScale(element, AnimateMode.None, false);
             RestoreSharedInlineSlot(element, teardownMode, classNames);
         }
 
-        // The non-pan modes own a shared inline slot while active — style.filter / style.opacity / style.rotate
-        // — that an inline-resolved utility also writes (the arbitrary filter-[..] / opacity-[.x] forms, and the
+        private void AttachMotion(VisualElement element, AnimateSpec spec)
+        {
+            var binding = StyleAnimateDriver.Attach(element, spec, ResolvePanVertical(element, spec),
+                _ctx.StyleAnimationScheduler.Clock);
+            _ctx.AnimationBindings[element] = binding;
+            SyncGradientBoxScale(element, spec.Mode, binding.PanVertical);
+        }
+
+        // The Gradient pan paints the background twice as large along its axis, so the gradient is laid out
+        // over that box; every other state paints it over the element's own.
+        private void SyncGradientBoxScale(VisualElement element, AnimateMode mode, bool panVertical)
+        {
+            if (!_ctx.GradientBackgrounds.TryGetValue(element, out var gradient))
+            {
+                return;
+            }
+            var scale = mode != AnimateMode.Gradient ? Vector2.one : panVertical ? new Vector2(1f, 2f) : new Vector2(2f, 1f);
+            GradientBackground.SetBoxScale(element, gradient, scale);
+        }
+
+        // The non-pan modes own a shared inline slot while active — style.filter / style.opacity / style.rotate /
+        // style.scale / style.translate — that an inline-resolved utility also writes (the arbitrary filter-[..] / opacity-[.x] forms, and the
         // filter presets blur-sm etc.). Detach nulls that slot to return to the no-motion state: a NAMED USS
         // class (opacity-50) then re-resolves on its own, but a surviving inline-resolved value is lost —
         // DiffClassList does not re-apply a token that did not change across the patch. So after Detach, re-assert
@@ -109,7 +130,7 @@ namespace Velvet
         {
             if (IsPanMode(spec.Mode) && _ctx.GradientBackgrounds.TryGetValue(element, out var gradient))
             {
-                return StyleAnimateDriver.PanVerticalForAngle(gradient.AngleDeg);
+                return StyleAnimateDriver.PanVerticalForAngle(gradient.Spec.AngleDeg);
             }
             return false;
         }

@@ -121,7 +121,7 @@ namespace Velvet
         /// <c>V.Custom&lt;T&gt;("class", child1, child2)</c> form, see the <c>params</c> overload.
         /// </summary>
         /// <typeparam name="T">Concrete VisualElement subclass to instantiate.</typeparam>
-        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces. A text-input or popup field type takes its surface utilities on its input box, as <see cref="TextField"/> does.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="props">Optional FiberElementProps (text / tooltip / enabled / etc.) bag.</param>
@@ -151,7 +151,7 @@ namespace Velvet
                 Key = key,
                 ElementType = typeof(T),
                 Name = name,
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseCustomClassNames<T>(className),
                 Props = WithAttributes(props, data, aria),
                 Children = children ?? EmptyChildren,
                 Events = EmptyEvents,
@@ -177,7 +177,7 @@ namespace Velvet
             new ElementNode
             {
                 ElementType = typeof(T),
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseCustomClassNames<T>(className),
                 Children = children == null || children.Length == 0 ? EmptyChildren : children,
                 Events = EmptyEvents,
             };
@@ -422,6 +422,15 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="direction">Axis the slider runs along, written to <c>Slider.direction</c>.
+        /// Null leaves it undeclared rather than horizontal: a direction no render has declared is not written,
+        /// and one a later render drops goes back to what the element carried before any render declared it.</param>
+        /// <param name="inverted">When true, swaps the ends the low and high values sit at, written to
+        /// <c>Slider.inverted</c>. Null is undeclared, as for <paramref name="direction"/>.</param>
+        /// <param name="step">Distance one arrow key moves the value, and the grid Home, End and the paging keys
+        /// land on, counted from <paramref name="lowValue"/>. Null is Radix's default of 1.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="direction"/> names no member of
+        /// <see cref="SliderDirection"/>, or <paramref name="step"/> is not above zero and finite.</exception>
         /// <returns>The created <see cref="ElementNode"/> representing this slider.</returns>
         public static ElementNode Slider(
             string? className = null,
@@ -438,19 +447,36 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            SliderDirection? direction = null,
+            bool? inverted = null,
+            float? step = null)
         {
             VNode.RequireKey(key);
+            // Above both rents below, so a refusal here strands no event array or bag this factory rented.
+            if (direction is not (null or SliderDirection.Horizontal or SliderDirection.Vertical))
+            {
+                throw new ArgumentOutOfRangeException(nameof(direction), direction,
+                    "V.Slider takes a member of SliderDirection as its direction.");
+            }
+
+            if (step is { } stepValue && !(stepValue > 0f && float.IsFinite(stepValue)))
+            {
+                throw new ArgumentOutOfRangeException(nameof(step), step,
+                    "V.Slider takes a step above zero and finite.");
+            }
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<float> { Handler = onValueChanged } : null);
 
             FiberElementProps? props = null;
-            if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue)
+            if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue
+                || direction.HasValue || inverted.HasValue || step.HasValue)
             {
                 props = VNodePool.RentProps();
                 props.FieldValue = value;
                 props.Enabled = enabled;
-                props.Slider = (lowValue.HasValue || highValue.HasValue)
-                    ? new SliderSettings(lowValue, highValue)
+                props.Slider = (lowValue.HasValue || highValue.HasValue || direction.HasValue || inverted.HasValue
+                        || step.HasValue)
+                    ? new SliderSettings(lowValue, highValue, direction, inverted, step)
                     : null;
             }
             props = WithAttributes(props, data, aria);
@@ -537,11 +563,12 @@ namespace Velvet
         /// Creates a TextField.
         /// </summary>
         /// <remarks>
-        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/> and
-        /// <paramref name="isDelayed"/> are undeclared when null rather than reset to a default;
+        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/>,
+        /// <paramref name="isDelayed"/>, <paramref name="multiline"/>, <paramref name="keyboardType"/> and
+        /// <paramref name="autoCorrection"/> are undeclared when null rather than reset to a default;
         /// <c>Documentation~/react-migration.md</c> owns what a null and a dropped one each do.
         /// </remarks>
-        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces. Background, border, radius, padding, shadow and ring utilities style the field's box; <c>Documentation~/styling-variants.md</c> owns the list.</param>
         /// <param name="value">Current text value (controlled).</param>
         /// <param name="onValueChanged">Handler invoked when the input text changes.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -559,6 +586,9 @@ namespace Velvet
         /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
         /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
         /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
+        /// <param name="multiline">When true, the field is multi-line (HTML <c>&lt;textarea&gt;</c>).</param>
+        /// <param name="keyboardType">Written to the field's <c>keyboardType</c> (HTML <c>inputmode</c>).</param>
+        /// <param name="autoCorrection">Written to the field's <c>autoCorrection</c> (HTML <c>autocorrect</c>).</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -581,13 +611,17 @@ namespace Velvet
             string? placeholder = null,
             int? maxLength = null,
             bool? isReadOnly = null,
-            bool? isDelayed = null)
+            bool? isDelayed = null,
+            bool? multiline = null,
+            TouchScreenKeyboardType? keyboardType = null,
+            bool? autoCorrection = null)
         {
             VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
-                                    || isReadOnly.HasValue || isDelayed.HasValue;
+                                    || isReadOnly.HasValue || isDelayed.HasValue || multiline.HasValue
+                                    || keyboardType.HasValue || autoCorrection.HasValue;
 
             FiberElementProps? props = null;
             if (value != null || label != null || declaresTextField || enabled.HasValue)
@@ -598,6 +632,11 @@ namespace Velvet
                 props.Enabled = enabled;
                 props.TextField = declaresTextField
                     ? new TextFieldSettings(isPasswordField, placeholder, maxLength, isReadOnly, isDelayed)
+                    {
+                        Multiline = multiline,
+                        KeyboardType = keyboardType,
+                        AutoCorrection = autoCorrection,
+                    }
                     : null;
             }
             props = WithAttributes(props, data, aria);
@@ -607,7 +646,7 @@ namespace Velvet
                 Key = key,
                 ElementType = typeof(TextField),
                 Name = name,
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseFieldClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
                 Events = events,
@@ -801,7 +840,7 @@ namespace Velvet
         /// <summary>
         /// Creates a DropdownField.
         /// </summary>
-        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces. Background, border, radius, padding, shadow and ring utilities style the field's box; <c>Documentation~/styling-variants.md</c> owns the list.</param>
         /// <param name="value">Currently selected value (controlled).</param>
         /// <param name="choices">List of selectable values shown in the dropdown.</param>
         /// <param name="onValueChanged">Handler invoked when the selection changes.</param>
@@ -851,7 +890,7 @@ namespace Velvet
                 Key = key,
                 ElementType = typeof(DropdownField),
                 Name = name,
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseFieldClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
                 Events = events,
@@ -1044,7 +1083,7 @@ namespace Velvet
         /// <summary>
         /// Creates an IntegerField for entering integer values.
         /// </summary>
-        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces. Background, border, radius, padding, shadow and ring utilities style the field's box; <c>Documentation~/styling-variants.md</c> owns the list.</param>
         /// <param name="value">Current integer value (controlled).</param>
         /// <param name="onValueChanged">Handler invoked when the integer value changes.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -1091,7 +1130,7 @@ namespace Velvet
                 Key = key,
                 ElementType = typeof(IntegerField),
                 Name = name,
-                ClassNames = ParseClassNames(className),
+                ClassNames = ParseFieldClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
                 Events = events,
@@ -2175,6 +2214,9 @@ namespace Velvet
         /// pulls an exiting child out of layout flow so still-present siblings reflow immediately.</param>
         /// <param name="onExitComplete">Invoked once when every in-flight exit animation has finished;
         /// not fired for cancelled exits or animation-less removals.</param>
+        /// <param name="propagate">Set on an inner presence: while the enclosing presence's keyed child holding it is
+        /// leaving, every child of this presence exits too, and the enclosing presence keeps that child mounted until
+        /// they have completed. A presence between the two that does not propagate stops it.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="mode"/> names no member of
         /// <see cref="AnimatePresenceMode"/>.</exception>
         /// <returns>The created <see cref="AnimatePresenceNode"/>.</returns>
@@ -2190,7 +2232,8 @@ namespace Velvet
             float delayChildrenSec = 0f,
             int staggerDirection = 1,
             AnimatePresenceMode mode = AnimatePresenceMode.Sync,
-            Action? onExitComplete = null)
+            Action? onExitComplete = null,
+            bool propagate = false)
         {
             if (mode is not (AnimatePresenceMode.Sync or AnimatePresenceMode.Wait or AnimatePresenceMode.PopLayout))
             {
@@ -2207,6 +2250,7 @@ namespace Velvet
                 StaggerDirection = staggerDirection,
                 Mode = mode,
                 OnExitComplete = onExitComplete,
+                Propagate = propagate,
             };
         }
 
@@ -2367,6 +2411,29 @@ namespace Velvet
 
         #region Virtualized list
 
+        /// <summary>Creates a vertical virtualized list.</summary>
+        /// <typeparam name="T">Element type of the source collection.</typeparam>
+        /// <param name="items">Source collection.</param>
+        /// <param name="keySelector">Selector that derives a per-item key.</param>
+        /// <param name="itemHeight">Item height in pixels.</param>
+        /// <param name="renderer">Builds each rendered item.</param>
+        /// <param name="overscan">Extra items rendered beyond each edge.</param>
+        /// <param name="key">The list's key among its siblings.</param>
+        /// <param name="className">Utility classes for the list.</param>
+        /// <param name="name">The list element's name.</param>
+        /// <param name="listRef">Receives the mounted list's handle.</param>
+        public static VirtualListNode VirtualList<T>(
+            IReadOnlyList<T> items,
+            Func<T, string> keySelector,
+            float itemHeight,
+            Func<T, VNode> renderer,
+            int overscan = 3,
+            string? key = null,
+            string? className = null,
+            string? name = null,
+            Ref<VirtualListHandle>? listRef = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
+
         /// <summary>
         /// Virtualized list component for rendering large item collections.
         /// Renders a ScrollView of items of one height and only places the visible range in the DOM
@@ -2393,6 +2460,8 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
+        /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
+        /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>The created <see cref="VirtualListNode"/>.</returns>
         public static VirtualListNode VirtualList<T>(
@@ -2400,6 +2469,7 @@ namespace Velvet
             Func<T, string> keySelector,
             float itemHeight,
             Func<T, VNode> renderer,
+            bool horizontal,
             int overscan = 3,
             string? key = null,
             string? className = null,
@@ -2418,13 +2488,37 @@ namespace Velvet
                 Name = name,
                 Key = key,
                 ListRef = listRef,
+                Horizontal = horizontal,
             };
         }
+
+        /// <summary>Creates a vertical virtualized list.</summary>
+        /// <typeparam name="T">Element type of the source collection.</typeparam>
+        /// <param name="items">Source collection.</param>
+        /// <param name="keySelector">Selector that derives a per-item key.</param>
+        /// <param name="itemHeight">Item height in pixels at an index.</param>
+        /// <param name="renderer">Builds each rendered item.</param>
+        /// <param name="overscan">Extra items rendered beyond each edge.</param>
+        /// <param name="key">The list's key among its siblings.</param>
+        /// <param name="className">Utility classes for the list.</param>
+        /// <param name="name">The list element's name.</param>
+        /// <param name="listRef">Receives the mounted list's handle.</param>
+        public static VirtualListNode VirtualList<T>(
+            IReadOnlyList<T> items,
+            Func<T, string> keySelector,
+            Func<int, float> itemHeight,
+            Func<T, VNode> renderer,
+            int overscan = 3,
+            string? key = null,
+            string? className = null,
+            string? name = null,
+            Ref<VirtualListHandle>? listRef = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
 
         /// <summary>
         /// Virtualized list whose items each take the height <paramref name="itemHeight"/> gives for their
         /// index — react-window's <c>rowHeight</c> function. Every other parameter is
-        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, int, string, string, string, Ref{VirtualListHandle})"/>'s.
+        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>'s.
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. Must not be null.</param>
@@ -2437,6 +2531,8 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
+        /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
+        /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>The created <see cref="VirtualListNode"/>.</returns>
         public static VirtualListNode VirtualList<T>(
@@ -2444,6 +2540,7 @@ namespace Velvet
             Func<T, string> keySelector,
             Func<int, float> itemHeight,
             Func<T, VNode> renderer,
+            bool horizontal,
             int overscan = 3,
             string? key = null,
             string? className = null,
@@ -2462,6 +2559,7 @@ namespace Velvet
                 Name = name,
                 Key = key,
                 ListRef = listRef,
+                Horizontal = horizontal,
             };
         }
 
@@ -2755,6 +2853,18 @@ namespace Velvet
         /// The array is shared with other callers passing the same string, so it must not be mutated;
         /// <see cref="ClassNameParseCache"/> owns how long it stays shared.
         /// </summary>
+        // The field factories' class list: the surface utilities are sent to the input box (StyleInputBoxSurface).
+        private static string[] ParseFieldClassNames(string? classNames)
+            => StyleInputBoxSurface.Route(ParseClassNames(classNames));
+
+        private static string[] ParseCustomClassNames<T>(string? classNames)
+            => FieldControl<T>.IsField ? ParseFieldClassNames(classNames) : ParseClassNames(classNames);
+
+        private static class FieldControl<T>
+        {
+            internal static readonly bool IsField = StyleInputBoxSurface.IsControlType(typeof(T));
+        }
+
         internal static string[] ParseClassNames(string? classNames)
             => string.IsNullOrEmpty(classNames) ? EmptyClassNames : s_classNameCache.Parse(classNames);
 

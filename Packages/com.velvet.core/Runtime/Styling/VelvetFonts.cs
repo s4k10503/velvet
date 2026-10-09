@@ -60,8 +60,10 @@ namespace Velvet
         public static event Action? FontsChanged;
 
         /// <summary>
-        /// Family applied to elements that specify a weight/style but no explicit <c>font-&lt;name&gt;</c>.
-        /// Null or empty means "inherit the panel's default font".
+        /// Family applied to elements that specify a weight/style but no explicit <c>font-&lt;name&gt;</c> and have no ancestor carrying one that Velvet rendered;
+        /// their descendants inherit the asset written there. A label with no font class and no ancestor
+        /// carrying one is not reached (Documentation~/fonts.md, "What DefaultFamily reaches"). Null or
+        /// empty leaves a weight/style-only element on the font its stylesheets and ancestors give it.
         /// </summary>
         public static string? DefaultFamily
         {
@@ -168,7 +170,8 @@ namespace Velvet
                 return fallback;
             }
 
-            var entry = def.FindClosestWeightWithFace(weight, italic) ?? def.FindClosestWeight(weight);
+            var entryOfStyle = def.FindClosestWeightWithFace(weight, italic);
+            var entry = entryOfStyle ?? def.FindClosestWeight(weight);
             if (entry == null)
             {
                 return fallback;
@@ -186,6 +189,14 @@ namespace Velvet
             if (asset == null && TryGetAsset(entry.upright, entry.uprightAddress, out var uprightAsset))
             {
                 asset = uprightAsset;
+            }
+
+            // An upright request over a family that holds only italic faces takes the italic one, as CSS
+            // does when no face of the requested style exists.
+            if (asset == null && !italic && entryOfStyle == null
+                && TryGetAsset(entry.italic, entry.italicAddress, out var onlyItalicAsset))
+            {
+                asset = onlyItalicAsset;
             }
 
             if (asset == null)

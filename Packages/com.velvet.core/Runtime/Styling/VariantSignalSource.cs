@@ -42,40 +42,44 @@ namespace Velvet
     internal static class VariantSettleSweep
     {
         public static void ForEach(VisualElement element, ReconcilerContext ctx, Action<IVariantSettleTarget> action)
+            => ForEach(element, ctx, action, static (consumer, act) => act(consumer));
+
+        // The state travels as an argument so a caller settling a value can pass a static lambda rather than
+        // one capturing that value.
+        public static void ForEach<TState>(VisualElement element, ReconcilerContext ctx, TState state,
+            Action<IVariantSettleTarget, TState> action)
         {
             if (ctx.GestureManipulators.TryGetValue(element, out var gesture))
             {
-                action(gesture);
+                action(gesture, state);
             }
             if (ctx.VariantManipulators.TryGetValue(element, out var variant))
             {
-                action(variant);
+                action(variant, state);
             }
-            foreach (var m in SnapshotStacked(ctx))
+            if (!ctx.HasStackedVariantsOn(element))
             {
-                if (m.target == element)
+                return;
+            }
+            var stacked = ctx.BufferPool.RentStackedVariantList();
+            try
+            {
+                ctx.CopyStackedVariantsOn(element, stacked);
+                foreach (var m in stacked)
                 {
-                    action(m);
+                    // Read at visit time rather than at the copy: a settle earlier in this walk can close the
+                    // gate of a manipulator listed after it, and GateStackedVariant detaches one whose inner
+                    // does not retain across an outer close.
+                    if (m.target == element)
+                    {
+                        action(m, state);
+                    }
                 }
             }
-        }
-
-        // The stacked registry is copied before either sweep walks it, never enumerated live: settling a
-        // consumer applies its payload, and a payload that is itself a variant re-enters
-        // ReconcilerContext.GateStackedVariant, which adds to or removes from this very dictionary. Walking it
-        // live threw "Collection was modified" out of the reconcile; StackedVariantEdgeTests pins the case.
-        // Selecting by the manipulator's own target rather than by its key's is the same set — the gate adds
-        // each manipulator to the element its key names.
-        private static StyleStackedVariantManipulator[] SnapshotStacked(ReconcilerContext ctx)
-        {
-            var count = ctx.StackedVariantManipulators.Count;
-            if (count == 0)
+            finally
             {
-                return Array.Empty<StyleStackedVariantManipulator>();
+                ctx.BufferPool.ReturnStackedVariantList(stacked);
             }
-            var snapshot = new StyleStackedVariantManipulator[count];
-            ctx.StackedVariantManipulators.Values.CopyTo(snapshot, 0);
-            return snapshot;
         }
 
         // Offers a checked settle raised on source to every relational consumer in the context. Both registries
@@ -89,10 +93,8 @@ namespace Velvet
             {
                 kv.Value.SettleCheckedFromSource(source, value);
             }
-            foreach (var m in SnapshotStacked(ctx))
-            {
-                m.SettleCheckedFromSource(source, value);
-            }
+            ctx.ForEachStackedVariant((source, value),
+                static (stacked, edge) => stacked.SettleCheckedFromSource(edge.source, edge.value));
         }
     }
 
@@ -116,6 +118,9 @@ namespace Velvet
         // suppress focus-visible for pointer focus. A one-shot flag, reset at Hook and consumed by the focus
         // it suppresses.
         private bool _pointerFocus;
+
+        // Whether Hook added the descendant-focus listeners, so Unhook removes exactly what was added.
+        private bool _hearsDescendantFocus;
 
         // Whether this element's ring follows InputModality.Announced, which it does while it holds focus.
         private bool _following;
@@ -142,6 +147,14 @@ namespace Velvet
             target.RegisterCallback<PointerCancelEvent>(OnPointerCancel);
             target.RegisterCallback<FocusEvent>(OnFocus);
             target.RegisterCallback<BlurEvent>(OnBlur);
+            // A field's input box takes focus through the element inside it, and a focus event does not bubble,
+            // so the box listens on the way down as well (StyleInputBoxSurface). InputBoxSurfacePanelTests holds it.
+            _hearsDescendantFocus = StyleInputBoxSurface.IsBox(target);
+            if (_hearsDescendantFocus)
+            {
+                target.RegisterCallback<FocusEvent>(OnDescendantFocus, TrickleDown.TrickleDown);
+                target.RegisterCallback<BlurEvent>(OnDescendantBlur, TrickleDown.TrickleDown);
+            }
 
             if (registerChecked)
             {
@@ -167,6 +180,12 @@ namespace Velvet
             _target.UnregisterCallback<PointerCancelEvent>(OnPointerCancel);
             _target.UnregisterCallback<FocusEvent>(OnFocus);
             _target.UnregisterCallback<BlurEvent>(OnBlur);
+            if (_hearsDescendantFocus)
+            {
+                _target.UnregisterCallback<FocusEvent>(OnDescendantFocus, TrickleDown.TrickleDown);
+                _target.UnregisterCallback<BlurEvent>(OnDescendantBlur, TrickleDown.TrickleDown);
+                _hearsDescendantFocus = false;
+            }
             if (_registerChecked)
             {
                 _target.UnregisterCallback<ChangeEvent<bool>>(OnCheckedChange);
@@ -289,6 +308,23 @@ namespace Velvet
             {
                 _following = false;
                 InputModality.Announced -= OnModalityChanged;
+            }
+        }
+
+        // The target phase is OnFocus's / OnBlur's own, so only an event aimed below the element is handled here.
+        private void OnDescendantFocus(FocusEvent evt)
+        {
+            if (evt.target != _target)
+            {
+                OnFocus(evt);
+            }
+        }
+
+        private void OnDescendantBlur(BlurEvent evt)
+        {
+            if (evt.target != _target)
+            {
+                OnBlur(evt);
             }
         }
 

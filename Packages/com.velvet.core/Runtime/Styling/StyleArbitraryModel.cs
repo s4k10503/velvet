@@ -295,11 +295,34 @@ namespace Velvet
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
         // null for every other property.
         public CustomFilterValue? Custom { get; }
+        // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
+        public bool Auto { get; }
+
+        // The `auto` keyword for a length property.
+        public static ArbitraryStyle AutoLength(ArbitraryProperty property) => new ArbitraryStyle(property, true);
+
+        // The inline length this result writes.
+        public StyleLength ToStyleLength()
+            => Auto ? new StyleLength(StyleKeyword.Auto) : new StyleLength(new Length(Value, Unit));
+
+        private ArbitraryStyle(ArbitraryProperty property, bool auto)
+        {
+            Property = property;
+            Auto = auto;
+            Value = 0f;
+            Unit = LengthUnit.Pixel;
+            Value2 = 0f;
+            Unit2 = LengthUnit.Pixel;
+            Value3 = 0f;
+            Color = default;
+            Custom = null;
+        }
 
         // Creates a length/angle result.
         public ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit)
         {
             Property = property;
+            Auto = false;
             Value = value;
             Unit = unit;
             Value2 = 0f;
@@ -314,6 +337,7 @@ namespace Velvet
             float value2, LengthUnit unit2, float value3 = 0f)
         {
             Property = property;
+            Auto = false;
             Value = value;
             Unit = unit;
             Value2 = value2;
@@ -327,6 +351,7 @@ namespace Velvet
         public ArbitraryStyle(ArbitraryProperty property, Color color)
         {
             Property = property;
+            Auto = false;
             Color = color;
             Value = 0f;
             Unit = LengthUnit.Pixel;
@@ -340,6 +365,7 @@ namespace Velvet
         public ArbitraryStyle(ArbitraryProperty property, CustomFilterValue custom)
         {
             Property = property;
+            Auto = false;
             Custom = custom;
             Value = 0f;
             Unit = LengthUnit.Pixel;

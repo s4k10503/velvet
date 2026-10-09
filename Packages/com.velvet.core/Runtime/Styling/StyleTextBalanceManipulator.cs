@@ -1,462 +1,593 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Approximates CSS `text-wrap: balance` on a TextElement carrying `text-balance`, and the
-    // short-last-line avoidance of `text-wrap: pretty` on one carrying `text-pretty` (FindPrettyWidth).
-    // UI Toolkit's text engine exposes no line-break hook, so rather than moving line breaks inside a
-    // fixed box this narrows the box. For balance that is a bounded binary search over
-    // TextElement.MeasureTextSize — the same method the engine's own
-    // measure pass calls — for the narrowest inline `width` whose measured height still matches the height
-    // a normal layout takes at the available width. Font metrics are constant across candidates, so
-    // comparing heights stands in for comparing line counts. Resizing the box at all is a deviation from
-    // CSS; see Documentation~/fonts.md.
+    // Realises `text-wrap: balance` and `text-wrap: pretty` on a text leaf by writing line breaks into the
+    // text it DISPLAYS, so the box keeps the width the cascade gives it. The text the leaf was given is
+    // not changed: StyleTextEffectResolver builds the displayed string from the raw text it captured and
+    // asks Break for the newlines, the way it applies text-transform. Which breaks come is TextLineBreaker's
+    // choice and where a line may break is TextBreakOpportunities'; this class measures for them and turns
+    // their answer into a string.
     //
-    // `width` rather than `maxWidth`, for two engine facts: the engine clamps a written width to the
-    // element's own max-width, so a declared ceiling holds whatever this manipulator computes; and
-    // resolvedStyle.maxWidth then reports the cascade instead of this manipulator's own output, which is
-    // what makes the ceiling readable at all.
+    // One per leaf whose resolved text-wrap-style is balance or pretty, wherever in the tree the class was
+    // written — the style inherits as it does in CSS, so the resolver attaches it to every text leaf under
+    // the element that carries the class. It is tracked in ReconcilerContext.TextBalanceManipulators and
+    // removed on cleanup. Its events re-derive the leaf (StyleTextEffectResolver.ReapplyElement) when the
+    // width the text is laid out in, or the font it is measured in, changes; Break answers from the last
+    // result while neither the text nor those have, and keeps what it measured of a text across widths.
     //
-    // Available width comes from the PARENT's contentRect, through FiberNodePatcher.GetChildContainer,
-    // which follows UI Toolkit's own contentContainer redirect and so answers with a composite widget's
-    // inner box. For a RECONCILED child that redirect has already happened — the reconciler adds into the
-    // inner box, so the element's parent IS it — which makes the call idempotent here and the element this
-    // subscribes to the same one it measures. The target's own contentRect is never the source: that is
-    // this manipulator's output.
-    //
-    // A hug-width parent defeats that indirection, since the parent's width follows the target's: the
-    // search input then narrows every pass. With a fixed ceiling it converges. With a PERCENTAGE ceiling
-    // it oscillates instead — the bound decays to a release, the released box re-widens the parent, and
-    // the next pass starts over — so that combination needs a parent with a definite width.
-    //
-    // Balance stands down entirely when something else owns the box: a declared width, releasing the slot
-    // back to it, or a grid parent, whose StyleGridManipulator writes this same child.style.width and is
-    // left to hold it. Both are re-checked per derive rather than delivered per patch, because a variant
-    // payload lands on the element outside any patch of its own.
-    //
-    // Ownership of the inline width lasts only while a balanced value sits in it. Every release re-resolves
-    // the slot from the arbitrary-value layer map, which matters for a w-[..] applied in the same patch
-    // that ends the ownership; a USS-spelled width needs nothing, since clearing the inline value reveals
-    // the class again.
-    //
-    // Single-line gate: CSS balance is a no-op on one line, and narrowing a single-line box would shrink it
-    // for no parity benefit. Measured at the width the text actually gets — ceiling-clamped, less the
-    // element's own frame — so text that fits the parent but wraps inside either still balances. A nowrap element reaches the same verdict through the same
-    // comparison, since MeasureTextSize honors the element's own resolved white-space.
-    //
-    // Re-derives on attach, on its own and its PARENT's GeometryChangedEvent, and on ChangeEvent<string>
-    // (a text swap that keeps the same box size raises no geometry event). The parent subscription is what
-    // catches an ancestor WIDENING: the written width pins the target's own rect, so nothing fires on the
-    // target. A signature over the clamped content width, the frame around it, the text and the font size
-    // absorbs the GeometryChangedEvent this manipulator's own write provokes.
-    //
-    // Lifecycle mirrors StyleGapManipulator / StyleGridManipulator: the reconciler attaches one per
-    // element, tracks it in ReconcilerContext.TextBalanceManipulators, and removes it on cleanup. Detach
-    // clears the inline width and the reconciler restores a co-present w-* right after; a full unmount
-    // does not, since the element's layer record is dropped and FiberElementPoolReset nulls width anyway.
-    internal sealed class StyleTextBalanceManipulator : Manipulator
+    // The width broken against is the leaf's own, except for a leaf whose box UI Toolkit sizes from its
+    // text: its own width is only the longest line it last displayed, so it is broken against the room its
+    // parent offers it instead (LeafWidth). A parent offering more room by more than the hysteresis
+    // re-derives such a leaf, the baseline moving only when the room has moved that far.
+    internal sealed class StyleTextBalanceManipulator : StyleTextItemManipulator
     {
-        private const int MaxIterations = 8;
-
-        // Search floor as a fraction of the available width. Bounds the range only — a too-narrow
-        // candidate measures taller and is rejected anyway, so it need not equal the longest word.
-        private const float MinWidthFraction = 0.1f;
-
-        // Absorbs float rounding so an unchanged wrap outcome does not misregister as "one line taller",
-        // mirroring StyleGridManipulator's WrapSafetyPx.
-        private const float HeightEpsilonPx = 0.5f;
-
-        // Content room below this leaves nothing to redistribute, and keeps the search from being entered
-        // with a floor above its own upper bound. A frame wider than the room around it reaches this too,
-        // so the released box can be far wider than the value itself.
+        // Content room below this leaves nothing to redistribute, and keeps a division by it away.
         private const float MinBalanceableWidthPx = 1f;
 
-        // text-pretty acts only on a last word narrower than this fraction of the line, Chromium's
-        // kShortLineDenominator in ScoreLineBreaker's ShouldOptimize.
-        private const float ShortLineDenominator = 3f;
+        // The measured height of a line that wraps exceeds the one-line height by a whole line; this absorbs
+        // the float rounding of the two measurements.
+        private const float HeightEpsilonPx = 0.5f;
 
-        // How far text-pretty's width backs off the pixel grid; see FindPrettyWidth.
-        private const float PixelGridMarginPx = 1f;
+        // A paragraph wider than the line limit plus this many lines of the available width takes more lines
+        // than TextLineBreaker optimizes, so its items are never measured. The spare line covers the room
+        // the lines leave unused.
+        private const int SpareLines = 1;
 
-        // The characters text-pretty breaks words at.
-        private static readonly char[] BreakChars = { ' ', '\t', '\n', '\r' };
+        // A paragraph of more items than this is left to the engine, which bounds the measurements one
+        // text costs. Seven lines of CJK text at a wide width fit well inside it.
+        private const int MaxItems = 400;
 
-        // Answers whether the target's parent is a grid container, whose manipulator writes the same slot.
+        // A parent has to offer more room than this, from where it last was, for the leaf to be re-broken
+        // against it, so the pixel-grid rounding of a layout pass is not a widening.
+        private const float RoomHysteresisPx = 2f;
+
+        // How far a leaf's box may differ from the width of the lines it displays and still be read as
+        // sized by them, and how much room beyond the box makes the difference matter. Measured text is
+        // rounded up to the pixel grid.
+        private const float SizedByTextTolerancePx = 1.5f;
+
         private readonly ReconcilerContext _ctx;
 
         private TextWrapStyle _style;
 
-        private int _lastSignature;
-        private bool _hasSignature;
+        // False until the leaf has been laid out since it was attached, so a recycled element's contentRect
+        // from its previous tenant is not read as its width.
+        private bool _laidOut;
 
-        // Tracked so the callback can be unregistered from the exact element it was registered on.
-        private VisualElement? _subscribedParent;
+        private float _roomBaseline = float.NaN;
+        private int _roomEpoch;
+
+        // What was measured of one text under one font, kept across widths. A paragraph's measurements
+        // depend on neither the width nor the style.
+        private string? _measuredFor;
+        private MeasureKey _measureKey;
+        private readonly Dictionary<string, MeasuredParagraph> _measured = new(StringComparer.Ordinal);
+
+        private bool _hasResult;
+        private TextWrapStyle _resultStyle;
+        private float _resultWidth;
+        private string _result = string.Empty;
+
+        private bool _recheckPending;
+
+        private bool _hasDecision;
+        private float _decisionOwn;
+        private float _decisionRoom;
+        private string _decisionDisplayed = string.Empty;
+        private string _decisionFor = string.Empty;
+        private float _decisionWidth;
 
         internal StyleTextBalanceManipulator(ReconcilerContext ctx, TextWrapStyle style)
+            : base(ctx)
         {
             _ctx = ctx;
             _style = style;
         }
 
+        // The resolver calls this on every resolve; a change of style needs no invalidation, since the
+        // style is part of what the last result is keyed on.
+        internal void SetStyle(TextWrapStyle style)
+        {
+            _style = style;
+        }
+
+        // Whether the leaf has a width of its own to break in: laid out since it was attached, and wide
+        // enough to hold anything. False before that, when the resolver leaves the text as it is.
+        internal bool CanBreak =>
+            _laidOut && target is TextElement textElement && textElement.contentRect.width >= MinBalanceableWidthPx;
+
+        // Whether the text Break was last given since BeginBreak came back with newlines in it.
+        internal bool Broke { get; private set; }
+
+        internal void BeginBreak()
+        {
+            Broke = false;
+        }
+
         protected override void RegisterCallbacksOnTarget()
         {
-            target.RegisterCallback<AttachToPanelEvent>(OnAttach);
-            target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
-            target.RegisterCallback<ChangeEvent<string>>(OnTextChanged);
-            Apply();
+            // Ahead of the base's, so the flag is set when the same event derives.
+            target.RegisterCallback<AttachToPanelEvent>(OnAttachedHere);
+            target.RegisterCallback<GeometryChangedEvent>(OnLaidOutHere);
+            target.schedule.Execute(MarkLaidOut);
+            base.RegisterCallbacksOnTarget();
         }
 
         protected override void UnregisterCallbacksFromTarget()
         {
-            Clear();
-            target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
-            target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
-            target.UnregisterCallback<ChangeEvent<string>>(OnTextChanged);
+            target.UnregisterCallback<AttachToPanelEvent>(OnAttachedHere);
+            target.UnregisterCallback<GeometryChangedEvent>(OnLaidOutHere);
+            base.UnregisterCallbacksFromTarget();
         }
 
-        // Forces a full re-derive, mirroring StyleGridManipulator.UpdateSpec / StyleGapManipulator.UpdateGap.
-        public void Refresh(TextWrapStyle style)
+        private void OnAttachedHere(AttachToPanelEvent evt)
         {
-            _style = style;
+            _laidOut = false;
+            target.schedule.Execute(MarkLaidOut);
+        }
+
+        private void OnLaidOutHere(GeometryChangedEvent evt)
+        {
+            _laidOut = true;
+        }
+
+        // Runs on a scheduler tick, after the layout pass of the frame the manipulator was attached in, so
+        // a leaf attached to a settled layout with nothing to move it still gets broken.
+        private void MarkLaidOut()
+        {
+            _laidOut = true;
             _hasSignature = false;
             Apply();
         }
 
-        private void OnAttach(AttachToPanelEvent evt)
+        protected override void Derive(TextElement textElement, VisualElement parent)
         {
-            _hasSignature = false;
-            Apply();
-        }
-
-        private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
-
-        private void OnTextChanged(ChangeEvent<string> evt) => Apply();
-
-        private void OnParentGeometryChanged(GeometryChangedEvent evt) => Apply();
-
-        // Re-pointed from every Apply, not only from AttachToPanelEvent, so a mid-life reparent is caught
-        // without depending on how UI Toolkit sequences Attach/Detach for a same-panel reparent.
-        private void SyncParentSubscription(VisualElement? parent)
-        {
-            if (ReferenceEquals(parent, _subscribedParent))
-            {
-                return;
-            }
-            _subscribedParent?.UnregisterCallback<GeometryChangedEvent>(OnParentGeometryChanged);
-            _subscribedParent = parent;
-            _subscribedParent?.RegisterCallback<GeometryChangedEvent>(OnParentGeometryChanged);
-        }
-
-        private void Apply()
-        {
-            if (target is not TextElement textElement)
-            {
-                return;
-            }
-
-            var parent = textElement.parent;
-            SyncParentSubscription(parent);
-            if (parent == null)
-            {
-                // Re-arms so a later resolve is never skipped as a false repeat, mirroring
-                // StyleGridManipulator's off-panel deferral.
-                _hasSignature = false;
-                return;
-            }
-
-            if (StyleTextBalanceClass.DeclaresWidthLayer(textElement))
-            {
-                // In FRONT of the signature guard: two dictionary lookups, no allocation. This is what
-                // sees an inline-resolved variant width (md:w-[200px]) on both edges — its layer flips
-                // without moving anything else this manipulator watches, and the release below re-arms the
-                // signature so the OFF edge re-balances.
-                ReleaseWidth(textElement);
-                _hasSignature = false;
-                return;
-            }
-
-            var container = FiberNodePatcher.GetChildContainer(parent);
-            var available = container.contentRect.width
-                - textElement.resolvedStyle.marginLeft - textElement.resolvedStyle.marginRight;
-            var hasWidth = available > 0f && !float.IsNaN(available);
-            if (!hasWidth)
-            {
-                _hasSignature = false;
-                return;
-            }
-
-            // Clamped before the signature is computed, so a ceiling change that can alter the outcome
-            // re-derives and one that cannot leaves the signature untouched.
-            if (TryGetDeclaredCeiling(textElement, out var ceiling))
-            {
-                available = Mathf.Min(available, ceiling);
-            }
-
-            // The search measures text, which is laid out inside the element's content box, while the value
-            // it writes is a `width` — and a width in UI Toolkit covers the padding and the border. So the
-            // two are separated here: everything below searches over content widths, and the frame is added
-            // back at the write. Measuring at the outer width instead hands the text less room than the
-            // measurement assumed and it wraps one line further than the search settled on.
-            var frame = textElement.resolvedStyle.paddingLeft + textElement.resolvedStyle.paddingRight
-                        + textElement.resolvedStyle.borderLeftWidth
-                        + textElement.resolvedStyle.borderRightWidth;
-            var content = available - frame;
-
-            var text = textElement.text ?? string.Empty;
-            var fontSize = textElement.resolvedStyle.fontSize;
-            var signature = ComputeSignature(content, frame, text, fontSize, textElement.resolvedStyle.whiteSpace);
+            TrackRoom(ParentContentRoom(textElement, parent));
+            var signature = ComputeSignature(textElement);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
             }
-
-            // Behind the signature guard because the class walk below allocates; see DeclaresWidthClass
-            // for which paths deliver a change and the one that does not.
-            if (IsSizedByGridParent(parent))
-            {
-                // Left untouched rather than released: the grid writes this same slot with no layer behind
-                // it, so clearing it would destroy the column width rather than a value of ours. The grid
-                // cannot repair a write of ours either — its own re-derive is gated on the container's
-                // contentRect WIDTH, which a child re-wrapping does not move.
-                _hasSignature = false;
-                return;
-            }
-
-            if (StyleTextBalanceClass.DeclaresWidthClass(textElement))
-            {
-                // Released rather than skipped, so a declaration arriving while a balanced value is held
-                // takes effect at once.
-                ReleaseWidth(textElement);
-                _hasSignature = false;
-                return;
-            }
-
-            if (string.IsNullOrEmpty(text))
-            {
-                ReleaseWidth(textElement);
-                _lastSignature = signature;
-                _hasSignature = true;
-                return;
-            }
-
-            if (content < MinBalanceableWidthPx)
-            {
-                // Nothing to search over. Whatever the cascade then gives the box is the right answer here.
-                ReleaseWidth(textElement);
-                _lastSignature = signature;
-                _hasSignature = true;
-                return;
-            }
-
-            // Unconstrained: the single-line reference, carrying any hard line breaks but no soft wrap.
-            var singleLineHeight = textElement.MeasureTextSize(
-                text, float.NaN, VisualElement.MeasureMode.Undefined,
-                float.NaN, VisualElement.MeasureMode.Undefined).y;
-            var naturalHeight = textElement.MeasureTextSize(
-                text, content, VisualElement.MeasureMode.Exactly,
-                float.NaN, VisualElement.MeasureMode.Undefined).y;
-
-            if (naturalHeight <= 0f || float.IsNaN(naturalHeight))
-            {
-                // The font has not resolved yet. Recording this signature would make the later, valid
-                // measurement early-out forever, since the signature cannot tell "unchanged" from "the
-                // font resolved since".
-                return;
-            }
-
-            if (naturalHeight <= singleLineHeight + HeightEpsilonPx)
-            {
-                ReleaseWidth(textElement);
-                _lastSignature = signature;
-                _hasSignature = true;
-                return;
-            }
-
-            var minWidth = Mathf.Max(1f, content * MinWidthFraction);
-            var narrowest = _style == TextWrapStyle.Pretty
-                ? FindPrettyWidth(textElement, text, minWidth, content, naturalHeight)
-                : FindNarrowestWidth(textElement, text, minWidth, content, naturalHeight);
-            if (narrowest == null)
-            {
-                ReleaseWidth(textElement);
-            }
-            else
-            {
-                textElement.style.width = new StyleLength(narrowest.Value + frame);
-            }
-
             _lastSignature = signature;
             _hasSignature = true;
+            StyleTextEffectResolver.ReapplyElement(_ctx, textElement);
         }
 
-        // hi is feasible by construction — its own measured height IS naturalHeight — so it is a safe
-        // fallback when the loop's precision never beats it.
-        private static float? FindNarrowestWidth(
-            TextElement textElement, string text, float lo, float hi, float naturalHeight)
+        // Nothing was written outside the displayed text, which the resolver rewrites on its own.
+        protected override void Clear()
         {
-            var best = hi;
-            for (var i = 0; i < MaxIterations; i++)
-            {
-                var mid = (lo + hi) * 0.5f;
-                var height = textElement.MeasureTextSize(
-                    text, mid, VisualElement.MeasureMode.Exactly,
-                    float.NaN, VisualElement.MeasureMode.Undefined).y;
-                if (height <= naturalHeight + HeightEpsilonPx)
-                {
-                    best = mid;
-                    hi = mid;
-                }
-                else
-                {
-                    lo = mid;
-                }
-            }
-            return best;
+            _hasResult = false;
+            _hasDecision = false;
+            _measuredFor = null;
+            _measured.Clear();
+            _roomBaseline = float.NaN;
+            _laidOut = false;
         }
 
-        // text-pretty's short-last-line avoidance, on Chromium's trigger: the last line holds a single word
-        // (no break opportunity) and is narrower than a third of the line. Chromium then re-breaks the last
-        // lines with a penalty on leaving that word alone; this narrows the box instead, to about the widest
-        // width at which the text before the last word fills every line, so a word moves down to join it,
-        // and keeps that width only if the whole text still takes the same number of lines. Null leaves the
-        // box to its cascade. A word here is a run between spaces, tabs or line breaks.
-        private static float? FindPrettyWidth(
-            TextElement textElement, string text, float lo, float hi, float naturalHeight)
+        // The room moves the baseline only when it has moved by more than the hysteresis, so a widening in
+        // steps smaller than it adds up to one; a widening also bumps the epoch, which re-derives the leaf.
+        private void TrackRoom(float room)
         {
-            var end = text.TrimEnd(BreakChars).Length;
-            if (end == 0)
+            if (float.IsNaN(room))
             {
-                return null;
+                return;
             }
-            var start = text.LastIndexOfAny(BreakChars, end - 1) + 1;
-            if (start == 0)
+            if (float.IsNaN(_roomBaseline))
             {
-                return null;
+                _roomBaseline = room;
             }
-            var lastWord = textElement.MeasureTextSize(
-                text.Substring(start, end - start), float.NaN, VisualElement.MeasureMode.Undefined,
-                float.NaN, VisualElement.MeasureMode.Undefined).x;
-            // MUTANT_SURVIVES(equivalent, boundary): the two differ only for a last word measuring a third of
-            // the line to the last bit, where Chromium's rule does not optimize either.
-            if (lastWord >= hi / ShortLineDenominator)
+            else if (room > _roomBaseline + RoomHysteresisPx)
             {
-                return null;
+                _roomBaseline = room;
+                _roomEpoch++;
             }
-            var head = text.Substring(0, start);
-            // MUTANT_SURVIVES(equivalent, boundary): heights measured here are whole lines apart, far wider
-            // than the epsilon, so none sits on it.
-            if (MeasureHeight(textElement, head, hi) >= naturalHeight - HeightEpsilonPx)
+            else if (room < _roomBaseline - RoomHysteresisPx)
             {
-                return null;
+                _roomBaseline = room;
             }
-            // The widest whole point at which the head no longer fits its lines, so a word of it moves down
-            // beside the last one. Whole points because layout rounds the written width to the panel's
-            // pixel grid: a 126.5 write read back as 127 on a runner with one pixel per point.
-            var width = Mathf.Floor(hi);
-            // MUTANT_SURVIVES(equivalent, boundary): as above, no height sits an epsilon from another.
-            while (MeasureHeight(textElement, head, width) < naturalHeight - HeightEpsilonPx)
-            {
-                width--;
-                // MUTANT_SURVIVES(unreachable, boundary): the head needs its extra line once the box is
-                // narrower than its last line, which the last-word check leaves wider than two thirds of the
-                // line less a space, far above the floor at a tenth of it.
-                if (width < lo)
-                {
-                    return null;
-                }
-            }
-            // One point further for the same rounding, kept only if the whole text still takes its lines.
-            width -= PixelGridMarginPx;
-            // MUTANT_SURVIVES(equivalent, boundary): as above, no height sits an epsilon from another.
-            return MeasureHeight(textElement, text, width) <= naturalHeight + HeightEpsilonPx ? width : null;
         }
 
-        private static float MeasureHeight(TextElement textElement, string text, float width) =>
-            textElement.MeasureTextSize(
-                text, width, VisualElement.MeasureMode.Exactly,
-                float.NaN, VisualElement.MeasureMode.Undefined).y;
-
-        private static void ClearWidth(TextElement textElement)
+        // The room the parent's content box gives the leaf's own content box.
+        private static float ParentContentRoom(TextElement textElement, VisualElement parent)
         {
-            textElement.style.width = new StyleLength(StyleKeyword.Null);
+            var style = textElement.resolvedStyle;
+            return parent.contentRect.width - style.marginLeft - style.marginRight - style.paddingLeft
+                - style.paddingRight - style.borderLeftWidth - style.borderRightWidth;
         }
 
-        // The null covers an element with no arbitrary layers at all, for which the re-assert early-returns;
-        // the re-assert covers a w-[..] or size-[..] whose inline write the null would otherwise take with
-        // it, including one a variant registered.
-        private static void ReleaseWidth(TextElement textElement)
+        // The terms are what Break keys its result on besides the text, which reaches the resolver on its
+        // own path, and the white-space, since a variant can switch the wrap mode without moving the box.
+        private int ComputeSignature(TextElement textElement)
         {
-            ClearWidth(textElement);
-            StyleArbitraryValueResolver.ReapplyWidthSlot(textElement);
-        }
-
-        // Uncontaminated because this manipulator writes `width`, so every spelling — bracket, variant,
-        // USS scale, percentage — reads back here. An absent max-width reports the None keyword while a
-        // declared zero reports a value, so the two never blur; Auto is a third keyword no max-width
-        // utility can currently produce, and would read as a ceiling of whatever value accompanies it.
-        private static bool TryGetDeclaredCeiling(VisualElement element, out float ceilingPx)
-        {
-            var declared = element.resolvedStyle.maxWidth;
-            ceilingPx = declared.value;
-            return declared.keyword != StyleKeyword.None;
-        }
-
-        // StyleGridManipulator writes its children's own style.width. Asks the registry of attached grid
-        // manipulators rather than re-deriving the grid's class condition, so the two cannot drift apart.
-        // Walks ancestors because the grid sizes the children of GetChildContainer(target), and on any
-        // widget carrying a contentContainer redirect — ScrollView, Foldout, TabView, … — that inner box
-        // sits below the element the manipulator is keyed on; the match is that container being this
-        // element's own parent, so no unrelated ancestor grid can claim it.
-        private bool IsSizedByGridParent(VisualElement parent)
-        {
-            if (_ctx.GridManipulators.Count == 0)
-            {
-                return false;
-            }
-            for (var ancestor = parent; ancestor != null; ancestor = ancestor.parent)
-            {
-                if (_ctx.GridManipulators.ContainsKey(ancestor)
-                    && ReferenceEquals(FiberNodePatcher.GetChildContainer(ancestor), parent))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // Stops at the clear: only the caller can tell a class removal, which owes the element its
-        // co-present w-* back, from an unmount, whose layer record is dropped moments later.
-        private void Clear()
-        {
-            if (target is TextElement textElement)
-            {
-                ClearWidth(textElement);
-            }
-            SyncParentSubscription(null);
-            _hasSignature = false;
-        }
-
-        // The available width is already ceiling-clamped, so a ceiling change that can alter the outcome
-        // changes the signature. The full text rather than its length, which would miss a same-length swap.
-        // The frame is its own term rather than folded into the content width: a padding change that a
-        // container width change cancels out leaves the same content width and a different value to write.
-        // The white-space is a term because a variant can switch the wrap mode without moving anything else
-        // here: the text-effect pass writes it after this manipulator's own re-derive, and the geometry
-        // change the new wrapping causes would otherwise meet an unchanged signature.
-        private static int ComputeSignature(float content, float frame, string text, float fontSize, WhiteSpace whiteSpace)
-        {
+            var style = textElement.resolvedStyle;
             unchecked
             {
                 var hash = 17;
-                hash = hash * 31 + Mathf.RoundToInt(content);
-                hash = hash * 31 + Mathf.RoundToInt(frame);
-                hash = hash * 31 + text.GetHashCode();
-                hash = hash * 31 + fontSize.GetHashCode();
-                // MUTANT_SURVIVES(equivalent): subtracting the term tells two white-spaces apart as adding does.
-                hash = hash * 31 + (int)whiteSpace;
+                hash = hash * 31 + Mathf.RoundToInt(textElement.contentRect.width * 4f);
+                hash = hash * 31 + _roomEpoch;
+                hash = hash * 31 + new MeasureKey(style).GetHashCode();
+                hash = hash * 31 + (int)style.whiteSpace;
+                hash = hash * 31 + (_laidOut ? 1 : 0);
                 return hash;
             }
+        }
+
+        // The width the leaf's text breaks against. Its own, unless its box is sized by the lines it
+        // displays and its parent offers more room than that: then the room, as the text takes it
+        // unbroken, so a leaf does not stay as narrow as its last text and font left it.
+        private float LeafWidth(TextElement textElement, string text)
+        {
+            var own = textElement.contentRect.width;
+            var parent = textElement.parent;
+            if (parent == null)
+            {
+                return own;
+            }
+            var room = ParentContentRoom(textElement, parent);
+            var displayed = textElement.text ?? string.Empty;
+            if (_hasDecision && _decisionOwn == own && _decisionRoom == room
+                && string.Equals(_decisionDisplayed, displayed, StringComparison.Ordinal)
+                && string.Equals(_decisionFor, text, StringComparison.Ordinal))
+            {
+                return _decisionWidth;
+            }
+            var width = own;
+            if (room > own + SizedByTextTolerancePx && IsSizedByItsLines(textElement, displayed, own))
+            {
+                var natural = textElement.MeasureTextSize(
+                    text, room, VisualElement.MeasureMode.AtMost,
+                    float.NaN, VisualElement.MeasureMode.Undefined).x;
+                width = natural >= MinBalanceableWidthPx ? Math.Min(natural, CeilingContentWidth(textElement)) : own;
+            }
+            _hasDecision = true;
+            _decisionOwn = own;
+            _decisionRoom = room;
+            _decisionDisplayed = displayed;
+            _decisionFor = text;
+            _decisionWidth = width;
+            return width;
+        }
+
+        // The widest the leaf's content box may be under a max-width of its cascade, or infinity.
+        private static float CeilingContentWidth(TextElement textElement)
+        {
+            var style = textElement.resolvedStyle;
+            var declared = style.maxWidth;
+            if (declared.keyword == StyleKeyword.None)
+            {
+                return float.PositiveInfinity;
+            }
+            return declared.value - style.paddingLeft - style.paddingRight - style.borderLeftWidth
+                - style.borderRightWidth;
+        }
+
+        // Whether the leaf's box is as wide as the longest line it displays, which is what a box sized from
+        // its text is.
+        private static bool IsSizedByItsLines(TextElement textElement, string displayed, float own)
+        {
+            var lines = Measure(textElement, displayed);
+            return Math.Abs(lines - own) <= SizedByTextTolerancePx;
+        }
+
+        // The text with a newline at every break the style asks for. text is what the leaf displays before
+        // decoration and line height wrap it. A white space at a break is dropped.
+        internal string Break(string text)
+        {
+            var textElement = (TextElement)target;
+            var key = new MeasureKey(textElement.resolvedStyle);
+            if (_measuredFor == null || !key.Matches(_measureKey)
+                || !string.Equals(_measuredFor, text, StringComparison.Ordinal))
+            {
+                _measured.Clear();
+                _hasResult = false;
+                _hasDecision = false;
+                _measureKey = key;
+                _measuredFor = text;
+            }
+
+            var width = LeafWidth(textElement, text);
+            if (_hasResult && _resultStyle == _style && _resultWidth == width)
+            {
+                Broke = !string.Equals(_result, text, StringComparison.Ordinal);
+                return _result;
+            }
+
+            var broken = new ParagraphBreaker(this, textElement, width).Break(text);
+            if (broken == null)
+            {
+                // The font has not resolved, so nothing was measured. Not recorded: the same inputs are a
+                // different question once it has.
+                _measuredFor = null;
+                return text;
+            }
+            ScheduleKeyRecheck();
+            _hasResult = true;
+            _resultStyle = _style;
+            _resultWidth = width;
+            _result = broken;
+            Broke = !string.Equals(broken, text, StringComparison.Ordinal);
+            return broken;
+        }
+
+        // The style a measurement read is the last one UI Toolkit resolved, and a class or an inline write
+        // reaches it on the next style pass, which raises no event of its own when the box does not move. So
+        // a result is compared against the style once that pass has run, and the leaf re-derived if the font
+        // moved under it.
+        private void ScheduleKeyRecheck()
+        {
+            if (_recheckPending)
+            {
+                return;
+            }
+            _recheckPending = true;
+            target.schedule.Execute(RecheckKey);
+        }
+
+        private void RecheckKey()
+        {
+            _recheckPending = false;
+            if (target is TextElement textElement && _measuredFor != null
+                && !new MeasureKey(textElement.resolvedStyle).Matches(_measureKey))
+            {
+                _hasSignature = false;
+                Apply();
+            }
+        }
+
+        private static float Measure(TextElement textElement, string text) =>
+            textElement.MeasureTextSize(
+                text, float.NaN, VisualElement.MeasureMode.Undefined,
+                float.NaN, VisualElement.MeasureMode.Undefined).x;
+
+        // What a measurement of text depends on besides the text.
+        private readonly struct MeasureKey
+        {
+            private readonly float _fontSize;
+            private readonly float _letterSpacing;
+            private readonly float _wordSpacing;
+            private readonly FontDefinition _font;
+            private readonly FontStyle _fontStyle;
+
+            public MeasureKey(IResolvedStyle style)
+            {
+                _fontSize = style.fontSize;
+                _letterSpacing = style.letterSpacing;
+                _wordSpacing = style.wordSpacing;
+                _font = style.unityFontDefinition;
+                _fontStyle = style.unityFontStyleAndWeight;
+            }
+
+            public bool Matches(in MeasureKey other) =>
+                _fontSize == other._fontSize && _letterSpacing == other._letterSpacing
+                && _wordSpacing == other._wordSpacing && _fontStyle == other._fontStyle && _font.Equals(other._font);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = _fontSize.GetHashCode();
+                    hash = hash * 31 + _letterSpacing.GetHashCode();
+                    hash = hash * 31 + _wordSpacing.GetHashCode();
+                    hash = hash * 31 + _font.GetHashCode();
+                    return hash * 31 + (int)_fontStyle;
+                }
+            }
+        }
+
+        // A paragraph's items and where each ends, measured once per text and font. Skip is set for a
+        // paragraph the breaker leaves to the engine whatever the width.
+        private sealed class MeasuredParagraph
+        {
+            public bool Skip;
+            public readonly List<int> Starts = new();
+            public readonly List<int> Ends = new();
+            public float[] LineStart = Array.Empty<float>();
+            public float[] WordEnd = Array.Empty<float>();
+            public float Whole;
+        }
+
+        // One pass over a text at a width: applies TextLineBreaker's answer to each paragraph.
+        private sealed class ParagraphBreaker
+        {
+            private readonly StyleTextBalanceManipulator _owner;
+            private readonly TextElement _element;
+            private readonly float _width;
+            private readonly Dictionary<string, float> _gaps = new(StringComparer.Ordinal);
+            private bool _unmeasurable;
+
+            public ParagraphBreaker(StyleTextBalanceManipulator owner, TextElement element, float width)
+            {
+                _owner = owner;
+                _element = element;
+                _width = width;
+            }
+
+            // Null when a measurement came back without a number.
+            public string? Break(string text)
+            {
+                var builder = new StringBuilder(text.Length + 4);
+                var start = 0;
+                while (start <= text.Length)
+                {
+                    var end = text.IndexOf('\n', start);
+                    if (end < 0)
+                    {
+                        end = text.Length;
+                    }
+                    builder.Append(BreakParagraph(text.Substring(start, end - start)));
+                    if (end < text.Length)
+                    {
+                        builder.Append('\n');
+                    }
+                    start = end + 1;
+                }
+                return _unmeasurable ? null : builder.ToString();
+            }
+
+            private string BreakParagraph(string paragraph)
+            {
+                var measured = Measured(paragraph);
+                if (measured == null || measured.Skip)
+                {
+                    return paragraph;
+                }
+                var style = _owner._style;
+                if (measured.Whole > (TextLineBreaker.MaxLines(style) + SpareLines) * _width)
+                {
+                    return paragraph;
+                }
+
+                var breaks = TextLineBreaker.Plan(
+                    measured.LineStart, measured.WordEnd, _width, style, 4f * _width * _element.resolvedStyle.fontSize,
+                    (first, end) => FitsOneLine(LineText(paragraph, measured, first, end)));
+                if (breaks == null || breaks.Length + 1 > EngineLines(paragraph)
+                    || !AllLinesFit(paragraph, measured, breaks))
+                {
+                    return paragraph;
+                }
+                return InsertBreaks(paragraph, measured, breaks);
+            }
+
+            // Null when a measurement came back without a number.
+            private MeasuredParagraph? Measured(string paragraph)
+            {
+                if (_unmeasurable)
+                {
+                    return null;
+                }
+                if (_owner._measured.TryGetValue(paragraph, out var known))
+                {
+                    return known;
+                }
+                var measured = new MeasuredParagraph();
+                if (!TextBreakOpportunities.Find(paragraph, measured.Starts, measured.Ends))
+                {
+                    measured.Skip = true;
+                }
+                else
+                {
+                    measured.Whole = Measure(_element, paragraph);
+                    measured.Skip = float.IsNaN(measured.Whole) || measured.Starts.Count < 4
+                        || measured.Starts.Count > MaxItems;
+                    _unmeasurable = float.IsNaN(measured.Whole);
+                }
+                if (!measured.Skip && !TryMeasureItems(paragraph, measured))
+                {
+                    _unmeasurable = true;
+                    return null;
+                }
+                if (!_unmeasurable)
+                {
+                    _owner._measured[paragraph] = measured;
+                }
+                return _unmeasurable ? null : measured;
+            }
+
+            // The position every item ends at, and the one a line starting with it starts at, from the start
+            // of the paragraph. A gap's width is the advance of the white space in it.
+            private bool TryMeasureItems(string paragraph, MeasuredParagraph measured)
+            {
+                var count = measured.Starts.Count;
+                measured.LineStart = new float[count];
+                measured.WordEnd = new float[count];
+                for (var i = 0; i < count; i++)
+                {
+                    measured.WordEnd[i] = Measure(_element, paragraph.Substring(0, measured.Ends[i]));
+                    var gap = i == 0 ? 0f : GapAdvance(
+                        paragraph.Substring(measured.Ends[i - 1], measured.Starts[i] - measured.Ends[i - 1]));
+                    measured.LineStart[i] = i == 0 ? 0f : measured.WordEnd[i - 1] + gap;
+                    if (float.IsNaN(measured.WordEnd[i]) || float.IsNaN(gap))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            // The advance of a run of white space. A single space is measured as eight spaces in nine
+            // characters, so the pixel-grid rounding of the two measurements is spread over eight; any
+            // other run is measured between two letters, where a tab stop or a wide space is an estimate
+            // that AllLinesFit checks.
+            private float GapAdvance(string gap)
+            {
+                if (gap.Length == 0)
+                {
+                    return 0f;
+                }
+                if (_gaps.TryGetValue(gap, out var known))
+                {
+                    return known;
+                }
+                var advance = gap == " "
+                    ? (Measure(_element, "x x x x x x x x x") - Measure(_element, "xxxxxxxxx")) / 8f
+                    : Measure(_element, "x" + gap + "x") - Measure(_element, "xx");
+                _gaps[gap] = advance;
+                return advance;
+            }
+
+            // Items first..end-1 as one line; the first line keeps the white space before its first item.
+            private static string LineText(string paragraph, MeasuredParagraph measured, int first, int end)
+            {
+                var from = first == 0 ? 0 : measured.Starts[first];
+                return paragraph.Substring(from, measured.Ends[end - 1] - from);
+            }
+
+            // The gap before each item that begins a line becomes the newline.
+            private static string InsertBreaks(string paragraph, MeasuredParagraph measured, int[] breaks)
+            {
+                var builder = new StringBuilder(paragraph.Length + breaks.Length);
+                var copied = 0;
+                foreach (var item in breaks)
+                {
+                    var gapStart = measured.Ends[item - 1];
+                    builder.Append(paragraph, copied, gapStart - copied);
+                    builder.Append('\n');
+                    copied = measured.Starts[item];
+                }
+                builder.Append(paragraph, copied, paragraph.Length - copied);
+                return builder.ToString();
+            }
+
+            // Whether the engine lays out every line the breaks make in one line's height, which the
+            // arithmetic over rounded measurements cannot promise.
+            private bool AllLinesFit(string paragraph, MeasuredParagraph measured, int[] breaks)
+            {
+                var first = 0;
+                foreach (var item in breaks)
+                {
+                    if (!FitsOneLine(LineText(paragraph, measured, first, item)))
+                    {
+                        return false;
+                    }
+                    first = item;
+                }
+                return FitsOneLine(LineText(paragraph, measured, first, measured.Starts.Count));
+            }
+
+            // How many lines the engine breaks the paragraph into at this width, 0 when it cannot say. A
+            // division with more lines than that is not one the style could have asked for.
+            private int EngineLines(string paragraph)
+            {
+                var single = Height(paragraph, float.NaN, VisualElement.MeasureMode.Undefined);
+                var wrapped = Height(paragraph, _width, VisualElement.MeasureMode.Exactly);
+                return single > 0f && !float.IsNaN(wrapped) ? Mathf.RoundToInt(wrapped / single) : 0;
+            }
+
+            // The engine's own answer: whether it lays the line out in one line's height at the width.
+            private bool FitsOneLine(string line)
+            {
+                var single = Height(line, float.NaN, VisualElement.MeasureMode.Undefined);
+                var wrapped = Height(line, _width, VisualElement.MeasureMode.Exactly);
+                return wrapped <= single + HeightEpsilonPx;
+            }
+
+            private float Height(string text, float width, VisualElement.MeasureMode mode) =>
+                _element.MeasureTextSize(text, width, mode, float.NaN, VisualElement.MeasureMode.Undefined).y;
         }
     }
 }
