@@ -249,18 +249,15 @@ new StyleTransitionConfig
 }
 ```
 
-- Springs drive the channels of a variant delta (see *Driven channels* below) with a
-  velocity-preserving integrator: **interrupting a spring retargets from the current value *and
-  velocity***, Framer's signature interruptible feel. An exit whose delta resolves no channel at
-  all completes immediately.
-- `DurationSec` is ignored for springs — settling time comes from the physics. A play samples each
-  channel's spring by the time since it started and ends when its slowest channel has rested,
-  measured as Framer Motion measures a spring's duration (see *Repeating a play* for the
-  thresholds), so a frame that arrives late moves the spring as far as the time it covers. A
-  spring that has not rested by 20 s never ends, as Framer's does not. An interruption hands the
-  channel to the integrator, which rests it by the same thresholds over the travel left.
-- Springs drive mount enters, presence exits, and runtime `animate` label swaps alike — flipping
-  a label mid-spring retargets from the current value and velocity.
+- Springs drive the channels of a variant delta (see *Driven channels* below), each sampled from
+  Framer Motion's spring by the time since the play started. **Interrupting a spring — a label
+  change mid-spring, or an exit cancelled mid-flight — releases a new one from the current value
+  *and velocity***, as Framer starts an interrupted value's next animation. An exit whose delta
+  resolves no channel at all completes immediately.
+- `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
+  slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
+  so a frame that arrives late moves the spring as far as the time it covers.
+- Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
 
@@ -417,13 +414,16 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
   A bezier holds the value its pass ended on; a spring keeps being sampled past its pass, as Framer's
   is, so it shows whatever small motion its spring still has. A negative or non-finite value throws
   `ArgumentOutOfRangeException`.
-- A spring's pass lasts as long as its spring takes to rest, measured as Framer measures it (a play
-  that does not repeat ends there too): sampled
-  every 50 ms, resting within 0.005 of its target and moving at no more than 0.01 per second for a
-  travel under 5, or within 0.5 and at 2 per second for a longer one, and a spring that has not rested
-  by 20 s has no pass to repeat and plays its first pass on. Framer animates each value on its own, so
-  each channel repeats on its own pass: an opacity travelling 1 and a color, which Framer springs over
-  a travel of 100, fall out of step. The play ends when its slowest channel does.
+- A spring's pass is the duration Framer measures for it, which also ends a play that does not
+  repeat: the first 50 ms sample at which the spring rests, within 0.5 of its target and moving at
+  no more than 2 per second over a travel of 5 or more, within 0.005 and at 0.01 per second under it.
+  Framer hands an opacity, a translate, scale or rotate, and a background color to the browser
+  unless the repeat mirrors or waits between passes. There the spring becomes an easing over a
+  travel of 100, cut at 20 s, onto which the value's velocity is carried unscaled, so an opacity on
+  the default spring ends at 1.05 s. Any other channel, and any channel under a mirrored or waiting
+  repeat, runs on Framer's main thread over its own travel, a color's being 100: one that has not
+  rested by 20 s never ends, and under a repeat plays its first pass on. Framer animates each value
+  on its own, so the channels can fall out of step; the play ends when its slowest channel does.
 - A play of an odd `Repeat` under `Reverse` or `Mirror` ends on its from-pose, as Framer's does, and
   holds it there although the element's classes are the to-pose's, until a later play, an exit or a
   teardown cancels it; a pose that lands at once takes over only the properties it names. Every other
@@ -431,6 +431,8 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
 - The repeat covers enters, label changes and exits alike. An exit repeating without end never
   completes, so its `AnimatePresence` keeps the element.
 - A cancelled exit's reversal plays once, whatever the exit repeated.
+- A `layoutId` move on a spring springs a progress over Framer's travel of 1000, on its main thread,
+  and ends when that spring's duration has run.
 - `When = BeforeChildren` waits for every pass and every wait between them. A parent repeating without
   end never finishes, so its children's plays never start, as Framer's never do: they hold the pose
   they were at.

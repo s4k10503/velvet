@@ -12,8 +12,9 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// Every expected value was computed with a JavaScript port of Framer's spring generator and tick, not with
-    /// <see cref="SpringIntegrator"/>. The spring is Framer's default (stiffness 100, damping 10, mass 1); its opacity
-    /// pass, a travel of 1, rests at 1.1 s, and a travel of 100 at 1.05 s. Driven by
+    /// <see cref="SpringIntegrator"/>. The spring is Framer's default (stiffness 100, damping 10, mass 1). An opacity
+    /// Framer hands to the browser — any repeat but a mirrored or a delayed one — is an easing over a travel of 100,
+    /// which rests at 1.05 s; on Framer's main thread its own travel of 1 rests at 1.1 s. Driven by
     /// <see cref="MotionSpringDriver.Step"/> directly, panel-free.
     /// </remarks>
     [TestFixture]
@@ -82,8 +83,8 @@ namespace Velvet.Tests
             // Act
             var opacity = OpacityAt(repeat, 1.2f);
 
-            // Assert
-            Assert.That(opacity, Is.EqualTo(0.3402998466f).Within(1e-5f));
+            // Assert — 0.15 s into the second 1.05 s pass of the travel-100 easing.
+            Assert.That(opacity, Is.EqualTo(0.6104925346f).Within(1e-5f));
         }
 
         [Test]
@@ -95,8 +96,8 @@ namespace Velvet.Tests
             // Act
             var opacity = OpacityAt(repeat, 1.2f);
 
-            // Assert — the first pass's frame at 1.0 s, still overshooting; a mirrored pass shows 0.6597.
-            Assert.That(opacity, Is.EqualTo(1.002170117f).Within(1e-5f));
+            // Assert — the first pass's frame at 0.9 s, still overshooting.
+            Assert.That(opacity, Is.EqualTo(0.9929342635f).Within(1e-5f));
         }
 
         [Test]
@@ -200,12 +201,13 @@ namespace Velvet.Tests
         [Test]
         public void Given_AChannelStartingPartWay_When_ItsPassIsMeasured_Then_ItIsTheSpringOverTheDistanceLeft()
         {
-            // Arrange — opacity 0.5 → 1 travels 0.5, which rests at 1.05 s; a travel of 1.5 would rest at 1.4 s.
+            // Arrange — a mirror keeps the opacity on Framer's main thread, where 0.5 → 1 travels 0.5, which rests at
+            // 1.05 s; a travel of 1.5 would rest at 1.4 s.
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-50" }, new[] { "opacity-100" });
 
             // Act — NaN for a plan that resolved no channel.
             var state = MotionSpringDriver.Create(plan, Stiffness, Damping, Mass,
-                new MotionRepeat(1f, TransitionRepeatType.Loop, 0f));
+                new MotionRepeat(1f, TransitionRepeatType.Mirror, 0f));
             var pass = state?.Opacity?.PassSec ?? float.NaN;
 
             // Assert
@@ -218,11 +220,12 @@ namespace Velvet.Tests
             // Arrange
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-50" }, new[] { "opacity-100" });
 
-            // Act
-            var span = MotionSpringDriver.SpanSec(plan, Stiffness, Damping, Mass, default);
+            // Act — two mirrored 1.05 s passes.
+            var span = MotionSpringDriver.SpanSec(plan, Stiffness, Damping, Mass,
+                new MotionRepeat(1f, TransitionRepeatType.Mirror, 0f));
 
             // Assert
-            Assert.That(span, Is.EqualTo(1.05).Within(1e-5));
+            Assert.That(span, Is.EqualTo(2.1).Within(1e-5));
         }
 
         [Test]
@@ -267,12 +270,13 @@ namespace Velvet.Tests
         [Test]
         public void Given_AColorAndAnOpacity_When_TheColorsShorterPassHasEnded_Then_TheColorIsInItsSecondPassAlone()
         {
-            // Arrange — the color springs a travel of 100 and rests at 1.05 s; the opacity rests at 1.1 s.
+            // Arrange — a mirror keeps both on Framer's main thread: the color springs a travel of 100 and rests at
+            // 1.05 s, the opacity its own travel of 1 and rests at 1.1 s.
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0", "bg-black" },
                 new[] { "opacity-100", "bg-white" });
             var state = MotionSpringDriver.Create(plan, Stiffness, Damping, Mass,
-                new MotionRepeat(1f, TransitionRepeatType.Loop, 0f));
+                new MotionRepeat(1f, TransitionRepeatType.Mirror, 0f));
 
             // Act — NaN for a plan that resolved no color channel.
             var progress = float.NaN;
@@ -282,18 +286,18 @@ namespace Velvet.Tests
                 progress = colors[0].Progress.Integrator.Value;
             }
 
-            // Assert — 25 ms into the color's second pass, read as a percentage of its travel.
-            Assert.That(progress, Is.EqualTo(0.02865363264f).Within(1e-5f));
+            // Assert — 25 ms into the color's mirrored second pass, read as a percentage of its travel.
+            Assert.That(progress, Is.EqualTo(0.9713463674f).Within(1e-5f));
         }
 
         [Test]
-        public void Given_ASpringThatDoesNotRestWithin20Seconds_When_ItRepeats_Then_ItPlaysItsFirstPassOn()
+        public void Given_ASpringThatDoesNotRestWithin20SecondsOnFramersMainThread_When_ItRepeats_Then_ItPlaysItsFirstPassOn()
         {
-            // Arrange — damping 0.1 leaves the spring ringing well past 20 s.
+            // Arrange — damping 0.1 leaves the spring ringing well past 20 s; a mirror keeps it off the browser.
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = MotionSpringDriver.Create(plan, Stiffness, 0.1f, Mass,
-                new MotionRepeat(1f, TransitionRepeatType.Reverse, 0f));
+                new MotionRepeat(1f, TransitionRepeatType.Mirror, 0f));
 
             // Act — NaN for a plan that resolved no channel.
             var opacity = float.NaN;
@@ -305,6 +309,96 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(opacity, Is.EqualTo(1.800801186f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AnOpacityThatDoesNotRestWithin20Seconds_When_ItPlaysOnce_Then_ItEndsAt20Seconds()
+        {
+            // Arrange — Framer hands an opacity to the browser, cutting its spring's easing at 20 s.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, Stiffness, 0.1f, Mass);
+
+            // Act — a plan that resolved no channel leaves (true, false).
+            var (before, after) = (true, false);
+            if (state != null)
+            {
+                before = MotionSpringDriver.Step(element, state, 19.9f);
+                after = MotionSpringDriver.Step(element, state, 0.2f);
+            }
+
+            // Assert
+            Assert.That((before, after), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_ALengthThatDoesNotRestWithin20Seconds_When_ItPlaysOnce_Then_ItNeverEnds()
+        {
+            // Arrange — Framer runs a width on its main thread, whose spring that never rests never finishes.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-0" }, new[] { "w-32" });
+            var state = MotionSpringDriver.Create(plan, Stiffness, 0.1f, Mass);
+
+            // Act
+            var settled = state == null || MotionSpringDriver.Step(element, state, 1000f);
+
+            // Assert
+            Assert.That(settled, Is.False);
+        }
+
+        // A width, which Framer animates on its main thread with the value's own velocity; on the browser Framer
+        // carries the velocity onto its travel-100 easing unscaled, where an opacity's barely registers.
+        private static float LengthOf(MotionSpringState state) => state.Lengths is { Count: 1 } lengths
+            ? lengths[0].Value.Integrator.Value
+            : float.NaN;
+
+        [Test]
+        public void Given_AWidthGrowingPartWay_When_ALabelChangeSendsItBack_Then_ItKeepsGrowingAtFirst()
+        {
+            // Arrange — a width springing 0 → 128 px, 0.1 s in and still growing, then sent from 64 px back to 0.
+            var element = new VisualElement();
+            var growing = MotionSpringDriver.Create(MotionSpringClassParser.Resolve(new[] { "w-0" }, new[] { "w-32" }),
+                Stiffness, Damping, Mass);
+            var back = MotionSpringDriver.Create(MotionSpringClassParser.Resolve(new[] { "w-16" }, new[] { "w-0" }),
+                Stiffness, Damping, Mass);
+
+            // Act — the new spring takes on the old one's velocity, as Framer's next animation takes the motion
+            // value's. A plan that resolved no width leaves (NaN, NaN).
+            var (start, next) = (float.NaN, float.NaN);
+            if (growing != null && back != null)
+            {
+                MotionSpringDriver.Step(element, growing, 0.1f);
+                start = LengthOf(back);
+                MotionSpringDriver.InheritVelocity(back, growing);
+                MotionSpringDriver.Step(element, back, 1f / 60f);
+                next = LengthOf(back);
+            }
+
+            // Assert
+            Assert.That(next, Is.GreaterThan(start));
+        }
+
+        [Test]
+        public void Given_AWidthExitShrinkingPartWay_When_ItIsRetargeted_Then_TheReversalKeepsShrinkingAtFirst()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var state = MotionSpringDriver.Create(MotionSpringClassParser.Resolve(new[] { "w-32" }, new[] { "w-0" }),
+                Stiffness, Damping, Mass);
+
+            // Act — a plan that resolved no width leaves (NaN, NaN).
+            var (before, after) = (float.NaN, float.NaN);
+            if (state != null)
+            {
+                MotionSpringDriver.Step(element, state, 0.1f);
+                before = LengthOf(state);
+                MotionSpringDriver.Retarget(state);
+                MotionSpringDriver.Step(element, state, 1f / 60f);
+                after = LengthOf(state);
+            }
+
+            // Assert
+            Assert.That(after, Is.LessThan(before));
         }
 
         [Test]

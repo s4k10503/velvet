@@ -265,11 +265,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASpringThatDoesNotRepeat_When_ItsPassIsAboutToEndAndThenEnds_Then_ItSettlesOnlyAtTheEnd()
         {
-            // Arrange — stiffness 200, damping 13: Framer Motion's opacity spring first rests on its 1 000 ms
-            // sample, which is when its animation finishes.
+            // Arrange — stiffness 200, damping 12: the easing Framer Motion hands an opacity's spring to the browser
+            // as, over a travel of 100, first rests on its 1 000 ms sample, which is when its animation finishes.
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
-            var state = MotionSpringDriver.Create(plan, stiffness: 200f, damping: 13f, mass: 1f);
+            var state = MotionSpringDriver.Create(plan, stiffness: 200f, damping: 12f, mass: 1f);
 
             // Act — a frame at a time to 0.99 s, then the frame across 1 s. A plan that resolved no channel leaves
             // (true, false).
@@ -286,78 +286,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((beforeEnd, atEnd), Is.EqualTo((false, true)));
-        }
-
-        [Test]
-        public void Given_ASpringRetargetedNearItsStart_When_ItSettles_Then_ItRestsWithinFramersThresholdForTheShortTravel()
-        {
-            // Arrange — a 16 px exit from 16 px, cancelled 0.05 s in, under 2 px from where it began: the reversal's
-            // travel is under 5, so Framer Motion's spring rests it within 0.005 rather than the 0.5 of the exit's own
-            // travel, or of the 30 px a sum of the two positions would read.
-            var element = new VisualElement();
-            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-4" }, new[] { "translate-x-0" });
-            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f);
-
-            // Act — NaN for a plan that resolved no translate channel, or a reversal that never settles.
-            var offset = float.NaN;
-            if (state?.TranslateX != null)
-            {
-                for (var i = 0; i < 3; i++)
-                {
-                    MotionSpringDriver.Step(element, state, FixedDeltaSec);
-                }
-                MotionSpringDriver.Retarget(state);
-                var settled = false;
-                for (var i = 0; i < 1200 && !settled; i++)
-                {
-                    settled = MotionSpringDriver.Step(element, state, FixedDeltaSec);
-                }
-                if (settled)
-                {
-                    offset = Mathf.Abs(state.TranslateX.Integrator.Value - state.TranslateX.RestingTarget);
-                }
-            }
-
-            // Assert
-            Assert.That(offset, Is.LessThanOrEqualTo(0.005f));
-        }
-
-        [Test]
-        public void Given_ACriticallyDampedSpring_When_SteppedForEnoughTime_Then_ItSettlesAtTheTarget()
-        {
-            // Arrange — stiffness 100 / mass 1 critically damps at damping = 2*sqrt(stiffness*mass) = 20 (no
-            // ringing, the fastest non-oscillating approach).
-            var spring = new SpringIntegrator(initialValue: 0f);
-            const float target = 100f;
-
-            // Act — 180 ticks (3 simulated seconds) is comfortably past this spring's settle time.
-            for (var i = 0; i < 180; i++)
-            {
-                spring.Step(FixedDeltaSec, target, stiffness: 100f, damping: 20f, mass: 1f);
-            }
-
-            // Assert
-            Assert.That(spring.Value, Is.EqualTo(target).Within(0.5f));
-        }
-
-        // Each row is a spring released 1 from its target at 2 per second, and where it is 0.1s later: an
-        // underdamped, a critically damped and an overdamped spring, the reference values integrated
-        // numerically (RK4, 200000 steps) rather than from the closed form under test.
-        [TestCase(100.0, 10.0, 1.0, 0.766401592, -5.082686035)]
-        [TestCase(100.0, 20.0, 1.0, 0.809334771, -3.678794412)]
-        [TestCase(100.0, 125.0, 1.0, 0.943613190, -0.759773369)]
-        public void Given_ASpringReleasedWithAVelocity_When_SolvedATenthOfASecondLater_Then_ItMatchesTheIntegratedMotion(
-            double stiffness, double damping, double mass, double displacement, double velocity)
-        {
-            // Arrange
-            var spring = (stiffness, damping, mass);
-
-            // Act
-            var solved = SpringIntegrator.Solve(1.0, 2.0, 0.1, spring);
-
-            // Assert
-            Assert.That(new[] { solved.Displacement, solved.Velocity },
-                Is.EqualTo(new[] { displacement, velocity }).Within(1e-6));
         }
 
         [Test]
@@ -378,57 +306,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(settled, Is.True);
-        }
-
-        [Test]
-        public void Given_AnUnderdampedSpring_When_SteppedTowardATarget_Then_ItOvershootsBeforeSettling()
-        {
-            // Arrange — damping (2) sits well below critical (20 for this stiffness/mass), so the spring rings
-            // past its target before settling instead of approaching it monotonically.
-            var spring = new SpringIntegrator(initialValue: 0f);
-            const float target = 100f;
-            var peakValue = float.NegativeInfinity;
-
-            // Act — step long enough to pass through and beyond the target at least once.
-            for (var i = 0; i < 180; i++)
-            {
-                spring.Step(FixedDeltaSec, target, stiffness: 100f, damping: 2f, mass: 1f);
-                if (spring.Value > peakValue)
-                {
-                    peakValue = spring.Value;
-                }
-            }
-
-            // Assert
-            Assert.That(peakValue, Is.GreaterThan(target));
-        }
-
-        [Test]
-        public void Given_ASpringMidFlightTowardOneTarget_When_RetargetedToADifferentValue_Then_TheNextStepContinuesFromItsCurrentValueAndVelocity()
-        {
-            // Arrange — run partway toward 100 so the spring has accumulated a nonzero value/velocity, then
-            // capture that state right before retargeting.
-            var spring = new SpringIntegrator(initialValue: 0f);
-            for (var i = 0; i < 10; i++)
-            {
-                spring.Step(FixedDeltaSec, 100f, stiffness: 100f, damping: 10f, mass: 1f);
-            }
-            var capturedValue = spring.Value;
-            var capturedVelocity = spring.Velocity;
-
-            // Act — retarget to a wildly different value (mirrors an exit-cancel reversing back toward the
-            // resting value) and take one more step; a FRESH spring seeded with the exact captured state is the
-            // reference for what one step from "here" should produce with nothing reset.
-            spring.Step(FixedDeltaSec, -50f, stiffness: 100f, damping: 10f, mass: 1f);
-            var reference = new SpringIntegrator(capturedValue, capturedVelocity);
-            reference.Step(FixedDeltaSec, -50f, stiffness: 100f, damping: 10f, mass: 1f);
-            var valuesMatch = Mathf.Abs(spring.Value - reference.Value) <= 1e-6f;
-
-            // Assert — the spring had genuinely built up velocity before the retarget (otherwise "continues
-            // from its current value/velocity" would be indistinguishable from a reset to zero), and the
-            // retargeted spring's value matches the reference exactly: the retarget carried the SAME
-            // value/velocity forward (no discontinuity) rather than resetting either.
-            Assert.That((capturedVelocity != 0f, valuesMatch), Is.EqualTo((true, true)));
         }
 
         [Test]

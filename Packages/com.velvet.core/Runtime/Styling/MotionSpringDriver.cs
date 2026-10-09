@@ -5,30 +5,38 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     /// <summary>
-    /// One spring-animated channel: an integrator plus the value it is currently heading toward, and the value
-    /// it started from (its resting/pre-animation value, used only by <see cref="MotionSpringDriver.Retarget"/>
-    /// on an exit-cancel hand-off — see <see cref="StyleAnimationScheduler"/>).
+    /// One spring-animated channel: the spring Framer Motion would run for it — the value it was released at, the
+    /// velocity it was released with and the value it heads toward — the value it last showed, and the value it
+    /// rested at before the play (<see cref="RestingTarget"/>, which an exit-cancel hand-off heads back to).
     /// </summary>
     internal sealed class SpringChannel
     {
         // Deliberately NOT readonly: SpringIntegrator is a mutable struct embedded inline (see its own doc), and
-        // every Step call mutates it in place through this field. Marking the field readonly would make the
-        // compiler silently invoke Step on a defensive COPY instead — the spring would never advance, only
-        // ever reporting its initial value forever.
+        // every Set call mutates it in place through this field. Marking the field readonly would make the
+        // compiler silently invoke Set on a defensive COPY instead — the channel would only ever report its
+        // initial value.
         public SpringIntegrator Integrator;
         public float Target;
         public readonly float RestingTarget;
-        // The length of one pass, the travel Framer Motion's rest thresholds are chosen by, and the factor that puts
-        // the channel on the scale Framer's spring measures its rest against.
+        // The spring's start, in the channel's own units, and its start velocity on the scale below.
+        public float Origin;
+        public float StartVelocity;
+        // The length of one pass, and the factor that puts the channel on the scale Framer's spring measures its rest
+        // against.
         public float PassSec;
-        public float RestTravel;
         public float Scale = 1f;
+        // A color's progress, which Framer Motion springs over a fixed travel of 100 with no velocity of its own.
+        public bool Normalized;
+        // A value Framer Motion animates on the browser's own animation where the repeat allows it: an opacity, a
+        // transform, a background color.
+        public bool Acceleratable;
 
         public SpringChannel(float initialValue, float target)
         {
             Integrator = new SpringIntegrator(initialValue);
             Target = target;
             RestingTarget = initialValue;
+            Origin = initialValue;
         }
     }
 
@@ -53,7 +61,10 @@ namespace Velvet
             From = from;
             To = to;
             // Framer Motion springs a color from 0 to 100 and mixes the endpoints at that percentage.
-            Progress = new SpringChannel(0f, 1f) { Scale = 100f };
+            Progress = new SpringChannel(0f, 1f)
+            {
+                Scale = 100f, Normalized = true, Acceleratable = property == ArbitraryProperty.BackgroundColor,
+            };
         }
     }
 
@@ -97,10 +108,8 @@ namespace Velvet
         public float Damping;
         public float Mass;
 
-        // A play samples each channel's spring by the time since it started, as Framer Motion's generator does, until
-        // a Retarget hands it to the integrator. A double, since an endless repeat adds to it for as long as the play
-        // runs.
-        public bool Sampled = true;
+        // A play samples each channel's spring by the time since it started, as Framer Motion's generator does. A
+        // double, since an endless repeat adds to it for as long as the play runs.
         public MotionRepeat Repeat;
         public double ElapsedSec;
 
@@ -124,9 +133,6 @@ namespace Velvet
     /// </summary>
     internal static class MotionSpringDriver
     {
-        // The rest epsilon MotionLayoutIdDriver's fading layout spring settles by on an opacity's 0..1 scale.
-        internal const float NormalizedRestDelta = 0.001f;
-
         /// <summary>
         /// Builds the running state from a resolved plan, or null when the plan animates nothing (the caller
         /// should treat this exactly like a zero-duration tween: land the classes and complete immediately).
@@ -139,11 +145,11 @@ namespace Velvet
                 return null;
             }
             var state = new MotionSpringState { Stiffness = stiffness, Damping = damping, Mass = mass, Repeat = repeat };
-            if (plan.Opacity is { } o) state.Opacity = new SpringChannel(o.from, o.to);
-            if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to);
-            if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to);
-            if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to);
-            if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to);
+            if (plan.Opacity is { } o) state.Opacity = new SpringChannel(o.from, o.to) { Acceleratable = true };
+            if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to) { Acceleratable = true };
+            if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to) { Acceleratable = true };
+            if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to) { Acceleratable = true };
+            if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to) { Acceleratable = true };
             if (plan.Colors != null)
             {
                 var colors = new List<SpringColorChannel>(plan.Colors.Count);
@@ -162,25 +168,39 @@ namespace Velvet
                 }
                 state.Lengths = lengths;
             }
-            // Framer Motion runs each value as an animation of its own, so each channel's pass lasts as long as its
-            // own spring takes to rest.
-            ForEachActiveChannel(state, c =>
-            {
-                c.RestTravel = (c.Target - c.RestingTarget) * c.Scale;
-                c.PassSec = PassDurationSec(c.RestTravel, stiffness, damping, mass);
-            });
+            ForEachActiveChannel(state, c => Release(state, c, c.Origin, 0f));
             return state;
         }
 
+        // Releases the channel's spring at `origin` with `velocity`, in the channel's own units per second, toward its
+        // Target, as Framer Motion starts a value's animation. Framer runs each value as an animation of its own, so
+        // each channel's pass lasts as long as its own spring takes to rest. One it can hand to the browser — an
+        // acceleratable value whose repeat neither mirrors nor waits — becomes an easing over a travel of 100 cut at
+        // 20 s, onto which the value's velocity is carried unscaled; any other is measured over its own travel.
+        private static void Release(MotionSpringState state, SpringChannel c, float origin, float velocity)
+        {
+            c.Origin = origin;
+            var travel = c.Target - origin;
+            var accelerated = c.Acceleratable && state.Repeat.Type != TransitionRepeatType.Mirror
+                && state.Repeat.DelaySec == 0f;
+            if (!c.Normalized)
+            {
+                c.Scale = accelerated && travel != 0f ? 100f / System.Math.Abs(travel) : 1f;
+            }
+            c.StartVelocity = c.Normalized ? 0f : accelerated ? System.Math.Sign(travel) * velocity : velocity * c.Scale;
+            var pass = PassDurationSec(travel * c.Scale, state.Stiffness, state.Damping, state.Mass, c.StartVelocity);
+            c.PassSec = accelerated ? System.Math.Min(pass, MaxPassMs / 1000f) : pass;
+        }
+
         // Framer Motion's calcGeneratorDuration over its spring generator: the first 50 ms sample at which a spring
-        // released `delta` from its target, at rest, has come to rest, or infinity when none before 20 s does.
-        internal static float PassDurationSec(float delta, float stiffness, float damping, float mass)
+        // released `delta` from its target with `velocity` has come to rest, or infinity when none before 20 s does.
+        internal static float PassDurationSec(float delta, float stiffness, float damping, float mass, float velocity = 0f)
         {
             for (var ms = 0; ms < MaxPassMs; ms += PassSampleMs)
             {
-                var (displacement, velocity) = SpringIntegrator.Solve(-delta, 0.0, ms / 1000.0,
+                var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, ms / 1000.0,
                     (stiffness, damping, mass));
-                if (Rests(delta, displacement, velocity))
+                if (Rests(delta, displacement, speed))
                 {
                     return ms / 1000f;
                 }
@@ -193,14 +213,13 @@ namespace Velvet
         internal static double SpanSec(MotionSpringClassParser.SpringPlan plan, float stiffness, float damping,
             float mass, MotionRepeat repeat)
         {
-            var state = Create(plan, stiffness, damping, mass);
+            var state = Create(plan, stiffness, damping, mass, repeat);
             if (state == null)
             {
                 return 0.0;
             }
             var span = 0.0;
-            ForEachActiveChannel(state, c => span = System.Math.Max(span, repeat.TotalSec(
-                PassDurationSec((c.Target - c.RestingTarget) * c.Scale, stiffness, damping, mass))));
+            ForEachActiveChannel(state, c => span = System.Math.Max(span, repeat.TotalSec(c.PassSec)));
             return span;
         }
 
@@ -305,50 +324,36 @@ namespace Velvet
         /// </summary>
         public static bool Step(VisualElement element, MotionSpringState state, float dtSec)
         {
-            if (state.Sampled)
-            {
-                state.ElapsedSec += dtSec;
-            }
+            state.ElapsedSec += dtSec;
             var settled = true;
-            if (state.Opacity != null) settled &= StepChannel(state, state.Opacity, dtSec);
-            if (state.TranslateX != null) settled &= StepChannel(state, state.TranslateX, dtSec);
-            if (state.TranslateY != null) settled &= StepChannel(state, state.TranslateY, dtSec);
-            if (state.Scale != null) settled &= StepChannel(state, state.Scale, dtSec);
-            if (state.Rotate != null) settled &= StepChannel(state, state.Rotate, dtSec);
+            if (state.Opacity != null) settled &= SampleRepeating(state, state.Opacity, dtSec);
+            if (state.TranslateX != null) settled &= SampleRepeating(state, state.TranslateX, dtSec);
+            if (state.TranslateY != null) settled &= SampleRepeating(state, state.TranslateY, dtSec);
+            if (state.Scale != null) settled &= SampleRepeating(state, state.Scale, dtSec);
+            if (state.Rotate != null) settled &= SampleRepeating(state, state.Rotate, dtSec);
             if (state.Colors != null)
             {
-                foreach (var color in state.Colors) settled &= StepChannel(state, color.Progress, dtSec);
+                foreach (var color in state.Colors) settled &= SampleRepeating(state, color.Progress, dtSec);
             }
             if (state.Lengths != null)
             {
-                foreach (var length in state.Lengths) settled &= StepChannel(state, length.Value, dtSec);
+                foreach (var length in state.Lengths) settled &= SampleRepeating(state, length.Value, dtSec);
             }
 
-            // Every channel's Integrator.Value was just advanced above; re-applying them is exactly what the
-            // initial (pre-tick) write already does, so the style writes live in exactly one place instead of
-            // being duplicated here.
+            // Every channel's Integrator.Value was just sampled above; re-applying them is exactly what the initial
+            // (pre-tick) write already does, so the style writes live in exactly one place instead of being
+            // duplicated here.
             WriteChannelValues(element, state);
             return settled;
         }
 
-        private static bool StepChannel(MotionSpringState state, SpringChannel channel, float dtSec)
-            => state.Sampled ? SampleRepeating(state, channel, dtSec) : StepIntegrated(state, channel, dtSec);
-
-        // A channel a Retarget handed to the integrator rests where Framer Motion's spring would, by the thresholds
-        // its travel from the retarget chooses.
-        private static bool StepIntegrated(MotionSpringState state, SpringChannel channel, float dtSec)
-        {
-            channel.Integrator.Step(dtSec, channel.Target, state.Stiffness, state.Damping, state.Mass);
-            return Rests(channel.RestTravel, (channel.Integrator.Value - channel.Target) * channel.Scale,
-                channel.Integrator.Velocity * channel.Scale);
-        }
-
         // Framer Motion's main-thread animation over a spring, repeating or not: each pass samples the channel's
-        // spring at the time MotionRepeat gives, a mirrored pass a spring from the to-value back to the from-value,
-        // and a channel past its last pass holds the value MotionRepeat.EndsAtFrom names, so a play that does not
-        // repeat ends when its pass does, as its play span says. Every channel reaching that end is the play's
-        // settle. The integrator takes each sample, with the velocity since the last, so a Retarget carries on from
-        // it; the scheduler's tick and pre-roll step by a positive time, which that velocity divides by.
+        // spring at the time MotionRepeat gives, a mirrored pass a spring from the to-value back to the from-value
+        // released with the opposite velocity, and a channel past its last pass holds the value
+        // MotionRepeat.EndsAtFrom names, so a play that does not repeat ends when its pass does, as its play span
+        // says. Every channel reaching that end is the play's settle. The integrator takes each sample, with the
+        // velocity since the last, which is what an interruption releases the next spring with; the scheduler's tick
+        // and pre-roll step by a positive time, which that velocity divides by.
         private static bool SampleRepeating(MotionSpringState state, SpringChannel channel, float dtSec)
         {
             var previous = channel.Integrator.Value;
@@ -356,7 +361,7 @@ namespace Velvet
             float value;
             if (ended)
             {
-                value = state.Repeat.EndsAtFrom ? channel.RestingTarget : channel.Target;
+                value = state.Repeat.EndsAtFrom ? channel.Origin : channel.Target;
             }
             else
             {
@@ -366,20 +371,56 @@ namespace Velvet
                     ? state.ElapsedSec
                     : state.Repeat.PassTime(state.ElapsedSec, channel.PassSec, out mirrored);
                 value = mirrored
-                    ? SampleSpring(channel.Target, channel.RestingTarget, channel.Scale, passTime, state)
-                    : SampleSpring(channel.RestingTarget, channel.Target, channel.Scale, passTime, state);
+                    ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, state)
+                    : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, state);
             }
-            channel.Integrator.Set(value, (value - previous) / dtSec);
+            // A finished value has stopped, so an interruption after its end releases the next spring at rest.
+            channel.Integrator.Set(value, ended ? 0f : (value - previous) / dtSec);
             return ended;
         }
 
-        // Framer Motion's spring generator released at `from` toward `to`, at rest: the target once it rests.
-        private static float SampleSpring(float from, float to, float scale, double t, MotionSpringState state)
+        private static float SampleSpring(float from, float to, float scale, float velocity, double t,
+            MotionSpringState state)
+            => SampleSpring(from, to, scale, velocity, t, state.Stiffness, state.Damping, state.Mass);
+
+        // Framer Motion's spring generator released at `from` toward `to` with `velocity` on the scaled travel: the
+        // target once it rests.
+        internal static float SampleSpring(float from, float to, float scale, float velocity, double t,
+            float stiffness, float damping, float mass)
         {
             var delta = (to - from) * scale;
-            var (displacement, velocity) = SpringIntegrator.Solve(-delta, 0.0, t,
-                (state.Stiffness, state.Damping, state.Mass));
-            return Rests(delta, displacement, velocity) ? to : (float)(to + displacement / scale);
+            var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, t, (stiffness, damping, mass));
+            return Rests(delta, displacement, speed) ? to : (float)(to + displacement / scale);
+        }
+
+        /// <summary>
+        /// Releases each channel of <paramref name="next"/> with the velocity the same channel of
+        /// <paramref name="interrupted"/> was moving at, as Framer Motion starts a value's new animation with the
+        /// motion value's velocity. A color carries none, as Framer's color values carry none.
+        /// </summary>
+        public static void InheritVelocity(MotionSpringState next, MotionSpringState interrupted)
+        {
+            Inherit(next, next.Opacity, interrupted.Opacity);
+            Inherit(next, next.TranslateX, interrupted.TranslateX);
+            Inherit(next, next.TranslateY, interrupted.TranslateY);
+            Inherit(next, next.Scale, interrupted.Scale);
+            Inherit(next, next.Rotate, interrupted.Rotate);
+            if (next.Lengths != null && interrupted.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    var match = interrupted.Lengths.Find(l => l.Property == length.Property);
+                    Inherit(next, length.Value, match?.Value);
+                }
+            }
+        }
+
+        private static void Inherit(MotionSpringState next, SpringChannel? channel, SpringChannel? interrupted)
+        {
+            if (channel != null && interrupted != null)
+            {
+                Release(next, channel, channel.Origin, interrupted.Integrator.Velocity);
+            }
         }
 
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
@@ -465,20 +506,19 @@ namespace Velvet
 
         /// <summary>
         /// Re-targets every active channel toward the value it STARTED from (see
-        /// <see cref="SpringChannel.RestingTarget"/>) — the exit-cancel hand-off. Each channel's
-        /// <see cref="SpringIntegrator"/> instance is untouched, so its current value/velocity carry over
-        /// unbroken; only the goal it steps toward next changes. The reversal is integrated from there, whatever the
-        /// play repeated.
+        /// <see cref="SpringChannel.RestingTarget"/>) — the exit-cancel hand-off — releasing a new spring from the
+        /// value and velocity it was last sampled at, as Framer Motion starts an interrupted value's new animation.
+        /// The reversal plays once, whatever the play repeated.
         /// </summary>
         public static void Retarget(MotionSpringState state)
         {
-            ForEachActiveChannel(state, static c =>
-            {
-                c.RestTravel = (c.RestingTarget - c.Integrator.Value) * c.Scale;
-                c.Target = c.RestingTarget;
-            });
-            state.Sampled = false;
             state.Repeat = default;
+            state.ElapsedSec = 0.0;
+            ForEachActiveChannel(state, c =>
+            {
+                c.Target = c.RestingTarget;
+                Release(state, c, c.Integrator.Value, c.Integrator.Velocity);
+            });
         }
 
         /// <summary>

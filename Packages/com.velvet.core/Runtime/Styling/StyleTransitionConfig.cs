@@ -294,8 +294,9 @@ namespace Velvet
                 Easing = easing,
                 ExitEasing = exitEasing,
                 DelaySec = delaySec,
-                // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
-                // the child-orchestration knobs, the spring model, the repeat, or the transition a layoutId move takes.
+                // Passed through unchanged: a copy's callers choose only the top-level timing and the repeat count,
+                // not per-property overrides, the child-orchestration knobs, the spring model, the repeat's type and
+                // delay, or the transition a layoutId move takes.
                 PropertyOverrides = PropertyOverrides,
                 Layout = Layout,
                 StaggerChildrenSec = StaggerChildrenSec,

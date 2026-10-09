@@ -41,7 +41,7 @@ namespace Velvet.Tests
             var count = 0;
             void OnLog(string condition, string stackTrace, LogType type)
             {
-                if (type == LogType.Warning && condition.Contains("StyleTransitionConfig.Repeat is played only"))
+                if (type == LogType.Warning && condition.Contains(StyleAnimationScheduler.RepeatNotPlayedWarning))
                 {
                     count++;
                 }
@@ -249,7 +249,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_BeforeChildrenOnASpringSwap_When_AChildClaimsItsSlot_Then_ItWaitsUntilTheSpringRests()
         {
-            // Arrange — an opacity travel of 1 rests at 1.1 s on Framer's default spring; DurationSec is not read.
+            // Arrange — the opacity's travel-100 easing rests at 1.05 s on Framer's default spring; DurationSec is
+            // not read.
             var swap = new StyleTransitionConfig
             {
                 Type = TransitionType.Spring, DurationSec = 0.3f, DelaySec = 0.1f, When = TransitionWhen.BeforeChildren,
@@ -261,7 +262,7 @@ namespace Velvet.Tests
             var delay = frame?.ClaimNextChildDelaySec() ?? float.NaN;
 
             // Assert
-            Assert.That(delay, Is.EqualTo(1.2f).Within(1e-5f));
+            Assert.That(delay, Is.EqualTo(1.15f).Within(1e-5f));
         }
 
         [Test]

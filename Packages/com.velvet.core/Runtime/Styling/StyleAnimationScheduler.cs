@@ -636,6 +636,11 @@ namespace Velvet
             var state = ValidateSpringParameters(stiffness, damping, mass)
                 ? MotionSpringDriver.Create(plan, stiffness, damping, mass, repeat)
                 : null;
+            // A spring this one interrupts hands on its velocity, read before the cancel below ends it.
+            if (state != null && map.TryGetValue(element, out var interrupted) && interrupted.Spring != null)
+            {
+                MotionSpringDriver.InheritVelocity(state, interrupted.Spring);
+            }
 
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
             // CancelEnter(element) / PlayExit's CancelExit(element) self-cancel).
@@ -903,6 +908,7 @@ namespace Velvet
             if (MotionSpringDriver.EndsAtFrom(state))
             {
                 // Held as FinishBezier holds a bezier play that ends on its from-values.
+                RingCoFadeCoordinator.HoldRingCoFade(pending);
                 state.OnSettled?.Invoke();
                 return;
             }
@@ -969,8 +975,9 @@ namespace Velvet
             if (BezierTweenDriver.EndsAtFrom(state))
             {
                 // The classes the play landed are its to-pose, so clearing the inline values would jump the element
-                // there. The play stays registered holding its from-values, its ring co-fade still sampling them,
-                // until a cancel releases them as it releases a running play's.
+                // there. The play stays registered holding its from-values, and its ring band the opacity they
+                // leave, until a cancel releases them as it releases a running play's.
+                RingCoFadeCoordinator.HoldRingCoFade(pending);
                 state.OnSettled?.Invoke();
                 return;
             }
@@ -1326,6 +1333,10 @@ namespace Velvet
         // Once per scheduler. A tween hands its interpolation to UI Toolkit's transitions, which play it once.
         private bool _warnedRepeatNotPlayed;
 
+        internal const string RepeatNotPlayedWarning =
+            "StyleTransitionConfig.Repeat is not played by TransitionType.Tween; this transition plays once. Use "
+            + "Type = TransitionType.Bezier or TransitionType.Spring for a play that repeats.";
+
         private void WarnRepeatNotPlayed(TransitionType type, MotionRepeat repeat)
         {
             if (type != TransitionType.Tween || repeat.Count == 0f || _warnedRepeatNotPlayed)
@@ -1333,9 +1344,7 @@ namespace Velvet
                 return;
             }
             _warnedRepeatNotPlayed = true;
-            FiberLogger.LogWarning("Motion",
-                "StyleTransitionConfig.Repeat is not played by TransitionType.Tween; this transition plays once. Use "
-                + "Type = TransitionType.Bezier or TransitionType.Spring for a play that repeats.");
+            FiberLogger.LogWarning("Motion", RepeatNotPlayedWarning);
         }
 
         internal static bool ValidateDuration(float durationSec, Action? onComplete)
@@ -1936,6 +1945,17 @@ namespace Velvet
                     var raw = animatingElement.resolvedStyle.opacity;
                     overlay.style.opacity = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
                 }).Every(StyleAnimateDriver.TickMs);
+            }
+
+            // Stops the co-fade tick of a play holding its from-values past its end, leaving the band at the opacity
+            // its element holds; the cancel that ends the hold releases it through EndRingCoFade.
+            internal static void HoldRingCoFade(StyleAnimationScheduler.PendingAnimation pending)
+            {
+                pending.RingTick?.Pause();
+                if (pending.RingOverlay != null && pending.AnimatingElement != null)
+                {
+                    pending.RingOverlay.style.opacity = UnityEngine.Mathf.Clamp01(MotionOpacity.Own(pending.AnimatingElement));
+                }
             }
 
             // Stops the co-fade tick and releases the band's inline opacity (null-safe; balanced one-for-one

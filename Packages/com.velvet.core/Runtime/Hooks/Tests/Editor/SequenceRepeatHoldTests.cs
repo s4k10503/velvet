@@ -75,6 +75,20 @@ namespace Velvet.Tests
             Assert.That(indices, Is.EqualTo(new[] { 0, 1 }));
         }
 
+        [Test]
+        public void Given_AToStepOnAnOpacitySpringRepeating19Times_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnWithIt()
+        {
+            // Arrange — the step's label plays the opacity's spring twenty times; the hold has to end with that play.
+            var transition = new StyleTransitionConfig { Type = TransitionType.Spring, Repeat = 19f };
+            var play = (float)MotionPlaySpan.Of(transition, new[] { "opacity-0" }, new[] { "opacity-100" });
+
+            // Act
+            var indices = StepIndexAfter(transition, play - 0.05f, 0.1f);
+
+            // Assert
+            Assert.That(indices, Is.EqualTo(new[] { 0, 1 }));
+        }
+
         [TestCase(20f)]
         [TestCase(float.PositiveInfinity)]
         public void Given_AToStepRepeating20TimesOrMore_When_OnePassElapses_Then_ItHandedOutNoRepeatAndMovesOn(float repeat)

@@ -1,39 +1,22 @@
 using System;
-using UnityEngine;
 
 namespace Velvet
 {
     /// <summary>
-    /// A single damped-harmonic-oscillator spring, advanced one step at a time by the oscillator's closed-form
-    /// solution — the one Framer Motion's spring evaluates — so the step size never decides whether it
-    /// converges. Pure math: holds
-    /// only <see cref="Value"/> / <see cref="Velocity"/>, takes every other input (target, stiffness, damping,
-    /// mass) per <see cref="Step"/> call, and has no dependency on a <c>VisualElement</c> or panel — see
-    /// <see cref="MotionSpringDriver"/> for the piece that applies a per-channel instance of this to a Motion's
-    /// animated style properties.
+    /// A damped-harmonic-oscillator spring's closed-form solution — the one Framer Motion's spring evaluates —
+    /// and the value and velocity a spring-driven channel was last sampled at. Pure math, with no dependency on a
+    /// <c>VisualElement</c> or panel — see <see cref="MotionSpringDriver"/> for the piece that samples it for a
+    /// Motion's animated style properties.
     /// </summary>
     /// <remarks>
-    /// Retargeting mid-flight (calling <see cref="Step"/> with a different <c>target</c> than the previous
-    /// call) is intentionally just a normal call: <see cref="Value"/> / <see cref="Velocity"/> are never reset
-    /// between calls, so the SAME instance keeps its current value and velocity — the physical continuity an
-    /// interrupted spring needs (e.g. a cancelled exit transition hands off to a reversal spring built from
-    /// wherever the exit currently was, not from a fresh rest state).
-    /// <para>
     /// A mutable struct, not a class: <see cref="SpringChannel"/> embeds one inline (as a plain, non-readonly
     /// field — see its own doc) instead of holding a separate heap reference, so a spring channel costs one
-    /// allocation instead of two. <see cref="Step"/> mutates <see cref="Value"/>/<see cref="Velocity"/> in
-    /// place, so every caller must reach an instance through an addressable field/variable (never through a
-    /// property or a <c>readonly</c> field of this type) or the mutation lands on a silent defensive copy
-    /// instead of the real one.
-    /// </para>
+    /// allocation instead of two. <see cref="Set"/> mutates <see cref="Value"/>/<see cref="Velocity"/> in place, so
+    /// every caller must reach an instance through an addressable field/variable (never through a property or a
+    /// <c>readonly</c> field of this type) or the mutation lands on a silent defensive copy instead of the real one.
     /// </remarks>
     internal struct SpringIntegrator
     {
-        // A single large hitch (a dropped frame, a GC pause, the editor regaining focus) must not make the
-        // spring "jump" most of its way at once: capping dt means a hitch looks like a few frames of slightly
-        // slower motion instead.
-        private const float MaxDtSec = 1f / 30f;
-
         /// <summary>The spring's current value.</summary>
         public float Value { get; private set; }
 
@@ -56,29 +39,13 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Puts the spring where a play sampling its trajectory by time has it, so a later <see cref="Step"/>
-        /// carries on from there.
+        /// Records where a play sampling the spring by time has it, which an interruption releases the next spring
+        /// from.
         /// </summary>
         public void Set(float value, float velocity)
         {
             Value = value;
             Velocity = velocity;
-        }
-
-        /// <summary>
-        /// Advances the spring by one tick toward <paramref name="target"/>. <paramref name="dtSec"/> is clamped
-        /// to <see cref="MaxDtSec"/> (a no-op or negative dt does nothing).
-        /// </summary>
-        public void Step(float dtSec, float target, float stiffness, float damping, float mass)
-        {
-            if (dtSec <= 0f)
-            {
-                return;
-            }
-            var (displacement, velocity) = Solve(Value - target, Velocity, Mathf.Min(dtSec, MaxDtSec),
-                (stiffness, damping, mass));
-            Value = (float)(target + displacement);
-            Velocity = (float)velocity;
         }
 
         /// <summary>
@@ -123,15 +90,5 @@ namespace Velvet
                 envelope * ((velocity0 * cosh) - (pull / hyperbolic * sinh)));
         }
 
-        /// <summary>
-        /// True once the spring is close enough to <paramref name="target"/>, in both position and speed, to
-        /// treat as settled. The default epsilons (0.01) suit a roughly 0..1-scale value (opacity, a uniform
-        /// scale factor); a caller animating a pixel or degree-scale channel should pass a larger,
-        /// scale-appropriate pair (see <see cref="MotionSpringDriver"/>'s per-channel epsilons).
-        /// </summary>
-        public bool IsSettled(float target, float restDelta = 0.01f, float restSpeed = 0.01f)
-        {
-            return Mathf.Abs(Value - target) <= restDelta && Mathf.Abs(Velocity) <= restSpeed;
-        }
     }
 }
