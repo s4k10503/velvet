@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -114,6 +115,42 @@ namespace Velvet.Tests
             Tail(element, 0.5f);
             // Assert
             Assert.That(element.style.opacity.value, Is.EqualTo(0.5f).Within(0.001f));
+        }
+
+        [Test]
+        public void Given_ACarryingOpacityOnAHeldClock_When_TheCrossfadeEndsAndThePanelTicks_Then_TheTailMovesOnlyAsFarAsTheClock()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = Carrying();
+            MotionOpacity.End(element, clock);
+
+            // Act
+            for (var i = 0; i < 10; i++) Tick();
+            var held = element.style.opacity.value;
+            clock.Now += 0.25;
+            Tick();
+
+            // Assert — a quarter of the second-long carry from 0.8 to 0.2.
+            Assert.That(new[] { held, element.style.opacity.value }, Is.EqualTo(new[] { 0.8f, 0.65f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ACarryingOpacityWhoseCrossfadeEndsTwice_When_TheClockSteps_Then_ItsTailStepsOnce()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = Carrying();
+            MotionOpacity.End(element, clock);
+            MotionOpacity.End(element, clock);
+
+            // Act
+            Tick();
+            clock.Now += 0.25;
+            Tick();
+
+            // Assert — a quarter of the carry, where two tails would have stepped it half way.
+            Assert.That(element.style.opacity.value, Is.EqualTo(0.65f).Within(1e-3f));
         }
 
         [Test]
@@ -365,7 +402,7 @@ namespace Velvet.Tests
 
         private static void EndProjectionFade(VisualElement element, LayoutIdProjection projection) =>
             typeof(MotionLayoutIdDriver).GetMethod("WriteOpacity", BindingFlags.Static | BindingFlags.NonPublic)
-                .Invoke(null, new object[] { element, projection, null });
+                .Invoke(null, new object[] { element, projection, null, new ReconcilerContext() });
 
         [Test]
         public void Given_AnEndedProjectionFade_When_AnInlineWritePrecedesItsNextPass_Then_TheTailAdoptsTheWrite()

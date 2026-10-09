@@ -144,6 +144,7 @@
 [Velvet] ctor protected Velvet.ContextProviderNode.ctor(): System.Void
 [Velvet] ctor protected Velvet.Experimental.VBuilder.ctor(System.String?): System.Void
 [Velvet] ctor protected Velvet.FiberEventBinding.ctor(): System.Void
+[Velvet] ctor protected Velvet.MotionClock.ctor(): System.Void
 [Velvet] ctor protected Velvet.Store`1[TState].ctor(TState): System.Void
 [Velvet] ctor protected Velvet.VNode.ctor(): System.Void
 [Velvet] event Velvet.DevTools.VelvetDevToolsRegistry.RegistryChanged: System.Action?
@@ -920,6 +921,9 @@
 [Velvet] property Velvet.KeyUpBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyUpEvent]?
 [Velvet] property Velvet.MemoNode.Dependencies: System.Object?[]?
 [Velvet] property Velvet.MemoNode.Factory: System.Func`1[Velvet.VNode]
+[Velvet] property Velvet.MotionClock.GameTime: Velvet.MotionClock
+[Velvet] property Velvet.MotionClock.NowSec: System.Double
+[Velvet] property Velvet.MotionClock.Realtime: Velvet.MotionClock
 [Velvet] property Velvet.MotionNode.Animate: System.String?
 [Velvet] property Velvet.MotionNode.Exit: System.String?
 [Velvet] property Velvet.MotionNode.Initial: System.String?
@@ -929,6 +933,7 @@
 [Velvet] property Velvet.MotionNode.Variants: System.Collections.Generic.IReadOnlyDictionary`2[System.String, Velvet.MotionVariant]?
 [Velvet] property Velvet.MotionVariant.ClassName: System.String?
 [Velvet] property Velvet.MotionVariant.Transition: Velvet.StyleTransitionConfig?
+[Velvet] property Velvet.MountOptions.MotionClock: Velvet.MotionClock
 [Velvet] property Velvet.MountOptions.OnCaughtError: System.Action`2[System.Exception, Velvet.ErrorInfo]?
 [Velvet] property Velvet.MutableRef`1[T].Current: T
 [Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnError: System.Action`3[System.Exception, TVariables, System.Object?]?
@@ -1245,6 +1250,7 @@
 [Velvet] type Velvet.LoaderMode
 [Velvet] type Velvet.MemoNode
 [Velvet] type Velvet.MemoizeMethodAttribute
+[Velvet] type Velvet.MotionClock
 [Velvet] type Velvet.MotionNode
 [Velvet] type Velvet.MotionVariant
 [Velvet] type Velvet.MountOptions

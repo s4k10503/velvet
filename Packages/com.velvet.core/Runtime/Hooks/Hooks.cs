@@ -1163,7 +1163,9 @@ namespace Velvet
         /// is always the one invoked — a re-render swaps the callback without re-subscribing — so
         /// per-frame data flows without touching component state (the escape hatch for
         /// simulation-driven visuals; setting state per frame would re-render the world every tick).
-        /// Frames tick while the component's host is attached to a panel and pause while it is not.
+        /// Frames tick while the component's host is attached to a panel and pause while it is not. The elapsed
+        /// time is measured on the mount's <see cref="MountOptions.MotionClock"/>, and a frame over which that
+        /// clock did not move invokes nothing.
         /// <paramref name="priority"/> orders callbacks within the SAME panel — lower runs earlier,
         /// equal priorities run in subscription (mount) order, and this stays true across a keyed
         /// reorder of the host. A positive priority has no side effect beyond ordering: Unity's
@@ -1255,7 +1257,7 @@ namespace Velvet
                             // the nearest error boundary must receive user-callback failures either way.
                             ComponentBoundarySearch.PropagateException(fiber, ex);
                         }
-                    });
+                    }, fiber.Reconciler?.Context.StyleAnimationScheduler.Clock);
                     subscriptionRef.Set(subscription);
                 }
 
