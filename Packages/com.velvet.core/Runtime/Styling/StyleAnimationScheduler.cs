@@ -1649,9 +1649,9 @@ namespace Velvet
                 // from, released from the value and velocity it was last sampled at (see
                 // MotionSpringDriver.Retarget), drop the original completion (a reversal settling is
                 // not "finishing" anything the original caller asked for), and move ownership into the
-                // enter map — mirroring the tween reversal's own move into _pendingEnters below. The recurring tick keeps running uninterrupted throughout;
-                // only the springs it samples and its eventual finalize action change. Requires a tick that has
-                // actually started (spring.Tick != null): a cancel that lands before then — still
+                // enter map — mirroring the tween reversal's own move into _pendingEnters below. The
+                // recurring tick keeps running uninterrupted throughout; only the springs it samples and
+                // its eventual finalize action change. Requires a tick that has actually started (spring.Tick != null): a cancel that lands before then — still
                 // parked behind its delay — has no running tick to keep alive, and nothing would ever
                 // start one for it (its ScheduledItem was already paused above, and a still-off-panel
                 // PendingAttach was already unregistered), so handing off here would just park a dead

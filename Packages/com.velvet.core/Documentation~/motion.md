@@ -264,10 +264,10 @@ new StyleTransitionConfig
 ```
 
 - Springs drive the channels of a variant delta (see *Driven channels* below), each sampled from
-  Framer Motion's spring by the time since the play started. **Interrupting a spring — a label
-  change mid-spring, or an exit cancelled mid-flight — releases a new one from the current value
-  *and velocity***, as Framer starts an interrupted value's next animation. An exit whose delta
-  resolves no channel at all completes immediately.
+  Framer Motion's spring by the time since the play started. **Interrupting a running spring — a
+  label change mid-spring, or an exit cancelled mid-flight — releases a new one from the current
+  value *and velocity***, as Framer starts an interrupted value's next animation. A spring that
+  interrupts a bezier play starts at rest, since a bezier play keeps no velocity. An exit whose delta resolves no channel at all completes immediately.
 - `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
   slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
   so a frame that arrives late moves the spring as far as the time it covers.
@@ -438,8 +438,8 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
   `rotate` are values of their own that it keeps on its main thread — and any channel under a
   mirrored or waiting repeat, runs on Framer's main thread over its own travel, a color's being 100,
   an interrupted color's too: one that has not rested by 20 s never ends, and under a repeat plays
-  its first pass on. Framer animates each value
-  on its own, so the channels can fall out of step; the play ends when its slowest channel does.
+  its first pass on. Framer animates each value on its own, so the channels can fall out of step;
+  the play ends when its slowest channel does.
 - A play of an odd `Repeat` under `Reverse` or `Mirror` ends on its from-pose, as Framer's does, and
   holds it there although the element's classes are the to-pose's, until a later play, an exit or a
   teardown cancels it; a pose that lands at once takes over only the properties it names. Every other
