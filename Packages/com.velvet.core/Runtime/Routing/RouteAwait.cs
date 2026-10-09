@@ -27,7 +27,7 @@ namespace Velvet
                 return V.Component(Settled, p);
             }
 
-            return V.ErrorBoundary(
+            return V.FrameworkErrorBoundary(
                 error => V.Provider(Outcome, new DeferredOutcome(null, error), new VNode?[] { p.ErrorElement }),
                 new VNode?[] { V.Component(Settled, p) });
         }

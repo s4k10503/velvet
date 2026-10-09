@@ -22,6 +22,7 @@ namespace Velvet
         [Component(IsErrorBoundary = true)]
         public static VNode Render(Props p)
         {
+            FiberAmbientStack.Current!.IsFrameworkErrorBoundary = true;
             var shownAt = Hooks.UseRef<RouterLocation>();
             if (!ReferenceEquals(shownAt.Current, p.Location))
             {

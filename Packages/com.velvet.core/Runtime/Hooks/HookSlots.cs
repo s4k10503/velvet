@@ -33,27 +33,36 @@ namespace Velvet
     internal sealed class HookErrorBoundaryKeysSlot
     {
         private readonly ComponentFiber _boundary;
+        private object?[]? _committedKeys;
 
         public HookErrorBoundaryKeysSlot(ComponentFiber boundary)
         {
             _boundary = boundary;
-            CommitPendingReset = RunPendingReset;
+            Commit = CommitRender;
         }
 
-        public object?[]? Keys { get; set; }
+        public object?[]? RenderedKeys { get; set; }
 
-        public ErrorBoundaryResetDetails? PendingReset { get; set; }
+        public Action<ErrorBoundaryResetDetails>? RenderedOnReset { get; set; }
+
+        public bool RenderedAfterACatch { get; set; }
 
         // Cached so that registering the layout effect builds no delegate per render.
-        public Func<Action?> CommitPendingReset { get; }
+        public Func<Action?> Commit { get; }
 
-        private Action? RunPendingReset()
+        // react-error-boundary's componentDidUpdate: the keys and onReset of the render this commit lands become
+        // the committed ones, and prevProps' keys are the ones the commit before it landed.
+        private Action? CommitRender()
         {
-            var details = PendingReset;
-            PendingReset = null;
-            if (details == null || _boundary.CaughtError == null) return null;
-            _boundary.OnErrorBoundaryReset?.Invoke(details);
-            FiberErrorBoundary.Reset(_boundary);
+            var prev = _committedKeys;
+            var next = RenderedKeys;
+            _committedKeys = next;
+            _boundary.OnErrorBoundaryReset = RenderedOnReset;
+            if (!RenderedAfterACatch || _boundary.CaughtError == null) return null;
+            if (ObjectIs.AreEqualDeps(prev ?? Array.Empty<object?>(), next ?? Array.Empty<object?>())) return null;
+            _boundary.OnErrorBoundaryReset?.Invoke(new ErrorBoundaryResetDetails(
+                ErrorBoundaryResetReason.Keys, Array.Empty<object?>(), prev, next));
+            FiberErrorBoundary.QueueReset(_boundary);
             return null;
         }
     }

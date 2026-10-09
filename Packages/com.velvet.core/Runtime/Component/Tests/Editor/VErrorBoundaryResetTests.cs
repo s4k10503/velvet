@@ -14,6 +14,7 @@ namespace Velvet.Tests
     /// <item>The reset the fallback is handed renders the children again, and calls <c>onReset</c>.</item>
     /// <item>A reset key the parent changes renders the children again.</item>
     /// <item>A null <c>fallbackRender</c> or null children is rejected.</item>
+    /// <item>A reset made in a transition is taken by the transition's render, not by an urgent one before it.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -22,6 +23,8 @@ namespace Velvet.Tests
         private static bool s_throws;
         private static ErrorBoundaryReset s_reset;
         private static Action<int> s_setResetKey;
+        private static Action<int> s_setTick;
+        private static TransitionStarter s_start;
         private static List<string> s_resets;
 
         private VisualElement _root;
@@ -33,6 +36,8 @@ namespace Velvet.Tests
             s_throws = false;
             s_reset = null;
             s_setResetKey = null;
+            s_setTick = null;
+            s_start = default;
             s_resets = new List<string>();
             FiberStrictMode.Enabled = false;
         }
@@ -44,8 +49,6 @@ namespace Velvet.Tests
             change();
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            // Flushed again so that a render a layout effect scheduled is taken as well.
-            mounted.FlushStateForTest();
         }
 
         private MountedTree MountCaught(Func<VNode> host)
@@ -98,6 +101,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHelperBoundaryThatCaught_When_ItIsResetInATransitionAndAnUrgentUpdateRendersItFirst_Then_OnlyTheTransitionRendersItsChildren()
+        {
+            // Arrange
+            using var mounted = MountCaught(ResettableHostRender);
+            s_start.Invoke(() => s_reset.Invoke());
+            s_setTick.Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var afterUrgent = Texts();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert
+            Assert.That(afterUrgent + "|" + Texts(), Is.EqualTo("failed:thrown|child"));
+        }
+
+        [Test]
         public void Given_ANullFallbackRender_When_AHelperBoundaryIsBuilt_Then_ItThrowsArgumentNullException()
         {
             // Act
@@ -120,7 +140,7 @@ namespace Velvet.Tests
         }
 
         [Component(Compiler = false)]
-        private static VNode ThrowerRender()
+        private static VNode ThrowerRender(int tick)
         {
             if (s_throws) throw new InvalidOperationException("thrown");
             return V.Label(text: "child");
@@ -130,7 +150,11 @@ namespace Velvet.Tests
         private static VNode ResettableHostRender()
         {
             var (resetKey, setResetKey) = Hooks.UseState(0);
+            var (tick, setTick) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
             s_setResetKey = setResetKey;
+            s_setTick = setTick;
+            s_start = start;
             return V.Div(children: new VNode[]
             {
                 V.ErrorBoundary(
@@ -139,7 +163,7 @@ namespace Velvet.Tests
                         s_reset = reset;
                         return V.Label(text: "failed:" + error.Message);
                     },
-                    children: new VNode[] { V.Component(ThrowerRender, key: "child") },
+                    children: new VNode[] { V.Component(ThrowerRender, tick, key: "child") },
                     resetKeys: new object[] { resetKey },
                     onReset: details => s_resets.Add(details.Reason + ":" + string.Join(",", details.Args)),
                     key: "boundary"),

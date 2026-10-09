@@ -74,8 +74,9 @@ namespace Velvet
 
         /// <summary>
         /// While the boundary shows its fallback, calls its <c>onReset</c> with
-        /// <see cref="ErrorBoundaryResetReason.ImperativeApi"/> and <paramref name="args"/>, then schedules a render
-        /// of the boundary in which it renders its children again. While it shows its children, does nothing.
+        /// <see cref="ErrorBoundaryResetReason.ImperativeApi"/> and <paramref name="args"/>, then queues the reset as a
+        /// state update: the boundary's next render on the lane the call is made on renders its children again.
+        /// While it shows its children, does nothing.
         /// </summary>
         /// <param name="args">Handed to <c>onReset</c> as <see cref="ErrorBoundaryResetDetails.Args"/>.</param>
         public void Invoke(params object?[] args)
@@ -83,7 +84,7 @@ namespace Velvet
             if (_boundary.IsDisposed || _boundary.CaughtError == null) return;
             _boundary.OnErrorBoundaryReset?.Invoke(new ErrorBoundaryResetDetails(
                 ErrorBoundaryResetReason.ImperativeApi, args ?? Array.Empty<object?>(), prev: null, next: null));
-            FiberErrorBoundary.Reset(_boundary);
+            FiberErrorBoundary.QueueReset(_boundary);
         }
 
         /// <summary>The reference-stable action that invokes <paramref name="reset"/> with no arguments.</summary>
@@ -103,15 +104,16 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Resets the nearest error boundary above the calling component, as its own reset action does with no
-        /// arguments — react-error-boundary's <c>resetBoundary</c>.
+        /// Resets the boundary <see cref="Hooks.UseErrorBoundary"/> found above the calling component, as its own
+        /// reset does with no arguments — react-error-boundary's <c>resetBoundary</c>.
         /// </summary>
         public Action ResetBoundary { get; }
 
         /// <summary>
-        /// Makes the calling component throw the error on its next render, so the nearest error boundary above it
-        /// catches it as a render error — react-error-boundary's <c>showBoundary</c>. Callable from an event handler
-        /// or an async continuation on the main thread.
+        /// Makes the calling component throw the error on its next render, which reaches the boundaries above it as
+        /// any render error does: the first that shows a fallback for it catches it, and one that declines passes it
+        /// up — react-error-boundary's <c>showBoundary</c>. Callable from an event handler or an async continuation
+        /// on the main thread.
         /// </summary>
         public Action<Exception> ShowBoundary { get; }
     }

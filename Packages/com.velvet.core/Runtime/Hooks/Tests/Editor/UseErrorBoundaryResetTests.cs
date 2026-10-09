@@ -27,8 +27,11 @@ namespace Velvet.Tests
     /// <item><c>onReset</c> is handed the arguments of an invoked reset, and both key arrays of a keys reset.</item>
     /// <item><c>ShowBoundary</c> makes the nearest boundary catch the error; <c>ResetBoundary</c>, called from the
     /// fallback's content, resets that boundary and calls its <c>onReset</c>; <c>UseErrorBoundary</c> throws with
-    /// no boundary above. <c>ResetBoundary</c> right after <c>ShowBoundary</c> withdraws the error, and
-    /// <c>ShowBoundary</c> refuses null.</item>
+    /// no boundary above but the framework's. <c>ResetBoundary</c> right after <c>ShowBoundary</c> withdraws the
+    /// error, and <c>ShowBoundary</c> refuses null.</item>
+    /// <item>A reset is queued as a state update: two in one handler both call <c>onReset</c>, one in the commit that
+    /// changes the keys calls it beside the keys reset, and one beside a key change in a handler is the only call.
+    /// Keys are compared against the last committed render, so a discarded render's keys reset nothing.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -45,7 +48,10 @@ namespace Velvet.Tests
         private static Action<bool> s_setExtraKey;
         private static Action<int> s_setTick;
         private static int s_boundaryRenders;
-        private static bool s_readerThrows;
+        private static int s_readerThrowsLeft;
+        private static int s_childThrowsLeft;
+        private static bool s_resetFromFallbackCommit;
+        private static Action<int> s_setOwnKey;
 
         private VisualElement _root;
 
@@ -62,7 +68,10 @@ namespace Velvet.Tests
             s_setExtraKey = null;
             s_setTick = null;
             s_boundaryRenders = 0;
-            s_readerThrows = false;
+            s_readerThrowsLeft = 0;
+            s_childThrowsLeft = 0;
+            s_resetFromFallbackCommit = false;
+            s_setOwnKey = null;
             FiberStrictMode.Enabled = false;
         }
 
@@ -73,8 +82,6 @@ namespace Velvet.Tests
             completion();
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            // Flushed again so that a render a layout effect scheduled is taken as well.
-            mounted.FlushStateForTest();
         }
 
         private static VelvetTaskCompletionSource<string> LatestLoad() => s_sources[s_sources.Count - 1];
@@ -165,10 +172,9 @@ namespace Velvet.Tests
             // Arrange
             using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"), CaughtErrors.Unlogged);
             Settle(mounted, () => LatestLoad().TrySetResult("data"));
-            s_readerThrows = true;
+            s_readerThrowsLeft = 1;
             Settle(mounted, () => s_setResetKey.Invoke(1));
             var caught = Texts();
-            s_readerThrows = false;
 
             // Act
             Settle(mounted, () => s_setTick.Invoke(1));
@@ -350,6 +356,81 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABoundaryThatCaughtAFailedLoad_When_OneHandlerResetsItAndChangesItsResetKey_Then_OnlyTheImperativeResetCallsOnReset()
+        {
+            // Arrange
+            using var mounted = MountFailedLoad();
+
+            // Act
+            Settle(mounted, () =>
+            {
+                s_reset.Invoke();
+                s_setResetKey.Invoke(1);
+            });
+
+            // Assert
+            Assert.That(string.Join(";", s_resetDetails), Is.EqualTo("ImperativeApi||null|null"));
+        }
+
+        [Test]
+        public void Given_ABoundaryThatCaughtAFailedLoad_When_ItsFallbackResetsItInTheCommitThatChangesItsResetKey_Then_BothResetsCallOnReset()
+        {
+            // Arrange
+            using var mounted = MountFailedLoad();
+            s_resetFromFallbackCommit = true;
+
+            // Act
+            Settle(mounted, () => s_setResetKey.Invoke(1));
+
+            // Assert
+            Assert.That(string.Join(";", s_resetDetails), Is.EqualTo("ImperativeApi||null|null;Keys||0|1"));
+        }
+
+        [Test]
+        public void Given_ABoundaryThatCaughtAFailedLoad_When_OneHandlerInvokesItsResetTwice_Then_BothCallOnReset()
+        {
+            // Arrange
+            using var mounted = MountFailedLoad();
+
+            // Act
+            Settle(mounted, () =>
+            {
+                s_reset.Invoke("first");
+                s_reset.Invoke("second");
+            });
+
+            // Assert
+            Assert.That(string.Join(";", s_resetDetails),
+                Is.EqualTo("ImperativeApi|first|null|null;ImperativeApi|second|null|null"));
+        }
+
+        [Test]
+        public void Given_ABoundaryThatCaught_When_ARenderPassingNewKeysIsDiscardedForOneCommittingTheOldKeys_Then_ItKeepsItsFallback()
+        {
+            // Arrange
+            s_childThrowsLeft = 1;
+            using var mounted = V.Mount(_root, V.Component(SelfKeyedHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            Settle(mounted, () => s_setOwnKey.Invoke(1));
+
+            // Assert
+            Assert.That((Texts(), string.Join(";", s_resetDetails)), Is.EqualTo(("failed:thrown", "")));
+        }
+
+        [Test]
+        public void Given_OnlyAFrameworkErrorBoundaryAboveAComponent_When_ItCallsUseErrorBoundary_Then_ItThrowsInvalidOperationException()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.FrameworkErrorBoundary(
+                ex => V.Label(text: ex.GetType().Name),
+                new VNode[] { V.Component(NoBoundaryAboveRender, key: "child") }), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo(nameof(InvalidOperationException)));
+        }
+
+        [Test]
         public void Given_AComponentThatIsNotAnErrorBoundary_When_ItCallsTheHook_Then_ItThrowsInvalidOperationException()
         {
             // Act
@@ -368,7 +449,11 @@ namespace Velvet.Tests
         private static VNode ReaderRender()
         {
             s_readerApi = Hooks.UseErrorBoundary();
-            if (s_readerThrows) throw new InvalidOperationException("thrown");
+            if (s_readerThrowsLeft > 0)
+            {
+                s_readerThrowsLeft--;
+                throw new InvalidOperationException("thrown");
+            }
             var value = Hooks.Use(_ =>
             {
                 var source = new VelvetTaskCompletionSource<string>();
@@ -390,9 +475,47 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode FallbackRender(string message)
         {
-            s_fallbackApi = Hooks.UseErrorBoundary();
+            var api = Hooks.UseErrorBoundary();
+            s_fallbackApi = api;
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (s_resetFromFallbackCommit)
+                {
+                    s_resetFromFallbackCommit = false;
+                    api.ResetBoundary();
+                }
+                return (Action)null;
+            });
             return V.Label(text: "failed:" + message);
         }
+
+        [Component(Compiler = false)]
+        private static VNode ThrowOnceRender()
+        {
+            if (s_childThrowsLeft > 0)
+            {
+                s_childThrowsLeft--;
+                throw new InvalidOperationException("thrown");
+            }
+            return V.Label(text: "child");
+        }
+
+        // Its own state is its reset key, and a render that reads 1 sets it back to 0, so that attempt is discarded
+        // and the render that commits passes the committed keys again.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SelfKeyedBoundaryRender()
+        {
+            var (ownKey, setOwnKey) = Hooks.UseState(0);
+            s_setOwnKey = setOwnKey;
+            if (ownKey == 1) setOwnKey.Invoke(0);
+            Hooks.UseErrorBoundaryReset(new object[] { ownKey }, details => s_resetDetails.Add(Describe(details)));
+            Hooks.UseFallback(ex => V.Label(text: "failed:" + ex.Message));
+            return V.Component(ThrowOnceRender, key: "child");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SelfKeyedHostRender()
+            => V.Div(children: new VNode[] { V.Component(SelfKeyedBoundaryRender, key: "boundary") });
 
         [Component(Compiler = false)]
         private static VNode NoBoundaryAboveRender()

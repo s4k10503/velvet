@@ -1499,6 +1499,20 @@ namespace Velvet
             return CreateComponent(body, externalRef: null, key, forceErrorBoundary: true);
         }
 
+        // V.ErrorBoundary for a boundary the framework renders for its own purposes, which Hooks.UseErrorBoundary
+        // passes over (ComponentFiber.IsFrameworkErrorBoundary).
+        internal static ComponentNode FrameworkErrorBoundary(Func<Exception, VNode> fallback, VNode?[] children)
+        {
+            Func<VNode> body = () =>
+            {
+                FiberAmbientStack.Current!.IsFrameworkErrorBoundary = true;
+                Hooks.UseFallback(fallback);
+                return Fragment(children);
+            };
+
+            return CreateComponent(body, externalRef: null, key: null, forceErrorBoundary: true);
+        }
+
         /// <summary>
         /// Variant of <see cref="ErrorBoundary(Func{Exception, VNode}, VNode[], string)"/> whose fallback receives the
         /// boundary's reset — react-error-boundary's <c>&lt;ErrorBoundary fallbackRender resetKeys onReset&gt;</c>,
