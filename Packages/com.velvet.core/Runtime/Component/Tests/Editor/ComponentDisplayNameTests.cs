@@ -89,7 +89,7 @@ namespace Velvet.Tests
             // Assert — LogAssert.Expect verifies the message names the component by its DisplayName
         }
 
-        // GREEN_ON_BASE(refactor): renaming the shared helper to UseProbeBody leaves every hook this case counts in place.
+        // GREEN_ON_BASE(refactor): this case mounts RefHookPropsComponent, which never calls the renamed UseProbeBody helper.
         [Test]
         public void Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent()
         {

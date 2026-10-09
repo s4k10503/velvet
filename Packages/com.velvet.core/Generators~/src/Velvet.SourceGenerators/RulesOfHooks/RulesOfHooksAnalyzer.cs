@@ -8,10 +8,11 @@ using Velvet.SourceGenerators.Diagnostics;
 namespace Velvet.SourceGenerators.RulesOfHooks
 {
     /// <summary>
-    /// Compile-time rules-of-hooks analyzer, eslint-plugin-react-hooks' <c>rules-of-hooks</c> for Velvet. A hook is
-    /// a call named <c>Use</c> followed by an uppercase ASCII letter. VEL101 flags one VEL102 does not report whose
-    /// nearest enclosing syntax ancestor is a control-flow construct (if / else / loop / switch /
-    /// short-circuit operator / conditional expression / try / catch) or a lambda that is not a component body.
+    /// Compile-time rules-of-hooks analyzer, eslint-plugin-react-hooks' <c>rules-of-hooks</c> for Velvet. A hook call
+    /// is what <see cref="HookName"/> accepts. VEL101 flags one VEL102 does not report whose nearest enclosing
+    /// syntax ancestor is a control-flow construct (if / else / loop / switch / short-circuit operator /
+    /// conditional expression / try / catch) or a lambda that is not a component body, the lambda counting only
+    /// where it sits inside a component or a custom hook.
     /// VEL102 flags one whose nearest enclosing function is neither a component nor a custom hook, and VEL103 a
     /// direct call of a component whose body calls a hook. The runtime positional HookIndexTable throws when hook
     /// counts differ across renders, but this static check surfaces violations at edit time without depending on
@@ -48,28 +49,64 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             });
         }
 
-        // Covers both call shapes: `Auth.UseCurrentUser()` (member access) and bare `UseFoo()` (identifier — a
-        // local function declared inside Render() or a static-imported hook).
+        // The name a call is written with: `Auth.UseCurrentUser()`, a bare `UseFoo()` (a local function or a
+        // static-imported hook), and either one with type arguments, `Hooks.UseState<int>(0)` or `UseCore<T>()`.
         internal static string? CalleeName(InvocationExpressionSyntax inv) => inv.Expression switch
         {
             MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText,
-            IdentifierNameSyntax id => id.Identifier.ValueText,
+            SimpleNameSyntax name => name.Identifier.ValueText,
             _ => null,
+        };
+
+        /// <summary>
+        /// The hook a call names, or null where it is not a hook call: eslint-plugin-react-hooks' <c>isHook</c>. A
+        /// bare name counts by its spelling alone; a member call only on a receiver whose last name starts with an
+        /// uppercase letter (<c>Hooks.UseState</c>, <c>global::Velvet.Hooks.UseState</c>), so <c>svc.UseDefaults()</c>
+        /// on a local, a field or <c>this</c> is an ordinary method call.
+        /// </summary>
+        internal static string? HookName(InvocationExpressionSyntax inv)
+        {
+            var name = CalleeName(inv);
+            if (!IsHookLikeName(name)) return null;
+            if (inv.Expression is not MemberAccessExpressionSyntax member) return name;
+            return ReceiverLastName(member.Expression) is { Length: > 0 } receiver && char.IsUpper(receiver[0]) ? name : null;
+        }
+
+        private static string? ReceiverLastName(ExpressionSyntax receiver) => receiver switch
+        {
+            IdentifierNameSyntax id => id.Identifier.ValueText,
+            MemberAccessExpressionSyntax { Expression: var inner } member when IsNameChain(inner) =>
+                member.Name.Identifier.ValueText,
+            AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
+            _ => null,
+        };
+
+        private static bool IsNameChain(ExpressionSyntax expression) => expression switch
+        {
+            IdentifierNameSyntax or AliasQualifiedNameSyntax => true,
+            MemberAccessExpressionSyntax member => IsNameChain(member.Expression),
+            _ => false,
         };
 
         private static void AnalyzeInvocation(SyntaxNodeAnalysisContext ctx, ComponentIndex components)
         {
             if (ctx.Node is not InvocationExpressionSyntax inv) return;
-            var hookName = CalleeName(inv);
-            if (hookName == null) return;
-            if (!IsHookLikeName(hookName))
+            var hookName = HookName(inv);
+            if (hookName == null)
             {
                 TryReportDirectComponentCall(ctx, inv, components);
                 return;
             }
 
-            var host = ctx.SemanticModel.GetEnclosingSymbol(inv.SpanStart, ctx.CancellationToken);
-            if (TryNameNonHookHost(host, components) is { } hostName)
+            var host = EnclosingFunction(inv);
+            if (host is AnonymousFunctionExpressionSyntax lambda
+                && !IsComponentBody(lambda)
+                && !IsSomewhereInsideComponentOrHook(ctx, inv, components))
+            {
+                // eslint reports a hook in a callback only where the callback sits inside a component or a hook.
+                return;
+            }
+            if (host != null && TryNameNonHookHost(ctx, host, components) is { } hostName)
             {
                 ctx.ReportDiagnostic(Diagnostic.Create(
                     MemoizeDiagnostics.Vel102HookOutsideComponentOrHook, inv.GetLocation(), hookName, hostName));
@@ -92,7 +129,7 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                     || current is ConstructorDeclarationSyntax
                     || current is PropertyDeclarationSyntax
                     || current is AccessorDeclarationSyntax
-                    || IsComponentBody(current, ctx))
+                    || IsComponentBody(current))
                 {
                     // Not inside a control-flow construct — but a hook AFTER a conditional early return is still
                     // conditional. Detected via control-flow analysis (a syntax-ancestor walk cannot see it).
@@ -120,9 +157,29 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             }
         }
 
-        private static bool IsComponentBody(SyntaxNode node, SyntaxNodeAnalysisContext ctx) =>
+        private static bool IsComponentBody(SyntaxNode? node) =>
             node is AnonymousFunctionExpressionSyntax { Parent: ArgumentSyntax argument }
-            && ComponentIndex.IsComponentBodyArgument(argument, ctx.SemanticModel, ctx.CancellationToken);
+            && ComponentIndex.IsComponentBodyArgument(argument);
+
+        // eslint's isSomewhereInsideComponentOrHook: some function enclosing the call is a component or a hook.
+        private static bool IsSomewhereInsideComponentOrHook(
+            SyntaxNodeAnalysisContext ctx, InvocationExpressionSyntax inv, ComponentIndex components)
+        {
+            foreach (var ancestor in inv.Ancestors())
+            {
+                switch (ancestor)
+                {
+                    case AnonymousFunctionExpressionSyntax lambda when IsComponentBody(lambda):
+                        return true;
+                    case LocalFunctionStatementSyntax local
+                        when NameUnlessComponentOrHook(ctx, local, local.Identifier.ValueText, components) == null:
+                    case MethodDeclarationSyntax method
+                        when NameUnlessComponentOrHook(ctx, method, method.Identifier.ValueText, components) == null:
+                        return true;
+                }
+            }
+            return false;
+        }
 
         /// <summary>
         /// Flags a hook that follows a CONDITIONAL early exit (e.g. <c>if (x) return; UseState(...);</c>) in its
@@ -151,39 +208,100 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             }
         }
 
+        // The nearest enclosing function, or the field or property whose initializer holds the call. Read from
+        // the syntax so a hook in an ordinary component or custom hook costs no binding.
+        private static SyntaxNode? EnclosingFunction(InvocationExpressionSyntax inv)
+        {
+            foreach (var ancestor in inv.Ancestors())
+            {
+                switch (ancestor)
+                {
+                    case AnonymousFunctionExpressionSyntax:
+                    case LocalFunctionStatementSyntax:
+                    case BaseMethodDeclarationSyntax:
+                    case AccessorDeclarationSyntax:
+                    case ArrowExpressionClauseSyntax { Parent: BasePropertyDeclarationSyntax }:
+                    case EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax { Parent.Parent: FieldDeclarationSyntax } }:
+                    case EqualsValueClauseSyntax { Parent: PropertyDeclarationSyntax }:
+                        return ancestor;
+                }
+            }
+            return null;
+        }
+
         /// <summary>
-        /// The name VEL102 reports for a hook's nearest enclosing function or member, or null where that is a
-        /// component, a custom hook or a lambda. A lambda is VEL101's to judge, against the lambda itself unless it
-        /// is a component's render body.
+        /// The name VEL102 reports for a hook's enclosing function or member, or null where that is a component, a
+        /// custom hook or a lambda. A lambda is VEL101's to judge, against the lambda itself unless it is a
+        /// component's render body.
         /// </summary>
-        private static string? TryNameNonHookHost(ISymbol? host, ComponentIndex components)
+        private static string? TryNameNonHookHost(SyntaxNodeAnalysisContext ctx, SyntaxNode host, ComponentIndex components)
         {
             switch (host)
             {
-                case IMethodSymbol { MethodKind: MethodKind.AnonymousFunction }:
+                case AnonymousFunctionExpressionSyntax:
                     return null;
-                case IMethodSymbol method:
-                    if (IsHookLikeName(method.Name) || components.IsComponent(method)) return null;
-                    return method.AssociatedSymbol?.Name
-                        ?? (method.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor
-                            ? method.ContainingType.Name
-                            : method.Name);
-                case IFieldSymbol field:
-                    // An auto-property initializer arrives as its backing field: Given_HookInPropertyInitializer_When_Analyzed_Then_ReportsVel102NamingTheProperty.
-                    return field.AssociatedSymbol?.Name ?? field.Name;
+                case LocalFunctionStatementSyntax local:
+                    return NameUnlessComponentOrHook(ctx, local, local.Identifier.ValueText, components);
+                case MethodDeclarationSyntax method:
+                    return NameUnlessComponentOrHook(ctx, method, method.Identifier.ValueText, components);
+                case ConstructorDeclarationSyntax constructor:
+                    return constructor.Identifier.ValueText;
+                case BaseMethodDeclarationSyntax other:
+                    return ctx.SemanticModel.GetDeclaredSymbol(other, ctx.CancellationToken)?.Name;
+                case AccessorDeclarationSyntax { Parent.Parent: BasePropertyDeclarationSyntax property }:
+                    return PropertyName(property);
+                case ArrowExpressionClauseSyntax { Parent: BasePropertyDeclarationSyntax property }:
+                    return PropertyName(property);
+                case EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator }:
+                    return declarator.Identifier.ValueText;
+                case EqualsValueClauseSyntax { Parent: PropertyDeclarationSyntax property }:
+                    return property.Identifier.ValueText;
                 default:
                     return null;
             }
         }
 
+        private static string? NameUnlessComponentOrHook(
+            SyntaxNodeAnalysisContext ctx, SyntaxNode declaration, string name, ComponentIndex components)
+        {
+            if (IsHookHostName(name)) return null;
+            return ctx.SemanticModel.GetDeclaredSymbol(declaration, ctx.CancellationToken) is IMethodSymbol method
+                && components.IsComponent(method, ctx.CancellationToken)
+                ? null
+                : name;
+        }
+
+        private static string PropertyName(BasePropertyDeclarationSyntax property) => property switch
+        {
+            PropertyDeclarationSyntax named => named.Identifier.ValueText,
+            EventDeclarationSyntax @event => @event.Identifier.ValueText,
+            _ => "this[]",
+        };
+
+        // A function eslint counts as a hook: one named like a hook call, or `use` itself, which Velvet spells `Use`.
+        // A call to `Use` stays outside IsHookLikeName, as eslint exempts `use(...)` from the conditional checks.
+        private static bool IsHookHostName(string name) => IsHookLikeName(name) || name == "Use";
+
         private static void TryReportDirectComponentCall(
             SyntaxNodeAnalysisContext ctx, InvocationExpressionSyntax inv, ComponentIndex components)
         {
+            if (!components.MayCallComponent(inv, ctx.CancellationToken)) return;
+            if (IsWholeRenderBody(inv)) return;
             if (ctx.SemanticModel.GetSymbolInfo(inv, ctx.CancellationToken).Symbol is not IMethodSymbol callee) return;
-            if (!components.IsComponentCallingHooks(callee)) return;
+            if (!components.IsComponentCallingHooks(callee, ctx.CancellationToken)) return;
             ctx.ReportDiagnostic(Diagnostic.Create(
                 MemoizeDiagnostics.Vel103ComponentCalledDirectly, inv.GetLocation(), callee.Name));
         }
+
+        // `V.Component(() => Sheet())`: the call is the whole of a render body, so the component the lambda mounts
+        // is the callee's own render with nothing of the lambda's around it.
+        private static bool IsWholeRenderBody(InvocationExpressionSyntax inv) => inv.Parent switch
+        {
+            AnonymousFunctionExpressionSyntax lambda => IsComponentBody(lambda),
+            ReturnStatementSyntax { Parent: BlockSyntax { Statements.Count: 1, Parent: AnonymousFunctionExpressionSyntax lambda } } =>
+                IsComponentBody(lambda),
+            _ => false,
+        };
 
         /// <summary>
         /// `Use` + uppercase-letter naming convention check.

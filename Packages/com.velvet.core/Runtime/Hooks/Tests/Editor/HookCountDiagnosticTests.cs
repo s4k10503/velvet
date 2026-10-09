@@ -226,7 +226,7 @@ namespace Velvet.Tests
             return $"{head} | thrown inside {nameof(HookedSheet)}: {exception.StackTrace?.Contains(nameof(HookedSheet)) == true}";
         }
 
-        // GREEN_ON_BASE(refactor): the VEL102 suppression around DetailSheet changes no code that this case runs.
+        // GREEN_ON_BASE(refactor): this case never reaches DetailSheet, and a pragma around it is this file's only code change.
         [TestCase("UseCallback", "UseCallback", 0, 1)]
         [TestCase("UseCallback with deps", "UseCallback", 0, 1)]
         [TestCase("UseBlocker beneath a router", "UseBlocker", 0, 1)]
@@ -267,7 +267,7 @@ namespace Velvet.Tests
                 $" ({kind}: {before} before, {now} now) | thrown inside {nameof(HookedSheet)}: True"));
         }
 
-        // GREEN_ON_BASE(refactor): the VEL102 suppression around DetailSheet changes no code that this case runs.
+        // GREEN_ON_BASE(refactor): this case never reaches DetailSheet, and a pragma around it is this file's only code change.
         [TestCase("UseCallback", "UseCallback", 1, 0)]
         [TestCase("UseBlocker beneath a router", "UseBlocker", 1, 0)]
         [TestCase("UseLayoutEffect", "UseLayoutEffect", 1, 0)]
@@ -302,7 +302,7 @@ namespace Velvet.Tests
                 $"HookCountDiagnosticTests.HostRender: Rendered fewer hooks than expected ({kind}: {before} before, {now} now)."));
         }
 
-        // GREEN_ON_BASE(refactor): the VEL102 suppression around DetailSheet changes no code that this case runs.
+        // GREEN_ON_BASE(refactor): this case never reaches DetailSheet, and a pragma around it is this file's only code change.
         [TestCase("UseState")]
         [TestCase("UseReducer with init")]
         [TestCase("UseStore")]
@@ -347,7 +347,7 @@ namespace Velvet.Tests
             return V.Label(text: count.ToString());
         }
 
-        // GREEN_ON_BASE(refactor): the VEL102 suppression around DetailSheet changes no code that this case runs.
+        // GREEN_ON_BASE(refactor): this case never reaches DetailSheet, and a pragma around it is this file's only code change.
         [Test]
         public void Given_ARenderRefusedForFewerHooksWithNoBoundary_When_TheCountsMatchAgain_Then_TheEffectRunsForTheNewDeps()
         {
