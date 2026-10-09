@@ -53,14 +53,14 @@ namespace Velvet.Tests
         {
             base.SetUp();
             s_root = _window.rootVisualElement;
-            s_setWidth = null;
+            s_setWidth = default;
             s_widthReadInLayoutEffect = float.NaN;
             s_resolvedWidthReadInLayoutEffect = float.NaN;
             s_worldWidthReadInLayoutEffect = float.NaN;
             s_offsetRendered = float.NaN;
             s_handle.Set(null);
             s_stableBox.Set(null);
-            s_setStableWidth = null;
+            s_setStableWidth = default;
             s_widthReadInRef = float.NaN;
             s_rowHeightsReadInLayoutEffect.Clear();
             s_rowHeightsReadInRef.Clear();

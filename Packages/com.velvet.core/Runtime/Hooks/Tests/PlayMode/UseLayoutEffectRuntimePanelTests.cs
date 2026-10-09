@@ -38,7 +38,7 @@ namespace Velvet.Tests
         public IEnumerator UnitySetUp()
         {
             s_widthRead = float.NaN;
-            s_setWidth = null;
+            s_setWidth = default;
             s_layerBox.Set(null);
             _documentObject = new GameObject("UseLayoutEffectRuntimePanel");
             var document = _documentObject.AddComponent<UIDocument>();
