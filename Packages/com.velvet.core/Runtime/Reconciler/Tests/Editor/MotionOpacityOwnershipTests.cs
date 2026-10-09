@@ -21,28 +21,27 @@ namespace Velvet.Tests
             return element;
         }
 
-        // The tween play a variant swap holds its lists under, from Carrying.
-        private MotionTweenTiming.Play _swap;
+        // Plays the tween whose one-second linear timing Carrying holds inline.
+        private StyleAnimationScheduler _scheduler;
 
-        // A drawn element under a swap holding a one-second opacity transition, its own opacity carried towards 0.2;
-        // own is the transition duration the element carries of its own, if any.
+        // A drawn element under a tween holding a one-second opacity transition inline, its own opacity carried
+        // towards 0.2; own is a transition duration the element carries of its own, if any.
         private VisualElement Carrying(List<TimeValue> own = null)
         {
             var element = Drawn();
             if (own != null) element.style.transitionDuration = own;
             element.style.transitionProperty = new List<StylePropertyName> { new("opacity") };
-            _swap = MotionTweenTiming.Begin(element);
-            MotionTweenTiming.Write(element, new List<TimeValue> { new(1f) },
-                new List<EasingFunction> { new(EasingMode.Linear) }, null);
+            _scheduler = new StyleAnimationScheduler();
+            _scheduler.PlayEnter(element, new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.Linear });
             MotionOpacity.Draw(element, Half, 0f);
             MotionOpacity.WriteTransitioned(element, 0.2f);
             return element;
         }
 
-        // Ends the swap as the scheduler does: its timing goes back, and its transition-property is released.
+        // Ends the tween, and releases transition-property as a variant swap's end does.
         private void EndSwap(VisualElement element)
         {
-            MotionTweenTiming.End(element, _swap);
+            _scheduler.CancelEnter(element);
             element.style.transitionProperty = StyleKeyword.Null;
         }
 
@@ -245,6 +244,8 @@ namespace Velvet.Tests
             Assert.That((held, element.style.transitionProperty.keyword), Is.EqualTo((true, StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(characterization): the base clears the inline timing at a tween's end, which drops what it held.
+        // Restoring the element's own timing instead must drop the held timing all the same.
         [Test]
         public void Given_AHeldOpacityTransition_When_TheSwapEnds_Then_TheHeldTimingIsDropped()
         {
@@ -259,6 +260,8 @@ namespace Velvet.Tests
             Assert.That(MotionOpacity.Own(element), Is.EqualTo(0.6f).Within(0.001f));
         }
 
+        // GREEN_ON_BASE(characterization): the base clears the element's own duration at a tween's end, so no list is
+        // left to read. Once that list is restored, the tween's end must still drop the held timing.
         [Test]
         public void Given_AHeldOpacityTransitionOnAnElementWithItsOwnDuration_When_TheSwapEnds_Then_TheHeldTimingIsDropped()
         {
