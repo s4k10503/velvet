@@ -6,5 +6,4 @@
   should have been left unwoven.
 - A component that deconstructs a custom hook's pair, `var (count, total) = UseCountAndTotal();`, is no
   longer auto-memoized on the first element alone, which served a stale tree after the second changed. A
-  `ref var x = ref UseSlot();` over a custom hook leaves the component unwoven rather than producing a body
-  the runtime rejects.
+  `ref var x = ref UseSlot();` over a custom hook leaves the component unwoven.

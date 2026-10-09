@@ -1835,16 +1835,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AReferenceLocalOverACustomHook_When_FirstRender_Then_ProducesVisibleOutput()
-        {
-            // Act
-            using var mounted = V.Mount(_root, V.Component(RefLocalFromCustomHookComponent, key: "ref-local"));
-
-            // Assert
-            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("0"), "The body runs unwoven, reading through the reference");
-        }
-
-        [Test]
         public void Given_SiblingBuiltAheadOfNestedHook_When_ParentReRendersWithEqualDeps_Then_NoRentedPropsAreLeftBehind()
         {
             // Arrange

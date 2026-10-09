@@ -382,6 +382,61 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoElementDeconstructionWithTheSecondElementDiscarded_When_CompilerWeaverRuns_Then_MethodIsWoven()
+        {
+            // Arrange — `var (v, setV) = Hooks.UseTransition();` with `setV` never read lowers to
+            // call -> dup -> ldfld Item1 -> stloc.0 -> pop.
+            using var module = BuildHookShapeProbeModule("UnusedSecondElementProbe",
+                out var method, out _, out var useTransition, out var tuple);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Boolean));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, useTransition));
+            il.Append(Instruction.Create(OpCodes.Dup));
+            il.Append(Instruction.Create(OpCodes.Ldfld, new FieldReference("Item1", module.TypeSystem.Boolean, tuple)));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Pop));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "A second element that is discarded cannot go stale in the cache, so the value element keys it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base holds the same allow-list. What it pins is the allow-list
+        // staying the set the pair shapes assume: adding `nameof(Velvet.Hooks.UseAnimationSequence)` to
+        // `MemoSafeValueHookNames` reddens it.
+        [Test]
+        public void Given_TheValueHookAllowList_When_ItsPairReturningMembersAreListed_Then_ThoseAreTheFourWithAStableSecondElement()
+        {
+            // Arrange
+            var codeGenAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == CodeGenAssemblyName);
+            Assume.That(codeGenAssembly, Is.Not.Null,
+                "Precondition: the Unity.Velvet.CodeGen assembly is loaded in the editor domain");
+            var allowList = (System.Collections.Generic.HashSet<string>)codeGenAssembly!
+                .GetType(CompilerWeaverTypeFullName, throwOnError: true)!
+                .GetField("MemoSafeValueHookNames", BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetValue(null)!;
+
+            // Act
+            var pairReturning = typeof(Hooks).GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Where(m => allowList.Contains(m.Name) && m.ReturnType.IsGenericType
+                    && m.ReturnType.GetGenericTypeDefinition() == typeof(System.ValueTuple<,>))
+                .Select(m => m.Name)
+                .Distinct()
+                .OrderBy(name => name, StringComparer.Ordinal);
+
+            // Assert
+            Assert.That(string.Join(",", pairReturning), Is.EqualTo("UseOptimistic,UseReducer,UseState,UseTransition"),
+                "A pair read with its second element is keyed on the first alone, which holds only while the second is reference-stable");
+        }
+
+        [Test]
         public void Given_DiscardedHookResult_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
         {
             // Arrange — `Hooks.UseId(null);` as a bare statement lowers to call -> pop.

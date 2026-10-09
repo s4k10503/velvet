@@ -563,10 +563,10 @@ namespace Velvet.CodeGen
             return TryMatchTwoElementDeconstruction(next, body, isDirect, out local, out boundary);
         }
 
-        // A hook call can be followed directly by whatever reads its value, with no store between. Such a value is
-        // copied where it is produced: at the call, or at the ldfld taking a tuple's Item1. A whole tuple is refused for the reason
-        // TryMatchDirectCapture gives and a later element because only Item1 is a sound dep; a void call, or a
-        // value whose type cannot be named in the caller's terms, leaves nothing to copy.
+        // A hook call can be followed directly by whatever reads its value, with no store between. Such a value
+        // is copied where it is produced: at the call, or at the ldfld taking a tuple's Item1. A whole tuple is
+        // refused for the reason TryMatchDirectCapture gives, and a later element because only Item1 is a sound
+        // dep. A void call, or a value whose type cannot be named in the caller's terms, leaves nothing to copy.
         private static bool TryCaptureStackValue(Instruction call, Instruction next,
             out TypeReference? type, out Instruction producer)
         {
@@ -700,15 +700,26 @@ namespace Velvet.CodeGen
             {
                 return HookCaptureMatch.NotMatched;
             }
-            // Item2 is left out of the deps, which the allow-listed pairs (UseState, UseReducer, UseTransition,
-            // UseOptimistic) permit because their second element is reference-stable. A custom hook's second
-            // element can change between renders.
+            var item1Ldfld = next.Next;
+            var valueStore = item1Ldfld?.Next;
+            // `var (v, set) = ...` with `set` never read leaves the tuple to a pop instead of an Item2 read, so
+            // Item2 is discarded and capturing Item1 alone is sound for any hook.
+            if (item1Ldfld != null && item1Ldfld.OpCode == OpCodes.Ldfld
+                && item1Ldfld.Operand is FieldReference unusedItem1Field && unusedItem1Field.Name == "Item1"
+                && valueStore != null && TryGetStlocVariable(valueStore, body, out var keptValueLocal)
+                && valueStore.Next is { } discard && discard.OpCode == OpCodes.Pop)
+            {
+                capturedLocal = keptValueLocal;
+                newBoundary = discard;
+                return HookCaptureMatch.Matched;
+            }
+            // Item2 is read, so it is left out of the deps only where it cannot change: the allow-listed pairs
+            // (UseState, UseReducer, UseTransition, UseOptimistic) have a reference-stable second element, while
+            // a custom hook's, or a non-positional Velvet.Hooks member's, can change between renders.
             if (!isDirect)
             {
                 return HookCaptureMatch.Bail;
             }
-            var item1Ldfld = next.Next;
-            var valueStore = item1Ldfld?.Next;
             var item2Ldfld = valueStore?.Next;
             var setterStore = item2Ldfld?.Next;
             if (item1Ldfld != null && item1Ldfld.OpCode == OpCodes.Ldfld
