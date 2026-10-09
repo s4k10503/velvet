@@ -472,6 +472,21 @@ namespace Velvet.Tests
             return V.Label(text: "stored");
         }
 
+        private sealed class StoredValueHolder
+        {
+            public string Value = "";
+        }
+
+        private static readonly StoredValueHolder s_storedValueHolder = new();
+
+        // The hook value stored to an instance field.
+        [Component]
+        public static VNode HookValueStoredToAnInstanceFieldComponent()
+        {
+            s_storedValueHolder.Value = Hooks.UseStore(s_firstStore, value => value.ToString());
+            return V.Label(text: "stored");
+        }
+
         // A custom hook returning nothing: no value to capture, however the call is followed.
         private static void UseMountLog()
         {
@@ -1336,6 +1351,17 @@ namespace Velvet.Tests
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(HookValueStoredToAFieldComponent))), Is.False,
+                "A hit would skip the store, leaving the field at an earlier render's value");
+        }
+
+        // GREEN_ON_BASE(characterization): the base bails a hook value stored to an instance field, and so does this change.
+        // What it pins is the consumer test reading a store to an instance field too: deleting the `Stfld` clause
+        // at the end of `TryCaptureStackValue` weaves it.
+        [Test]
+        public void Given_AHookValueStoredToAnInstanceField_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookValueStoredToAnInstanceFieldComponent))), Is.False,
                 "A hit would skip the store, leaving the field at an earlier render's value");
         }
 

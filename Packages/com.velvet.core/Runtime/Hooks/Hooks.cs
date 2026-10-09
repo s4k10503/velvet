@@ -2669,6 +2669,7 @@ namespace Velvet
             // Structural value equality would call a fresh-but-content-equal record class prop or context
             // value unchanged and hand back the cached VNode, so the render the reconciler had already
             // decided to make would produce the committed tree instead of the new one.
+            // MUTANT_SURVIVES(equivalent, clause removed): AreEqualDeps reads a null committed list as unequal to the non-null deps checked above.
             if (!slot.RunsHooksPastGate && slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
             {
                 // Hit against the committed deps: reuse the committed VNode and stage the committed values so the

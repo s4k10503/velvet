@@ -436,6 +436,90 @@ namespace Velvet.Tests
                 "A pair read with its second element is keyed on the first alone, which holds only while the second is reference-stable");
         }
 
+        // `call -> dup -> ldfld Item1 -> stloc.0 -> <readOp> <readField> -> <afterRead>`, the Item2 read of a
+        // two-element deconstruction with one part replaced.
+        private static bool PairShapeIsWoven(string moduleName, OpCode readOp, string readField, OpCode afterRead)
+        {
+            using var module = BuildHookShapeProbeModule(moduleName,
+                out var method, out _, out var useTransition, out var tuple);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Boolean));
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Boolean));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, useTransition));
+            il.Append(Instruction.Create(OpCodes.Dup));
+            il.Append(Instruction.Create(OpCodes.Ldfld, new FieldReference("Item1", module.TypeSystem.Boolean, tuple)));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(readOp, new FieldReference(readField, module.TypeSystem.Boolean, tuple)));
+            il.Append(Instruction.Create(afterRead));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            return BodyCallsTryGetMemoizedVNode(method);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads the second element of a pair by its name too.
+        // What it pins is the name test on that read: deleting the `field.Name == fieldName` clause from
+        // `IsFieldLoad` takes the second read of Item1 for the setter's.
+        [Test]
+        public void Given_APairWhoseSecondReadNamesItem1_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(PairShapeIsWoven("PairItem1Probe", OpCodes.Ldfld, "Item1", OpCodes.Stloc_1), Is.False,
+                "The read after the value store has to be of Item2 for the pair to be the deconstruction");
+        }
+
+        // GREEN_ON_BASE(characterization): the base accepts only a field load there too.
+        // What it pins is the opcode test on that read: deleting the `instr.OpCode == OpCodes.Ldfld` clause from
+        // `IsFieldLoad` takes the address of Item2 for a read of it.
+        [Test]
+        public void Given_APairWhoseSecondReadTakesTheFieldAddress_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(PairShapeIsWoven("PairAddressProbe", OpCodes.Ldflda, "Item2", OpCodes.Stloc_1), Is.False,
+                "An address of Item2 is not a read of its value");
+        }
+
+        // GREEN_ON_BASE(characterization): the base accepts only a store there too.
+        // What it pins is the store test on the second element's consumer: deleting the
+        // `!IsValueConsumingStore(setterStore)` clause from `TryMatchTwoElementDeconstruction` weaves it.
+        [Test]
+        public void Given_APairWhoseSecondElementIsPopped_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(PairShapeIsWoven("PairPopProbe", OpCodes.Ldfld, "Item2", OpCodes.Pop), Is.False,
+                "A second element dropped after being read is not the deconstruction's setter store");
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses a read it cannot type too.
+        // What it pins is the guard on the Item1 copy's type: deleting `if (type == null) return false;` from
+        // `TryCaptureStackValue` records a copy with no type.
+        [Test]
+        public void Given_AnItem1ReadWhoseTypeCannotBeNamedInTheCallersTerms_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        {
+            // Arrange — Item1 declared on a type that is not a generic instance, with a type-level generic
+            // parameter for its type, so there is no argument to substitute for it
+            using var module = BuildHookShapeProbeModule("UnnamableItem1Probe",
+                out var method, out _, out var useTransition, out _);
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, useTransition));
+            il.Append(Instruction.Create(OpCodes.Ldfld, new FieldReference("Item1",
+                new GenericParameter(0, GenericParameterType.Type, module), module.TypeSystem.Object)));
+            il.Append(Instruction.Create(OpCodes.Pop));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
+                "A copy whose type cannot be named leaves nothing to key the cache on");
+        }
+
         [Test]
         public void Given_DiscardedHookResult_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
         {
@@ -664,12 +748,15 @@ namespace Velvet.Tests
                 "A BCL / Unity callee is read as hook-free without resolving it, so its failure bails nothing");
         }
 
-        // A reference to a method the module's own Probe.Fixture type does not declare: the type resolves,
-        // so Resolve() returns null for the method rather than throwing.
+        // A reference to a method the module's own Probe.Leaf type does not declare. The type has no base type,
+        // so the lookup ends at it without resolving a base from another assembly.
         private static MethodReference UndeclaredMethodOf(ModuleDefinition module)
         {
-            var fixtureType = module.Types.Single(type => type.FullName == "Probe.Fixture");
-            return new MethodReference("Undeclared", module.TypeSystem.Void, fixtureType);
+            var leafType = new TypeDefinition("Probe", "Leaf",
+                Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class
+                | Mono.Cecil.TypeAttributes.Abstract | Mono.Cecil.TypeAttributes.Sealed);
+            module.Types.Add(leafType);
+            return new MethodReference("Undeclared", module.TypeSystem.Void, leafType);
         }
 
         // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so it leaves this one alone too.

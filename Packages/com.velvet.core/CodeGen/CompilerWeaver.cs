@@ -580,6 +580,7 @@ namespace Velvet.CodeGen
             {
                 type = null;
                 if (next.OpCode != OpCodes.Ldfld) return false;
+                // MUTANT_SURVIVES(unreachable): Cecil reads the operand of an ldfld as a field reference.
                 if (next.Operand is not FieldReference field) return false;
                 if (field.Name != "Item1") return false;
                 producer = next;
@@ -726,6 +727,7 @@ namespace Velvet.CodeGen
             // (UseState, UseReducer, UseTransition, UseOptimistic) have a reference-stable second element, while
             // a custom hook's, or a non-positional Velvet.Hooks member's, can change between renders.
             var setterStore = rest?.Next;
+            // MUTANT_SURVIVES(unreachable, clause removed): a body ends in ret, so an instruction follows the Item2 read and `setterStore` is never null here.
             if (!isDirect || !IsFieldLoad(rest, "Item2") || setterStore == null || !IsValueConsumingStore(setterStore))
             {
                 return HookCaptureMatch.Bail;
@@ -881,8 +883,7 @@ namespace Velvet.CodeGen
 
             private void Visit(MethodReference method, string key, MethodDefinition definition)
             {
-                var index = _index.Count;
-                _index[key] = index;
+                var index = _index[key] = _index.Count;
                 _low[key] = index;
                 _members[key] = method;
                 _open.Push(key);
