@@ -292,6 +292,13 @@ namespace Velvet
             SyncLayoutOwner(element, state);
         }
 
+        // The bezier sibling of MotionSpringDriver.HoldTranslate.
+        public static void HoldTranslate(BezierTweenState state, float x, float y)
+        {
+            state.TranslateX = new BezierTweenChannel(x, x);
+            state.TranslateY = new BezierTweenChannel(y, y);
+        }
+
         /// <summary>
         /// Freezes each active channel's CURRENT sampled value as its new <see cref="BezierTweenChannel.From"/>,
         /// points its <see cref="BezierTweenChannel.To"/> back at <see cref="BezierTweenChannel.RestingTarget"/>,

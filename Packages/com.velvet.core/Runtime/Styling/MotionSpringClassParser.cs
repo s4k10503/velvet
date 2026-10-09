@@ -82,6 +82,8 @@ namespace Velvet
             public (float from, float to)? Rotate;
             public List<ColorChannelPlan>? Colors;
             public List<LengthChannelPlan>? Lengths;
+            // The one translate axis the swap names, and where it lands, when it names one alone.
+            public (SpringAxis Axis, float To)? LoneTranslate;
 
             public bool IsEmpty => Opacity == null && TranslateX == null && TranslateY == null
                 && Scale == null && Rotate == null && Colors == null && Lengths == null;
@@ -214,31 +216,33 @@ namespace Velvet
             plan.TranslateY = StartingFrom(plan.TranslateY, start.TranslateY);
             plan.Scale = StartingFrom(plan.Scale, start.Scale);
             plan.Rotate = StartingFrom(plan.Rotate, start.Rotate);
-            if (plan.Colors != null && start.Colors != null)
-            {
-                for (var i = 0; i < plan.Colors.Count; i++)
-                {
-                    var c = plan.Colors[i];
-                    var held = start.Colors.FindIndex(s => s.Property == c.Property);
-                    if (held >= 0) plan.Colors[i] = new ColorChannelPlan(c.Property, start.Colors[held].From, c.To);
-                }
-            }
-            if (plan.Lengths != null && start.Lengths != null)
-            {
-                for (var i = 0; i < plan.Lengths.Count; i++)
-                {
-                    var l = plan.Lengths[i];
-                    var held = start.Lengths.FindIndex(s => s.Property == l.Property && s.Unit == l.Unit);
-                    if (held >= 0) plan.Lengths[i] = new LengthChannelPlan(l.Property, start.Lengths[held].From, l.To, l.Unit);
-                }
-            }
+            StartingFrom(plan.Colors, start.Colors, static (p, s) => p.Property == s.Property,
+                static (p, s) => new ColorChannelPlan(p.Property, s.From, p.To));
+            StartingFrom(plan.Lengths, start.Lengths, static (p, s) => p.Property == s.Property && p.Unit == s.Unit,
+                static (p, s) => new LengthChannelPlan(p.Property, s.From, p.To, p.Unit));
             return plan;
         }
 
         private static (float from, float to)? StartingFrom((float from, float to)? channel, (float from, float to)? start)
             => channel == null || start == null ? channel : (start.Value.from, channel.Value.to);
 
-        // A `start` for StartingFrom: each channel a driver's play has, holding the value given for it.
+        private static void StartingFrom<T>(List<T>? plan, List<T>? start, Func<T, T, bool> matches,
+            Func<T, T, T> startingFrom)
+        {
+            if (plan == null || start == null)
+            {
+                return;
+            }
+            for (var i = 0; i < plan.Count; i++)
+            {
+                var channel = plan[i];
+                var held = start.FindIndex(s => matches(channel, s));
+                if (held >= 0) plan[i] = startingFrom(channel, start[held]);
+            }
+        }
+
+        // A `start` for StartingFrom: each channel a driver's play has, holding the value given for it, so a play
+        // whose channels have all been released reads as empty.
         internal static SpringPlan Holding<TColor, TLength>((float? opacity, float? translateX, float? translateY,
                 float? scale, float? rotate) axes, List<TColor>? colors, Converter<TColor, ColorChannelPlan> color,
             List<TLength>? lengths, Converter<TLength, LengthChannelPlan> length)
@@ -249,8 +253,8 @@ namespace Velvet
                 TranslateY = Holding(axes.translateY),
                 Scale = Holding(axes.scale),
                 Rotate = Holding(axes.rotate),
-                Colors = colors?.ConvertAll(color),
-                Lengths = lengths?.ConvertAll(length),
+                Colors = colors is { Count: > 0 } ? colors.ConvertAll(color) : null,
+                Lengths = lengths is { Count: > 0 } ? lengths.ConvertAll(length) : null,
             };
 
         private static (float from, float to)? Holding(float? value) => value is { } v ? (v, v) : null;
@@ -322,6 +326,8 @@ namespace Velvet
             }
             plan.TranslateX = x ?? (restingTranslateX, restingTranslateX);
             plan.TranslateY = y ?? (restingTranslateY, restingTranslateY);
+            plan.LoneTranslate = x == null ? (SpringAxis.TranslateY, y!.Value.to)
+                : y == null ? (SpringAxis.TranslateX, x.Value.to) : null;
         }
 
         /// <summary>

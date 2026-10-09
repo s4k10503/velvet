@@ -13,5 +13,5 @@
   generator puts on its hyperbolic argument (300) and lands on its target there, as Framer's does, where
   stepping never reached it.
 - After `Cancel`, `Play` or `Restart` starts each new `Spring` or `Bezier` play from the values the cancel left
-  rather than from its pose's own, and an exit starts from them too; the held values on an element no new play
-  takes over come off once the reseed commits.
+  on the channels its classes name, rather than from its pose's own, and an exit starts from them too; the held
+  values no new play takes over come off once the reseed commits.

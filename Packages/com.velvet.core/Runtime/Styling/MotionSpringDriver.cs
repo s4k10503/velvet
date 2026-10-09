@@ -376,6 +376,13 @@ namespace Velvet
             SyncLayoutOwner(element, state);
         }
 
+        // Holds translate at (x, y) from its next write on, the start values of a play CancelPlay holds.
+        public static void HoldTranslate(MotionSpringState state, float x, float y)
+        {
+            state.TranslateX = new SpringChannel(x, x);
+            state.TranslateY = new SpringChannel(y, y);
+        }
+
         internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)
         {
             if (!StyleArbitraryLonghands.Of(property).Overlaps(named))

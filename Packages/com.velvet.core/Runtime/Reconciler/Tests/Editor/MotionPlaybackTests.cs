@@ -488,25 +488,91 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Undefined, false)));
         }
 
-        // The later play drives translate alone, so only releasing the held play takes its opacity off.
+        // Framer Motion's cancel() leaves a value where it stopped until an animation of that value starts, so the
+        // later play, driving translate alone, leaves the held opacity, through its finish too.
         [Test]
-        public void Given_APlayACancelHolds_When_APlayOnAnotherPropertyStartsOnItsElement_Then_TheHeldOpacityComesOff()
+        public void Given_APlayACancelHolds_When_APlayOnAnotherPropertyRunsToItsEnd_Then_TheOpacityStaysHeld()
         {
             // Arrange
-            var element = OnPanel("reconverged");
+            var element = OnPanel("kept");
             var playback = new MotionPlayback();
             _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
             Ticks(5);
             playback.CancelPlays();
-            var held = element.style.opacity.keyword;
 
             // Act
             _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[10px]" },
                 Linear());
+            AdvancePast(1f);
 
             // Assert
-            Assert.That((held, element.style.opacity.keyword == StyleKeyword.Undefined),
-                Is.EqualTo((StyleKeyword.Undefined, false)));
+            var opacity = element.style.opacity;
+            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        // Translate is one style for both axes, so the later play writes x as well as y. The held x is not 0, which
+        // a translate written without an x channel would also show.
+        [Test]
+        public void Given_ATranslateXPlayACancelHolds_When_ATranslateYPlayRunsToItsEnd_Then_XStaysHeldAndYLandsWhereThatPlayDoes()
+        {
+            // Arrange
+            var element = OnPanel("crossed");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[5px]" }, new[] { "translate-x-[15px]" },
+                Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "translate-y-[0px]" }, new[] { "translate-y-[20px]" },
+                Linear());
+            AdvancePast(1f);
+
+            // Assert
+            var translate = element.style.translate.value;
+            Assert.That((translate.x.value, translate.y.value), Is.EqualTo((5f, 20f)));
+        }
+
+        // The case above with the axes swapped, on a held spring.
+        [Test]
+        public void Given_ATranslateYSpringPlayACancelHolds_When_ATranslateXPlayRunsToItsEnd_Then_YStaysHeldAndXLandsWhereThatPlayDoes()
+        {
+            // Arrange
+            var element = OnPanel("crossed-spring");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, new[] { "translate-y-[5px]" }, new[] { "translate-y-[15px]" },
+                new StyleTransitionConfig { Type = TransitionType.Spring }, playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[20px]" },
+                Linear());
+            AdvancePast(1f);
+
+            // Assert
+            var translate = element.style.translate.value;
+            Assert.That((translate.x.value, translate.y.value), Is.EqualTo((20f, 5f)));
+        }
+
+        // A held play the next play takes every channel from is released, and leaves its playback's list with it.
+        [Test]
+        public void Given_AColorAndWidthPlayACancelHolds_When_APlayOnTheSameColorAndWidthStarts_Then_ThePlaybackListsNothing()
+        {
+            // Arrange
+            var element = OnPanel("taken-over");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, new[] { "bg-[#000000]", "w-[0px]" },
+                new[] { "bg-[#ffffff]", "w-[100px]" }, Linear(), playback: playback);
+            Ticks(5);
+            playback.CancelPlays();
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "bg-[#ffffff]", "w-[100px]" },
+                new[] { "bg-[#ff0000]", "w-[50px]" }, Linear());
+
+            // Assert
+            Assert.That(ListedPlays(playback), Is.Zero);
         }
 
         // The held fade started from opacity-0; the next play's own from-side is opacity-100.

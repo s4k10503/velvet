@@ -614,9 +614,11 @@ the step's transition for that reason: equal to it in every setting, but not the
 - `controls.Cancel()` is Framer Motion's `cancel()`: the cursor stops where it is, and each of those plays
   returns to the values it started from and stops there, without its completion running, as a cancelled
   Framer animation leaves its value at its start; the label stays the step's. The next `Spring` or `Bezier`
-  play on the element, an exit included, starts from those values on the channels both drive, as Framer's
-  next animation starts from where the value sits; a play of no duration, a `Tween` or a teardown takes them
-  off instead. `controls.Play()` after a cancel starts the sequence again from step 0, and
+  play on the element, an exit included, starts from those values on the channels its classes name, as
+  Framer's next animation starts from where the value sits, and the held values on the other channels stay
+  where they are, through that play's end too. Translate is one style for both axes: a play naming one axis
+  leaves the other held. A play of no duration, a `Tween` or a teardown takes the held values off instead.
+  `controls.Play()` after a cancel starts the sequence again from step 0, and
   `controls.Restart()` reseeds it at step 0 still paused; the held values on an element whose label the
   reseed leaves unchanged come off once it commits.
 

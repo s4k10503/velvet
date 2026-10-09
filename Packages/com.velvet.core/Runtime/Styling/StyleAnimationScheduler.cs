@@ -635,7 +635,7 @@ namespace Velvet
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
                 restingTranslate.x.value, restingTranslate.y.value,
                 MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
-            plan = StartFromHeld(element, plan);
+            plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
@@ -765,7 +765,7 @@ namespace Velvet
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
                 restingTranslate.x.value, restingTranslate.y.value,
                 MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
-            plan = StartFromHeld(element, plan);
+            plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateBezierParameters) degrades exactly like an empty plan below:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
@@ -1090,33 +1090,79 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent): the deferred start finds a held entry in neither map and returns.
             // That identity check in ScheduleStart is what keeps a held play from starting on attach.
             if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
-            if (pending.Spring != null)
-            {
-                pending.Spring.Tick?.Pause();
-                MotionSpringDriver.SeekTo(element, pending.Spring, 0f);
-            }
-            else
-            {
-                pending.Bezier!.Tick?.Pause();
-                BezierTweenDriver.SeekTo(element, pending.Bezier, 0f);
-            }
+            pending.Spring?.Tick?.Pause();
+            pending.Bezier?.Tick?.Pause();
+            SeekToStart(element, pending);
             _held[element] = pending;
         }
 
         // A held play's values are the ones the element's next Spring or Bezier play on the channels both drive
         // starts from, as Framer Motion's next animation starts from where a cancelled one left its value.
         private MotionSpringClassParser.SpringPlan StartFromHeld(VisualElement element,
-            MotionSpringClassParser.SpringPlan plan)
+            MotionSpringClassParser.SpringPlan plan, string[]? fromClasses, string[]? toClasses)
         {
             if (!_held.TryGetValue(element, out var held))
             {
                 return plan;
             }
-            var start = held.Spring != null
+            var start = HeldValues(held);
+            HandOver(element, held, plan, start, fromClasses, toClasses);
+            return MotionSpringClassParser.StartingFrom(plan, start);
+        }
+
+        private static MotionSpringClassParser.SpringPlan HeldValues(PendingAnimation held)
+            => held.Spring != null
                 ? MotionSpringDriver.StartValues(held.Spring)
                 : BezierTweenDriver.StartValues(held.Bezier!);
-            ReleaseHeld(element);
-            return MotionSpringClassParser.StartingFrom(plan, start);
+
+        // The held play gives up the channels the starting play's classes name and keeps the rest where the cancel
+        // left them, as a Framer Motion value no later animation touches stays there. Translate is one style for
+        // both axes, so where the play names one axis alone the pair stays held, that axis at where the play lands
+        // it, for ReapplyMotionOwnedInlineValues to write back once the play has finished.
+        private void HandOver(VisualElement element, PendingAnimation held, MotionSpringClassParser.SpringPlan plan,
+            MotionSpringClassParser.SpringPlan start, string[]? fromClasses, string[]? toClasses)
+        {
+            var named = FiberNodePatcher.LonghandsOf(fromClasses ?? Array.Empty<string>())
+                .Union(FiberNodePatcher.LonghandsOf(toClasses ?? Array.Empty<string>()));
+            if (held.Spring != null)
+            {
+                MotionSpringDriver.ReleaseChannels(element, held.Spring, named);
+            }
+            else
+            {
+                BezierTweenDriver.ReleaseChannels(element, held.Bezier!, named);
+            }
+            if (start.TranslateX != null && plan.LoneTranslate != null)
+            {
+                var (axis, to) = plan.LoneTranslate.Value;
+                var (x, y) = axis == SpringAxis.TranslateX
+                    ? (to, start.TranslateY!.Value.from)
+                    : (start.TranslateX.Value.from, to);
+                if (held.Spring != null)
+                {
+                    MotionSpringDriver.HoldTranslate(held.Spring, x, y);
+                }
+                else
+                {
+                    BezierTweenDriver.HoldTranslate(held.Bezier!, x, y);
+                }
+            }
+            if (HeldValues(held).IsEmpty)
+            {
+                ReleaseHeld(element);
+            }
+        }
+
+        private static void SeekToStart(VisualElement element, PendingAnimation pending)
+        {
+            if (pending.Spring != null)
+            {
+                MotionSpringDriver.SeekTo(element, pending.Spring, 0f);
+            }
+            else
+            {
+                BezierTweenDriver.SeekTo(element, pending.Bezier!, 0f);
+            }
         }
 
         // Takes a held play's values off its element, which then shows the pose its classes name.
@@ -1212,7 +1258,7 @@ namespace Velvet
         // FiberAnimateMotionApplier.RestoreSharedInlineSlot's identical problem for the animate-* motions.
         // Driver-agnostic (takes only the element, reads its own class list), so both the spring and bezier
         // settle/cancel paths share it.
-        private static void ReapplyMotionOwnedInlineValues(VisualElement element)
+        private void ReapplyMotionOwnedInlineValues(VisualElement element)
         {
             List<string>? classes = null;
             foreach (var cls in element.GetClasses())
@@ -1222,6 +1268,12 @@ namespace Velvet
             if (classes != null)
             {
                 FiberNodePatcher.ReapplyArbitraryValues(element, classes.ToArray());
+            }
+            // The clear before this and the classes it re-applies can both reach a channel the element's held
+            // play keeps, translate's other axis included.
+            if (_held.TryGetValue(element, out var held))
+            {
+                SeekToStart(element, held);
             }
         }
 
