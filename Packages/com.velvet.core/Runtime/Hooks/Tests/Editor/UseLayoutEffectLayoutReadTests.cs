@@ -23,8 +23,9 @@ namespace Velvet.Tests
     /// <item>A commit made inside the panel's own layout pass — a virtual list rendering its rows, or a tree mounted
     /// from a <see cref="GeometryChangedEvent"/> callback — completes that pass, and its layout effects and callback
     /// refs read the box the pass gives their elements.</item>
-    /// <item>That holds whether the pass came from the panel's repaint or from its layout validation, and for a
-    /// commit made inside a pass a commit started: a measurement stored in state re-renders, and a callback ref that
+    /// <item>That holds whether the pass came from the panel's repaint or from its layout validation, whether the
+    /// event came from the pass's own changes or from its list of hierarchy changes, and for a commit made inside a
+    /// pass a commit started: a measurement stored in state re-renders, and a callback ref that
     /// commits synchronously has the elements that commit adds laid out before their own refs read them.</item>
     /// </list>
     /// </summary>
@@ -321,6 +322,50 @@ namespace Velvet.Tests
 
             // Act + Assert
             Assert.DoesNotThrow(() => ForcePanelUpdate(_window.rootVisualElement.panel));
+        }
+
+        [Test]
+        public void Given_ATreeMountedFromAScrollViewContentsHierarchyGeometryEvent_When_ThePanelLaysItOut_Then_ThePassCompletesWithTheLayoutEffectReadingItsBox()
+        {
+            // Arrange — the content keeps its own box while a child of it moves, so the layout updater reports the
+            // content's GeometryChangedEvent from its list of hierarchy changes, after the pass's other events.
+            var scrollView = new ScrollView();
+            scrollView.style.width = 200f;
+            scrollView.style.height = 200f;
+            var content = scrollView.contentContainer;
+            content.style.width = 100f;
+            content.style.height = 100f;
+            var mover = new VisualElement();
+            mover.style.position = Position.Absolute;
+            mover.style.width = 10f;
+            mover.style.height = 10f;
+            content.Add(mover);
+            var host = new VisualElement();
+            _window.rootVisualElement.Add(scrollView);
+            _window.rootVisualElement.Add(host);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            EventCallback<GeometryChangedEvent> onGeometry = null;
+            onGeometry = _ =>
+            {
+                content.UnregisterCallback(onGeometry);
+                _mountedFromLayoutPass.Add(V.Mount(host, V.Component(MeasuredBoxRender, key: "box")));
+            };
+            content.RegisterCallback(onGeometry);
+            mover.style.left = 20f;
+
+            // Act
+            Exception thrown = null;
+            try
+            {
+                ForcePanelUpdate(_window.rootVisualElement.panel);
+            }
+            catch (Exception exception)
+            {
+                thrown = exception;
+            }
+
+            // Assert
+            Assert.That($"{thrown?.GetType().Name ?? "none"} | {s_widthReadInLayoutEffect}", Is.EqualTo($"none | {MountWidth}"));
         }
 
         [Test]

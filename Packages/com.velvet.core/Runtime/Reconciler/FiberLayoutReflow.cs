@@ -18,8 +18,6 @@ namespace Velvet
     // lists it was given. UseLayoutEffectLayoutReadTests holds both outer passes.
     internal static class FiberLayoutReflow
     {
-        private const BindingFlags Instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPanel, PanelUpdaters?> s_updaters =
             new();
 
@@ -94,27 +92,30 @@ namespace Velvet
                 _missedHierarchyEvents = missedHierarchyEvents;
             }
 
+            // Every member it reads is an EngineMember, which a player build keeps and EngineMemberResolutionTests
+            // resolves against the editor.
             internal static PanelUpdaters? Resolve(IPanel panel)
             {
-                var getUpdater = FindMethod(panel.GetType(), "GetUpdater");
-                var phases = typeof(IPanel).Assembly.GetType("UnityEngine.UIElements.VisualTreeUpdatePhase");
-                // MUTANT_SURVIVES(unreachable): the engine this package pins declares every member read here, and
-                // UseLayoutEffectLayoutReadTests fails where one is missing, since nothing is laid out then.
-                if (getUpdater == null || phases == null) return null;
-                var styles = getUpdater.Invoke(panel, new[] { System.Enum.Parse(phases, "Styles") });
-                var layout = getUpdater.Invoke(panel, new[] { System.Enum.Parse(phases, "Layout") });
-                // MUTANT_SURVIVES(unreachable): as above.
-                if (styles == null || layout == null) return null;
-                var changeEvents = layout.GetType().GetField("changeEventsList", Instance);
-                var missedHierarchyEvents = layout.GetType().GetField("missedHierarchyChangeEventsList", Instance);
-                var stylesUpdate = UpdateOf(styles);
-                var layoutUpdate = UpdateOf(layout);
-                // MUTANT_SURVIVES(unreachable): as above.
-                if (changeEvents == null || missedHierarchyEvents == null || stylesUpdate == null || layoutUpdate == null)
+                var getUpdater = EngineMember.PanelGetUpdater.ResolveMethod();
+                var stylesPhase = EngineMember.StylesUpdatePhase.ResolveField();
+                var layoutPhase = EngineMember.LayoutUpdatePhase.ResolveField();
+                // MUTANT_SURVIVES(unreachable): EngineMemberResolutionTests holds that each of these resolves.
+                if (getUpdater == null || stylesPhase == null || layoutPhase == null) return null;
+                // MUTANT_SURVIVES(unreachable): every panel the suite mounts on is the engine's own Panel type.
+                if (!getUpdater.DeclaringType!.IsInstanceOfType(panel)) return null;
+                var styles = getUpdater.Invoke(panel, new[] { stylesPhase.GetValue(null) });
+                var layout = getUpdater.Invoke(panel, new[] { layoutPhase.GetValue(null) });
+                var stylesUpdate = Bind(EngineMember.StyleUpdaterUpdate.ResolveMethod(), styles);
+                var layoutUpdate = Bind(EngineMember.LayoutUpdaterUpdate.ResolveMethod(), layout);
+                var changeEvents = EngineMember.LayoutChangeEvents.ResolveField();
+                var missedHierarchyEvents = EngineMember.LayoutMissedHierarchyChangeEvents.ResolveField();
+                // MUTANT_SURVIVES(unreachable): as above, and the panel's updaters are the engine's own, which hold
+                // these members, unless something replaced them.
+                if (stylesUpdate == null || layoutUpdate == null || changeEvents == null || missedHierarchyEvents == null)
                 {
                     return null;
                 }
-                return new PanelUpdaters(stylesUpdate, layoutUpdate, layout, changeEvents, missedHierarchyEvents);
+                return new PanelUpdaters(stylesUpdate, layoutUpdate, layout!, changeEvents, missedHierarchyEvents);
             }
 
             internal void Run()
@@ -149,22 +150,11 @@ namespace Velvet
 
             private static IList NewListLike(FieldInfo field) => (IList)System.Activator.CreateInstance(field.FieldType);
 
-            private static System.Action? UpdateOf(object updater)
-            {
-                var update = updater.GetType().GetMethod("Update", Instance, null, System.Type.EmptyTypes, null);
-                return update == null ? null : (System.Action)System.Delegate.CreateDelegate(typeof(System.Action), updater, update);
-            }
-
-            // The panel declares GetUpdater on an internal base the concrete panel type inherits.
-            private static MethodInfo? FindMethod(System.Type? type, string name)
-            {
-                for (; type != null; type = type.BaseType)
-                {
-                    var method = type.GetMethod(name, Instance | BindingFlags.DeclaredOnly);
-                    if (method != null) return method;
-                }
-                return null;
-            }
+            // Null unless updater is of the type that declares update.
+            private static System.Action? Bind(MethodInfo? update, object? updater)
+                => update == null || !update.DeclaringType!.IsInstanceOfType(updater)
+                    ? null
+                    : (System.Action)System.Delegate.CreateDelegate(typeof(System.Action), updater, update);
         }
     }
 }
