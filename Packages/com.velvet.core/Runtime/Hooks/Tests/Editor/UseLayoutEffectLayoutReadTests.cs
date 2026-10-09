@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using System.Reflection;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -17,7 +18,8 @@ namespace Velvet.Tests
     /// <item>A state update the effect makes from that reading has re-rendered by the time the mount returns.</item>
     /// <item>An imperative handle built in the same phase, and a callback ref attached in it, read the laid-out box
     /// too.</item>
-    /// <item>What an insertion effect of the same commit writes is in the box a layout effect reads.</item>
+    /// <item>What an insertion effect of the same commit writes is in the box a layout effect reads, and in the box a
+    /// callback ref reads.</item>
     /// <item>An update commit whose layout effects and handles all keep their deps lays out nothing, as a browser
     /// forces a reflow only where something reads the layout.</item>
     /// <item>A commit made inside the panel's own layout pass — a virtual list rendering its rows, or a tree mounted
@@ -27,6 +29,8 @@ namespace Velvet.Tests
     /// event came from the pass's own changes or from its list of hierarchy changes, and for a commit made inside a
     /// pass a commit started: a measurement stored in state re-renders, and a callback ref that
     /// commits synchronously has the elements that commit adds laid out before their own refs read them.</item>
+    /// <item>Commits nested inside the layout passes of their own layout effects lay the panel out ten deep and
+    /// warn once past that, and a commit made from inside the style updater's traversal lays nothing out.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -60,6 +64,9 @@ namespace Velvet.Tests
             s_widthReadInRef = float.NaN;
             s_rowHeightsReadInLayoutEffect.Clear();
             s_rowHeightsReadInRef.Clear();
+            s_nthWidths.Clear();
+            s_hiddenInsertionRuns = 0;
+            s_neverResolves = new VelvetTaskCompletionSource<string>();
         }
 
         public override void TearDown()
@@ -173,6 +180,108 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_widthReadInLayoutEffect, Is.EqualTo(UpdatedWidth).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AnInsertionEffectThatWidensAnElement_When_TheTreeMounts_Then_TheElementsCallbackRefReadsTheWidenedWidth()
+        {
+            // Arrange
+            var root = _window.rootVisualElement;
+
+            // Act
+            _mounted = V.Mount(root, V.Component(InsertionWidenedWithRefRender, key: "widened"));
+
+            // Assert
+            Assert.That(s_widthReadInRef, Is.EqualTo(UpdatedWidth).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs no insertion effect of a tree a Suspense hides on mount.
+        // The layout commit skips that tree; here a ref attached inside it runs its owners' insertion effects ahead
+        // of the commit, and dropping `fiber.LayoutEffectsHidden ||` from `RunInsertionEffectsAheadOfRef` runs them.
+        [Test]
+        public void Given_ATreeASuspenseHidesOnMount_When_ARefInsideItAttaches_Then_ItsInsertionEffectDoesNotRun()
+        {
+            // Arrange
+            var tree = V.Suspense(V.Label(text: "fallback"), new VNode[]
+            {
+                V.Component(HiddenInsertionRender, key: "hidden"),
+                V.Component(NeverResolvingRender, key: "suspends"),
+            });
+
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement, tree);
+
+            // Assert
+            Assert.That(s_hiddenInsertionRuns, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_EachMountLayingOutTheHostOfTheNext_When_TheChainRunsTwelveDeep_Then_TenReadTheirBoxTheRestReadTheLastLayoutAndOneWarningIsLogged()
+        {
+            // Arrange — every host's first GeometryChangedEvent adds the next host and mounts a measuring tree, whose
+            // layout pass lays the next host out from inside the one before.
+            const int depth = FiberLayoutReflow.MaxNesting + 2;
+            ChainHost(1, depth);
+            var warnings = 0;
+            Application.LogCallback count = (message, _, type) =>
+            {
+                if (type == LogType.Warning && message.Contains($"nested {FiberLayoutReflow.MaxNesting} deep")) warnings++;
+            };
+            Application.logMessageReceived += count;
+
+            // Act
+            try
+            {
+                ForcePanelUpdate(_window.rootVisualElement.panel);
+            }
+            finally
+            {
+                Application.logMessageReceived -= count;
+            }
+
+            // Assert
+            var reads = new List<string>();
+            for (var n = 1; n <= depth; n++) reads.Add(ReadRow(s_nthWidths, n).ToString());
+            var expected = new List<string>();
+            for (var n = 1; n <= depth; n++) expected.Add((n <= FiberLayoutReflow.MaxNesting ? MountWidth : float.NaN).ToString());
+            Assert.That($"{string.Join(",", reads)} | {warnings}", Is.EqualTo($"{string.Join(",", expected)} | 1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base mounts from a CustomStyleResolvedEvent reading the box unlaid.
+        // That event is sent from inside the style updater's traversal, where a commit here lays nothing out;
+        // dropping the `_applyingStyles` check in `FiberLayoutReflow` starts a second traversal under the first.
+        [Test]
+        public void Given_ATreeMountedFromACustomStyleResolvedEvent_When_ThePanelResolvesStyles_Then_ThePassCompletesWithTheLastLayoutRead()
+        {
+            // Arrange — the bundled sheet's `.dark` rule declares custom properties, which is what sends the event.
+            var root = _window.rootVisualElement;
+            VelvetStyleUtilities.AttachTo(root);
+            var styled = new VisualElement();
+            styled.AddToClassList("dark");
+            var host = new VisualElement();
+            EventCallback<CustomStyleResolvedEvent> onStyle = null;
+            onStyle = _ =>
+            {
+                styled.UnregisterCallback(onStyle);
+                _mountedFromLayoutPass.Add(V.Mount(host, V.Component(MeasuredBoxRender, key: "box")));
+            };
+            styled.RegisterCallback(onStyle);
+            root.Add(styled);
+            root.Add(host);
+
+            // Act
+            Exception thrown = null;
+            try
+            {
+                ForcePanelUpdate(root.panel);
+            }
+            catch (Exception exception)
+            {
+                thrown = exception;
+            }
+
+            // Assert
+            Assert.That($"{thrown?.GetType().Name ?? "none"} | {s_widthReadInLayoutEffect}", Is.EqualTo($"none | {float.NaN}"));
         }
 
         // GREEN_ON_BASE(characterization): the base lays out no panel from an update commit at all.
@@ -458,6 +567,23 @@ namespace Velvet.Tests
             throw new MissingMethodException(panel.GetType().FullName, "ValidateLayout");
         }
 
+        private void ChainHost(int n, int last)
+        {
+            var host = new VisualElement();
+            EventCallback<GeometryChangedEvent> onGeometry = null;
+            onGeometry = _ =>
+            {
+                host.UnregisterCallback(onGeometry);
+                if (n < last) ChainHost(n + 1, last);
+                _mountedFromLayoutPass.Add(V.Mount(host, V.Component(MeasuredNthRender, n, key: $"nth-{n}")));
+            };
+            host.RegisterCallback(onGeometry);
+            _window.rootVisualElement.Add(host);
+        }
+
+        private static float ReadRow(Dictionary<int, float> widths, int n)
+            => widths.TryGetValue(n, out var width) ? width : float.NaN;
+
         private static float ReadRow(Dictionary<string, float> heights, string label)
             => heights.TryGetValue(label, out var height) ? height : float.NaN;
 
@@ -492,6 +618,47 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        private static readonly Dictionary<int, float> s_nthWidths = new();
+
+        [Component]
+        private static VNode MeasuredNthRender(int n)
+        {
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_nthWidths[n] = s_root.Q<VisualElement>($"nth-{n}").layout.width;
+                return null;
+            }), new object[] { n });
+            return V.Div(className: $"w-[{MountWidth}px] h-[20px]", name: $"nth-{n}");
+        }
+
+        [Component]
+        private static VNode InsertionWidenedWithRefRender()
+        {
+            Hooks.UseInsertionEffect((Func<Action>)(() =>
+            {
+                s_root.Q<VisualElement>("widened-with-ref").style.width = UpdatedWidth;
+                return null;
+            }), Array.Empty<object>());
+            return V.Div(className: $"w-[{MountWidth}px] h-[20px]", name: "widened-with-ref", refCallback: s_measuringRef);
+        }
+
+        private static int s_hiddenInsertionRuns;
+        private static VelvetTaskCompletionSource<string> s_neverResolves;
+
+        [Component]
+        private static VNode HiddenInsertionRender()
+        {
+            Hooks.UseInsertionEffect((Func<Action>)(() =>
+            {
+                s_hiddenInsertionRuns++;
+                return null;
+            }), Array.Empty<object>());
+            return V.Div(name: "hidden-with-ref", refCallback: s_measuringRef);
+        }
+
+        [Component]
+        private static VNode NeverResolvingRender() => V.Label(text: Hooks.Use(() => s_neverResolves.Task));
 
         #region MeasureThenAdjust component (a layout effect stores a measured height in state)
 

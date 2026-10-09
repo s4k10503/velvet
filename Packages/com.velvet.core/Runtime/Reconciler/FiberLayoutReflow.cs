@@ -7,8 +7,8 @@ namespace Velvet
 {
     // React reads layout synchronously in its layout phase: reading a box inside useLayoutEffect or a callback ref
     // forces the reflow the commit's mutations owe. A panel lays itself out later in its frame, so a commit about to
-    // run layout effects, build imperative handles or attach callback refs runs the panel's style and layout updaters
-    // first. UseLayoutEffectLayoutReadTests fails when that stops laying the panel out.
+    // run a layout effect, build an imperative handle or attach a callback ref runs the style and layout updaters of
+    // the panels it renders into first. UseLayoutEffectLayoutReadTests fails when that stops laying the panel out.
     //
     // The updaters are reached by reflection rather than through IPanel.Pick, whose layout validation is public: a
     // commit can run inside the panel's own layout pass, from a GeometryChangedEvent the pass dispatches, and there
@@ -18,47 +18,27 @@ namespace Velvet
     // lists it was given. UseLayoutEffectLayoutReadTests holds both outer passes.
     internal static class FiberLayoutReflow
     {
+        // The layout updater's own bound on the passes one layout update takes (kMaxValidateLayoutCount).
+        internal const int MaxNesting = 10;
+
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPanel, PanelUpdaters?> s_updaters =
             new();
 
-        // A panel whose updaters are not shaped as this class reads them is left alone, and commits on it read the
-        // layout it last computed.
-        internal static void LayOut(List<IPanel>? panels)
+        // Lays out the panels a read by the fiber's layout effects or handles can reach.
+        internal static void LayOutFor(ReconcilerContext ctx, ComponentFiber fiber)
         {
-            if (panels == null) return;
-            for (var i = 0; i < panels.Count; i++)
-            {
-                var panel = panels[i];
-                if (!s_updaters.TryGetValue(panel, out var updaters))
-                {
-                    updaters = PanelUpdaters.Resolve(panel);
-                    // MUTANT_SURVIVES(equivalent, line removed): resolving again finds the same updaters.
-                    s_updaters.Add(panel, updaters);
-                }
-                updaters?.Run();
-            }
+            EnsureLaidOut(fiber.MountPoint?.panel);
+            LayOutContextPanels(ctx);
         }
 
-        // The panels of the batch's fibers that have a layout effect to run or a handle to build.
-        internal static List<IPanel>? PanelsReadIn(List<(ComponentFiber Fiber, bool IsMount)> batch)
+        // Lays out the panels a callback ref attached to element can read.
+        internal static void LayOutFor(ReconcilerContext ctx, VisualElement element)
         {
-            List<IPanel>? panels = null;
-            for (var i = 0; i < batch.Count; i++)
-            {
-                var fiber = batch[i].Fiber;
-                if (ReadsLayout(fiber)) AddPanel(ref panels, fiber.MountPoint?.panel);
-            }
-            return panels;
+            EnsureLaidOut(element.panel);
+            LayOutContextPanels(ctx);
         }
 
-        internal static void AddPanel(ref List<IPanel>? panels, IPanel? panel)
-        {
-            if (panel == null) return;
-            panels ??= new List<IPanel>(1);
-            if (!panels.Contains(panel)) panels.Add(panel);
-        }
-
-        private static bool ReadsLayout(ComponentFiber fiber)
+        internal static bool ReadsLayout(ComponentFiber fiber)
         {
             if (fiber.PendingLayoutEffects is { Count: > 0 }) return true;
             var slots = fiber.ImperativeHandleSlots;
@@ -70,9 +50,38 @@ namespace Velvet
             return false;
         }
 
+        // Beside the reading fiber's or element's own panel, the panels the context holds: the one the tree is
+        // mounted on and the layer and world-space panels its portals host. A portal into an element of some other
+        // panel is laid out where a fiber or a ref inside it reads, through that fiber's or element's own panel.
+        private static void LayOutContextPanels(ReconcilerContext ctx)
+        {
+            EnsureLaidOut(ctx.BatchScheduler.Anchor?.panel);
+            foreach (var host in ctx.LayerHosts.Values) EnsureLaidOut(PanelOf(host));
+            foreach (var host in ctx.WorldSpaceBindings.Values) EnsureLaidOut(PanelOf(host));
+        }
+
+        private static IPanel? PanelOf(PanelHostRecord host)
+            => host.Document != null ? host.Document.rootVisualElement?.panel : null;
+
+        // A panel whose updaters are not shaped as this class reads them is left alone, and commits on it read the
+        // layout it last computed.
+        private static void EnsureLaidOut(IPanel? panel)
+        {
+            if (panel == null) return;
+            if (!s_updaters.TryGetValue(panel, out var updaters))
+            {
+                updaters = PanelUpdaters.Resolve(panel);
+                s_updaters.Add(panel, updaters);
+            }
+            updaters?.EnsureLaidOut();
+        }
+
         private sealed class PanelUpdaters
         {
+            private readonly System.Func<uint> _version;
             private readonly System.Action _styles;
+            private readonly object _styleUpdater;
+            private readonly FieldInfo _applyingStyles;
             private readonly System.Action _layout;
             private readonly object _layoutUpdater;
             private readonly FieldInfo _changeEvents;
@@ -80,12 +89,18 @@ namespace Velvet
             // One pair per nesting depth: a pass this class runs can dispatch an event whose commit runs another.
             private readonly List<(IList ChangeEvents, IList MissedHierarchyEvents)> _spares = new();
             private int _depth;
+            private bool _laidOut;
+            private uint _laidOutVersion;
+            private bool _warnedNesting;
 
             private PanelUpdaters(
-                System.Action styles, System.Action layout, object layoutUpdater, FieldInfo changeEvents,
-                FieldInfo missedHierarchyEvents)
+                System.Func<uint> version, System.Action styles, object styleUpdater, FieldInfo applyingStyles,
+                System.Action layout, object layoutUpdater, FieldInfo changeEvents, FieldInfo missedHierarchyEvents)
             {
+                _version = version;
                 _styles = styles;
+                _styleUpdater = styleUpdater;
+                _applyingStyles = applyingStyles;
                 _layout = layout;
                 _layoutUpdater = layoutUpdater;
                 _changeEvents = changeEvents;
@@ -97,28 +112,60 @@ namespace Velvet
             internal static PanelUpdaters? Resolve(IPanel panel)
             {
                 var getUpdater = EngineMember.PanelGetUpdater.ResolveMethod();
+                var version = EngineMember.PanelVersion.ResolveProperty()?.GetMethod;
                 var stylesPhase = EngineMember.StylesUpdatePhase.ResolveField();
                 var layoutPhase = EngineMember.LayoutUpdatePhase.ResolveField();
                 // MUTANT_SURVIVES(unreachable): EngineMemberResolutionTests holds that each of these resolves.
-                if (getUpdater == null || stylesPhase == null || layoutPhase == null) return null;
+                if (getUpdater == null || version == null || stylesPhase == null || layoutPhase == null) return null;
                 // MUTANT_SURVIVES(unreachable): every panel the suite mounts on is the engine's own Panel type.
                 if (!getUpdater.DeclaringType!.IsInstanceOfType(panel)) return null;
                 var styles = getUpdater.Invoke(panel, new[] { stylesPhase.GetValue(null) });
                 var layout = getUpdater.Invoke(panel, new[] { layoutPhase.GetValue(null) });
                 var stylesUpdate = Bind(EngineMember.StyleUpdaterUpdate.ResolveMethod(), styles);
                 var layoutUpdate = Bind(EngineMember.LayoutUpdaterUpdate.ResolveMethod(), layout);
+                var applyingStyles = EngineMember.StyleUpdaterApplying.ResolveField();
                 var changeEvents = EngineMember.LayoutChangeEvents.ResolveField();
                 var missedHierarchyEvents = EngineMember.LayoutMissedHierarchyChangeEvents.ResolveField();
                 // MUTANT_SURVIVES(unreachable): as above, and the panel's updaters are the engine's own, which hold
                 // these members, unless something replaced them.
-                if (stylesUpdate == null || layoutUpdate == null || changeEvents == null || missedHierarchyEvents == null)
+                if (stylesUpdate == null || layoutUpdate == null || applyingStyles == null || changeEvents == null
+                    || missedHierarchyEvents == null)
                 {
                     return null;
                 }
-                return new PanelUpdaters(stylesUpdate, layoutUpdate, layout!, changeEvents, missedHierarchyEvents);
+                var readVersion = (System.Func<uint>)System.Delegate.CreateDelegate(typeof(System.Func<uint>), panel, version);
+                return new PanelUpdaters(readVersion, stylesUpdate, styles!, applyingStyles, layoutUpdate, layout!,
+                    changeEvents, missedHierarchyEvents);
             }
 
-            internal void Run()
+            // An unchanged panel version is taken as a layout this class has already brought up to date: the panel
+            // moves it on every version change of an element on it, and the update case of
+            // UseLayoutEffectLayoutReadTests fails when a layout-dirtying one stops moving it.
+            internal void EnsureLaidOut()
+            {
+                // MUTANT_SURVIVES(equivalent): a pass over a panel nothing changed on finds its styles and layout
+                // clean and changes nothing, so this only spares the updater calls.
+                if (_laidOut && _version() == _laidOutVersion) return;
+                // A CustomStyleResolvedEvent is dispatched from inside the style updater's traversal, which a
+                // second traversal would restart under it.
+                if ((bool)_applyingStyles.GetValue(_styleUpdater)) return;
+                if (_depth == MaxNesting)
+                {
+                    if (_warnedNesting) return;
+                    _warnedNesting = true;
+                    UnityEngine.Debug.LogWarning(
+                        $"Velvet: commits made inside the layout passes of their own layout effects nested {MaxNesting} "
+                        + "deep; deeper ones read the layout the panel last computed.");
+                    return;
+                }
+                Run();
+                // MUTANT_SURVIVES(equivalent): as above.
+                _laidOutVersion = _version();
+                // MUTANT_SURVIVES(equivalent): as above.
+                _laidOut = true;
+            }
+
+            private void Run()
             {
                 if (_depth == _spares.Count)
                 {

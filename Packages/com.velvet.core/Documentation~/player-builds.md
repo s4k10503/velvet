@@ -101,8 +101,9 @@ focus controller still holds of an element leaving it, an element's focus pseudo
 flag, UI Toolkit's internal property-change event, the `@import`s of a stylesheet, the cached opacity
 and transition lists used by [layoutId crossfades](motion.md#shared-element-layout-animation-layoutid),
 native transition activity used by [current-value starts](motion.md#driven-channels-spring-and-bezier),
-and a panel's style and layout updaters with the layout updater's two event lists, which a commit runs to lay
-the panel out before its layout effects and callback refs read it ([react-migration.md](react-migration.md)).
+and a panel's version, its style and layout updaters, the style updater's traversal flag and the layout
+updater's two event lists, which a commit uses to lay the panel out before its layout effects and callback refs
+read it ([react-migration.md](react-migration.md)).
 `EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
 creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole

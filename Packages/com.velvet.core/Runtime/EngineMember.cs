@@ -110,6 +110,12 @@ namespace Velvet
         internal static readonly EngineMember PanelGetUpdater = Method(UIElements, "UnityEngine.UIElements.Panel",
             "GetUpdater", "UnityEngine.UIElements.IVisualTreeUpdater", UpdatePhaseShape);
 
+        internal static readonly EngineMember PanelVersion =
+            ReadProperty(UIElements, "UnityEngine.UIElements.Panel", "version", "System.UInt32");
+
+        internal static readonly EngineMember StyleUpdaterApplying =
+            Field(UIElements, "UnityEngine.UIElements.VisualTreeStyleUpdater", "m_IsApplyingStyles", "System.Boolean");
+
         internal static readonly EngineMember StylesUpdatePhase = Field(UIElements, UpdatePhaseType, "Styles", UpdatePhaseShape);
 
         internal static readonly EngineMember LayoutUpdatePhase = Field(UIElements, UpdatePhaseType, "Layout", UpdatePhaseShape);

@@ -19,6 +19,21 @@ namespace Velvet
         private static void RunInsertionEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
             => HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects, mountDoubleInvoke);
 
+        // Runs, ahead of a ref setup, the insertion effects pending on the component that rendered the ref's element and
+        // on the components above it, child before parent, as React's mutation phase runs a commit's insertion effects
+        // before its layout phase attaches refs; the layout commit then finds them run. It runs no StrictMode mount
+        // double-invoke: an entry's mount flag sits on the deferred stack, which this does not search.
+        internal static void RunInsertionEffectsAheadOfRef(ComponentFiber? owner)
+        {
+            for (var fiber = owner; fiber != null; fiber = fiber.Parent)
+            {
+                // A tree a Suspense hides commits none of the layout work its render queued, as TakeBatch says.
+                // MUTANT_SURVIVES(equivalent, clause removed): a fiber with nothing pending runs nothing.
+                if (fiber.LayoutEffectsHidden || fiber.PendingInsertionEffects is not { Count: > 0 }) continue;
+                HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects);
+            }
+        }
+
         internal static void CleanupAllInsertionEffects(ComponentFiber fiber)
             => HookEffectExecutor.CleanupAll(fiber, fiber.InsertionEffects, fiber.PendingInsertionEffects);
 
@@ -250,14 +265,15 @@ namespace Velvet
                     RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
                     HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
                 }
-                // What the insertion effects and layout cleanups wrote is in the layout the setups read.
-                FiberLayoutReflow.LayOut(FiberLayoutReflow.PanelsReadIn(ordered));
                 for (var i = 0; i < ordered.Count; i++)
                 {
                     var (fiber, isMount) = ordered[i];
                     // A setup's catch can unmount a fiber later in this pass, and a boundary unmounted that way
                     // must not deliver the report it still holds.
                     if (!fiber.IsMounted) continue;
+                    // After every cleanup above, so what the insertion effects and layout cleanups wrote is in the
+                    // layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
+                    if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);
                     FiberHookCommit.RunImperativeHandleSlots(fiber);
                     HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount);
                     DeliverCaughtErrors(ctx, fiber, reportCutoff);

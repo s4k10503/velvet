@@ -1630,9 +1630,6 @@ namespace Velvet
                     {
                         batchEnd = _pendingRefAttaches.Count;
                         RunReplacedRefCleanups(i, batchEnd);
-                        // React attaches refs in its layout phase, after the detaches above, where a callback
-                        // that reads its element's box reads it laid out.
-                        FiberLayoutReflow.LayOut(PanelsOfRefSetups(i, batchEnd));
                     }
                     var (element, callback, owner, pass) = _pendingRefAttaches[i];
                     // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
@@ -1656,6 +1653,10 @@ namespace Velvet
                     // write below would then add one for an element no tree holds, past the removal that
                     // would have taken it.
                     RefCallbacks[element] = (callback, null);
+                    // React attaches refs in its layout phase, after its mutation phase ran the commit's insertion
+                    // effects, and a callback that reads its element's box there reads it laid out.
+                    FiberEffects.RunInsertionEffectsAheadOfRef(owner);
+                    FiberLayoutReflow.LayOutFor(this, element);
                     System.Action? cleanup = null;
                     try
                     {
@@ -1689,13 +1690,6 @@ namespace Velvet
                 CompactPendingRefAttaches();
                 _drainingRefAttaches = false;
             }
-        }
-
-        private List<UnityEngine.UIElements.IPanel>? PanelsOfRefSetups(int start, int end)
-        {
-            List<UnityEngine.UIElements.IPanel>? panels = null;
-            for (var i = start; i < end; i++) FiberLayoutReflow.AddPanel(ref panels, _pendingRefAttaches[i].Element?.panel);
-            return panels;
         }
 
         private void RunReplacedRefCleanups(int start, int end)
