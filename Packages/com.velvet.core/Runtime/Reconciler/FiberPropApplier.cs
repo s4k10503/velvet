@@ -120,6 +120,7 @@ namespace Velvet
                 // keeps one from staying on a pooled element.
                 textField.UnregisterCallback(s_reassertTouchKeyboard, TrickleDown.TrickleDown);
                 s_textFieldDefaults.Remove(textField);
+                ForgetShownText(textField);
             }
             else if (element is Slider slider)
             {
@@ -190,10 +191,16 @@ namespace Velvet
             if (value == null)
             {
                 FiberElementFactory.ClearFieldValue(element);
-                return;
+            }
+            else
+            {
+                FiberElementFactory.ApplyFieldValue(element, value);
             }
 
-            FiberElementFactory.ApplyFieldValue(element, value);
+            if (element is TextField field)
+            {
+                RecordShownText(field);
+            }
         }
 
         // The range keeps the rule it had while it was the record's only content: both bounds written, a null
@@ -314,6 +321,11 @@ namespace Velvet
 
                 built = new TextFieldDefaults();
                 s_textFieldDefaults.Add(tfEl, built);
+            }
+
+            if (!s_shownText.TryGetValue(tfEl, out _))
+            {
+                RecordShownText(tfEl);
             }
 
             ApplyPasswordFlag(tfEl, settings?.IsPassword, built);
@@ -498,13 +510,107 @@ namespace Velvet
             if (declared is { } value)
             {
                 built.MaxLength ??= new Recorded<int>(field.maxLength);
-                field.maxLength = value;
+                WriteMaxLength(field, value);
             }
             else if (built.MaxLength != null)
             {
-                field.maxLength = built.MaxLength.Value;
+                WriteMaxLength(field, built.MaxLength.Value);
             }
         }
+
+        // Ordering: the edit is cut to the new limit and written silently BEFORE the limit, then written
+        // silently again after it. Narrowing the limit culls the shown text through a notifying setter, so
+        // an edit still longer than the limit would be reported to onValueChanged; cut beforehand, the cull
+        // finds nothing to change. The limit write then re-shows the committed value over the edit, which
+        // is what the second write undoes. The value is not touched, so the commit stays with Enter or
+        // blur, and the record keeps the text Velvet last wrote so the restored edit still reads as one.
+        // Both writes are skipped on an unchanged limit, which the setter ignores. With no edit, the
+        // limit write's own result is what Velvet left on screen and becomes the record.
+        // DelayedMaxLengthEditReportTests pins that nothing is reported; TextFieldInputPropTests pins that
+        // the edit survives and the no-edit cases.
+        private static void WriteMaxLength(TextField field, int limit)
+        {
+            if (field.maxLength == limit)
+            {
+                return;
+            }
+
+            TextElement? held = null;
+            string? edit = null;
+            if (HasUncommittedEdit(field) && field.textEdition is TextElement shown)
+            {
+                held = shown;
+                // MUTANT_SURVIVES(equivalent, boundary): at a length equal to the limit Substring(0, limit) returns the text itself.
+                var overLimit = field.text.Length > limit;
+                // MUTANT_SURVIVES(equivalent, boundary): measured, a zero limit leaves "" on the second write with or without this bound; TextFieldInputPropTests pins that outcome.
+                edit = limit >= 0 && overLimit ? field.text.Substring(0, limit) : field.text;
+                ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit);
+            }
+
+            field.maxLength = limit;
+            if (held == null)
+            {
+                RecordShownText(field);
+                return;
+            }
+
+            ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit!);
+        }
+
+        // The text Velvet's own writes, and the engine's commits, last left on screen. A delayed field
+        // holds the user's typing in the shown text while the value lags, and nothing else tells that
+        // apart from a rewrite: a single-line field shows its value with line breaks stripped, so shown
+        // text differing from the value does not mean anyone typed. Every Velvet write that can change the
+        // shown text records it — ApplyFieldValue, WriteMaxLength and the baseline ApplyTextField takes —
+        // and a commit records it through the callback below, since an edit that was committed and then
+        // changed again is an edit against the committed text. ForgetRecordedDefaults forgets the record and
+        // its callback on every removal, so a recycled field carries neither.
+        internal static bool HasUncommittedEdit(TextField field)
+            => field.isDelayed
+               && s_shownText.TryGetValue(field, out var left)
+               && field.text != left.Text;
+
+        internal static void RecordShownText(TextField field)
+        {
+            if (!s_shownText.TryGetValue(field, out var left))
+            {
+                left = new ShownText(field);
+                s_shownText.Add(field, left);
+                field.RegisterValueChangedCallback(left.OnChange);
+            }
+
+            left.Text = field.text;
+        }
+
+        internal static void ForgetShownText(TextField field)
+        {
+            if (s_shownText.TryGetValue(field, out var left))
+            {
+                field.UnregisterValueChangedCallback(left.OnChange);
+                s_shownText.Remove(field);
+            }
+        }
+
+        private sealed class ShownText
+        {
+            private readonly TextField _field;
+
+            public string? Text;
+
+            public ShownText(TextField field) => _field = field;
+
+            // Only the field's own event is a commit of the value; TextFieldInputPropTests pins that an
+            // event from the inner element does not move the record.
+            public void OnChange(ChangeEvent<string> evt)
+            {
+                if (evt.target == _field)
+                {
+                    Text = _field.text;
+                }
+            }
+        }
+
+        private static readonly ConditionalWeakTable<TextField, ShownText> s_shownText = new();
 
         private static void ApplyReadOnlyFlag(TextField field, bool? declared, TextFieldDefaults built)
         {

@@ -529,6 +529,10 @@ A field's `className` background, border, radius, padding, shadow and ring utili
 is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
 is listed with the `[&>*]:` composite notes.
 
+A render changing `maxLength:` while an edit is pending keeps the edit on screen, cut to the new limit,
+and leaves it uncommitted and unreported. When the same render also takes `isDelayed:` off, the cut edit
+is released as above.
+
 ### 2-2. Conditionals and Lists
 
 | React | Velvet | Notes |
