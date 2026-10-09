@@ -310,7 +310,8 @@ namespace Velvet
                     var childOrchestration = FiberNodePatcher.ResolveChildOrchestration(motionNode,
                         enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec);
                     MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, enter.InitialLabel,
-                        childOrchestration);
+                        childOrchestration, MotionVariantResolver.PlaybackForChildren(motionNode,
+                            _ctx.ComponentContextStack.Get(MotionContext.Playback)));
                     try
                     {
                         ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
