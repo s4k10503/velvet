@@ -224,7 +224,7 @@ namespace Velvet
                 var nearest = JsRound(stepsFromMin);
                 var aligned = RoundTo(nearest * step + low, decimals) == RoundTo(value, decimals);
                 var next = aligned ? nearest + multiplier * direction
-                    : direction > 0 ? Math.Ceiling(stepsFromMin) : Math.Floor(stepsFromMin);
+                    : direction == 1 ? Math.Ceiling(stepsFromMin) : Math.Floor(stepsFromMin);
                 return RoundTo(next * step + low, decimals);
             }
         }

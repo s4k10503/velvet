@@ -157,6 +157,82 @@ namespace Velvet.Tests
             Assert.That((Reported(whileMounted, reported), slider.value), Is.EqualTo(("0:55", 55)));
         }
 
+        // Every other case here counts the grid from a low value of 0, where adding the low value and
+        // subtracting it agree; this one starts on a grid line counted from 3.
+        [Test]
+        public void Given_AStepCountedFromANonZeroLowValue_When_RightIsPressedOnAGridLine_Then_OnValueChangedReceivesTheNextOne()
+        {
+            // Arrange
+            var reported = new List<int>();
+            var slider = Mount(V.SliderInt(value: 48, lowValue: 3, highValue: High, onValueChanged: reported.Add,
+                step: 5));
+            var whileMounted = reported.Count;
+
+            // Act
+            PressArrow(slider, NavigationMoveEvent.Direction.Right);
+
+            // Assert
+            Assert.That(Reported(whileMounted, reported), Is.EqualTo("0:53"));
+        }
+
+        // UI Toolkit's own arrow handler acts only in the movable state, which the dragger's class marks, so this
+        // puts the slider in it: a slider out of it would step once with or without that handler reached.
+        [Test]
+        public void Given_ASliderIntInItsMovableState_When_RightIsPressed_Then_OnValueChangedReceivesOneStep()
+        {
+            // Arrange
+            var reported = new List<int>();
+            var slider = MountWide(reported);
+            var dragger = slider.Q(className: BaseSlider<int>.draggerUssClassName);
+            dragger.AddToClassList(BaseSlider<int>.movableUssClassName);
+            var whileMounted = reported.Count;
+
+            // Act
+            PressArrow(slider, NavigationMoveEvent.Direction.Right);
+
+            // Assert
+            Assert.That(
+                (dragger.ClassListContains(BaseSlider<int>.movableUssClassName), Reported(whileMounted, reported)),
+                Is.EqualTo((true, "0:51")));
+        }
+
+        [Test]
+        public void Given_AVerticalSliderIntShowingItsInputField_When_HomeIsPressedOnTheSlider_Then_OnValueChangedReceivesTheLowValue()
+        {
+            // Arrange
+            var reported = new List<int>();
+            var slider = Mount(V.SliderInt(value: Start, lowValue: Low, highValue: High, onValueChanged: reported.Add,
+                direction: SliderDirection.Vertical, onCreated: element => ((SliderInt)element).showInputField = true));
+            var showing = slider.Q(className: BaseSlider<int>.textFieldClassName) != null;
+            var whileMounted = reported.Count;
+
+            // Act
+            PressKey(slider, KeyCode.Home);
+
+            // Assert
+            Assert.That((showing, Reported(whileMounted, reported)), Is.EqualTo((true, "0:" + Low)));
+        }
+
+        // A change bubbling up from an element inside the slider reaches onValueChanged as it always has, since
+        // the binding does not read the target; what this pins is that the step grid is the slider's own and
+        // is not laid over a descendant's value.
+        [Test]
+        public void Given_AChildChangeOffTheStepGrid_When_ItPassesThroughTheSliderInt_Then_TheSliderNeitherSnapsNorTakesIt()
+        {
+            // Arrange
+            var reported = new List<int>();
+            var slider = MountWide(reported, step: 5);
+            var child = new IntegerField();
+            slider.Add(child);
+            var whileMounted = reported.Count;
+
+            // Act
+            child.value = 53;
+
+            // Assert
+            Assert.That((slider.value, Reported(whileMounted, reported)), Is.EqualTo((Start, "0:53")));
+        }
+
         // The order the next two pin is FiberPropApplier.WriteRange's. Each moves the range past the value in
         // one direction, so the bound that has to widen first differs: the low one here, the high one below.
         [Test]
