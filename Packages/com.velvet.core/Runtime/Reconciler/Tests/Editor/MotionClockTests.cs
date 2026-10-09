@@ -227,7 +227,7 @@ namespace Velvet.Tests
             {
                 // Act
                 clock.Now += 0.25;
-                StyleAnimateDriver.ReassertLoop(element);
+                StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.None);
 
                 // Assert
                 Assert.That(element.style.rotate.value.angle.value, Is.EqualTo(90f).Within(1e-3f));
