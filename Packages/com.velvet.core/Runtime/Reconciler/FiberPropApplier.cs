@@ -323,11 +323,6 @@ namespace Velvet
                 s_textFieldDefaults.Add(tfEl, built);
             }
 
-            if (!s_shownText.TryGetValue(tfEl, out _))
-            {
-                RecordShownText(tfEl);
-            }
-
             ApplyPasswordFlag(tfEl, settings?.IsPassword, built);
             ApplyPlaceholder(tfEl, settings?.Placeholder, built);
             ApplyMaxLength(tfEl, settings?.MaxLength, built);
@@ -548,7 +543,7 @@ namespace Velvet
         // apart from a rewrite: a single-line field shows its value with line breaks stripped, so shown
         // text differing from the value does not mean anyone typed. Every Velvet write that can change the
         // shown text records it — ApplyFieldValue, WriteMaxLength, WriteMultiline and the baseline
-        // ApplyTextField takes —
+        // FiberElementFactory.ApplyProps takes as the element is created —
         // and a commit records it through the callback below, since an edit that was committed and then
         // changed again is an edit against the committed text. ForgetRecordedDefaults forgets the record and
         // its callback on every removal, so a recycled field carries neither.

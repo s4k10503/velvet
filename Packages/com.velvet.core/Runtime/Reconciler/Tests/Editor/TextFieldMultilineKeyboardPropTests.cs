@@ -297,6 +297,37 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "saved", "draft")));
         }
 
+        // GREEN_ON_BASE(characterization): the base carries this typing because it differs from the value.
+        // Its comparison with a single-line form of the value needs no record; the case pins that the
+        // branch's record, which replaced that comparison, is taken before the typing.
+        // The multiline counterpart of TextFieldInputPropTests' case for a field a refCallback made delayed:
+        // the render turning multiline on is the first to reach the field's settings, with the typing already
+        // on screen. One callback instance stands in both trees, as in the refCallback cases above.
+        [Test]
+        public void Given_AnEditInAFieldARefCallbackMadeDelayed_When_TheFirstRenderDeclaringMultilineArrives_Then_TheTypedTextStays()
+        {
+            // Arrange
+            Func<VisualElement, Action> makeDelayed = el =>
+            {
+                ((TextField)el).isDelayed = true;
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(refCallback: makeDelayed) };
+            var newTree = new VNode[] { V.TextField(multiline: true, refCallback: makeDelayed) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "draft";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the delayed flag is folded in because the case is about a field the callback made
+            // delayed, and the value because the edit has to stay uncommitted.
+            Assert.That(
+                (element.isDelayed, element.value, ((TextElement)element.textEdition).text),
+                Is.EqualTo((true, string.Empty, "draft")));
+        }
+
         [Test]
         public void Given_ADelayedFieldWithNoEditWhoseValueHasALineBreak_When_ALaterRenderTurnsMultilineOn_Then_TheFieldShowsTheBreak()
         {

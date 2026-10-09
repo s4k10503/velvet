@@ -315,6 +315,34 @@ namespace Velvet.Tests
             Assert.That((element.text, element.value), Is.EqualTo(("abc", string.Empty)));
         }
 
+        // The flag comes from a refCallback and the first tree declares no text-input prop, so the render
+        // declaring the limit is the first to reach the field's settings, with the typing already on screen.
+        // One callback instance stands in both trees, as in the refCallback sequence further down.
+        [Test]
+        public void Given_AnEditInAFieldARefCallbackMadeDelayed_When_TheFirstRenderDeclaringMaxLengthArrives_Then_TheEditIsStillShownUncommitted()
+        {
+            // Arrange
+            Func<VisualElement, Action> makeDelayed = el =>
+            {
+                ((TextField)el).isDelayed = true;
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(refCallback: makeDelayed) };
+            var newTree = new VNode[] { V.TextField(maxLength: 3, refCallback: makeDelayed) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "abcd";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the delayed flag is folded in because the case is about a field the callback made
+            // delayed, and the value because the edit has to stay uncommitted.
+            Assert.That(
+                (element.isDelayed, element.text, element.value),
+                Is.EqualTo((true, "abc", string.Empty)));
+        }
+
         // The commit is simulated with SimulateChange: the value and shown text land together and the
         // field's change callbacks run. Without the record following the commit, the deletion reads as the
         // text Velvet last wrote.

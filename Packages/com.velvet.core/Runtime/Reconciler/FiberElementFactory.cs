@@ -225,6 +225,14 @@ namespace Velvet
 
         internal static void ApplyProps(VisualElement element, FiberElementProps? props)
         {
+            // Ordering: before anything can type into the field, and whether or not any props are declared.
+            // A field a refCallback makes delayed can hold typing by the first render that declares a limit
+            // or multiline, and a record taken then would take that typing for Velvet's own text.
+            if (element is TextField field)
+            {
+                FiberPropApplier.RecordShownText(field);
+            }
+
             if (props == null)
             {
                 return;
