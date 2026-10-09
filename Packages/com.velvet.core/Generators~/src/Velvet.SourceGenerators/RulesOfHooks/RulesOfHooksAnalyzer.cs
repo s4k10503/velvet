@@ -11,10 +11,11 @@ namespace Velvet.SourceGenerators.RulesOfHooks
 {
     /// <summary>
     /// Compile-time rules-of-hooks analyzer, eslint-plugin-react-hooks' <c>rules-of-hooks</c> for Velvet. A hook call
-    /// is what <see cref="HookName"/> accepts. VEL101 flags one VEL102 does not report whose nearest enclosing
-    /// syntax ancestor is a control-flow construct (if / else / loop / switch / short-circuit operator /
-    /// conditional expression / try / catch) or a lambda that is not a component body, the lambda counting only
-    /// where it sits inside a component or a custom hook.
+    /// is what <see cref="HookName"/> accepts. VEL101 flags one VEL102 does not report that runs only on some
+    /// paths through its own function: in a branch of an if / else, a switch, a conditional expression or a
+    /// short-circuit operator, in a loop, in a catch, in a try after something that may throw, past a conditional
+    /// early return, or in a lambda that is not a component body or a held hook and sits inside a component or a
+    /// custom hook. What a construct evaluates before it branches is not one of its branches.
     /// VEL102 flags one whose nearest enclosing function is neither a component nor a custom hook, and VEL103 a
     /// direct call of a component whose body calls a hook. The runtime positional HookIndexTable throws when hook
     /// counts differ across renders, but this static check surfaces violations at edit time without depending on
@@ -154,7 +155,8 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                 // What decides a branch runs whichever way it decides: eslint reports none of these.
                 if (IsEvaluatedFirst(current, child)) continue;
 
-                if (TryDescribeControlFlow(current, out var description))
+                if (TryDescribeBranch(ctx, inv, current, child, out var description)
+                    || TryDescribeControlFlow(current, out description))
                 {
                     ctx.ReportDiagnostic(Diagnostic.Create(
                         MemoizeDiagnostics.Vel101HookInConditional,
@@ -174,11 +176,16 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             _ => false,
         };
 
-        // `child` is the operand a construct evaluates before choosing a branch: an if's condition, a conditional
-        // expression's condition, or the left operand of &&, || and ??.
+        // `child` is what a construct evaluates once, before choosing a branch or starting its loop: an if's
+        // condition, a conditional expression's condition, the left operand of &&, || and ??, a foreach's
+        // collection and a for's initializer.
         private static bool IsEvaluatedFirst(SyntaxNode construct, SyntaxNode child) => construct switch
         {
             IfStatementSyntax ifStatement => ifStatement.Condition == child,
+            ForEachStatementSyntax forEach => forEach.Expression == child,
+            ForEachVariableStatementSyntax forEach => forEach.Expression == child,
+            ForStatementSyntax forStatement =>
+                forStatement.Declaration == child || forStatement.Initializers.Any(initializer => initializer == child),
             ConditionalExpressionSyntax conditional => conditional.Condition == child,
             BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.LogicalAndExpression)
                 || binary.IsKind(SyntaxKind.LogicalOrExpression)
@@ -251,20 +258,38 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                 .TakeWhile(node => node is not (AnonymousFunctionExpressionSyntax or ArrowExpressionClauseSyntax))
                 .OfType<StatementSyntax>()
                 .FirstOrDefault();
-            if (stmt?.Parent is not BlockSyntax block) return;
-            var index = block.Statements.IndexOf(stmt);
-            if (index <= 0) return;
-
-            var flow = ctx.SemanticModel.AnalyzeControlFlow(block.Statements[0], block.Statements[index - 1]);
-            if (flow is { Succeeded: true } && flow.ExitPoints.Length > 0)
+            // Every block between the hook and its function's body is read, so an exit before a bare block, a lock,
+            // a using or a try that holds the hook counts as one before the hook.
+            for (; stmt != null; stmt = EnclosingStatement(stmt))
             {
-                ctx.ReportDiagnostic(Diagnostic.Create(
-                    MemoizeDiagnostics.Vel101HookInConditional,
-                    inv.GetLocation(),
-                    hookName,
-                    "after a conditional early return (the hook is not reached on every path)"));
+                if (stmt.Parent is not BlockSyntax block) continue;
+                var index = block.Statements.IndexOf(stmt);
+                if (index <= 0) continue;
+
+                var flow = ctx.SemanticModel.AnalyzeControlFlow(block.Statements[0], block.Statements[index - 1]);
+                if (flow is { Succeeded: true } && flow.ExitPoints.Length > 0)
+                {
+                    ctx.ReportDiagnostic(Diagnostic.Create(
+                        MemoizeDiagnostics.Vel101HookInConditional,
+                        inv.GetLocation(),
+                        hookName,
+                        "after a conditional early return (the hook is not reached on every path)"));
+                    return;
+                }
             }
         }
+
+        // The statement one level out within the same function, or null at the function's own body.
+        private static StatementSyntax? EnclosingStatement(StatementSyntax statement) => statement.Parent switch
+        {
+            LocalFunctionStatementSyntax => null,
+            StatementSyntax parent => parent,
+            CatchClauseSyntax { Parent: TryStatementSyntax owner } => owner,
+            FinallyClauseSyntax { Parent: TryStatementSyntax owner } => owner,
+            ElseClauseSyntax { Parent: IfStatementSyntax owner } => owner,
+            SwitchSectionSyntax { Parent: SwitchStatementSyntax owner } => owner,
+            _ => null,
+        };
 
         // The nearest enclosing function, or the field or property whose initializer holds the call. Read from
         // the syntax so a hook in an ordinary component or custom hook costs no binding.
@@ -381,6 +406,45 @@ namespace Velvet.SourceGenerators.RulesOfHooks
             && name[0] == 'U' && name[1] == 's' && name[2] == 'e'
             && (name[3] >= 'A' && name[3] <= 'Z' || name[3] >= '0' && name[3] <= '9');
 
+        // The constructs whose verdict depends on which part of them holds the hook, or on what else they hold.
+        private static bool TryDescribeBranch(
+            SyntaxNodeAnalysisContext ctx, InvocationExpressionSyntax inv, SyntaxNode node, SyntaxNode child,
+            out string description)
+        {
+            switch (node)
+            {
+                case TryStatementSyntax tryStatement:
+                    // As eslint reads a try: every statement in it is reached until something that may throw has
+                    // run, and with no catch a throw ends the render rather than skipping the hook.
+                    description = "a try block after something that may throw";
+                    return child == tryStatement.Block
+                        && tryStatement.Catches.Count > 0
+                        && MayThrowBefore(tryStatement.Block, inv);
+                case CatchClauseSyntax { Parent: TryStatementSyntax owner }:
+                    // eslint reads a catch as conditional unless its try cannot complete normally.
+                    description = "a catch block (reached only when the try throws)";
+                    return ctx.SemanticModel.AnalyzeControlFlow(owner.Block) is not { Succeeded: true, EndPointIsReachable: false };
+                case AssignmentExpressionSyntax assignment when assignment.IsKind(SyntaxKind.CoalesceAssignmentExpression):
+                    description = "a null-coalescing assignment (??=)";
+                    return assignment.Right == child;
+                case ConditionalAccessExpressionSyntax access:
+                    description = "a null-conditional access (?.)";
+                    return access.WhenNotNull == child;
+                default:
+                    description = string.Empty;
+                    return false;
+            }
+        }
+
+        // A call, an object creation, a member or element access, an await or a throw that runs before the hook in
+        // the try block, read in source order; a lambda's or a local function's body runs later and is not read.
+        private static bool MayThrowBefore(BlockSyntax tryBlock, InvocationExpressionSyntax inv) =>
+            tryBlock.DescendantNodes(node => node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax))
+                .Any(node => node.Span.End <= inv.SpanStart
+                    && node is InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax
+                        or MemberAccessExpressionSyntax or ElementAccessExpressionSyntax or ConditionalAccessExpressionSyntax
+                        or AwaitExpressionSyntax or ThrowStatementSyntax or ThrowExpressionSyntax);
+
         private static bool TryDescribeControlFlow(SyntaxNode node, out string description)
         {
             switch (node.Kind())
@@ -412,14 +476,6 @@ namespace Velvet.SourceGenerators.RulesOfHooks
                 case SyntaxKind.ParenthesizedLambdaExpression:
                 case SyntaxKind.AnonymousMethodExpression:
                     description = "a nested lambda or anonymous method";
-                    return true;
-                case SyntaxKind.TryStatement:
-                case SyntaxKind.CatchClause:
-                    // FinallyClause is INTENTIONALLY excluded: finally runs unconditionally on every
-                    // exit so hook ordering across renders is invariant. Only try-block hooks
-                    // (skipped on early exception) and catch-block hooks (conditional on exception)
-                    // are real hazards.
-                    description = "a try or catch block (exception-path conditional)";
                     return true;
                 default:
                     description = null;

@@ -222,8 +222,10 @@ namespace MyApp.Pages
         }
 
         [Fact]
-        public void Reports_When_Hook_Called_Inside_Try_Block()
+        public void Given_HookFirstInATryBlock_When_Analyzed_Then_ReportsNothing()
         {
+            // Arrange — eslint-plugin-react-hooks reads a try block as reached on every path until something in it
+            // may throw, and nothing precedes this hook.
             const string source = @"
 namespace MyApp.Pages
 {
@@ -240,8 +242,12 @@ namespace MyApp.Pages
         }
     }
 }";
-            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new RulesOfHooksAnalyzer());
-            Assert.Single(diagnostics.Where(d => d.Id == "VEL101"));
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Empty(Describe(diagnostics));
         }
 
         [Fact]
@@ -1473,6 +1479,430 @@ internal static class Panel
 
     [Component]
     internal static VNode Sheet()
+    {
+        var (tab, setTab) = Hooks.UseState(0);
+        return null;
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Empty(Describe(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInATryBlockAfterACall_When_TheTryHasACatch_Then_ReportsVel101ForTheTry()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render()
+    {
+        try
+        {
+            Log();
+            Hooks.UseState(0);
+        }
+        catch { }
+        return null;
+    }
+
+    private static void Log() { }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { "VEL101 a try block after something that may throw" }, DescribeConstruct(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInATryBlockAfterACall_When_TheTryHasOnlyAFinally_Then_ReportsNothing()
+        {
+            // Arrange — with no catch, a throw ends the render rather than skipping the hook.
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render()
+    {
+        try
+        {
+            Log();
+            Hooks.UseState(0);
+        }
+        finally { }
+        return null;
+    }
+
+    private static void Log() { }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Empty(Describe(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInACatch_When_TheTryAlwaysThrows_Then_ReportsNothing()
+        {
+            // Arrange — a try that cannot complete normally reaches the catch on every path.
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render()
+    {
+        try
+        {
+            throw new System.InvalidOperationException();
+        }
+        catch
+        {
+            Hooks.UseState(0);
+        }
+        return null;
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Empty(Describe(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookAsTheIterableOfAForeach_When_Analyzed_Then_ReportsNothing()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render()
+    {
+        foreach (var item in UseItems()) { }
+        return null;
+    }
+
+    private static int[] UseItems() => new int[0];
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Empty(Describe(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInTheInitializerOfAFor_When_Analyzed_Then_ReportsNothing()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render()
+    {
+        for (var i = UseStart(); i < 3; i++) { }
+        return null;
+    }
+
+    private static int UseStart() => 0;
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Empty(Describe(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookOnTheRightOfANullCoalescingAssignment_When_Analyzed_Then_ReportsVel101()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render(string label)
+    {
+        label ??= UseLabel();
+        return null;
+    }
+
+    private static string UseLabel() => ""x"";
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { "VEL101 a null-coalescing assignment (??=)" }, DescribeConstruct(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInTheArgumentOfANullConditionalCall_When_Analyzed_Then_ReportsVel101()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal sealed class Holder
+{
+    public void Accept(string value) { }
+}
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render(Holder holder)
+    {
+        holder?.Accept(UseLabel());
+        return null;
+    }
+
+    private static string UseLabel() => ""x"";
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { "VEL101 a null-conditional access (?.)" }, DescribeConstruct(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInNestedBlocksAfterAnEarlyReturn_When_Analyzed_Then_ReportsVel101()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render(bool skip)
+    {
+        if (skip) return null;
+        {
+            {
+                Hooks.UseState(0);
+            }
+        }
+        return null;
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { "VEL101 after a conditional early return (the hook is not reached on every path)" },
+                DescribeConstruct(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInALockAfterAnEarlyReturn_When_Analyzed_Then_ReportsVel101()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    private static readonly object s_gate = new object();
+
+    [Component]
+    internal static VNode Render(bool skip)
+    {
+        if (skip) return null;
+        lock (s_gate)
+        {
+            Hooks.UseState(0);
+        }
+        return null;
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { "VEL101 after a conditional early return (the hook is not reached on every path)" },
+                DescribeConstruct(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInAFinallyAfterAnEarlyReturn_When_Analyzed_Then_ReportsVel101()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render(bool skip)
+    {
+        if (skip) return null;
+        try { }
+        finally
+        {
+            Hooks.UseState(0);
+        }
+        return null;
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { "VEL101 after a conditional early return (the hook is not reached on every path)" },
+                DescribeConstruct(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookAsTheLeftOperandOfLogicalOr_When_Analyzed_Then_ReportsNothing()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render(bool open)
+    {
+        var shown = Hooks.UseState(true).value || open;
+        return null;
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Empty(Describe(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInLambdaAssignedToAHookNamedLocalLater_When_Analyzed_Then_ReportsNothing()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render()
+    {
+        System.Func<int> UseCounter;
+        UseCounter = () => Hooks.UseState(0).value;
+        var count = UseCounter();
+        return null;
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Empty(Describe(diagnostics));
+        }
+
+        [Fact]
+        public void Given_CallbackInsideAHookNamedLambdaInAPlainHelper_When_Analyzed_Then_ReportsVel101ForTheCallback()
+        {
+            // Arrange — the callback sits inside a custom hook, so eslint reports it as a hook inside a callback.
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    private static int Plain()
+    {
+        System.Func<int> UseWrapped = () =>
+        {
+            Run(() => Hooks.UseState(0));
+            return 0;
+        };
+        return 0;
+    }
+
+    private static void Run(System.Action callback) { }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { "VEL101 a nested lambda or anonymous method" }, DescribeConstruct(diagnostics));
+        }
+
+        [Fact]
+        public void Given_ConditionalHookInACastRenderLambdaInAPlainHelper_When_Analyzed_Then_ReportsVel101ForTheCondition()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    private static VNode Mount(bool open) => V.Component((System.Func<VNode>)(() =>
+    {
+        if (open)
+        {
+            Hooks.UseState(0);
+        }
+        return null;
+    }));
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzerOnCompilingSource(source, new RulesOfHooksAnalyzer());
+
+            // Assert
+            Assert.Equal(new[] { "VEL101 an if/else branch" }, DescribeConstruct(diagnostics));
+        }
+
+        [Fact]
+        public void Given_HookInMethodMountedThroughParentheses_When_Analyzed_Then_ReportsNothing()
+        {
+            // Arrange
+            const string source = @"
+using Velvet;
+
+internal static class Panel
+{
+    [Component]
+    internal static VNode Render() => V.Component((Body));
+
+    private static VNode Body()
     {
         var (tab, setTab) = Hooks.UseState(0);
         return null;
