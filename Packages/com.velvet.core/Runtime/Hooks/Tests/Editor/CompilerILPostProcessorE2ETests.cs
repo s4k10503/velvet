@@ -1713,6 +1713,9 @@ namespace Velvet.Tests
             Assert.That(s_stackBuilds, Is.EqualTo(1), "The same array is an equal copy, so the counter past the gate runs once");
         }
 
+        // GREEN_ON_BASE(characterization): the base renders this body unwoven, so it shows the new value too.
+        // What it pins is the copy holding the call's value: putting `ldnull` where `InjectMemoization` inserts
+        // the `dup` keys every render on null, so the second render hits and shows the first value.
         [Test]
         public void Given_AnArrayFromACustomHookIndexedOffTheStack_When_TheStoreChanges_Then_TheLabelShowsItsNewValue()
         {
@@ -1745,6 +1748,9 @@ namespace Velvet.Tests
             Assert.That(s_stackBuilds, Is.EqualTo(1), "The same Ref is an equal copy, so the counter past the gate runs once");
         }
 
+        // GREEN_ON_BASE(characterization): the base renders this body unwoven, and it renders the same woven.
+        // What it pins is the gate's branch: `Brtrue` in place of `Brfalse` in `InjectMemoization` sends the
+        // first render down the hit path, which returns a null tree.
         [Test]
         public void Given_InterfaceDispatchAfterTheHook_When_FirstRender_Then_ProducesVisibleOutput()
         {
@@ -1758,6 +1764,9 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>()?.text, Is.EqualTo("svc0a"), "The dispatch runs on the first render");
         }
 
+        // GREEN_ON_BASE(characterization): the base renders this body unwoven, so it shows the new prop too.
+        // What it pins is the prop keying the memo: emptying the loop over `parameters` in `InjectMemoization`
+        // leaves the prop out of the deps, so the second render hits and shows the first name.
         [Test]
         public void Given_InterfaceDispatchAfterTheHook_When_ThePropChanges_Then_TheLabelShowsItsNewValue()
         {
@@ -1773,6 +1782,9 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>()?.text, Is.EqualTo("svc0b"), "The prop keys the memo ahead of the dispatch");
         }
 
+        // GREEN_ON_BASE(characterization): the base renders this body unwoven, and it renders the same woven.
+        // What it pins is the gate's branch: `Brtrue` in place of `Brfalse` in `InjectMemoization` sends the
+        // first render down the hit path, which returns a null tree.
         [Test]
         public void Given_VirtualDispatchAfterTheHook_When_FirstRender_Then_ProducesVisibleOutput()
         {
@@ -1786,6 +1798,9 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>()?.text, Is.EqualTo("0a"), "The dispatch runs on the first render");
         }
 
+        // GREEN_ON_BASE(characterization): the base renders this body unwoven, so it shows the new prop too.
+        // What it pins is the prop keying the memo: emptying the loop over `parameters` in `InjectMemoization`
+        // leaves the prop out of the deps, so the second render hits and shows the first name.
         [Test]
         public void Given_VirtualDispatchAfterTheHook_When_ThePropChanges_Then_TheLabelShowsItsNewValue()
         {

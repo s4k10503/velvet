@@ -700,8 +700,9 @@ namespace Velvet.CodeGen
             {
                 return HookCaptureMatch.NotMatched;
             }
-            // Item2 is left out of the deps, which is sound only for a Velvet.Hooks tuple, whose second element is
-            // a reference-stable setter. A custom hook's second element can change between renders.
+            // Item2 is left out of the deps, which the allow-listed pairs (UseState, UseReducer, UseTransition,
+            // UseOptimistic) permit because their second element is reference-stable. A custom hook's second
+            // element can change between renders.
             if (!isDirect)
             {
                 return HookCaptureMatch.Bail;
@@ -853,6 +854,7 @@ namespace Velvet.CodeGen
                 }
                 if (TryLeaf(callee, out var leaf, out var definition))
                 {
+                    // MUTANT_SURVIVES(equivalent, line removed): the entry only saves resolving the same callee again, which returns the same value.
                     _final[key] = leaf;
                     return leaf;
                 }
