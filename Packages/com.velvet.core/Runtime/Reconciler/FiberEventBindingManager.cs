@@ -124,10 +124,13 @@ namespace Velvet
         // the field is not reported.
         // Submit is read on the input's own bubble pass, after the input has handled the key, so the value it
         // reads already holds what that Enter committed. That Enter has also handed focus to the field, where
-        // a browser keeps it in the input, so focus goes back to the input with the caret and selection the
-        // key found, before the handler runs and can move it elsewhere. Where the field itself still holds
-        // focus (after Escape, say), a key landing on it is read on the field's own pass; a key the input let
-        // through reaches the field's callback too, which reads only its own target.
+        // a browser keeps it in the input. The engine queues that hand-off until the key's dispatch ends, so
+        // focus is sent back to the input behind it, before the handler runs so a handler moving focus
+        // elsewhere still wins; the input's own focus handling then selects its text, so the caret and
+        // selection the key found are put back on the focus event's bubble callbacks, which run after it.
+        // A read-only field is left out, the engine running no editor on it to hand focus over. Where the
+        // field itself still holds focus (after Escape, say), a key landing on it is read on the field's own
+        // pass; a key the input let through reaches the field's callback too, which reads only its own target.
         // Whether an IME composition was open is read on the field's trickle-down pass instead, before the
         // input acts on the key, which is the moment a browser's isComposing describes.
         // The soft keyboard's Done reaches no key handler: the engine closes the keyboard and blurs the input.
@@ -154,12 +157,14 @@ namespace Velvet
         private void BindSubmit(List<Action> actions, TextField field, TextElement input, Action<string>? handler)
         {
             var composingAtKeyDown = false;
+            var restoreOnFocus = false;
             var cursorAtKeyDown = 0;
             var selectAtKeyDown = 0;
             UnityEngine.TouchScreenKeyboard? keyboard = null;
             EventCallback<KeyDownEvent> beforeInput = _ =>
             {
                 composingAtKeyDown = IsComposing(input);
+                restoreOnFocus = false;
                 cursorAtKeyDown = field.textSelection.cursorIndex;
                 selectAtKeyDown = field.textSelection.selectIndex;
             };
@@ -170,13 +175,21 @@ namespace Velvet
                     return;
                 }
 
-                if (evt.target == input && field.focusController?.focusedElement == field)
+                if (evt.target == input && !field.isReadOnly)
                 {
+                    restoreOnFocus = true;
                     input.Focus();
-                    field.textSelection.SelectRange(cursorAtKeyDown, selectAtKeyDown);
                 }
 
                 RunDiscrete(() => handler?.Invoke(field.value));
+            };
+            EventCallback<FocusEvent> restoreSelection = _ =>
+            {
+                if (restoreOnFocus)
+                {
+                    restoreOnFocus = false;
+                    field.textSelection.SelectRange(cursorAtKeyDown, selectAtKeyDown);
+                }
             };
             EventCallback<FocusInEvent> keyboardOpened = _ => keyboard = field.textEdition.touchScreenKeyboard;
             EventCallback<FocusOutEvent> keyboardClosed = _ =>
@@ -189,6 +202,7 @@ namespace Velvet
             field.RegisterCallback(beforeInput, TrickleDown.TrickleDown);
             input.RegisterCallback(afterInput);
             field.RegisterCallback(afterInput);
+            input.RegisterCallback(restoreSelection);
             field.RegisterCallback(keyboardOpened);
             field.RegisterCallback(keyboardClosed);
             actions.Add(() =>
@@ -196,6 +210,7 @@ namespace Velvet
                 field.UnregisterCallback(beforeInput, TrickleDown.TrickleDown);
                 input.UnregisterCallback(afterInput);
                 field.UnregisterCallback(afterInput);
+                input.UnregisterCallback(restoreSelection);
                 field.UnregisterCallback(keyboardOpened);
                 field.UnregisterCallback(keyboardClosed);
             });

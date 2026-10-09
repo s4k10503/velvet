@@ -196,8 +196,11 @@ namespace Velvet.Tests
             // Act
             VNodePool.ReturnEventArray(owned);
 
-            // Assert
-            Assert.That((owned[0], ReferenceEquals(VNodePool.RentEventArray(2), owned)), Is.EqualTo((binding, false)));
+            // Assert — the expected tuple is typed as the actual one is: NUnit compares tuples of different
+            // element types as unequal whatever they hold.
+            Assert.That(
+                (owned[0], ReferenceEquals(VNodePool.RentEventArray(2), owned)),
+                Is.EqualTo(((FiberEventBinding)binding, false)));
         }
 
         [Test]
