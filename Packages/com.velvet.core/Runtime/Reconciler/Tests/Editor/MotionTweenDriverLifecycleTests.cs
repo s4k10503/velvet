@@ -323,6 +323,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AZeroDelayBezierExit_When_CancelledBeforeThePanelTicks_Then_ItHandsOffToAReversalThatKeepsItsInlineOpacity()
+        {
+            // Arrange — no delay, so the recurring tick starts inside the play itself rather than behind a delayed
+            // start the panel has yet to run.
+            var scheduler = new StyleAnimationScheduler();
+            var element = new VisualElement();
+            Root.Add(element);
+            element.AddToClassList("opacity-100");
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier,
+                DurationSec = 0.3f,
+                ExitFromClass = "opacity-100",
+                ExitToClass = "opacity-0",
+            };
+            scheduler.PlayExit(element, config, onComplete: null, restoreFromOnCancel: true);
+
+            // Act — the panel has not ticked.
+            scheduler.CancelExit(element);
+
+            // Assert — the reversal took over the exit's inline opacity instead of the cancel releasing it.
+            Assert.That(element.style.opacity.keyword, Is.Not.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
         public void Given_AnActivelyTickingBezierExit_When_CancelledForTeardown_Then_ItNeverHandsOffToAReversal()
         {
             // Arrange — no delay, so the panel-root tick is already running when the teardown cancel lands.

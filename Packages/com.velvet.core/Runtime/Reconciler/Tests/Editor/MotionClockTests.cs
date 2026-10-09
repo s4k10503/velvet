@@ -139,6 +139,60 @@ namespace Velvet.Tests
             Assert.That(element.style.opacity.value, Is.EqualTo(0.016f).Within(1e-5f));
         }
 
+        // The clock reaches the delay exactly, so the play has started by then and a cancel hands off to a reversal,
+        // where one still waiting would release the exit's inline opacity.
+        [Test]
+        public void Given_ADelayedBezierExitOnAClockHeldAtExactlyItsDelay_When_ItIsCancelled_Then_ItHandsOffToAReversalThatKeepsItsInlineOpacity()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = OnPanel("exiting");
+            element.AddToClassList("opacity-100");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = (float)(8 * FrameSec),
+                ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+            };
+            _scheduler.PlayExit(element, config, onComplete: null, restoreFromOnCancel: true);
+            Step(clock, 8 * FrameSec);
+
+            // Act
+            _scheduler.CancelExit(element);
+
+            // Assert
+            Assert.That(element.style.opacity.keyword, Is.Not.EqualTo(StyleKeyword.Null));
+        }
+
+        // The panel has ticked before the play, so the time it is scheduled at is not zero, and the delay is not
+        // a multiple of the tick, so the play starts partway through a tick. Its first step is that overshoot.
+        [Test]
+        public void Given_ADelayedBezierPlayOnTheDefaultClock_When_ThePanelTicksPastTheDelay_Then_ItHasMovedByTheOvershootAlone()
+        {
+            // Arrange
+            const float delaySec = 0.2f;
+            var element = OnPanel("overshoot");
+            _scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, DelaySec = delaySec,
+                BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            };
+            HeldTicks(5);
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            var ticks = 0;
+            while (element.style.opacity.value <= 0f && ticks < 40)
+            {
+                Tick();
+                ticks++;
+            }
+
+            // Assert — the time the ticks covered, less the delay.
+            Assert.That(element.style.opacity.value, Is.EqualTo(ticks * 0.016f - delaySec).Within(1e-4f));
+        }
+
         [Test]
         public void Given_AnAnimateLoopOnAHeldClock_When_TheClockMovesAQuarterLoop_Then_TheLoopShowsAQuarterTurn()
         {
@@ -457,6 +511,29 @@ namespace Velvet.Tests
             // Assert — opacity five frames in, translate one.
             Assert.That(new[] { element.style.opacity.value, element.style.translate.value.x.value },
                 Is.EqualTo(new[] { (float)(5 * FrameSec), 1f }).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ATweenWhoseOpacityOverrideHasAShorterDelay_When_TheClockStepsTwoFramesPastThatDelay_Then_OpacityHasMovedTwoFrames()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = OnPanel("delays");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 1f, Easing = EasingMode.Linear, DelaySec = (float)(8 * FrameSec),
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", delaySec: (float)(4 * FrameSec)) },
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            HeldTicks(10);
+            Step(clock, 4 * FrameSec);
+            Step(clock, 2 * FrameSec);
+
+            // Assert — the top-level delay has not run out, so only the override's can have started it.
+            Assert.That(element.style.opacity.value, Is.EqualTo((float)(2 * FrameSec)).Within(1e-5f));
         }
 
         [Test]
