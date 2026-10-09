@@ -31,6 +31,9 @@ namespace Velvet
 
         // The held slots that give way to a layer of the element's own — see StyleArbitraryValueResolver.Yield.
         private int _yieldMask;
+
+        // The yielding slots that give way only to an important layer.
+        private int _importantOnlyMask;
         private StyleLength[]? _lengths;
         private StyleFloat[]? _floats;
         private StyleColor[]? _colors;
@@ -60,7 +63,13 @@ namespace Velvet
 
         public void Drop(HeldSlot slot) => _mask &= ~Bit(slot);
 
-        public void SetYield(HeldSlot slot) => _yieldMask |= Bit(slot);
+        public void SetYield(HeldSlot slot, bool importantOnly)
+        {
+            _yieldMask |= Bit(slot);
+            _importantOnlyMask = importantOnly ? _importantOnlyMask | Bit(slot) : _importantOnlyMask & ~Bit(slot);
+        }
+
+        public bool YieldsOnlyToImportant(HeldSlot slot) => (_importantOnlyMask & Bit(slot)) != 0;
 
         public bool Yields(HeldSlot slot) => (_yieldMask & _mask & Bit(slot)) != 0;
 

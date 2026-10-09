@@ -73,7 +73,7 @@ The boundary behaves the same in all four forms:
 - **Context crosses.** A `V.Provider` above the portal call site is visible to the children.
 - **Stores cross.** `UseStore` subscriptions are independent of panels.
 - **`events:` handlers cross in every portal form**, through one synthetic-bubbling
-  mechanism: `PointerDown`/`Up`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDown`/`Up`, and
+  mechanism: `PointerDown`/`PointerUpEvent`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDownEvent`/`KeyUpEvent`, and
   `FocusIn`/`Out` bindings on an `events:` prop bubble to the logical ancestor chain outside the
   portal boundary (React's own root-level event delegation, walking the logical parent chain
   rather than the DOM). A `Button`'s `onClick` (`ClickedBinding`) answers a click raised inside the
@@ -112,7 +112,7 @@ closes three distinct gaps:
 own runtime input system claims to arbitrate delivery by `PanelSettings.sortingOrder`, but this
 isn't reliable enough to depend on (a documented Unity Issue Tracker bug: a click can pass
 through an overlapping `UIDocument`'s content to whatever sits behind it). Velvet arbitrates
-this itself: before the main panel's own native dispatch processes a `PointerDown`/`Up`, it
+this itself: before the main panel's own native dispatch processes a `PointerDown`/`PointerUpEvent`, it
 walks every layer host in `sortingOrder` order and calls each panel's own `IPanel.Pick()` (which
 resolves against that panel's own content alone, independent of any other panel's presence) —
 the first host with actual content at that screen position wins, and the main panel's own
