@@ -176,6 +176,19 @@ namespace Velvet.Tests
             return V.Label(text: name);
         }
 
+        private static readonly int s_externalCount = 3;
+
+        private static System.Action ExternalSubscribe(System.Action onStoreChange) => () => { };
+
+        // UseSyncExternalStore returns the snapshot the body renders from, and it is captured into the deps array,
+        // so the body is analyzable and must be woven.
+        [Component]
+        public static VNode SyncExternalStoreComponent()
+        {
+            var count = Hooks.UseSyncExternalStore(ExternalSubscribe, () => s_externalCount);
+            return V.Label(text: count.ToString());
+        }
+
         // A discarded hook result (UseState whose value element is dropped via '_') leaves the changing value
         // out of the deps array, so the weaver must bail rather than cache against the stable setter alone.
         [Component]
@@ -581,6 +594,14 @@ namespace Velvet.Tests
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(ContextComponent))), Is.True,
                 "UseContext captures the live value into the deps array; the body is woven");
+        }
+
+        [Test]
+        public void Given_UseSyncExternalStoreComponent_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(SyncExternalStoreComponent))), Is.True,
+                "UseSyncExternalStore captures its snapshot into the deps array; the body is woven");
         }
 
         [Test]

@@ -183,6 +183,19 @@ namespace Velvet
 
         #endregion
 
+        #region VariantSettleSweep / StyleRelationalVariantManipulator.RetargetAll — variant registry walks
+
+        private readonly ClearablePool<List<StyleStackedVariantManipulator>> _stackedVariantListPool = new(l => l.Clear());
+        private readonly ClearablePool<List<StyleRelationalVariantManipulator>> _relationalVariantListPool = new(l => l.Clear());
+
+        public List<StyleStackedVariantManipulator> RentStackedVariantList() => _stackedVariantListPool.Rent();
+        public void ReturnStackedVariantList(List<StyleStackedVariantManipulator> list) => _stackedVariantListPool.Return(list);
+
+        public List<StyleRelationalVariantManipulator> RentRelationalVariantList() => _relationalVariantListPool.Rent();
+        public void ReturnRelationalVariantList(List<StyleRelationalVariantManipulator> list) => _relationalVariantListPool.Return(list);
+
+        #endregion
+
         #region LIS computation — Dictionary<VisualElement, int>
 
         private readonly ClearablePool<Dictionary<VisualElement, int>> _elementIndexMapPool = new(m => m.Clear());

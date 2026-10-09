@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -455,6 +456,106 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFamilyOfItalicFacesOnly_When_RegularUprightResolved_Then_TheItalicFaceIsSelectedWithoutSynthesis()
+        {
+            // Arrange — no entry carries an upright face, so no face of the requested style exists.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false);
+
+                // Assert
+                Assert.That((resolved.Asset == regularItalic, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, false, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+            }
+        }
+
+        [Test]
+        public void Given_AFamilyOfItalicFacesOnly_When_BoldUprightResolved_Then_TheItalicFaceIsFauxBolded()
+        {
+            // Arrange — the weight shortfall is still synthesized over the italic face taken in place of the upright.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, italic = regularItalic }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Bold, italic: false);
+
+                // Assert
+                Assert.That((resolved.Asset == regularItalic, resolved.ResidualBold, resolved.ResidualItalic),
+                    Is.EqualTo((true, true, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+            }
+        }
+
+        [Test]
+        public void Given_ItalicFacesOnlyAtLightAndBlackWeights_When_BoldUprightResolved_Then_TheBlackItalicIsSelected()
+        {
+            // Arrange — style narrows first, then CSS's weight order picks the lightest at or above 700.
+            var lightItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var blackItalic = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Light, italic = lightItalic },
+                    new VelvetFontWeightEntry { weight = VelvetFontWeight.Black, italic = blackItalic }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Bold, italic: false);
+
+                // Assert
+                Assert.That(resolved.Asset == blackItalic, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(lightItalic);
+                Object.DestroyImmediate(blackItalic);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base picks the upright face of an entry that has one the same way; the
+        // italic-only fallback must leave that request alone.
+        [Test]
+        public void Given_AnEntryWithBothFaces_When_RegularUprightResolved_Then_TheUprightFaceIsSelected()
+        {
+            // Arrange — an upright face exists, so the italic-only fallback has no claim on the request.
+            var regularItalic = ScriptableObject.CreateInstance<FontAsset>();
+            var regularUpright = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                VelvetFonts.Register(new VelvetFontFamily("sans",
+                    new VelvetFontWeightEntry
+                    {
+                        weight = VelvetFontWeight.Normal, upright = regularUpright, italic = regularItalic,
+                    }));
+
+                // Act
+                var resolved = VelvetFonts.Resolve("sans", VelvetFontWeight.Normal, italic: false);
+
+                // Assert
+                Assert.That(resolved.Asset == regularUpright, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(regularItalic);
+                Object.DestroyImmediate(regularUpright);
+            }
+        }
+
+        [Test]
         public void Given_AnItalicFaceOnlyByAddressAtALighterWeight_When_BoldItalicResolved_Then_TheItalicFaceIsFauxBolded()
         {
             // Arrange — an Addressables key is a face too. The cache is seeded so nothing is loaded.
@@ -514,6 +615,72 @@ namespace Velvet.Tests
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
             var cache = (Dictionary<string, FontAsset>)field.GetValue(null);
             cache[key] = asset;
+        }
+
+        #endregion
+
+        #region Variant font payloads
+
+        [TestCase("hover:font-[weight:700]")]
+        [TestCase("dark:hover:font-[weight:700]")]
+        [TestCase("hover:!font-[weight:700]")]
+        [TestCase("hover:font-[weight:700]!")]
+        public void Given_AVariantOnlyBracketWeight_When_HoverStartsAndEnds_Then_TheInlineWeightAppliesAndClears(string className)
+        {
+            // Arrange — no base font token can supply the class source for the variant.
+            var wasDark = VelvetTheme.IsDark;
+            VelvetTheme.IsDark = false;
+            try
+            {
+                var root = new VisualElement();
+                using var mounted = V.Mount(root, V.Label(className: className, text: "Docs", name: "card"));
+                var card = root.Q<Label>("card");
+                // Off-panel conditional variants observe the theme signal after they attach.
+                VelvetTheme.IsDark = true;
+                var atRest = card.style.unityFontStyleAndWeight.keyword;
+
+                // Act
+                using (var over = PointerOverEvent.GetPooled()) card.SimulateEvent(over);
+                var whileHovered = card.style.unityFontStyleAndWeight.value;
+                using (var leave = PointerOutEvent.GetPooled()) card.SimulateEvent(leave);
+
+                // Assert
+                Assert.That((atRest, whileHovered, card.style.unityFontStyleAndWeight.keyword),
+                    Is.EqualTo((StyleKeyword.Null, FontStyle.Bold, StyleKeyword.Null)));
+            }
+            finally
+            {
+                VelvetTheme.IsDark = wasDark;
+            }
+        }
+
+        [Test]
+        public void Given_AVariantOnlyAddressFont_When_HoverStartsAndEnds_Then_TheCachedAssetAppliesAndClears()
+        {
+            // Arrange — seed the existing cache so the font can resolve without an asset load.
+            var asset = ScriptableObject.CreateInstance<FontAsset>();
+            try
+            {
+                SeedAddressCache("Fonts/Variant", asset);
+                var root = new VisualElement();
+                using var mounted = V.Mount(root,
+                    V.Label(className: "hover:font-[addr:Fonts/Variant]", text: "Docs", name: "card"));
+                var card = root.Q<Label>("card");
+                var atRest = card.style.unityFontDefinition.value.fontAsset == asset;
+
+                // Act
+                using (var over = PointerOverEvent.GetPooled()) card.SimulateEvent(over);
+                var whileHovered = card.style.unityFontDefinition.value.fontAsset == asset;
+                using (var leave = PointerOutEvent.GetPooled()) card.SimulateEvent(leave);
+
+                // Assert
+                Assert.That((atRest, whileHovered, card.style.unityFontDefinition.value.fontAsset == asset),
+                    Is.EqualTo((false, true, false)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(asset);
+            }
         }
 
         #endregion

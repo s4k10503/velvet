@@ -81,6 +81,7 @@ namespace Velvet
         public BezierTweenChannel? Rotate;
         public List<BezierColorChannel>? Colors;
         public List<BezierLengthChannel>? Lengths;
+        public VisualElement? NativeLayoutOwner;
 
         // CSS-parameter order: cubic-bezier(X1,Y1,X2,Y2).
         public float X1;
@@ -169,10 +170,15 @@ namespace Velvet
         /// </summary>
         public static void ApplyCurrentValues(VisualElement element, BezierTweenState state)
         {
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state));
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
+                MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             ApplyEased(element, state, CurrentEased(state));
         }
+
+        private static void SyncLayoutOwner(VisualElement element, BezierTweenState state)
+            => state.NativeLayoutOwner = MotionNativeTransitionGuard.SyncLayoutOwner(element, state,
+                state.NativeLayoutOwner, state.Lengths, static channel => channel.Property, DrivenSlots(state));
 
         // The slot groups this play writes — the bezier sibling of MotionSpringDriver's own.
         private static MotionTransitionSlots DrivenSlots(BezierTweenState state)
@@ -224,8 +230,10 @@ namespace Velvet
             }
             StyleArbitraryValueResolver.ReapplyLayeredValues(element);
             StyleAnimateDriver.HoldAgainstLoop(element, state, MotionTransitionSlots.None);
-            StyleAnimateDriver.ReassertLoop(element);
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             MotionNativeTransitionGuard.Release(element, state);
+            if (state.NativeLayoutOwner != null) MotionNativeTransitionGuard.Release(state.NativeLayoutOwner, state);
+            state.NativeLayoutOwner = null;
         }
 
         /// <summary>
@@ -259,7 +267,8 @@ namespace Velvet
             state.Lengths?.RemoveAll(l => MotionSpringDriver.ReleasesProperty(element, l.Property, named));
             StyleArbitraryValueResolver.ReapplyLayeredValues(element, named);
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
-            StyleAnimateDriver.ReassertLoop(element);
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
+            SyncLayoutOwner(element, state);
         }
 
         /// <summary>
@@ -313,6 +322,7 @@ namespace Velvet
         // channel value must actually pass its target for that to be visible — clamping would silently flatten it.
         private static void ApplyEased(VisualElement element, BezierTweenState state, float eased)
         {
+            SyncLayoutOwner(element, state);
             if (state.Opacity != null)
             {
                 MotionOpacity.Write(element, Mathf.LerpUnclamped(state.Opacity.From, state.Opacity.To, eased));
@@ -350,7 +360,7 @@ namespace Velvet
                     StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
-            StyleAnimateDriver.ReassertLoop(element);
+            StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
         }
     }
 }

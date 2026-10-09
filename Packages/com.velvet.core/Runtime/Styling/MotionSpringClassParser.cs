@@ -16,12 +16,9 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Resolves the numeric value a single utility class contributes to a spring-animated channel, and combines
-    /// a variant's from/to class arrays into a <see cref="SpringPlan"/> — WITHOUT reading <c>resolvedStyle</c> or
-    /// touching a panel: <c>StyleAnimationScheduler</c>'s from/to class swap for a spring lands the classes at
-    /// rest immediately (see <see cref="MotionSpringDriver"/>), so there is no "before/after" style-resolution
-    /// window to read values from even if a panel were available — the numeric values have to come from the
-    /// classes' own known definitions instead.
+    /// Resolves class-defined targets into a spring or bezier plan. A supplied <see cref="MotionSlotContext"/>
+    /// provides the element's current value when the from-side has no compatible value and identifies
+    /// resting inline holders the swap leaves in place.
     /// </summary>
     /// <remarks>
     /// Scope: <see cref="SpringAxis.Opacity"/> and the transform trio (translate x/y in PIXELS, uniform scale,
@@ -53,7 +50,7 @@ namespace Velvet
 
         /// <summary>
         /// One length-valued channel: which property to write, the magnitudes it interpolates between, and the
-        /// unit BOTH sides carry (a mixed-unit pair never becomes a channel — see <see cref="Resolve"/>).
+        /// unit the target carries; <see cref="MotionSlotContext"/> converts compatible current values into it.
         /// </summary>
         internal readonly struct LengthChannelPlan
         {
@@ -73,9 +70,8 @@ namespace Velvet
 
         /// <summary>
         /// A resolved (from, to) pair per channel; null when neither side of the swap named that channel (out of
-        /// scope for this play, or simply unchanged). The five fixed axes have identity values to fall back on,
-        /// so one side naming an axis is enough; the property channels have none and are collected in the two
-        /// lists instead, populated only when BOTH sides name the property.
+        /// scope for this play). The five fixed axes have identity values to fall back on off-panel; the property
+        /// channels need a compatible explicit or current start and an effective to-side target.
         /// </summary>
         internal struct SpringPlan
         {
@@ -186,51 +182,52 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Builds the spring plan for a from/to class-array swap. Each of the five fixed AXES named by EITHER
-        /// side is in scope, with the un-naming side falling back to that axis's identity value (opacity 1,
-        /// translate 0, scale 1, rotate 0deg) — the common "declare only what changes" authoring style (e.g. a
-        /// `visible` variant that only sets `opacity-100` and relies on the default scale/rotate/position). A
-        /// resting baseline set by some OTHER, unrelated class on the element is not accounted for (undocumented
-        /// — see the type doc's scope note), EXCEPT for translate: since translate x/y always compose onto one
-        /// inline style (see below), naming only one axis still forces a channel for the other, and <paramref
-        /// name="restingTranslateX"/> / <paramref name="restingTranslateY"/> — the element's own current inline
-        /// translate, read by the caller before the swap lands — let that forced channel sit at wherever the
-        /// element's OWN (unrelated) classes already put it instead of snapping it to identity.
-        /// The color- and length-valued PROPERTY channels follow the stricter both-sides rule instead — see
-        /// <see cref="PairProperties"/>.
+        /// Builds the spring plan for a from/to class-array swap — see <see cref="PairAxis"/> for the five fixed
+        /// axes and <see cref="PairProperties"/> for the property channels. <paramref name="context"/>, when the
+        /// element is attached to a panel, includes resting holders for the delta's slots and supplies the
+        /// start where no explicit from-side value wins. Translate x/y compose onto one
+        /// inline style, so naming one axis forces a channel for the other, which rests at <paramref
+        /// name="restingTranslateX"/> / <paramref name="restingTranslateY"/> — the element's own inline translate,
+        /// read by the caller before the swap lands.
         /// </summary>
         internal static SpringPlan Resolve(string[]? fromClasses, string[]? toClasses,
-            float restingTranslateX = 0f, float restingTranslateY = 0f)
+            float restingTranslateX = 0f, float restingTranslateY = 0f, MotionSlotContext? context = null)
         {
-            var from = Scan(fromClasses);
-            var to = Scan(toClasses);
+            var written = WrittenBy(fromClasses).Union(WrittenBy(toClasses));
+            var from = Scan(fromClasses, context, written);
+            var to = Scan(toClasses, context, written);
 
             var plan = new SpringPlan();
-            PairProperties(from.Properties, to.Properties, ref plan);
-            if (Names(in from, in to, from.Opacity, to.Opacity, ArbitraryProperty.Opacity))
-            {
-                plan.Opacity = (from.Opacity ?? 1f, to.Opacity ?? 1f);
-            }
-            PairTranslate(in from, in to, restingTranslateX, restingTranslateY, ref plan);
-            if (Names(in from, in to, from.Scale, to.Scale, ArbitraryProperty.Scale))
-            {
-                plan.Scale = (from.Scale ?? 1f, to.Scale ?? 1f);
-            }
-            if (Names(in from, in to, from.Rotate, to.Rotate, ArbitraryProperty.Rotate))
-            {
-                plan.Rotate = (from.Rotate ?? 0f, to.Rotate ?? 0f);
-            }
+            PairProperties(in from, in to, context, ref plan);
+            plan.Opacity = PairAxis(in from, in to, ArbitraryProperty.Opacity, 1f, context);
+            PairTranslate(in from, in to, restingTranslateX, restingTranslateY, context, ref plan);
+            plan.Scale = PairAxis(in from, in to, ArbitraryProperty.Scale, 1f, context);
+            plan.Rotate = PairAxis(in from, in to, ArbitraryProperty.Rotate, 0f, context);
             return plan;
         }
 
-        // Whether an axis takes a channel: some side names it, and neither side's holder of it is a token no
-        // magnitude can be read from, whose value the identity fallback would only stand in for.
-        private static bool Names(in SideScan from, in SideScan to, float? fromValue, float? toValue,
-            ArbitraryProperty axis)
-            => (fromValue.HasValue || toValue.HasValue) && !from.HeldUnread(axis) && !to.HeldUnread(axis);
+        private static (float from, float to)? PairAxis(in SideScan from, in SideScan to,
+            ArbitraryProperty axis, float identity, MotionSlotContext? context)
+        {
+            var fromValue = from.ValueOf(axis);
+            var toValue = to.ValueOf(axis);
+            if ((!fromValue.HasValue && !toValue.HasValue) || to.HeldUnread(axis))
+            {
+                return null;
+            }
+            if (fromValue.HasValue && (context == null || from.WasSwapped(axis)))
+            {
+                return (fromValue.Value, toValue ?? identity);
+            }
+            if (context != null)
+            {
+                return context.TryReadCurrent(axis, LengthUnit.Pixel, out var current)
+                    ? (current.Value, toValue ?? identity)
+                    : null;
+            }
+            return from.HeldUnread(axis) ? null : (identity, toValue ?? identity);
+        }
 
-        // Resolve runs on every variant play, so this stays a struct passed by in: neither per-call scan may
-        // reach the heap.
         private readonly struct SideScan
         {
             public float? Opacity { get; init; }
@@ -239,70 +236,79 @@ namespace Velvet
             public float? Scale { get; init; }
             public float? Rotate { get; init; }
             public Dictionary<ArbitraryProperty, ArbitraryStyle>? Properties { get; init; }
+            public int SwappedAxes { get; init; }
+            public StyleLonghandSet SwappedProperties { get; init; }
+
+            public bool WasSwapped(ArbitraryProperty axis) => (SwappedAxes & (1 << s_slotIndex[(int)axis])) != 0;
 
             // One bit per axis, at the axis's position in s_slots, for an axis held by an unreadable token.
             public int UnreadAxes { get; init; }
+
+            public float? ValueOf(ArbitraryProperty axis) => axis switch
+            {
+                ArbitraryProperty.Opacity => Opacity,
+                ArbitraryProperty.TranslateX => TranslateX,
+                ArbitraryProperty.TranslateY => TranslateY,
+                ArbitraryProperty.Scale => Scale,
+                ArbitraryProperty.Rotate => Rotate,
+                _ => throw new ArgumentOutOfRangeException(nameof(axis), axis, null),
+            };
 
             public bool HeldUnread(ArbitraryProperty axis) => (UnreadAxes & (1 << s_slotIndex[(int)axis])) != 0;
         }
 
         // Translate x/y are independent springs but always compose onto ONE inline `translate` (UI Toolkit has
         // no separate translateX/translateY style), so once either axis is in scope the other gets a channel
-        // too. An axis actually named by either side still falls back to identity on its own un-naming side
-        // (the "declare only what changes" rule on Resolve); an axis named by NEITHER side — forced into the
-        // plan only because its sibling needed one — pins at the element's own resting value instead, so a base
-        // translate-y-* class the swap never touches does not get stomped to 0 for the swap's duration.
+        // too. An axis with no channel of its own — forced into the plan only because its sibling needed one —
+        // pins at the element's own resting value, so a base translate-y-* class the swap never touches does not
+        // get stomped to 0 for the swap's duration.
         private static void PairTranslate(in SideScan from, in SideScan to,
-            float restingTranslateX, float restingTranslateY, ref SpringPlan plan)
+            float restingTranslateX, float restingTranslateY, MotionSlotContext? context, ref SpringPlan plan)
         {
-            var xNamed = Names(in from, in to, from.TranslateX, to.TranslateX, ArbitraryProperty.TranslateX);
-            var yNamed = Names(in from, in to, from.TranslateY, to.TranslateY, ArbitraryProperty.TranslateY);
-            if (!xNamed && !yNamed)
+            var x = PairAxis(in from, in to, ArbitraryProperty.TranslateX, 0f, context);
+            var y = PairAxis(in from, in to, ArbitraryProperty.TranslateY, 0f, context);
+            if (x == null && y == null)
             {
                 return;
             }
-            plan.TranslateX = xNamed
-                ? (from.TranslateX ?? 0f, to.TranslateX ?? 0f)
-                : (restingTranslateX, restingTranslateX);
-            plan.TranslateY = yNamed
-                ? (from.TranslateY ?? 0f, to.TranslateY ?? 0f)
-                : (restingTranslateY, restingTranslateY);
+            plan.TranslateX = x ?? (restingTranslateX, restingTranslateX);
+            plan.TranslateY = y ?? (restingTranslateY, restingTranslateY);
         }
 
         /// <summary>
-        /// Turns the two sides' property tables into channels. A slot BOTH sides name becomes a channel; a slot
-        /// only one side names does not. Unlike the five fixed axes there is no identity value to substitute for
-        /// the silent side — "no background color declared" is not the same statement as "transparent", and a
-        /// length has no neutral magnitude at all — so a one-sided slot falls back to the plain class swap, which
-        /// lands it instantly. A length pair whose two sides carry DIFFERENT units falls back the same way: a
-        /// percentage resolves against a laid-out parent this path cannot consult, so there is no common space to
-        /// interpolate a px↔% pair in.
+        /// Turns the two sides' property tables into channels. A slot the to-side reads a value for becomes a
+        /// channel, starting from the from-side's value in the same unit, else from what the element shows now in
+        /// that unit. Unlike the five fixed axes there is no identity value to stand in where neither exists —
+        /// "no background color declared" is not the same statement as "transparent" — so such a slot falls back
+        /// to the plain class swap, which lands it instantly, as does a slot only the from-side reads.
         /// </summary>
-        private static void PairProperties(Dictionary<ArbitraryProperty, ArbitraryStyle>? fromProperties,
-            Dictionary<ArbitraryProperty, ArbitraryStyle>? toProperties, ref SpringPlan plan)
+        private static void PairProperties(in SideScan fromSide, in SideScan toSide, MotionSlotContext? context,
+            ref SpringPlan plan)
         {
-            if (fromProperties == null || toProperties == null)
+            var fromProperties = fromSide.Properties;
+            var toProperties = toSide.Properties;
+            if (toProperties == null)
             {
                 return;
             }
-            foreach (var (property, from) in fromProperties)
+            foreach (var (property, to) in toProperties)
             {
-                if (!toProperties.TryGetValue(property, out var to))
+                var isColor = MotionPropertyClassParser.IsColor(property);
+                ArbitraryStyle from = default;
+                var hasFrom = fromProperties != null && fromProperties.TryGetValue(property, out from)
+                    && (context == null || fromSide.SwappedProperties.Overlaps(StyleArbitraryLonghands.Of(property))) && (isColor || from.Unit == to.Unit);
+                if (!hasFrom && (context == null || !context.TryReadCurrent(property, to.Unit, out from)))
                 {
                     continue;
                 }
-                if (MotionPropertyClassParser.IsColor(property))
+                if (isColor)
                 {
                     (plan.Colors ??= new List<ColorChannelPlan>())
                         .Add(new ColorChannelPlan(property, from.Color, to.Color));
                     continue;
                 }
-                if (from.Unit != to.Unit)
-                {
-                    continue;
-                }
                 (plan.Lengths ??= new List<LengthChannelPlan>())
-                    .Add(new LengthChannelPlan(property, from.Value, to.Value, from.Unit));
+                    .Add(new LengthChannelPlan(property, from.Value, to.Value, to.Unit));
             }
         }
 
@@ -333,6 +339,7 @@ namespace Velvet
             public bool Claimed;
             public long Precedence;
             public bool Readable;
+            public bool Swapped;
             public ArbitraryStyle Value;
         }
 
@@ -377,8 +384,6 @@ namespace Velvet
         private static int[] BuildSlotIndex()
         {
             var index = new int[Enum.GetValues(typeof(ArbitraryProperty)).Length];
-            // MUTANT_SURVIVES(equivalent, line removed): deleting this fill changes only non-slot entries. Both readers
-            // (HeldUnread and AxisValue) receive the five axes, whose entries the loop overwrites.
             Array.Fill(index, -1);
             for (var i = 0; i < s_slots.Length; i++)
             {
@@ -389,19 +394,49 @@ namespace Velvet
 
         private static bool IsSubset(StyleLonghandSet part, StyleLonghandSet whole) => part.Union(whole) == whole;
 
-        private static SideScan Scan(string[]? classes)
+        private static StyleLonghandSet WrittenBy(string[]? classes)
+        {
+            var written = StyleLonghandSet.Empty;
+            if (classes == null) return written;
+            for (var i = 0; i < classes.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(classes[i]) && TryRank(classes[i], i, out var token))
+                {
+                    written = written.Union(token.Written);
+                }
+            }
+            return written;
+        }
+
+        private static SideScan Scan(string[]? classes, MotionSlotContext? context, StyleLonghandSet written)
         {
             var claims = s_claims;
             Array.Clear(claims, 0, claims.Length);
+            var importantClasses = CollectImportantClasses(classes ?? Array.Empty<string>(), context);
+            if (context != null)
+            {
+                ClaimResting(context, claims, in importantClasses);
+            }
             if (classes != null)
             {
-                var importantClasses = CollectImportantClasses(classes);
                 for (var i = 0; i < classes.Length; i++)
                 {
-                    Claim(classes[i], i, claims, in importantClasses);
+                    Claim(classes[i], i, claims, in importantClasses, swapped: true);
                 }
             }
 
+            var swappedAxes = 0;
+            var swappedProperties = StyleLonghandSet.Empty;
+            for (var i = 0; i < claims.Length; i++)
+            {
+                var longhands = StyleArbitraryLonghands.Of(s_slots[i]);
+                if (!longhands.Overlaps(written)) claims[i] = default;
+                else if (claims[i].Readable && claims[i].Swapped)
+                {
+                    if (i < AxisSlotCount) swappedAxes |= 1 << i;
+                    else swappedProperties = swappedProperties.Union(longhands);
+                }
+            }
             Dictionary<ArbitraryProperty, ArbitraryStyle>? properties = null;
             for (var i = AxisSlotCount; i < claims.Length; i++)
             {
@@ -428,9 +463,38 @@ namespace Velvet
                 Scale = AxisValue(claims, ArbitraryProperty.Scale),
                 Rotate = AxisValue(claims, ArbitraryProperty.Rotate),
                 Properties = properties,
+                SwappedAxes = swappedAxes,
+                SwappedProperties = swappedProperties,
                 UnreadAxes = unreadAxes,
             };
         }
+
+        // MotionSlotContextTests pins resting holders against swapped stylesheet and inline tokens.
+        private static void ClaimResting(MotionSlotContext context, SlotClaim[] claims, in StyleLonghandSet importantClasses)
+        {
+            foreach (var cls in context.RestingClasses())
+            {
+                Claim(cls, 0, claims, in importantClasses);
+            }
+            for (var i = 0; i < claims.Length; i++)
+            {
+                if (context.HasImportantInlineOutsideSwap(s_slots[i]))
+                {
+                    claims[i] = new SlotClaim { Claimed = true, Precedence = long.MaxValue };
+                    continue;
+                }
+                // MUTANT_SURVIVES(equivalent, boundary): resting claims never equal this lower inline rank before the comparison.
+                // Scan clears the claims and visits each resting slot once, with token index zero.
+                if (claims[i].Precedence < RestingInlineRank // MUTANT_SURVIVES(equivalent, clause removed): the mask contains only stylesheet contributors, whose higher ranks win the final claim. Resting contributors precede this pass; side-array contributors overwrite it before Scan copies the claims.
+                    && !IsSubset(StyleArbitraryLonghands.Of(s_slots[i]), importantClasses)
+                    && context.HoldsInlineOutsideSwap(s_slots[i]))
+                {
+                    claims[i] = new SlotClaim { Claimed = true, Precedence = RestingInlineRank };
+                }
+            }
+        }
+
+        private const long RestingInlineRank = InlineRank - 1;
 
         // The five axes lead s_slots.
         private const int AxisSlotCount = 5;
@@ -441,7 +505,7 @@ namespace Velvet
             return claim.Readable ? claim.Value.Value : null;
         }
 
-        private static StyleLonghandSet CollectImportantClasses(string[] classes)
+        private static StyleLonghandSet CollectImportantClasses(string[] classes, MotionSlotContext? context)
         {
             var written = StyleLonghandSet.Empty;
             for (var i = 0; i < classes.Length; i++)
@@ -453,11 +517,21 @@ namespace Velvet
                 }
                 written = written.Union(token.Written);
             }
+            if (context != null)
+            {
+                foreach (var cls in context.RestingClasses())
+                {
+                    if (TryRank(cls, 0, out var token) && token.Important && !token.Inline)
+                    {
+                        written = written.Union(token.Written);
+                    }
+                }
+            }
             return written;
         }
 
         private static void Claim(string className, int index, SlotClaim[] claims,
-            in StyleLonghandSet importantClasses)
+            in StyleLonghandSet importantClasses, bool swapped = false)
         {
             if (string.IsNullOrEmpty(className)
                 || !TryRank(className, index, out var token))
@@ -480,7 +554,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                claims[i] = new SlotClaim { Claimed = true, Precedence = token.Precedence };
+                claims[i] = new SlotClaim { Claimed = true, Precedence = token.Precedence, Swapped = swapped };
                 // MUTANT_SURVIVES(equivalent, clause removed): deleting the slot comparison changes no admitted write.
                 // Axis-readable opacity/scale/rotate tokens write one axis; translates set TranslateAxis.
                 if (hasAxisValue && slot == AxisSlot(readAxis))

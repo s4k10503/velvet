@@ -21,6 +21,9 @@ namespace Velvet.StyleTable
         /// re-sorted here — the transition table records position, so the order IS part of the answer. A
         /// caller that hands them over in some other order is caught by the <c>@import</c> cross-check.
         /// </summary>
+        /// <summary>The baseline sheet the table does not read.</summary>
+        internal const string PreflightSheetName = "_preflight.uss";
+
         public static StyleUtilityTableResult Build(IReadOnlyList<UssSourceText> sheets)
         {
             var problems = ImmutableArray.CreateBuilder<UssProblem>();
@@ -161,6 +164,14 @@ namespace Velvet.StyleTable
                         $"'{atRule.Text}' is not a USS construct the utility property table can model.",
                         atRule.Offset));
                 }
+            }
+
+            // A baseline imported ahead of every utility: it gives an element a starting value and is not a
+            // class a className can name, so recording it would put a Velvet-owned marker class in the table
+            // as a utility declaring its own margin and padding.
+            if (string.Equals(Path.GetFileName(sheet.Path), PreflightSheetName, StringComparison.Ordinal))
+            {
+                return;
             }
 
             foreach (var rule in sheet.Rules)

@@ -15,10 +15,12 @@ namespace Velvet
     // two are the same element.
     //
     // A class string only reaches the element it is written on, so none of the five direction classes can
-    // land on an inner box: its verdict always comes from the resolvedStyle fallback (off-panel, the
-    // widgetOwned default) below, and what lays it out is the widget's own built-in USS.
+    // land on an inner box: unless an inline value is set on that box, its verdict comes from the
+    // resolvedStyle fallback (off-panel, the widgetOwned default) below, and what lays it out is the widget's
+    // own built-in USS.
     //
-    // The five direction/display classes are consulted FIRST — even on a panel — in the SAME precedence USS
+    // After an inline flex-direction, the five direction/display classes are consulted — before
+    // resolvedStyle, even on a panel — in the SAME precedence USS
     // itself uses when more than one matches the element (equal specificity, so the LAST declared RULE wins):
     // _layout.uss declares .grid, .flex, .flex-col, .flex-col-reverse, .flex-row, .flex-row-reverse in that
     // source order, so flex-row-reverse beats flex-row beats flex-col-reverse beats flex-col beats the bare
@@ -50,10 +52,13 @@ namespace Velvet
     // row-family class survives the patch) must forget RowReverse entirely and see ColumnReverse fresh, which
     // a same-family-only check cannot do since it never looks at the other family at all.
     //
-    // resolvedStyle is the fallback for the one case no class can cover: flex-direction set some other way (a
-    // custom stylesheet rule, an inline style) with NONE of the five classes on the element — a direction
-    // class, when present, always outranks a custom stylesheet or inline flexDirection. That fallback needs a
-    // live panel, and still cannot self-correct on a same-rect toggle with no intervening reconcile pass.
+    // StyleGapManipulator.DirectionOf reads an inline flex-direction before asking this resolver for the
+    // classes' verdict.
+    //
+    // resolvedStyle is the fallback for the one case neither can cover: flex-direction set by a custom
+    // stylesheet rule with NONE of the five classes on the element — a direction class, when present,
+    // outranks a custom stylesheet's flexDirection. That fallback needs a live panel, and still cannot
+    // self-correct on a same-rect toggle with no intervening reconcile pass.
     //
     // .grid also sets flex-direction: row in _layout.uss, and is deliberately NOT part of the scan: it implies
     // Row, which is this resolver's own fallback default, so recognizing it could never produce a different

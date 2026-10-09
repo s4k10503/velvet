@@ -9,7 +9,7 @@ namespace Velvet.Tests.Performance
     /// <summary>
     /// Benchmarks the per-element style-manipulator configure pass: the state / conditional /
     /// relational / has- variant families (re-derived only when the class list changed CONTENT) and
-    /// the child-variant / gap / divide / grid / text-balance families (re-applied on every patch,
+    /// the child-variant / gap / divide / grid / pointer-events families (re-applied on every patch,
     /// because they re-derive against the current child set).
     /// A class-less tree never enters any of those blocks — every family early-outs on the first
     /// token scan — so the label-only reconciler benchmarks cannot detect a cost added there. The
@@ -49,6 +49,7 @@ namespace Velvet.Tests.Performance
         }
 
         // Element creation runs the create branch of every family.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
         [Test, Performance]
         public void Mount_100StyledRows()
         {
@@ -69,7 +70,8 @@ namespace Velvet.Tests.Performance
         // skips in ChildReconciler and DiffClassList both miss, so every element is patched and the
         // class diff runs its full content comparison — which reports no change, leaving the four
         // variant families unvisited. What remains is the every-patch cost of child-variant / gap /
-        // divide / grid / text-balance.
+        // divide / grid / pointer-events.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
         [Test, Performance]
         public void Reconcile_UnchangedClassList_100StyledRows()
         {
@@ -93,6 +95,7 @@ namespace Velvet.Tests.Performance
         // the USS class list, so the class diff itself does almost nothing while all four variant
         // families take their update branch on every row: the warm path a consolidation of the
         // configure shape has to leave untouched.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
         [Test, Performance]
         public void Reconcile_ChangedClassList_100StyledRows()
         {
@@ -113,6 +116,7 @@ namespace Velvet.Tests.Performance
         // FiberElementCleaner and never reaches the configure step at all.
         // Measured as a round trip because a single strip only tears down on its first iteration;
         // re-decorating first puts every iteration back on the teardown branch.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
         [Test, Performance]
         public void Reconcile_StripAndRestoreClassList_100StyledRows()
         {
@@ -163,17 +167,16 @@ namespace Velvet.Tests.Performance
 
         // One token of every family whose manipulator hangs off the container: state variants,
         // responsive + dark conditionals, group-/peer- relationals, event-driven has-, the [&>*]:
-        // child combinator, gap and divide. `tint` varies only the variant payloads.
+        // child combinator, gap, divide and the pointer-events scope. `tint` varies only the variant payloads.
         private static string RowClass(string tint) =>
-            "flex flex-row group gap-4 divide-y divide-gray-200 [&>*]:mt-2 "
+            "flex flex-row group gap-4 divide-y divide-gray-200 pointer-events-auto [&>*]:mt-2 "
             + $"hover:bg-{tint}-500 focus:bg-{tint}-400 active:bg-{tint}-300 "
             + $"sm:p-2 md:p-3 lg:p-4 dark:bg-{tint}-500 "
             + "group-hover:opacity-50 peer-hover:opacity-75 "
             + $"has-[:checked]:bg-{tint}-500 has-[:focus]:text-{tint}-500";
 
-        // Leaves carry text-balance plus a single variant family, the shape most elements in a real
-        // tree have.
-        private static string LeafClass(string tint) => $"text-balance hover:text-{tint}-500";
+        // Leaves carry a single variant family, the shape most elements in a real tree have.
+        private static string LeafClass(string tint) => $"hover:text-{tint}-500";
     }
 
     /// <summary>
@@ -232,9 +235,11 @@ namespace Velvet.Tests.Performance
             VelvetTheme.IsDark = _darkBefore;
         }
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this case is untouched and is selected only because the first fixture in this file changed its row-class constants.
         [Test, Performance]
         public void Reconcile_UnchangedClassList_100LiteralPaintRows() => Run(k_PlainRowClass, dark: false);
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this case is untouched and is selected only because the first fixture in this file changed its row-class constants.
         [Test, Performance]
         public void Reconcile_UnchangedClassList_100VariantGatedPaintRows() => Run(k_VariantRowClass, dark: true);
 
@@ -312,9 +317,11 @@ namespace Velvet.Tests.Performance
         [TearDown]
         public void TearDown() => _reconciler.Dispose();
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this case is untouched and is selected only because the first fixture in this file changed its row-class constants.
         [Test, Performance]
         public void Reconcile_ToggleVisible_200Rows() => Run(k_PlainRowClass);
 
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this case is untouched and is selected only because the first fixture in this file changed its row-class constants.
         [Test, Performance]
         public void Reconcile_ToggleVisible_200RowsWithASuppressedClass() => Run(k_SuppressingRowClass);
 

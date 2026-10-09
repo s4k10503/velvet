@@ -33,8 +33,8 @@ namespace Velvet
         }
 
         // Whether priority flushes on the next-frame (immediate) tier rather than the
-        // delayed tier. Urgent and Normal flush on the immediate tier; Transition is delayed by
-        // DelayedTierDelayMs. Single source of truth for tier membership, shared by the
+        // delayed tier. Urgent and Normal flush on the immediate tier; Transition on the delayed tier,
+        // behind them. Single source of truth for tier membership, shared by the
         // already-dirty escalation in ScheduleRerender and the routing in ScheduleFlush.
         internal static bool SchedulesOnImmediateTier(FiberUpdatePriority priority)
             => priority is FiberUpdatePriority.Urgent or FiberUpdatePriority.Normal;

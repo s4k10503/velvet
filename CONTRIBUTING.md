@@ -137,9 +137,9 @@ that need a run, the declarations and the cap among them, it does not take.
 
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
-survivor, and which line shapes the operators reach — which is 31% of the changed code lines measured
-over the twenty commits ending at `48057c8` with the generator as this branch leaves it, so **a survivor count is a statement about the lines an
-operator reached and not about the change**. The run prints both numbers and names the lines it could
+survivor, and which line shapes the operators reach and what share of a diff that is. The share is a
+minority, so **a survivor count is a statement about the lines an operator reached and not about the
+change**. The run prints both numbers and names the lines it could
 not ask about.
 
 **A survivor is closed or answered for; it is not reported and left.** Either the test that should have
@@ -235,10 +235,9 @@ commit git placed and found unpushed is the ordinary case, and is what the predi
 run did not kill it; one it places costs a domain reload and the test framework's preparation of a job
 for each stage it runs in its shard's session, which [Generators~/README.md ▸ The Unity
 assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies) describes. The figures
-below were measured before sessions, over launches alone. Over the twenty commits ending at `48057c8`,
-ten generated no mutant at all and the other ten ranged 3 to 51 with a median of 22. A mutant's
-launch-compile-run measured 100–118 s on a developer machine against a 94 s baseline, so a median
-branch run locally is around 41 minutes. `--plan` gives an EditMode shard six mutants and stops
+below were measured before sessions, over launches alone; how many mutants a diff generates is
+measured in that section, against the window it names. A mutant's launch-compile-run measured
+100–118 s on a developer machine against a 94 s baseline. `--plan` gives an EditMode shard six mutants and stops
 adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
 before its first mutant; a PlayMode shard takes two, since each of its mutants costs more than
 twice an EditMode one measured on the same run. Measured over 121 EditMode shards of the 100 pull-request runs
@@ -864,6 +863,9 @@ not count as a case posing one. A guard whose subject is decided in a module of 
 refuses on being `scripts/release/published_check.py`'s answer — and the floor fails a name it
 cannot resolve to a source it reads. Named is weaker than posed, deliberately: what a name match
 says is that some case exists, not that the case asks anything.
+
+`scripts/hooks/test_hook_verdicts.py` is the posed half: it runs each of those scripts against an
+event it decides against and a near miss it lets through, and its docstring owns how.
 
 ### Source generators
 

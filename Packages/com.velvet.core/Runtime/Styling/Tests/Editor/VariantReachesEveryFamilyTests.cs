@@ -41,7 +41,7 @@ namespace Velvet.Tests
         // name does not carry it, and an anchor that excluded them would have kept the largest family out of
         // the matrix while reporting nothing missing.
         private static readonly Regex FamilyPattern =
-            new(@"(?<family>Style\w+\.Is\w+)\(core\)", RegexOptions.Compiled);
+            new(@"(?<excluded>!\s*)?(?<family>Style\w+\.Is\w+)\(core\)", RegexOptions.Compiled);
 
         // A utility that stands for each family. Declared because the dispatcher answers "is this token
         // mine", not "write this one" — and stated per family so a reader can see what is being exercised.
@@ -51,11 +51,10 @@ namespace Velvet.Tests
             ["StyleClipPathClass.IsClipPathClass"] = "clip-path-[circle(40%)]",
             ["StyleFontClass.IsArbitraryFontClass"] = "font-[550]",
             ["StyleTextEffectClass.IsArbitraryLeadingClass"] = "leading-[3px]",
-            ["StyleTextBalanceClass.IsWidthDeclaringToken"] = "w-40",
             ["StyleGapClass.IsGapToken"] = "gap-4",
             ["StyleGridClass.IsGridToken"] = "grid-cols-2",
             ["StyleDivideClass.IsDivideToken"] = "divide-y",
-            ["StyleTextBalanceClass.IsTextBalanceToken"] = "text-balance",
+            ["StylePointerEventsClass.IsPointerEventsToken"] = "pointer-events-none",
             ["StyleSkewClass.IsSkewClass"] = "skew-x-6",
             ["StyleShadowClass.IsShadowClass"] = "shadow-lg",
             ["StyleGradientClass.IsGradientClass"] = "bg-gradient-to-r from-red-500 to-blue-500",
@@ -69,7 +68,7 @@ namespace Velvet.Tests
         // A ratchet on the declaration, because the two-directional check alone is satisfied by deleting a
         // family from the dispatcher AND its representative here — one plausible cleanup edit that removes a
         // family's coverage with both tests green.
-        private const int FamilyFloor = 17;
+        private const int FamilyFloor = 16;
 
         /// <summary>The variants posed, with what opens each one's gate.</summary>
         /// <remarks>
@@ -130,11 +129,37 @@ namespace Velvet.Tests
         }
 
         private static IReadOnlyList<string> Families() =>
-            FamilyPattern.Matches(File.ReadAllText(Path.GetFullPath(DispatcherPath)))
+            Families(File.ReadAllText(Path.GetFullPath(DispatcherPath)));
+
+        private static IReadOnlyList<string> Families(string source) =>
+            FamilyPattern.Matches(source)
+                .Where(match => !match.Groups["excluded"].Success)
                 .Select(match => match.Groups["family"].Value)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
+
+        // GREEN_ON_BASE(construction): this branch only removes two text-balance families from the matrix, so the test-side family reader is carried onto the base with this fixture;
+        // removing the `excluded` filter makes negated predicates count as accepted families.
+        [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
+        [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
+            "StyleGapClass.IsGapToken")]
+        [TestCase("StyleGapClass.IsGapToken(core) && ! StyleGapClass.IsSpaceToken(core)",
+            "StyleGapClass.IsGapToken")]
+        [TestCase("StyleGapClass.IsGapToken(core) || StyleGridClass.IsGridToken(core)",
+            "StyleGapClass.IsGapToken\nStyleGridClass.IsGridToken")]
+        public void Given_AFamilyGate_When_ItsFamiliesAreDerived_Then_OnlyAcceptedFamiliesRemain(
+            string source, string expected)
+        {
+            // Arrange
+            var dispatcher = source;
+
+            // Act
+            var families = Families(dispatcher);
+
+            // Assert
+            Assert.That(string.Join("\n", families), Is.EqualTo(expected));
+        }
 
         /// <remarks>
         /// Both directions, because the matrix below is driven by the DECLARED set. A one-way check that the
@@ -160,6 +185,7 @@ namespace Velvet.Tests
                 + "drifted apart, so the matrix below poses a different question than the code answers");
         }
 
+        // GREEN_ON_BASE(characterization): this branch only removes two text-balance families from the matrix, and the families left reach what the bare form reaches as on the base.
         [Test]
         public void Given_EveryPayloadFamily_When_WrittenBehindEachVariantCategory_Then_ItReachesWhatTheBareFormReaches()
         {
@@ -250,17 +276,16 @@ namespace Velvet.Tests
             try
             {
                 // Two carriers under a group, because a family's payload can require one shape or the other:
-                // the spacing and paint families need an element with children, text-balance stands down on
-                // anything that is not a text element, and a relational payload needs a group ancestor. All
-                // three are rendered for every family so the choice stays out of the declarations.
+                // the spacing and paint families need an element with children, the text families need a text
+                // element, and a relational payload needs a group ancestor. All three are rendered for every
+                // family so the choice stays out of the declarations.
                 using var mounted = V.Mount(host, V.Div(className: "group", children: new VNode?[]
                 {
                     V.Div(className: className,
                         children: new VNode?[] { V.Label(text: "a"), V.Label(text: "b") }),
                     V.Div(className: "w-[160px]", children: new VNode?[]
                     {
-                        // Narrow enough that the sentence wraps, which is the only state text-balance has
-                        // anything to do in.
+                        // Narrow enough that the sentence wraps, which is the state a text family acts in.
                         V.Label(className: className, text: "the quick brown fox jumps over the lazy dog"),
                     }),
                 }));
@@ -364,8 +389,7 @@ namespace Velvet.Tests
         /// <summary>Which of the reconciler's per-element registries hold each element.</summary>
         /// <remarks>
         /// A family whose whole effect at this layer is that a manipulator got attached shows nothing in a
-        /// reading of styles: text-balance moved not one style here, and reported inert, while the variant
-        /// path was in fact reaching it. Membership is generic — one term derived from whatever registries
+        /// reading of styles, and would be reported inert while the variant path was in fact reaching it. Membership is generic — one term derived from whatever registries
         /// the context declares — so a family added later is covered without a term written for it.
         /// </remarks>
         private static Dictionary<VisualElement, string> Registries(MountedTree mounted)

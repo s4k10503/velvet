@@ -9,7 +9,9 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The first render returns the input value as-is.</item>
     /// <item>An urgent re-render that carries a changed input returns the previously committed value and queues the new value as pending on the transition lane.</item>
-    /// <item>The next transition flush commits the pending value, so the new value is returned.</item>
+    /// <item>The next transition flush commits the input that render is handed, so the new value is returned —
+    /// including an input built afresh on every render, which never equals the reference an urgent render
+    /// queued.</item>
     /// <item>An unrelated re-render that drains ahead of that transition flush leaves the pending value deferred.</item>
     /// <item>A deferred value fed from a prop still commits: the transition lane its body queues during the
     /// parent's subsuming render survives that render's settle, including when the request coalesces onto a
@@ -37,6 +39,7 @@ namespace Velvet.Tests
             ResetInitialValue();
             ResetProp();
             ResetSliced();
+            ResetFresh();
         }
 
         [Test]
@@ -279,6 +282,55 @@ namespace Velvet.Tests
                 "When initialValue equals value, the first render commits value with no transition");
         }
 
+        [Test]
+        public void Given_AnInputBuiltAfreshOnEveryRender_When_TheTransitionLaneDrains_Then_ItCommitsThatRendersInput()
+        {
+            // Arrange — the urgent render that sees the new count queues the box it was handed, and the
+            // transition render is handed a different box holding the same count
+            using var mounted = V.Mount(_root, V.Component(FreshInputRender, key: "fresh-input"));
+            s_freshSetCount.Invoke(1);
+            FiberWorkLoop.FlushState(s_freshFiber);
+
+            // Act
+            FiberWorkLoop.FlushState(s_freshFiber);
+
+            // Assert
+            Assert.That(s_freshObserved, Is.EqualTo(1),
+                "A Transition-lane render commits the input it is handed even when it is not the queued reference");
+        }
+
+        #region Fresh input component (a new reference on every render)
+
+        private sealed class CountBox
+        {
+            internal CountBox(int count) => Count = count;
+
+            internal int Count { get; }
+        }
+
+        private static ComponentFiber s_freshFiber;
+        private static StateUpdater<int> s_freshSetCount;
+        private static int s_freshObserved;
+
+        private static void ResetFresh()
+        {
+            s_freshFiber = null;
+            s_freshSetCount = default;
+            s_freshObserved = 0;
+        }
+
+        [Component(Compiler = false)]
+        private static VNode FreshInputRender()
+        {
+            s_freshFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(0);
+            s_freshSetCount = setCount;
+            s_freshObserved = Hooks.UseDeferredValue(new CountBox(count)).Count;
+            return V.Label(text: s_freshObserved.ToString());
+        }
+
+        #endregion
+
         #region Deferred component (default comparer)
 
         private static string s_deferredInput;
@@ -310,15 +362,16 @@ namespace Velvet.Tests
 
         #endregion
 
+        // GREEN_ON_BASE(refactor): only how beta is left pending changed, since a Transition-lane render now commits it.
         [Test]
         public void Given_APendingValueUnderAParkedTransitionSlice_When_TheSliceResumes_Then_ItCommitsTheDeferredValue()
         {
-            // Arrange — one transition render leaves beta pending on the child
+            // Arrange — one urgent render leaves beta pending on the child; a transition render would commit it
             using var mounted = V.Mount(_root, V.Component(SlicedParentRender, key: "sliced-parent"));
             var parent = s_slicedFiber;
             // Only the parent flushes: a whole-tree flush would drain the child's own transition lane too,
             // committing beta before the parked slice this case is about ever runs
-            s_slicedStart.Invoke(() => s_slicedSetQuery.Invoke("beta"));
+            s_slicedSetQuery.Invoke("beta");
             FiberWorkLoop.FlushState(parent);
             Assume.That(s_slicedObserved, Is.EqualTo("alpha"), "Precondition: beta is pending, alpha is committed");
 

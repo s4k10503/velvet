@@ -51,6 +51,7 @@ worth knowing, both when several variants name one such utility:
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
 | **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` · `group-disabled:` | A marked ancestor's (`group`) state; `group-disabled:` reads it on the same terms as `disabled:` above |
 | **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` · `peer-disabled:` | A marked previous-sibling's (`peer`) state; `peer-checked:` and `peer-disabled:` read it on the same terms as `checked:` and `disabled:` above |
+| **Structural** | `first:` · `last:` · `only:` · `odd:` · `even:` · `nth-N:` · `nth-last-N:` | The element's place among its parent's children. The element a tree is mounted into and a portal's target are parents too, and the children of theirs this tree did not render count as siblings |
 
 ```csharp
 // State: a hover background and an active scale, layered over the base utilities.
@@ -124,9 +125,10 @@ Four consequences worth knowing:
   either one important changes nothing — there is no property set to rank them by. Use the
   arbitrary-value form where the family has one, or compute the class string in C# and render exactly
   one member.
-- **`has-[.foo]:` still sees a class that lost.** A `.foo` written in a descendant's `className`
+- **`has-[.foo]:` matches what the className wrote.** A `.foo` written in a descendant's `className`
   matches while Velvet keeps it off that descendant's class list, as `:has(.foo)` matches on the web
-  however the cascade ranks `.foo`'s declarations.
+  however the cascade ranks `.foo`'s declarations. A `.foo` that only a variant payload puts on the
+  descendant (`hover:foo`) does not match, as `:has(.foo)` does not match a class the author never wrote.
 
 An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style rather
 than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority class stands
@@ -136,6 +138,12 @@ takes its top from `pt-6` and the rest from `p-[12px]`) — except on a margin `
 higher-priority inline layer comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]`
 both work. The filter family is the exception — filters compose rather than override, so a `filter` class
 and a `blur-[6px]` layer both apply.
+
+A per-axis scale keeps the uniform utility on its other axis: `scale-50 scale-x-75` resolves to
+`(0.75, 0.5)`, and `scale-50 scale-y-75` to `(0.5, 0.75)`. Adding or removing a uniform preset
+updates that fallback. Several uniform presets follow the bundled stylesheet's declaration order;
+an inline uniform value supplies the fallback ahead of a plain preset. The priority rules above
+still decide which classes and inline layers participate.
 
 `origin-[…]` takes CSS `transform-origin`'s grammar, the underscore standing for a space as it does in
 `shadow-[0px_2px_8px_#0004]` and `clip-path-[polygon(…)]`: `origin-[33%_75%]` is
@@ -162,7 +170,7 @@ class is the later one on a margin `space-*` holds or a border `divide-*` holds;
 the second consequence above describes. The order is first by their variants' values (`data-[side=left]:`
 before `data-[state=open]:`, `group-hover:` before `group-hover/card:`, `[&:first-child]:` before
 `[&:nth-child(1)]:`), then by the first property they differ on in Tailwind's property order
-(`hover:m-[4px]` before `hover:mt-[8px]`), then by the candidate itself, digits read as numbers
+(`hover:m-[4px]` before `hover:ms-[4px]` before `hover:mt-[8px]`), then by the candidate itself, digits read as numbers
 (`hover:w-[10px]` before `hover:w-[20px]`).
 
 | | Specificity | Layer |
@@ -254,9 +262,10 @@ payload, since `md:shadow-lg` is a variant token and `shadow-lg` is what it reso
 utilities have to be re-derived when the variant toggles.
 
 **Re-derived, so the variant behaves exactly like a literal class.** The manipulator-backed layout
-utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance`; the
-wrapper-less paints — `skew-*`, `shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its
-`from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
+utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`; the picking
+Velvet writes down a subtree — `pointer-events-none` / `pointer-events-auto`
+([styling-pointer-events.md](styling-pointer-events.md)); the wrapper-less paints — `skew-*`,
+`shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its `from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
 `outline-*`; the inline font layer — `font-<family>`, `font-<weight>`, `italic` / `not-italic` and the
 `font-[…]` forms; and the axes Velvet writes into the displayed string — `uppercase` / `lowercase` /
 `capitalize` / `normal-case`, `underline` / `line-through` / `overline` / `no-underline`,
@@ -417,6 +426,40 @@ child and is reached. How far the payload gets differs per control because `& > 
 
 A declared `label:` seats the label element ahead of the input, and it takes the payload as well, so
 `[&>*]:text-red-500` on a labelled field colours both.
+
+**A field control's own surface utilities paint its input box.** On an `<input>` or a `<select>` the class
+lands on the box the value is shown in; UI Toolkit draws a field as an outer control around a child box (the
+element carrying `unity-base-field__input`, `#unity-text-input` in a text field) that the theme dresses. So
+the field factories — `V.TextField`, `V.IntegerField`, `V.DropdownField` and `V.Custom<T>` for a `T` that is
+a text-input field (`FloatField`, `DoubleField`, `LongField`, …) or a popup field (`PopupField<T>`, …) — send
+these to the box:
+
+- backgrounds, including the gradient utilities (`bg-*`, `bg-linear-*`, `from-*` / `via-*` / `to-*`);
+- borders, including the line style (`border`, `border-*`, `border-solid` / `-dashed` / `-dotted`);
+- radius (`rounded`, `rounded-*`) and padding (`p-*`, `px-*`, `py-*`, `pt-*` … `pe-*`);
+- `shadow-*`, `drop-shadow-*`, `ring-*` and `outline-*`.
+
+`V.TextField(className: "w-64 bg-slate-800 rounded-lg px-3")` sizes the outer control and paints the box;
+layout, size and margin utilities, and every utility not listed, stay on the outer control. A declared
+`label:` is left unpainted, unlike under `[&>*]:`. `whileHoverClass` / `whileTapClass` / `whileFocusClass`
+send their surface classes to the box the same way.
+
+Where a variant's condition lives decides who evaluates it:
+
+- `hover:`, `focus:`, `active:`, `focus-visible:`, `dark:` and the responsive variants are the
+  box's own, so `focus:border-blue-500` follows focus on the box, as it does on an `<input>`.
+- `group-*` and `peer-*` look for their source from the control: the peer is a sibling of the control, not of
+  the box, and the group an ancestor of it.
+- `first:`, `last:`, `odd:`, `even:`, `has-[…]:`, `data-[…]:`, `aria-[…]:` and `supports-[…]:` are
+  conditions on the control, so the control evaluates them and the box takes the paint.
+
+The same holds when a container's `[&>*]:` payload lands on a field. A variant stacked behind one of the
+control's conditions (`first:hover:bg-x`) is not routed to the box.
+
+The cases that pin this are `InputBoxSurfaceTests` (the class list each factory builds, where each
+payload and paint binding lands, and what teardown releases) and `InputBoxSurfacePanelTests` (the
+sheet-attached resolved colours, the peer source and focus). They resolve the utility's colour from a
+reference element carrying the same class rather than from a literal.
 
 **`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
 spelled on the *container* rather than on the element it lands on, and a child is fully built before

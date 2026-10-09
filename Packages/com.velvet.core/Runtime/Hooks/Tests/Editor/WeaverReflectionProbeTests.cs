@@ -702,39 +702,41 @@ namespace Velvet.Tests
 
         // --- PositionalHookNames.All canonical pin ---
 
-        private static readonly string[] Expected =
-        {
-            "UseEffect",
-            "UseLayoutEffect",
-            "UseInsertionEffect",
-            "UseCallback",
-            "UseMemo",
-            "UseBlocker",
-            "UseState",
-            "UseReducer",
-            "UseOptimistic",
-            "UseStore",
-            "UseContext",
-            "UseRef",
-            "UseMutableRef",
-            "UseImperativeHandle",
-            "UseTransition",
-            "UseId",
-            "UseDeferredValue",
-            "UseMutation",
-            "UseService",
-            "UseFallback",
-            "Use",
-            "UseFrame",
-        };
-
         [Test]
         public void Given_CanonicalSet_When_Inspected_Then_MatchesTheExpectedNames()
         {
+            // Arrange
+            string[] expected =
+            {
+                "UseEffect",
+                "UseLayoutEffect",
+                "UseInsertionEffect",
+                "UseCallback",
+                "UseMemo",
+                "UseBlocker",
+                "UseState",
+                "UseReducer",
+                "UseOptimistic",
+                "UseStore",
+                "UseSyncExternalStore",
+                "UseContext",
+                "UseRef",
+                "UseMutableRef",
+                "UseImperativeHandle",
+                "UseTransition",
+                "UseId",
+                "UseDeferredValue",
+                "UseMutation",
+                "UseService",
+                "UseFallback",
+                "Use",
+                "UseFrame",
+            };
+
             // Act + Assert
-            Assert.That(PositionalHookNames.All, Is.EquivalentTo(Expected),
+            Assert.That(PositionalHookNames.All, Is.EquivalentTo(expected),
                 "PositionalHookNames.All drifted from the canonical set. If the change is intentional, update the" +
-                " Expected list here; the ILPP weaver reads PositionalHookNames.All directly.");
+                " expected list here; the ILPP weaver reads PositionalHookNames.All directly.");
         }
 
         [Test]

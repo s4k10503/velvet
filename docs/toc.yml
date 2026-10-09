@@ -19,8 +19,12 @@
       href: guides/styling-flexbox-and-gap.md
     - name: Z-index stacking
       href: guides/styling-z-index.md
+    - name: Pointer events
+      href: guides/styling-pointer-events.md
     - name: Variants
       href: guides/styling-variants.md
+    - name: Gradients
+      href: guides/styling-gradients.md
     - name: Filters
       href: guides/styling-filters.md
     - name: Drag and drop

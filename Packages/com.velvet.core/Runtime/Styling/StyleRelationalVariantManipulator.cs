@@ -63,15 +63,24 @@ namespace Velvet
                 return;
             }
             // Copied first: a retarget can light a payload, and a payload that is itself a variant adds to or
-            // removes from the stacked registry (see VariantSettleSweep.SnapshotStacked).
-            foreach (var manipulator in new List<StyleRelationalVariantManipulator>(ctx.RelationalVariantManipulators.Values))
+            // removes from the stacked registry (see ReconcilerContext.CopyStackedVariantsOn).
+            var relational = ctx.BufferPool.RentRelationalVariantList();
+            try
             {
-                manipulator.Retarget();
+                foreach (var manipulator in ctx.RelationalVariantManipulators.Values)
+                {
+                    relational.Add(manipulator);
+                }
+                foreach (var manipulator in relational)
+                {
+                    manipulator.Retarget();
+                }
             }
-            foreach (var stacked in new List<StyleStackedVariantManipulator>(ctx.StackedVariantManipulators.Values))
+            finally
             {
-                stacked.RetargetRelational();
+                ctx.BufferPool.ReturnRelationalVariantList(relational);
             }
+            ctx.ForEachStackedVariant<object?>(null, static (stacked, _) => stacked.RetargetRelational());
         }
 
         private readonly ReconcilerContext _ctx;
@@ -222,11 +231,13 @@ namespace Velvet
         }
 
         // Every source a relational binding reacts to, nearest first: each preceding declared sibling carrying
-        // cls for a peer, each ancestor carrying it for a group.
+        // cls for a peer, each ancestor carrying it for a group. An input box looks from its control, since
+        // the box's only sibling is the control's label.
         internal static void FindSources(VisualElement element, bool isPeer, string cls, ReconcilerContext ctx,
             List<VisualElement> into)
         {
             into.Clear();
+            element = StyleInputBoxSurface.RelationalAnchorOf(element);
             if (isPeer)
             {
                 FindPrevSiblingsWithClass(element, cls, ctx, into);

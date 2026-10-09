@@ -627,6 +627,89 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_HalfOffsetsAndNegativeHalfTranslates_When_Resolved_Then_TheChildIsCentredInItsParent()
+        {
+            // Arrange — the in-flow sibling moves a relatively positioned leaf down, so only `absolute`
+            // centres it.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "w-[200px] h-[200px]", name: "parent", children: new VNode?[]
+                {
+                    V.Div(className: "h-[50px]"),
+                    V.Div(name: "leaf",
+                        className: "absolute left-1/2 top-1/2 w-[40px] h-[20px] -translate-x-1/2 -translate-y-1/2"),
+                }));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
+            ForcePanelUpdate(leaf.panel);
+
+            // Act
+            var offCentre = Vector2.Distance(leaf.worldBound.center, parent.worldBound.center);
+
+            // Assert
+            Assert.That(offCentre, Is.EqualTo(0f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_AbsoluteTopClassOverriddenByTopAuto_When_Laid_Out_Then_SitsWhereAnElementWithNoTopSits()
+        {
+            // Arrange — `b` carries no top and `c` carries the top-4 class alone, so the tuple below also fails
+            // when top-4 stops moving an element and the override has nothing to undo.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "w-[200px] h-[200px]", children: new VNode?[]
+                {
+                    V.Div(name: "a", className: "absolute w-[10px] h-[10px] top-4 top-auto"),
+                    V.Div(name: "b", className: "absolute w-[10px] h-[10px]"),
+                    V.Div(name: "c", className: "absolute w-[10px] h-[10px] top-4"),
+                }));
+            var a = _window.rootVisualElement.Q<VisualElement>("a");
+            var b = _window.rootVisualElement.Q<VisualElement>("b");
+            var c = _window.rootVisualElement.Q<VisualElement>("c");
+            ForcePanelUpdate(a.panel);
+
+            // Act
+            var offsets = (a.layout.y - b.layout.y, c.layout.y - b.layout.y);
+
+            // Assert
+            Assert.That(offsets, Is.EqualTo((0f, 16f)));
+        }
+
+        [Test]
+        public void Given_RelativeTopClassOverriddenByTopAuto_When_Laid_Out_Then_SitsWhereAnElementWithNoTopSits()
+        {
+            // Arrange — one column per element, each with the same spacer above it, so the three y offsets
+            // differ only by the top each carries. `c` carries the top-4 class alone, as in the absolute case.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "flex-row", children: new VNode?[]
+                {
+                    V.Div(className: "w-[100px]", children: new VNode?[]
+                    {
+                        V.Div(className: "h-[30px]"),
+                        V.Div(name: "a", className: "relative h-[20px] top-4 top-auto"),
+                    }),
+                    V.Div(className: "w-[100px]", children: new VNode?[]
+                    {
+                        V.Div(className: "h-[30px]"),
+                        V.Div(name: "b", className: "relative h-[20px]"),
+                    }),
+                    V.Div(className: "w-[100px]", children: new VNode?[]
+                    {
+                        V.Div(className: "h-[30px]"),
+                        V.Div(name: "c", className: "relative h-[20px] top-4"),
+                    }),
+                }));
+            var a = _window.rootVisualElement.Q<VisualElement>("a");
+            var b = _window.rootVisualElement.Q<VisualElement>("b");
+            var c = _window.rootVisualElement.Q<VisualElement>("c");
+            ForcePanelUpdate(a.panel);
+
+            // Act
+            var offsets = (a.worldBound.y - b.worldBound.y, c.worldBound.y - b.worldBound.y);
+
+            // Assert
+            Assert.That(offsets, Is.EqualTo((0f, 16f)));
+        }
+
+        [Test]
         public void Given_OriginTopRightClass_When_Resolved_Then_TransformOriginIsAtTheTopEdge()
         {
             // Arrange/Act — origin-top-right -> `right top`; the y component resolves to the top edge (0),

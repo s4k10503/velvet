@@ -45,9 +45,9 @@ namespace Velvet
     // reconciler calls Apply right after it reconciles the container's children (the panel-independent path
     // that also covers EditMode, where layout never ticks); (2) GeometryChangedEvent catches child add /
     // remove / reorder driven by an unrelated reconcile pass at runtime; (3) AttachToPanelEvent re-resolves
-    // once resolvedStyle is valid, for the one case no class can cover (see StyleFlexDirectionResolver: the
-    // five direction/display classes are the PRIMARY direction source, even on a panel — resolvedStyle is
-    // only the fallback).
+    // once resolvedStyle is valid, for the one case neither an inline value nor a class can cover (see
+    // StyleFlexDirectionResolver: an inline flex-direction is read first, then the five direction/display
+    // classes, even on a panel — resolvedStyle is only the fallback).
     // A signature (_lastSignature) makes repeated Apply calls with no relevant change — notably the
     // GeometryChanged feedback the manipulator's own margin writes provoke — into no-ops.
     // Reparent / removal. The manipulator tracks every element it wrote a margin to
@@ -127,9 +127,10 @@ namespace Velvet
         // Null unless the child container is a separate element — see ObserveChildContainer.
         private VisualElement? _observed;
 
-        // Whether the last verdict came from a class — a flex-wrap / flex-nowrap / flex-wrap-reverse marker for
-        // the wrap, one of the five direction/display classes for the direction — and whether such a class has
-        // left since the last GeometryChangedEvent. See DirectionOf and IsWrap.
+        // Whether the last read found a class — a flex-wrap / flex-nowrap / flex-wrap-reverse marker for the
+        // wrap, one of the five direction/display classes for the direction — and whether such a class has
+        // left since the last GeometryChangedEvent. They record class presence, not which source answered.
+        // See DirectionOf and IsWrap.
         private bool _wrapFromMarker;
         private bool _directionFromClass;
         private bool _directionClassLeft;
@@ -478,26 +479,33 @@ namespace Velvet
             }
         }
 
-        // The class verdict first (StyleFlexDirectionResolver). Once every direction/display class has left the
-        // class list, the fallback is not taken until the next GeometryChangedEvent — for the reason IsWrap
-        // gives — and the verdict is the inline flex-direction, whose unset slot reads Column, the direction
-        // an element carrying none of those classes lays out in.
+        // Read in the order inline flex-direction, then the class verdict (StyleFlexDirectionResolver), then
+        // resolvedStyle. Once every direction/display class has left the class list, the fallback is not taken
+        // until the next GeometryChangedEvent — for the reason IsWrap gives — and the verdict is Column, the
+        // direction an element carrying none of those classes lays out in.
         private FlexDirection DirectionOf(VisualElement container)
         {
             var fromClass = StyleFlexDirectionResolver.FromClasses(container);
             var hadClass = _directionFromClass;
             _directionFromClass = fromClass != null;
+            // MUTANT_SURVIVES(equivalent, clause removed): the flag is read only once the class is gone, and the
+            // call that first finds it gone sets the flag itself, so setting it earlier changes nothing.
+            if (hadClass && fromClass == null)
+            {
+                _directionClassLeft = true;
+            }
+            var inline = container.style.flexDirection;
+            if (inline.keyword != StyleKeyword.Null)
+            {
+                return inline.value;
+            }
             if (fromClass != null)
             {
                 return fromClass.Value;
             }
-            if (hadClass)
-            {
-                _directionClassLeft = true;
-            }
             if (_directionClassLeft)
             {
-                return container.style.flexDirection.value;
+                return FlexDirection.Column;
             }
             return StyleFlexDirectionResolver.ResolveWithoutClasses(container, !ReferenceEquals(container, target));
         }
@@ -508,34 +516,41 @@ namespace Velvet
         // direction resolve does — the fallback below is already the engine's own no-wrap. The residue is
         // an inner box whose built-in USS wraps, which only a live panel reports; it bites harder here than
         // for direction, since wrap is the only mode that writes the container's own margin.
-        // The flex-wrap / flex-nowrap / flex-wrap-reverse markers are consulted first, in _layout.uss's
+        // An inline flex-wrap is read before the markers. The flex-wrap / flex-nowrap / flex-wrap-reverse markers
+        // are consulted next, in _layout.uss's
         // declaration order (flex-wrap-reverse beats flex-nowrap beats flex-wrap when more than one is
         // present). There is no further "direction class implies a default" tier: flex / flex-row(-reverse)
         // / flex-col(-reverse) set flex-direction only, and since nearly every real container carries one,
         // treating them as evidence would take the resolvedStyle fallback away from almost all of them and
         // misread a genuinely wrapping inline-styled container as non-wrapping. That fallback is the
-        // catch-all for wrap set some other way (a custom stylesheet rule, an inline style).
+        // catch-all for wrap set by a custom stylesheet rule.
         // Once a marker leaves the class list the fallback is not taken until the next GeometryChangedEvent:
         // until a layout pass has run, resolvedStyle can still hold the style pass that saw the marker, and
-        // a container that keeps its size would fire no event to correct a stale "wrap". Until then it
-        // answers from the inline flex-wrap, which an inline write keeps current and whose unset slot reads
-        // the engine's no-wrap.
+        // a container that keeps its size would fire no event to correct a stale "wrap". Until then an unset
+        // inline flex-wrap answers no-wrap, the engine's own default.
         private bool IsWrap(VisualElement container)
         {
             var marker = WrapMarker(container);
             var hadMarker = _wrapFromMarker;
             _wrapFromMarker = marker != null;
+            // MUTANT_SURVIVES(equivalent, clause removed): the flag is read only once the marker is gone, and the
+            // call that first finds it gone sets the flag itself, so setting it earlier changes nothing.
+            if (hadMarker && marker == null)
+            {
+                _wrapClassLeft = true;
+            }
+            var inline = container.style.flexWrap;
+            if (inline.keyword != StyleKeyword.Null)
+            {
+                return inline.value != Wrap.NoWrap;
+            }
             if (marker != null)
             {
                 return marker.Value;
             }
-            if (hadMarker)
-            {
-                _wrapClassLeft = true;
-            }
             if (_wrapClassLeft)
             {
-                return container.style.flexWrap.value != Wrap.NoWrap;
+                return false;
             }
             if (container.panel != null)
             {

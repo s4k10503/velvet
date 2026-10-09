@@ -116,10 +116,10 @@ namespace Velvet
         // a press that never crosses the activation constraint must remain a plain click.
         internal static void Arm(VisualElement source, DndDraggableBinding draggable, ReconcilerContext ctx, PointerDownEvent evt)
         {
-            // A press that can never arm (secondary button, disabled) is validated BEFORE any hand-off:
+            // A press that can never arm (secondary button, disabled, NoDrag) is validated BEFORE any hand-off:
             // it must not cost a live pending session its observers (a right-button chord mid-press
             // would otherwise silently kill the held left gesture).
-            if (evt.button != 0 || draggable.Settings.Disabled)
+            if (evt.button != 0 || draggable.Settings.Disabled || ctx.NoDragElements.Contains(source))
             {
                 return;
             }
@@ -334,7 +334,7 @@ namespace Velvet
             RegisterActiveObservers();
             EstablishFocusAnchor();
             ApplyActiveStyling();
-            BeginOverlaySession();
+            RefreshOverlays();
 
             var args = new DragStartArgs(ActiveInfo(), _origin);
             FireDiscrete(() => _scope.Settings.OnDragStart?.Invoke(args));
@@ -375,9 +375,6 @@ namespace Velvet
             RegisterOnObserved(_onDragDown);
             RegisterOnObserved(_onDragCancel);
             _source.RegisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
-            // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
-            // dispatch through the FOCUSED panel, which need not be the source's.
-            RegisterEscapeOnManagedRoots();
         }
 
         // The runtime input system only routes keyboard events into a panel that HAS a focused
@@ -416,12 +413,19 @@ namespace Velvet
             ApplyDragActiveClasses();
         }
 
-        // Every overlay mounted at activation under this session's scope shows the preview, as every
-        // dnd-kit DragOverlay renders its children while its own context's drag is active.
-        private void BeginOverlaySession()
+        // Every overlay mounted under this session's scope shows the preview, as every dnd-kit
+        // DragOverlay renders its children while its own context's drag is active. Runs at activation,
+        // at the end of every drain (JoinOverlaysAfterCommit), where the overlay's placeholder is already
+        // parented into its scope, and on every move for a mount that committed outside a drain; a
+        // positioner already joined is skipped.
+        private void JoinMountedOverlays()
         {
             foreach (var (positioner, binding) in _ctx.DragOverlayBindings)
             {
+                if (HasJoinedOverlay(positioner))
+                {
+                    continue;
+                }
                 if (!ReferenceEquals(FindEnclosingScope(binding.Anchor ?? positioner, _ctx, out _), _scopeElement))
                 {
                     continue;
@@ -429,7 +433,36 @@ namespace Velvet
                 _overlays.Add((positioner, binding));
                 DndOverlayDriver.BeginSession(positioner, _originRect.size);
             }
+        }
+
+        // Drain-end hook (Reconciler's drain-end callback): an overlay a render mounted joins on the
+        // commit that mounted it rather than on the next move.
+        internal void JoinOverlaysAfterCommit()
+        {
+            if (_active)
+            {
+                RefreshOverlays();
+            }
+        }
+
+        // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
+        // dispatch through the FOCUSED panel, which need not be the source's — and an overlay mounting
+        // mid-drag can create a layer host whose panel did not exist at activation.
+        private void RefreshOverlays()
+        {
+            JoinMountedOverlays();
+            RegisterEscapeOnManagedRoots();
             SyncOverlays();
+        }
+
+        private bool HasJoinedOverlay(VisualElement positioner)
+        {
+            var found = false;
+            foreach (var (joined, _) in _overlays)
+            {
+                found |= ReferenceEquals(joined, positioner);
+            }
+            return found;
         }
 
         private void SyncOverlays()
@@ -511,7 +544,7 @@ namespace Velvet
             {
                 _source.style.translate = new Translate(_baseTranslate.x + _delta.x, _baseTranslate.y + _delta.y);
             }
-            SyncOverlays();
+            RefreshOverlays();
             UpdateCollision();
             evt.StopPropagation();
         }
@@ -944,7 +977,7 @@ namespace Velvet
 
         // Key events dispatch through whichever panel holds keyboard focus, which need not be the
         // source's panel in a tree spanning layer/world-space hosts — the Escape cancel listens on every
-        // managed panel root that exists at activation time.
+        // managed panel root that exists when the session refreshes its overlays.
         private void RegisterEscapeOnManagedRoots()
         {
             void AddRoot(VisualElement? root)

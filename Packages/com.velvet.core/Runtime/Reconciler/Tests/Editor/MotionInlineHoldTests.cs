@@ -118,6 +118,20 @@ namespace Velvet.Tests
             Assert.That(TranslateX(card), Is.EqualTo(40f));
         }
 
+        // GREEN_ON_BASE(characterization): a zero-duration bezier writes the destination pose at the render.
+        [Test]
+        public void Given_ARestingPose_When_AZeroDurationBezierChangesIt_Then_ThePoseIsWrittenAtTheRender()
+        {
+            // Arrange
+            var transition = new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 0f };
+
+            // Act
+            var card = Render(Slide(transition), null, "left", "right");
+
+            // Assert
+            Assert.That(TranslateX(card), Is.EqualTo(40f));
+        }
+
         [Test]
         public void Given_ATweenAtTheLongestPlayableDuration_When_ItChangesThePose_Then_TheOldPoseStaysUntilTheSwap()
         {

@@ -86,8 +86,8 @@ namespace Velvet
         private DragOverlaySettings? _dragOverlay;
 
         /// <summary>
-        /// When true, a press that starts on this element or inside it never arms a draggable enclosing
-        /// it, so a control inside a draggable keeps its own pointer gesture (a slider's thumb, a text
+        /// When true, a press that starts on this element or inside it never arms this element's own
+        /// draggable or an enclosing one, so a control keeps its own pointer gesture (a slider's thumb, a text
         /// field's selection). A draggable inside this element still arms.
         /// </summary>
         public bool NoDrag { get => _noDrag; set { ThrowIfReadOnly(); _noDrag = value; } }
@@ -147,10 +147,31 @@ namespace Velvet
         }
     }
 
-    /// <summary>Slider.lowValue / highValue. Record structural equality simplifies DiffProps.</summary>
+    /// <summary>
+    /// Slider.lowValue / highValue / direction / inverted, and the keyboard step. Record structural equality simplifies DiffProps.
+    /// A null <see cref="Direction"/> or <see cref="Inverted"/> is undeclared: one no render has declared is
+    /// not written, and one a render declared and a later render dropped is restored to what the slider
+    /// carried when a render first declared it. A null bound is written as 0 or 10 whenever either bound's
+    /// declaration changes. <see cref="Step"/> is Radix's <c>step</c>, and null is its default of 1.
+    /// </summary>
     public sealed record SliderSettings(
         float? LowValue = null,
-        float? HighValue = null);
+        float? HighValue = null,
+        SliderDirection? Direction = null,
+        bool? Inverted = null,
+        float? Step = null)
+    {
+        /// <summary>
+        /// Reads the range alone. Kept beside the five-member form the record declares so a two-element
+        /// deconstruction or positional pattern written against the record before it carried
+        /// <see cref="Direction"/>, <see cref="Inverted"/> and <see cref="Step"/> still compiles.
+        /// </summary>
+        public void Deconstruct(out float? LowValue, out float? HighValue)
+        {
+            LowValue = this.LowValue;
+            HighValue = this.HighValue;
+        }
+    }
 
     /// <summary>Controls ScrollView scroller visibility and touch-scroll behavior.</summary>
     public sealed record ScrollViewSettings(
@@ -159,7 +180,8 @@ namespace Velvet
         ScrollView.TouchScrollBehavior? TouchScrollBehavior = null);
 
     /// <summary>
-    /// TextField.isPasswordField, textEdition.placeholder, maxLength, isReadOnly and isDelayed.
+    /// TextField.isPasswordField, textEdition.placeholder, maxLength, isReadOnly, isDelayed, multiline,
+    /// keyboardType and autoCorrection.
     /// A null member is undeclared: <see cref="FiberPropApplier.ApplyTextField"/> leaves a member no render
     /// has declared untouched, and restores what the element was constructed with once a render that did
     /// declare one drops it. An empty <see cref="Placeholder"/> is a declared empty placeholder.
@@ -169,7 +191,20 @@ namespace Velvet
         string? Placeholder = null,
         int? MaxLength = null,
         bool? IsReadOnly = null,
-        bool? IsDelayed = null);
+        bool? IsDelayed = null)
+    {
+        // Init-only rather than positional: a positional member would change the constructor and the
+        // Deconstruct that existing callers bind to.
+
+        /// <summary>TextField.multiline (HTML <c>&lt;textarea&gt;</c>).</summary>
+        public bool? Multiline { get; init; }
+
+        /// <summary>TextField.keyboardType (HTML <c>inputmode</c>).</summary>
+        public TouchScreenKeyboardType? KeyboardType { get; init; }
+
+        /// <summary>TextField.autoCorrection (HTML <c>autocorrect</c>).</summary>
+        public bool? AutoCorrection { get; init; }
+    }
 
     /// <summary>List of choices for DropdownField / RadioButtonGroup.</summary>
     public sealed record ChoicesSettings(
