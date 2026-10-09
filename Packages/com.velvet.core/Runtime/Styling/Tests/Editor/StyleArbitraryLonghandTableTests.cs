@@ -30,7 +30,7 @@ namespace Velvet.Tests
         // does not hold out. A literal rather than the complement of the family, so a family that swallowed
         // a mapped member cannot shrink both sides of the comparison together. Updated deliberately when a
         // MAPPED property is added; a filter member added to the resolver's set leaves it where it is.
-        private const int MappedPropertyCount = 68;
+        private const int MappedPropertyCount = 70;
 
         private readonly List<UnityEngine.Object> _spawned = new();
 

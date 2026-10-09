@@ -3,47 +3,89 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Writes a StyleOverrides member whose slot a utility's arbitrary value can also write (bg-[#…], text-[#…],
-    // slice-[…]). Both are inline, so a plain write would leave whichever came last; registering the member as
-    // a layer at StyleLayerPriority.InlineStyle ranks it the way React's style prop ranks against className,
-    // whatever the write order. A keyword value (Initial, Auto, …) is the same layer carrying the keyword; a
-    // Null keyword or no value is no override at all.
+    // Writes StyleOverrides, Velvet's style prop. A member whose property a utility can also write is registered
+    // as a layer at StyleLayerPriority.InlineStyle, which ranks it the way React's style prop ranks against
+    // className whatever the write order; a keyword value (Initial, Auto, …) is the same layer carrying the
+    // keyword, and a Null keyword or no value is no override at all. The background image is ranked by its own
+    // record (StyleArbitraryValueResolver.WriteBackgroundImageOverride).
     internal static class StyleOverridesLayer
     {
-        public static void Write(VisualElement element, ArbitraryProperty property, StyleColor? value)
+        // Writes each member that differs between the two; on mount oldStyles is StyleOverrides.Empty.
+        public static void Diff(VisualElement element, StyleOverrides oldStyles, StyleOverrides newStyles)
         {
-            if (value is not { keyword: not StyleKeyword.Null } color)
+            if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage))
             {
-                StyleArbitraryValueResolver.Clear(element, property, StyleLayerPriority.InlineStyle);
-                return;
+                StyleArbitraryValueResolver.WriteBackgroundImageOverride(element, newStyles.BackgroundImage);
             }
-            StyleArbitraryValueResolver.Apply(element, color.keyword == StyleKeyword.Undefined
-                ? new ArbitraryStyle(property, color.value)
-                : new ArbitraryStyle(property, color.keyword), StyleLayerPriority.InlineStyle);
+            if (!Equals(oldStyles.BackgroundRepeat, newStyles.BackgroundRepeat))
+            {
+                Write(element, ArbitraryProperty.BackgroundRepeat, newStyles.BackgroundRepeat);
+            }
+            if (!Equals(oldStyles.UnitySliceType, newStyles.UnitySliceType))
+            {
+                Write(element, ArbitraryProperty.SliceType, newStyles.UnitySliceType);
+            }
+            if (!Equals(oldStyles.UnitySliceTop, newStyles.UnitySliceTop))
+            {
+                Write(element, ArbitraryProperty.SliceTop, newStyles.UnitySliceTop);
+            }
+            if (!Equals(oldStyles.UnitySliceRight, newStyles.UnitySliceRight))
+            {
+                Write(element, ArbitraryProperty.SliceRight, newStyles.UnitySliceRight);
+            }
+            if (!Equals(oldStyles.UnitySliceBottom, newStyles.UnitySliceBottom))
+            {
+                Write(element, ArbitraryProperty.SliceBottom, newStyles.UnitySliceBottom);
+            }
+            if (!Equals(oldStyles.UnitySliceLeft, newStyles.UnitySliceLeft))
+            {
+                Write(element, ArbitraryProperty.SliceLeft, newStyles.UnitySliceLeft);
+            }
+            if (!Equals(oldStyles.UnitySliceScale, newStyles.UnitySliceScale))
+            {
+                Write(element, ArbitraryProperty.SliceScale, newStyles.UnitySliceScale);
+            }
+            if (!Equals(oldStyles.BackgroundColor, newStyles.BackgroundColor))
+            {
+                Write(element, ArbitraryProperty.BackgroundColor, newStyles.BackgroundColor);
+            }
+            if (!Equals(oldStyles.Color, newStyles.Color))
+            {
+                Write(element, ArbitraryProperty.TextColor, newStyles.Color);
+            }
         }
 
-        public static void Write(VisualElement element, ArbitraryProperty property, StyleInt? value)
-        {
-            if (value is not { keyword: not StyleKeyword.Null } inset)
-            {
-                StyleArbitraryValueResolver.Clear(element, property, StyleLayerPriority.InlineStyle);
-                return;
-            }
-            StyleArbitraryValueResolver.Apply(element, inset.keyword == StyleKeyword.Undefined
-                ? new ArbitraryStyle(property, inset.value, LengthUnit.Pixel)
-                : new ArbitraryStyle(property, inset.keyword), StyleLayerPriority.InlineStyle);
-        }
+        private static void Write(VisualElement element, ArbitraryProperty property, StyleColor? value)
+            => Write(element, property, value?.keyword, new ArbitraryStyle(property, value.GetValueOrDefault().value));
 
-        public static void Write(VisualElement element, ArbitraryProperty property, StyleFloat? value)
+        private static void Write(VisualElement element, ArbitraryProperty property, StyleInt? value)
+            => Write(element, property, value?.keyword,
+                new ArbitraryStyle(property, value.GetValueOrDefault().value, LengthUnit.Pixel));
+
+        private static void Write(VisualElement element, ArbitraryProperty property, StyleFloat? value)
+            => Write(element, property, value?.keyword,
+                new ArbitraryStyle(property, value.GetValueOrDefault().value, LengthUnit.Pixel));
+
+        // Value carries the x repeat and Value2 the y repeat.
+        private static void Write(VisualElement element, ArbitraryProperty property, StyleBackgroundRepeat? value)
+            => Write(element, property, value?.keyword, new ArbitraryStyle(property,
+                (float)value.GetValueOrDefault().value.x, (float)value.GetValueOrDefault().value.y, 0f, 0f));
+
+        private static void Write(VisualElement element, ArbitraryProperty property, StyleEnum<SliceType>? value)
+            => Write(element, property, value?.keyword,
+                new ArbitraryStyle(property, (float)value.GetValueOrDefault().value, LengthUnit.Pixel));
+
+        private static void Write(VisualElement element, ArbitraryProperty property, StyleKeyword? keyword,
+            in ArbitraryStyle value)
         {
-            if (value is not { keyword: not StyleKeyword.Null } factor)
+            if (keyword is null or StyleKeyword.Null)
             {
                 StyleArbitraryValueResolver.Clear(element, property, StyleLayerPriority.InlineStyle);
                 return;
             }
-            StyleArbitraryValueResolver.Apply(element, factor.keyword == StyleKeyword.Undefined
-                ? new ArbitraryStyle(property, factor.value, LengthUnit.Pixel)
-                : new ArbitraryStyle(property, factor.keyword), StyleLayerPriority.InlineStyle);
+            StyleArbitraryValueResolver.Apply(element,
+                keyword == StyleKeyword.Undefined ? value : new ArbitraryStyle(property, keyword.Value),
+                StyleLayerPriority.InlineStyle);
         }
     }
 }

@@ -118,6 +118,8 @@ namespace Velvet
             Set(sets, ArbitraryProperty.SliceBottom, StyleLonghand.UnitySliceBottom);
             Set(sets, ArbitraryProperty.SliceLeft, StyleLonghand.UnitySliceLeft);
             Set(sets, ArbitraryProperty.SliceScale, StyleLonghand.UnitySliceScale);
+            Set(sets, ArbitraryProperty.BackgroundRepeat, StyleLonghand.BackgroundRepeat);
+            Set(sets, ArbitraryProperty.SliceType, StyleLonghand.UnitySliceType);
 
             return sets;
         }

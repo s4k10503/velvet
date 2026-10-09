@@ -94,7 +94,6 @@ namespace Velvet.Tests
             Assert.That((running.x, stopped.x, stopped.y), Is.EqualTo((Repeat.NoRepeat, Repeat.Repeat, Repeat.NoRepeat)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already writes a repeat override beside a loop that is no pan.
         // The pan's hold must not reach a loop that never took the slot.
         [Test]
         public void Given_APulseLoop_When_TheRepeatOverrideChanges_Then_ItIsWrittenAtOnce()
@@ -110,8 +109,7 @@ namespace Velvet.Tests
             Assert.That((written.x, written.y), Is.EqualTo((Repeat.Repeat, Repeat.NoRepeat)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already clears the slot when a pan stops over no override.
-        // That is the element's own value when it declares none; this pins that the restore keeps doing so.
+        // No override is the element's own value too, and the restore hands the slot back to the classes.
         [Test]
         public void Given_NoRepeatOverrideUnderAShimmer_When_TheShimmerStops_Then_TheSlotIsLeftToTheClasses()
         {

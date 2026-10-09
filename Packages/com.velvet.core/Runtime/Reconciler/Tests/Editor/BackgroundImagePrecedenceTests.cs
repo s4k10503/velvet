@@ -18,6 +18,7 @@ namespace Velvet.Tests
 
         private static StateUpdater<int> s_setStep;
         private static Func<int, (string ClassName, StyleOverrides Styles)> s_nodeFor;
+        private static Func<VisualElement, Action> s_ref;
         private Texture2D _poster;
 
         [SetUp]
@@ -27,6 +28,7 @@ namespace Velvet.Tests
             _poster = new Texture2D(4, 4);
             s_setStep = default;
             s_nodeFor = _ => (Gradient, null);
+            s_ref = null;
         }
 
         [TearDown]
@@ -42,7 +44,7 @@ namespace Velvet.Tests
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
             var (className, styles) = s_nodeFor(step);
-            return V.Div(className: className, name: "card", styles: styles);
+            return V.Div(className: className, name: "card", styles: styles, refCallback: s_ref);
         }
 
         private VisualElement Card => _window.rootVisualElement.Q<VisualElement>("card");
@@ -62,6 +64,71 @@ namespace Velvet.Tests
         private StyleOverrides Poster => new() { BackgroundImage = new StyleBackground(_poster) };
 
         private Texture2D GradientBake => _mounted.Root.Reconciler.Context.GradientBackgrounds[Card].Texture;
+
+        [Test]
+        public void Given_AnImageOverrideAndAGradient_When_Mounted_Then_TheGradientSizesNothing()
+        {
+            // Arrange / Act
+            Mount(_ => (Gradient, Poster));
+
+            // Assert — a Tailwind gradient sets only the image, so under another image it leaves the size alone.
+            Assert.That(Card.style.backgroundSize.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AnImageOverrideOverAGradient_When_TheOverrideIsRemoved_Then_TheGradientStretchesAgain()
+        {
+            // Arrange — read under the override, so a gradient that never let go of the size cannot pass.
+            Mount(step => (Gradient, step == 0 ? Poster : null));
+            var covered = Card.style.backgroundSize.keyword;
+
+            // Act
+            Step(1);
+
+            // Assert
+            var size = Card.style.backgroundSize;
+            Assert.That((covered, size.keyword, size.value.x.value), Is.EqualTo((StyleKeyword.Null, StyleKeyword.Undefined, 100f)));
+        }
+
+        [Test]
+        public void Given_AnImageOverrideOverAGradient_When_APanIsDeclared_Then_NothingPans()
+        {
+            // Arrange / Act
+            Mount(_ => (Gradient + " animate-gradient", Poster));
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.AnimationBindings.ContainsKey(Card), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base re-bakes only over an inline image that is its own bake.
+        // This pins that the ranked image record keeps a refCallback's image from being re-baked over.
+        [Test]
+        public void Given_ARefCallbackImageOverAGradient_When_TheGradientIsResized_Then_TheRefCallbackImageStands()
+        {
+            // Arrange
+            var own = new Texture2D(2, 2);
+            s_ref = element =>
+            {
+                element.style.backgroundImage = new StyleBackground(own);
+                return null;
+            };
+            try
+            {
+                Mount(step => (step == 0 ? Gradient : "w-[200px] h-[40px] bg-gradient-to-r to-blue-500", null));
+                ForcePanelUpdate(Card.panel);
+
+                // Act
+                Step(1);
+                ForcePanelUpdate(Card.panel);
+
+                // Assert
+                Assert.That(Card.style.backgroundImage.value.texture, Is.SameAs(own));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(own);
+            }
+        }
 
         [Test]
         public void Given_AnImageOverrideAndAGradient_When_Mounted_Then_TheOverrideShows()

@@ -38,10 +38,13 @@ no utility for either, so Velvet's family follows Tailwind's naming for an edge 
 An inset is a whole, non-negative number, written bare as `border-image-slice` writes it (`slice-[12]`) or
 in pixels (`slice-[12px]`), or a non-negative percentage of the background image's size on that axis
 (`slice-[25%]`): its height for the top and bottom, its width for the left and right, rounded to a whole
-pixel. A percentage is resolved against the image the element shows — a `StyleOverrides.BackgroundImage`, a
-`bg-[addr:…]` image, a baked gradient, or else the one its stylesheet resolves — and again whenever Velvet
-writes a new one; a vector image has no pixel size, and a percentage of it is 0. A fraction of a pixel,
-another unit or a negative number is declined.
+pixel; a percentage past 100 is read as 100, as `border-image-slice` reads an inset larger than the image.
+A percentage is resolved against the image the element shows — a `StyleOverrides.BackgroundImage`, a
+`bg-[addr:…]` image, a baked gradient, one a `refCallback` set, or else the one its stylesheet resolves —
+and again whenever Velvet writes a new one or the element's geometry or custom style resolves with another
+image showing. Once an image override goes away, the percentages wait for the panel's next style pass and
+resolve against what shows then. A vector image has no pixel size, and a percentage of it is 0. A fraction of
+a pixel, another unit or a negative number is declined.
 `slice-[…]` also takes `border-image-slice`'s two, three and four values, with `_` for the space between
 them: `slice-[12_8]` sets the top and bottom to 12 and the right and left to 8, `slice-[12_8_4]` the top,
 the right and left, and the bottom, and `slice-[12_8_4_2]` the top, right, bottom and left. Pixels and
@@ -54,15 +57,16 @@ The insets and the scale are resolved in C# and written inline, so they work wit
 other utilities (`hover:slice-[4]`, `md:slice-tiled`, `!slice-[8]`), and a later edge class overrides the
 same edge of an earlier `slice-[N]` and gives it back when it is removed, as `pt-[…]` does beside `p-[…]`.
 
-On a field control the family goes to the input box with the other background utilities
-([styling-variants.md](styling-variants.md)).
+On a field control the family goes to the input box with the other background utilities, `bg-[addr:…]`
+included ([styling-variants.md](styling-variants.md)), so `V.TextField(className: "bg-[addr:panel] slice-[12]")`
+slices the box's image. No field factory takes `styles:`, so a field control a factory builds carries no `StyleOverrides`.
 
 `fill` is accepted before or after the values (`slice-[12_fill]`) and changes nothing, because UI Toolkit
 paints a sliced background's centre either way (`NineSlicePlaybackTests` pins it). So a slice **without**
-`fill` still paints the centre, where `border-image-slice` leaves it empty. No UI Toolkit property turns the
-centre off: the slice longhands are `-unity-slice-top`, `-right`, `-bottom`, `-left`, `-scale` and `-type`,
-and `SliceType` has two modes, `Sliced` and `Tiled` (`BackgroundRepeatAndSliceTypeUssTests` pins both). An
-empty centre would need Velvet to paint the background's eight outer pieces itself.
+`fill` still paints the centre, where `border-image-slice` leaves it empty. None of the engine's slice
+properties addresses the centre — they are `-unity-slice-top`, `-right`, `-bottom`, `-left`, `-scale` and
+`-type`, and `SliceType` has two modes, `Sliced` and `Tiled` (`BackgroundRepeatAndSliceTypeUssTests` pins
+both) — so an empty centre would need Velvet to paint the background's eight outer pieces itself.
 
 ## `StyleOverrides`
 
@@ -75,16 +79,19 @@ cleared.
 against `className`: a member wins over a utility writing the same property whichever was written last,
 including a variant one (`hover:bg-[#…]`) — except an important one (`!bg-[#…]`), which wins as an
 `!important` rule wins over a `style` attribute. An override that goes away hands the property back to the
-utility. That holds for `BackgroundColor`, `Color`, the slice insets, `UnitySliceScale` and
-`BackgroundImage` (against `bg-[addr:…]`, which `!bg-[addr:…]` makes important, and the gradient
-utilities), a keyword value (`StyleKeyword.Initial`, …) included; `BackgroundRepeat` and `UnitySliceType`
-meet only stylesheet rules (`bg-repeat-*`, `slice-tiled`) and are written inline over them. A gradient keeps
-baking under an image override, so removing the override shows the gradient's current bake.
+utility. That holds for every member, a keyword value (`StyleKeyword.Initial`, …) included:
+`BackgroundRepeat` and `UnitySliceType` lose to an important stylesheet utility (`!bg-no-repeat`,
+`!slice-sliced`), and `BackgroundImage` ranks against `bg-[addr:…]` (which `!bg-[addr:…]` makes important),
+the gradient utilities and `StyleBackgroundImageResolver.Apply`. A gradient keeps baking under an image
+override, so removing the override shows the gradient's current bake; while the override shows, the gradient
+writes no `background-size` (a Tailwind gradient sets only `background-image`), and an `animate-gradient` or
+`animate-shimmer` beside it does not pan. An inline image a `refCallback` wrote is not re-baked over.
 
-An `animate-gradient` or `animate-shimmer` pan holds `background-size`, `background-position` and
-`background-repeat` while it runs; when it stops, the element's own inline values return — the gradient's
-stretch-to-fill, whatever a `refCallback` wrote, and the current `BackgroundRepeat` override — or none,
-which leaves the properties to the classes.
+An `animate-gradient` or `animate-shimmer` pan holds `background-size`, `background-position` on its axis and
+`background-repeat` while it runs; when it stops, each of them still holding the pan's own write gets the
+element's own value back — the gradient's stretch-to-fill, whatever a `refCallback` wrote before the pan, the
+current `BackgroundRepeat` override — or none, which leaves the property to the classes. One written from
+outside while the pan ran keeps that write.
 
 ```csharp
 V.Div(className: "w-64 h-32", styles: new StyleOverrides

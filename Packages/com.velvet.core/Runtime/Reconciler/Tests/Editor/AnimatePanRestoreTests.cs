@@ -73,5 +73,49 @@ namespace Velvet.Tests
             Assert.That((running, size.x.value, size.y.value, x.offset.value, y.offset.value),
                 Is.EqualTo((100f, 50f, 50f, 10f, 6f)));
         }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_AShimmerThatHasPannedItsAxis_When_TheShimmerStops_Then_ThatAxisIsBack(bool vertical)
+        {
+            // Arrange — a laid-out box and one tick, so the loop writes its own position over the element's.
+            var gradient = vertical ? "w-[100px] h-[40px] bg-gradient-to-b to-blue-500" : GradientBase;
+            s_classFor = step => step == 1 ? gradient + " animate-shimmer" : gradient;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderCard));
+            Step(1);
+            ForcePanelUpdate(Card.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(Card.panel);
+            float Offset() => vertical
+                ? Card.style.backgroundPositionY.value.offset.value
+                : Card.style.backgroundPositionX.value.offset.value;
+            var panned = Offset();
+
+            // Act
+            Step(2);
+
+            // Assert — the element's own position on that axis, 6px down or 10px across.
+            Assert.That((panned != (vertical ? 6f : 10f), Offset()), Is.EqualTo((true, vertical ? 6f : 10f)));
+        }
+
+        [Test]
+        public void Given_SizingWrittenFromOutsideDuringAShimmer_When_TheShimmerStops_Then_TheLaterWriteStands()
+        {
+            // Arrange — written while the loop runs, the way a refCallback or any other imperative write lands.
+            s_classFor = step => step == 1 ? GradientBase + " animate-shimmer" : GradientBase;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderCard));
+            Step(1);
+            Card.style.backgroundSize = new StyleBackgroundSize(
+                new BackgroundSize(Length.Percent(30f), Length.Percent(30f)));
+            Card.style.backgroundPositionX = new StyleBackgroundPosition(
+                new BackgroundPosition(BackgroundPositionKeyword.Left, new Length(4f)));
+
+            // Act
+            Step(2);
+
+            // Assert
+            var size = Card.style.backgroundSize.value;
+            var x = Card.style.backgroundPositionX.value;
+            Assert.That((size.x.value, x.offset.value), Is.EqualTo((30f, 4f)));
+        }
     }
 }

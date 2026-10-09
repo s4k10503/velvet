@@ -935,6 +935,10 @@ namespace Velvet
             // allocated: only an element something writes a background image to gets one.
             public BackgroundImageSources? BackgroundImage;
 
+            // Watches the image a percentage inset was resolved against — see WatchShownImage. Lazily allocated:
+            // only an element holding a percentage inset gets one.
+            public ShownImageWatch? ImageWatch;
+
             private readonly Dictionary<(ArbitraryProperty Property, long Priority), long> _arrivals = new();
             private long _nextArrival;
 
@@ -1578,7 +1582,19 @@ namespace Velvet
             public StyleBackground? Override;
             public StyleBackground? Utility;
             public bool UtilityImportant;
+            // What ResolveBackgroundImage last wrote, to tell an inline image a refCallback wrote since.
+            public StyleBackground? Written;
         }
+
+        // Whether the inline background image is still the one these writers last put there.
+        internal static bool ShowsOwnBackground(VisualElement element)
+            => s_layers.TryGetValue(element, out var map) && map.BackgroundImage?.Written is { } written
+                && element.style.backgroundImage.Equals(written);
+
+        // Whether a StyleOverrides.BackgroundImage is the image showing, over the utilities'.
+        internal static bool OverrideBackgroundWins(VisualElement element)
+            => s_layers.TryGetValue(element, out var map)
+                && map.BackgroundImage is { Override: not null, UtilityImportant: false };
 
         // A StyleOverrides.BackgroundImage, or null when the node declares none.
         internal static void WriteBackgroundImageOverride(VisualElement element, StyleBackground? value)
@@ -1589,8 +1605,8 @@ namespace Velvet
             ResolveBackgroundImage(element, map, sources);
         }
 
-        // A utility's background image.
-        internal static void WriteBackgroundImageUtility(VisualElement element, StyleBackground value, bool important)
+        // A utility's background image, or null when the utilities let go of it.
+        internal static void WriteBackgroundImageUtility(VisualElement element, StyleBackground? value, bool important)
         {
             var map = s_layers.GetValue(element, static _ => new LayerMap());
             var sources = map.BackgroundImage ??= new BackgroundImageSources();
@@ -1599,15 +1615,8 @@ namespace Velvet
             ResolveBackgroundImage(element, map, sources);
         }
 
-        // The utilities letting go of the background image.
         internal static void ClearBackgroundImageUtility(VisualElement element)
-        {
-            var map = s_layers.GetValue(element, static _ => new LayerMap());
-            var sources = map.BackgroundImage ??= new BackgroundImageSources();
-            sources.Utility = null;
-            sources.UtilityImportant = false;
-            ResolveBackgroundImage(element, map, sources);
-        }
+            => WriteBackgroundImageUtility(element, null, important: default);
 
         // The image the utilities last wrote, whether or not it is the one showing.
         internal static StyleBackground UtilityBackgroundImage(VisualElement element)
@@ -1621,6 +1630,53 @@ namespace Velvet
                 ? own
                 : sources.Utility ?? new StyleBackground(StyleKeyword.Null);
             SceneViewElement.WriteBackground(element, winner);
+            sources.Written = winner;
+            // With no inline image the stylesheet's shows, and the resolved style reads the old one until the
+            // panel next resolves styles, so the percentages wait for that.
+            if (winner.keyword == StyleKeyword.Null && map.ImageWatch != null)
+            {
+                element.schedule.Execute(() => RecheckShownImage(element));
+                return;
+            }
+            ReresolvePercentSlices(element, map);
+        }
+
+        internal sealed class ShownImageWatch
+        {
+            public Background Seen;
+        }
+
+        // Static, so registering one again is a no-op and a pooled element's next consumer finds the callbacks
+        // already in place; each looks the element's current layer map up rather than holding one.
+        private static readonly EventCallback<GeometryChangedEvent> s_recheckOnGeometry =
+            evt => RecheckShownImage((VisualElement)evt.currentTarget);
+
+        private static readonly EventCallback<CustomStyleResolvedEvent> s_recheckOnStyle =
+            evt => RecheckShownImage((VisualElement)evt.currentTarget);
+
+        // An image Velvet does not write — a stylesheet's, or one a refCallback set — reaches the resolved style
+        // or the inline slot without passing through ResolveBackgroundImage, so a percentage inset is checked
+        // again whenever the element's geometry or custom style resolves.
+        private static void WatchShownImage(VisualElement element)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            if (map.ImageWatch is { } watching)
+            {
+                watching.Seen = ShownImage(element);
+                return;
+            }
+            map.ImageWatch = new ShownImageWatch { Seen = ShownImage(element) };
+            element.RegisterCallback(s_recheckOnGeometry);
+            element.RegisterCallback(s_recheckOnStyle);
+        }
+
+        private static void RecheckShownImage(VisualElement element)
+        {
+            if (!s_layers.TryGetValue(element, out var map) || map.ImageWatch is not { } watch
+                || ShownImage(element).Equals(watch.Seen))
+            {
+                return;
+            }
             ReresolvePercentSlices(element, map);
         }
 
@@ -1653,9 +1709,7 @@ namespace Velvet
         // resolved one. Zero when there is none, or when it is a vector image, which has no pixel size.
         private static Vector2 BackgroundImagePixels(VisualElement element)
         {
-            var image = element.style.backgroundImage.keyword == StyleKeyword.Undefined
-                ? element.style.backgroundImage.value
-                : element.resolvedStyle.backgroundImage;
+            var image = ShownImage(element);
             if (image.texture != null)
             {
                 return new Vector2(image.texture.width, image.texture.height);
@@ -1669,8 +1723,14 @@ namespace Velvet
                 : Vector2.zero;
         }
 
+        private static Background ShownImage(VisualElement element)
+            => element.style.backgroundImage.keyword == StyleKeyword.Undefined
+                ? element.style.backgroundImage.value
+                : element.resolvedStyle.backgroundImage;
+
         // One inset as written: the keyword of a keyword value, else the value, resolved against the image's
-        // width (horizontal) or height when it is a percentage.
+        // width (horizontal) or height when it is a percentage. A percentage past 100 is read as 100, as
+        // border-image-slice reads an inset larger than the image.
         private static StyleInt SliceInset(VisualElement element, in ArbitraryStyle style, float value, int edge,
             bool horizontal)
         {
@@ -1682,9 +1742,21 @@ namespace Velvet
             {
                 return new StyleInt((int)value);
             }
+            WatchShownImage(element);
             var pixels = BackgroundImagePixels(element);
-            return new StyleInt(Mathf.RoundToInt(value / 100f * (horizontal ? pixels.x : pixels.y)));
+            return new StyleInt(Mathf.RoundToInt(Mathf.Min(value, 100f) / 100f * (horizontal ? pixels.x : pixels.y)));
         }
+
+        // Through the pan loop's gate, which holds the slot while a pan runs.
+        private static void WriteRepeat(VisualElement element, in ArbitraryStyle style)
+            => StyleAnimateDriver.WriteBackgroundRepeat(element, style.Keyword == StyleKeyword.Undefined
+                ? new StyleBackgroundRepeat(new BackgroundRepeat((Repeat)style.Value, (Repeat)style.Value2))
+                : new StyleBackgroundRepeat(style.Keyword));
+
+        private static void WriteSliceType(VisualElement element, in ArbitraryStyle style)
+            => element.style.unitySliceType = style.Keyword == StyleKeyword.Undefined
+                ? new StyleEnum<SliceType>((SliceType)style.Value)
+                : new StyleEnum<SliceType>(style.Keyword);
 
         // Drops all arbitrary-value layers tracked for element. Called when the element is
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
@@ -2253,6 +2325,12 @@ namespace Velvet
                     slices.unitySliceLeft = SliceInset(element, style, style.Value4, 3, horizontal: true);
                     return;
                 }
+                case ArbitraryProperty.BackgroundRepeat:
+                    WriteRepeat(element, style);
+                    return;
+                case ArbitraryProperty.SliceType:
+                    WriteSliceType(element, style);
+                    return;
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
@@ -2414,6 +2492,12 @@ namespace Velvet
                     return true;
                 case ArbitraryProperty.TransitionDuration:
                     element.style.transitionDuration = StyleKeyword.Null;
+                    return true;
+                case ArbitraryProperty.BackgroundRepeat:
+                    StyleAnimateDriver.WriteBackgroundRepeat(element, StyleKeyword.Null);
+                    return true;
+                case ArbitraryProperty.SliceType:
+                    element.style.unitySliceType = StyleKeyword.Null;
                     return true;
             }
 

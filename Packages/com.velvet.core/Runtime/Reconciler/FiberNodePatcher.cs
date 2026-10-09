@@ -396,9 +396,8 @@ namespace Velvet
         // (SilhouetteBoundsSpacer.NonSpacerChildCount trims it), so adding and removing it here is safe — and
         // that is precisely what makes focus:ring-* render instead of toggling an inert class.
         // The ORDER is load-bearing:
-        // - Gradient runs after the node-style diff so its background-image is the last word on this
-        //   element — DiffStyles only writes background-image on an actual node-style change, which a
-        //   gradient element never carries, so the two never fight.
+        // - Gradient runs after the node-style diff so its sizing reads whether an image override from that
+        //   diff shows over its bake; the two images themselves are ranked by StyleArbitraryValueResolver.
         // - animate-* motion runs after the gradient (a pan mode reads the live gradient) and reconciles
         //   its own restart/attach/detach against the new class list.
         // - Skew is a wrapper-less paint (the sheared silhouette is the element's own generateVisualContent);
@@ -739,7 +738,7 @@ namespace Velvet
         internal static string ValueKey(string rawCls)
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
-                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Value4}|{style.Color}|{style.Auto}"
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Value4}|{style.PercentEdges}|{style.Color}|{style.Auto}"
                     + $"|{(style.Custom == null ? string.Empty : rawCls)}"
                 : rawCls;
 
@@ -1985,69 +1984,10 @@ namespace Velvet
             }
         }
 
-        // Applies the StyleOverrides diff to element.style.
-        // Maintenance note: this method diffs each property of StyleOverrides
-        // individually, so any new property added to StyleOverrides must also receive a matching
-        // branch here. Missing the addition causes the new property's diff to be silently ignored
-        // without a compile error.
+        // Applies the StyleOverrides diff. StyleOverridesLayer.Diff writes each member on its own, so a member
+        // added to StyleOverrides needs a branch there; StyleOverridesInlineWriteTests fails until it has one.
         internal void DiffStyles(VisualElement element, StyleOverrides? oldStyles, StyleOverrides? newStyles)
-        {
-            oldStyles ??= StyleOverrides.Empty;
-            newStyles ??= StyleOverrides.Empty;
-
-            // Ranked against the utilities' image, then through the SceneView ownership gate: while a live camera
-            // texture owns the slot the poster is deferred (and restored on release).
-            if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage))
-            {
-                StyleArbitraryValueResolver.WriteBackgroundImageOverride(element, newStyles.BackgroundImage);
-            }
-
-            if (!Equals(oldStyles.BackgroundRepeat, newStyles.BackgroundRepeat))
-            {
-                StyleAnimateDriver.WriteBackgroundRepeat(element, newStyles.BackgroundRepeat ?? StyleKeyword.Null);
-            }
-
-            if (!Equals(oldStyles.UnitySliceType, newStyles.UnitySliceType))
-            {
-                element.style.unitySliceType = newStyles.UnitySliceType ?? StyleKeyword.Null;
-            }
-
-            // The members an arbitrary value can also write go through StyleOverridesLayer, which ranks them.
-            if (!Equals(oldStyles.BackgroundColor, newStyles.BackgroundColor))
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.BackgroundColor, newStyles.BackgroundColor);
-            }
-
-            if (!Equals(oldStyles.Color, newStyles.Color))
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.TextColor, newStyles.Color);
-            }
-
-            if (!Equals(oldStyles.UnitySliceTop, newStyles.UnitySliceTop))
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceTop, newStyles.UnitySliceTop);
-            }
-
-            if (!Equals(oldStyles.UnitySliceRight, newStyles.UnitySliceRight))
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceRight, newStyles.UnitySliceRight);
-            }
-
-            if (!Equals(oldStyles.UnitySliceBottom, newStyles.UnitySliceBottom))
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceBottom, newStyles.UnitySliceBottom);
-            }
-
-            if (!Equals(oldStyles.UnitySliceLeft, newStyles.UnitySliceLeft))
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceLeft, newStyles.UnitySliceLeft);
-            }
-
-            if (!Equals(oldStyles.UnitySliceScale, newStyles.UnitySliceScale))
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceScale, newStyles.UnitySliceScale);
-            }
-        }
+            => StyleOverridesLayer.Diff(element, oldStyles ?? StyleOverrides.Empty, newStyles ?? StyleOverrides.Empty);
 
         #endregion
 

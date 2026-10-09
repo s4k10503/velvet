@@ -310,63 +310,7 @@ namespace Velvet
         }
 
         internal static void ApplyStyles(VisualElement element, StyleOverrides? styles)
-        {
-            if (styles == null)
-            {
-                return;
-            }
-
-            if (styles.BackgroundImage.HasValue)
-            {
-                StyleArbitraryValueResolver.WriteBackgroundImageOverride(element, styles.BackgroundImage);
-            }
-
-            if (styles.BackgroundRepeat.HasValue)
-            {
-                element.style.backgroundRepeat = styles.BackgroundRepeat.Value;
-            }
-
-            if (styles.UnitySliceType.HasValue)
-            {
-                element.style.unitySliceType = styles.UnitySliceType.Value;
-            }
-
-            // The members an arbitrary value can also write go through StyleOverridesLayer, which ranks them.
-            if (styles.UnitySliceTop.HasValue)
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceTop, styles.UnitySliceTop);
-            }
-
-            if (styles.UnitySliceRight.HasValue)
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceRight, styles.UnitySliceRight);
-            }
-
-            if (styles.UnitySliceBottom.HasValue)
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceBottom, styles.UnitySliceBottom);
-            }
-
-            if (styles.UnitySliceLeft.HasValue)
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceLeft, styles.UnitySliceLeft);
-            }
-
-            if (styles.UnitySliceScale.HasValue)
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.SliceScale, styles.UnitySliceScale);
-            }
-
-            if (styles.BackgroundColor.HasValue)
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.BackgroundColor, styles.BackgroundColor);
-            }
-
-            if (styles.Color.HasValue)
-            {
-                StyleOverridesLayer.Write(element, ArbitraryProperty.TextColor, styles.Color);
-            }
-        }
+            => StyleOverridesLayer.Diff(element, StyleOverrides.Empty, styles ?? StyleOverrides.Empty);
 
         internal void ApplyEvents(VisualElement element, FiberEventBinding[] events)
         {

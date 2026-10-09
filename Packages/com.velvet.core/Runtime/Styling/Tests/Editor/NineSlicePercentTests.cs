@@ -42,6 +42,8 @@ namespace Velvet.Tests
         [TestCase("slice-x-[50%]", "null,20,null,20")]
         [TestCase("slice-[12.5%]", "10,5,10,5")]
         [TestCase("slice-[0%_10]", "0,10,0,10")]
+        [TestCase("slice-[150%]", "80,40,80,40")]
+        [TestCase("slice-[1e30%]", "80,40,80,40")]
         public void Given_APercentSliceOverAnImage_When_Mounted_Then_EachEdgeIsThatShareOfItsAxis(
             string className, string expected)
         {

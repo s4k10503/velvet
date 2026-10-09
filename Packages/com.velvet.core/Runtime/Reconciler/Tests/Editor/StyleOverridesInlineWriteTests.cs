@@ -9,9 +9,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Every member <see cref="StyleOverrides"/> declares reaches the inline style slot of the same name, on
-    /// mount (<c>FiberElementFactory.ApplyStyles</c>) and on both directions of a patch
-    /// (<c>FiberNodePatcher.DiffStyles</c>). Each of those writes the members one by one, so a member added to
-    /// the type without its write there compiles and is ignored; these cases enumerate the type instead.
+    /// mount and on both directions of a patch. <c>StyleOverridesLayer.Diff</c> writes the members one by one, so
+    /// a member added to the type without its write there compiles and is ignored; these cases enumerate the
+    /// type instead.
     /// </summary>
     [TestFixture]
     internal sealed class StyleOverridesInlineWriteTests
@@ -31,7 +31,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): compares the type's members with what mounting writes for them.
-        // Deleting the `UnitySliceLeft` branch of `FiberElementFactory.ApplyStyles` reddens it.
+        // Deleting the `UnitySliceLeft` branch of `StyleOverridesLayer.Diff` reddens it.
         [Test]
         public void Given_EveryStyleOverridesMemberSet_When_Mounted_Then_EachLandsInItsInlineSlot()
         {
@@ -50,7 +50,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): compares the type's members with what a patch adding them writes.
-        // Deleting the `UnitySliceType` branch of `FiberNodePatcher.DiffStyles` reddens it.
+        // Deleting the `UnitySliceType` branch of `StyleOverridesLayer.Diff` reddens it.
         [Test]
         public void Given_EveryStyleOverridesMemberAddedByAPatch_When_Reconciled_Then_EachLandsInItsInlineSlot()
         {
@@ -71,8 +71,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(construction): compares the type's members with what a patch removing them clears.
-        // Deleting the `StyleArbitraryValueResolver.Clear` call from the StyleFloat overload of
-        // `StyleOverridesLayer.Write` reddens it.
+        // Deleting the `StyleArbitraryValueResolver.Clear` call from `StyleOverridesLayer.Write` reddens it.
         [Test]
         public void Given_EveryStyleOverridesMemberRemovedByAPatch_When_Reconciled_Then_EachInlineSlotIsUnset()
         {
@@ -100,7 +99,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_EveryStyleOverridesMemberSetToAKeyword_When_Mounted_Then_EachSlotCarriesTheKeyword()
         {
-            // Arrange — Initial has no layer form, so it takes the path a value does not.
+            // Arrange — a keyword reaches each slot through the keyword arm of its write, not the value's.
             using var reconciler = new Reconciler();
             var root = new VisualElement();
             var overrides = new StyleOverrides();

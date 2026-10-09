@@ -72,13 +72,16 @@ namespace Velvet
         // the slots adds these to its own frame.
         public Vector2 LiftPx;
         public float PingFactor = 1f;
-        // A pan mode's sizing, position and no-repeat stand over the element's own inline values (a
+        // A pan mode's sizing, position on its axis and no-repeat stand over the element's own inline values (a
         // StyleOverrides.BackgroundRepeat, the gradient's stretch-to-fill, anything a refCallback wrote, or none,
         // leaving the slot to its classes); these are those values, written back when the loop lets go.
         public StyleBackgroundRepeat RepeatUnderPan = StyleKeyword.Null;
         public StyleBackgroundSize SizeUnderPan = StyleKeyword.Null;
-        public StyleBackgroundPosition PositionXUnderPan = StyleKeyword.Null;
-        public StyleBackgroundPosition PositionYUnderPan = StyleKeyword.Null;
+        public StyleBackgroundPosition PositionUnderPan = StyleKeyword.Null;
+        // The sizing and position the pan itself last wrote: a slot holding anything else at the end was written
+        // since by something outside the loop, and keeps it.
+        public StyleBackgroundSize PanSize = StyleKeyword.Null;
+        public StyleBackgroundPosition PanPosition = StyleKeyword.Null;
     }
 
     // Drives the animate-* motions. The texture is baked ONCE (the static gradient path); this only writes a
@@ -327,9 +330,8 @@ namespace Velvet
             {
                 binding.RepeatUnderPan = element.style.backgroundRepeat;
                 binding.SizeUnderPan = element.style.backgroundSize;
-                binding.PositionXUnderPan = element.style.backgroundPositionX;
-                binding.PositionYUnderPan = element.style.backgroundPositionY;
-                ApplyPanSizing(element, spec.Mode, panVertical);
+                binding.PositionUnderPan = panVertical ? element.style.backgroundPositionY : element.style.backgroundPositionX;
+                ApplyPanSizing(element, binding);
             }
 
             SeedOwnValues(element, binding);
@@ -419,10 +421,7 @@ namespace Velvet
 
             if (binding.Spec.Mode == AnimateMode.Gradient || binding.Spec.Mode == AnimateMode.Shimmer)
             {
-                element.style.backgroundSize = binding.SizeUnderPan;
-                element.style.backgroundPositionX = binding.PositionXUnderPan;
-                element.style.backgroundPositionY = binding.PositionYUnderPan;
-                element.style.backgroundRepeat = binding.RepeatUnderPan;
+                RestoreUnderPan(element.style, binding);
             }
             else if (binding.Spec.Mode == AnimateMode.Hue)
             {
@@ -466,7 +465,7 @@ namespace Velvet
         {
             if (binding.Spec.Mode == AnimateMode.Gradient || binding.Spec.Mode == AnimateMode.Shimmer)
             {
-                ApplyPanSizing(element, binding.Spec.Mode, binding.PanVertical);
+                ApplyPanSizing(element, binding);
             }
         }
 
@@ -582,10 +581,12 @@ namespace Velvet
                     if (binding.PanVertical)
                     {
                         element.style.backgroundPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, offset);
+                        binding.PanPosition = element.style.backgroundPositionY;
                     }
                     else
                     {
                         element.style.backgroundPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, offset);
+                        binding.PanPosition = element.style.backgroundPositionX;
                     }
                     break;
                 }
@@ -739,9 +740,10 @@ namespace Velvet
         private static float LengthPx(Length length, float extent)
             => length.unit == LengthUnit.Percent ? length.value / 100f * extent : length.value;
 
-        private static void ApplyPanSizing(VisualElement element, AnimateMode mode, bool panVertical)
+        private static void ApplyPanSizing(VisualElement element, StyleAnimateBinding binding)
         {
-            if (mode == AnimateMode.Gradient)
+            var panVertical = binding.PanVertical;
+            if (binding.Spec.Mode == AnimateMode.Gradient)
             {
                 var pan = Length.Percent(GradientOversize);
                 var cross = Length.Percent(100f);
@@ -754,7 +756,32 @@ namespace Velvet
                 element.style.backgroundSize = new StyleBackgroundSize(
                     new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
             }
-            element.style.backgroundRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
+            element.style.backgroundRepeat = PanRepeat;
+            binding.PanSize = element.style.backgroundSize;
+        }
+
+        private static readonly StyleBackgroundRepeat PanRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
+
+        // Writes back each slot the pan covered that still holds the pan's own write; the other position axis
+        // the pan never wrote.
+        private static void RestoreUnderPan(IStyle style, StyleAnimateBinding binding)
+        {
+            if (style.backgroundSize.Equals(binding.PanSize))
+            {
+                style.backgroundSize = binding.SizeUnderPan;
+            }
+            if (style.backgroundRepeat.Equals(PanRepeat))
+            {
+                style.backgroundRepeat = binding.RepeatUnderPan;
+            }
+            if (binding.PanVertical && style.backgroundPositionY.Equals(binding.PanPosition))
+            {
+                style.backgroundPositionY = binding.PositionUnderPan;
+            }
+            else if (!binding.PanVertical && style.backgroundPositionX.Equals(binding.PanPosition))
+            {
+                style.backgroundPositionX = binding.PositionUnderPan;
+            }
         }
 
         // Schedules the recurring tick on the panel root, or defers to AttachToPanelEvent when the element is

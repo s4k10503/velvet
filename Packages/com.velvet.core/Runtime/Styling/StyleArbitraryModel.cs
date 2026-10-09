@@ -289,6 +289,11 @@ namespace Velvet
         SliceLeft,    // slice-l-[12]
         SliceScale,   // slice-scale-[2]  -> -unity-slice-scale (Value = unitless factor)
         #endregion
+
+        // The StyleOverrides members only stylesheet rules also write, layered so an important rule outranks them
+        // as it does the other members. No class parses to either.
+        BackgroundRepeat, // background-repeat (Value = the x Repeat, Value2 = the y Repeat)
+        SliceType,        // -unity-slice-type  (Value = the SliceType)
     }
 
     // A parsed arbitrary-value result: the target Property plus its length payload
@@ -326,22 +331,9 @@ namespace Velvet
 
         // A keyword value for property.
         public ArbitraryStyle(ArbitraryProperty property, StyleKeyword keyword)
+            : this(property, auto: default)
         {
-            Property = property;
-            // MUTANT_SURVIVES(equivalent): a keyword result reaches neither reader of Auto.
-            // It comes from StyleOverridesLayer rather than a class, so MotionPropertyClassParser never sees it,
-            // and the colour, inset and factor writes it takes never call ToStyleLength.
-            Auto = false;
             Keyword = keyword;
-            PercentEdges = 0;
-            Value = 0f;
-            Unit = LengthUnit.Pixel;
-            Value2 = 0f;
-            Unit2 = LengthUnit.Pixel;
-            Value3 = 0f;
-            Value4 = 0f;
-            Color = default;
-            Custom = null;
         }
 
         // The `auto` keyword for a length property.
@@ -405,22 +397,13 @@ namespace Velvet
         // Creates a four-edge result (Slice, or one edge in top), with the edges percentEdges marks as percentages.
         public ArbitraryStyle(ArbitraryProperty property, float top, float right, float bottom, float left,
             int percentEdges = 0)
+            : this(property, auto: default)
         {
-            Property = property;
-            // MUTANT_SURVIVES(equivalent): nothing a slice result reaches reads Auto to a different end.
-            // The slice writes do not read it, MotionPropertyClassParser declines the slice properties as
-            // undrivable either way, and every slice result would carry the same flag into FiberNodePatcher.ValueKey.
-            Auto = false;
-            Keyword = StyleKeyword.Undefined;
-            PercentEdges = percentEdges;
             Value = top;
-            Unit = LengthUnit.Pixel;
             Value2 = right;
-            Unit2 = LengthUnit.Pixel;
             Value3 = bottom;
             Value4 = left;
-            Color = default;
-            Custom = null;
+            PercentEdges = percentEdges;
         }
 
         // Creates a color result.

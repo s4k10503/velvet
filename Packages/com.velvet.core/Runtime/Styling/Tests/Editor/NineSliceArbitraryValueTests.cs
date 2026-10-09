@@ -90,17 +90,18 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_SliceShorthandsDifferingInTheLeftInsetAlone_When_TheirValueKeysAreCompared_Then_OnlyTheSameValueSharesAKey()
+        public void Given_SliceShorthands_When_TheirValueKeysAreCompared_Then_OnlyTheSameValueSharesAKey()
         {
             // Arrange — two spellings of one value share a key, so the key is read from the parsed edges rather
-            // than from the class text.
+            // than from the class text; a left inset alone, or a percentage in place of pixels, is another value.
 
             // Act
             var sameValue = FiberNodePatcher.ValueKey("slice-[1_2_3_4]") == FiberNodePatcher.ValueKey("slice-[1px_2_3_4]");
             var otherLeft = FiberNodePatcher.ValueKey("slice-[1_2_3_4]") == FiberNodePatcher.ValueKey("slice-[1_2_3_5]");
+            var percent = FiberNodePatcher.ValueKey("slice-[1_2_3_4]") == FiberNodePatcher.ValueKey("slice-[1_2_3_4%]");
 
             // Assert
-            Assert.That((sameValue, otherLeft), Is.EqualTo((true, false)));
+            Assert.That((sameValue, otherLeft, percent), Is.EqualTo((true, false, false)));
         }
 
         [Test]
