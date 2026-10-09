@@ -21,7 +21,7 @@ namespace Velvet.Tests
     /// <item>A component whose read resolves shows the value on reveal, one inside a host element of the
     /// children included.</item>
     /// <item>A nested boundary still waiting keeps its own children hidden, and their layout effects down, when
-    /// the enclosing one reveals.</item>
+    /// the enclosing one reveals, and a read it waits on is taken up by it rather than by the enclosing one.</item>
     /// <item>Removing the boundary while it hides its children unmounts them once, and a boundary put back in
     /// its place has not shown anything, so it discards what its first render built.</item>
     /// <item>An error boundary that catches in the render that hid the children leaves no hidden element
@@ -82,6 +82,9 @@ namespace Velvet.Tests
             s_setAbortOther = default;
             s_nestedRefElement = null;
             s_memoRefElement = null;
+            s_innerSource = null;
+            s_splitHostRenders = 0;
+            s_setRowCount = default;
         }
 
         [Test]
@@ -988,6 +991,76 @@ namespace Velvet.Tests
                 "React reveals what the boundary's render builds once nothing it reads is pending");
         }
 
+        [Test]
+        public void Given_NestedBoundariesRenderedByDifferentComponentsBothHiding_When_AReadOnlyTheInnerOneWaitsOnResolves_Then_TheOuterBoundarysComponentIsNotRenderedAgain()
+        {
+            // Arrange — the inner boundary hides first; the outer one then hides the element the inner one sits in
+            using var mounted = V.Mount(_root, V.Component(SplitHostRender, key: "split-host"));
+            s_setOwnerTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_setOuterOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var rendersBefore = s_splitHostRenders;
+
+            // Act
+            s_innerSource.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the hidden element is read with the count, since no render at all is also what no hiding boundary gives
+            var inner = _root.Q<VisualElement>("inner-primary");
+            Assert.That((inner != null && inner.style.display == DisplayStyle.None, s_splitHostRenders - rendersBefore),
+                Is.EqualTo((true, 0)),
+                "A read waits for the innermost Suspense above it, so the enclosing one's component has no render to do");
+        }
+
+        [Test]
+        public void Given_NestedBoundariesBothHidingTheirPrimaries_When_OnlyTheOuterReadResolves_Then_AComponentInTheInnerPrimarysElementKeepsItsLayoutEffectDown()
+        {
+            // Arrange — the inner boundary suspends first, then the outer one
+            using var mounted = V.Mount(_root, V.Component(NestedLayoutHostRender, key: "nested-layout-host"));
+            s_setInnerOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_setOuterOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_outerSource.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the element is read with the count, since a primary the inner boundary did not keep has none to hide
+            Assert.That((_root.Q<VisualElement>("inner-primary") != null, s_deepLayoutSetups), Is.EqualTo((true, 1)),
+                "The inner boundary still waits, so React keeps the layout effects of its children down");
+        }
+
+        [Test]
+        public void Given_AVirtualListRowUpdatedWhileItsBoundaryHidesIt_When_TheBoundaryRevealsAndOnlyTheSchedulerDrains_Then_TheRowShowsTheUpdate()
+        {
+            // Arrange — the row's update is deferred while it is hidden, which leaves it dirty with nothing scheduled
+            using var mounted = V.Mount(_root, V.Component(ReaderAndRowsHostRender, key: "reader-and-rows-host"));
+            SeedViewport(mounted);
+            s_setListTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Resuspend(mounted);
+            s_setRowCount.Invoke(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var whileHidden = _root.Q<Label>("row-count")?.text;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((whileHidden, _root.Q<Label>("row-count")?.text), Is.EqualTo(("row-count:0", "row-count:5")),
+                "React renders an update made to a hidden tree once the boundary reveals it, a list row's included");
+        }
+
         private static void Resuspend(MountedTree mounted)
         {
             s_setOwn.Invoke(1);
@@ -1746,6 +1819,110 @@ namespace Velvet.Tests
             s_setListTick = setTick;
             s_bareListHost = FiberAmbientStack.Current;
             return V.Div(children: new VNode[] { RowList(tick) });
+        }
+
+        private static VelvetTaskCompletionSource<int> s_innerSource;
+        private static int s_splitHostRenders;
+
+        [Component]
+        private static VNode SourceReaderRender(int tick)
+        {
+            var value = Hooks.Use<int>(_ => tick == 0
+                ? VelvetTask.FromResult(0)
+                : (s_innerSource = new VelvetTaskCompletionSource<int>()).Task, tick);
+            return V.Label(name: "source-reader", text: "source:" + value);
+        }
+
+        // The inner Suspense is rendered by this component, not by the host rendering the outer one, inside an
+        // element of the outer primary.
+        [Component]
+        private static VNode SplitInnerRender(int tick)
+            => V.Div(name: "inner-host", children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "inner-loading"),
+                    children: new VNode[]
+                    {
+                        V.Div(name: "inner-primary", children: new VNode[]
+                        {
+                            V.Component(SourceReaderRender, tick, key: "source-reader"),
+                        }),
+                    }),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode SplitHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnerTick = setTick;
+            s_splitHostRenders++;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "outer-loading"),
+                    children: new VNode[]
+                    {
+                        V.Component(OuterReaderRender, key: "outer"),
+                        V.Component(SplitInnerRender, tick, key: "split-inner"),
+                    }),
+            });
+        }
+
+        // NestedHostRender with a component of a layout effect beside the inner reader.
+        [Component]
+        private static VNode NestedLayoutHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "outer-loading"),
+                    children: new VNode[]
+                    {
+                        V.Component(OuterReaderRender, key: "outer"),
+                        V.Suspense(
+                            fallback: V.Label(text: "inner-loading"),
+                            children: new VNode[]
+                            {
+                                V.Div(name: "inner-primary", children: new VNode[]
+                                {
+                                    V.Component(DeepLayoutRender, key: "deep-layout"),
+                                    V.Component(InnerReaderRender, key: "inner"),
+                                }),
+                            }),
+                    }),
+            });
+
+        private static StateUpdater<int> s_setRowCount;
+
+        [Component]
+        private static VNode CountingRowRender()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            s_setRowCount = setCount;
+            return V.Label(name: "row-count", text: "row-count:" + count);
+        }
+
+        // The reader keeps the boundary suspended on a read the list's rows have no part in.
+        [Component]
+        private static VNode ReaderAndRowsHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setListTick = setTick;
+            return V.Div(name: "container", children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.Component(ReaderRender, key: "reader"),
+                        V.VirtualList(
+                            items: tick > 0 ? new[] { "a" } : Array.Empty<string>(),
+                            keySelector: item => item,
+                            itemHeight: 50f,
+                            renderer: item => V.Component(CountingRowRender, key: item),
+                            overscan: 0,
+                            key: "list"),
+                    }),
+            });
         }
     }
 }

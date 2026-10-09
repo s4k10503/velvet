@@ -1542,10 +1542,8 @@ namespace Velvet
                 if (hidden)
                 {
                     // Already offscreen through the walk of a Suspense it is a child of, or inside an element
-                    // hidden at or below these: that Suspense is the innermost.
-                    // MUTANT_SURVIVES(equivalent, logic): that nested Suspense rewrites these fields before any reveal.
-                    // Every walk reaching this Suspense expands the nested one first, whose hide or offscreen marking
-                    // writes the fiber's HiddenUnder back ahead of the SetPrimaryHidden that reads it.
+                    // hidden at or below these: that Suspense is the innermost. Its OffscreenUnder stays too, since
+                    // FiberRenderer.NotifyAsyncResourceCompleted routes a resolved read by it between passes.
                     if (fiber.IsOffscreen && (fiber.HiddenUnder == null || IsAtOrUnder(fiber.HiddenUnder, roots))) continue;
                     var wasOffscreen = fiber.IsOffscreen;
                     SetOffscreen(commit, fiber, true, HolderOf(fiber.MountPoint, roots), boundaryFiber);
