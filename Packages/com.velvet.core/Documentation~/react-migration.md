@@ -331,8 +331,8 @@ not at all; set them on one query or for every query on `QueryClientOptions`. Th
 in flight. `NetworkSignals` holds both readings: online is `Application.internetReachability`, and the
 application counts as visible unless it is a mobile application that has lost focus.
 `NetworkSignals.IsVisible` / `IsOnline` replace them, for a desktop application that reads its window's
-state, or one whose server `internetReachability` does not describe. A reading that throws is logged and
-counted as visible or online.
+state, or one whose server `internetReachability` does not describe. A reading that throws is counted as
+visible or online, and only the first failure of each reading is logged.
 
 **Reading and writing the cache by hand.** `GetQueryData` returns an entry's data, default when it has
 none or has expired unread. `SetQueryData` writes data as a request landing would: the entry is `Success`
@@ -365,7 +365,7 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 - Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
   absent from then on, and is removed the next time a query subscribes to the client, `InvalidateQueries`
   runs or `SetQueryData` writes. As in v5, an entry with a request in flight is kept, and readable, until
-  the first `GcTime` after the request settles.
+  a whole `GcTime` has passed since the request settled.
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
   share one request; v5's result arrives a microtask later.

@@ -27,8 +27,8 @@ namespace Velvet.Tests
     /// invalidated. A result landing between a reader's render and its subscription re-renders it.</item>
     /// <item>An entry nothing reads is removed once it has gone unread for the longest garbage-collection time
     /// a query asked for, by the next sweep — an invalidation or a subscription — unless a request is still in
-    /// flight for it: then it stays, and readable, until the first gcTime after the request settles, a gcTime
-    /// of zero included. An entry something reads again, or still reads, is not removed, and a new entry for a key
+    /// flight for it: then it stays, and readable, until a whole gcTime has passed since the request settled, a
+    /// gcTime of zero included. An entry something reads again, or still reads, is not removed, and a new entry for a key
     /// whose old entry was removed is not swept with it. An expired entry reads as absent before the sweep,
     /// and a reader mounting over it subscribes to a new entry, while one left by a reader in the commit that
     /// brings the next reader is handed over, whatever its gcTime — a keyed remount, and StrictMode's extra
@@ -663,26 +663,25 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnUnreadEntryWhoseRequestLandedPastItsGcTime_When_ReadBeforeTheNextGcTime_Then_ItHoldsTheData()
+        public void Given_AnUnreadEntryWhoseRequestLandedPastItsGcTime_When_ReadJustBeforeAGcTimeSinceItLanded_Then_ItHoldsTheData()
         {
-            // Arrange — unread from three minutes, so its gcTimes fall at eight and thirteen, and the request
-            // lands at nine.
+            // Arrange — unread from three minutes, a gcTime of five, and the request lands at nine.
             using var mounted = MountUnreadAtThreeMinutesWhileFetching();
             s_now = TimeSpan.FromMinutes(9);
             s_sources[0].TrySetResult(7);
 
             // Act
-            s_now = TimeSpan.FromMinutes(13) - TimeSpan.FromTicks(1);
+            s_now = TimeSpan.FromMinutes(14) - TimeSpan.FromTicks(1);
             var entry = s_client.Peek<int>(Todos);
 
             // Assert
             Assert.That(entry?.Data, Is.EqualTo(7),
-                "The removal tried while the request was in flight is put off to the next gcTime, as v5's timer is");
+                "The request settling starts the removal over, a whole gcTime from then, as v5's scheduleGc does");
         }
 
-        // GREEN_ON_BASE(characterization): the base has collected the entry since its first gcTime; this case pins that the deadline put off by a request in flight is the next gcTime, not a later one or none.
+        // GREEN_ON_BASE(characterization): the base has collected the entry since its first gcTime; this case pins that the removal a settled request starts over still comes, a gcTime after it settled.
         [Test]
-        public void Given_AnUnreadEntryWhoseRequestLandedPastItsGcTime_When_TheNextGcTimeComes_Then_ItIsCollected()
+        public void Given_AnUnreadEntryWhoseRequestLandedPastItsGcTime_When_AGcTimeHasPassedSinceItLanded_Then_ItIsCollected()
         {
             // Arrange
             using var mounted = MountUnreadAtThreeMinutesWhileFetching();
@@ -690,11 +689,41 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(7);
 
             // Act
-            s_now = TimeSpan.FromMinutes(13);
+            s_now = TimeSpan.FromMinutes(14);
             var entry = s_client.Peek<int>(Todos);
 
             // Assert
-            Assert.That(entry, Is.Null, "Once the request has settled, the next gcTime removes the entry");
+            Assert.That(entry, Is.Null, "A gcTime after the request settled, the entry is removed");
+        }
+
+        [Test]
+        public void Given_AnEntryUnreadFromZeroWhoseRequestLandsAtFour_When_ReadJustBeforeNine_Then_ItHoldsTheData()
+        {
+            // Arrange
+            using var mounted = MountUnreadAtZeroLandingAtFour();
+
+            // Act
+            s_now = TimeSpan.FromMinutes(9) - TimeSpan.FromTicks(1);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry?.Data, Is.EqualTo(7),
+                "The removal runs a gcTime from the settle, not at the gcTime since the entry went unread");
+        }
+
+        // GREEN_ON_BASE(characterization): the base has collected the entry since five; this case pins that the removal started over at the settle still comes at nine.
+        [Test]
+        public void Given_AnEntryUnreadFromZeroWhoseRequestLandsAtFour_When_ReadAtNine_Then_ItIsCollected()
+        {
+            // Arrange
+            using var mounted = MountUnreadAtZeroLandingAtFour();
+
+            // Act
+            s_now = TimeSpan.FromMinutes(9);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry, Is.Null, "A gcTime after the request settled, the entry is removed");
         }
 
         [Test]
@@ -1304,6 +1333,16 @@ namespace Velvet.Tests
             s_now = GcTime;
             s_rendersA.Clear();
             s_rendersB.Clear();
+            return mounted;
+        }
+
+        private MountedTree MountUnreadAtZeroLandingAtFour()
+        {
+            var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+            s_now = TimeSpan.FromMinutes(4);
+            s_sources[0].TrySetResult(7);
             return mounted;
         }
 

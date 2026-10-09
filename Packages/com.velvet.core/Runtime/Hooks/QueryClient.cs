@@ -363,16 +363,11 @@ namespace Velvet
         internal abstract Type DataType { get; }
         internal abstract bool IsFetching { get; }
 
-        // v5 tries the removal at each gcTime since the entry went unread and reschedules it while a request is
-        // in flight, so a request settling past a deadline leaves the entry until the next one.
+        // v5's fetch calls scheduleGc as it settles, which starts the removal timer over, so an entry nothing reads
+        // goes a whole gcTime after its request settled. An entry something reads has no removal to start over.
         internal void RescheduleCollection(TimeSpan now)
         {
-            var since = InactiveSince;
-            // MUTANT_SURVIVES(equivalent, clause removed): before the deadline no whole gcTime has passed, so the lines below write InactiveSince back unchanged.
-            if (since == null || now - since.Value < GcTime) return;
-            var passed = GcTime > TimeSpan.Zero ? (now - since.Value).Ticks / GcTime.Ticks : 0;
-            // MUTANT_SURVIVES(equivalent, boundary): with a gcTime of zero no tick is added, and InactiveSince at or before now has expired either way.
-            InactiveSince = GcTime > TimeSpan.Zero ? since.Value + TimeSpan.FromTicks(GcTime.Ticks * passed) : now;
+            if (InactiveSince != null) InactiveSince = now;
         }
 
         // The longest any query asked for, as TanStack's updateGcTime keeps.
@@ -733,12 +728,30 @@ namespace Velvet
         }
 
         private static readonly List<Watcher> s_watchers = new();
+        // The watchers as a poll found them, refilled each frame rather than copied, so a poll allocates nothing.
+        private static readonly List<Watcher> s_polled = new();
+        private static readonly Func<bool> s_readVisible = NetworkSignals.ReadVisible;
+        private static readonly Func<bool> s_readOnline = NetworkSignals.ReadOnline;
         private static bool s_polling;
+        // Whether a failing reading has been logged, so one that fails every frame logs once.
+        private static bool s_visibleFailureLogged;
+        private static bool s_onlineFailureLogged;
+
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            s_watchers.Clear();
+            // MUTANT_SURVIVES(equivalent, line removed): a poll refills the list from the watchers before it reads it.
+            s_polled.Clear();
+            s_polling = false;
+            s_visibleFailureLogged = false;
+            s_onlineFailureLogged = false;
+        }
 
         internal static void Watch(QueryClient client)
         {
             s_watchers.Add(new Watcher(
-                client, IsVisible(), TryRead(NetworkSignals.ReadOnline) ?? true));
+                client, IsVisible(), TryRead(s_readOnline, ref s_onlineFailureLogged) ?? true));
             // MUTANT_SURVIVES(equivalent, guard removed): a second poll runs after the first has stored the frame's readings in every watcher, so it finds no change to report.
             if (s_polling) return;
             // MUTANT_SURVIVES(equivalent, line removed): left unset, each watch starts a poll of its own, and a second poll finds no change for the reason above.
@@ -747,7 +760,7 @@ namespace Velvet
         }
 
         // TanStack's focusManager.isFocused(), which a refetch interval asks at each tick.
-        internal static bool IsVisible() => TryRead(NetworkSignals.ReadVisible) ?? true;
+        internal static bool IsVisible() => TryRead(s_readVisible, ref s_visibleFailureLogged) ?? true;
 
         internal static void Unwatch(QueryClient client)
         {
@@ -765,9 +778,12 @@ namespace Velvet
             while (s_watchers.Count > 0)
             {
                 await VelvetTask.Yield();
-                var visible = TryRead(NetworkSignals.ReadVisible);
-                var online = TryRead(NetworkSignals.ReadOnline);
-                foreach (var watcher in s_watchers.ToArray())
+                var visible = TryRead(s_readVisible, ref s_visibleFailureLogged);
+                var online = TryRead(s_readOnline, ref s_onlineFailureLogged);
+                // MUTANT_SURVIVES(equivalent, line removed): a watcher visited again finds the readings its first visit stored, so it reports no change, and a client told twice in a frame joins the request the first signal started.
+                s_polled.Clear();
+                s_polled.AddRange(s_watchers);
+                foreach (var watcher in s_polled)
                 {
                     var focused = visible == true && !watcher.Visible;
                     var reconnected = online == true && !watcher.Online;
@@ -781,9 +797,9 @@ namespace Velvet
             s_polling = false;
         }
 
-        // A reading an override throws from is logged and taken as no reading, so one failure does not end the
-        // polling for every client.
-        private static bool? TryRead(Func<bool> read)
+        // A reading an override throws from is taken as no reading, so one failure does not end the polling for
+        // every client, and only its first failure is logged.
+        private static bool? TryRead(Func<bool> read, ref bool failureLogged)
         {
             try
             {
@@ -791,7 +807,8 @@ namespace Velvet
             }
             catch (Exception readFailure)
             {
-                FiberLogger.LogException(nameof(NetworkSignals), readFailure);
+                if (!failureLogged) FiberLogger.LogException(nameof(NetworkSignals), readFailure);
+                failureLogged = true;
                 return null;
             }
         }

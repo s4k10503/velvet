@@ -12,5 +12,5 @@
 ### Fixed
 
 - A `QueryClient` entry nothing reads is no longer removed while a request for it is in flight, which
-  cancelled that request: as in TanStack Query v5 it stays, and readable, until the first `GcTime` after the
-  request settles.
+  cancelled that request: as in TanStack Query v5 it stays, and readable, until a whole `GcTime` has passed since the
+  request settled.

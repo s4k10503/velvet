@@ -23,15 +23,14 @@ namespace Velvet
         public static Func<bool>? IsOnline { get; set; }
 
         /// <summary>
-        /// Replaces the default visibility reading: <c>Application.isFocused</c> on a mobile platform, and
-        /// visible on every other. Null restores the default.
+        /// Replaces the default visibility reading, <c>Application.isFocused</c> on a mobile platform and visible
+        /// on every other. Null restores the default.
         /// </summary>
         public static Func<bool>? IsVisible { get; set; }
 
         internal static bool ReadOnline() =>
             IsOnline?.Invoke() ?? Application.internetReachability != NetworkReachability.NotReachable;
 
-        // MUTANT_SURVIVES(unreachable, clause removed): the Editor suites run off a mobile platform, where the reading never consults isFocused.
-        internal static bool ReadVisible() => IsVisible?.Invoke() ?? (!Application.isMobilePlatform || Application.isFocused);
+        internal static bool ReadVisible() => IsVisible?.Invoke() ?? ApplicationVisibility.IsVisible();
     }
 }

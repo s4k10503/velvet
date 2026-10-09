@@ -28,7 +28,8 @@ namespace Velvet.Tests
     /// <item>A client stops being watched when its last reader unmounts, and the poll ends once no client is
     /// watched; a client is watched again by its next reader, another client's reader leaving does not stop it
     /// being told, and a reading that throws is logged and taken as visible, by the poll and by an interval,
-    /// whose wait an unmount cancels.</item>
+    /// whose wait an unmount cancels; a reading failing every frame is logged once, and the statics reset starts
+    /// with nothing watched, no poll and no failure logged.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -88,6 +89,8 @@ namespace Velvet.Tests
             s_setShowOther = default;
             NetworkSignals.IsVisible = () => s_visible;
             NetworkSignals.IsOnline = () => s_online;
+            SetSignalsStatic("s_visibleFailureLogged", false);
+            SetSignalsStatic("s_onlineFailureLogged", false);
         }
 
         [TearDown]
@@ -361,7 +364,7 @@ namespace Velvet.Tests
         public IEnumerator Given_AVisibilityReadingThatThrows_When_TheIntervalPasses_Then_TheApplicationCountsAsVisible()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — every reading throws, so the poller logs one failure a frame as well.
+            // Arrange — every reading throws, so the poller logs a failure as well.
             LogAssert.ignoreFailingMessages = true;
             s_interval = Interval;
             using var mounted = MountResolved();
@@ -680,9 +683,57 @@ namespace Velvet.Tests
                 "A reading that fails is logged and taken as visible, so the frame after it reports no change, and polling goes on");
         });
 
+        [UnityTest]
+        public IEnumerator Given_AVisibilityReadingThatThrowsEveryFrame_When_FramesPass_Then_ItsFailureIsLoggedOnce()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            NetworkSignals.IsVisible = () => throw new InvalidOperationException("visibility-failed");
+            ContainedFailureLog.Expect<InvalidOperationException>(nameof(NetworkSignals), "visibility-failed");
+            using var mounted = MountResolved();
+
+            // Act
+            await Pass(TimeSpan.Zero);
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        });
+
+        [Test]
+        public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean()
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            NetworkSignals.IsVisible = () => throw new InvalidOperationException("visibility-failed");
+            NetworkSignals.IsOnline = () => throw new InvalidOperationException("online-failed");
+            using var mounted = Mount();
+
+            // Act
+            typeof(QueryClientSignals)
+                .GetMethod("ResetStatics", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, null);
+
+            // Assert
+            Assert.That(
+                (WatcherCount(), IsPolling(), GetSignalsStatic("s_visibleFailureLogged"), GetSignalsStatic("s_onlineFailureLogged")),
+                Is.EqualTo((0, false, (object)false, (object)false)),
+                "A domain reload starts with no client watched, no poll running and no failure logged");
+        }
+
         #endregion
 
         #region Components and helpers
+
+        private static void SetSignalsStatic(string name, object value)
+            => typeof(QueryClientSignals)
+                .GetField(name, BindingFlags.NonPublic | BindingFlags.Static)!
+                .SetValue(null, value);
+
+        private static object GetSignalsStatic(string name)
+            => typeof(QueryClientSignals)
+                .GetField(name, BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetValue(null)!;
 
         private static QueryClient NewClient(QueryRefetchMode onFocus, QueryRefetchMode onReconnect = QueryRefetchMode.IfStale)
             => new(new QueryClientOptions
