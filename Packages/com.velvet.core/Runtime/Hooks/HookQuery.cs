@@ -329,6 +329,8 @@ namespace Velvet
         internal int MaxRetries { get; set; }
         internal Func<int, Exception, TimeSpan> RetryDelay { get; set; } = null!;
         internal Func<T?, T, T>? StructuralSharing { get; set; }
+
+        internal QueryFetchOptions<T> Copy() => (QueryFetchOptions<T>)MemberwiseClone();
     }
 
     // What an entry knows of the observers reading it, whatever the type they read its data as.
@@ -401,6 +403,12 @@ namespace Velvet
         {
             var wasEnabled = Enabled;
             var options = settings.Options;
+            var key = options.QueryKey;
+            var current = Entry;
+            var staying = current != null && !current.IsRemoved && ReferenceEquals(current.Client, client) && current.Key.Equals(key);
+            // Leaving before the options below are rewritten in place lets the entry left keep the ones it was
+            // handed: QueryEntry.Unsubscribe copies them.
+            if (!staying) Unsubscribe();
             _settings = settings;
             StaleTime = settings.StaleTime;
             Enabled = settings.Enabled;
@@ -408,19 +416,17 @@ namespace Velvet
             FetchOptions.MaxRetries = options.Retry ?? client.DefaultRetry;
             FetchOptions.RetryDelay = options.RetryDelay ?? client.DefaultRetryDelay;
             FetchOptions.StructuralSharing = options.StructuralSharing;
-            var key = options.QueryKey;
-            var current = Entry;
-            if (current != null && !current.IsRemoved && ReferenceEquals(current.Client, client) && current.Key.Equals(key))
+            if (staying)
             {
 #if UNITY_EDITOR
                 _reprintedKeyCommits = 0;
 #endif
                 // v5's setOptions hands the entry this commit's options at every commit.
-                current.SetOptions(FetchOptions);
+                current!.SetOptions(FetchOptions);
                 // TanStack's shouldFetchOptionally: a query turned on over stale data fetches it.
-                if (!wasEnabled && Enabled && current.IsStaleFor(StaleTime))
+                if (!wasEnabled && Enabled && current!.IsStaleFor(StaleTime))
                 {
-                    current.Fetch(FetchOptions, cancelRefetch: false);
+                    current!.Fetch(FetchOptions, cancelRefetch: false);
                 }
                 ScheduleStale();
                 return;
@@ -429,7 +435,6 @@ namespace Velvet
             WarnOnReprintedKey(current, key);
 #endif
 
-            Unsubscribe();
             var entry = client.Build<TQueryFnData>(key, settings.GcTime);
             Entry = entry;
             entry.SetOptions(FetchOptions);

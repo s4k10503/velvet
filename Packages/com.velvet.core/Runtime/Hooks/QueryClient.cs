@@ -370,6 +370,9 @@ namespace Velvet
         // removeObserver calls cancelRetry where it leaves the request running.
         internal void Unsubscribe(QueryEntryObserver<T> observer)
         {
+            // The options this observer handed are rewritten in place at its next commit, where v5's query keeps
+            // a copy of what it was handed.
+            if (ReferenceEquals(_options, observer.FetchOptions)) _options = observer.FetchOptions.Copy();
             if (!_observers.Remove(observer) || _observers.Count > 0 || IsRemoved) return;
             _retriesStopped = true;
             Client.MarkInactive(this);

@@ -1,7 +1,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -16,24 +15,27 @@ namespace Velvet.Tests
     /// <item>A reader subscribing hands the entry its options, so the later of two readers' function runs.</item>
     /// <item>A reader starting a request, or committing again, hands them over again, so the earlier reader's
     /// function runs after either.</item>
+    /// <item>A reader moving to another key leaves the entry the options it handed it, not its new key's, and
+    /// one moving away whose options the entry no longer holds leaves the entry's as they are.</item>
     /// </list>
     /// </summary>
     /// <remarks>
-    /// Reader A is mounted first and its request lands; reader B mounts after it, under a root of its own,
-    /// over the fresh entry, so B starts no request. Each query function records its reader in <see cref="s_fetched"/> and hands back a
+    /// Reader A mounts first and its request lands; reader B mounts after it, under a root of its own, over the
+    /// fresh entry, so B starts no request, and what was fetched so far is forgotten. Each query function
+    /// records its reader and page in <see cref="s_fetched"/>, as <c>a1</c> or <c>b2</c>, and hands back a
     /// completion source the case settles itself.
     /// </remarks>
     [TestFixture]
     internal sealed class UseQueryInvalidateOptionsTests
     {
-        private static readonly QueryKey Todos = new("todos");
-
         private VisualElement _root = null!;
         private VisualElement _rootB = null!;
         private static QueryClient s_client = null!;
         private static readonly List<string> s_fetched = new();
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
         private static readonly List<QueryResult<int>> s_rendersA = new();
+        private static StateUpdater<int> s_setPageA;
+        private static StateUpdater<int> s_setPageB;
         private static StateUpdater<int> s_setTickA;
 
         [SetUp]
@@ -45,6 +47,8 @@ namespace Velvet.Tests
             s_fetched.Clear();
             s_sources.Clear();
             s_rendersA.Clear();
+            s_setPageA = default;
+            s_setPageB = default;
             s_setTickA = default;
         }
 
@@ -56,10 +60,10 @@ namespace Velvet.Tests
             using var other = MountB();
 
             // Act
-            s_client.InvalidateQueries(Todos);
+            s_client.InvalidateQueries(Page(1));
 
             // Assert
-            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("b"), "Subscribing hands the entry the reader's options");
+            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("b1"), "Subscribing hands the entry the reader's options");
         }
 
         // GREEN_ON_BASE(characterization): the base refetches with the first reader's function, which is A's here too; this case pins that A's request hands its options back over B's.
@@ -73,10 +77,10 @@ namespace Velvet.Tests
             s_fetched.Clear();
 
             // Act
-            s_client.InvalidateQueries(Todos);
+            s_client.InvalidateQueries(Page(1));
 
             // Assert
-            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("a"), "A request a reader starts hands the entry its options");
+            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("a1"), "A request a reader starts hands the entry its options");
         }
 
         // GREEN_ON_BASE(characterization): the base refetches with the first reader's function, which is A's here too; this case pins that A's commit hands its options back over B's.
@@ -87,20 +91,56 @@ namespace Velvet.Tests
             using var mounted = MountA();
             using var other = MountB();
             s_setTickA.Invoke(tick => tick + 1);
-            mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
+            Flush(mounted);
+
+            // Act
+            s_client.InvalidateQueries(Page(1));
+
+            // Assert
+            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("a1"), "Each commit hands the entry the reader's options");
+        }
+
+        [Test]
+        public void Given_TheLaterReaderMovingToAnotherKey_When_TheKeyItLeftIsInvalidated_Then_ItsFunctionForThatKeyRuns()
+        {
+            // Arrange
+            using var mounted = MountA();
+            using var other = MountB();
+            s_setPageB.Invoke(2);
+            Flush(other);
             s_fetched.Clear();
 
             // Act
-            s_client.InvalidateQueries(Todos);
+            s_client.InvalidateQueries(Page(1));
 
             // Assert
-            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("a"), "Each commit hands the entry the reader's options");
+            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("b1"),
+                "The entry keeps a copy of what it was handed, so the reader's next key's function does not run for it");
+        }
+
+        // GREEN_ON_BASE(characterization): after A leaves, the base's first reader is B, whose function is the expected one; this case pins that A leaving does not replace the options B handed the entry.
+        [Test]
+        public void Given_TheEarlierReaderMovingToAnotherKey_When_TheKeyItLeftIsInvalidated_Then_TheLaterReadersFunctionRuns()
+        {
+            // Arrange
+            using var mounted = MountA();
+            using var other = MountB();
+            s_setPageA.Invoke(2);
+            Flush(mounted);
+            s_fetched.Clear();
+
+            // Act
+            s_client.InvalidateQueries(Page(1));
+
+            // Assert
+            Assert.That(string.Join(" ", s_fetched), Is.EqualTo("b1"),
+                "A reader leaving replaces only the options it handed itself");
         }
 
         #region Components and helpers
 
-        // Mounts A and lands its request.
+        private static QueryKey Page(int page) => new("todos", page);
+
         private MountedTree MountA()
         {
             var mounted = V.Mount(_root, V.Component(ReaderA, key: "a"));
@@ -110,7 +150,6 @@ namespace Velvet.Tests
             return mounted;
         }
 
-        // Mounts B under a root of its own, after A, over the fresh entry, and forgets what was fetched so far.
         private MountedTree MountB()
         {
             var mounted = V.Mount(_rootB, V.Component(ReaderB, key: "b"));
@@ -119,10 +158,16 @@ namespace Velvet.Tests
             return mounted;
         }
 
-        private static QueryOptions<int> Options(string reader)
-            => new(Todos, _ =>
+        private static void Flush(MountedTree mounted)
+        {
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+        }
+
+        private static QueryOptions<int> Options(string reader, int page)
+            => new(Page(page), _ =>
             {
-                s_fetched.Add(reader);
+                s_fetched.Add(reader + page);
                 var source = new VelvetTaskCompletionSource<int>();
                 s_sources.Add(source);
                 return source.Task;
@@ -134,16 +179,20 @@ namespace Velvet.Tests
         [Component]
         private static VNode ReaderA()
         {
+            var (page, setPage) = Hooks.UseState(1);
             var (_, setTick) = Hooks.UseState(0);
+            s_setPageA = setPage;
             s_setTickA = setTick;
-            s_rendersA.Add(Hooks.UseQuery(Options("a"), s_client));
+            s_rendersA.Add(Hooks.UseQuery(Options("a", page), s_client));
             return V.Label(text: "a");
         }
 
         [Component]
         private static VNode ReaderB()
         {
-            Hooks.UseQuery(Options("b"), s_client);
+            var (page, setPage) = Hooks.UseState(1);
+            s_setPageB = setPage;
+            Hooks.UseQuery(Options("b", page), s_client);
             return V.Label(text: "b");
         }
 
