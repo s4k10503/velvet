@@ -1619,6 +1619,46 @@ namespace Velvet
             }
         }
 
+        // The refs of the elements a Suspense keeps hidden, detached as React 18 detaches a hidden tree's host refs,
+        // each with the callback that attaches it again on the reveal.
+        private readonly Dictionary<VisualElement, System.Func<VisualElement, System.Action>> _refsDetachedWhileHidden =
+            new();
+
+        // Over element and every element below it: a setup still queued is taken back with the installed one. A
+        // render of the Suspense hiding an element patches it like any other, queueing a setup where its callback
+        // changed, and the hide that render ends with takes that setup back here.
+        internal void DetachRefsWhileHidden(VisualElement element)
+        {
+            var callback = _pendingRefAttachIndex.TryGetValue(element, out var queued)
+                ? _pendingRefAttaches[queued].Callback
+                : RefCallbacks.TryGetValue(element, out var installed) ? installed.Callback : null;
+            if (callback != null)
+            {
+                DetachRefCallback(element);
+                DropPendingRefAttach(element);
+                _refsDetachedWhileHidden[element] = callback;
+            }
+            foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
+        }
+
+        // Over element and every element below it, short of one a nested Suspense still hides, whose refs that
+        // Suspense attaches when it reveals. A setup the reveal's own render queued carries the newer callback, so
+        // it is the one kept.
+        internal void AttachRefsHiddenUnder(VisualElement element)
+        {
+            if (_refsDetachedWhileHidden.Remove(element, out var callback) && !_pendingRefAttachIndex.ContainsKey(element))
+            {
+                SyncRefCallback(element, callback);
+            }
+            foreach (var child in element.hierarchy.Children())
+            {
+                if (!SuspenseHiddenElements.IsHidden(child)) AttachRefsHiddenUnder(child);
+            }
+        }
+
+        // An element that leaves while its ref is detached has had that ref's cleanup already.
+        internal void ForgetRefDetachedWhileHidden(VisualElement element) => _refsDetachedWhileHidden.Remove(element);
+
         // Cancels a setup queued for an element that is leaving before the drain reaches it. The setup
         // never ran, so there is no cleanup owed and nothing to undo — running it would install a ref
         // pointing at an element no tree holds.

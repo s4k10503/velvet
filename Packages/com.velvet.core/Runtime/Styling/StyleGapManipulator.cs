@@ -454,12 +454,24 @@ namespace Velvet
 
         // A cheap order-sensitive hash of the inputs besides the spec that change the applied margins — the
         // spec only changes through UpdateGap, which drops the signature itself: the wrap verdict, the gap's
-        // resolved slot, and the current child identity sequence. The gap slot has to be
+        // resolved slot, the current child identity sequence, and which children have no box, which an inline
+        // display changes with the sequence as it was. The gap slot has to be
         // the slot itself rather than an axis bit — Left→Right or Top→Bottom is a same-axis flip (a direction
         // toggling without the row/column axis itself changing), and a signature collision here would skip
         // the re-apply that moves the margin to the new edge.
         private static int ComputeSignature(VisualElement container, bool wrap, HeldSlot gapSlot)
-            => StyleOutOfFlowChild.HashChildSequence(wrap ? HeldSlotGroups.SlotCount : (int)gapSlot, container);
+        {
+            unchecked
+            {
+                var hash = StyleOutOfFlowChild.HashChildSequence(wrap ? HeldSlotGroups.SlotCount : (int)gapSlot, container);
+                var count = container.childCount;
+                for (var i = 0; i < count; i++)
+                {
+                    hash = hash * 31 + (StyleOutOfFlowChild.HasNoBox(container[i]) ? 1 : 0);
+                }
+                return hash;
+            }
+        }
 
         // The slot a non-wrap gap writes on every child but the first: the leading edge of the main axis, or the
         // trailing one when the resolved direction reverses it, which keeps it between the visually adjacent

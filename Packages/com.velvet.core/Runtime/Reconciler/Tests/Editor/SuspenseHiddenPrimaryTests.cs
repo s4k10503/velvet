@@ -71,6 +71,12 @@ namespace Velvet.Tests
             s_outsideSource = null;
             s_rootlessSource = new VelvetTaskCompletionSource<int>();
             s_bareListHost = null;
+            s_abandonHost = null;
+            s_portalTarget = new VisualElement();
+            s_refElement = null;
+            s_setRefShown = default;
+            s_refHostRenders = 0;
+            s_refAttachedRender = 0;
         }
 
         [Test]
@@ -500,21 +506,239 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARevealedBoundaryWhosePassIsGivenUpByASuspendOutsideIt_When_AComponentInItsChildrenUpdates_Then_ItCommits()
+        public void Given_ARevealedBoundaryWhoseChildSuspendsInAPassASuspendOutsideItGivesUp_When_ThePassIsGivenUp_Then_TheBoundaryIsNotRecordedShowingItsFallback()
         {
-            // Arrange — the reader outside the Suspense has no boundary above, so the update's pass is given up
+            // Arrange — the reader outside the Suspense has no boundary above, so the pass that hides the
+            // boundary's children is given up after the Suspense has recorded its fallback
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(AbandonHostRender, key: "abandon-host"));
+            s_setOwn.Invoke(1);
+            s_setAbandonTick.Invoke(1);
+
+            // Act
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.IsBoundaryShowingFallback(s_abandonHost), Is.False,
+                "A pass that is given up commits no fallback, so none is recorded for the boundary");
+        }
+
+        [Test]
+        public void Given_ABoundaryHidingItsPrimaryWhoseRevealIsGivenUpByASuspendOutsideIt_When_TheRevealIsRetried_Then_AComponentInsideAnElementOfItSetsItsLayoutEffectUpAgain()
+        {
+            // Arrange — the reader's resolve and the outside reader's suspend land in one pass, which is given up
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(AbandonHostRender, key: "abandon-host"));
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+            Resuspend(mounted);
+            s_source.TrySetResult(5);
+            s_setAbandonTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_outsideSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the count is read with it, since a counter mounted again sets its effect up a second time too
+            Assert.That((s_layoutSetups, _root.Q<VisualElement>("primary")?.Q<Label>()?.text), Is.EqualTo((2, "count:1")),
+                "The given-up reveal showed nothing, so the reveal that commits sets the hidden effects up again");
+        }
+
+        [Test]
+        public void Given_ARevealedBoundaryWhoseHideIsGivenUpByASuspendOutsideIt_When_TheHideIsRetried_Then_AComponentInsideAnElementOfItHasItsLayoutEffectCleanedUp()
+        {
+            // Arrange — the reader's suspend and the outside reader's land in one pass, which is given up
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(AbandonHostRender, key: "abandon-host"));
+            var primary = _root.Q<VisualElement>("primary");
+            s_setOwn.Invoke(1);
+            s_setAbandonTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_outsideSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the display is read with it, since a primary the boundary removes cleans the effect up too
+            Assert.That((s_layoutCleanups, primary.style.display.value), Is.EqualTo((1, DisplayStyle.None)),
+                "The given-up hide hid nothing, so the hide that commits takes the effects down");
+        }
+
+        [Test]
+        public void Given_AReaderBesideARevealedBoundaryInItsHost_When_ItsReadResolvesAfterThePassItSuspendedIsGivenUp_Then_ItShowsTheValue()
+        {
+            // Arrange — the host renders the Suspense, so it is the nearest boundary fiber above the reader beside it
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             using var mounted = V.Mount(_root, V.Component(AbandonHostRender, key: "abandon-host"));
             s_setAbandonTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Act
-            s_setOwnSibling.Invoke(1);
+            s_outsideSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("outside")?.text, Is.EqualTo("outside:7"),
+                "No Suspense is around the reader, so its resolve retries the pass it gave up, as React retries it");
+        }
+
+        [Test]
+        public void Given_NestedBoundariesOneComponentRenders_When_AChildOfTheInnerOneSuspendsItsOwnUpdate_Then_OnlyTheInnerShowsItsFallback()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SameComponentNestedHostRender, key: "same-nested-host"));
+
+            // Act
+            s_setInnerOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(_root.DisplayedLabelTexts("|"), Is.EqualTo("outer-content|inner-loading"),
+                "A Suspense waits only for what no Suspense inside it waits for, one the same component renders included");
+        }
+
+        // GREEN_ON_BASE(characterization): the base discards the inner children, and the outer boundary stays shown.
+        // What this pins is that a row the inner boundary hides does not suspend the outer one when one component
+        // renders both.
+        [Test]
+        public void Given_NestedBoundariesOneComponentRenders_When_AVirtualListRowOfTheInnerOneSuspendsAsItMounts_Then_OnlyTheInnerShowsItsFallback()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SameComponentNestedListHostRender, key: "same-nested-list-host"));
+            SeedViewport(mounted);
+
+            // Act
+            MountSuspendingRow(mounted);
+
+            // Assert
+            Assert.That(_root.DisplayedLabelTexts("|"), Is.EqualTo("outer-content|inner-loading"),
+                "A Suspense waits only for the rows no Suspense inside it hides, one the same component renders included");
+        }
+
+        [Test]
+        public void Given_APortalInARevealedPrimary_When_TheBoundarySuspendsAgain_Then_ThePortalsChildIsDisplayedNone()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PortalHostRender, key: "portal-host"));
+            var portaled = s_portalTarget.Q<Label>("portaled");
+
+            // Act
+            Resuspend(mounted);
+
+            // Assert
+            Assert.That(portaled.style.display.value, Is.EqualTo(DisplayStyle.None),
+                "React hides a Portal's children with the rest of the children a boundary hides");
+        }
+
+        // GREEN_ON_BASE(characterization): the base hides nothing, so a Portal beside the boundary keeps its child shown.
+        // What this pins is that the hide reaches the children of the Portals inside the boundary alone.
+        [Test]
+        public void Given_APortalBesideARevealedBoundary_When_TheBoundarySuspendsAgain_Then_ThePortalsChildStaysDisplayed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PortalHostRender, key: "portal-host"));
+            var beside = s_portalTarget.Q<Label>("beside");
+
+            // Act
+            Resuspend(mounted);
+
+            // Assert
+            Assert.That(beside.style.display.keyword, Is.EqualTo(StyleKeyword.Null),
+                "A boundary hides its own children, and a Portal written beside it is not among them");
+        }
+
+        [Test]
+        public void Given_APortalInAHiddenPrimary_When_TheBoundaryReveals_Then_ItsPlaceholderIsDisplayedNoneAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PortalHostRender, key: "portal-host"));
+            var container = _root.Q<VisualElement>("container");
+            var placeholder = container[0];
+            Resuspend(mounted);
+
+            // Act
+            Resolve(mounted, 5);
+
+            // Assert — the parent is read with it, since a placeholder created again is displayed none as well
+            Assert.That((placeholder.parent == container, placeholder.style.display.value),
+                Is.EqualTo((true, DisplayStyle.None)),
+                "A reveal gives an element back the display it had, and a Portal's placeholder has no box");
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the ref's cleanup when it removes the element.
+        // What this pins is that an element the boundary keeps hidden has its ref detached.
+        [Test]
+        public void Given_AnElementWithARefInARevealedPrimary_When_TheBoundarySuspendsAgain_Then_ItsRefIsDetached()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RefHostRender, key: "ref-host"));
+
+            // Act
+            Resuspend(mounted);
+
+            // Assert
+            Assert.That(s_refElement, Is.Null,
+                "React 18 detaches the host refs of a tree a Suspense hides");
+        }
+
+        [Test]
+        public void Given_AnElementWithARefInAHiddenPrimary_When_TheBoundaryReveals_Then_ItsRefIsAttachedToTheSameElement()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RefHostRender, key: "ref-host"));
+            var inner = _root.Q<VisualElement>("inner");
+            Resuspend(mounted);
+
+            // Act
+            Resolve(mounted, 5);
+
+            // Assert
+            Assert.That(s_refElement, Is.SameAs(inner),
+                "React 18 attaches the host refs of a tree a Suspense reveals again, to the elements it kept");
+        }
+
+        // GREEN_ON_BASE(characterization): the base creates the element again on reveal, with the reveal's ref.
+        // What this pins is that a kept element gets the ref its reveal render passed, not the one it had.
+        [Test]
+        public void Given_AnElementWithARefInAHiddenPrimary_When_TheBoundaryReveals_Then_TheRefItsRevealRenderPassedIsAttached()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RefHostRender, key: "ref-host"));
+            Resuspend(mounted);
+
+            // Act
+            Resolve(mounted, 5);
+
+            // Assert
+            Assert.That(s_refAttachedRender, Is.EqualTo(s_refHostRenders),
+                "React attaches the ref of the render it commits");
+        }
+
+        // GREEN_ON_BASE(characterization): the base has no table of detached refs, so it keeps none.
+        // What this pins is that an element leaving while hidden leaves that table.
+        [Test]
+        public void Given_AnElementWhoseRefABoundaryDetached_When_TheBoundaryIsRemoved_Then_NoRefIsKeptForIt()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RefHostRender, key: "ref-host"));
+            Resuspend(mounted);
+
+            // Act
+            s_setRefShown.Invoke(false);
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(_root.Q<Label>("own")?.text, Is.EqualTo("own:1"),
-                "A pass that is given up commits no fallback, so the children it left on screen go on updating");
+            Assert.That(RefsKeptWhileHidden(mounted.Root.Reconciler.Context), Is.EqualTo(0),
+                "An element that leaves while hidden has had its ref's cleanup, so nothing attaches it again");
         }
 
         [Test]
@@ -562,6 +786,8 @@ namespace Velvet.Tests
                 "A render that is given up commits no fallback, so none is recorded");
         }
 
+        // GREEN_ON_BASE(characterization): the base has no record of hidden elements, so it records none.
+        // What this pins is that a reveal takes its elements out of that record, which AnchoredDriver reads.
         [Test]
         public void Given_ABoundaryThatRevealedItsPrimary_When_TheRevealCommits_Then_NoElementOfItIsRecordedHidden()
         {
@@ -574,10 +800,12 @@ namespace Velvet.Tests
             Resolve(mounted, 5);
 
             // Assert
-            Assert.That(SuspenseHiddenElements.IsHidden(reader), Is.False,
+            Assert.That(RecordedHidden(reader), Is.False,
                 "An element the boundary revealed is the anchoring's to show and hide again");
         }
 
+        // GREEN_ON_BASE(characterization): the base has no record of hidden elements, so it records none.
+        // What this pins is that an element returned to the pool leaves that record.
         [Test]
         public void Given_AnElementABoundaryHid_When_TheBoundaryIsRemovedAndTheElementGoesBackToThePool_Then_ItIsNoLongerRecordedHidden()
         {
@@ -591,7 +819,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(SuspenseHiddenElements.IsHidden(reader), Is.False,
+            Assert.That(RecordedHidden(reader), Is.False,
                 "A pooled element's next consumer is shown and hidden by its own anchoring");
         }
 
@@ -1135,6 +1363,7 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setAbandonTick;
         private static StateUpdater<int> s_setOwnSibling;
         private static VelvetTaskCompletionSource<int> s_outsideSource;
+        private static ComponentFiber s_abandonHost;
 
         [Component]
         private static VNode OwnSiblingRender()
@@ -1150,21 +1379,24 @@ namespace Velvet.Tests
             var value = Hooks.Use<int>(_ => tick == 0
                 ? VelvetTask.FromResult(0)
                 : (s_outsideSource ??= new VelvetTaskCompletionSource<int>()).Task, tick);
-            return V.Label(text: "outside:" + value);
+            return V.Label(name: "outside", text: "outside:" + value);
         }
 
-        // The Suspense and the reader outside it share one container, whose walk the outside reader stops.
+        // The Suspense and the reader outside it share one container, whose walk the outside reader stops. The
+        // counter sits inside a host element of the primary, which that element's own reconcile mounts.
         [Component]
         private static VNode AbandonHostRender()
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_setAbandonTick = setTick;
+            s_abandonHost = FiberAmbientStack.Current;
             return V.Div(children: new VNode[]
             {
                 V.Suspense(
                     fallback: V.Label(text: "loading"),
                     children: new VNode[]
                     {
+                        V.Div(name: "primary", children: new VNode[] { V.Component(CounterRender, key: "counter") }),
                         V.Component(OwnSiblingRender, key: "own"),
                         V.Component(ReaderRender, key: "reader"),
                     }),
@@ -1193,12 +1425,110 @@ namespace Velvet.Tests
             return (int)entries.GetType().GetProperty("Count")!.GetValue(entries);
         }
 
+        // Read by name so this file still builds on a tree without the table, which records nothing hidden.
+        private static bool RecordedHidden(VisualElement element)
+            => typeof(ComponentFiber).Assembly.GetType("Velvet.SuspenseHiddenElements")
+                ?.GetMethod("IsHidden", BindingFlags.Static | BindingFlags.NonPublic)
+                ?.Invoke(null, new object[] { element }) is true;
+
         // Read by name so this file still builds on a tree without the property, where the case fails instead.
         private static bool MarkedSuspended(ComponentFiber fiber)
             => typeof(ComponentFiber).GetProperty("SuspendedOn", BindingFlags.Instance | BindingFlags.NonPublic)
                 ?.GetValue(fiber) != null;
 
         private static ComponentFiber s_bareListHost;
+
+        [Component]
+        private static VNode SameComponentNestedHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "outer-loading"),
+                    children: new VNode[]
+                    {
+                        V.Label(text: "outer-content"),
+                        V.Suspense(
+                            fallback: V.Label(text: "inner-loading"),
+                            children: new VNode[] { V.Component(InnerReaderRender, key: "inner") }),
+                    }),
+            });
+
+        [Component]
+        private static VNode SameComponentNestedListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setListTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "outer-loading"),
+                    children: new VNode[]
+                    {
+                        V.Label(text: "outer-content"),
+                        V.Suspense(fallback: V.Label(text: "inner-loading"), children: new VNode[] { RowList(tick) }),
+                    }),
+            });
+        }
+
+        private static VisualElement s_portalTarget;
+
+        [Component]
+        private static VNode PortalHostRender()
+            => V.Div(name: "container", children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.Portal(s_portalTarget, children: new VNode[] { V.Label(name: "portaled", text: "portaled") }),
+                        V.Component(ReaderRender, key: "reader"),
+                    }),
+                V.Portal(s_portalTarget, children: new VNode[] { V.Label(name: "beside", text: "beside") }),
+            });
+
+        private static VisualElement s_refElement;
+        private static StateUpdater<bool> s_setRefShown;
+        private static int s_refHostRenders;
+        private static int s_refAttachedRender;
+
+        // The ref sits below the primary's outermost element, and its callback captures, so each render hands a
+        // new one, as an inline lambda that captures does.
+        [Component(Compiler = false)]
+        private static VNode RefHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setRefShown = setShown;
+            var render = ++s_refHostRenders;
+            return V.Div(name: "container", children: new VNode[]
+            {
+                shown
+                    ? V.Suspense(
+                        fallback: V.Label(text: "loading"),
+                        children: new VNode[]
+                        {
+                            V.Div(name: "primary", children: new VNode[]
+                            {
+                                V.Div(name: "inner", refCallback: element =>
+                                {
+                                    s_refElement = element;
+                                    s_refAttachedRender = render;
+                                    return () => s_refElement = null;
+                                }),
+                            }),
+                            V.Component(ReaderRender, key: "reader"),
+                        })
+                    : V.Label(text: "removed"),
+            });
+        }
+
+        // Read by name so this file still builds on a tree without the table, which keeps none.
+        private static int RefsKeptWhileHidden(ReconcilerContext context)
+        {
+            var refs = typeof(ReconcilerContext)
+                .GetField("_refsDetachedWhileHidden", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(context);
+            return refs == null ? 0 : (int)refs.GetType().GetProperty("Count")!.GetValue(refs);
+        }
 
         [Component]
         private static VNode BareListHostRender()

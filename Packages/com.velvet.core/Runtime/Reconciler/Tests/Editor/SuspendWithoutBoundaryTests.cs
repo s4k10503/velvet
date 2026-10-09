@@ -119,7 +119,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
-        // The labels are read as displayed, since those children now stay in the tree hidden.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the handle's and the reader's labels in the tree, hidden.
         [Test]
         public void Given_AHiddenHandleWhoseRefAnotherComponentWroteSince_When_ThePassRendersTheBoundaryStillShowingItsFallback_Then_TheRefKeepsThatHandle()
         {
@@ -220,7 +221,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
-        // The labels are read as displayed, since those children now stay in the tree hidden.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the sibling's, the handle's and the reader's labels in the tree, hidden.
         [Test]
         public void Given_AHandleAnInnerBoundaryRevealsInThePassItsOuterBoundaryHides_When_ThatPassCommits_Then_TheHandleIsNotSet()
         {
@@ -296,7 +298,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
-        // The labels are read as displayed, since those children now stay in the tree hidden.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the sibling's and the reader's labels in the tree, hidden.
         [Test]
         public void Given_AShownSiblingWhoseLayoutEffectDepsChangeInTheUpdateThatSuspendsTheBoundary_When_ItCommits_Then_TheChangedEffectWaits()
         {
@@ -314,7 +317,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
-        // The labels are read as displayed, since those children now stay in the tree hidden.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the reader's label in the tree, hidden.
         [Test]
         public void Given_AComponentTheBoundaryShowedWhoseOwnUpdateSuspends_When_TheBoundaryShowsItsFallback_Then_ItsLayoutEffectIsCleanedUp()
         {
@@ -549,7 +553,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
-        // The labels are read as displayed, since those children now stay in the tree hidden.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the child's label in the tree, hidden.
         [Test]
         public void Given_AResolvedBoundaryWhoseChildsOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheBoundaryShowsItsFallback()
         {
@@ -568,7 +573,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
-        // The labels are read as displayed, since those children now stay in the tree hidden.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the child's label in the tree, hidden.
         [Test]
         public void Given_ACompilerMemoizedBoundaryWhoseChildsOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheBoundaryShowsItsFallback()
         {

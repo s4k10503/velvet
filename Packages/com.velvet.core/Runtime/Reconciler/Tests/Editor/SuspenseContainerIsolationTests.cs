@@ -695,7 +695,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the merge base keeps this state and removes the primary.
-        // The labels are read as displayed, since the primary the boundary had shown now stays in the tree hidden.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping the
+        // primary's labels in the tree, hidden.
         [Test]
         public void Given_AHiddenCommittedPrimaryAfterAnEarlierFailingSibling_When_TheRenderItCaughtInRetries_Then_ItsStateSurvives()
         {
@@ -726,7 +727,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the merge base keeps this effect and removes the primary.
-        // The labels are read as displayed, since the primary the boundary had shown now stays in the tree hidden.
+        // The catch taken in the walk keeps it by rendering the Suspense again, still pending, which this pins.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping the
+        // primary's labels in the tree, hidden.
         [Test]
         public void Given_AHiddenCommittedPrimaryAfterAnEarlierFailingSibling_When_ItsSiblingCatches_Then_ItsPassiveEffectStaysSubscribed()
         {

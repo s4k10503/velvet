@@ -208,6 +208,12 @@ namespace Velvet
         // nested one's fibers hidden.
         internal UnityEngine.UIElements.VisualElement? HiddenUnder { get; set; }
 
+        // The fiber rendering the Suspense that keeps this fiber offscreen; null while it is shown, and under a
+        // Suspense no component renders. FiberRenderer.NotifyAsyncResourceCompleted takes it as the Suspense this
+        // fiber is inside, which the nearest boundary fiber above it need not be: that one can render a Suspense
+        // this fiber sits beside.
+        internal ComponentFiber? OffscreenUnder { get; set; }
+
         // Set while a Suspense keeps this fiber offscreen with its layout effects cleaned up — see
         // FiberEffects.HideLayoutEffects.
         internal bool LayoutEffectsHidden { get; set; }

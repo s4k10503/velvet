@@ -838,9 +838,15 @@ namespace Velvet
                     () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, NotifyAsyncResourceCompleted));
                 return;
             }
-            // Searched from the parent, as React takes the nearest Suspense above the component that suspended: a
-            // boundary this fiber renders itself wraps its output, never its own read.
-            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
+            // The Suspense this fiber is inside, which is not always the nearest boundary fiber above it: a fiber
+            // that renders a Suspense is a boundary for a sibling written beside that Suspense too. An inline fiber a
+            // Suspense keeps offscreen records which one; one no Suspense keeps offscreen is on screen, so nothing
+            // holds its slot for a render to settle into, and it goes the way a read with no Suspense above goes. A
+            // VirtualList row is searched from its parent, as SuspendPassOwner searches: a boundary this fiber
+            // renders itself wraps its output, never its own read.
+            var boundary = !fiber.IsInlineMounted
+                ? ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!)
+                : fiber.IsOffscreen ? fiber.OffscreenUnder : null;
             if (boundary == null)
             {
                 // What React retries is the work that suspended on this read; with none waiting on it, nothing
