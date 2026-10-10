@@ -65,6 +65,7 @@ namespace Velvet.Tests
         private static Func<QueryInfo, QueryRefetchMode>? s_onFocusFn;
         private static Func<QueryInfo, QueryRefetchMode>? s_onReconnectFn;
         private static Func<QueryInfo, QueryRefetchMode>? s_clientOnFocusFn;
+        private static Func<QueryInfo, QueryRefetchMode>? s_clientOnReconnectFn;
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
         private static readonly List<CancellationToken> s_tokens = new();
         private static readonly List<QueryResult<int>> s_renders = new();
@@ -94,6 +95,7 @@ namespace Velvet.Tests
             s_onFocusFn = null;
             s_onReconnectFn = null;
             s_clientOnFocusFn = null;
+            s_clientOnReconnectFn = null;
             s_client = NewClient(QueryRefetchMode.IfStale);
             s_sources.Clear();
             s_tokens.Clear();
@@ -887,6 +889,23 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_AReconnectFunctionOnTheClient_When_TheDeviceComesBackOverFreshData_Then_TheQueryFetchesAgain()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            s_clientOnReconnectFn = _ => QueryRefetchMode.Always;
+            s_client = NewClient(QueryRefetchMode.IfStale, QueryRefetchMode.Never);
+            using var mounted = MountResolved();
+
+            // Act
+            await DisconnectAndReconnect();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2), "A function on the client is the default of a query that sets none, ahead of the client's mode");
+        });
+
+        [UnityTest]
         public IEnumerator Given_AReconnectFunctionReturningNever_When_TheDeviceComesBackOverStaleData_Then_NothingIsFetched()
             => VelvetTask.ToCoroutine(async () =>
         {
@@ -1134,6 +1153,7 @@ namespace Velvet.Tests
                 RefetchOnWindowFocus = onFocus,
                 RefetchOnReconnect = onReconnect,
                 RefetchOnWindowFocusFn = s_clientOnFocusFn,
+                RefetchOnReconnectFn = s_clientOnReconnectFn,
                 Clock = () => s_now,
             });
 

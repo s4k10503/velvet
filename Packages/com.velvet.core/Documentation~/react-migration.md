@@ -345,8 +345,9 @@ entry's `QueryKey`, `Status`, `Data` (the query function's data, not what `Selec
 and `IsFetching` as they stand at the call — and replaces the value set beside it; the two refetch
 functions can also be set on `QueryClientOptions`, and a query's own setting, in either form, stands
 ahead of the client's. The interval function returns a `TimeSpan?` and is asked when the entry changes and
-when the options change, not every frame; the other two are asked each time their signal comes, for an
-enabled query only. One that throws is logged, and counts as no interval or as `Never`.
+at every commit of the component, not every frame; the other two are asked each time their signal comes, for an
+enabled query only. One that throws counts as no interval or as `Never`; a refetch function's failure is logged each time, an interval
+function's once per function instance.
 
 **Cancelling a request.** The `CancellationToken` a query function receives is cancelled when a refetch
 starts that request over, by `Clear`, and when the last query reading the entry leaves while the request is
@@ -389,7 +390,8 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 - Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
   absent from then on, and is removed the next time a query subscribes to the client, `InvalidateQueries`
   runs or `SetQueryData` writes. As in v5, an entry with a request in flight is kept, and readable, until
-  a whole `GcTime` has passed since the request settled.
+  a whole `GcTime` has passed since the request settled. A request of a query function taking no token
+  that never settles therefore keeps its entry for as long as the client lives, as a fetching query is kept in v5.
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
   share one request; v5's result arrives a microtask later.

@@ -178,10 +178,11 @@ namespace Velvet
         public QueryOptions(QueryKey queryKey, Func<VelvetTask<TQueryFnData>> queryFn)
             : this(queryKey, QueryFunctions.WithoutToken(queryFn))
         {
-            TakesToken = false;
         }
 
-        internal bool TakesToken { get; init; } = true;
+        // Told from the function held, so that a `with { QueryFn = ... }` over token-less options is classified by
+        // the function it now carries.
+        internal bool TakesToken => QueryFn?.Target is not QueryFunctions.ITokenless;
 
         /// <summary>Overrides <see cref="QueryClient.DefaultStaleTime"/> for this query.</summary>
         public TimeSpan? StaleTime { get; init; }
@@ -259,8 +260,8 @@ namespace Velvet
         /// TanStack Query's <c>refetchInterval</c> given as a function: the interval, handed the entry the query
         /// reads, with the meaning <see cref="RefetchInterval"/> gives a number and null for no interval. It
         /// replaces <see cref="RefetchInterval"/> when both are set. It is called whenever the entry changes and
-        /// when the options change, as TanStack Query calls its function, not once a frame; one that throws is
-        /// logged and counts as no interval.
+        /// at every commit of the component, not once a frame; one that throws counts as no interval, and its
+        /// failure is logged once for each function instance.
         /// </summary>
         public Func<QueryInfo, TimeSpan?>? RefetchIntervalFn { get; init; }
 
@@ -316,17 +317,29 @@ namespace Velvet
         public QueryOptions(QueryKey queryKey, Func<VelvetTask<T>> queryFn)
             : this(queryKey, QueryFunctions.WithoutToken(queryFn))
         {
-            TakesToken = false;
         }
     }
 
     internal static class QueryFunctions
     {
+        internal interface ITokenless
+        {
+        }
+
+        private sealed class Tokenless<T> : ITokenless
+        {
+            private readonly Func<VelvetTask<T>> _queryFn;
+
+            internal Tokenless(Func<VelvetTask<T>> queryFn) => _queryFn = queryFn;
+
+            internal VelvetTask<T> Invoke(CancellationToken _) => _queryFn();
+        }
+
         // A null function stays null, so that UseQuery reports it as it does a missing token-taking one.
         internal static Func<CancellationToken, VelvetTask<T>> WithoutToken<T>(Func<VelvetTask<T>> queryFn)
         {
             if (queryFn == null) return null!;
-            return _ => queryFn();
+            return new Tokenless<T>(queryFn).Invoke;
         }
     }
 
@@ -591,6 +604,7 @@ namespace Velvet
         private CancellationTokenSource? _intervalWait;
         // TanStack's #currentRefetchInterval: what the latest restart of the interval computed.
         private TimeSpan? _currentInterval;
+        private Func<QueryInfo, TimeSpan?>? _failedIntervalFn;
         private CancellationTokenSource? _staleWait;
         private (TimeSpan UpdatedAt, TimeSpan StaleTime)? _staleFor;
         private QuerySnapshot<TData> _current;
@@ -733,7 +747,12 @@ namespace Velvet
             }
             catch (Exception failure)
             {
-                FiberLogger.LogException(nameof(QueryClient), failure);
+                // Called at every commit, so a function that always throws would log each render.
+                if (!ReferenceEquals(_failedIntervalFn, fn))
+                {
+                    _failedIntervalFn = fn;
+                    FiberLogger.LogException(nameof(QueryClient), failure);
+                }
                 return null;
             }
         }

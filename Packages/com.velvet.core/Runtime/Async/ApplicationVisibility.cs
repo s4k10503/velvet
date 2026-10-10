@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 
 namespace Velvet
@@ -9,9 +8,7 @@ namespace Velvet
     /// </summary>
     internal static class ApplicationVisibility
     {
-        // MUTANT_SURVIVES(unreachable, literal): the case reading the default compares it with Application.isFocused, which a literal equal to that reading passes.
-        private static Func<bool> s_isFocused = static () => Application.isFocused;
-
-        internal static bool IsVisible() => s_isFocused();
+        // MUTANT_SURVIVES(unreachable, literal): a case would have to move Application.isFocused, which a test cannot write, and every case that needs a reading replaces it through NetworkSignals.IsVisible.
+        internal static bool IsVisible() => Application.isFocused;
     }
 }

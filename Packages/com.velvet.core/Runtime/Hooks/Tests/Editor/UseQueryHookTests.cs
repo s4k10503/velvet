@@ -81,6 +81,7 @@ namespace Velvet.Tests
         private static TimeSpan? s_gcTimeB;
         private static FetchMode s_mode;
         private static bool s_takesToken;
+        private static bool s_replaceFunction;
         private static Action<CancellationToken>? s_onToken;
         private static QueryOptions<int>? s_badOptions;
         private static readonly List<string> s_fetched = new();
@@ -105,6 +106,7 @@ namespace Velvet.Tests
             s_gcTimeB = null;
             s_mode = FetchMode.Pending;
             s_takesToken = true;
+            s_replaceFunction = false;
             s_onToken = null;
             s_badOptions = null;
             s_client = NewClient();
@@ -311,7 +313,107 @@ namespace Velvet.Tests
                 "The request is cancelled when the last observer leaves, not the first");
         }
 
-        // GREEN_ON_BASE(characterization): the base removes an unread entry with its request at the sweep too; this case pins that the entry a cancelled request left is collected a gcTime after it went unread.
+        [Test]
+        public void Given_TokenlessOptionsWhoseFunctionIsReplacedByOneTakingTheToken_When_TheLastReaderLeaves_Then_TheTokenIsCancelled()
+        {
+            // Arrange
+            s_takesToken = false;
+            s_replaceFunction = true;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.True,
+                "Whether a request is cancelled follows the function the options carry now, not the constructor that built them");
+        }
+
+        [Test]
+        public void Given_AFailedEntryRefetched_When_TheLastReaderLeaves_Then_ItsErrorIsBack()
+        {
+            // Arrange
+            using var mounted = FailedThenRefetched();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.Error?.Message, Is.EqualTo("failed"),
+                "Cancelling with revert restores the error the request found");
+        }
+
+        [Test]
+        public void Given_AFailedEntryRefetched_When_TheLastReaderLeaves_Then_ItsStatusIsError()
+        {
+            // Arrange
+            using var mounted = FailedThenRefetched();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.Status, Is.EqualTo(QueryStatus.Error),
+                "A first request that failed leaves the entry in Error when its refetch is cancelled");
+        }
+
+        [Test]
+        public void Given_DataSetByHandDuringARefetch_When_TheLastReaderLeaves_Then_TheDataTheRequestFoundIsBack()
+        {
+            // Arrange
+            using var mounted = MountInvalidatedRefetchThenSetByHand();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.Data, Is.EqualTo(1), "Revert puts back the data held when the request started");
+        }
+
+        [Test]
+        public void Given_DataSetByHandDuringAnInvalidatedRefetch_When_TheLastReaderLeaves_Then_TheEntryIsInvalidatedAgain()
+        {
+            // Arrange
+            using var mounted = MountInvalidatedRefetchThenSetByHand();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.IsInvalidated, Is.True,
+                "The entry was invalidated when the request started, and setting data cleared that");
+        }
+
+        [Test]
+        public void Given_DataSetByHandDuringARefetch_When_TheLastReaderLeaves_Then_TheDataIsAsOldAsItWas()
+        {
+            // Arrange
+            using var mounted = MountInvalidatedRefetchThenSetByHand();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.DataUpdatedAt, Is.EqualTo(TimeSpan.Zero),
+                "Revert puts back the time the held data landed");
+        }
+
+        [Test]
+        public void Given_DataSetByHandDuringAFirstRequest_When_TheLastReaderLeaves_Then_TheEntryHoldsNoData()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            s_client.SetQueryData(Todos, 5);
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.HasData, Is.False, "The entry had no data when the request started");
+        }
+
         [Test]
         public void Given_ACancelledRequest_When_TheGcTimePassesAfterTheReaderLeft_Then_TheEntryIsCollected()
         {
@@ -1450,6 +1552,7 @@ namespace Velvet.Tests
             var options = s_takesToken
                 ? new QueryOptions<int>(key, token => Fetch(key, token))
                 : new QueryOptions<int>(key, () => Fetch(key, default));
+            if (s_replaceFunction) options = options with { QueryFn = token => Fetch(key, token) };
             return options with
             {
                 StaleTime = s_staleTime,
@@ -1479,6 +1582,26 @@ namespace Velvet.Tests
         }
 
         private static T Last<T>(List<T> renders) => renders[renders.Count - 1];
+
+        private MountedTree FailedThenRefetched()
+        {
+            var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetException(new InvalidOperationException("failed"));
+            mounted.FlushStateForTest();
+            Last(s_rendersA).Refetch();
+            return mounted;
+        }
+
+        // The request in flight started over an invalidated entry holding 1, and a write then replaced it with 2 five minutes later.
+        private MountedTree MountInvalidatedRefetchThenSetByHand()
+        {
+            var mounted = MountResolvedSolo(1);
+            s_client.InvalidateQueries();
+            s_now = TimeSpan.FromMinutes(5);
+            s_client.SetQueryData(Todos, 2);
+            return mounted;
+        }
 
         private MountedTree MountResolvedSolo(int data)
         {
