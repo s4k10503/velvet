@@ -239,8 +239,8 @@ namespace Velvet
         }
 
         // A single filter-[name:...] argument segment, parsed against its declared slot type: a float
-        // slot takes a signed float (invariant culture), a color slot the shared color grammar (#hex /
-        // rgb() / named — the same grammar bg-[#fff] uses). A segment failing its slot's grammar (or an
+        // slot takes a signed float (invariant culture), a color slot the shared color grammar
+        // (StyleColorValueParser.TryParseColor, the one bg-[#fff] uses). A segment failing its slot's grammar (or an
         // empty segment — a double colon or trailing colon) rejects: binding a float where the shader
         // declared a color (or vice versa) would only make the engine reset the parameter to its default
         // with a warning at render time.

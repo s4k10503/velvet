@@ -72,8 +72,8 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
   `in_oklab` alone). An angle is a number with a `deg`,
   `grad`, `rad` or `turn` unit, or a bare `0`.
 - **Each stop** is a colour, then none, one or two positions. The colour is a palette name
-  (`slate-900`), a bracketed value, or anything the arbitrary `bg-[…]` value takes: `#0f172a`,
-  `rgb(15,23,42)`, or a basic colour name such as `red`. A position is a percentage, a length in `px`, `rem` or an
+  (`slate-900`), a bracketed value, or anything the arbitrary `bg-[…]` value takes
+  ([styling-colors.md](styling-colors.md)): `#0f172a`, `hsl(210_40%_50%)`, or a basic colour name such as `red`. A position is a percentage, a length in `px`, `rem` or an
   absolute unit or a math function that comes to one of those ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)),
   negative allowed (`red_20px`, `red_-1rem`; not on a conic), or on a conic an angle (`red_90deg`, in the units a first argument takes).
   Two positions make the colour hold between them (`red_0%_40%`) and count as two stops. A position in
@@ -116,5 +116,4 @@ both.
 - Not read, and so leaving the class inert: interpolation spaces other than the seven above (`hwb`,
   `xyz`, `display-p3`, …), a centre written in lengths or with edge offsets (`at_20px_30px`,
   `at_right_10px_bottom_20px`), `var()` in a stop, a math function in a stop that does not come to one
-  length or one percentage, and a colour written as `color-mix()`,
-  `hsl()`, `oklch()` and the other functions the arbitrary-colour parser does not read.
+  length or one percentage, and a colour the grammar [styling-colors.md](styling-colors.md) describes does not read.

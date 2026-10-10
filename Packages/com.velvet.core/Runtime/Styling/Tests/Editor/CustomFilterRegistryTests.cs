@@ -348,6 +348,17 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AColorFunctionArgument_When_Parsed_Then_TheParameterCarriesItsColor()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("filter-[glow:hsl(0_100%_50%_/_50%)]", out var style);
+
+            // Assert
+            Assert.That(ok ? style.Custom!.Args[0].colorValue : new Color(float.NaN, float.NaN, float.NaN, float.NaN),
+                Is.EqualTo(new Color(1f, 0f, 0f, 0.5f)));
+        }
+
+        [Test]
         public void Given_MixedColorAndFloatArguments_When_Applied_Then_ParametersKeepTokenOrder()
         {
             // Arrange

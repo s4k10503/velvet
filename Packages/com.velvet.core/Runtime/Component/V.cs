@@ -33,6 +33,34 @@ namespace Velvet
             return events;
         }
 
+        // V.TextField's handlers in a fixed order, which FiberEventBindingManager.HasSameBindings relies on to
+        // match one render's array against the last.
+        private static FiberEventBinding[] TextFieldEvents(
+            Action<string>? onValueChanged,
+            Action<string>? onSubmit,
+            EventCallback<KeyDownEvent>? onKeyDown,
+            EventCallback<KeyUpEvent>? onKeyUp,
+            EventCallback<FocusInEvent>? onFocus,
+            EventCallback<FocusOutEvent>? onBlur)
+        {
+            var count = (onValueChanged != null ? 1 : 0) + (onSubmit != null ? 1 : 0) + (onKeyDown != null ? 1 : 0)
+                        + (onKeyUp != null ? 1 : 0) + (onFocus != null ? 1 : 0) + (onBlur != null ? 1 : 0);
+            if (count == 0)
+            {
+                return EmptyEvents;
+            }
+
+            var events = VNodePool.RentEventArray(count);
+            var next = 0;
+            if (onValueChanged != null) events[next++] = new ChangeEventBinding<string> { Handler = onValueChanged };
+            if (onSubmit != null) events[next++] = new TextFieldSubmitBinding { Handler = onSubmit };
+            if (onKeyDown != null) events[next++] = new KeyDownBinding { Handler = onKeyDown };
+            if (onKeyUp != null) events[next++] = new KeyUpBinding { Handler = onKeyUp };
+            if (onFocus != null) events[next++] = new TextFieldFocusBinding { Handler = onFocus };
+            if (onBlur != null) events[next] = new TextFieldBlurBinding { Handler = onBlur };
+            return events;
+        }
+
         private static readonly ClassNameParseCache s_classNameCache = new();
 
 #if UNITY_EDITOR
@@ -678,6 +706,12 @@ namespace Velvet
         /// <param name="multiline">When true, the field is multi-line (HTML <c>&lt;textarea&gt;</c>).</param>
         /// <param name="keyboardType">Written to the field's <c>keyboardType</c> (HTML <c>inputmode</c>).</param>
         /// <param name="autoCorrection">Written to the field's <c>autoCorrection</c> (HTML <c>autocorrect</c>).</param>
+        /// <param name="onSubmit">Handler invoked with the field's value when Enter commits a single-line field (a form's <c>onSubmit</c> from Enter in its <c>&lt;input&gt;</c>). Not invoked in a multi-line field.</param>
+        /// <param name="onKeyDown">Handler invoked for each key pressed while the field holds focus, before the field takes the key; stopping the event's propagation keeps the key out of the field.</param>
+        /// <param name="onKeyUp">Handler invoked for each key released while the field holds focus.</param>
+        /// <param name="onFocus">Handler invoked when focus enters the field from outside it.</param>
+        /// <param name="onBlur">Handler invoked when focus leaves the field for somewhere outside it.</param>
+        /// <param name="onCreated">Callback invoked once when the TextField VisualElement is first created.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -703,10 +737,16 @@ namespace Velvet
             bool? isDelayed = null,
             bool? multiline = null,
             TouchScreenKeyboardType? keyboardType = null,
-            bool? autoCorrection = null)
+            bool? autoCorrection = null,
+            Action<string>? onSubmit = null,
+            EventCallback<KeyDownEvent>? onKeyDown = null,
+            EventCallback<KeyUpEvent>? onKeyUp = null,
+            EventCallback<FocusInEvent>? onFocus = null,
+            EventCallback<FocusOutEvent>? onBlur = null,
+            Action<VisualElement>? onCreated = null)
         {
             VNode.RequireKey(key);
-            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
+            var events = TextFieldEvents(onValueChanged, onSubmit, onKeyDown, onKeyUp, onFocus, onBlur);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
                                     || isReadOnly.HasValue || isDelayed.HasValue || multiline.HasValue
@@ -739,6 +779,7 @@ namespace Velvet
                 Props = props,
                 Children = EmptyChildren,
                 Events = events,
+                OnCreated = onCreated,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -1561,10 +1602,8 @@ namespace Velvet
         /// When placing multiple <c>V.ErrorBoundary</c> instances at the same position, always supply
         /// <paramref name="key"/> to avoid identity collisions in the reconciler. The helper's lambda body
         /// has the same MethodInfo on every call, so siblings cannot be distinguished without a key.<br/>
-        /// <paramref name="fallback"/> and <paramref name="children"/> are **captured into the closure on the
-        /// initial mount**; the same fiber is reused on parent re-renders so subsequent value changes are
-        /// not reflected. For dynamic cases, read values via Context / Hooks, or use the function-style
-        /// pattern with <c>[Component(IsErrorBoundary = true)]</c> + <c>Hooks.UseFallback</c>.<br/>
+        /// Each render of the parent hands the boundary the <paramref name="fallback"/> and
+        /// <paramref name="children"/> of that call.<br/>
         /// Each invocation allocates a closure (DisplayClass + delegate). The helper is intended for
         /// root boundaries directly under Mount; calling it repeatedly inside a render function will
         /// allocate on every render.
@@ -1584,6 +1623,55 @@ namespace Velvet
             Func<VNode> body = () =>
             {
                 Hooks.UseFallback(fallback);
+                return Fragment(children);
+            };
+
+            return CreateComponent(body, externalRef: null, key, forceErrorBoundary: true);
+        }
+
+        // V.ErrorBoundary for a boundary the framework renders for its own purposes, which Hooks.UseErrorBoundary
+        // passes over (ComponentFiber.IsFrameworkErrorBoundary).
+        internal static ComponentNode FrameworkErrorBoundary(Func<Exception, VNode> fallback, VNode?[] children)
+        {
+            Func<VNode> body = () =>
+            {
+                FiberAmbientStack.Current!.IsFrameworkErrorBoundary = true;
+                Hooks.UseFallback(fallback);
+                return Fragment(children);
+            };
+
+            return CreateComponent(body, externalRef: null, key: null, forceErrorBoundary: true);
+        }
+
+        /// <summary>
+        /// Variant of <see cref="ErrorBoundary(Func{Exception, VNode}, VNode[], string)"/> whose fallback receives the
+        /// boundary's reset — react-error-boundary's <c>&lt;ErrorBoundary fallbackRender resetKeys onReset&gt;</c>,
+        /// whose <c>fallbackRender</c> receives <c>error</c> and <c>resetErrorBoundary</c>.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="resetKeys"/> and <paramref name="onReset"/> behave as they do on
+        /// <see cref="Hooks.UseErrorBoundaryReset"/>, which states when the boundary resets.
+        /// </remarks>
+        /// <param name="fallbackRender">Receives the caught exception and the boundary's reset, and returns the fallback VNode.</param>
+        /// <param name="children">Child nodes rendered in the normal (non-error) path.</param>
+        /// <param name="resetKeys">Values whose change resets the boundary.</param>
+        /// <param name="onReset">Called before each reset, with what reset the boundary.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="ComponentNode"/> wrapping <paramref name="children"/> in an Error Boundary.</returns>
+        public static ComponentNode ErrorBoundary(
+            Func<Exception, ErrorBoundaryReset, VNode> fallbackRender,
+            VNode?[] children,
+            object?[]? resetKeys = null,
+            Action<ErrorBoundaryResetDetails>? onReset = null,
+            string? key = null)
+        {
+            if (fallbackRender == null) throw new ArgumentNullException(nameof(fallbackRender));
+            if (children == null) throw new ArgumentNullException(nameof(children));
+
+            Func<VNode> body = () =>
+            {
+                var reset = Hooks.UseErrorBoundaryReset(resetKeys, onReset);
+                Hooks.UseFallback(error => fallbackRender(error, reset));
                 return Fragment(children);
             };
 

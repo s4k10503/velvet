@@ -17,5 +17,13 @@ namespace Velvet
     /// boundary's name and the component stack. An exception the handler throws is logged and does not
     /// reach the tree.
     /// </param>
-    public sealed record MountOptions(Action<Exception, ErrorInfo>? OnCaughtError = null);
+    public sealed record MountOptions(Action<Exception, ErrorInfo>? OnCaughtError = null)
+    {
+        /// <summary>
+        /// The clock this tree's motion advances on, from its first render on.
+        /// <see cref="Velvet.MotionClock.Realtime"/> by default; <see cref="Velvet.MotionClock.GameTime"/> or a
+        /// clock of the application's own keeps that motion in step with game time. See <see cref="Velvet.MotionClock"/>.
+        /// </summary>
+        public MotionClock MotionClock { get; init; } = MotionClock.Realtime;
+    }
 }
