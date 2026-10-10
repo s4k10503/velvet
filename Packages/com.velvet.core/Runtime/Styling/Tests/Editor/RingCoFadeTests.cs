@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -58,6 +60,22 @@ namespace Velvet.Tests
             return RingOverlay.Attach(target, Spec, Array.Empty<string>());
         }
 
+        // Whether the co-fade tick of the enter the scheduler keeps for `element` is still scheduled, read from its
+        // private bookkeeping: "running", "stopped", or "no play" once the scheduler keeps none.
+        private string EnterRingTick(VisualElement element)
+        {
+            var enters = (IDictionary)typeof(StyleAnimationScheduler)
+                .GetField("_pendingEnters", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(_scheduler);
+            var pending = enters[element];
+            if (pending == null)
+            {
+                return "no play";
+            }
+            var tick = (IVisualElementScheduledItem)pending.GetType().GetField("RingTick")!.GetValue(pending);
+            return tick != null && tick.isActive ? "running" : "stopped";
+        }
+
         [Test]
         public void Given_ARingedTweenEnter_When_ThePlayStarts_Then_TheBandIsSeededAtTheEnterFromValue()
         {
@@ -107,6 +125,44 @@ namespace Velvet.Tests
                     binding.Overlay.style.opacity.value < 1f),
                 Is.EqualTo((true, StyleKeyword.Undefined, true)),
                 $"element={target.resolvedStyle.opacity} band={binding.Overlay.style.opacity}");
+        }
+
+        [Test]
+        public void Given_ARingedBezierEnterThatEndsOnItsFromPose_When_ItHoldsThatPose_Then_ItsCoFadeTickHasStopped()
+        {
+            // Arrange — a bezier enter whose odd Reverse repeat ends on its from-pose after two 0.1 s passes.
+            AttachRingedElement(out var target);
+            target.AddToClassList("opacity-100");
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 0.1f, Repeat = 1f, RepeatType = TransitionRepeatType.Reverse,
+            };
+            _scheduler.PlayVariantEnter(target, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 20; i++) Tick();
+
+            // Assert — the scheduler still keeps the held play, and nothing samples its opacity for the band.
+            Assert.That(EnterRingTick(target), Is.EqualTo("stopped"));
+        }
+
+        [Test]
+        public void Given_ARingedSpringEnterThatEndsOnItsFromPose_When_ItHoldsThatPose_Then_ItsCoFadeTickHasStopped()
+        {
+            // Arrange — a spring enter whose odd Reverse repeat ends on its from-pose after two 1.05 s passes.
+            AttachRingedElement(out var target);
+            target.AddToClassList("opacity-100");
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, Repeat = 1f, RepeatType = TransitionRepeatType.Reverse,
+            };
+            _scheduler.PlayVariantEnter(target, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+
+            // Act
+            for (var i = 0; i < 150; i++) Tick();
+
+            // Assert — the scheduler still keeps the held play, and nothing samples its opacity for the band.
+            Assert.That(EnterRingTick(target), Is.EqualTo("stopped"));
         }
 
         [Test]

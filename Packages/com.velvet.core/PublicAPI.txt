@@ -270,6 +270,9 @@
 [Velvet] field Velvet.StyleVariantKind.Sm: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.Xl: Velvet.StyleVariantKind
 [Velvet] field Velvet.StyleVariantKind.Xxl: Velvet.StyleVariantKind
+[Velvet] field Velvet.TransitionRepeatType.Loop: Velvet.TransitionRepeatType
+[Velvet] field Velvet.TransitionRepeatType.Mirror: Velvet.TransitionRepeatType
+[Velvet] field Velvet.TransitionRepeatType.Reverse: Velvet.TransitionRepeatType
 [Velvet] field Velvet.TransitionType.Bezier: Velvet.TransitionType
 [Velvet] field Velvet.TransitionType.Spring: Velvet.TransitionType
 [Velvet] field Velvet.TransitionType.Tween: Velvet.TransitionType
@@ -1146,6 +1149,9 @@
 [Velvet] property Velvet.StyleTransitionConfig.Layout: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.StyleTransitionConfig.Mass: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.PropertyOverrides: System.Collections.Generic.IReadOnlyList`1[Velvet.StylePropertyTransition]?
+[Velvet] property Velvet.StyleTransitionConfig.Repeat: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.RepeatDelaySec: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.RepeatType: Velvet.TransitionRepeatType
 [Velvet] property Velvet.StyleTransitionConfig.StaggerChildrenSec: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.Stiffness: System.Single
 [Velvet] property Velvet.StyleTransitionConfig.Type: Velvet.TransitionType
@@ -1389,6 +1395,7 @@
 [Velvet] type Velvet.TextFieldSettings
 [Velvet] type Velvet.TextNode
 [Velvet] type Velvet.TransitionStarter
+[Velvet] type Velvet.TransitionRepeatType
 [Velvet] type Velvet.TransitionType
 [Velvet] type Velvet.TransitionWhen
 [Velvet] type Velvet.UILayer

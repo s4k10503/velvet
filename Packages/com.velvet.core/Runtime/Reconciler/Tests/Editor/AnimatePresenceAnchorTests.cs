@@ -32,6 +32,18 @@ namespace Velvet.Tests
             ["hidden"] = new MotionVariant("", new StyleTransitionConfig { StaggerChildrenSec = 0.1f }),
         };
 
+        // A coordinator whose exit pose springs its opacity 1 → 0, which Framer's default spring ends at 1.05 s on
+        // the browser, and holds its inheriting children until then. DurationSec, which a spring does not read,
+        // declares 0.05 s.
+        private static readonly Dictionary<string, MotionVariant> s_springCoordinator = new()
+        {
+            ["visible"] = "opacity-100",
+            ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, DurationSec = 0.05f, When = TransitionWhen.BeforeChildren,
+            }),
+        };
+
         private static readonly ComponentContext<int> s_context = ComponentContext<int>.Create(0);
 
         private readonly record struct KeySetState(string Keys);
@@ -130,6 +142,10 @@ namespace Velvet.Tests
         private static VNode CoordinatorRender() => V.Motion(variants: s_coordinator, animate: "visible",
             exit: "hidden", children: new[] { InheritingMotion(0), InheritingMotion(1), InheritingMotion(2) });
 
+        [Component]
+        private static VNode SpringCoordinatorRender() => V.Motion(name: "spring-coordinator",
+            variants: s_springCoordinator, animate: "visible", exit: "hidden", children: new[] { InheritingMotion(0) });
+
         // child0 has an inheriting child of its own, which is its to number rather than the coordinator's.
         [Component]
         private static VNode NestedCoordinatorRender() => V.Motion(variants: s_coordinator, animate: "visible",
@@ -169,9 +185,6 @@ namespace Velvet.Tests
             "nested" => V.Motion(key: key, variants: s_fade, animate: "visible",
                 children: new[] { TimedMotion(null) }),
             "toggled" => V.Component(ToggledMotionRender, key: key),
-            "coordinator" => V.Component(CoordinatorRender, key: key),
-            "coordinator-nested" => V.Component(NestedCoordinatorRender, key: key),
-            "coordinator-mixed" => V.Component(MixedCoordinatorRender, key: key),
             "inner-presence" => V.Div(key: key, children: new VNode[]
             {
                 V.AnimatePresence(key: "inner", children: new[] { TimedMotion("inner-item") }),
@@ -190,6 +203,16 @@ namespace Velvet.Tests
                 V.Div(className: "absolute z-10", children: new[] { TimedMotion(null) }),
             }),
             "portal" => V.Div(key: key, children: new VNode[] { V.Portal(s_portalTarget, new[] { TimedMotion(null) }) }),
+            _ => CoordinatorChild(key),
+        };
+
+        // The keyed child each "coordinator" wrapper names.
+        private static VNode CoordinatorChild(string key) => s_wrapper switch
+        {
+            "coordinator" => V.Component(CoordinatorRender, key: key),
+            "coordinator-nested" => V.Component(NestedCoordinatorRender, key: key),
+            "coordinator-spring" => V.Component(SpringCoordinatorRender, key: key),
+            "coordinator-mixed" => V.Component(MixedCoordinatorRender, key: key),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_wrapper), s_wrapper, null),
         };
 
@@ -523,6 +546,23 @@ namespace Velvet.Tests
                 swapped.Add(Root.Q<VisualElement>("child" + i)?.ClassListContains("opacity-0") == true);
             }
             Assert.That(string.Join(",", swapped), Is.EqualTo("True,False,False"));
+        }
+
+        [Test]
+        public void Given_ACoordinatorWhoseExitSpringsBeforeChildren_When_TheKeyIsRemoved_Then_ItsChildWaitsForTheSpringToRest()
+        {
+            // Arrange
+            using var mounted = MountSettled("coordinator-spring", "a");
+            using var keys = s_keyStore;
+
+            // Act — past the 0.05 s the pose declares, well short of the spring's 1.05 s.
+            keys.Set(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Frames(20);
+
+            // Assert — the coordinator's own exit has swapped and its inheriting child has not started its own.
+            Assert.That((HasClass("spring-coordinator", "opacity-0"), HasClass("child0", "opacity-0")),
+                Is.EqualTo((true, false)));
         }
 
         [Test]

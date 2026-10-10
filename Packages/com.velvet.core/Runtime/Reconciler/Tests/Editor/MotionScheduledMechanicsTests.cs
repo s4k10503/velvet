@@ -1729,10 +1729,8 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base rests a one-pixel layoutId spring within a tenth of a pixel.
-        // Scaling the rest threshold by the move's travel must take that travel from how far each edge moved.
         [Test]
-        public void Given_ALayoutIdSpringMovingAPixelFarFromThePanelsCorner_When_AlmostASecondHasPassed_Then_ItHasEnded()
+        public void Given_ALayoutIdSpringMovingAPixelFarFromThePanelsCorner_When_ItsPassRunsOut_Then_ItEndsThenAndNotBefore()
         {
             // Arrange
             using var mounted = V.Mount(Root, V.Component(FarPixelMoveRender, key: "root"));
@@ -1743,12 +1741,15 @@ namespace Velvet.Tests
             var element = Root.Q<VisualElement>("shared");
             var start = TranslateX(element);
 
-            // Act — sixty frames.
-            for (var i = 0; i < 60; i++) Tick();
+            // Act — 1.6 s, then 1.84 s: Framer's generator at stiffness 100, damping 10 and mass 1 first rests
+            // over the projection's travel of 1000 on its 1700 ms sample.
+            for (var i = 0; i < 100; i++) Tick();
+            var endedBefore = element.style.translate.keyword == StyleKeyword.Null;
+            for (var i = 0; i < 15; i++) Tick();
 
-            // Assert — it rests within a tenth of the one pixel it moves; had any edge's travel been taken as the
-            // sum of its two positions, the spring would rest within a ten-thousandth and still be running.
-            Assert.That((start, element.style.translate.keyword), Is.EqualTo((-1f, StyleKeyword.Null)));
+            // Assert — a one-pixel move runs as long as any other.
+            Assert.That((start, endedBefore, element.style.translate.keyword),
+                Is.EqualTo((-1f, false, StyleKeyword.Null)));
         }
 
         // Step 1 grows a spacer above a plain parent by 100px, pushing it down, and flips the layoutId Motion's

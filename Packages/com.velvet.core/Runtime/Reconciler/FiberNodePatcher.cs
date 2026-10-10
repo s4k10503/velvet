@@ -529,7 +529,7 @@ namespace Velvet
             // swapTransition is what this node's own swap into the resolved pose plays on (see
             // ResolveApplied). The swap below and the orchestration frame this node establishes for its
             // children read the same value because they must be measured against the SAME span — When =
-            // BeforeChildren computes the children's wait from DelaySec + DurationSec, so a frame built off
+            // BeforeChildren computes the children's wait from DelaySec and the play's span, so a frame built off
             // the node's config while the swap ran on the pose's would let children start before their
             // parent finished.
             // A Motion a presence mounted already leaving keeps resting at its initial pose while it exits.
@@ -618,7 +618,7 @@ namespace Velvet
             if (childLabel != null)
             {
                 var childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
-                    ambientOrchestration, extraDelaySec);
+                    ambientOrchestration, extraDelaySec, oldVariantClasses, newVariantClasses);
                 MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
                     MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
                     childOrchestration);
@@ -962,7 +962,7 @@ namespace Velvet
         //   StaggerChildrenSec / DelayChildrenSec / a non-Together When — establishing a new stagger sequence
         //   (When == AfterChildren is not orchestrated; it warns once here and falls back to Together's
         //   no-extra-delay semantics for the parent's own swap — see TransitionWhen.AfterChildren). The frame's
-        //   base offset is this node's own [DelaySec, DelaySec + DurationSec] span when When == BeforeChildren
+        //   base offset is this node's own delay and play span (MotionPlaySpan) when When == BeforeChildren
         //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay this
         //   node's own swap, enter or exit waits out: a slot it claimed from a FURTHER-OUT orchestration, or
         //   the slot a presence plays its anchor's enter in. Folding extraDelaySec in regardless of When matters because this node's
@@ -974,9 +974,12 @@ namespace Velvet
         // - Otherwise a frame with no stagger whose base is extraDelaySec, so the node's children start with
         //   it and are numbered from zero; an ambient frame never reaches past a node with variants or a label
         //   of its own.
+        // fromClasses / toClasses: the pose classes this node's own play moves between, from which a spring's span is
+        // measured.
         internal static MotionOrchestrationFrame? ResolveChildOrchestration(
             MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
-            MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
+            MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec,
+            string[]? fromClasses = null, string[]? toClasses = null)
         {
             var hasOwnOrchestration = swapTransition != null
                 && (swapTransition.StaggerChildrenSec > 0f || swapTransition.DelayChildrenSec > 0f
@@ -990,7 +993,7 @@ namespace Velvet
                         + "children animate as if When = Together (no wait for the parent's own transition).");
                 }
                 var extraBeforeChildrenSec = swapTransition.When == TransitionWhen.BeforeChildren
-                    ? swapTransition.DelaySec + swapTransition.DurationSec
+                    ? swapTransition.DelaySec + (float)MotionPlaySpan.Of(swapTransition, fromClasses, toClasses)
                     : 0f;
                 return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
                     swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec);
