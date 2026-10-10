@@ -47,5 +47,35 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, before)),
                 $"drawing={drawing != null} before={before} after={input.layout.height}");
         }
+
+        [Test]
+        public void Given_AnInputWithMarginAndPadding_When_TextIsSelected_Then_TheDrawingStartsAtTheInputsContentBox()
+        {
+            // Arrange
+            Func<VNode> host = SingleLineHost;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(host, key: "root"));
+            var panel = _window.rootVisualElement.panel;
+            var field = _window.rootVisualElement.Q<TextField>("field");
+            var input = (TextElement)field.textEdition;
+            input.style.marginLeft = 11f;
+            input.style.marginTop = 13f;
+            input.style.paddingLeft = 7f;
+            input.style.paddingTop = 5f;
+            ForcePanelUpdate(panel);
+
+            // Act
+            input.Focus();
+            field.textSelection.SelectRange(1, 3);
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+            var drawing = field.Q<TextElement>(className: SelectionTextOverlay.ClassName);
+
+            // Assert — the offsets are read beside the position, so a layout that gave the input none cannot pass.
+            Assert.That(
+                (drawing.style.left.value.value == input.layout.x + input.contentRect.x,
+                    drawing.style.top.value.value == input.layout.y + input.contentRect.y,
+                    input.layout.x > 0f && input.contentRect.x > 0f && input.layout.y > 0f && input.contentRect.y > 0f),
+                Is.EqualTo((true, true, true)),
+                $"layout={input.layout} content={input.contentRect} left={drawing.style.left.value.value} top={drawing.style.top.value.value}");
+        }
     }
 }

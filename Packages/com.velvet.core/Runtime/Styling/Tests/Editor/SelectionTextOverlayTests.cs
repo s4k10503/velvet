@@ -398,6 +398,156 @@ namespace Velvet.Tests
             Assert.That(Drawing(field).text, Is.EqualTo(SelectionTextOverlay.Compose("hello", 1, 3, Color.white, 1f)));
         }
 
+        private static void SendFocusIn(VisualElement element)
+        {
+            using var focusIn = FocusInEvent.GetPooled();
+            element.SimulateEvent(focusIn);
+        }
+
+        private static void SendFocusOut(VisualElement element)
+        {
+            using var focusOut = FocusOutEvent.GetPooled();
+            element.SimulateEvent(focusOut);
+        }
+
+        private static bool HasSelection(TextField field)
+            => field.textSelection.cursorIndex != field.textSelection.selectIndex;
+
+        [Test]
+        public void Given_ASelectionMadeBeforeFocus_When_FocusArrives_Then_TheDrawingShowsWithoutWaitingForATick()
+        {
+            // Arrange
+            var field = Mount(TextColorHost);
+            field.textSelection.SelectRange(1, 3);
+
+            // Act
+            SendFocusIn(Input(field));
+
+            // Assert
+            Assert.That((HasSelection(field), Showing(field)), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AFieldWhoseFocusLeft_When_ItsTextColorRendersOverAKeptSelection_Then_NoDrawingShows()
+        {
+            // Arrange
+            var field = Mount(SteppingHost);
+            field.textSelection.SelectRange(1, 3);
+            SendFocusIn(Input(field));
+            var whileFocused = Showing(field);
+            SendFocusOut(Input(field));
+
+            // Act
+            RenderStep(1);
+
+            // Assert
+            Assert.That((whileFocused, HasSelection(field), Showing(field)), Is.EqualTo((true, true, false)));
+        }
+
+        [Test]
+        public void Given_ADrawingTakenOutOfTheHierarchy_When_TheSchedulerTicks_Then_ItIsBesideTheInputAgain()
+        {
+            // Arrange
+            var field = Mount(TextColorHost);
+            Select(field, 1, 3);
+            Drawing(field).RemoveFromHierarchy();
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Drawing(field)?.hierarchy.parent, Is.SameAs(Input(field).hierarchy.parent));
+        }
+
+        [Test]
+        public void Given_ADrawingBesideTheInput_When_TheInputsTranslateMovesBetweenTicks_Then_TheDrawingTakesIt()
+        {
+            // Arrange
+            var field = Mount(TextColorHost);
+            Select(field, 1, 3);
+            var moved = new Translate(new Length(9f), new Length(4f));
+
+            // Act
+            Input(field).style.translate = moved;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(Drawing(field).style.translate.value, Is.EqualTo(moved));
+        }
+
+        [Test]
+        public void Given_AnInputWithATranslate_When_TheDrawingIsBuilt_Then_ItCarriesTheSameTranslate()
+        {
+            // Arrange
+            var field = Mount(TextColorHost);
+            var moved = new Translate(new Length(9f), new Length(4f));
+            Input(field).style.translate = moved;
+
+            // Act
+            Select(field, 1, 3);
+
+            // Assert
+            Assert.That(Drawing(field).style.translate.value, Is.EqualTo(moved));
+        }
+
+        [Test]
+        public void Given_ADrawingHiddenByAnEmptiedSelection_When_TextIsSelectedAgain_Then_ItShowsAgain()
+        {
+            // Arrange
+            var field = Mount(TextColorHost);
+            Select(field, 1, 3);
+            field.textSelection.SelectNone();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            var hiddenBetween = Drawing(field) != null && !Showing(field);
+
+            // Act
+            field.textSelection.SelectRange(1, 3);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That((hiddenBetween, Showing(field)), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ASiblingBetweenTheInputAndItsDrawing_When_TheInputsGeometryChanges_Then_TheDrawingStaysAfterIt()
+        {
+            // Arrange
+            var field = Mount(TextColorHost);
+            Select(field, 1, 3);
+            var drawing = Drawing(field);
+            var parent = Input(field).hierarchy.parent;
+            var sibling = new VisualElement();
+            parent.hierarchy.Insert(parent.hierarchy.IndexOf(Input(field)) + 1, sibling);
+
+            // Act
+            SendGeometryChanged(Input(field));
+
+            // Assert
+            Assert.That(parent.hierarchy.IndexOf(drawing), Is.GreaterThan(parent.hierarchy.IndexOf(sibling)));
+        }
+
+        [Test]
+        public void Given_AnInputBelowAnExtraWrapperInItsBox_When_TheFieldIsForgotten_Then_NoDrawingStays()
+        {
+            // Arrange — the wrapper puts the input's parent below the box, so the control is found by walking up.
+            var field = Mount(TextColorHost);
+            var input = Input(field);
+            var box = input.hierarchy.parent;
+            var wrapper = new VisualElement();
+            box.hierarchy.Add(wrapper);
+            wrapper.hierarchy.Add(input);
+            _host.Root.AddToClassList("restyled");
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            Select(field, 1, 3);
+            var drawn = Drawing(field) != null;
+
+            // Act
+            StyleTextInputColors.Forget(field);
+
+            // Assert
+            Assert.That((drawn, Drawing(field) == null), Is.EqualTo((true, true)));
+        }
+
         // The canary for the two cases below: a tick whose selection moved composes again, and the probe
         // counts that through the same tick delegate they measure.
         [Test]

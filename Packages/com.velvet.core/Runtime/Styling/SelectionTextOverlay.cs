@@ -53,9 +53,12 @@ namespace Velvet
         {
             _poll.Pause();
             _input.UnregisterCallback<FocusInEvent>(OnFocusIn);
+            // MUTANT_SURVIVES(equivalent): the poll is paused above and _drawing is cleared below, so a FocusOutEvent reaching this overlay later pauses a paused poll and hides no drawing.
             _input.UnregisterCallback<FocusOutEvent>(OnFocusOut);
+            // MUTANT_SURVIVES(equivalent): _drawing is cleared below, so a GeometryChangedEvent reaching this overlay later finds no drawing to place.
             _input.UnregisterCallback<GeometryChangedEvent>(OnInputGeometryChanged);
             _drawing?.RemoveFromHierarchy();
+            // MUTANT_SURVIVES(equivalent): with the poll paused and FocusIn and GeometryChanged unregistered, the one callback left, OnFocusOut, only sets display on a drawing already removed from the hierarchy.
             _drawing = null;
         }
 
@@ -121,6 +124,7 @@ namespace Velvet
 
         private void Hide()
         {
+            // MUTANT_SURVIVES(equivalent): the clause only skips writing None onto a style that already is None, so the display is None either way.
             if (_drawing != null && _drawing.style.display != DisplayStyle.None)
             {
                 _drawing.style.display = DisplayStyle.None;
@@ -134,6 +138,7 @@ namespace Velvet
             drawing.style.position = Position.Absolute;
             drawing.style.marginLeft = drawing.style.marginTop = drawing.style.marginRight = drawing.style.marginBottom = 0f;
             drawing.style.paddingLeft = drawing.style.paddingTop = drawing.style.paddingRight = drawing.style.paddingBottom = 0f;
+            // MUTANT_SURVIVES(equivalent): Refresh is the only caller and places any drawing whose parent differs from the input's on its next line, which a drawing not yet in the hierarchy does whenever the input has a parent, and the overlay is only built for an input found inside its box.
             Place(drawing);
             return drawing;
         }

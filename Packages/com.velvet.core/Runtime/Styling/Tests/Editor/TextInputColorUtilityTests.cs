@@ -154,6 +154,19 @@ namespace Velvet.Tests
         private static VNode PlainFieldHost() => V.TextField(name: "field");
 
         [Component]
+        private static VNode CurrentSuffixHost() => Field("caret-currentx text-blue-500");
+
+        [Component]
+        private static VNode CurrentModifierHost() => Field("caret-current/abc text-blue-500");
+
+        // Built by Activator rather than rented, so no earlier field of the same type has been tracked.
+        private sealed class UnpooledTextField : TextField { }
+
+        [Component]
+        private static VNode UnpooledMotionHost()
+            => V.Motion(name: "field", elementType: typeof(UnpooledTextField), className: "caret-red-500");
+
+        [Component]
         private static VNode InvalidOpacityBaseHost() => Field("caret-red-500 caret-nonsense/50");
 
         [Component]
@@ -600,6 +613,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Caret(field), Is.EqualTo((Color32)Color.blue));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Given_ACaretCurrentValueThatDoesNotParse_When_ItMounts_Then_TheCaretKeepsAFreshFieldsColor(bool modifier)
+        {
+            // Arrange
+            Func<VNode> host = modifier ? CurrentModifierHost : CurrentSuffixHost;
+
+            // Act
+            var field = Mount(host);
+
+            // Assert
+            Assert.That(Caret(field), Is.EqualTo(FreshCaret()));
+        }
+
+        [Test]
+        public void Given_ACaretUtilityOnAMotionOfATypeNoPoolRents_When_ItMounts_Then_TheCaretTakesIt()
+        {
+            // Arrange / Act
+            var field = Mount(UnpooledMotionHost);
+
+            // Assert
+            Assert.That(Caret(field), Is.EqualTo(Palette("red-500")));
         }
     }
 }
