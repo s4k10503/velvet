@@ -144,6 +144,8 @@ namespace Velvet
 
         public static bool IsSurfaceCore(string core)
             => core.StartsWith("bg-", StringComparison.Ordinal)
+               // The nine-slice utilities follow the background image bg-[addr:…] puts on the box.
+               || core.StartsWith("slice-", StringComparison.Ordinal)
                || core == "border" || core.StartsWith("border-", StringComparison.Ordinal)
                || core == "rounded" || core.StartsWith("rounded-", StringComparison.Ordinal)
                || StartsWithAny(core, s_paddings)

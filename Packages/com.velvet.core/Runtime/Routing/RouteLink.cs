@@ -11,22 +11,34 @@ namespace Velvet
             string? ClassName,
             string? Name,
             VNode?[]? Children,
-            bool Replace);
+            bool Replace,
+            FiberEventBinding[]? Events = null);
 
         [Component]
         public static VNode Render(Props p)
         {
             var navigate = Hooks.UseNavigate(p.Replace);
-            var onClick = Hooks.UseCallback<Action>(
-                () => navigate(p.To).Forget(),
+            var onClick = Hooks.UseCallback<Action<ClickedEvent>>(
+                click =>
+                {
+                    if (!click.DefaultPrevented) navigate(p.To).Forget();
+                },
                 p.To, navigate);
+
+            // React Router's Link calls the caller's onClick and navigates only when that left the event's
+            // default unprevented, so the navigation is bound after every binding the caller passed, on the
+            // click those share.
+            var callers = p.Events ?? Array.Empty<FiberEventBinding>();
+            var events = VNodePool.RentEventArray(callers.Length + 1);
+            Array.Copy(callers, events, callers.Length);
+            events[callers.Length] = new ClickedEventBinding { Handler = onClick };
 
             return V.Button(
                 className: p.ClassName,
                 text: p.Text,
-                onClick: onClick,
                 name: p.Name,
-                children: p.Children);
+                children: p.Children,
+                events: events);
         }
     }
 
@@ -43,6 +55,7 @@ namespace Velvet
             public bool End { get; init; }
             public bool Replace { get; init; }
             public bool CaseSensitive { get; init; }
+            public FiberEventBinding[]? Events { get; init; }
         }
 
         [Component]
@@ -65,7 +78,7 @@ namespace Velvet
             // Keep click navigation owned by RouteLink after deriving the effective class here.
             return V.Component(
                 RouteLink.Render,
-                new RouteLink.Props(p.To, p.Text, className, p.Name, p.Children, p.Replace));
+                new RouteLink.Props(p.To, p.Text, className, p.Name, p.Children, p.Replace, p.Events));
         }
 
         private static bool IsActive(string? currentPath, string resolvedTo, bool end, bool caseSensitive)

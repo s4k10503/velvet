@@ -312,27 +312,7 @@ namespace Velvet
         }
 
         internal static void ApplyStyles(VisualElement element, StyleOverrides? styles)
-        {
-            if (styles == null)
-            {
-                return;
-            }
-
-            if (styles.BackgroundImage.HasValue)
-            {
-                element.style.backgroundImage = styles.BackgroundImage.Value;
-            }
-
-            if (styles.BackgroundColor.HasValue)
-            {
-                element.style.backgroundColor = styles.BackgroundColor.Value;
-            }
-
-            if (styles.Color.HasValue)
-            {
-                element.style.color = styles.Color.Value;
-            }
-        }
+            => StyleOverridesLayer.Diff(element, StyleOverrides.Empty, styles ?? StyleOverrides.Empty);
 
         internal void ApplyEvents(VisualElement element, FiberEventBinding[] events)
         {
