@@ -154,10 +154,10 @@ namespace Velvet.Tests
         private static VNode PlainFieldHost() => V.TextField(name: "field");
 
         [Component]
-        private static VNode CurrentSuffixHost() => Field("caret-currentx text-blue-500");
+        private static VNode CurrentSuffixHost() => Field("caret-blue-500 caret-currentx text-green-500");
 
         [Component]
-        private static VNode CurrentModifierHost() => Field("caret-current/abc text-blue-500");
+        private static VNode CurrentModifierHost() => Field("caret-blue-500 caret-current/abc text-green-500");
 
         // Built by Activator rather than rented, so no earlier field of the same type has been tracked.
         private sealed class UnpooledTextField : TextField { }
@@ -617,7 +617,7 @@ namespace Velvet.Tests
 
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_ACaretCurrentValueThatDoesNotParse_When_ItMounts_Then_TheCaretKeepsAFreshFieldsColor(bool modifier)
+        public void Given_ACaretCurrentValueThatDoesNotParseAddedLast_When_ItMounts_Then_TheEarlierOneApplies(bool modifier)
         {
             // Arrange
             Func<VNode> host = modifier ? CurrentModifierHost : CurrentSuffixHost;
@@ -626,7 +626,7 @@ namespace Velvet.Tests
             var field = Mount(host);
 
             // Assert
-            Assert.That(Caret(field), Is.EqualTo(FreshCaret()));
+            Assert.That(Caret(field), Is.EqualTo(Palette("blue-500")));
         }
 
         [Test]
