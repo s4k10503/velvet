@@ -8,7 +8,6 @@ namespace Velvet
     /// </summary>
     internal static class ApplicationVisibility
     {
-        // MUTANT_SURVIVES(unreachable, literal): a case would have to move Application.isFocused, which a test cannot write, and every case that needs a reading replaces it through NetworkSignals.IsVisible.
         internal static bool IsVisible() => Application.isFocused;
     }
 }
