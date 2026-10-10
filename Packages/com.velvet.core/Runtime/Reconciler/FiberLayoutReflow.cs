@@ -206,10 +206,9 @@ namespace Velvet
                 _laidOut = true;
             }
 
-            // The layout updater's visit moves the transform of an element whose position changed, and a worldBound
-            // read before it would carry the old one; this moves them now, over the elements the computation laid
-            // out, as that visit walks them. The visit still compares against the same last layout and sends the
-            // events. UseLayoutEffectLayoutReadTests fails when a moved element's worldBound stays behind.
+            // Bumps now, over the elements the computation laid out, the transform version the layout updater's visit
+            // bumps later for an element whose position changed. The visit still compares against the same last
+            // layout and sends the events. UseLayoutEffectLayoutReadTests fails when a moved element's bump is missing.
             private void MoveTransforms(VisualElement element)
             {
                 // MUTANT_SURVIVES(equivalent): a subtree the computation left alone holds no element that moved.
