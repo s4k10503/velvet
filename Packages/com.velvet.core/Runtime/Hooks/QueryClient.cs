@@ -48,10 +48,23 @@ namespace Velvet
         public QueryRefetchMode RefetchOnWindowFocus { get; init; } = QueryRefetchMode.IfStale;
 
         /// <summary>
+        /// <see cref="RefetchOnWindowFocus"/> given as a function of the entry a query reads, for every query that
+        /// sets neither form of its own; see <see cref="QueryOptions{TQueryFnData, TData}.RefetchOnWindowFocusFn"/>.
+        /// It replaces <see cref="RefetchOnWindowFocus"/> when both are set.
+        /// </summary>
+        public Func<QueryInfo, QueryRefetchMode>? RefetchOnWindowFocusFn { get; init; }
+
+        /// <summary>
         /// Whether a query fetches again when the device comes back online, as <see cref="NetworkSignals"/>
         /// reads it: TanStack Query's <c>refetchOnReconnect</c>, whose default refetches stale data.
         /// </summary>
         public QueryRefetchMode RefetchOnReconnect { get; init; } = QueryRefetchMode.IfStale;
+
+        /// <summary>
+        /// <see cref="RefetchOnReconnect"/> given as a function of the entry a query reads, with the terms of
+        /// <see cref="RefetchOnWindowFocusFn"/>.
+        /// </summary>
+        public Func<QueryInfo, QueryRefetchMode>? RefetchOnReconnectFn { get; init; }
 
         /// <summary>
         /// A monotonic clock the client reads instead of its own stopwatch, for a host that measures time
@@ -79,8 +92,10 @@ namespace Velvet
     /// <summary>
     /// TanStack Query's <c>QueryClient</c>: a cache of query results keyed by <see cref="QueryKey"/>, shared
     /// by every <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> that reaches it. One entry holds one result and at most one
-    /// request in flight, whichever component started it, and keeps both after the components reading it
-    /// unmount, until it is collected.
+    /// request in flight, whichever component started it, and keeps the result after the components reading
+    /// it unmount, until it is collected. A request in flight is kept too when its query function takes no token;
+    /// one that does is cancelled when the last component reading the entry leaves, as
+    /// <see cref="QueryOptions{TQueryFnData, TData}.QueryFn"/> describes.
     /// </summary>
     /// <remarks>
     /// Main thread only, like the rest of Velvet. <b>Deviation:</b> garbage collection runs no timer. An
@@ -114,6 +129,8 @@ namespace Velvet
             DefaultRetryDelay = options.RetryDelay ?? s_exponentialBackoff;
             DefaultRefetchOnWindowFocus = options.RefetchOnWindowFocus;
             DefaultRefetchOnReconnect = options.RefetchOnReconnect;
+            DefaultRefetchOnWindowFocusFn = options.RefetchOnWindowFocusFn;
+            DefaultRefetchOnReconnectFn = options.RefetchOnReconnectFn;
             if (options.Clock != null)
             {
                 _clock = options.Clock;
@@ -145,6 +162,14 @@ namespace Velvet
         /// online.</summary>
         public QueryRefetchMode DefaultRefetchOnReconnect { get; }
 
+        /// <summary>The function a query that sets none of its own decides whether to fetch again when the
+        /// application becomes visible with; it replaces <see cref="DefaultRefetchOnWindowFocus"/>.</summary>
+        public Func<QueryInfo, QueryRefetchMode>? DefaultRefetchOnWindowFocusFn { get; }
+
+        /// <summary>The function a query that sets none of its own decides whether to fetch again when the
+        /// device comes back online with; it replaces <see cref="DefaultRefetchOnReconnect"/>.</summary>
+        public Func<QueryInfo, QueryRefetchMode>? DefaultRefetchOnReconnectFn { get; }
+
         /// <summary>
         /// Marks every entry whose key <paramref name="queryKey"/> matches stale, and fetches again each
         /// one a mounted query is reading — TanStack Query's <c>invalidateQueries({ queryKey })</c>, with the
@@ -152,7 +177,8 @@ namespace Velvet
         /// an entry, a request already in flight is cancelled and started over when the entry holds data, so
         /// a result fetched before the change that invalidated it does not land as current, and joined when
         /// the entry is still waiting on its first result. An entry nothing reads is not fetched: a query
-        /// mounting over it later fetches it, and a request it already had in flight is left to land.
+        /// mounting over it later fetches it, and a request it still has in flight, one whose query function
+        /// takes no token, is left to land.
         /// </summary>
         /// <param name="queryKey">The filter; null matches every entry.</param>
         public void InvalidateQueries(QueryKey? queryKey = null)
@@ -328,6 +354,14 @@ namespace Velvet
             return since != null && !entry.IsFetching && now - since.Value >= entry.GcTime;
         }
 
+        // v5's isValidTimeout and its zero check: anything else sets no interval.
+        internal static TimeSpan? ValidInterval(TimeSpan? requested)
+        {
+            var every = requested ?? TimeSpan.Zero;
+            // MUTANT_SURVIVES(equivalent, clause removed): a wait of TimeSpan.MaxValue on the client's clock never ends, so it fetches nothing either.
+            return every > TimeSpan.Zero && every != TimeSpan.MaxValue ? every : null;
+        }
+
         internal static TimeSpan RequireNonNegative(TimeSpan value, string name)
             => value < TimeSpan.Zero
                 ? throw new ArgumentOutOfRangeException(name, value, $"{name} must not be negative.")
@@ -380,6 +414,7 @@ namespace Velvet
         internal abstract void Invalidate();
         internal abstract void Remove();
         internal abstract void OnSignal(bool reconnect);
+        internal abstract QueryInfo Describe();
     }
 
     // One cached result and the request that fills it. The request belongs to the entry rather than to the
@@ -393,6 +428,35 @@ namespace Velvet
         // TanStack's query.options: what the last query to commit over the entry, or to start a request for it,
         // handed it. An invalidation's refetch runs with them, whichever observer they came from.
         private QueryFetchOptions<T>? _options;
+        // TanStack's #revertState: the state a request found the entry in, which cancelling it with revert puts back.
+        private EntryState? _revertState;
+        // Whether the request in flight runs a query function that takes the token, which v5 tells by the function
+        // reading its signal.
+        private bool _requestTakesToken;
+
+        private readonly struct EntryState
+        {
+            internal EntryState(QueryEntry<T> entry)
+            {
+                Status = entry.Status;
+                HasData = entry.HasData;
+                Data = entry.Data;
+                Error = entry.Error;
+                FailureCount = entry.FailureCount;
+                FailureReason = entry.FailureReason;
+                IsInvalidated = entry.IsInvalidated;
+                DataUpdatedAt = entry._dataUpdatedAt;
+            }
+
+            internal QueryStatus Status { get; }
+            internal bool HasData { get; }
+            internal T Data { get; }
+            internal Exception? Error { get; }
+            internal int FailureCount { get; }
+            internal Exception? FailureReason { get; }
+            internal bool IsInvalidated { get; }
+            internal TimeSpan DataUpdatedAt { get; }
+        }
 
         internal QueryEntry(QueryClient client, QueryKey key, TimeSpan gcTime) : base(client, key, gcTime)
         {
@@ -427,8 +491,10 @@ namespace Velvet
             }
         }
 
-        // With the last observer gone, a request in flight finishes but is not retried: TanStack's
-        // removeObserver calls cancelRetry where it leaves the request running.
+        // With the last observer gone, a request whose query function takes the token is cancelled and the entry
+        // put back as it stood before the request, as TanStack's removeObserver cancels with revert a request whose
+        // function read its signal. Any other request finishes but is not retried, where removeObserver calls
+        // cancelRetry.
         internal void Unsubscribe(QueryEntryObserver<T> observer)
         {
             // The options this observer handed are rewritten in place at its next commit, where v5's query keeps
@@ -437,7 +503,15 @@ namespace Velvet
             if (!_observers.Remove(observer)) return;
             Client.ObserverRemoved();
             if (_observers.Count > 0 || IsRemoved) return;
-            _retriesStopped = true;
+            if (_inFlight != null && _requestTakesToken)
+            {
+                CancelInFlight();
+                Revert();
+            }
+            else
+            {
+                _retriesStopped = true;
+            }
             Client.MarkInactive(this);
         }
 
@@ -459,6 +533,9 @@ namespace Velvet
             // v5's fetch takes the options it is handed only once it is not joining a request in flight.
             _options = options;
 
+            // Taken after a request started over is cancelled, as v5 stores the state at that point.
+            _revertState = new EntryState(this);
+            _requestTakesToken = options.TakesToken;
             var request = new CancellationTokenSource();
             _inFlight = request;
             _retriesStopped = false;
@@ -673,8 +750,8 @@ namespace Velvet
         {
             foreach (var observer in _observers)
             {
-                var mode = reconnect ? observer.RefetchOnReconnect : observer.RefetchOnWindowFocus;
-                if (!observer.ShouldFetchOn(mode, this)) continue;
+                var rule = reconnect ? observer.RefetchOnReconnect : observer.RefetchOnWindowFocus;
+                if (!observer.ShouldFetchOn(rule, this)) continue;
                 Fetch(observer.FetchOptions, cancelRefetch: false);
                 return;
             }
@@ -688,6 +765,22 @@ namespace Velvet
             {
                 observer.OnRemoved();
             }
+        }
+
+        internal override QueryInfo Describe()
+            => new(Key, Status, HasData ? (object?)Data : null, Error, IsFetching);
+
+        private void Revert()
+        {
+            if (_revertState is not { } saved) return;
+            Status = saved.Status;
+            HasData = saved.HasData;
+            Data = saved.Data;
+            Error = saved.Error;
+            FailureCount = saved.FailureCount;
+            FailureReason = saved.FailureReason;
+            IsInvalidated = saved.IsInvalidated;
+            _dataUpdatedAt = saved.DataUpdatedAt;
         }
 
         private void CancelInFlight()

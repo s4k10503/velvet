@@ -22,8 +22,7 @@ namespace Velvet
         public static Func<bool>? IsOnline { get; set; }
 
         /// <summary>
-        /// Replaces the default visibility reading, <c>Application.isFocused</c> on a mobile platform and visible
-        /// on every other. Null restores the default.
+        /// Replaces the default visibility reading, <c>Application.isFocused</c>. Null restores the default.
         /// </summary>
         public static Func<bool>? IsVisible { get; set; }
 

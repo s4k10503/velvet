@@ -25,6 +25,11 @@ namespace Velvet.Tests
     /// <c>Always</c>; nothing is fetched under <c>Never</c>, set on the query or as the client's default, while
     /// the application stays visible, or for a disabled query. A request in flight is joined.</item>
     /// <item>The device coming back online refetches the same way under <c>RefetchOnReconnect</c>.</item>
+    /// <item>Each of the three also takes a function of the entry the query reads — <c>RefetchIntervalFn</c>,
+    /// <c>RefetchOnWindowFocusFn</c> and <c>RefetchOnReconnectFn</c>, the last two also on the client — which
+    /// replaces the value set beside it, a query's own setting standing ahead of the client's in either form. The
+    /// interval function is asked again when the entry changes, the other two only for an enabled query when
+    /// their signal comes, and one that throws counts as no interval or as <c>Never</c>.</item>
     /// <item>A client stops being watched when its last reader unmounts, and the poll ends once no client is
     /// watched; a client is watched again by its next reader, another client's reader leaving does not stop it
     /// being told, and a reading that throws is logged and taken as visible, by the poll and by an interval,
@@ -56,6 +61,10 @@ namespace Velvet.Tests
         private static bool s_enabled;
         private static QueryRefetchMode? s_onFocus;
         private static QueryRefetchMode? s_onReconnect;
+        private static Func<QueryInfo, TimeSpan?>? s_intervalFn;
+        private static Func<QueryInfo, QueryRefetchMode>? s_onFocusFn;
+        private static Func<QueryInfo, QueryRefetchMode>? s_onReconnectFn;
+        private static Func<QueryInfo, QueryRefetchMode>? s_clientOnFocusFn;
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
         private static readonly List<CancellationToken> s_tokens = new();
         private static readonly List<QueryResult<int>> s_renders = new();
@@ -81,6 +90,10 @@ namespace Velvet.Tests
             s_enabled = true;
             s_onFocus = null;
             s_onReconnect = null;
+            s_intervalFn = null;
+            s_onFocusFn = null;
+            s_onReconnectFn = null;
+            s_clientOnFocusFn = null;
             s_client = NewClient(QueryRefetchMode.IfStale);
             s_sources.Clear();
             s_tokens.Clear();
@@ -613,6 +626,304 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Function forms
+
+        [UnityTest]
+        public IEnumerator Given_ARefetchIntervalFunction_When_TheIntervalItReturnsPasses_Then_TheQueryFetchesAgain()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_intervalFn = _ => Interval;
+            using var mounted = MountResolved();
+
+            // Act
+            await Pass(Interval);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2), "A function returning an interval refetches each time it passes");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARefetchIntervalFunctionAndAnInterval_When_TheFunctionsIntervalPasses_Then_TheFunctionDecides()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_interval = Interval;
+            s_intervalFn = _ => TimeSpan.FromSeconds(2);
+            using var mounted = MountResolved();
+
+            // Act
+            await Pass(TimeSpan.FromSeconds(2));
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2), "The function replaces the interval, as v5 reads one or the other");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARefetchIntervalFunctionReturningNull_When_TimePasses_Then_NothingIsFetched()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_interval = Interval;
+            s_intervalFn = _ => null;
+            using var mounted = MountResolved();
+
+            // Act
+            await Pass(Interval);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "A function returning no interval, like false in v5, sets none");
+        });
+
+        [Test]
+        public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands()
+        {
+            // Arrange
+            QueryInfo? seen = null;
+            s_intervalFn = info =>
+            {
+                seen = info;
+                return Interval;
+            };
+
+            // Act
+            using var mounted = MountResolved();
+
+            // Assert
+            Assert.That(
+                (seen?.QueryKey.ToString(), seen?.Status.ToString(), seen?.Data?.ToString(), seen?.IsFetching.ToString()),
+                Is.EqualTo(("[todos]", "Success", "1", "False")),
+                "The function reads the query's key, status, data and fetch state, as v5's refetchInterval(query) does");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ARefetchIntervalFunctionThatStopsAtSomeData_When_ARefetchLandsIt_Then_NoFurtherFetchRuns()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_intervalFn = info => info.Data is 2 ? null : Interval;
+            using var mounted = MountResolved();
+            await Pass(Interval);
+            s_sources[1].TrySetResult(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            await Pass(Interval);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2), "The function is asked again when the entry changes, as v5 does");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARefetchIntervalFunctionThatThrows_When_TimePasses_Then_NothingIsFetched()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            s_intervalFn = _ => throw new InvalidOperationException("interval-failed");
+            using var mounted = MountResolved();
+
+            // Act
+            await Pass(Interval);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "A function that throws sets no interval");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AWindowFocusFunctionReturningAlways_When_TheApplicationBecomesVisibleOverFreshData_Then_TheQueryFetchesAgain()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            s_onFocusFn = _ => QueryRefetchMode.Always;
+            using var mounted = MountResolved();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2), "The function decides the mode, as v5's refetchOnWindowFocus function does");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AWindowFocusFunctionReturningNever_When_TheApplicationBecomesVisibleOverStaleData_Then_NothingIsFetched()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onFocus = QueryRefetchMode.Always;
+            s_onFocusFn = _ => QueryRefetchMode.Never;
+            using var mounted = MountResolved();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "The function replaces the mode set beside it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AWindowFocusFunctionReturningIfStale_When_TheApplicationBecomesVisibleOverFreshData_Then_NothingIsFetched()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            s_onFocusFn = _ => QueryRefetchMode.IfStale;
+            using var mounted = MountResolved();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "IfStale from a function fetches only stale data, as the mode does");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AWindowFocusFunction_When_TheApplicationBecomesVisible_Then_ItIsHandedTheEntry()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            QueryInfo? seen = null;
+            s_onFocusFn = info =>
+            {
+                seen = info;
+                return QueryRefetchMode.Never;
+            };
+            using var mounted = MountResolved();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That((seen?.Status.ToString(), seen?.Data?.ToString()), Is.EqualTo(("Success", "1")),
+                "The function reads the entry the signal refetches");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AWindowFocusFunctionOnTheClient_When_TheApplicationBecomesVisibleOverFreshData_Then_TheQueryFetchesAgain()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            s_clientOnFocusFn = _ => QueryRefetchMode.Always;
+            s_client = NewClient(QueryRefetchMode.Never);
+            using var mounted = MountResolved();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2), "A function on the client is the default of a query that sets none, ahead of the client's mode");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AWindowFocusModeOnTheQueryAndAFunctionOnTheClient_When_TheApplicationBecomesVisible_Then_TheQuerysModeDecides()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onFocus = QueryRefetchMode.Never;
+            s_clientOnFocusFn = _ => QueryRefetchMode.Always;
+            s_client = NewClient(QueryRefetchMode.IfStale);
+            using var mounted = MountResolved();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "A query's own setting is ahead of the client's default, in either form");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AWindowFocusFunctionThatThrows_When_TheApplicationBecomesVisible_Then_TheFailureIsLoggedAndNothingIsFetched()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onFocusFn = _ => throw new InvalidOperationException("focus-failed");
+            ContainedFailureLog.Expect<InvalidOperationException>(nameof(QueryClient), "focus-failed");
+            using var mounted = MountResolved();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "A function that throws counts as Never, and its failure is logged");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AWindowFocusFunctionOnADisabledQuery_When_TheApplicationBecomesVisible_Then_ItIsNotCalled()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var asked = 0;
+            s_enabled = false;
+            s_onFocusFn = _ =>
+            {
+                asked++;
+                return QueryRefetchMode.Always;
+            };
+            using var mounted = Mount();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(asked, Is.EqualTo(0), "A disabled query is not refetched, so its function is not asked");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AReconnectFunctionReturningAlways_When_TheDeviceComesBackOverFreshData_Then_TheQueryFetchesAgain()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            s_onReconnectFn = _ => QueryRefetchMode.Always;
+            using var mounted = MountResolved();
+
+            // Act
+            await DisconnectAndReconnect();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2), "The function decides the mode, as v5's refetchOnReconnect function does");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AReconnectFunctionReturningNever_When_TheDeviceComesBackOverStaleData_Then_NothingIsFetched()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onReconnect = QueryRefetchMode.Always;
+            s_onReconnectFn = _ => QueryRefetchMode.Never;
+            using var mounted = MountResolved();
+
+            // Act
+            await DisconnectAndReconnect();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "The function replaces the mode set beside it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AReconnectFunctionAndAWindowFocusMode_When_TheApplicationBecomesVisible_Then_TheReconnectFunctionIsNotAsked()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var asked = 0;
+            s_onReconnectFn = _ =>
+            {
+                asked++;
+                return QueryRefetchMode.Always;
+            };
+            using var mounted = MountResolved();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(asked, Is.EqualTo(0), "Each signal asks its own function");
+        });
+
+        #endregion
+
         #region Watching the readings
 
         [Test]
@@ -822,6 +1133,7 @@ namespace Velvet.Tests
                 Retry = 0,
                 RefetchOnWindowFocus = onFocus,
                 RefetchOnReconnect = onReconnect,
+                RefetchOnWindowFocusFn = s_clientOnFocusFn,
                 Clock = () => s_now,
             });
 
@@ -945,6 +1257,9 @@ namespace Velvet.Tests
                     RefetchIntervalInBackground = s_inBackground,
                     RefetchOnWindowFocus = s_onFocus,
                     RefetchOnReconnect = s_onReconnect,
+                    RefetchIntervalFn = s_intervalFn,
+                    RefetchOnWindowFocusFn = s_onFocusFn,
+                    RefetchOnReconnectFn = s_onReconnectFn,
                     PlaceholderData = s_placeholder,
                 },
                 s_client));

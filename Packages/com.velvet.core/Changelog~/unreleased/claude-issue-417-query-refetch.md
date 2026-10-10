@@ -8,6 +8,11 @@
   `QueryClientOptions`): a mounted query fetches again when the application becomes visible or the device
   comes back online, by default when its data is stale. `NetworkSignals` holds both readings, with an
   override for an application that measures them itself.
+- `QueryOptions.RefetchIntervalFn`, `RefetchOnWindowFocusFn` and `RefetchOnReconnectFn` (the last two also on
+  `QueryClientOptions`), TanStack Query v5's function forms of those options, handed a read-only `QueryInfo`
+  of the entry's key, status, data, error and fetch state.
+- `QueryOptions` constructors taking a query function without a `CancellationToken`, whose request is not
+  cancelled when its last reader leaves, as TanStack Query's is for a function that never reads its `signal`.
 
 ### Fixed
 
