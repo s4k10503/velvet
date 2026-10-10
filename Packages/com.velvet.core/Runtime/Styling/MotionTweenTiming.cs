@@ -110,7 +110,7 @@ namespace Velvet
             (hold.WrittenDuration, hold.WrittenDelay, hold.WrittenCurve) = (duration, delay, curve);
         }
 
-        private static StyleList<T> Copy<T>(StyleList<T> list) =>
+        internal static StyleList<T> Copy<T>(StyleList<T> list) =>
             list.value is { } value ? new StyleList<T>(new List<T>(value)) : list;
 
         private static bool Same<T>(StyleList<T> a, StyleList<T> b)

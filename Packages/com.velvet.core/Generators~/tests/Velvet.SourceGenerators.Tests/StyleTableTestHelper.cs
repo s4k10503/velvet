@@ -133,6 +133,21 @@ namespace Velvet.SourceGenerators.Tests
             return LonghandNames(_rule.GetProperty("Properties")!.GetValue(rule)!);
         }
 
+        /// <summary>The USS longhand names <paramref name="className"/> declares as a percentage, sorted.</summary>
+        public IReadOnlyList<string> PercentagesOf(string className) => SetOf(className, "Percentages");
+
+        /// <summary>The USS longhand names <paramref name="className"/> declares as a keyword, sorted.</summary>
+        public IReadOnlyList<string> KeywordsOf(string className) => SetOf(className, "Keywords");
+
+        private IReadOnlyList<string> SetOf(string className, string property)
+        {
+            if (!TryGet(className, out var rule))
+            {
+                throw new InvalidOperationException($"The table defines no rule for '{className}'.");
+            }
+            return LonghandNames(_rule.GetProperty(property)!.GetValue(rule)!);
+        }
+
         /// <summary>The USS longhand names a <c>StyleLonghandSet</c> holds, sorted.</summary>
         private IReadOnlyList<string> LonghandNames(object set)
         {

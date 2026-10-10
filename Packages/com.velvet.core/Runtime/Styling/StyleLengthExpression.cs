@@ -4,47 +4,68 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
+    // What a relative length is measured against, in pixels: one em, 100% and the panel's two sides.
+    internal readonly struct RelativeLengthBasis
+    {
+        public readonly float Em;
+        public readonly float Percent;
+        public readonly float ViewportWidth;
+        public readonly float ViewportHeight;
+
+        public RelativeLengthBasis(float em, float percent, float viewportWidth, float viewportHeight)
+        {
+            Em = em;
+            Percent = percent;
+            ViewportWidth = viewportWidth;
+            ViewportHeight = viewportHeight;
+        }
+    }
+
     // A bracketed CSS <length-percentage>: a single dimension, or calc() / min() / max() / clamp() over
     // dimensions, numbers and nested parentheses, with `_` read as a space. CSS wants a space on both sides of
     // a binary + or -; Tailwind writes calc(50%-1rem) and spaces it itself, so a space on neither side is
     // read the same, and one on a single side is declined: `1px -2px` is two values. px, rem (at the fixed 16px the rest of the
-    // bracket grammar uses) and the absolute units are pixels; a percentage stays symbolic until Evaluate is
-    // handed the pixels 100% is.
+    // bracket grammar uses) and the absolute units are pixels; %, em and the viewport units stay symbolic until
+    // Evaluate is handed a basis.
     internal abstract class StyleLengthExpression
     {
         // What a length reads, for TryFoldConstant.
         private const int ReadsPixels = 1;
         private const int ReadsPercent = 2;
+        private const int ReadsElement = 4;
 
         // Nesting, and a run of terms or arguments, past this depth is declined rather than recursed into.
         private const int MaxDepth = 64;
 
-        // Unit names match case-sensitively, as StyleArbitraryValueResolver.TryParseValue's do.
-        private static readonly Dictionary<string, Leaf> s_units = new(StringComparer.Ordinal)
-        {
-            ["px"] = new Leaf(_ => 1f, ReadsPixels),
-            ["rem"] = new Leaf(_ => 16f, ReadsPixels),
-            ["%"] = new Leaf(percent => percent / 100f, ReadsPercent),
-        };
+        // Unit names match case-sensitively, as StyleArbitraryValueResolver.TryParseValue's do. The small,
+        // large and dynamic viewport units read the panel as vw/vh/vmin/vmax do: a panel has no UA chrome to
+        // show or hide, the case where CSS makes all three equal.
+        private static readonly Dictionary<string, Leaf> s_units = BuildUnits();
 
         private readonly int _reads;
 
         private StyleLengthExpression(int reads) => _reads = reads;
 
-        // What this comes to in pixels where 100% is percent pixels.
-        public abstract float Evaluate(float percent);
+        public abstract float Evaluate(in RelativeLengthBasis basis);
 
-        // The pixel length or percentage this is whatever 100% is, or false when it reads a percentage beside a
-        // pixel length. A length reading percentages alone is a multiple of 100%, because min() and max() of
-        // multiples of one non-negative basis are themselves one.
+        public StyleLengthExpression Negated() => new Scaled(this, -1f);
+
+        public bool ReadsPercentage => (_reads & ReadsPercent) != 0;
+
+        // Whether a coefficient overflowed, which every basis then carries.
+        public bool IsFinite() => float.IsFinite(Evaluate(new RelativeLengthBasis(1f, 100f, 100f, 100f)));
+
+        // The pixel length or percentage this is whatever it is measured against, or false when it reads an em, a
+        // viewport unit, or a percentage beside a pixel length. A length reading percentages alone is a multiple
+        // of its basis, because min() and max() of multiples of one non-negative basis are themselves one.
         public bool TryFoldConstant(out float value, out LengthUnit unit)
         {
             unit = _reads == ReadsPercent ? LengthUnit.Percent : LengthUnit.Pixel;
-            value = Evaluate(100f);
-            return _reads != (ReadsPixels | ReadsPercent);
+            value = Evaluate(new RelativeLengthBasis(0f, 100f, 0f, 0f));
+            return (_reads | ReadsPixels) == ReadsPixels || _reads == ReadsPercent;
         }
 
-        // Parses a single dimension (1rem, 25%) or a math function. A bare number, and anything left over after
+        // Parses a single dimension (2em, 50vw) or a math function. A bare number, and anything left over after
         // the dimension or the function's closing parenthesis, is declined.
         // Asked before TryParse, so that var(), rgb() and the other functions this does not read are declined
         // without being tokenized.
@@ -57,6 +78,25 @@ namespace Velvet
             var parser = new Parser(text.ToString());
             expression = parser.TryTop(out var top) ? top : null;
             return expression != null;
+        }
+
+        private static Dictionary<string, Leaf> BuildUnits()
+        {
+            var units = new Dictionary<string, Leaf>(StringComparer.Ordinal)
+            {
+                ["px"] = new Leaf(_ => 1f, ReadsPixels),
+                ["rem"] = new Leaf(_ => 16f, ReadsPixels),
+                ["%"] = new Leaf(b => b.Percent / 100f, ReadsPercent),
+                ["em"] = new Leaf(b => b.Em, ReadsElement),
+            };
+            foreach (var prefix in new[] { "", "s", "l", "d" })
+            {
+                units[prefix + "vw"] = new Leaf(b => b.ViewportWidth / 100f, ReadsElement);
+                units[prefix + "vh"] = new Leaf(b => b.ViewportHeight / 100f, ReadsElement);
+                units[prefix + "vmin"] = new Leaf(b => Math.Min(b.ViewportWidth, b.ViewportHeight) / 100f, ReadsElement);
+                units[prefix + "vmax"] = new Leaf(b => Math.Max(b.ViewportWidth, b.ViewportHeight) / 100f, ReadsElement);
+            }
+            return units;
         }
 
         private static StyleLengthExpression? Unit(string name)
@@ -72,11 +112,11 @@ namespace Velvet
 
         private sealed class Leaf : StyleLengthExpression
         {
-            private readonly Func<float, float> _perUnit;
+            private readonly Func<RelativeLengthBasis, float> _perUnit;
 
-            public Leaf(Func<float, float> perUnit, int reads) : base(reads) => _perUnit = perUnit;
+            public Leaf(Func<RelativeLengthBasis, float> perUnit, int reads) : base(reads) => _perUnit = perUnit;
 
-            public override float Evaluate(float percent) => _perUnit(percent);
+            public override float Evaluate(in RelativeLengthBasis basis) => _perUnit(basis);
         }
 
         private sealed class Scaled : StyleLengthExpression
@@ -90,7 +130,7 @@ namespace Velvet
                 _factor = factor;
             }
 
-            public override float Evaluate(float percent) => _factor * _inner.Evaluate(percent);
+            public override float Evaluate(in RelativeLengthBasis basis) => _factor * _inner.Evaluate(basis);
         }
 
         private sealed class Sum : StyleLengthExpression
@@ -104,7 +144,7 @@ namespace Velvet
                 _right = right;
             }
 
-            public override float Evaluate(float percent) => _left.Evaluate(percent) + _right.Evaluate(percent);
+            public override float Evaluate(in RelativeLengthBasis basis) => _left.Evaluate(basis) + _right.Evaluate(basis);
         }
 
         private sealed class Extremum : StyleLengthExpression
@@ -128,12 +168,12 @@ namespace Velvet
                 return reads;
             }
 
-            public override float Evaluate(float percent)
+            public override float Evaluate(in RelativeLengthBasis basis)
             {
-                var extreme = _args[0].Evaluate(percent);
+                var extreme = _args[0].Evaluate(basis);
                 foreach (var arg in _args)
                 {
-                    extreme = _isMax ? Math.Max(extreme, arg.Evaluate(percent)) : Math.Min(extreme, arg.Evaluate(percent));
+                    extreme = _isMax ? Math.Max(extreme, arg.Evaluate(basis)) : Math.Min(extreme, arg.Evaluate(basis));
                 }
                 return extreme;
             }
