@@ -268,13 +268,12 @@ namespace Velvet
 
         private static VisualElement? BoxOf(TextElement input)
         {
-            var element = input.hierarchy.parent;
-            while (element != null && !element.ClassListContains(StyleChildVariantClass.InputBoxClass))
+            for (var element = input.hierarchy.parent; element != null; element = element.hierarchy.parent)
             {
-                element = element.hierarchy.parent;
+                if (element.ClassListContains(StyleChildVariantClass.InputBoxClass)) return element;
             }
 
-            return element;
+            return null;
         }
 
         private static Color ThemeOr(VisualElement box, VisualElement control, CustomStyleProperty<Color> property,
