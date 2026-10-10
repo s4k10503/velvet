@@ -61,12 +61,12 @@ namespace Velvet
         // Attaches the fiber to mountPoint and runs the initial render + layout effects.
         // fiber: Fiber to mount. Must not already be mounted.
         // mountPoint: VisualElement that hosts the rendered tree. Must not be null.
-        // sharedContext, onCaughtError: see SetupMount.
+        // sharedContext, onCaughtError, motionClock: see SetupMount.
         public static void Mount(
             ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
-            Action<Exception, ErrorInfo>? onCaughtError = null)
+            Action<Exception, ErrorInfo>? onCaughtError = null, MotionClock? motionClock = null)
         {
-            SetupMount(fiber, mountPoint, sharedContext, onCaughtError);
+            SetupMount(fiber, mountPoint, sharedContext, onCaughtError, motionClock);
             var context = fiber.Reconciler!.Context;
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
@@ -210,11 +210,11 @@ namespace Velvet
         // Reconciler+ReconcilerContext there silently detaches the fiber from the caller's registries /
         // FiberStack / IsAborted flag. Left null only by V.Mount's direct root-fiber path,
         // which has no context to join and must bootstrap its own (this fiber becomes the owner).
-        // onCaughtError is written only onto a context this call bootstraps, before the render that follows
-        // it, since that first render can already throw into a boundary.
+        // onCaughtError and motionClock are written only onto a context this call bootstraps, before the render
+        // that follows it, since that first render can already throw into a boundary and start a mount enter.
         private static void SetupMount(
             ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
-            Action<Exception, ErrorInfo>? onCaughtError = null)
+            Action<Exception, ErrorInfo>? onCaughtError = null, MotionClock? motionClock = null)
         {
             if (fiber.IsMounted)
             {
@@ -242,6 +242,7 @@ namespace Velvet
             {
                 fiber.Reconciler.Context.BatchScheduler.SetAnchor(mountPoint);
                 if (onCaughtError != null) fiber.Reconciler.Context.OnCaughtError = onCaughtError;
+                if (motionClock != null) fiber.Reconciler.Context.StyleAnimationScheduler.MountOn(motionClock);
             }
 
             // On the Unmount → Mount path that reuses the same fiber, clear IsDisposed so that setter closures

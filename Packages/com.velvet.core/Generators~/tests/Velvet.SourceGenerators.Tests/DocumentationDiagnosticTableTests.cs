@@ -17,7 +17,7 @@ namespace Velvet.SourceGenerators.Tests
     /// table and Generators~/README.md must not talk about a VEL### ID the generator/analyzer assembly does
     /// not define, nor about a USS### range wider or narrower than the derivation's own codes — the class of
     /// bug that once left the docs describing a contiguous "VEL001-011" range while the real IDs are the
-    /// non-contiguous VEL004-012 / VEL100-101 / VEL500-503 — nor name a category no descriptor carries.
+    /// non-contiguous VEL004-012 / VEL100-103 / VEL500-503 — nor name a category no descriptor carries.
     /// </summary>
     public sealed class DocumentationDiagnosticTableTests
     {
@@ -32,7 +32,7 @@ namespace Velvet.SourceGenerators.Tests
 
         // "Velvet.Memoize" is the [MemoizeMethod]-attribute diagnostic category (VEL004-012). memoization.md's
         // table intentionally documents only this category and points elsewhere (AnalyzerReleases.Unshipped.md)
-        // for the separate "Velvet.Hooks" rules-of-hooks diagnostics (VEL100/101), so the table's exact-match
+        // for the separate "Velvet.Hooks" hook diagnostics (VEL100 to VEL103), so the table's exact-match
         // comparison set is scoped to this category rather than to every diagnostic the assembly defines.
         private const string MemoizeCategory = "Velvet.Memoize";
 

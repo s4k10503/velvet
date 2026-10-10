@@ -426,7 +426,7 @@ namespace Velvet
             write(realigned);
         }
 
-        private static StyleLonghandSet SetOf(params StyleLonghand[] longhands)
+        internal static StyleLonghandSet SetOf(params StyleLonghand[] longhands)
         {
             var set = StyleLonghandSet.Empty;
             foreach (var longhand in longhands)
