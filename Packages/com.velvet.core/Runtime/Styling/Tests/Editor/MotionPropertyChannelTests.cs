@@ -116,7 +116,7 @@ namespace Velvet.Tests
             // Arrange
             var element = new VisualElement();
 
-            // Act — the /N modifier overwrites the base color's alpha, so this pair travels 0.2 -> 0.8 in alpha.
+            // Act — the /N modifier multiplies the opaque base color's alpha, so this pair travels 0.2 -> 0.8 in alpha.
             var state = CreateHalfway(element, new[] { "bg-red-500/20" }, new[] { "bg-red-500/80" });
 
             // Assert — NaN stands in for "no channel resolved", which no tolerance can bring within the target.

@@ -37,9 +37,9 @@ namespace Velvet
 
         // Patch-time reconciliation of an element's gradient against its new class list. Mirrors the
         // skew layer's four cases: re-apply on a changed spec, attach a newly-gradiented element, clear one
-        // whose gradient classes were removed, or no-op. The steady-state (spec unchanged) skips the
-        // re-bake; DiffStyles only writes background-image on an actual node-style change (guarded), which
-        // a gradient element never carries, so the skip cannot leave the gradient stale.
+        // whose gradient classes were removed, or the steady state (spec unchanged), which skips the re-bake
+        // and only re-syncs the sizing to whether a StyleOverrides.BackgroundImage shows over the bake (the
+        // image itself is ranked by StyleArbitraryValueResolver, so DiffStyles cannot leave it stale).
         internal void ApplyGradientOnPatch(VisualElement element, string[] classNames, bool skewable)
         {
             var bound = _ctx.GradientBackgrounds.TryGetValue(element, out var current);
@@ -71,6 +71,10 @@ namespace Velvet
             else if (!current!.Spec.Equals(spec))
             {
                 GradientBackground.Rebind(element, current, spec);
+            }
+            else
+            {
+                GradientBackground.SyncSize(element, current);
             }
         }
 

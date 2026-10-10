@@ -67,6 +67,20 @@ namespace Velvet.Tests
             Assert.That(Joined(classNames), Is.EqualTo(Scoped + token));
         }
 
+        [TestCase("slice-[12]")]
+        [TestCase("slice-t-[3]")]
+        [TestCase("slice-scale-[2]")]
+        [TestCase("slice-tiled")]
+        [TestCase("hover:slice-[4]")]
+        public void Given_ANineSliceUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(string token)
+        {
+            // Act
+            var classNames = V.TextField(className: token).ClassNames;
+
+            // Assert
+            Assert.That(Joined(classNames), Is.EqualTo(Scoped + token));
+        }
+
         [Test]
         public void Given_SurfaceAndLayoutUtilities_When_TheNodeIsBuilt_Then_OnlyTheSurfaceOnesAreScoped()
         {

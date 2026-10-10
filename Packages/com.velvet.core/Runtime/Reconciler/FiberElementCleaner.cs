@@ -281,6 +281,7 @@ namespace Velvet
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);
+            StyleArbitraryValueResolver.ReleaseShownImageWatch(element);
             // Same reason for the per-frame drivers' transition suspension: a driver whose release this teardown
             // pre-empted would otherwise stay recorded as an owner, and the reused element's next play would read
             // that stale owner as "another driver is still live" and never hand transitions back to the cascade.

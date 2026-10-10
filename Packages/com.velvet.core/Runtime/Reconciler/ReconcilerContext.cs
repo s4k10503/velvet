@@ -4,8 +4,8 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // A same-panel target's synthetic-bubbling bridge: what releases it, and the element it listens on.
-    internal readonly record struct SamePanelBridge(System.Action Release, VisualElement Anchor);
+    // A same-panel target's synthetic-bubbling bridge: what releases it.
+    internal readonly record struct SamePanelBridge(System.Action Release);
 
     // Slot range that a single Portal placeholder owns within its target's children list.
     // Multiple Portals targeting the same DOM node each carry one entry of this record so
@@ -1246,10 +1246,9 @@ namespace Velvet
 
         // Same-panel portal targets as PortalSlotInfo records them — the content container of the element a
         // registered id names (V.Portal(targetId:)) or the caller passed (V.Portal(target:)) — mapped to the
-        // bridge each carries: Anchor is the element FiberCrossPanelEventDispatcher's synthetic-bubbling
-        // listeners sit on (the container's owner, where it has one), and Release removes them and the
-        // missing-sheet watch. Doubles as the attach-once guard BindPortalTarget checks, since
-        // multiple Portals — or repeated mounts of the same Portal — commonly resolve to the SAME target
+        // bridge each carries, whose Release lets go of the target's hold on FiberCrossPanelEventDispatcher's
+        // synthetic-bubbling listeners and removes the missing-sheet watch. Doubles as the attach-once guard
+        // BindPortalTarget checks, since multiple Portals — or repeated mounts of the same Portal — commonly resolve to the SAME target
         // (see PortalSlotInfo's own multi-Portal-per-target contract), and re-attaching would stack
         // duplicate callbacks. The guard is scoped to
         // this one context: a second, independently mounted reconciler whose own Portal resolves to the
@@ -1288,7 +1287,7 @@ namespace Velvet
                 detachBridge();
                 sheetWatch.Dispose();
                 releaseNavigatorHold?.Invoke();
-            }, anchor);
+            });
         }
 
         // The Portal whose range on parent holds row, or null for a row of parent's own — the logical parent both

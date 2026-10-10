@@ -556,6 +556,7 @@ namespace Velvet
             var controller = new FiberVirtualListController(
                 scrollView, virtualListNode, bridge, _ctx.FiberStack.Current, _ctx.ComponentContextStack);
             _ctx.VirtualListControllers[scrollView] = controller;
+            _ctx.FiberElementFactory.ApplyEvents(scrollView, virtualListNode.Events);
 
             // Apply class-driven styling the same way the ElementNode path does, so a virtualized
             // list container honours variants and the font layer. Gap is intentionally omitted: a
