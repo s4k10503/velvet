@@ -69,8 +69,8 @@ V.Div(className: "filter-[glow:#ff0000:2] hover:filter-[glow:#ff0000:4]");
 
 `filter-[name]` or `filter-[name:arg(:arg)*]`. Arguments fill the definition's **declared
 parameters** in order, and each one is parsed by its slot's declared type: a float slot takes
-a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar (`#rgb` /
-`#rrggbb` / `rgb(…)` / a named color). A missing tail is padded from the declaration's
+a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar
+([styling-colors.md](styling-colors.md)). A missing tail is padded from the declaration's
 defaults — the same values the USS parser pads with — so a bare `filter-[name]` applies the
 declared defaults outright. Supplying more arguments than the declaration, or an argument that
 fails its slot's grammar, rejects the whole token. (UI Toolkit's `FilterFunction` holds at most 4
