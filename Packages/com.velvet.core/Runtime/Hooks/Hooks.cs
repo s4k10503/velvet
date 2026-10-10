@@ -21,12 +21,20 @@ namespace Velvet
     {
         /// <summary>
         /// Retrieves the currently rendering Fiber from <see cref="FiberAmbientStack"/>; throws when
-        /// null or when called outside of Render().
+        /// null or when called outside of Render(). Counts the call in <see cref="ComponentFiber.HookCallCount"/>.
         /// </summary>
         private static ComponentFiber Resolve(string hookName)
         {
+            var fiber = ResolveUncounted(hookName);
+            fiber.HookCallCount++;
+            return fiber;
+        }
+
+        // For a member that reads the fiber without being a hook, so it does not move HookCallCount.
+        private static ComponentFiber ResolveUncounted(string memberName)
+        {
             var fiber = FiberAmbientStack.Current;
-            HookGuard.ThrowIfNotRendering(fiber, hookName);
+            HookGuard.ThrowIfNotRendering(fiber, memberName);
             return fiber!;
         }
 
@@ -1611,7 +1619,7 @@ namespace Velvet
         /// <returns>The forwarded <see cref="Ref{T}"/>, or null when the parent did not forward one or types do not match.</returns>
         public static Ref<T>? ForwardedRef<T>() where T : class
         {
-            var fiber = Resolve("ForwardedRef");
+            var fiber = ResolveUncounted("ForwardedRef");
             return fiber.ExternalRef as Ref<T>;
         }
 
@@ -2781,10 +2789,12 @@ namespace Velvet
                 fiber.MemoSlots.Add(new HookMemoSlot());
             }
             var slot = fiber.MemoSlots[slotIndex];
+            slot.HookCallCountAtGate = fiber.HookCallCount;
             // Structural value equality would call a fresh-but-content-equal record class prop or context
             // value unchanged and hand back the cached VNode, so the render the reconciler had already
             // decided to make would produce the committed tree instead of the new one.
-            if (slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
+            // MUTANT_SURVIVES(equivalent, clause removed): AreEqualDeps reads a null committed list as unequal to the non-null deps checked above.
+            if (!slot.RunsHooksPastGate && slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
             {
                 // Hit against the committed deps: reuse the committed VNode and stage the committed values so the
                 // render-phase settle keeps them. (On a miss, StoreMemoizedVNode stages the rebuilt result; without
@@ -2814,7 +2824,7 @@ namespace Velvet
         {
             if (slotIndex < 0) return;
             if (deps == null) throw new ArgumentNullException(nameof(deps));
-            var fiber = Resolve("StoreMemoizedVNode");
+            var fiber = ResolveUncounted("StoreMemoizedVNode");
 #if UNITY_EDITOR
             // The StrictMode diagnostic render is isolated from the commit: staging its throwaway
             // output here would first spare that tree from the diagnostic's own retirement sweep
@@ -2830,6 +2840,13 @@ namespace Velvet
                     + " Did you obtain slotIndex from TryGetMemoizedVNode immediately beforehand?");
             }
             var slot = fiber.MemoSlots[slotIndex];
+            // A hook the build-time scan could not see — reached through an interface or virtual call, say — ran
+            // between the gate and here. A hit skips that stretch, so it would skip the hook too; this body is
+            // rebuilt on every render from now on, as an unwoven one is.
+            if (fiber.HookCallCount != slot.HookCallCountAtGate)
+            {
+                slot.RunsHooksPastGate = true;
+            }
             // Stage the freshly computed memo. The committed LastDeps / CachedResult are promoted when the
             // render-phase loop settles, so a discarded intermediate attempt cannot poison the committed baseline.
             slot.NextDeps = deps;

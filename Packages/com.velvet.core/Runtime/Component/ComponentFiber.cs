@@ -269,6 +269,10 @@ namespace Velvet
         internal List<HookDeferredValueSlot>? DeferredValueSlots;
         internal List<HookOptimisticSlot>? OptimisticSlots;
 
+        // Never reset: only a difference between two readings in one render means anything, and
+        // Hooks.StoreMemoizedVNode takes it against the reading Hooks.TryGetMemoizedVNode took at the gate.
+        internal int HookCallCount;
+
         /// <summary>
         /// Cache field for the onCompleted callback of <see cref="Hooks.Use{T}"/> (Suspense) across re-renders,
         /// reducing GC allocations from per-render to once per fiber (zero-allocation design).
