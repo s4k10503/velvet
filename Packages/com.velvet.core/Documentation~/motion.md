@@ -376,8 +376,8 @@ resolved start described above.
   Motion**, which takes over only the values it animates and leaves the element's other CSS
   transitions running. Two overlapping plays each hold
   their own claim, so the first to finish cannot un-suspend the second, and the suspension lifts as
-  soon as the last one settles or is cancelled. Reach for `Tween` when you want the class's own
-  transition to do the work instead.
+  soon as the last one settles or is cancelled. Reach for `Tween` on the default clock when you want the
+  class's own transition to do the work instead; on any other, a `Tween` is driven too (*Clocks* below).
 
 ## Cubic-bezier easing
 
@@ -541,6 +541,47 @@ swap driving the same slot as the mode is shadowed too. While such a swap is run
 inline `transition-property` is the swap's: the suspension is neither taken nor handed back for the
 swap's length, and the swap's own completion puts back whichever of the two the element still needs.
 
+## Clocks (holding motion with game time)
+
+A mount chooses the clock its motion advances on, through `MountOptions.MotionClock`:
+
+```csharp
+V.Mount(root, tree, new MountOptions { MotionClock = MotionClock.GameTime });
+```
+
+- `MotionClock.Realtime`, the default: a `Tween` runs on UI Toolkit's own transitions, spring and bezier
+  plays, `layoutId` moves and `Hooks.UseFrame` step by the panel scheduler's own interval, and the
+  `animate-*` loops and `filter-*` transitions read `Time.realtimeSinceStartupAsDouble`.
+- `MotionClock.GameTime` reads `Time.timeAsDouble`, Unity's scaled game time.
+- A class deriving from `MotionClock` and overriding `NowSec` is a clock the application drives itself,
+  such as one a frame-step capture advances by a fixed step.
+
+On any other clock the tree's motion steps by the distance `MotionClock.NowSec` moved since its previous
+frame, so a clock that holds still holds it where it is, and one that moves a frame's worth moves it a
+frame's worth:
+
+- **Every `V.Motion` play** — a mount enter, an exit, a label change — whatever its `Type`, including the
+  wait for its `DelaySec` and stagger slot; a step that passes the delay carries what it passed it by into
+  the play. A `Tween` is played by the per-frame driver a `Bezier` plays on, rather than by UI Toolkit's
+  transition, which would run on the panel's time: on the tween's own duration, delay and
+  `PropertyOverrides`, eased by the curve UI Toolkit eases that transition by for each `Easing`. So it
+  animates the channels *Driven channels* lists, a `StyleTransition` preset's opacity, translate and scale
+  among them. A property outside them lands with the swap where the play suspends the element's own
+  transitions, which it does while they name a property one of its channels writes (`transition-all` does);
+  transitions naming no such property, `transition-filter` among them, are left running. The play
+  completes once its slowest `PropertyOverrides` entry has run, whether or not a channel plays that entry's property, and an exit cancelled part-way
+  reverses over the shortened timing UI Toolkit gives a reversed transition.
+- **A `layoutId` move**, and the opacity a crossfade hands back as it ends.
+- **A `filter-*` transition**, including one UI Toolkit would animate itself on the default clock
+  ([styling-filters.md](styling-filters.md#transitions)).
+- **The `animate-*` loops**, which show the phase of the distance since they started.
+- **`Hooks.UseFrame`**, whose delta is the distance the clock moved; a frame over which it did not move
+  invokes nothing. `Hooks.UseAnimationSequence` walks its steps on that delta, so its holds wait for the
+  clock too.
+
+Any other transition an element's own utility classes declare (`transition-colors` under a `hover:`
+colour, say) is UI Toolkit's, and runs on the panel's time on any clock.
+
 ## Timelines (`Hooks.UseAnimationSequence`)
 
 Framer Motion's `useAnimate` parity target: `UseAnimationSequence` owns the clock (it is itself built
@@ -626,8 +667,10 @@ but not the same instance.
   comes off once the reseed commits.
 
 A `Tween` play -- the default `Type`, and that of `StyleTransition.Fade`, which a sequence takes until a step
-names a transition -- is UI Toolkit's own transition, and none of the controls reaches it: it runs on to its end.
-Give the steps a `Spring` or `Bezier` transition where the plays have to follow the controls.
+names a transition -- follows the controls only on a mount whose clock is not the panel's, where the per-frame
+driver plays it ([Clocks](#clocks-holding-motion-with-game-time)). On the default `MotionClock.Realtime` it is
+UI Toolkit's own transition, and none of the controls reaches it: it runs on to its end. Give the steps a
+`Spring` or `Bezier` transition where the plays have to follow the controls on any clock.
 
 The handle also carries `controls.TimeSec`, the Web Animations API's
 `currentTime` and Framer Motion's `time`, read-only: seconds into the timeline, counting each hold at its
