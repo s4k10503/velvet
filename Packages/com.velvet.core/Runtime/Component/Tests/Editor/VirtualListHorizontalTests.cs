@@ -8,7 +8,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies a <see cref="V.VirtualList{T}(System.Collections.Generic.IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>
+    /// Specifies a <see cref="V.VirtualList{T}(System.Collections.Generic.IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle}, FiberEventBinding[])"/>
     /// made with <c>horizontal: true</c>, FlashList's <c>horizontal</c>, on a panel nothing lays out, so that a
     /// scroller's change reaches the list.
     /// <list type="bullet">

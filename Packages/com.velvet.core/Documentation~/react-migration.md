@@ -611,6 +611,69 @@ A render changing `maxLength:` while an edit is pending keeps the edit on screen
 and leaves it uncommitted and unreported. When the same render also takes `isDelayed:` off, the cut edit
 is released as above.
 
+### 2-1a. Event props
+
+| React (JSX) | Velvet |
+|-------------|--------|
+| `<div onPointerDown={fn}>` | `V.Div(events: new FiberEventBinding[] { new PointerDownBinding { Handler = fn } })` |
+| `<div onPointerDownCapture={fn}>` | `V.Div(events: new FiberEventBinding[] { new PointerDownBinding { Handler = fn, Capture = true } })` |
+| `<button onClick={a} onKeyDown={b}>` | `V.Button(onClick: a, events: new FiberEventBinding[] { new KeyDownBinding { Handler = b } })` |
+| `<button onClick={e => e.preventDefault()}>` | `new ClickedEventBinding { Handler = e => e.PreventDefault() }` in `events:` |
+| `<Link to="/a" onClick={fn}>` | `V.Link("/a", events: new FiberEventBinding[] { new ClickedEventBinding { Handler = fn } })` |
+
+Every `V.*` factory that returns an element node (`ElementNode` or `MotionNode`), other than the
+class-and-children shorthands below, takes an `events:` array, the way every host element takes every
+event prop in React: `V.Div`, `V.Custom<T>`, `V.Label`, `V.Image`, the controls, `V.ScrollView`,
+`V.ListView`, `V.SceneView`, `V.Particles`, `V.Anchored`, `V.FocusScope`, `V.DndContext`, `V.Draggable`,
+`V.Droppable` and `V.Motion`.
+`ElementFactoryEventsInventoryTests` finds these factories by their return type, so one added later is
+held to the parameter too. The class-and-children shorthands of `V.Div`, `V.Custom<T>`, `V.ScrollView` and
+`V.Button` have a sibling taking the array between the two, as in `V.Div("p-4", events, child)`. A call that
+passes a literal `null` second, with children after it, matches both forms equally and does not compile
+until the `null` is cast to `VNode` or to `FiberEventBinding[]`.
+`V.VirtualList` takes the array for its `ScrollView`, and `V.Link` and `V.NavLink` for their button. `V.Text` returns a text node and takes none, as a React text node takes no props. The
+initializer builders under `Velvet.Experimental` carry the same array as `Events`.
+
+The binding types are declared in `Runtime/Reconciler/FiberEventBinding.cs`. A `ClickedBinding` and a
+`ClickedEventBinding` bind only on a `Button`, and a `ChangeEventBinding<T>` only on an element whose
+value is a `T` of `float`, `bool`, `string` or `int`; on any other element each binds nothing.
+
+A factory's own `onClick:` or `onValueChanged:` is bound ahead of the array, so both run, the factory's
+own first. One delegate is bound on an element once per phase, so a delegate passed both ways runs once,
+and a render passing it both ways again leaves the element's bindings as they were. The array is read
+and never written, so a component may keep one across renders. A render passing different handlers
+rebinds the element, and one passing no array unbinds what an earlier render bound.
+
+The pointer down, up and move, wheel, key, focus in and out, focus and blur bindings derive from
+`FiberDispatchedEventBinding`, whose `Capture = true` is React's `on…Capture`: the handler runs as the
+event travels down to its target, so capture handlers run outermost first and ahead of every bubble
+handler, the target's own included, and bubble handlers innermost first after them. One delegate may be
+bound in both phases and runs in each. A render that moves a delegate from one phase to the other
+rebinds it. `PointerEnterBinding` and `PointerLeaveBinding` take no `Capture`, as React registers
+`onPointerEnter` and `onPointerLeave` without a capture form. `GeometryChangedBinding` takes none either:
+it is UI Toolkit's `GeometryChangedEvent`, which has no React counterpart.
+
+A `ClickedEventBinding`'s handler receives the click as a `ClickedEvent`. The bindings of that kind on one
+button share one `ClickedEvent` per click, in the order they were bound, and `PreventDefault()` is React's
+`event.preventDefault()`: `V.Link` and `V.NavLink` bind their navigation after the caller's `events:` and
+skip it when a handler prevented the click, as React Router's `Link` does with its `onClick`. How a
+binding crosses a portal is [portals.md](portals.md)'s.
+
+```csharp compile
+public static class PointerSurface
+{
+    [Component]
+    public static VNode Render()
+    {
+        var (presses, setPresses) = Hooks.UseState(0);
+        return V.SceneView(null, className: "w-full h-64", events: new FiberEventBinding[]
+        {
+            new PointerDownBinding { Handler = _ => setPresses.Invoke(presses + 1) },
+        });
+    }
+}
+```
+
 ### 2-2. Conditionals and Lists
 
 | React | Velvet | Notes |
