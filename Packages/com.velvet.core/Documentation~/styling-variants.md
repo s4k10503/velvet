@@ -434,7 +434,8 @@ the field factories — `V.TextField`, `V.IntegerField`, `V.DropdownField` and `
 a text-input field (`FloatField`, `DoubleField`, `LongField`, …) or a popup field (`PopupField<T>`, …) — send
 these to the box:
 
-- backgrounds, including the gradient utilities (`bg-*`, `bg-linear-*`, `from-*` / `via-*` / `to-*`);
+- backgrounds, including the gradient utilities (`bg-*`, `bg-linear-*`, `from-*` / `via-*` / `to-*`) and
+  the nine-slice ones (`slice-*`, [styling-backgrounds.md](styling-backgrounds.md));
 - borders, including the line style (`border`, `border-*`, `border-solid` / `-dashed` / `-dotted`);
 - radius (`rounded`, `rounded-*`) and padding (`p-*`, `px-*`, `py-*`, `pt-*` … `pe-*`);
 - `shadow-*`, `drop-shadow-*`, `ring-*` and `outline-*`.

@@ -184,6 +184,47 @@ namespace Velvet.Tests
             Assert.AreEqual(StyleKeyword.Null, _root.Q<Label>("text").style.width.keyword);
         }
 
+        // Mode 0 renders a label carrying slice-[12] (the four inline slice insets); mode 1 renders nothing; mode
+        // 2 renders a PLAIN label, renting the pooled one back.
+        [Component]
+        private static VNode SliceHost()
+        {
+            var mode = Hooks.UseStore(s_store, s => s.Mode);
+            VNode child = mode == 0
+                ? V.Label(name: "text", className: "slice-[12]", text: "hi")
+                : mode == 2
+                    ? V.Label(name: "text", text: "hi")
+                    : (VNode)V.Fragment(Array.Empty<VNode>());
+            return V.Div(name: "host", children: new VNode[] { child });
+        }
+
+        [Test]
+        public void Given_ASlicedLabelWasRemoved_When_APlainLabelIsRecreatedFromThePool_Then_ItHasNoStaleSliceInset()
+        {
+            // Arrange — the inset is read while the sliced label is mounted, so a class that never reached the
+            // inline slot cannot pass for a scrubbed one, and the label is kept so a rent that missed the pool
+            // cannot either.
+            using var store = new ModeStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(SliceHost, key: "host"));
+            var sliced = _root.Q<Label>("text");
+            var mountedInset = sliced.style.unitySliceTop;
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            store.Set(1);
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            store.Set(2);
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            var recycled = _root.Q<Label>("text");
+            Assert.That(
+                (mountedInset.keyword, mountedInset.value, ReferenceEquals(recycled, sliced),
+                    recycled.style.unitySliceTop.keyword),
+                Is.EqualTo((StyleKeyword.Undefined, 12, true, StyleKeyword.Null)));
+        }
+
         // Structural: the full inline-style scrub surface, compared against a fresh element
 
         // Every inline style property FiberElementPoolReset.ResetInlineStyle scrubs. This list is the
@@ -199,6 +240,12 @@ namespace Velvet.Tests
             nameof(IStyle.backgroundPositionX),
             nameof(IStyle.backgroundPositionY),
             nameof(IStyle.backgroundRepeat),
+            nameof(IStyle.unitySliceTop),
+            nameof(IStyle.unitySliceRight),
+            nameof(IStyle.unitySliceBottom),
+            nameof(IStyle.unitySliceLeft),
+            nameof(IStyle.unitySliceScale),
+            nameof(IStyle.unitySliceType),
             nameof(IStyle.opacity),
             nameof(IStyle.display),
             nameof(IStyle.visibility),

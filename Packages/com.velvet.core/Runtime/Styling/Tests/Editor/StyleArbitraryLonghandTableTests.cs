@@ -47,8 +47,6 @@ namespace Velvet.Tests
             _spawned.Clear();
         }
 
-        // GREEN_ON_BASE(characterization): every row already agrees with what the property writes; the
-        // case exists so a later row cannot drift away from it unnoticed.
         [Test]
         public void Given_EveryArbitraryPropertyOutsideTheFilterFamily_When_ItsInlineWritesAreProbed_Then_TheyMatchItsDeclaredRow()
         {
@@ -83,8 +81,6 @@ namespace Velvet.Tests
             Assert.That(string.Join("; ", problems), Is.Empty);
         }
 
-        // GREEN_ON_BASE(characterization): the family is already held out on purpose; the case pins that
-        // decision against what its members actually write.
         [Test]
         public void Given_TheComposedFilterFamily_When_ItsRowsAreReadBesideWhatItWrites_Then_EveryRowIsEmpty()
         {

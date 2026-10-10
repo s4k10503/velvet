@@ -1,4 +1,4 @@
-/* Background Utilities - background-color */
+/* Background Utilities - background-color, background-repeat, -unity-slice-type */
 
 .bg-transparent { background-color: transparent; }
 .bg-background { background-color: var(--color-background); }
@@ -15,3 +15,20 @@
 .bg-white { background-color: rgb(255, 255, 255); }
 .bg-white-soft { background-color: var(--color-white-soft); }
 .bg-black { background-color: rgb(0, 0, 0); }
+
+/* Tailwind's bg-repeat family */
+.bg-repeat { background-repeat: repeat; }
+.bg-no-repeat { background-repeat: no-repeat; }
+.bg-repeat-x { background-repeat: repeat-x; }
+.bg-repeat-y { background-repeat: repeat-y; }
+.bg-repeat-round { background-repeat: round; }
+.bg-repeat-space { background-repeat: space; }
+
+/* The nine-slice fill mode. The insets and their scale are arbitrary values resolved in C#
+   (slice-[12], slice-scale-[2]); Documentation~/styling-backgrounds.md owns the family. */
+.slice-sliced { -unity-slice-type: sliced; }
+.slice-tiled { -unity-slice-type: tiled; }
+
+/* Gives an element declaring a percentage slice inset the custom property that makes UI Toolkit send it
+   CustomStyleResolvedEvent; see StyleArbitraryValueResolver.WatchShownImage. */
+.velvet-slice-percent { --velvet-slice-percent: 1; }
