@@ -327,9 +327,9 @@ namespace Velvet.CodeGen
                 {
                     _instructions[0].Previous = null;
                 }
-                while (_body.Variables.Count > _variableCount)
+                for (var count = _body.Variables.Count; count > _variableCount; count--)
                 {
-                    _body.Variables.RemoveAt(_body.Variables.Count - 1);
+                    _body.Variables.RemoveAt(count - 1);
                 }
             }
         }
