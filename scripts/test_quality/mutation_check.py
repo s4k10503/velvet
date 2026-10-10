@@ -176,7 +176,7 @@ UNREADABLE = object()
 CARRIED_REFUSAL = 3
 
 # Include generation semantics in verdict identity.
-MUTATION_MODEL_VERSION = 8
+MUTATION_MODEL_VERSION = 9
 
 
 class Mutant:
@@ -189,6 +189,9 @@ class Mutant:
         self.operator = operator
         self.verdict = None
         self.detail = ""
+        # The operators of the mutants `one_per_line` dropped from this one's line, so a declaration
+        # naming one of them still answers for the representative.
+        self.shadowed = frozenset()
 
     def describe(self, project):
         try:
@@ -486,6 +489,33 @@ OPERATORS = [
 ]
 
 WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
+
+# The operator `one_per_line` keeps when a line carries several, first to last. The mutant that
+# changes the least about what the line does comes first: it is the one a test is least likely to
+# notice, so a line whose first mutant dies is taken to have been noticed, and one that survives is
+# the question worth asking. The order is a decision rather than a measurement.
+LINE_PRIORITY = ("boundary", "equality", "arithmetic", "clause removed", "logic", "literal",
+                 "guard removed", "line removed")
+
+
+def one_per_line(mutants):
+    """At most one mutant for each (file, line), chosen by `LINE_PRIORITY` and then by column.
+
+    Deterministic in the mutants alone, so every shard and every later run reads the same list. The
+    ones dropped are named on the survivor as `shadowed`: the cap generates no mutant for them, and a
+    declaration that names one of them has to keep answering for the line.
+    """
+    by_line = {}
+    for mutant in mutants:
+        by_line.setdefault((str(mutant.path), mutant.line), []).append(mutant)
+    kept = []
+    for group in by_line.values():
+        group.sort(key=lambda mutant: (LINE_PRIORITY.index(mutant.operator), mutant.column))
+        chosen = group[0]
+        chosen.shadowed = frozenset(other.operator for other in group[1:])
+        kept.append(chosen)
+    return kept
+
 
 def comment_edges(spans):
     """Comment starts and ends, kept separate from the literal spans in the same mask."""
@@ -3938,8 +3968,10 @@ def answered(mutants, deferred, declared):
         if mutant.verdict not in SURVIVING:
             continue
         declaration = declared.get((mutant.path, mutant.line))
-        if declaration is not None and declaration.operator not in (None, mutant.operator):
-            # Named for a different mutant on this line, so it says nothing about this one.
+        if (declaration is not None and declaration.operator not in (None, mutant.operator)
+                and declaration.operator not in mutant.shadowed):
+            # Named for a different mutant on this line, so it says nothing about this one. One the
+            # cap dropped from the line is not different: this mutant stands for the line.
             unanswered.append((mutant, "the declaration above answers for '{}', not for this".format(
                 declaration.operator)))
             continue
@@ -3959,6 +3991,9 @@ def answered(mutants, deferred, declared):
     # which is the widening this naming exists to close read from the other side.
     named = {(mutant.path, mutant.line, mutant.operator)
              for mutant in mutants if mutant.verdict in SURVIVING}
+    # What the cap dropped, over every mutant including the killed: a declaration written for a mutant
+    # the cap no longer generates has nothing to be measured against, which is not what stale means.
+    shadowed = {(mutant.path, mutant.line): mutant.shadowed for mutant in mutants}
     covers = {}
     for (path, subject), declaration in declared.items():
         covers.setdefault((path, declaration.line), [declaration, []])[1].append(subject)
@@ -3968,10 +4003,13 @@ def answered(mutants, deferred, declared):
         if not declaration.written_here:
             continue
         if declaration.operator is None:
-            answered_here = any((path, subject) in settled for subject in subjects)
+            answered_here = any((path, subject) in settled or shadowed.get((path, subject))
+                                for subject in subjects)
         else:
             answered_here = any((path, subject, declaration.operator) in named
-                                or (path, subject) in deferred for subject in subjects)
+                                or (path, subject) in deferred
+                                or declaration.operator in shadowed.get((path, subject), ())
+                                for subject in subjects)
         if not answered_here:
             stale.append((path, min(subjects), declaration))
     return unanswered, stale
@@ -4479,11 +4517,14 @@ def main():
 
     body = []
     mutants = []
+    every_mutant = []
     unreached = {}
     declined = {}
     for path, lines in sorted(targets.items()):
         text = path.read_text()
-        found = mutations_for(path, text, lines)
+        every = mutations_for(path, text, lines)
+        found = one_per_line(every)
+        every_mutant.extend(every)
         mutants.extend(found)
         body.extend((path, number) for number in body_line_numbers(text, lines))
         covered = {mutant.line for mutant in found}
@@ -4497,7 +4538,8 @@ def main():
 
     coverage = "\n".join((coverage, body_reach(mutants, body)))
 
-    forwarded = unmeasured_forwards(targets, mutants)
+    # Read over the uncapped set: the cap picks a mutant for the line, not for what a forwarded body holds.
+    forwarded = unmeasured_forwards(targets, every_mutant)
     if forwarded:
         coverage += "\n" + forwards_report(forwarded, project)
 
