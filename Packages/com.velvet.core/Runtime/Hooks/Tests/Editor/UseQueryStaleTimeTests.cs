@@ -17,7 +17,8 @@ namespace Velvet.Tests
     /// measured on the client's clock, not a moment before.</item>
     /// <item>A component that read only <c>IsFetching</c> does not re-render then, and data that lands again moves
     /// the moment to its own age.</item>
-    /// <item>The wait ends when the reader unmounts and when the client is cleared.</item>
+    /// <item>The wait ends when the reader unmounts, when the client is cleared and when the query is
+    /// disabled.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -33,6 +34,7 @@ namespace Velvet.Tests
         private static int s_clockReads;
         private static bool s_readsStale;
         private static TimeSpan s_staleTime;
+        private static bool s_enabled;
         private static StateUpdater<int> s_setTick;
         private static int s_renderCount;
         private static QueryResult<int> s_result = null!;
@@ -47,6 +49,7 @@ namespace Velvet.Tests
             s_clockReads = 0;
             s_readsStale = true;
             s_staleTime = Seconds(10);
+            s_enabled = true;
             s_setTick = default;
             s_renderCount = 0;
             s_setShow = default;
@@ -212,6 +215,26 @@ namespace Velvet.Tests
                 "The data the wait was for is gone, whether or not the component has rendered since");
         });
 
+        [UnityTest]
+        public IEnumerator Given_AWaitingComponent_When_TheQueryIsDisabled_Then_TheWaitStopsReadingTheClock()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = MountResolved();
+            s_enabled = false;
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            await Pass(TimeSpan.Zero);
+            var readsAfterTheFirstFrames = s_clockReads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_clockReads, Is.EqualTo(readsAfterTheFirstFrames), "A disabled query reports no staleness, so nothing waits for it");
+        });
+
         private static TimeSpan Seconds(double count) => TimeSpan.FromSeconds(count);
 
         private static async VelvetTask Pass(TimeSpan time)
@@ -249,7 +272,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             var result = Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("todos"), Fetch) { StaleTime = s_staleTime, Retry = 0 },
+                new QueryOptions<int>(new QueryKey("todos"), Fetch) { StaleTime = s_staleTime, Enabled = s_enabled, Retry = 0 },
                 s_client);
             var (_, setTick) = Hooks.UseState(0);
             s_setTick = setTick;

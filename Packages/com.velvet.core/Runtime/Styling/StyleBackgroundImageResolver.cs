@@ -67,18 +67,23 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Sets the element's inline <c>backgroundImage</c> from the given Texture2D, through the
-        /// SceneView ownership gate (a live camera feed keeps the slot and defers this value).
+        /// Sets the element's inline <c>backgroundImage</c> from the given Texture2D, ranked below a
+        /// <see cref="StyleOverrides.BackgroundImage"/> and through the SceneView ownership gate (a live camera
+        /// feed keeps the slot and defers this value).
         /// </summary>
         public static void Apply(VisualElement element, Texture2D? texture)
-        {
-            SceneViewElement.WriteBackground(element, new StyleBackground(texture));
-        }
+            => Apply(element, texture, important: false);
 
-        /// <summary>Reverts the inline background-image to the USS default (same gate as Apply).</summary>
+        // An important utility (!bg-[addr:…]) wins over a StyleOverrides.BackgroundImage.
+        internal static void Apply(VisualElement element, Texture2D? texture, bool important)
+            => StyleArbitraryValueResolver.WriteBackgroundImageUtility(element, new StyleBackground(texture), important);
+
+        /// <summary>
+        /// Withdraws the utilities' background image — the one <see cref="Apply(VisualElement, Texture2D?)"/>
+        /// sets, which a gradient utility's bake shares (same gate as Apply): a
+        /// <see cref="StyleOverrides.BackgroundImage"/> shows if the element declares one, else the stylesheet's.
+        /// </summary>
         public static void Clear(VisualElement element)
-        {
-            SceneViewElement.WriteBackground(element, new StyleBackground(StyleKeyword.Null));
-        }
+            => StyleArbitraryValueResolver.ClearBackgroundImageUtility(element);
     }
 }

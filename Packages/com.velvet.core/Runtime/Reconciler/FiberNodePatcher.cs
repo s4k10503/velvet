@@ -100,6 +100,7 @@ namespace Velvet
                     if (element is ScrollView scrollView && _ctx.VirtualListControllers.TryGetValue(scrollView, out var controller))
                     {
                         controller.Update(newVirtualList);
+                        RebindEvents(scrollView, newVirtualList.Events);
 
                         // The ScrollView persists across patches, so re-sync its class-driven styling the
                         // same way ElementNode does. DiffClassList (inside the helper) is non-destructive —
@@ -257,8 +258,8 @@ namespace Velvet
             // The shared post-children passes run after PatchCommon (which reconciles children) AND
             // DiffStyles — keeping gap after DiffStyles preserves the ordering invariant that the
             // manipulator's container-margin writes are never clobbered by a later inline-style diff on
-            // the same element. (Today DiffStyles only touches color properties, but the invariant must
-            // hold if a margin-writing StyleOverride is ever added.)
+            // the same element. (No StyleOverrides member writes a margin today, but the invariant must
+            // hold if one is ever added.)
             ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames,
                 paintTail: true, clipActive);
         }
@@ -396,9 +397,8 @@ namespace Velvet
         // (SilhouetteBoundsSpacer.NonSpacerChildCount trims it), so adding and removing it here is safe — and
         // that is precisely what makes focus:ring-* render instead of toggling an inert class.
         // The ORDER is load-bearing:
-        // - Gradient runs after the node-style diff so its background-image is the last word on this
-        //   element — DiffStyles only writes background-image on an actual node-style change, which a
-        //   gradient element never carries, so the two never fight.
+        // - Gradient runs after the node-style diff so its sizing reads whether an image override from that
+        //   diff shows over its bake; the two images themselves are ranked by StyleArbitraryValueResolver.
         // - animate-* motion runs after the gradient (a pan mode reads the live gradient) and reconciles
         //   its own restart/attach/detach against the new class list.
         // - Skew is a wrapper-less paint (the sheared silhouette is the element's own generateVisualContent);
@@ -453,11 +453,8 @@ namespace Velvet
             }
         }
 
-        // Shared logic for PatchElement / PatchMotion: rebind events, update name, recurse into
-        // children Reconcile, and replace the callback ref's cleanup → setup pair.
-        private void PatchCommon(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode)
+        private void RebindEvents(VisualElement element, FiberEventBinding[] newEvents)
         {
-            var newEvents = newNode.Events;
             if (!_ctx.EventManager.HasSameBindings(element, newEvents))
             {
                 _ctx.EventManager.UnbindAll(element);
@@ -468,7 +465,15 @@ namespace Velvet
                         _ctx.EventManager.Bind(element, evt);
                     }
                 }
+                _ctx.EventManager.Rebound(element);
             }
+        }
+
+        // Shared logic for PatchElement / PatchMotion: rebind events, update name, recurse into
+        // children Reconcile, and replace the callback ref's cleanup → setup pair.
+        private void PatchCommon(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode)
+        {
+            RebindEvents(element, newNode.Events);
 
             // Sync the name to the new value, INCLUDING clearing it when the prop is removed (null / empty) — an
             // attribute that disappears from the VNode must disappear from the element (parity with className /
@@ -739,7 +744,7 @@ namespace Velvet
         internal static string ValueKey(string rawCls)
             => TryGetInlineResolvedCore(rawCls, out var core, out var important)
                 && StyleArbitraryValueResolver.TryParse(core, out var style)
-                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Color}|{style.Auto}"
+                ? $"{important}|{style.Property}|{style.Value}|{style.Unit}|{style.Value2}|{style.Unit2}|{style.Value3}|{style.Value4}|{style.PercentEdges}|{style.Color}|{style.Auto}"
                     + $"|{(style.Custom == null && style.Expression == null ? string.Empty : rawCls)}"
                 : rawCls;
 
@@ -1985,34 +1990,10 @@ namespace Velvet
             }
         }
 
-        // Applies the StyleOverrides diff to element.style.
-        // Maintenance note: this method diffs each property of StyleOverrides
-        // individually, so any new property added to StyleOverrides must also receive a matching
-        // branch here. Missing the addition causes the new property's diff to be silently ignored
-        // without a compile error.
+        // Applies the StyleOverrides diff. StyleOverridesLayer.Diff writes each member on its own, so a member
+        // added to StyleOverrides needs a branch there; StyleOverridesInlineWriteTests fails until it has one.
         internal void DiffStyles(VisualElement element, StyleOverrides? oldStyles, StyleOverrides? newStyles)
-        {
-            oldStyles ??= StyleOverrides.Empty;
-            newStyles ??= StyleOverrides.Empty;
-
-            // Routed through the SceneView ownership gate: while a live camera texture owns the slot
-            // the poster is deferred (and restored on release); with no live texture — no camera yet,
-            // camera removed, plain elements — the write lands directly.
-            if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage))
-            {
-                SceneViewElement.WriteBackground(element, newStyles.BackgroundImage ?? StyleKeyword.Null);
-            }
-
-            if (!Equals(oldStyles.BackgroundColor, newStyles.BackgroundColor))
-            {
-                element.style.backgroundColor = newStyles.BackgroundColor ?? StyleKeyword.Null;
-            }
-
-            if (!Equals(oldStyles.Color, newStyles.Color))
-            {
-                element.style.color = newStyles.Color ?? StyleKeyword.Null;
-            }
-        }
+            => StyleOverridesLayer.Diff(element, oldStyles ?? StyleOverrides.Empty, newStyles ?? StyleOverrides.Empty);
 
         #endregion
 

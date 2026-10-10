@@ -104,6 +104,10 @@ namespace Velvet
         public static long ImportantOf(long priority) => Important | priority;
         #endregion
 
+        // StyleOverrides, Velvet's style attribute. CSS ranks a declaration there above every rule that is not
+        // important and below every important one, so this is the top of the ordinary band.
+        public const long InlineStyle = Important - 1;
+
         internal static long ForVariant(StyleVariantKind kind) => s_forVariant[kind];
 
         private static readonly VariantKindTable<long> s_forVariant = new(
@@ -273,6 +277,23 @@ namespace Velvet
 
         // Transition (StyleList<TimeValue>; handled out-of-band like the filter list)
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
+
+        #region Nine-slice (the background image's slice insets and their scale)
+        // The insets are written as StyleInt, so their values are whole numbers.
+        Slice,        // slice-[12_8_4_2] -> -unity-slice-top/right/bottom/left (one to four values, see Value4)
+        SliceX,       // slice-x-[12]     -> left + right
+        SliceY,       // slice-y-[12]     -> top + bottom
+        SliceTop,     // slice-t-[12]
+        SliceRight,   // slice-r-[12]
+        SliceBottom,  // slice-b-[12]
+        SliceLeft,    // slice-l-[12]
+        SliceScale,   // slice-scale-[2]  -> -unity-slice-scale (Value = unitless factor)
+        #endregion
+
+        // The StyleOverrides members only stylesheet rules also write, layered so an important rule outranks them
+        // as it does the other members. No class parses to either.
+        BackgroundRepeat, // background-repeat (Value = the x Repeat, Value2 = the y Repeat)
+        SliceType,        // -unity-slice-type  (Value = the SliceType)
     }
 
     // A parsed arbitrary-value result: the target Property plus its length payload
@@ -288,8 +309,11 @@ namespace Velvet
         // its own class; a pair here arrives from ONE class and has no spelling that sets half of it.
         public float Value2 { get; }
         public LengthUnit Unit2 { get; }
-        // TransformOrigin's z, a length in pixels; 0 for every other property.
+        // TransformOrigin's z, a length in pixels; Slice's bottom inset; 0 for every other property.
         public float Value3 { get; }
+        // Slice's left inset; 0 for every other property. Slice carries its four edges in Value (top), Value2
+        // (right), Value3 and Value4, because one slice-[…] class sets all four in the border-image-slice order.
+        public float Value4 { get; }
         // Color payload for color properties; default for length/angle/custom properties.
         public Color Color { get; }
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
@@ -300,6 +324,20 @@ namespace Velvet
         public StyleLengthExpression? Expression { get; }
         // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
         public bool Auto { get; }
+        // A StyleOverrides member's keyword value (Initial, None, …), written as the keyword in place of the
+        // payload; Undefined for every result a class parses to.
+        public StyleKeyword Keyword { get; }
+        // The slice insets given as a percentage of the background image's size: bit 0 is Value (the top, or
+        // the one edge an edge property writes), bit 1 Value2, bit 2 Value3, bit 3 Value4, in the order Slice
+        // carries them. 0 for every other property.
+        public int PercentEdges { get; }
+
+        // A keyword value for property.
+        public ArbitraryStyle(ArbitraryProperty property, StyleKeyword keyword)
+            : this(property, auto: default)
+        {
+            Keyword = keyword;
+        }
 
         // The `auto` keyword for a length property.
         public static ArbitraryStyle AutoLength(ArbitraryProperty property) => new ArbitraryStyle(property, true);
@@ -312,11 +350,14 @@ namespace Velvet
         {
             Property = property;
             Auto = auto;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Value = 0f;
             Unit = LengthUnit.Pixel;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
+            Value4 = 0f;
             Color = default;
             Custom = null;
             Expression = null;
@@ -327,11 +368,14 @@ namespace Velvet
         {
             Property = property;
             Auto = false;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Value = value;
             Unit = unit;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
+            Value4 = 0f;
             Color = default;
             Custom = null;
             Expression = null;
@@ -343,14 +387,29 @@ namespace Velvet
         {
             Property = property;
             Auto = false;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Value = value;
             Unit = unit;
             Value2 = value2;
             Unit2 = unit2;
             Value3 = value3;
+            Value4 = 0f;
             Color = default;
             Custom = null;
             Expression = null;
+        }
+
+        // Creates a four-edge result (Slice, or one edge in top), with the edges percentEdges marks as percentages.
+        public ArbitraryStyle(ArbitraryProperty property, float top, float right, float bottom, float left,
+            int percentEdges = 0)
+            : this(property, auto: default)
+        {
+            Value = top;
+            Value2 = right;
+            Value3 = bottom;
+            Value4 = left;
+            PercentEdges = percentEdges;
         }
 
         // Creates a color result.
@@ -358,12 +417,15 @@ namespace Velvet
         {
             Property = property;
             Auto = false;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Color = color;
             Value = 0f;
             Unit = LengthUnit.Pixel;
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
+            Value4 = 0f;
             Custom = null;
             Expression = null;
         }
@@ -373,6 +435,8 @@ namespace Velvet
         {
             Property = property;
             Auto = false;
+            Keyword = StyleKeyword.Undefined;
+            PercentEdges = 0;
             Custom = custom;
             Expression = null;
             Value = 0f;
@@ -380,6 +444,7 @@ namespace Velvet
             Value2 = 0f;
             Unit2 = LengthUnit.Pixel;
             Value3 = 0f;
+            Value4 = 0f;
             Color = default;
         }
 
