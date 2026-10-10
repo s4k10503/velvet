@@ -1315,10 +1315,28 @@ namespace Velvet.Tests
 
             // Act
             Last(s_rendersA).Refetch();
+            s_sources[2].TrySetResult(2);
 
             // Assert
             Assert.That(s_fetched.Count, Is.EqualTo(3),
                 "A query function's cancellation callback is reported, and the refetch that cancelled it still starts");
+        }
+
+        [Test]
+        public void Given_ARequestWhoseTokenCallbackThrows_When_TheLastReaderLeaves_Then_TheTokenIsCancelledAndTheThrowIsLogged()
+        {
+            // Arrange
+            s_onToken = token => token.Register(() => throw new InvalidOperationException("query-cancellation-threw"));
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            ContainedFailureLog.Expect<InvalidOperationException>("QueryClient", "query-cancellation-threw");
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.True,
+                "The application's callback on the token is reported like any other, and the request is cancelled");
         }
 
         [Test]
