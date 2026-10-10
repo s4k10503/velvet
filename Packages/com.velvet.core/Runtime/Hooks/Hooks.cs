@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using UnityEngine.UIElements;
 
@@ -1984,7 +1985,8 @@ namespace Velvet
         /// <para/>
         /// Once the component has caught, each later render of it invokes the factory again with the error
         /// it caught and renders what it returns in place of its children, until the component remounts —
-        /// give it a new <c>key</c> to render its children again. On those renders a factory that returns
+        /// give it a new <c>key</c> to render its children again — or is reset through
+        /// <see cref="UseErrorBoundaryReset"/>. On those renders a factory that returns
         /// <c>null</c> or throws passes the error to the boundary above, as it does at the catch.
         /// </remarks>
         /// <param name="factory">Factory that receives the caught exception and returns the fallback VNode. Must not be null.</param>
@@ -2010,6 +2012,104 @@ namespace Velvet
             var fiber = Resolve(nameof(UseFallback));
             fiber.FallbackFactory = factory;
         }
+
+        /// <summary>
+        /// Lets an error boundary that has caught render its children again: react-error-boundary's
+        /// <c>resetErrorBoundary</c> as the returned <see cref="ErrorBoundaryReset"/>, its <c>resetKeys</c> as
+        /// <paramref name="resetKeys"/> and its <c>onReset</c> as <paramref name="onReset"/>. Call it inside Render()
+        /// of an `[Component(IsErrorBoundary = true)]` component.
+        /// </summary>
+        /// <remarks>
+        /// Invoking the reset while the boundary shows its fallback calls <paramref name="onReset"/> with
+        /// <see cref="ErrorBoundaryResetReason.ImperativeApi"/> and the arguments it was invoked with, then queues the
+        /// reset as a state update on the lane the call is made on; the boundary's next render on that lane renders
+        /// its children instead. Invoking it while the boundary shows its
+        /// children does nothing. The reset is reference-stable for the boundary's lifetime.
+        /// <para/>
+        /// A render of the boundary, made while it shows a fallback for an error caught before that render, that
+        /// passes <paramref name="resetKeys"/> differing from those its last committed render passed — in length, or
+        /// in any element compared with <c>Object.is</c> semantics, null reading as none — commits that fallback,
+        /// then, where the boundary still holds the error, calls <paramref name="onReset"/> with
+        /// <see cref="ErrorBoundaryResetReason.Keys"/> and both key arrays and queues the reset, as
+        /// react-error-boundary does from <c>componentDidUpdate</c>. Keys that change in the render in which a child
+        /// throws do not undo that catch.
+        /// <para/>
+        /// The children the fallback replaced were unmounted, so they mount again: their state starts over, and
+        /// a <see cref="Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/> among them starts its resource
+        /// again. This is how a failed <c>Use</c> load is retried.
+        /// </remarks>
+        /// <param name="resetKeys">Values whose change resets the boundary.</param>
+        /// <param name="onReset">Called before each reset, with what reset the boundary. The last committed render's is called.</param>
+        /// <returns>The boundary's reset.</returns>
+        /// <exception cref="InvalidOperationException">The calling component is not an error boundary.</exception>
+        public static ErrorBoundaryReset UseErrorBoundaryReset(
+            object?[]? resetKeys = null, Action<ErrorBoundaryResetDetails>? onReset = null)
+        {
+            var fiber = Resolve(nameof(UseErrorBoundaryReset));
+            if (!fiber.IsErrorBoundary)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(UseErrorBoundaryReset)} must be called from an [Component(IsErrorBoundary = true)] component.");
+            }
+            var slotRef = UseMutableRef((HookErrorBoundaryKeysSlot?)null);
+            var slot = slotRef.Current ??= new HookErrorBoundaryKeysSlot(fiber);
+
+            // An error caught before this render is react-error-boundary's prevState.error; one a child throws below
+            // this render is caught after the body has run, so it is not. The StrictMode re-run of a render that has
+            // already been counted would record itself as a render still to come.
+            if (!IsStrictDiagnosticPass(fiber)) slot.Record(resetKeys, onReset, fiber.CaughtError != null);
+            UseLayoutEffect(slot.Commit);
+            return fiber.ResetHandle;
+        }
+
+        /// <summary>
+        /// Gives a component below an error boundary that boundary's reset and a way to make it catch an error —
+        /// react-error-boundary's <c>useErrorBoundary()</c>.
+        /// </summary>
+        /// <remarks>
+        /// The boundary is the nearest `[Component(IsErrorBoundary = true)]` component or <c>V.ErrorBoundary</c>
+        /// above the caller, passing over the boundaries Velvet renders for routing as react-error-boundary's context
+        /// passes over React Router's; a component in a boundary's fallback content finds that boundary.
+        /// <see cref="ErrorBoundaryApi.ShowBoundary"/> makes the caller throw the error on its next render, which
+        /// reaches the boundaries above the caller as any render error does: the first that shows a fallback for it
+        /// catches it, and one that declines passes it up. <see cref="ErrorBoundaryApi.ResetBoundary"/> invokes the
+        /// boundary's reset with no arguments and forgets an error <c>ShowBoundary</c> was handed. Both are
+        /// reference-stable.
+        /// </remarks>
+        /// <returns>The boundary's reset and the error trigger.</returns>
+        /// <exception cref="InvalidOperationException">No such error boundary is above the calling component.</exception>
+        public static ErrorBoundaryApi UseErrorBoundary()
+        {
+            var fiber = Resolve(nameof(UseErrorBoundary));
+            var boundary = fiber.Parent;
+            for (; boundary != null && !(boundary.IsErrorBoundary && !boundary.IsFrameworkErrorBoundary); boundary = boundary.Parent)
+            {
+            }
+            if (boundary == null)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(UseErrorBoundary)} must be called below an [Component(IsErrorBoundary = true)] component.");
+            }
+            var (shown, setShown) = UseState((Exception?)null);
+            var apiRef = UseMutableRef((ErrorBoundaryApi?)null);
+            var api = apiRef.Current ??= CreateErrorBoundaryApi(boundary, setShown);
+            if (shown != null) ExceptionDispatchInfo.Capture(shown).Throw();
+            return api;
+        }
+
+        // Kept out of UseErrorBoundary so that its renders after the first allocate no closure.
+        private static ErrorBoundaryApi CreateErrorBoundaryApi(ComponentFiber boundary, StateUpdater<Exception?> setShown)
+            => new(
+                () =>
+                {
+                    boundary.ResetHandle.Invoke();
+                    setShown.Invoke((Exception?)null);
+                },
+                error =>
+                {
+                    if (error == null) throw new ArgumentNullException(nameof(error));
+                    setShown.Invoke(error);
+                });
 
         #endregion
 
