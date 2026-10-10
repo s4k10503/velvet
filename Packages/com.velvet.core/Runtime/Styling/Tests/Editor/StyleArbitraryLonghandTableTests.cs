@@ -30,7 +30,7 @@ namespace Velvet.Tests
         // does not hold out. A literal rather than the complement of the family, so a family that swallowed
         // a mapped member cannot shrink both sides of the comparison together. Updated deliberately when a
         // MAPPED property is added; a filter member added to the resolver's set leaves it where it is.
-        private const int MappedPropertyCount = 60;
+        private const int MappedPropertyCount = 70;
 
         private readonly List<UnityEngine.Object> _spawned = new();
 
@@ -47,8 +47,6 @@ namespace Velvet.Tests
             _spawned.Clear();
         }
 
-        // GREEN_ON_BASE(characterization): every row already agrees with what the property writes; the
-        // case exists so a later row cannot drift away from it unnoticed.
         [Test]
         public void Given_EveryArbitraryPropertyOutsideTheFilterFamily_When_ItsInlineWritesAreProbed_Then_TheyMatchItsDeclaredRow()
         {
@@ -83,8 +81,6 @@ namespace Velvet.Tests
             Assert.That(string.Join("; ", problems), Is.Empty);
         }
 
-        // GREEN_ON_BASE(characterization): the family is already held out on purpose; the case pins that
-        // decision against what its members actually write.
         [Test]
         public void Given_TheComposedFilterFamily_When_ItsRowsAreReadBesideWhatItWrites_Then_EveryRowIsEmpty()
         {
@@ -117,8 +113,9 @@ namespace Velvet.Tests
             Assert.That(string.Join("; ", problems), Is.Empty);
         }
 
-        // GREEN_ON_BASE(characterization): the vocabulary already reaches every inline slot one-to-one; the
-        // case keeps a later gap or a mis-aimed accessor from reading as agreement.
+        // GREEN_ON_BASE(characterization): the nine-slice members map onto longhands the vocabulary already
+        // held, so this change leaves the slot reach the base has; the case keeps a later gap from reading as
+        // agreement.
         [Test]
         public void Given_EveryInlineStyleSlot_When_ReachedThroughTheLonghandVocabulary_Then_ExactlyOneLonghandReachesEach()
         {
