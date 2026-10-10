@@ -155,27 +155,41 @@ namespace Velvet
                 return false;
             }
 
+            if (ColorModifierSlashIndex(className, prefixLen) == -1)
+            {
+                return false;
+            }
+            if (!TryParseColorValue(className, prefixLen, out var color))
+            {
+                return false;
+            }
+
+            result = new ArbitraryStyle(property, color);
+            return true;
+        }
+
+        // The value of a color utility from start to the end of token: a palette name or a bracketed color,
+        // optionally followed by the opacity modifier, which scales the color's alpha.
+        internal static bool TryParseColorValue(string token, int start, out Color color)
+        {
             // Split base from modifier on the '/' that lies OUTSIDE any [...] bracket, so a bracketed base
             // (bg-[#fff]/50), a bracketed alpha (bg-blue-500/[0.32]), or an in-bracket '/' all resolve right.
-            var slash = ColorModifierSlashIndex(className, prefixLen);
-            if (slash <= prefixLen || slash >= className.Length - 1)
+            var slash = ColorModifierSlashIndex(token, start);
+            if (slash == -1)
+            {
+                return VelvetPalette.TryResolveColorToken(token.Substring(start), out color);
+            }
+
+            if (!VelvetPalette.TryResolveColorToken(token.Substring(start, slash - start), out color))
             {
                 return false;
             }
-
-            var baseToken = className.Substring(prefixLen, slash - prefixLen);
-            if (!VelvetPalette.TryResolveColorToken(baseToken, out var color))
-            {
-                return false;
-            }
-
-            if (!TryParseAlphaModifier(className.AsSpan(slash + 1), out var alpha))
+            if (!TryParseAlphaModifier(token.AsSpan(slash + 1), out var alpha))
             {
                 return false;
             }
 
             color.a *= alpha;
-            result = new ArbitraryStyle(property, color);
             return true;
         }
 
