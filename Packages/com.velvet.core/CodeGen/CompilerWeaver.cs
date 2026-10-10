@@ -257,13 +257,16 @@ namespace Velvet.CodeGen
 
         // The per-method boundary: a failure while analyzing or weaving one body leaves that body as it was and
         // is reported as a warning, so a weaver defect costs the one component its memoization rather than the
-        // user's build. The folds are replaced because the walk that threw leaves them mid-descent.
+        // user's build. The folds are replaced because the walk that threw leaves them mid-descent. Taking the
+        // snapshot is inside the boundary too: a body that cannot be snapshotted has had nothing rewritten, so
+        // there is nothing to restore and Restore is never called on a snapshot that did not finish building.
         private static bool TryWeaveMethod(MethodDefinition method, WeaverContext context, ref HookReachFold reach,
             ref NonSafeHookFold nonSafe, List<DiagnosticMessage> diagnostics)
         {
-            var snapshot = new BodySnapshot(method.Body);
+            BodySnapshot? snapshot = null;
             try
             {
+                snapshot = new BodySnapshot(method.Body);
                 if (!TryAnalyze(method, reach, nonSafe, out var analysis))
                 {
                     return false;
@@ -274,7 +277,7 @@ namespace Velvet.CodeGen
             }
             catch (System.Exception exception)
             {
-                snapshot.Restore();
+                snapshot?.Restore();
                 reach = new HookReachFold();
                 nonSafe = new NonSafeHookFold();
                 diagnostics.Add(new DiagnosticMessage
