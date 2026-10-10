@@ -10,9 +10,8 @@ namespace Velvet
     /// the application is not visible (<c>RefetchIntervalInBackground</c>).
     /// </summary>
     /// <remarks>
-    /// Set an override once at startup to replace the reading for every query, such as an application that
-    /// reaches a server on a local network <c>Application.internetReachability</c> reports as unreachable, or
-    /// one that tells for itself when its window is hidden. An override is called on the main thread.
+    /// Set an override once at startup to replace the reading for every query, for an application that
+    /// measures being online for itself or tells when its window is hidden. An override is called on the main thread.
     /// </remarks>
     public static class NetworkSignals
     {

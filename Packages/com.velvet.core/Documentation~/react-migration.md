@@ -331,8 +331,8 @@ hidden, or the device comes back online, a mounted query fetches again under `Re
 not at all; set them on one query or for every query on `QueryClientOptions`. That refetch joins a request
 in flight. `NetworkSignals` holds both readings: online is `Application.internetReachability`, and visible
 is `Application.isFocused` on a mobile platform and always true on every other.
-`NetworkSignals.IsVisible` / `IsOnline` replace them, for a desktop application that reads its window's
-state, or one whose server `internetReachability` does not describe. A reading that throws is no reading
+`NetworkSignals.IsVisible` / `IsOnline` replace them, for an application that reads its window's state or
+measures being online for itself. A reading that throws is no reading
 to the poll, which then reports no change, and counts as visible or online where one is needed: an interval's
 wait and a client's first reading. Only the first failure of each reading is logged.
 
@@ -368,7 +368,8 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 - Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
   absent from then on, and is removed the next time a query subscribes to the client, `InvalidateQueries`
   runs or `SetQueryData` writes. As in v5, an entry with a request in flight is kept, and readable, until
-  a whole `GcTime` has passed since the request settled.
+  a whole `GcTime` has passed since the request settled, so a request that never settles keeps its entry
+  for as long as the client lives.
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
   share one request; v5's result arrives a microtask later.
@@ -389,6 +390,9 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 - A client with a mounted query reads `NetworkSignals` once a frame, and a reading that turns true since its
   previous one stands for the event v5's managers listen to. A change that comes and goes within one frame
   is not seen.
+- `RefetchInterval` takes a duration, and `RefetchOnWindowFocus` / `RefetchOnReconnect` a `QueryRefetchMode`;
+  the function forms v5 also accepts for `refetchInterval`, `refetchOnWindowFocus` and `refetchOnReconnect`
+  are not available.
 - Not yet available: `retry` as a function or `true`, retries that pause while the application is
   unfocused or offline (`networkMode`).
 

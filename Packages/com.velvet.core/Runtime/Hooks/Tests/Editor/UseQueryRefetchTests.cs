@@ -28,7 +28,8 @@ namespace Velvet.Tests
     /// <item>A client stops being watched when its last reader unmounts, and the poll ends once no client is
     /// watched; a client is watched again by its next reader, another client's reader leaving does not stop it
     /// being told, and a reading that throws is logged and taken as visible, by the poll and by an interval,
-    /// whose wait an unmount cancels; a reading failing every frame is logged once, and the statics reset starts
+    /// whose wait an unmount cancels; a signal whose refetch throws is logged, and neither ends the poll nor
+    /// keeps another client from being told; a reading failing every frame is logged once, and the statics reset starts
     /// with nothing watched, no poll and no failure logged.</item>
     /// </list>
     /// </summary>
@@ -63,6 +64,8 @@ namespace Velvet.Tests
         private static QueryClient s_otherClient = null!;
         private static int s_otherCalls;
         private static StateUpdater<bool> s_setShowOther;
+        private static readonly List<VelvetTaskCompletionSource<int>> s_otherSources = new();
+        private static Func<int, QueryKey?, QueryPlaceholder<int>>? s_placeholder;
 
         [SetUp]
         public void SetUp()
@@ -87,6 +90,8 @@ namespace Velvet.Tests
             s_otherClient = NewClient(QueryRefetchMode.IfStale);
             s_otherCalls = 0;
             s_setShowOther = default;
+            s_otherSources.Clear();
+            s_placeholder = null;
             NetworkSignals.IsVisible = () => s_visible;
             NetworkSignals.IsOnline = () => s_online;
             SetSignalsStatic("s_visibleFailureLogged", false);
@@ -270,6 +275,24 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_ARefetchInterval_When_TheQueryIsTurnedOffPartWay_Then_NothingIsFetchedWhenItPasses()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_interval = Interval;
+            using var mounted = MountResolved();
+            await Pass(TimeSpan.FromSeconds(4));
+            s_enabled = false;
+            Rerender(mounted);
+
+            // Act
+            await Pass(Interval);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "Turning the query off ends the interval it was waiting out");
+        });
+
+        [UnityTest]
         public IEnumerator Given_ARefetchInterval_When_ItIsShortenedPartWay_Then_TheNewIntervalRunsFromThen()
             => VelvetTask.ToCoroutine(async () =>
         {
@@ -364,7 +387,7 @@ namespace Velvet.Tests
         public IEnumerator Given_AVisibilityReadingThatThrows_When_TheIntervalPasses_Then_TheApplicationCountsAsVisible()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — every reading throws, so the poller logs a failure as well.
+            // Arrange — the visibility override throws, so the poller logs a failure as well.
             LogAssert.ignoreFailingMessages = true;
             s_interval = Interval;
             using var mounted = MountResolved();
@@ -700,6 +723,39 @@ namespace Velvet.Tests
             LogAssert.NoUnexpectedReceived();
         });
 
+        [UnityTest]
+        public IEnumerator Given_AQueryWhosePlaceholderThrowsOnASignal_When_TheDeviceReconnectsTwice_Then_AnotherClientIsToldBothTimes()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the failed entry holds no data, so a signal's refetch makes the snapshot ask for a placeholder.
+            var throws = false;
+            s_placeholder = (_, _) =>
+            {
+                if (throws) throw new InvalidOperationException("placeholder-failed");
+                return 9;
+            };
+            using var mounted = Mount();
+            s_sources[0].TrySetException(new InvalidOperationException("fetch-failed"));
+            mounted.FlushStateForTest();
+            using var other = V.Mount(new VisualElement(), V.Component(OtherHost, key: "other"));
+            other.FlushEffectsForTest();
+            s_otherSources[0].TrySetResult(1);
+            other.FlushStateForTest();
+            throws = true;
+            ContainedFailureLog.Expect<InvalidOperationException>(nameof(QueryClient), "placeholder-failed");
+            await DisconnectAndReconnect();
+            throws = false;
+            s_otherSources[1].TrySetResult(1);
+            other.FlushStateForTest();
+
+            // Act
+            await DisconnectAndReconnect();
+
+            // Assert
+            Assert.That(s_otherCalls, Is.EqualTo(3),
+                "A client whose signal throws neither keeps the next client from being told nor ends the polling");
+        });
+
         [Test]
         public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean()
         {
@@ -865,6 +921,7 @@ namespace Velvet.Tests
                     RefetchIntervalInBackground = s_inBackground,
                     RefetchOnWindowFocus = s_onFocus,
                     RefetchOnReconnect = s_onReconnect,
+                    PlaceholderData = s_placeholder,
                 },
                 s_client));
             return V.Label(text: "reader");
@@ -877,7 +934,9 @@ namespace Velvet.Tests
                 new QueryOptions<int>(new QueryKey("other"), _ =>
                 {
                     s_otherCalls++;
-                    return new VelvetTaskCompletionSource<int>().Task;
+                    var source = new VelvetTaskCompletionSource<int>();
+                    s_otherSources.Add(source);
+                    return source.Task;
                 }),
                 s_otherClient);
             return V.Label(text: "other");

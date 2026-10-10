@@ -780,26 +780,45 @@ namespace Velvet
 
         private static async VelvetTask Poll()
         {
-            while (s_watchers.Count > 0)
+            try
             {
-                await VelvetTask.Yield();
-                var visible = TryRead(s_readVisible, ref s_visibleFailureLogged);
-                var online = TryRead(s_readOnline, ref s_onlineFailureLogged);
-                // MUTANT_SURVIVES(equivalent, line removed): a watcher visited again finds the readings its first visit stored, so it reports no change, and a client told twice in a frame joins the request the first signal started.
-                s_polled.Clear();
-                s_polled.AddRange(s_watchers);
-                foreach (var watcher in s_polled)
+                while (s_watchers.Count > 0)
                 {
-                    var focused = visible == true && !watcher.Visible;
-                    var reconnected = online == true && !watcher.Online;
-                    if (visible is { } nowVisible) watcher.Visible = nowVisible;
-                    if (online is { } nowOnline) watcher.Online = nowOnline;
-                    if (focused) watcher.Client.OnSignal(reconnect: false);
-                    if (reconnected) watcher.Client.OnSignal(reconnect: true);
+                    await VelvetTask.Yield();
+                    var visible = TryRead(s_readVisible, ref s_visibleFailureLogged);
+                    var online = TryRead(s_readOnline, ref s_onlineFailureLogged);
+                    // MUTANT_SURVIVES(equivalent, line removed): a watcher visited again finds the readings its first visit stored, so it reports no change, and a client told twice in a frame joins the request the first signal started.
+                    s_polled.Clear();
+                    s_polled.AddRange(s_watchers);
+                    foreach (var watcher in s_polled)
+                    {
+                        var focused = visible == true && !watcher.Visible;
+                        var reconnected = online == true && !watcher.Online;
+                        if (visible is { } nowVisible) watcher.Visible = nowVisible;
+                        if (online is { } nowOnline) watcher.Online = nowOnline;
+                        if (focused) Tell(watcher.Client, reconnect: false);
+                        if (reconnected) Tell(watcher.Client, reconnect: true);
+                    }
                 }
             }
+            finally
+            {
+                s_polling = false;
+            }
+        }
 
-            s_polling = false;
+        // A signal's refetch builds a snapshot, which calls the application's placeholder function; a throw from
+        // it must neither end the poll nor keep the other clients from being told.
+        private static void Tell(QueryClient client, bool reconnect)
+        {
+            try
+            {
+                client.OnSignal(reconnect);
+            }
+            catch (Exception signalFailure)
+            {
+                FiberLogger.LogException(nameof(QueryClient), signalFailure);
+            }
         }
 
         // A reading an override throws from is taken as no reading, so one failure does not end the polling for
