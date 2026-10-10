@@ -177,6 +177,32 @@ records' key so that a kill a PlayMode run took is never kept for an EditMode on
 takes a run on one platform as the first of two passes: the run on the other platform measures only
 that run's survivors and decides over both, which is the decision CI takes.
 
+**A changed line is asked about once.** A line can generate several mutants — `a <= b && c` has a
+boundary flip, a logic flip and a clause removal — and the campaign keeps one of them, so its cost
+grows with the lines a branch changed rather than with how many operators each of them admits.
+That is a decision about cost, motivated by Google's "Practical Mutation Testing at Scale"; none of
+its figures is claimed to hold for this repository. The mutant kept is the first of these that the line generates, and where one operator
+generates several, the leftmost:
+
+`boundary`, `equality`, `arithmetic`, `clause removed`, `logic`, `literal`, `guard removed`,
+`line removed`
+
+The order puts first the mutant that changes least about what the line does. A test is least likely
+to notice it, so a line whose first mutant dies is taken to have been noticed, and one whose first
+mutant survives is the question worth asking. The order is a decision and not a measurement:
+`mutation_check.LINE_PRIORITY` holds it, `OnePerLineTests` pins it, and a different order is a change
+to that tuple together with this paragraph. The choice depends on the mutants a line generates and
+on nothing else, so every shard and every later run reads the same list.
+
+What the cap leaves out is not measured, and a survivor count is a statement about the mutants kept.
+`--list` prints the kept ones. A declaration that names an operator the cap dropped from its line
+(`MUTANT_SURVIVES(equivalent, logic)` over a line whose boundary flip was kept) keeps answering for
+the line's kept mutant and is not stale when that mutant dies, because the mutant it described is no
+longer generated and there is nothing to measure it against; an unnamed declaration is not stale
+over a line with dropped mutants either. A declaration naming an operator the line never carried
+is still refused. Where a branch needs the dropped operator measured, it writes the line so that
+operator is the one kept — split the expression over lines.
+
 The run also fails or stops rather than pass over a mutant nobody asked about, and
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 says when it does which.
