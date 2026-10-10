@@ -322,6 +322,7 @@ namespace Velvet.CodeGen
                     _body.Instructions.Add(_instructions[i]);
                 }
                 // Adding links each instruction to the one before it, so the first keeps the Previous the weave gave it.
+                // MUTANT_SURVIVES(unreachable): only a method that HasBody is woven, and such a body holds at least the instruction that ends it, so the snapshot is never empty.
                 if (_instructions.Length > 0)
                 {
                     _instructions[0].Previous = null;
