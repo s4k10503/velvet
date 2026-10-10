@@ -72,8 +72,18 @@ namespace Velvet
     public readonly struct VelvetTask<T> { }
     public readonly struct VelvetTask { }
 
+    public sealed class ComponentNode : VNode { }
+
     public static partial class V
     {
+        public static ComponentNode Component(global::System.Func<VNode> body, string key = null) => null;
+        public static ComponentNode Component<TRef>(
+            global::System.Func<VNode> body, Ref<TRef> componentRef, string key = null) where TRef : class => null;
+        public static ComponentNode Component<TProps>(
+            global::System.Func<TProps, VNode> body, TProps props, string key = null) => null;
+        public static ComponentNode Memo<TProps>(
+            global::System.Func<TProps, VNode> body, TProps props, global::System.Func<TProps, TProps, bool> areEqual,
+            string key = null) => null;
         public static MemoNode Memoized(global::System.Func<VNode> factory) =>
             new MemoNode { Factory = factory, Dependencies = null };
         public static MemoNode Memoized(global::System.Func<VNode> factory, params object[] deps) =>

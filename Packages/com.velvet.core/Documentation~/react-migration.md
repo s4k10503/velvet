@@ -405,6 +405,7 @@ Velvet state is organized into two layers — **"component-local state" and "sha
 
 - `Hooks.UseState` / `Hooks.UseReducer` use a positional slot scheme. They must be called in **the same order every time** within the same component function (same as React's Rules of Hooks)
 - A render that calls a slot-keeping hook (`Hooks.UseState`, `Hooks.UseEffect`, `Hooks.UseMemo`, …) more or fewer times than the previous render throws an `InvalidOperationException` that names the component and continues in React's words: `Rendered more hooks than during the previous render` from the extra call, or `Rendered fewer hooks than expected` once the body returns. It is a render error, so an enclosing error boundary catches it. A hook inside a plain helper method belongs to the component calling the helper, so calling the helper on some renders only is the same violation
+- The analyzers report these at edit time, as React's `rules-of-hooks` lint does. VEL102 reports a hook called in a method that is neither a component nor a custom hook named `Use` followed by an uppercase letter or a digit, and a hook in a field or property initializer. VEL101 reports any other hook that sits in a condition, a loop, on the right of `??=` or after `?.`, in a `catch` whose `try` can complete normally, in a `try` that has a `catch` after something that may throw there, after an early return, or in a lambda other than a component's render body that sits inside a component or a custom hook. A hook in an `if` condition, a conditional expression's condition, the left operand of `&&`, `||` or `??`, a `foreach` collection or a `for` initializer runs once, before the branch or the loop, and is not reported. As in React's lint, a call on a member is a hook call only where the receiver is a single name starting with an uppercase letter, as with `Hooks.UseState`, or, in C#, a qualified name that binds to a namespace or a type, as with `Velvet.Hooks.UseState`; a lambda held by a variable of a hook's name is a custom hook. A component is a `[Component]` method, or a method or lambda handed to `V.Component` or `V.Memo` as its render body in the same compilation. Renaming a helper to the custom-hook shape makes each call to it a hook call VEL101 checks. VEL103 reports a component whose declaration calls a hook being called directly as a plain method, since its hooks then run as part of the caller; mount it with `V.Component`. VEL103 reads a call that names the component by a bare name from within its declaring type, or qualified by that type's simple name; a call through `using static`, an alias, a base class or an instance is not reported, and nor is a call that is the whole render body of a lambda handed to `V.Component`. React's lint has no counterpart; React's rules say a component is used only in JSX and never called as a regular function. A test harness calling hooks from a plain method opts out with a `#pragma warning disable` naming VEL102
 - `setValue` / `dispatch` are stable references tied to a slot and remain the same reference across re-renders (no additional memoization equivalent to `useCallback` is needed)
 
 #### Shared State (Zustand-inspired Store)
@@ -599,6 +600,31 @@ the field hands focus from its input back to itself (Enter, Shift+Enter in multi
 declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
 field; one written from `refCallback:` is not.
 
+`V.TextField` takes `onKeyDown:`, `onKeyUp:`, `onFocus:` and `onBlur:` as an `<input>` does, and
+`onSubmit:` for what Enter in an `<input>` does to its form:
+
+- `onKeyDown:` runs before the field takes the key, and a handler calling `StopPropagation()` on the
+  event keeps the key out of the field, as `preventDefault()` does in React.
+- `onFocus:` and `onBlur:` report focus entering the field from outside it and leaving it for outside
+  it. The step where the field hands focus from its input to itself and back, described above, reports
+  neither.
+- `onSubmit:` receives the field's value on each Enter in a single-line field, after a field holding
+  `isDelayed:` has released the typed text into it. Like the browser's implicit submission:
+  - a read-only field submits;
+  - the input keeps focus and its caret across the submitting Enter, so typing goes on where it was,
+    where UI Toolkit alone hands focus to the field on Enter; an Enter that lands on the field itself
+    (after Escape, say) submits too;
+  - the Enter that arrives while an IME composition is open does not submit;
+  - the soft keyboard's Done submits. This is read from the keyboard's status when it blurs the field,
+    and has not yet been verified on a device.
+
+  Enter with Ctrl held and Alt not held submits nothing, as in Chrome, where that key reaches the input
+  as a line feed rather than the carriage return implicit submission answers. Command is held to the
+  same rule, on every platform. A multi-line field never submits, as a `<textarea>` never submits its
+  form.
+
+`onCreated:` runs once when the field element is created, as on `V.Slider` and `V.ScrollView`.
+
 A field's `className` background, border, radius, padding, shadow and ring utilities paint the box the value
 is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
 is listed with the `[&>*]:` composite notes.
@@ -671,8 +697,11 @@ A container of direct plain elements warns once for each repeated sibling key, o
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<Suspense fallback={<Spinner/>}>` | `V.Suspense(fallback, children)` | Equivalent |
-| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked. Like `use()`, it caches nothing beyond its own component: a cache shared across components is `Hooks.UseQuery` ([§1-2b](#1-2b-cached-queries--hooksusequery)) |
-| Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. Once a boundary catches, it keeps showing its fallback until it remounts, as React's does: a re-render — its parent's, or its own — renders the fallback again with the error it caught and does not bring its children back. Give the boundary a new `key` to render its children again. The helper suits a use directly under Mount; the functional pattern suits a fallback that reads the boundary's own props or state |
+| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked. Like `use()`, it caches nothing beyond its own component: a cache shared across components is `Hooks.UseQuery` ([§1-2b](#1-2b-cached-queries--hooksusequery)). Like `use()`, it does not retry: a failed load stays failed for as long as its component stays mounted with that `resourceKey`. Reset the error boundary that caught it (`Hooks.UseErrorBoundaryReset`, two rows down) and the component mounts again and loads again. A new `resourceKey` starts the load again only for a component still rendering, one whose error no boundary caught: a boundary that caught it has unmounted the component and keeps its fallback until it is reset or remounts |
+| Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. Once a boundary catches, it keeps showing its fallback until it remounts, as React's does: a re-render — its parent's, or its own — renders the fallback again with the error it caught and does not bring its children back. Give the boundary a new `key`, or reset it (next rows), to render its children again. The functional pattern suits a fallback that reads the boundary's own state |
+| react-error-boundary's `resetErrorBoundary(...args)`, `resetKeys` and `onReset` | `var reset = Hooks.UseErrorBoundaryReset(resetKeys, onReset)` in a `[Component(IsErrorBoundary = true)]` component, beside `Hooks.UseFallback` | `reset` is an `ErrorBoundaryReset`, reference-stable, which converts to an `Action` for `onClick`. `reset.Invoke(args)` while the boundary shows its fallback calls the last committed render's `onReset` with `ErrorBoundaryResetReason.ImperativeApi` and those `Args`, then queues the reset as a state update on the lane the call is made on, so two calls in one handler both call `onReset`, and a reset made in `startTransition` is taken by the transition's render while an urgent render before it keeps the fallback; while the boundary shows its children it does nothing. A render of the boundary, while it shows a fallback for an error caught before that render, that passes keys differing from those its last committed render passed — in length, or in an element compared with `Object.is` semantics — commits that fallback, then, where the boundary still holds the error, calls `onReset` with `ErrorBoundaryResetReason.Keys`, `Prev` and `Next` and queues the reset, as react-error-boundary does from `componentDidUpdate`; keys that change in the render a child throws in do not undo that catch, and a reset queued beside a key change in one handler is the only one that calls `onReset`. The children the fallback replaced mount again, so their state starts over and a `Hooks.Use` among them loads again |
+| react-error-boundary's `useErrorBoundary()` | `var api = Hooks.UseErrorBoundary()` below a boundary | The boundary is the nearest `[Component(IsErrorBoundary = true)]` component or `V.ErrorBoundary` above the caller, passing over the boundaries Velvet renders for routing as react-error-boundary's context passes over React Router's; a component in a boundary's fallback content finds that boundary. `api.ShowBoundary(error)` — from an event handler or a continuation on the main thread — makes the caller throw `error` on its next render, which reaches the boundaries above the caller as any render error does: the first that shows a fallback for it catches it, and one that declines passes it up. `api.ResetBoundary()` invokes the boundary's reset with no arguments. With no such boundary above, it throws `InvalidOperationException` |
+| react-error-boundary's `<ErrorBoundary fallbackRender={({ error, resetErrorBoundary }) => …} resetKeys onReset>` | `V.ErrorBoundary(fallbackRender: (error, reset) => ..., children, resetKeys, onReset)` | The reset, keys and `onReset` behave as on `Hooks.UseErrorBoundaryReset`. Each render of the parent hands either `V.ErrorBoundary` overload the fallback and children of that call |
 | Class Component + `componentDidCatch` | `Hooks.UseEffect` + try-catch, or logging via an error-notification Store | When you want to log side effects from a functional component, do it inside an effect. What every caught error goes to is the root's `OnCaughtError`, in the next row |
 | `createRoot(container, { onCaughtError })` | `V.Mount(target, tree, new MountOptions(OnCaughtError: (ex, info) => ...))` | Called when a boundary in the tree catches an error, in the commit that shows its fallback: after the fallback's layout effects and before those of the boundary's ancestors, where React calls it. A boundary that an ancestor boundary replaces before that commit reports nothing, as in React. A boundary that a time-sliced transition mounted or re-rendered, catching before the transition completes, reports in the commit that completes it, after its own layout effects. `info` carries the `ComponentStack` and `ErrorBoundary`, the name of the boundary that caught it. Without a handler, the error is logged with `Debug.LogException`: the entry reads as the caught exception itself, and its stack trace goes on to name the boundary and the component stack. An exception the handler throws is logged |
 
@@ -697,7 +726,7 @@ previous UI. The boundary is the nearest one above the component whose read susp
 renders its own `V.Suspense` reveals through the boundary above it.
 
 > **Note — Error Boundary mapping**  
-> Velvet uses the same explicit opt-in model as React. The `V.ErrorBoundary(fallback, children)` helper is ideal for a root boundary directly under mount. For cases where the fallback / children values change dynamically, use a static method annotated with `[Component(IsErrorBoundary = true)]` combined with `Hooks.UseFallback(ex => ...)`.<br/>
+> Velvet uses the same explicit opt-in model as React. The `V.ErrorBoundary(fallback, children)` helper wraps children inline; for a boundary whose fallback reads its own state, use a static method annotated with `[Component(IsErrorBoundary = true)]` combined with `Hooks.UseFallback(ex => ...)`.<br/>
 > Velvet's `UseFallback` is equivalent to React's `getDerivedStateFromError` (a pure function that simply returns a fallback VNode). Handle side effects separately inside a `UseEffect`.
 
 ---
@@ -951,7 +980,7 @@ V.Suspense(
 ### 5-6. Error Boundary
 
 ```csharp
-// Velvet — V.ErrorBoundary helper (for a root boundary directly under mount)
+// Velvet — V.ErrorBoundary helper
 V.ErrorBoundary(
     fallback: ex => V.Label(text: $"An error occurred: {ex.Message}"),
     children: new[] { V.Component(SafeViewRender, key: "safe") },
@@ -964,7 +993,7 @@ private static VNode SafeViewRender()
     return V.Label(text: "ok");
 }
 
-// For cases where you want to vary fallback / children dynamically, or log side effects (equivalent to componentDidCatch), use the functional boundary pattern
+// For a fallback that reads the boundary's own state, or to log side effects (equivalent to componentDidCatch), use the functional boundary pattern
 [Component(IsErrorBoundary = true)]
 private static VNode SafeViewBoundaryRender()
 {

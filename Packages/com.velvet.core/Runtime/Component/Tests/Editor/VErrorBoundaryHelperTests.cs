@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -17,6 +18,7 @@ namespace Velvet.Tests
     /// <item>A null fallback or null children is rejected with <see cref="ArgumentNullException"/>.</item>
     /// <item>A Provider value placed outside the boundary propagates to a child consumer inside it via
     /// <c>Hooks.UseContext</c>.</item>
+    /// <item>A parent's render passing new children, or a new fallback after a catch, renders those.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -31,6 +33,7 @@ namespace Velvet.Tests
             s_throwOnRender = false;
             s_fallbackInvoked = false;
             s_fallbackException = null;
+            s_setTick = null;
         }
 
         [Test]
@@ -149,6 +152,52 @@ namespace Velvet.Tests
                 "The Provider value propagates to the child even through the boundary");
         }
 
+        private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
+
+        private MountedTree MountCaught()
+        {
+            s_throwOnRender = true;
+            var mounted = V.Mount(_root, V.Component(PlainHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throwOnRender = false;
+            return mounted;
+        }
+
+        private static void Settle(MountedTree mounted, Action change)
+        {
+            change();
+            mounted.FlushStateForTest();
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base already renders the children the latest call passed.
+        // What this pins is that the children come from the latest call rather than from the first mount.
+        [Test]
+        public void Given_AHelperBoundary_When_ItsParentRendersAgainWithNewChildren_Then_ItRendersTheNewChildren()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PlainHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            Settle(mounted, () => s_setTick.Invoke(1));
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("child:1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base already renders the fallback the latest call passed.
+        // What this pins is that a boundary that caught renders the fallback its parent's latest render passed.
+        [Test]
+        public void Given_AHelperBoundaryThatCaught_When_ItsParentRendersAgainWithANewFallback_Then_ItRendersTheNewFallback()
+        {
+            // Arrange
+            using var mounted = MountCaught();
+
+            // Act
+            Settle(mounted, () => s_setTick.Invoke(1));
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("fallback:1"));
+        }
+
         #region Test components
 
         private static readonly ComponentContext<string> s_testCtx
@@ -176,6 +225,29 @@ namespace Velvet.Tests
         [Component]
         private static VNode NormalChildRender()
             => V.Label(text: "ok", name: "ok-label");
+
+        private static Action<int> s_setTick;
+
+        [Component(Compiler = false)]
+        private static VNode TickChildRender(int tick)
+        {
+            if (s_throwOnRender) throw new InvalidOperationException("test render error");
+            return V.Label(text: "child:" + tick);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PlainHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.ErrorBoundary(
+                    fallback: _ => V.Label(text: "fallback:" + tick),
+                    children: new VNode[] { V.Component(TickChildRender, tick, key: "child") },
+                    key: "boundary"),
+            });
+        }
 
         [Component]
         private static VNode ThrowingChildRender()

@@ -302,7 +302,7 @@ namespace Velvet
         }
 
         // Resolves a color TOKEN — the suffix after a utility prefix — that is either a named palette
-        // color ("gray-200", "white") or an arbitrary "[#hex]" / "[rgb(...)]" value. Shared by the
+        // color ("gray-200", "white") or an arbitrary "[<color>]" value. Shared by the
         // color-bearing utilities (divide-{c}, from-/via-/to-{c}) so their grammar cannot drift.
         public static bool TryResolveColorToken(string suffix, out Color color)
         {

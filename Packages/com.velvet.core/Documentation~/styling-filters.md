@@ -69,8 +69,8 @@ V.Div(className: "filter-[glow:#ff0000:2] hover:filter-[glow:#ff0000:4]");
 
 `filter-[name]` or `filter-[name:arg(:arg)*]`. Arguments fill the definition's **declared
 parameters** in order, and each one is parsed by its slot's declared type: a float slot takes
-a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar (`#rgb` /
-`#rrggbb` / `rgb(…)` / a named color). A missing tail is padded from the declaration's
+a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar
+([styling-colors.md](styling-colors.md)). A missing tail is padded from the declaration's
 defaults — the same values the USS parser pads with — so a bare `filter-[name]` applies the
 declared defaults outright. Supplying more arguments than the declaration, or an argument that
 fails its slot's grammar, rejects the whole token. (UI Toolkit's `FilterFunction` holds at most 4
@@ -108,15 +108,20 @@ Two animators run these changes:
 
 | The entry that runs for `filter` | Set by | Who animates |
 |---|---|---|
-| has the duration, delay and curve of the entry that runs for `background-size` or `-unity-background-scale-mode` | `transition-all`, a bare `duration-*` | UI Toolkit's own transition system |
-| any other | `transition-filter`, a hand-authored list | Velvet's scheduler-driven tween (`StyleFilterTransitionDriver`) |
+| has the duration, delay and curve of the entry that runs for `background-size` or `-unity-background-scale-mode`, on a mount on the default `MotionClock` | `transition-all`, a bare `duration-*` | UI Toolkit's own transition system |
+| any other | `transition-filter`, a hand-authored list, either of the above on any other clock | Velvet's scheduler-driven tween (`StyleFilterTransitionDriver`) |
 
 UI Toolkit's inline-filter setter animates a filter list write by the entry for `background-size`, whatever the
 list says about `filter`. Where that entry's timing is the one `filter`'s entry gives (an `all` covering both, say),
-Velvet leaves the engine's animation in place, which keeps UI Toolkit's shortening of a reversed transition.
+Velvet leaves the engine's animation in place, which keeps UI Toolkit's shortening of a reversed transition,
+on a mount whose `MotionClock` is the default; on any other the engine's animation would run on the panel's
+time, so Velvet's tween runs the change on the mount's clock
+([motion.md](motion.md#clocks-holding-motion-with-game-time)).
 Anywhere else Velvet's tween runs the change, and a filter write the setter would animate — a tween frame or an
 instant write — is made with transitions suspended, so a list naming `background-size` never animates a filter
-utility's change on its behalf. The tween eases by the same curve a USS transition takes for each `ease-*` value.
+utility's change on its behalf. The tween eases by the same curve a USS transition takes for each `ease-*` value,
+and a change back to where a running tween started reverses it over the shortened duration and negative delay
+the engine gives a reversed transition.
 
 While `animate-hue` drives an element's filter, the motion shows: a filter utility's change under it starts no
 transition and is not painted, and a filter transition already running keeps its clock unseen. When the motion

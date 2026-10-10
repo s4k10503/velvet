@@ -36,7 +36,16 @@ namespace Velvet
             if (options == null) throw new ArgumentNullException(nameof(options));
             var root = new RootTree(tree);
             var rootFiber = FiberRenderer.CreateRoot(root.Render);
-            FiberRenderer.Mount(rootFiber, target, onCaughtError: options.OnCaughtError);
+            try
+            {
+                FiberRenderer.Mount(rootFiber, target, onCaughtError: options.OnCaughtError, motionClock: options.MotionClock);
+            }
+            catch
+            {
+                // No handle reaches the caller to dispose, so the clock the mount took is released here.
+                rootFiber.Reconciler?.Context.StyleAnimationScheduler.ReleaseClock();
+                throw;
+            }
             var ctx = rootFiber.Reconciler!.Context;
             ctx.MainPanelRoot = target;
             if (!ctx.CrossPanelRouterAttached)
