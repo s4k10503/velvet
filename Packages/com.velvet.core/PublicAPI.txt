@@ -164,6 +164,8 @@
 [Velvet] field Velvet.DragActivation.None: Velvet.DragActivation
 [Velvet] field Velvet.DragMovement.None: Velvet.DragMovement
 [Velvet] field Velvet.DragMovement.Translate: Velvet.DragMovement
+[Velvet] field Velvet.ErrorBoundaryResetReason.ImperativeApi: Velvet.ErrorBoundaryResetReason
+[Velvet] field Velvet.ErrorBoundaryResetReason.Keys: Velvet.ErrorBoundaryResetReason
 [Velvet] field Velvet.FiberElementProps.Empty: Velvet.FiberElementProps
 [Velvet] field Velvet.FiberUpdatePriority.Normal: Velvet.FiberUpdatePriority
 [Velvet] field Velvet.FiberUpdatePriority.Transition: Velvet.FiberUpdatePriority
@@ -320,6 +322,7 @@
 [Velvet] method Velvet.DndCollisionDetection.BeginInvoke(Velvet.DndCollisionQuery&, System.AsyncCallback~, System.Object~): System.IAsyncResult~
 [Velvet] method Velvet.DndCollisionDetection.EndInvoke(Velvet.DndCollisionQuery&, System.IAsyncResult~): System.String?
 [Velvet] method Velvet.DndCollisionDetection.Invoke(Velvet.DndCollisionQuery&): System.String?
+[Velvet] method Velvet.ErrorBoundaryReset.Invoke(System.Object?[]): System.Void
 [Velvet] method Velvet.Experimental.VBuilder.Add(Velvet.VNode?): System.Void
 [Velvet] method Velvet.Experimental.VBuilder.Build(): Velvet.VNode
 [Velvet] method Velvet.Experimental.VButton.Build(): Velvet.VNode
@@ -370,6 +373,8 @@
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T, T): T
 [Velvet] method Velvet.Hooks.UseEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseErrorBoundary(): Velvet.ErrorBoundaryApi
+[Velvet] method Velvet.Hooks.UseErrorBoundaryReset(System.Object?[]?, System.Action`1[Velvet.ErrorBoundaryResetDetails]?): Velvet.ErrorBoundaryReset
 [Velvet] method Velvet.Hooks.UseFallback(System.Func`2[System.Exception, Velvet.VNode]): System.Void
 [Velvet] method Velvet.Hooks.UseFallback(System.Func`3[System.Exception, Velvet.ErrorInfo, Velvet.VNode]): System.Void
 [Velvet] method Velvet.Hooks.UseFocusManager(): Velvet.FocusManager
@@ -533,6 +538,7 @@
 [Velvet] method Velvet.V.DropdownField(System.String?, System.String?, System.Collections.Generic.List`1[System.String]?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Droppable(System.String, System.Object?, System.Boolean, System.String?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.ErrorBoundary(System.Func`2[System.Exception, Velvet.VNode], Velvet.VNode?[], System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.ErrorBoundary(System.Func`3[System.Exception, Velvet.ErrorBoundaryReset, Velvet.VNode], Velvet.VNode?[], System.Object?[]?, System.Action`1[Velvet.ErrorBoundaryResetDetails]?, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.FocusScope(System.String?, System.String?, System.String?, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FocusScopeOrientation): Velvet.ElementNode
 [Velvet] method Velvet.V.Fragment(Velvet.VNode?[]): Velvet.FragmentNode
 [Velvet] method Velvet.V.Fragment(Velvet.VNode?[], System.String?): Velvet.FragmentNode
@@ -815,6 +821,12 @@
 [Velvet] property Velvet.ElementNode.OnCreated: System.Action`1[UnityEngine.UIElements.VisualElement]?
 [Velvet] property Velvet.ElementNode.Styles: Velvet.StyleOverrides?
 [Velvet] property Velvet.ElementNode.WrapElement: System.Func`2[UnityEngine.UIElements.VisualElement, UnityEngine.UIElements.VisualElement]?
+[Velvet] property Velvet.ErrorBoundaryApi.ResetBoundary: System.Action
+[Velvet] property Velvet.ErrorBoundaryApi.ShowBoundary: System.Action`1[System.Exception]
+[Velvet] property Velvet.ErrorBoundaryResetDetails.Args: System.Collections.Generic.IReadOnlyList`1[System.Object?]
+[Velvet] property Velvet.ErrorBoundaryResetDetails.Next: System.Collections.Generic.IReadOnlyList`1[System.Object?]?
+[Velvet] property Velvet.ErrorBoundaryResetDetails.Prev: System.Collections.Generic.IReadOnlyList`1[System.Object?]?
+[Velvet] property Velvet.ErrorBoundaryResetDetails.Reason: Velvet.ErrorBoundaryResetReason
 [Velvet] property Velvet.ErrorInfo.ComponentStack: System.String
 [Velvet] property Velvet.ErrorInfo.ErrorBoundary: System.String
 [Velvet] property Velvet.Experimental.VBuilder.Class: System.String?
@@ -1210,6 +1222,10 @@
 [Velvet] type Velvet.DroppableInfo
 [Velvet] type Velvet.DroppableSettings
 [Velvet] type Velvet.ElementNode
+[Velvet] type Velvet.ErrorBoundaryApi
+[Velvet] type Velvet.ErrorBoundaryReset
+[Velvet] type Velvet.ErrorBoundaryResetDetails
+[Velvet] type Velvet.ErrorBoundaryResetReason
 [Velvet] type Velvet.ErrorInfo
 [Velvet] type Velvet.Experimental.VBuilder
 [Velvet] type Velvet.Experimental.VButton

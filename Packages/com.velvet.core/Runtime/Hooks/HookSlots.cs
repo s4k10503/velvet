@@ -30,6 +30,59 @@ namespace Velvet
         }
     }
 
+    internal sealed class HookErrorBoundaryKeysSlot
+    {
+        private readonly ComponentFiber _boundary;
+        private object?[]? _renderedKeys;
+        private Action<ErrorBoundaryResetDetails>? _renderedOnReset;
+        private bool _renderedAfterACatch;
+        private int _renderedAt;
+        private object?[]? _committedKeys;
+        private Action<ErrorBoundaryResetDetails>? _committedOnReset;
+
+        public HookErrorBoundaryKeysSlot(ComponentFiber boundary)
+        {
+            _boundary = boundary;
+            Commit = CommitRender;
+        }
+
+        // Cached so that registering the layout effect builds no delegate per render.
+        public Func<Action?> Commit { get; }
+
+        // Each attempt overwrites the last. FiberRenderer.RenderAndReconcile counts a render once it has run to the
+        // end, so the count this one would reach tells the commit whether what was recorded is that render's.
+        public void Record(object?[]? keys, Action<ErrorBoundaryResetDetails>? onReset, bool afterACatch)
+        {
+            _renderedKeys = keys;
+            _renderedOnReset = onReset;
+            _renderedAfterACatch = afterACatch;
+            _renderedAt = _boundary.RenderCount + 1;
+        }
+
+        // react-error-boundary's componentDidUpdate: the keys and onReset of the render this commit lands become
+        // the committed ones, and prevProps' keys are the ones the commit before it landed. An attempt that threw
+        // is not counted, so a replay of this effect after it — a Suspense reveal that does not render the
+        // boundary — puts back the committed onReset and resets nothing.
+        private Action? CommitRender()
+        {
+            var prev = _committedKeys;
+            var landed = _renderedAt == _boundary.RenderCount;
+            if (landed)
+            {
+                _committedKeys = _renderedKeys;
+                _committedOnReset = _renderedOnReset;
+            }
+            _boundary.OnErrorBoundaryReset = _committedOnReset;
+            if (!landed || !_renderedAfterACatch || _boundary.CaughtError == null) return null;
+            var next = _committedKeys;
+            if (ObjectIs.AreEqualDeps(prev ?? Array.Empty<object?>(), next ?? Array.Empty<object?>())) return null;
+            _boundary.OnErrorBoundaryReset?.Invoke(new ErrorBoundaryResetDetails(
+                ErrorBoundaryResetReason.Keys, Array.Empty<object?>(), prev, next));
+            FiberErrorBoundary.QueueReset(_boundary);
+            return null;
+        }
+    }
+
     internal sealed class HookCallbackSlot
     {
         public Delegate? Callback { get; set; }

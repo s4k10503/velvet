@@ -452,6 +452,23 @@ namespace Velvet
             UnregisterFiber(fiber);
         }
 
+        // The children of parent that a Suspense keeps offscreen. FiberErrorBoundary.TakeQueuedReset owns the call.
+        internal void DisposeOffscreenInlineChildren(ComponentFiber parent)
+        {
+            if (!_parentToInlineFibers.TryGetValue(parent, out var children)) return;
+            List<ComponentFiber>? doomed = null;
+            foreach (var child in children)
+            {
+                if (!child.IsDisposed && child.IsOffscreen) (doomed ??= new List<ComponentFiber>()).Add(child);
+            }
+            if (doomed == null) return;
+            // Snapshotted first: DisposeFiberInternal removes each from the set this walk reads.
+            foreach (var fiber in doomed)
+            {
+                if (!fiber.IsDisposed) DisposeFiberInternal(fiber);
+            }
+        }
+
         internal void DisposeAndRemove(ComponentFiber fiber)
         {
             if (fiber == null) return;
