@@ -1612,6 +1612,9 @@ namespace Velvet
             // from a scroll callback — hands its entries to the enclosing pass's own boundary, which is
             // the point where every removal of that pass is behind them.
             if (SharedReconcileDepth > 0) return;
+            // A virtual-list range render in progress hands every entry to its own end, where its rows are in
+            // the list (FiberVirtualListController.RenderRange); a row's mount would otherwise attach them first.
+            if (HeldRowLayoutEffects.Count > 0) return;
             // A setup that re-enters a top-level pass leaves its own entries to the loop below, which
             // re-reads the count and takes them as a batch of their own; draining them from inside would
             // run the ones already run a second time.
@@ -1652,6 +1655,10 @@ namespace Velvet
                     // write below would then add one for an element no tree holds, past the removal that
                     // would have taken it.
                     RefCallbacks[element] = (callback, null);
+                    // React attaches refs in its layout phase, after its mutation phase ran the commit's insertion
+                    // effects, and a callback that reads its element's box there reads it laid out.
+                    FiberEffects.RunInsertionEffectsAheadOfRef(owner);
+                    FiberLayoutReflow.LayOutFor(this, element, owner);
                     System.Action? cleanup = null;
                     try
                     {
@@ -2373,6 +2380,11 @@ namespace Velvet
         // run inline. See FiberEffects.CommitSubtreeEffects / FlushDeferredDrainLayoutEffects.
         internal bool DeferDrainLayoutEffects;
         internal readonly List<(ComponentFiber fiber, bool mountDoubleInvoke)> PendingDrainLayoutEffects = new();
+
+        // One list per virtual-list range render in progress, holding the effect commits of the rows it creates or
+        // patches until it has placed them; a drain neither takes nor flushes them. See
+        // FiberVirtualListController.RenderRange.
+        internal readonly Stack<List<(ComponentFiber fiber, bool mountDoubleInvoke)>> HeldRowLayoutEffects = new();
 
         // Returns the snapshot pinned for store within the current drain wave, capturing
         // liveSnapshot on the first read that finds no pin. Returns liveSnapshot

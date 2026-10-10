@@ -19,6 +19,18 @@ namespace Velvet
         private static void RunInsertionEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
             => HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects, mountDoubleInvoke);
 
+        // Runs, ahead of a ref setup, the insertion effects pending on the component that rendered the ref's element and
+        // on the components above it, child before parent, as React's mutation phase runs a commit's insertion effects
+        // before its layout phase attaches refs; the layout commit then finds them run. It runs no StrictMode mount
+        // double-invoke: an entry's mount flag sits on the deferred stack, which this does not search.
+        internal static void RunInsertionEffectsAheadOfRef(ComponentFiber? owner)
+        {
+            for (var fiber = owner; fiber != null; fiber = fiber.Parent)
+            {
+                HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects);
+            }
+        }
+
         internal static void CleanupAllInsertionEffects(ComponentFiber fiber)
             => HookEffectExecutor.CleanupAll(fiber, fiber.InsertionEffects, fiber.PendingInsertionEffects);
 
@@ -43,6 +55,11 @@ namespace Velvet
             }
             // A fiber without a reconciler has been unmounted.
             if (ctx == null) return;
+            if (ctx.HeldRowLayoutEffects.Count > 0)
+            {
+                ctx.HeldRowLayoutEffects.Peek().Add((fiber, mountDoubleInvoke));
+                return;
+            }
             CommitLayoutBatch(ctx, fiber, new List<(ComponentFiber Fiber, bool IsMount)>(1) { (fiber, mountDoubleInvoke) });
         }
 
@@ -53,7 +70,26 @@ namespace Velvet
         internal static void FlushDeferredDrainLayoutEffects(ReconcilerContext ctx)
         {
             ctx.DeferDrainLayoutEffects = false;
-            var pending = ctx.PendingDrainLayoutEffects;
+            CommitDeferred(ctx, ctx.PendingDrainLayoutEffects);
+        }
+
+        // Runs the effect commits a range render held, once it has placed its rows. Each is scoped to its row, as
+        // the commit of the row's own mount was: the pass that renders the list can hold fibers of its own whose
+        // refs it has not attached yet. A row a failed or disposed range discarded is unmounted, which cleared its
+        // pending lists, and CommitLayoutBatch runs no setup of an unmounted fiber, so it runs nothing. The range's
+        // caller commits the stranded work after.
+        internal static void CommitHeldRowLayoutEffects(
+            ReconcilerContext ctx, List<(ComponentFiber fiber, bool mountDoubleInvoke)> held)
+        {
+            for (var i = 0; i < held.Count; i++)
+            {
+                var (fiber, isMount) = held[i];
+                CommitLayoutBatch(ctx, fiber, new List<(ComponentFiber Fiber, bool IsMount)>(1) { (fiber, isMount) });
+            }
+        }
+
+        private static void CommitDeferred(ReconcilerContext ctx, List<(ComponentFiber fiber, bool mountDoubleInvoke)> pending)
+        {
             // Clear in a finally so a throwing effect (e.g. an imperative-handle factory, which is unguarded
             // user code) does not leave entries to accumulate / re-run on the next drain.
             try
@@ -156,6 +192,7 @@ namespace Velvet
             => FiberAmbientStack.Current != null
                 || ctx.SharedReconcileDepth > 0
                 || ctx.DeferDrainLayoutEffects
+                || ctx.HeldRowLayoutEffects.Count > 0
                 || ctx.EffectCommitDepth > 0
                 || ctx.IsDrainingRefAttaches;
 
@@ -256,6 +293,9 @@ namespace Velvet
                     // A setup's catch can unmount a fiber later in this pass, and a boundary unmounted that way
                     // must not deliver the report it still holds.
                     if (!fiber.IsMounted) continue;
+                    // After every cleanup above, so what the insertion effects and layout cleanups wrote is in the
+                    // layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
+                    if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);
                     FiberHookCommit.RunImperativeHandleSlots(fiber);
                     HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount);
                     DeliverCaughtErrors(ctx, fiber, reportCutoff);
