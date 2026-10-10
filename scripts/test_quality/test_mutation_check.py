@@ -2796,6 +2796,212 @@ class NamedDeclarationTests(unittest.TestCase):
         self.assertEqual(stale, [12])
 
 
+class OnePerLineTests(unittest.TestCase):
+    """The campaign keeps one mutant for each changed line, and a declaration keeps its meaning."""
+
+    TWO_OPERATORS = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b, bool c) { return a <= b && c; }
+                internal static int Sum(int a, int b) { return a + b; }
+            }
+        }
+        """)
+
+    def at(self, operator, column=0, line=12, path="probe.cs"):
+        return mutation_check.Mutant(Path(path), line, column, "a", "b", operator)
+
+    def decide(self, mutants, declared, deferred=frozenset()):
+        unanswered, stale = mutation_check.answered(mutants, set(deferred), declared)
+        return ([complaint for _, complaint in unanswered],
+                [held.line for _, _, held in stale])
+
+    def test_Given_ALineCarryingSeveralOperators_When_TheCapIsApplied_Then_OnlyTheBoundaryFlipStays(self):
+        # Arrange
+        every = mutants_of(self.TWO_OPERATORS)
+        crowded = [mutant for mutant in every if mutant.line == 5]
+
+        # Act
+        kept = mutation_check.one_per_line(crowded)
+
+        # Assert -- the operators the line generates ride along, so a line that generated one
+        # mutant cannot satisfy it.
+        self.assertEqual((sorted(mutant.operator for mutant in crowded),
+                          [mutant.operator for mutant in kept]),
+                         (["boundary", "clause removed", "logic"], ["boundary"]))
+
+    def test_Given_EveryOperatorOnOneLine_When_TheCapIsApplied_Then_EachOutranksTheOnesAfterIt(self):
+        # Arrange
+        order = mutation_check.LINE_PRIORITY
+
+        # Act
+        chosen = [mutation_check.one_per_line([self.at(name) for name in order[index:]])[0].operator
+                  for index in range(len(order))]
+
+        # Assert
+        self.assertEqual(chosen, list(order))
+
+    def test_Given_TheOperatorsGenerationEmits_When_TheCapReadsThem_Then_EachHasARank(self):
+        # Arrange
+        emitted = {operator for _, _, operator in mutation_check.OPERATORS}
+        emitted |= {operator for _, _, operator in mutation_check.WORD_OPERATORS}
+        emitted |= {mutant.operator for mutant in mutants_of(self.TWO_OPERATORS)}
+        emitted |= {"clause removed", "guard removed", "line removed"}
+
+        # Act
+        unranked = sorted(emitted - set(mutation_check.LINE_PRIORITY))
+
+        # Assert
+        self.assertEqual(unranked, [])
+
+    def test_Given_TheSameMutantsInAnyOrder_When_TheCapIsApplied_Then_TheSameOneStays(self):
+        # Arrange
+        crowded = [self.at("logic", 30), self.at("boundary", 40), self.at("literal", 5),
+                   self.at("boundary", 20), self.at("line removed", 1)]
+
+        # Act
+        forwards = mutation_check.one_per_line(list(crowded))[0]
+        backwards = mutation_check.one_per_line(list(reversed(crowded)))[0]
+        rotated = mutation_check.one_per_line(crowded[2:] + crowded[:2])[0]
+
+        # Assert
+        self.assertEqual([(m.operator, m.column) for m in (forwards, backwards, rotated)],
+                         [("boundary", 20)] * 3)
+
+    def test_Given_TwoMutantsOfTheSameOperator_When_TheCapIsApplied_Then_TheLeftmostStays(self):
+        # Arrange
+        right, left = self.at("arithmetic", 31), self.at("arithmetic", 9)
+
+        # Act
+        kept = [mutation_check.one_per_line([right, left])[0].column,
+                mutation_check.one_per_line([left, right])[0].column]
+
+        # Assert
+        self.assertEqual(kept, [9, 9])
+
+    def test_Given_MutantsOnSeveralLinesAndFiles_When_TheCapIsApplied_Then_OneStaysForEach(self):
+        # Arrange
+        every = [self.at("boundary", 1, 3), self.at("logic", 2, 3), self.at("equality", 1, 4),
+                 self.at("boundary", 1, 3, "other.cs"), self.at("logic", 2, 3, "other.cs")]
+
+        # Act
+        kept = mutation_check.one_per_line(every)
+
+        # Assert
+        self.assertEqual(sorted((str(m.path), m.line, m.operator) for m in kept),
+                         [("other.cs", 3, "boundary"), ("probe.cs", 3, "boundary"),
+                          ("probe.cs", 4, "equality")])
+
+    def test_Given_ALineWhoseOtherMutantsWereDropped_When_TheCapIsApplied_Then_TheSurvivorNamesThem(self):
+        # Arrange
+        every = [self.at("logic", 30), self.at("boundary", 40), self.at("line removed", 1)]
+
+        # Act
+        kept = mutation_check.one_per_line(every)[0]
+
+        # Assert
+        self.assertEqual((kept.operator, set(kept.shadowed)),
+                         ("boundary", {"logic", "line removed"}))
+
+    def test_Given_ALoneMutantOnItsLine_When_TheCapIsApplied_Then_NothingIsShadowed(self):
+        # Arrange
+        alone = self.at("logic")
+
+        # Act
+        kept = mutation_check.one_per_line([alone])[0]
+
+        # Assert
+        self.assertEqual((kept is alone, set(kept.shadowed)), (True, set()))
+
+    def test_Given_ALineCarryingSeveralOperators_When_TheCampaignIsListed_Then_OneMutantIsPrintedForIt(self):
+        # Arrange
+        campaign = StubbedCampaign(self.TWO_OPERATORS)
+
+        # Act
+        campaign.run("--list")
+
+        # Assert -- line 6 is the control: its one mutant is printed, so a list that printed
+        # nothing for the crowded line could not pass.
+        listed = [line for line in campaign.printed.splitlines() if "Probe.cs:" in line and " -> " in line]
+        self.assertEqual([(line.split("Probe.cs:")[1].split(" ")[0], line.rsplit("(", 1)[1])
+                          for line in listed],
+                         [("5", "boundary)"), ("6", "arithmetic)")])
+
+    def test_Given_ADeclarationNamingADroppedOperator_When_TheRepresentativeSurvives_Then_ItIsAnswered(self):
+        # Arrange
+        kept = survivor(Path("probe.cs"), 12, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="logic")}
+
+        # Act
+        unanswered, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual((unanswered, stale), ([], []))
+
+    def test_Given_ADeclarationNamingAnOperatorTheLineNeverCarried_When_TheRepresentativeSurvives_Then_ItIsUnanswered(self):
+        # Arrange -- the control: naming is still checked, only what the cap dropped is let through.
+        kept = survivor(Path("probe.cs"), 12, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="literal")}
+
+        # Act
+        unanswered, _ = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(unanswered, ["the declaration above answers for 'literal', not for this"])
+
+    def test_Given_ANamedDeclarationWhoseOperatorWasDropped_When_TheRepresentativeDies_Then_ItIsNotStale(self):
+        # Arrange
+        kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="logic")}
+
+        # Act
+        _, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(stale, [])
+
+    def test_Given_ANamedDeclarationWhoseOperatorWasNotDropped_When_TheRepresentativeDies_Then_ItIsStale(self):
+        # Arrange -- the control for the case above.
+        kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="literal")}
+
+        # Act
+        _, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(stale, [12])
+
+    def test_Given_AnUnnamedDeclarationOverALineWithDroppedMutants_When_TheRepresentativeDies_Then_ItIsNotStale(self):
+        # Arrange -- an unnamed declaration answered for the whole line, and some of that line was
+        # never generated, so a dead representative does not show it described a past state.
+        kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12)}
+
+        # Act
+        _, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(stale, [])
+
+    def test_Given_AnUnnamedDeclarationOverALineWithNothingDropped_When_TheMutantDies_Then_ItIsStale(self):
+        # Arrange -- the control for the case above, and the base's own reading.
+        kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
+        declared = {(Path("probe.cs"), 12): declaration(12)}
+
+        # Act
+        _, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(stale, [12])
+
+
 class DeclarationFormatTests(unittest.TestCase):
     """What the guide shows and what the tree holds, against what the script will actually accept.
 
