@@ -1364,9 +1364,38 @@ namespace Velvet
         // reaches with no boundary suspended on — see FiberRenderer.SuspendPassOwner.
         internal ComponentFiber? SuspendingReader;
 
-        // The Suspense primaries open on the walk, each of which catches a signal raised inside it, so a pass with
-        // none open is one the signal abandons — see ComponentRegistry.ReconcileExistingFiber.
-        internal int SuspensePrimaryDepth;
+        // The Suspense primaries open on the walk, innermost last, each of which catches a signal raised inside it,
+        // so a pass with none open is one the signal abandons — see ComponentRegistry.ReconcileExistingFiber.
+        private readonly List<SuspensePrimaryFrame> _suspensePrimaries = new();
+
+        internal int SuspensePrimaryDepth => _suspensePrimaries.Count;
+
+        // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again.
+        internal void OpenSuspensePrimary(bool retains) => _suspensePrimaries.Add(new SuspensePrimaryFrame(retains, false));
+
+        // Returns whether the primary suspended, at its own expansion or where HoldSuspendInPrimary held it.
+        internal bool CloseSuspensePrimary()
+        {
+            var last = _suspensePrimaries.Count - 1;
+            var frame = _suspensePrimaries[last];
+            _suspensePrimaries.RemoveAt(last);
+            return frame.Suspended;
+        }
+
+        // Whether the innermost open primary takes a suspend where it is raised rather than at its own expansion,
+        // which it does only where it retains: that primary has to commit whole to be hidden.
+        internal bool HoldSuspendInPrimary()
+        {
+            var last = _suspensePrimaries.Count - 1;
+            if (last < 0 || !_suspensePrimaries[last].Retains) return false;
+            MarkSuspensePrimarySuspended();
+            return true;
+        }
+
+        internal void MarkSuspensePrimarySuspended()
+            => _suspensePrimaries[^1] = _suspensePrimaries[^1] with { Suspended = true };
+
+        private readonly record struct SuspensePrimaryFrame(bool Retains, bool Suspended);
 
         // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
         // ended — see CompleteEnterAfterThePass.
@@ -1592,6 +1621,46 @@ namespace Velvet
             }
         }
 
+        // The refs of the elements a Suspense keeps hidden, detached as React 18 detaches a hidden tree's host refs,
+        // each with the callback that attaches it again on the reveal.
+        private readonly Dictionary<VisualElement, System.Func<VisualElement, System.Action>> _refsDetachedWhileHidden =
+            new();
+
+        // Over element and every element below it: a setup still queued is taken back with the installed one. A
+        // render of the Suspense hiding an element patches it like any other, queueing a setup where its callback
+        // changed, and the hide that render ends with takes that setup back here.
+        internal void DetachRefsWhileHidden(VisualElement element)
+        {
+            var callback = _pendingRefAttachIndex.TryGetValue(element, out var queued)
+                ? _pendingRefAttaches[queued].Callback
+                : RefCallbacks.TryGetValue(element, out var installed) ? installed.Callback : null;
+            if (callback != null)
+            {
+                DetachRefCallback(element);
+                DropPendingRefAttach(element);
+                _refsDetachedWhileHidden[element] = callback;
+            }
+            foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
+        }
+
+        // Over element and every element below it, short of one a nested Suspense still hides, whose refs that
+        // Suspense attaches when it reveals. A setup the reveal's own render queued carries the newer callback, so
+        // it is the one kept.
+        internal void AttachRefsHiddenUnder(VisualElement element)
+        {
+            if (_refsDetachedWhileHidden.Remove(element, out var callback) && !_pendingRefAttachIndex.ContainsKey(element))
+            {
+                SyncRefCallback(element, callback);
+            }
+            foreach (var child in element.hierarchy.Children())
+            {
+                if (!SuspenseHiddenElements.IsHidden(child)) AttachRefsHiddenUnder(child);
+            }
+        }
+
+        // An element that leaves while its ref is detached has had that ref's cleanup already.
+        internal void ForgetRefDetachedWhileHidden(VisualElement element) => _refsDetachedWhileHidden.Remove(element);
+
         // Cancels a setup queued for an element that is leaving before the drain reaches it. The setup
         // never ran, so there is no cleanup owed and nothing to undo — running it would install a ref
         // pointing at an element no tree holds.
@@ -1749,9 +1818,11 @@ namespace Velvet
 
         // Only shown fallbacks are stored, so boundary-level deferral reads this table's presence.
         // The node identifies the branch when a context-spine walk reaches it through a nested host.
-        private readonly Dictionary<ComponentFiber, Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>>
+        // HidesPrimary says the primary the boundary had committed is still in the container, hidden, ahead of
+        // the fallback, which the old-side walk then reproduces as well.
+        private readonly Dictionary<ComponentFiber, Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>>
             _suspenseFallbackKeys = new();
-        private readonly Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>
+        private readonly Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>
             _rootlessSuspenseFallbackKeys = new();
 
         internal bool AnyBoundaryShowingFallback => _suspenseFallbackKeys.Count > 0;
@@ -1764,39 +1835,59 @@ namespace Velvet
                 ? _rootlessSuspenseFallbackKeys.ContainsKey((container, portalScope, positionKey))
                 : _suspenseFallbackKeys.TryGetValue(boundary, out var keys) && keys.ContainsKey((container, portalScope, positionKey));
 
+        internal bool IsBoundaryHidingPrimary(ComponentFiber boundary)
+            => _suspenseFallbackKeys.TryGetValue(boundary, out var keys)
+                && System.Linq.Enumerable.Any(keys.Values, record => record.HidesPrimary);
+
+        internal SuspenseFallbackRecord? SuspenseRecordAt(ComponentFiber? boundary, VisualElement? container,
+            VisualElement? portalScope, long positionKey)
+        {
+            var position = (container, portalScope, positionKey);
+            if (boundary == null)
+            {
+                return _rootlessSuspenseFallbackKeys.TryGetValue(position, out var rootless) ? rootless : null;
+            }
+            if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys)) return null;
+            return keys.TryGetValue(position, out var record) ? record : null;
+        }
+
+        internal bool IsSuspensePrimaryHidden(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope, long positionKey)
+            => SuspenseRecordAt(boundary, container, portalScope, positionKey).GetValueOrDefault().HidesPrimary;
+
         internal bool IsSuspenseFallbackShownOnSpine(ComponentFiber boundary, VisualElement? container, VisualElement? portalScope,
             long positionKey, SuspenseNode node)
         {
             if (!_suspenseFallbackKeys.TryGetValue(boundary, out var entries)) return false;
             foreach (var entry in entries)
             {
-                // MUTANT_SURVIVES(equivalent): one boundary records one fallback row per position key in these fixtures.
+                // MUTANT_SURVIVES(equivalent): each boundary in these fixtures records one fallback row per position key.
                 if (entry.Key.Position != positionKey || !ReferenceEquals(entry.Key.PortalScope, portalScope)
-                    || !ReferenceEquals(entry.Value, node)) continue;
+                    || !ReferenceEquals(entry.Value.Node, node)) continue;
                 for (var current = container; current != null; current = current.parent)
                     if (ReferenceEquals(current, entry.Key.Container)) return true;
             }
             return false;
         }
 
+        // A null record is no fallback shown, which is what SuspenseRecordAt reads back for it.
         internal void SetSuspenseFallbackShown(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope,
-            long positionKey, SuspenseNode node, bool shown)
+            long positionKey, SuspenseFallbackRecord? record)
         {
             var position = (container, portalScope, positionKey);
             if (boundary == null)
             {
-                if (shown) _rootlessSuspenseFallbackKeys[position] = node;
+                if (record is { } rootless) _rootlessSuspenseFallbackKeys[position] = rootless;
                 else _rootlessSuspenseFallbackKeys.Remove(position);
                 return;
             }
-            if (shown)
+            if (record is { } shown)
             {
                 if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys))
                 {
-                    keys = new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>();
+                    keys = new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>();
                     _suspenseFallbackKeys[boundary] = keys;
                 }
-                keys[position] = node;
+                keys[position] = shown;
                 return;
             }
             RemoveSuspenseFallback(boundary, position);
@@ -1807,7 +1898,7 @@ namespace Velvet
         internal BoundaryRecords RecordsOf(ComponentFiber boundary)
         {
             var suspense = _suspenseFallbackKeys.TryGetValue(boundary, out var keys)
-                ? new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>(keys)
+                ? new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>(keys)
                 : null;
             HashSet<(VisualElement? Parent, long Position)>? presence = null;
             foreach (var key in PresenceStates.Keys)
@@ -1834,8 +1925,10 @@ namespace Velvet
             foreach (var key in added) RetirePresenceState(key);
         }
 
+        internal readonly record struct SuspenseFallbackRecord(SuspenseNode Node, bool HidesPrimary);
+
         internal readonly record struct BoundaryRecords(
-            Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>? Suspense,
+            Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>? Suspense,
             HashSet<(VisualElement? Parent, long Position)>? Presence);
 
         private void RemoveSuspenseFallback(ComponentFiber? boundary,
@@ -1882,7 +1975,7 @@ namespace Velvet
         }
 
         private static void RemoveSuspenseContainer(
-            Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode> entries, VisualElement container)
+            Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord> entries, VisualElement container)
         {
             List<(VisualElement? Container, VisualElement? PortalScope, long Position)>? removed = null;
             foreach (var position in entries.Keys)
@@ -2264,6 +2357,18 @@ namespace Velvet
             VisualElement? portalScope, long position)
             => _boundaryReRendered.Add(new(boundary, parent, portalScope, position, true));
 
+        // The Suspense positions whose old side reproduced the primary, which is what tells the new side of the
+        // same container that the boundary is showing its children. Read once, by that new side.
+        private readonly HashSet<BoundaryReproductionKey> _suspensePrimariesReproduced = new();
+
+        internal void MarkSuspensePrimaryReproduced(ComponentFiber? boundary, VisualElement? parent,
+            VisualElement? portalScope, long position)
+            => _suspensePrimariesReproduced.Add(new(boundary, parent, portalScope, position, true));
+
+        internal bool TakeSuspensePrimaryReproduced(ComponentFiber? boundary, VisualElement? parent,
+            VisualElement? portalScope, long position)
+            => _suspensePrimariesReproduced.Remove(new(boundary, parent, portalScope, position, true));
+
         // Opens the span of reproductions one container's reconcile takes, closed by
         // EndBoundaryReproductionScope. Nested containers reconcile inside that span and close their own
         // first, so the tail this returns is exactly the enclosing container's own.
@@ -2350,6 +2455,7 @@ namespace Velvet
             _boundaryReproduced.Clear();
             _boundaryRetirable.Clear();
             _boundaryReRendered.Clear();
+            _suspensePrimariesReproduced.Clear();
         }
 
         // Tree-wide auto-batching scheduler. Coalesces setState across every fiber that shares this

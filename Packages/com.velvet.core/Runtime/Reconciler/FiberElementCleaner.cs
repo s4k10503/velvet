@@ -204,6 +204,7 @@ namespace Velvet
             // speculative orphan rolled back — still owes the setup the walk queued for it. Cancelling it
             // is what keeps the drain from installing a ref on an element no tree holds.
             _ctx.DropPendingRefAttach(element);
+            _ctx.ForgetRefDetachedWhileHidden(element);
             if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
                 _ctx.RefCallbacks.Remove(element);

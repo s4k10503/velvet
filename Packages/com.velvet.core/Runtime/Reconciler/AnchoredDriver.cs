@@ -212,8 +212,8 @@ namespace Velvet
             // display would otherwise permanently outrank the "hidden" USS class Props.Visible = false toggles
             // (FiberPropApplier.ApplyVisible), since a non-!important stylesheet rule never beats an inline
             // style. StyleKeyword.Null lets the normal class-driven cascade (including Visible = false) decide
-            // instead.
-            box.style.display = StyleKeyword.Null;
+            // instead. A Suspense keeping the element hidden owns that inline display until it reveals it.
+            if (!SuspenseHiddenElements.IsHidden(box)) box.style.display = StyleKeyword.Null;
             var offset = binding.Settings.Offset;
             box.style.left = localPoint.x + offset.x;
             box.style.top = localPoint.y + offset.y;

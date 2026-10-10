@@ -80,6 +80,18 @@ namespace Velvet
             // has placed what the walk emitted: React disconnects and reconnects them in its commit, and a walk
             // that rolls back or stops leaves on screen what was there.
             public List<(ComponentFiber Fiber, bool Hidden)>? OffscreenChanges;
+            // The primary elements a Suspense of this walk hid (true) or revealed (false), each with its NewElements
+            // row, applied with OffscreenChanges and on the same terms. RollbackCommitTo drops those of the rows it
+            // takes back, whose elements can be in the pool by the time this is applied.
+            public List<(int Row, VisualElement Element, bool Hidden)>? DisplayChanges;
+            // The record each Suspense of this walk replaced, oldest first, put back where the walk throws.
+            public List<(ComponentFiber? Boundary, VisualElement? Container, VisualElement? PortalScope, long Position,
+                ReconcilerContext.SuspenseFallbackRecord? Before)>? RecordsBefore;
+            // The offscreen state each fiber a Suspense of this walk hid or revealed had before, oldest first, put
+            // back where the walk throws: the next walk reads it to decide which fibers it hides or reveals, and
+            // OffscreenChanges, which would have hidden or shown their effects to match, is never applied.
+            public List<(ComponentFiber Fiber, bool IsOffscreen, VisualElement? HiddenUnder,
+                ComponentFiber? OffscreenUnder)>? OffscreenBefore;
             // Every old-leaf lookup of this walk goes through it; LogicalSlotCursor owns what it saves and when
             // it falls back.
             public LogicalSlotCursor OldSlots;
@@ -194,6 +206,7 @@ namespace Velvet
                     // failure, or a suspend no Suspense span of this walk caught — leaves those elements to no
                     // caller: they go the way a suspended span's do.
                     RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
+                    RestoreWhatTheSuspensesWrote(commit);
                     // A boundary above discards everything this walk rendered, so the components it mounted go
                     // too, where a suspended span keeps them for the retry.
                     if (exception is BoundaryCaughtSignal) DisposeFibersMountedBy(oldFibers, newFibers);
@@ -221,7 +234,13 @@ namespace Velvet
                     FinalizeGeneralCommit(commit);
                     ApplyOffscreenChanges(commit);
                 }
-                else RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
+                else
+                {
+                    RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
+                    // The fibers KeepFibersTheStoppedWalkLeft kept stand as the screen does, which is what this
+                    // puts their offscreen state back to.
+                    RestoreWhatTheSuspensesWrote(commit);
+                }
                 SweepOrphans(oldFibers, newFibers);
                 return removalsRan;
             }
@@ -392,7 +411,7 @@ namespace Velvet
         // FinalizeGeneralCommit, so its poolable leaves are reclaimed via
         // FiberElementCleaner.ReturnRolledBackOrphan; a patched existing element's key
         // is un-used so FinalizeGeneralCommit removes it (the discarded subtree — a
-        // suspended Suspense primary — is replaced by the fallback). A container orphan (e.g.
+        // suspended Suspense primary the boundary never committed — is replaced by the fallback). A container orphan (e.g.
         // V.Div) is dropped (GC) — its DOM was never placed — but Velvet inline-expands a
         // ComponentNode in its children into a registered fiber whose MountPoint is the orphan
         // container, so the fiber would linger in ComponentRegistry with effects
@@ -444,6 +463,7 @@ namespace Velvet
             }
             commit.NewElements.RemoveRange(preCount, commit.NewElements.Count - preCount);
             commit.Committed.RemoveRange(preCount, commit.Committed.Count - preCount);
+            commit.DisplayChanges?.RemoveAll(change => change.Row >= preCount);
         }
 
         // A created container orphan (e.g. V.Div) reconciled its declared children during CreateElement, so
@@ -497,7 +517,8 @@ namespace Velvet
             {
                 foreach (var (fiber, _, _) in placements)
                 {
-                    if (fiber.IsOffscreen || fiber.Parent == null || !placed.Add(fiber)) continue;
+                    // A primary a Suspense keeps hidden keeps its rows, so its components take their order too.
+                    if (fiber.Parent == null || !placed.Add(fiber)) continue;
                     if (!byParent.TryGetValue(fiber.Parent, out var ordered))
                     {
                         ordered = pool.RentFiberList();
@@ -610,6 +631,9 @@ namespace Velvet
             // resolving is not the inner one resolving. Held on the walk rather than rented per expansion,
             // since the enclosing loop reads it after the inner one has returned its own buffers.
             public readonly HashSet<ComponentFiber> OffscreenPrimaries = new();
+            // The elements a Suspense of this walk hid, which an enclosing one revealing in the same walk leaves
+            // hidden. Held on the walk for the reason OffscreenPrimaries is.
+            public readonly HashSet<VisualElement> HiddenPrimaryElements = new();
             // The fiber the walk had reached as each leaf was emitted, index-aligned with Result. Filled
             // only where the caller hands a list in, which is the old side: the new side reads the live
             // FiberStack at the match instead.
@@ -622,7 +646,8 @@ namespace Velvet
             // Expansion-order position of the next new-side Provider, the fallback pairing for a Provider
             // whose structural position has no counterpart on the old side. Monotonic for the whole walk:
             // nothing rewinds it, including a Suspense rollback that discards a primary subtree it has
-            // already advanced through — matching the old side, which reproduces exactly one branch.
+            // already advanced through — while the old side counts only the branches the boundary's record says
+            // are in the container.
             public int NewProviderOrdinal;
 
             // Every field a walk may set is scrubbed here: a stale reference surviving into the next
@@ -642,6 +667,7 @@ namespace Velvet
                 Commit = null;
                 NewProviderOrdinal = 0;
                 OffscreenPrimaries.Clear();
+                HiddenPrimaryElements.Clear();
             }
         }
 
@@ -994,7 +1020,10 @@ namespace Velvet
                     var suspended = _ctx.ComponentRegistry.TryGetFiberForInlineKey(
                         parentFiber, slotKey, identity, portalScope, walk.Parent);
                     if (suspended != null) walk.NewFibers.Add(suspended);
-                    throw;
+                    // A Suspense keeping its committed primary needs every leaf of it committed to hide them, so the
+                    // walk goes on, and this component's rows are the output it last committed.
+                    if (suspended == null || !_ctx.HoldSuspendInPrimary()) throw;
+                    fiber = suspended;
                 }
                 walk.NewFibers.Add(fiber);
                 var preCount = emittedCount;
@@ -1271,21 +1300,20 @@ namespace Velvet
         // is scoped to the children added during this expansion (not the whole boundary subtree) so an
         // async sibling outside the Suspense does not keep the boundary suspended.
         //
-        // A nested Suspense boundary owns its own descendants' suspension, so its pending primary must not
-        // keep the outer boundary suspended: nested boundary fibers, and any fiber whose nearest boundary
-        // is a nested one, are skipped. The delta already contains every fiber in this Suspense's primary
-        // subtree, so a per-fiber own-slot check covers descendants without re-walking.
-        private static bool AnyPrimaryChildStillPending(
-            HashSet<ComponentFiber> newFibers,
-            HashSet<ComponentFiber> fibersBefore,
-            ComponentFiber? boundaryFiber)
+        // A nested Suspense owns its own descendants' suspension, so its pending primary must not keep the outer
+        // boundary suspended. Every nested Suspense of the delta has been expanded by now, and one that suspended
+        // put the fibers of its primary in OffscreenPrimaries, so those are skipped: a nested Suspense the same
+        // component renders has the outer one's boundary fiber, which no search up the fibers tells apart. A
+        // pending fiber in a nested Suspense's fallback is the outer one's to wait on, as React's is. The delta
+        // already contains every fiber in this Suspense's primary subtree, so a per-fiber own-slot check covers
+        // descendants without re-walking.
+        private static bool AnyPrimaryChildStillPending(InlineWalk walk, HashSet<ComponentFiber> fibersBefore)
         {
-            foreach (var fiber in newFibers)
+            foreach (var fiber in walk.NewFibers)
             {
                 if (fibersBefore.Contains(fiber)) continue;
                 if (fiber.IsSuspenseBoundary) continue;
-                var nested = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber);
-                if (nested != null && !ReferenceEquals(nested, boundaryFiber)) continue;
+                if (walk.OffscreenPrimaries.Contains(fiber)) continue;
                 if (ComponentBoundarySearch.HasPendingAsyncSlot(fiber)) return true;
             }
 
@@ -1298,9 +1326,11 @@ namespace Velvet
         // Provider (no pre-captured snapshot needed). The fiber rendering this Suspense
         // (FiberStack.Current) becomes the boundary so a descendant's
         // FiberSuspendSignal routes here via FindNearestSuspenseBoundary. If a
-        // descendant suspends during the new-side render, the partial primary output is discarded (the
-        // partially-mounted fibers stay registered so a later resolve re-render reuses them with their
-        // state) and the fallback subtree is expanded instead. The children-vs-fallback decision is
+        // descendant suspends during the new-side render of a primary the boundary has not committed, the
+        // partial primary output is discarded (the partially-mounted fibers stay registered so a later resolve
+        // re-render reuses them with their state) and the fallback subtree is expanded instead. A primary it has
+        // committed is committed again whole and hidden ahead of the fallback (SetPrimaryHidden), so its elements
+        // and the fibers mounted in them are kept for the reveal. The children-vs-fallback decision is
         // recorded via ReconcilerContext.SetSuspenseFallbackShown so the old-side structural walk
         // reproduces the committed subtree for the diff.
         // Primary and fallback children use distinct fragment scopes so their fibers never collide.
@@ -1331,8 +1361,14 @@ namespace Velvet
             else if (walk.IsNewSide)
             {
                 if (boundaryFiber != null) boundaryFiber.IsSuspenseBoundary = true;
+                var portalScope = _ctx.PortalChildKeyScopeHere;
+                var primaryWasHidden = _ctx.IsSuspensePrimaryHidden(boundaryFiber, walk.Parent, portalScope, suspenseAt);
+                // A primary the boundary has committed is kept, hidden; one it has not committed is discarded.
+                var revealed = _ctx.TakeSuspensePrimaryReproduced(boundaryFiber, walk.Parent, portalScope, suspenseAt);
+                var retains = commit != null && (revealed || primaryWasHidden);
                 var preCount = commit != null ? commit.NewElements.Count : result!.Count;
-                var suspended = false;
+                bool suspended;
+                bool hides;
                 // Snapshot the fiber set so the post-expansion pending check can be scoped to THIS
                 // Suspense's own primary children (the fibers newly added during its expansion).
                 var fibersBefore = _ctx.BufferPool.RentFiberSet();
@@ -1340,80 +1376,121 @@ namespace Velvet
                 var reportsBefore = _ctx.PendingCaughtErrorReports.Count;
                 try
                 {
-                    if (suspense.Children is { Length: > 0 })
-                    {
-                        _ctx.SuspensePrimaryDepth++;
-                        try
-                        {
-                            ExpandInlineRecursive(walk, suspense.Children, primaryPosition);
-                        }
-                        catch (FiberSuspendSignal)
-                        {
-                            suspended = true;
-                        }
-                        finally
-                        {
-                            _ctx.SuspensePrimaryDepth--;
-                        }
-                    }
+                    suspended = ExpandSuspensePrimary(walk, suspense.Children, retains, primaryPosition);
+                    var primaryEnd = commit != null ? commit.NewElements.Count : result!.Count;
                     if (!suspended)
                     {
-                        suspended = AnyPrimaryChildStillPending(newFibers, fibersBefore, boundaryFiber);
+                        suspended = AnyPrimaryChildStillPending(walk, fibersBefore)
+                            || AnyRowStillPending(walk, commit!, preCount, primaryEnd);
                     }
+                    hides = suspended && retains;
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
-                    // their lane flush while suspended (their slot is occupied by the fallback). The
+                    // their lane flush while suspended, to the render that reveals them. The
                     // fallback subtree is expanded below, so this marking never reaches it and this Suspense
                     // leaves it flushable; what marks a nested Suspense's fallback subtree is the
                     // enclosing expansion, whose own fallback occupies that slot too.
                     //
                     // A nested Suspense that suspended has already answered for the fibers it created, and
                     // this delta contains them, so its answer stands.
-                    MarkPrimaryOffscreen(walk, fibersBefore, suspended);
+                    MarkPrimaryOffscreen(walk, fibersBefore, suspended, boundaryFiber);
                     // Rollback and fallback expansion must run while fibersBefore is still live
                     // (rented from the pool, contents intact). Performing them after the finally
                     // would observe a Cleared / re-rented set, silently breaking the fibersBefore
                     // exclusion in RollbackCommitTo.
                     if (suspended)
                     {
-                        ForgetCatchesOfTheDiscardedPrimary(reportsBefore, fibersBefore, newFibers);
-                        if (commit != null) RollbackCommitTo(commit, preCount, fibersBefore, newFibers);
+                        ForgetCatchesOfTheDiscardedPrimary(reportsBefore, fibersBefore, newFibers,
+                            hides ? ElementsIn(commit!, preCount, primaryEnd) : NoElements);
+                        if (hides) SetPrimaryHidden(walk, commit!, preCount, primaryEnd, boundaryFiber, hidden: true);
+                        else if (commit != null) RollbackCommitTo(commit, preCount, fibersBefore, newFibers);
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
                         if (suspense.Fallback != null)
                         {
                             ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fallbackPosition);
                         }
                     }
+                    else if (primaryWasHidden)
+                    {
+                        SetPrimaryHidden(walk, commit!, preCount, primaryEnd, boundaryFiber, hidden: false);
+                    }
                 }
                 finally
                 {
                     _ctx.BufferPool.ReturnFiberSet(fibersBefore);
                 }
-                // Records this Suspense's decision under its own position key. FlushState's offscreen guard
-                // reads the boundary-level answer derived from those keys, so a sibling Suspense expanded
-                // later in this same walk cannot clear it.
-                _ctx.MarkSuspenseReRendered(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
-                _ctx.SetSuspenseFallbackShown(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt, suspense, suspended);
+                RecordSuspenseDecision(walk, boundaryFiber, portalScope, suspenseAt,
+                    suspended ? new ReconcilerContext.SuspenseFallbackRecord(suspense, hides) : null);
             }
             else if (ExpandCommittedSuspenseBranch(walk, suspense, boundaryFiber, suspenseAt, primaryPosition, fallbackPosition))
             {
                 _ctx.MarkSuspenseReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
             }
+            else
+            {
+                _ctx.MarkSuspensePrimaryReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
+            }
+        }
+
+        // Returns whether the primary suspended: at this expansion, or where HoldSuspendInPrimary held it.
+        private bool ExpandSuspensePrimary(InlineWalk walk, VNode?[]? children, bool retains, WalkPosition primaryPosition)
+        {
+            _ctx.OpenSuspensePrimary(retains);
+            bool suspended;
+            try
+            {
+                ExpandInlineRecursive(walk, children ?? Array.Empty<VNode>(), primaryPosition);
+            }
+            // A retaining primary holds every suspend raised in it (HoldSuspendInPrimary), an inline component's
+            // and a VirtualList row's, so one reaching here is a primary's that discards.
+            catch (FiberSuspendSignal)
+            {
+                _ctx.MarkSuspensePrimarySuspended();
+            }
+            finally
+            {
+                suspended = _ctx.CloseSuspensePrimary();
+            }
+            return suspended;
+        }
+
+        // Records this Suspense's decision under its own position key, null being its children shown. FlushState's
+        // offscreen guard reads the boundary-level answer derived from those keys, so a sibling Suspense expanded
+        // later in this same walk cannot clear it.
+        private void RecordSuspenseDecision(InlineWalk walk, ComponentFiber? boundaryFiber, VisualElement? portalScope,
+            long suspenseAt, ReconcilerContext.SuspenseFallbackRecord? record)
+        {
+            _ctx.MarkSuspenseReRendered(boundaryFiber, walk.Parent, portalScope, suspenseAt);
+            // A walk that throws puts the record back (ReconcileGeneral), since its removal pass never runs.
+            if (walk.Commit != null)
+            {
+                (walk.Commit.RecordsBefore ??= new()).Add((boundaryFiber, walk.Parent, portalScope, suspenseAt,
+                    _ctx.SuspenseRecordAt(boundaryFiber, walk.Parent, portalScope, suspenseAt)));
+            }
+            _ctx.SetSuspenseFallbackShown(boundaryFiber, walk.Parent, portalScope, suspenseAt, record);
         }
 
         // A catch a boundary the Suspense's own walk reached in the primary took is discarded with the render the
         // primary suspends in, as React discards a capture with the render that suspended: that boundary reports
         // nothing for it and renders its children again rather than the fallback it would otherwise keep
         // (FiberErrorBoundary.OutputOf). A boundary inside a host element of the primary is expanded by that
-        // element's own reconcile, which this walk does not reach.
+        // element's own reconcile, which this walk does not reach; where the primary is kept hidden, that element
+        // and the boundary in it stay, so a boundary mounted inside one of keptElements is reached too. Where it is
+        // discarded, the rollback disposes such a boundary with its element.
+        // Read only, by a discarded primary, which keeps no element.
+        private static readonly HashSet<VisualElement> NoElements = new();
+
         private void ForgetCatchesOfTheDiscardedPrimary(
-            int reportsBefore, HashSet<ComponentFiber> fibersBefore, HashSet<ComponentFiber> newFibers)
+            int reportsBefore, HashSet<ComponentFiber> fibersBefore, HashSet<ComponentFiber> newFibers,
+            HashSet<VisualElement> keptElements)
         {
             var reports = _ctx.PendingCaughtErrorReports;
             for (var i = reports.Count - 1; i >= reportsBefore; i--)
             {
                 var boundary = reports[i].Boundary;
-                if (fibersBefore.Contains(boundary) || !newFibers.Contains(boundary)) continue;
+                var inThisWalk = !fibersBefore.Contains(boundary) && newFibers.Contains(boundary);
+                var inAKeptElement = HolderOf(boundary.MountPoint, keptElements) != null;
+                if (!inThisWalk && !inAKeptElement) continue;
                 boundary.CaughtError = null;
                 reports.RemoveAt(i);
                 // A memoized boundary would otherwise bail on the retry and expand the fallback it holds.
@@ -1421,23 +1498,191 @@ namespace Velvet
             }
         }
 
-        private void MarkPrimaryOffscreen(InlineWalk walk, HashSet<ComponentFiber> fibersBefore, bool suspended)
+        private void MarkPrimaryOffscreen(
+            InlineWalk walk, HashSet<ComponentFiber> fibersBefore, bool suspended, ComponentFiber? boundaryFiber)
         {
             foreach (var f in walk.NewFibers)
             {
                 if (fibersBefore.Contains(f)) continue;
                 if (!walk.OffscreenPrimaries.Contains(f))
                 {
-                    f.IsOffscreen = suspended;
-                    // A new-side walk always carries a commit: only ReconcileGeneral starts one.
+                    // This Suspense is the innermost over a fiber its own walk mounted. A new-side walk always
+                    // carries a commit: only ReconcileGeneral starts one.
+                    SetOffscreen(walk.Commit!, f, suspended, hiddenUnder: null, suspended ? boundaryFiber : null);
                     (walk.Commit!.OffscreenChanges ??= new()).Add((f, suspended));
                 }
                 if (suspended) walk.OffscreenPrimaries.Add(f);
             }
         }
 
+        // React hides a committed primary by setting display: none on its outermost host elements and reveals it by
+        // taking that off again; the elements below them, and their state, are left alone. A Portal's children are
+        // the outermost host elements of its subtree, so they are hidden and revealed beside its placeholder. An
+        // element a nested Suspense of this walk hid stays hidden when an enclosing one reveals, since that one
+        // still shows its fallback.
+        //
+        // The fibers mounted inside those elements were mounted by the elements' own reconciles, so this walk's
+        // fiber delta, which MarkPrimaryOffscreen reads, does not hold them; they go offscreen and come back with
+        // the element that holds them. The innermost Suspense hiding a fiber is the one that reveals it.
+        private void SetPrimaryHidden(
+            InlineWalk walk, GeneralCommitState commit, int from, int to, ComponentFiber? boundaryFiber, bool hidden)
+        {
+            var roots = new HashSet<VisualElement>();
+            for (var i = from; i < to; i++)
+            {
+                // CommitLeaf records an element for every leaf it commits.
+                var row = commit.NewElements[i].element!;
+                if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
+                AddWithPortalChildren(row, roots, i, commit, walk, hidden);
+            }
+            List<ComponentFiber>? mounted = new();
+            _ctx.ComponentRegistry.CollectFibersUnder(roots, ref mounted);
+            foreach (var fiber in mounted!)
+            {
+                if (hidden)
+                {
+                    // Already offscreen through the walk of a Suspense it is a child of, or inside an element
+                    // hidden at or below these: that Suspense is the innermost. Its OffscreenUnder stays too, since
+                    // FiberRenderer.NotifyAsyncResourceCompleted routes a resolved read by it between passes.
+                    if (fiber.IsOffscreen && (fiber.HiddenUnder == null || IsAtOrUnder(fiber.HiddenUnder, roots))) continue;
+                    var wasOffscreen = fiber.IsOffscreen;
+                    SetOffscreen(commit, fiber, true, HolderOf(fiber.MountPoint, roots), boundaryFiber);
+                    if (!wasOffscreen) (commit.OffscreenChanges ??= new()).Add((fiber, true));
+                }
+                else if (roots.Contains(fiber.HiddenUnder!))
+                {
+                    SetOffscreen(commit, fiber, false, hiddenUnder: null, offscreenUnder: null);
+                    (commit.OffscreenChanges ??= new()).Add((fiber, false));
+                    // FlushState deferred this fiber's update while it was hidden and left nothing scheduled, and a
+                    // VirtualList row, the one HoldSuspendInPrimary held among them, is rendered by no walk.
+                    if (fiber.IsDirty)
+                    {
+                        fiber.IsDirty = false;
+                        FiberWorkLoop.RequestRenderFromHook(fiber);
+                    }
+                }
+            }
+        }
+
+        private void AddWithPortalChildren(VisualElement element, HashSet<VisualElement> roots, int row,
+            GeneralCommitState commit, InlineWalk walk, bool hidden)
+        {
+            roots.Add(element);
+            if (hidden) walk.HiddenPrimaryElements.Add(element);
+            (commit.DisplayChanges ??= new()).Add((row, element, hidden));
+            foreach (var (placeholder, slots) in _ctx.PortalState)
+            {
+                // An entry with no target holds no slot, so its loop below runs no step.
+                if (HolderOf(placeholder, roots) != element) continue;
+                for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength; slot++)
+                {
+                    if (!LogicalChildSlots.TryGetPhysical(slots.Target!, slot, out var physical)) break;
+                    AddWithPortalChildren(slots.Target![physical], roots, row, commit, walk, hidden);
+                }
+            }
+        }
+
+        // A VirtualList row is rendered by no walk of the boundary, and HoldSuspendInPrimary leaves the one it held
+        // with no output, so a row under the primary's elements still waiting on a read is found here.
+        private bool AnyRowStillPending(InlineWalk walk, GeneralCommitState commit, int from, int to)
+        {
+            // MUTANT_SURVIVES(equivalent, guard removed): with no wrapper-mounted fiber the collection finds none.
+            if (!_ctx.ComponentRegistry.HasWrapperMountedFibers) return false;
+            var roots = ElementsIn(commit, from, to);
+            List<ComponentFiber>? rows = new();
+            _ctx.ComponentRegistry.CollectWrapperFibersUnder(roots, ref rows);
+            foreach (var row in rows!)
+            {
+                if (HiddenByANestedSuspense(walk, row.MountPoint!, roots)) continue;
+                if (ComponentBoundarySearch.HasPendingAsyncSlot(row)) return true;
+            }
+            return false;
+        }
+
+        // A nested Suspense waiting on a row has hidden an element holding it by the time the enclosing one asks: one
+        // in this walk hid rows of the range, which the enclosing Suspense has not hidden yet itself, and one in a
+        // host element's own reconcile below them applied its hide when that reconcile ended. Told by element
+        // rather than by boundary fiber, since one component can render both Suspenses.
+        // The walk up meets one of roots: the only caller passes rows CollectWrapperFibersUnder found under them.
+        private static bool HiddenByANestedSuspense(InlineWalk walk, VisualElement mount, HashSet<VisualElement> roots)
+        {
+            for (var ve = mount; ; ve = ve.parent)
+            {
+                if (roots.Contains(ve)) return walk.HiddenPrimaryElements.Contains(ve);
+                if (SuspenseHiddenElements.IsHidden(ve)) return true;
+            }
+        }
+
+        private static void SetOffscreen(GeneralCommitState commit, ComponentFiber fiber, bool offscreen,
+            VisualElement? hiddenUnder, ComponentFiber? offscreenUnder)
+        {
+            (commit.OffscreenBefore ??= new()).Add((fiber, fiber.IsOffscreen, fiber.HiddenUnder, fiber.OffscreenUnder));
+            fiber.IsOffscreen = offscreen;
+            fiber.HiddenUnder = hiddenUnder;
+            fiber.OffscreenUnder = offscreenUnder;
+        }
+
+        // For a walk whose removal pass does not run, so nothing those writes describe reached the screen.
+        private void RestoreWhatTheSuspensesWrote(GeneralCommitState commit)
+        {
+            for (var i = commit.OffscreenBefore?.Count ?? 0; i-- > 0;)
+            {
+                var (fiber, offscreen, hiddenUnder, offscreenUnder) = commit.OffscreenBefore![i];
+                fiber.IsOffscreen = offscreen;
+                fiber.HiddenUnder = hiddenUnder;
+                fiber.OffscreenUnder = offscreenUnder;
+            }
+            for (var i = commit.RecordsBefore?.Count ?? 0; i-- > 0;)
+            {
+                var (boundary, container, portalScope, position, before) = commit.RecordsBefore![i];
+                _ctx.SetSuspenseFallbackShown(boundary, container, portalScope, position, before);
+            }
+        }
+
+        private static HashSet<VisualElement> ElementsIn(GeneralCommitState commit, int from, int to)
+        {
+            var elements = new HashSet<VisualElement>();
+            for (var i = from; i < to; i++)
+            {
+                elements.Add(commit.NewElements[i].element!);
+            }
+            return elements;
+        }
+
+        private static bool IsAtOrUnder(VisualElement element, HashSet<VisualElement> roots)
+            => HolderOf(element, roots) != null;
+
+        private static VisualElement? HolderOf(VisualElement? element, HashSet<VisualElement> roots)
+        {
+            for (var ve = element; ve != null; ve = ve.parent)
+            {
+                if (roots.Contains(ve)) return ve;
+            }
+            return null;
+        }
+
         private void ApplyOffscreenChanges(GeneralCommitState commit)
         {
+            if (commit.DisplayChanges != null)
+            {
+                foreach (var (_, element, hidden) in commit.DisplayChanges)
+                {
+                    if (hidden)
+                    {
+                        SuspenseHiddenElements.Hide(element);
+                        _ctx.DetachRefsWhileHidden(element);
+                        // UI Toolkit lets go of the focus of an element no longer displayed only at its next layout
+                        // pass, which SuspenseHiddenFocusPanelTests pins; the commit that hides it lets go of it here.
+                        var focused = element.focusController?.focusedElement as VisualElement;
+                        if (SuspenseHiddenElements.IsAtOrUnderHidden(focused)) focused!.Blur();
+                    }
+                    else
+                    {
+                        SuspenseHiddenElements.Reveal(element);
+                        _ctx.AttachRefsHiddenUnder(element);
+                    }
+                }
+            }
             if (commit.OffscreenChanges == null) return;
             foreach (var (fiber, hidden) in commit.OffscreenChanges)
             {
@@ -1446,7 +1691,8 @@ namespace Velvet
             }
         }
 
-        // Walks the branch the boundary's record says is on screen, and says whether that is the fallback.
+        // Walks what the boundary's record says is in the container — the fallback, behind the primary where that
+        // is kept hidden, or else the primary — and says whether the fallback is shown.
         private bool ExpandCommittedSuspenseBranch(
             InlineWalk walk,
             SuspenseNode suspense,
@@ -1455,7 +1701,12 @@ namespace Velvet
             WalkPosition primaryPosition,
             WalkPosition fallbackPosition)
         {
-            var wasFallback = _ctx.IsSuspenseFallbackShown(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
+            var portalScope = _ctx.PortalChildKeyScopeHere;
+            var wasFallback = _ctx.IsSuspenseFallbackShown(boundaryFiber, walk.Parent, portalScope, suspenseAt);
+            if (wasFallback && _ctx.IsSuspensePrimaryHidden(boundaryFiber, walk.Parent, portalScope, suspenseAt))
+            {
+                ExpandInlineRecursive(walk, suspense.Children ?? Array.Empty<VNode>(), primaryPosition);
+            }
             var nodesToExpand = wasFallback
                 ? (suspense.Fallback != null ? new[] { suspense.Fallback } : Array.Empty<VNode>())
                 : (suspense.Children ?? Array.Empty<VNode>());

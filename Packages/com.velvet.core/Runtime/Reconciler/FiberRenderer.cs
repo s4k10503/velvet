@@ -795,6 +795,9 @@ namespace Velvet
                 SuspendWithoutBoundary(fiber);
                 return;
             }
+            // A boundary whose own pass a read outside every Suspense gave up renders when that read resolves; asked
+            // for now, it gives that pass up again, and a drain asking each time reached the nested-update limit.
+            if (boundary.SuspendedOn != null) return;
             FiberWorkLoop.RequestRenderFromHook(fiber);
             boundary.InvalidateMemoCache();
             FiberWorkLoop.RequestRenderFromHook(boundary);
@@ -839,9 +842,12 @@ namespace Velvet
                     () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, NotifyAsyncResourceCompleted));
                 return;
             }
-            // Searched from the parent, as React takes the nearest Suspense above the component that suspended: a
-            // boundary this fiber renders itself wraps its output, never its own read.
-            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
+            // A fiber a Suspense keeps offscreen records which one. Any other is searched from its parent, as React
+            // takes the nearest Suspense above the component that suspended: a boundary this fiber renders itself
+            // wraps its output, never its own read.
+            var boundary = fiber.IsOffscreen
+                ? fiber.OffscreenUnder
+                : ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
             if (boundary == null)
             {
                 // What React retries is the work that suspended on this read; with none waiting on it, nothing
@@ -849,8 +855,18 @@ namespace Velvet
                 RetrySuspendedPasses(fiber);
                 return;
             }
+            // A primary the boundary keeps hidden is still in the container, and the boundary's re-render diffs its
+            // elements against this fiber's PreviousTree: the render below would move that past what they hold. The
+            // boundary renders this fiber instead, as SuspendPassOwner has it.
+            if (fiber.IsOffscreen && fiber.Reconciler!.Context.IsBoundaryHidingPrimary(boundary))
+            {
+                FiberWorkLoop.RequestRenderFromHook(fiber);
+                boundary.InvalidateMemoCache();
+                FiberWorkLoop.RequestRenderFromHook(boundary);
+                return;
+            }
             // Settle the child's subtree to its resolved output. The child's host slot is currently occupied by
-            // the fallback, so render WITHOUT committing (deferReconcile): the boundary's re-render below commits
+            // the fallback, or hidden behind it, so render WITHOUT committing (deferReconcile): the boundary's re-render below commits
             // the fallback→children reveal in one pass: a resolved resource schedules the boundary itself, not the
             // child. This single render handles all three resolve outcomes: a resolved child settles its
             // PreviousTree for the boundary to reuse; a faulted child's Use<T> throws a real exception that routes

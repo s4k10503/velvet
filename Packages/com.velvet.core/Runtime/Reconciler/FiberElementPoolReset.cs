@@ -137,6 +137,7 @@ namespace Velvet
             // The clock its last mount recorded would otherwise answer for the next consumer's filter tweens.
             MotionClock.Forget(element);
             ResetInlineStyle(element.style);
+            SuspenseHiddenElements.Release(element);
 
             element.userData = null;
             element.name = string.Empty;

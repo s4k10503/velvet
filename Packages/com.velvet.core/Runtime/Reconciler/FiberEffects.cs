@@ -125,8 +125,8 @@ namespace Velvet
 
         // Queues every layout effect of a hidden fiber for the commit that reveals it, whatever its deps, has that
         // commit create every imperative handle again — from the last committed factory where the reveal does not
-        // render the fiber — as React calls create() on reconnect: the hidden elements were removed, and a handle
-        // built over one would outlive it. The passive work held while hidden is scheduled with them.
+        // render the fiber — as React calls create() on reconnect. The passive work held while hidden is scheduled
+        // with them.
         internal static void ShowLayoutEffects(ComponentFiber fiber, ReconcilerContext ctx)
         {
             if (!fiber.LayoutEffectsHidden) return;

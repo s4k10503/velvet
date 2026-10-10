@@ -748,12 +748,23 @@ A container of direct plain elements warns once for each repeated sibling key, o
 
 Suspense boundaries in separate host elements or Portals keep independent pending state, including
 Portals sharing one target. Updating a suspended primary keeps its fallback visible until its resource
-resolves. A component whose render suspended keeps its state meanwhile where no host element sits between it
-and the Suspense — one inside such an element is disposed with it — and the layout effects and imperative
-handles of one the boundary had shown are taken down in the commit that shows the fallback until the
-boundary reveals it again, while one first mounted under the fallback runs none of its effects, passive ones
-included, and creates no imperative handle until then, as React
-disconnects and mounts them. Removing the boundary releases that pending state when its displayed children are removed.
+resolves. A boundary that has shown its children and suspends again keeps them in the tree, hidden with an
+inline `display: none` ahead of the fallback, as React hides them: the outermost elements of its children
+are hidden, the children of a Portal among them included, and each gets back the inline `display` it had
+when the boundary reveals them. Their elements are kept rather than created again, and the components in
+them keep their state. A query over the tree finds those hidden elements too. The commit that shows the
+fallback takes down their layout effects, imperative handles and element refs, as React 18 does, and blurs
+a focused element inside them; the commit that reveals them sets the effects, handles and refs up
+again. Their passive effects stay connected throughout, as React's do. The components in the children of a
+`V.Portal` a render adds to the hidden children, whose elements are hidden all the same, and those of a
+`V.VirtualList` row the list mounts outside a render of the boundary are not taken down that way: they set
+their layout effects and refs up as they mount. A `V.Anchored`
+element among the hidden children stays hidden while it tracks its target. A boundary that has not
+shown its children yet discards what the suspended render built: a component whose render suspended keeps
+its state meanwhile only where no host element sits between it and the Suspense — one inside such an element
+is disposed with it — and one first mounted under the fallback runs none of its effects, passive ones
+included, and creates no imperative handle until the reveal, as React mounts it then. Removing the boundary
+releases that pending state when its displayed children are removed.
 
 Where an update's render suspends with no Suspense expansion inside it to catch the signal — the render
 of the component that updated, or of one below it that the render reaches, in any slice of a time-sliced
@@ -780,7 +791,7 @@ Like React's functional components, Velvet adopts a hook-based lifecycle model (
 |-------|--------|------|
 | `componentDidMount` | `Hooks.UseEffect(fn, Array.Empty<object>())` | Empty deps means it runs once on mount |
 | `componentWillUnmount` | The return value of `Hooks.UseEffect` (a cleanup delegate) | Return the cleanup from the same hook. Equivalent to React |
-| A callback ref, `ref={el => …}` | `refCallback:` on an element factory | Attaches at the end of the reconcile pass rather than where the pass creates or patches the element, so every cleanup a pass owes runs before any setup it owes — including when the pass is spread over several frames. A read taken *during* the pass — another component's render body, an `onCreated:`, a `wrapElement:` — therefore sees what the previous pass left, as React's `ref.current` does during render. A second `refCallback:` setup is not such a read: the pass runs its setups as one uninterrupted sequence, in the order it reached their elements, so each sees what the ones before it just wrote. Layout effects and effects run after the pass, so they find it attached — a frame-budgeted flush defers both to the slice that completes the pass, which is also the slice the setups run in. The returned `Action` is the cleanup, run when the element leaves the tree, when the tree is disposed, or when the callback's identity changes — that last one at the end of the pass with the setups, ahead of all of them, so a pass's own patches still see what the old setup published; the same delegate instance across renders leaves the installed ref untouched, which is what `Ref<T>.SetElement` is for |
+| A callback ref, `ref={el => …}` | `refCallback:` on an element factory | Attaches at the end of the reconcile pass rather than where the pass creates or patches the element, so every cleanup a pass owes runs before any setup it owes — including when the pass is spread over several frames. A read taken *during* the pass — another component's render body, an `onCreated:`, a `wrapElement:` — therefore sees what the previous pass left, as React's `ref.current` does during render. A second `refCallback:` setup is not such a read: the pass runs its setups as one uninterrupted sequence, in the order it reached their elements, so each sees what the ones before it just wrote. Layout effects and effects run after the pass, so they find it attached — a frame-budgeted flush defers both to the slice that completes the pass, which is also the slice the setups run in. The returned `Action` is the cleanup, run when the element leaves the tree, when the tree is disposed, when a `V.Suspense` hides it (the setup runs again when the boundary reveals it, as React 18 detaches and attaches the refs of a tree it hides), or when the callback's identity changes — that last one at the end of the pass with the setups, ahead of all of them, so a pass's own patches still see what the old setup published; the same delegate instance across renders leaves the installed ref untouched, which is what `Ref<T>.SetElement` is for |
 | `componentDidCatch(error, info)` | Catch descendant render errors via the `fallback` callback of `V.ErrorBoundary`, or via `Hooks.UseFallback` inside a boundary component (`[Component(IsErrorBoundary = true)]`) | The intended semantics is catching descendant render exceptions. Log side effects in the boundary's own `Hooks.UseEffect`; a handler for every caught error is the root's `OnCaughtError` ([§2-5](#2-5-suspense--error-boundary)) |
 | `getDerivedStateFromError(error)` | `V.ErrorBoundary(fallback, children)` or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback` | For a root boundary directly under mount, the helper is more concise |
 

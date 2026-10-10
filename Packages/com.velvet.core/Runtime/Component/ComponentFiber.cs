@@ -193,13 +193,26 @@ namespace Velvet
         /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the
         /// fibers that expansion created, less the ones a nested Suspense that suspended created: that
         /// boundary owns its own primary subtree, so an enclosing one resolving leaves it
-        /// hidden. <see cref="FiberWorkLoop.FlushState"/>'s
-        /// offscreen guard defers a lane flush for offscreen fibers (their slot is occupied by the
-        /// fallback). It is per-fiber rather than per-boundary because one component fiber can render
+        /// hidden. Where the Suspense keeps its committed primary hidden, the fibers mounted inside that
+        /// primary's elements are written too (<see cref="HiddenUnder"/>). <see cref="FiberWorkLoop.FlushState"/>'s
+        /// offscreen guard defers a lane flush for offscreen fibers until the render that reveals them. It is
+        /// per-fiber rather than per-boundary because one component fiber can render
         /// several Suspense nodes: that Suspense's own visible fallback subtree, and a sibling Suspense's
         /// children, sit under the same boundary and must still flush.
         /// </summary>
         internal bool IsOffscreen { get; set; }
+
+        // The hidden primary element whose Suspense made this fiber offscreen because the fiber is mounted inside
+        // it, rather than because that Suspense's own walk mounted it; null otherwise. GeneralPathReconciler's
+        // SetPrimaryHidden reveals the fiber only with that element, so an enclosing Suspense revealing leaves a
+        // nested one's fibers hidden.
+        internal UnityEngine.UIElements.VisualElement? HiddenUnder { get; set; }
+
+        // The fiber rendering the Suspense that keeps this fiber offscreen; null while it is shown, and under a
+        // Suspense no component renders. FiberRenderer.NotifyAsyncResourceCompleted takes it as the Suspense this
+        // fiber is inside, which the nearest boundary fiber above it need not be: that one can render a Suspense
+        // this fiber sits beside.
+        internal ComponentFiber? OffscreenUnder { get; set; }
 
         // Set while a Suspense keeps this fiber offscreen with its layout effects cleaned up — see
         // FiberEffects.HideLayoutEffects.

@@ -173,6 +173,26 @@ namespace Velvet.TestUtilities
             return null;
         }
 
+        /// <summary>
+        /// The text of every <see cref="Label"/> in <paramref name="root"/>'s subtree in pre-order, joined by
+        /// <paramref name="separator"/>, leaving out each one inside an element whose inline <c>display</c> is
+        /// <c>none</c> — which is how a Suspense keeps a primary it has hidden in the tree.
+        /// </summary>
+        public static string DisplayedLabelTexts(this VisualElement root, string separator)
+        {
+            if (root == null) throw new ArgumentNullException(nameof(root));
+            var texts = new System.Collections.Generic.List<string>();
+            CollectDisplayedLabelTexts(root, texts);
+            return string.Join(separator, texts);
+        }
+
+        private static void CollectDisplayedLabelTexts(VisualElement element, System.Collections.Generic.List<string> texts)
+        {
+            if (element.style.display == DisplayStyle.None) return;
+            if (element is Label label) texts.Add(label.text);
+            for (var i = 0; i < element.childCount; i++) CollectDisplayedLabelTexts(element.ElementAt(i), texts);
+        }
+
         private static FieldInfo GetClickableClickedField()
         {
             return s_clickableClickedField ??=
