@@ -476,18 +476,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnInputWithATranslate_When_TheDrawingIsBuilt_Then_ItCarriesTheSameTranslate()
+        public void Given_AnInputWithATranslate_When_ADrawingIsPlaced_Then_ItCarriesTheSameTranslate()
         {
-            // Arrange
-            var field = Mount(TextColorHost);
+            // Arrange — off panel, since a focused single-line input rewrites its own translate to scroll its text.
+            var input = (TextElement)new TextField().textEdition;
             var moved = new Translate(new Length(9f), new Length(4f));
-            Input(field).style.translate = moved;
+            input.style.translate = moved;
+            var drawing = new TextElement();
+            var place = typeof(SelectionTextOverlay).GetMethod("Place", BindingFlags.NonPublic | BindingFlags.Instance);
 
             // Act
-            Select(field, 1, 3);
+            place!.Invoke(new SelectionTextOverlay(input), new object[] { drawing });
 
             // Assert
-            Assert.That(Drawing(field).style.translate.value, Is.EqualTo(moved));
+            Assert.That(drawing.style.translate.value, Is.EqualTo(moved));
         }
 
         [Test]
