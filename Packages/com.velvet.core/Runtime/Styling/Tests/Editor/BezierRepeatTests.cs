@@ -112,6 +112,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AReverseRepeatOutlastedByASlowerChannel_When_TheClockLandsExactlyOnTheEnd_Then_ItShowsTheEndOfTheLastPass()
+        {
+            // Arrange — three passes end at 3 s, and a slower channel holds the play's end at 4 s. Reached by the
+            // fall-through into the pass arithmetic, 4 s reads as the end of a fourth pass, a reversed one.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, PassSec,
+                new MotionRepeat(2f, TransitionRepeatType.Reverse, 0f));
+            state!.SlowestTimingEndSec = 4f;
+
+            // Act
+            BezierTweenDriver.Step(element, state, 4f);
+
+            // Assert — two repeats are an even count, so the play ends on the to-value (opacity 0 on the fourth pass).
+            Assert.That(element.style.opacity.value, Is.EqualTo(1f).Within(1e-5f));
+        }
+
+        [Test]
         public void Given_AnEndlessLoop_When_FourPassesElapseInOneStep_Then_ItShowsTheEndOfTheFourthPass()
         {
             // Arrange
