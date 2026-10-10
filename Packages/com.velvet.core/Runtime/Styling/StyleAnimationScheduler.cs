@@ -1171,6 +1171,10 @@ namespace Velvet
             // gives up the rest too rather than staying on with no entry to release it by.
             ReleaseHeld(element);
             SeekToStart(element, pending);
+            if (pending.Bezier != null)
+            {
+                BezierTweenDriver.NarrowSuspension(element, pending.Bezier);
+            }
             _held[element] = pending;
         }
 

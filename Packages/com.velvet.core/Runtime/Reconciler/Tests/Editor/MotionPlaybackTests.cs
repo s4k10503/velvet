@@ -3,6 +3,7 @@ using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -60,6 +61,35 @@ namespace Velvet.Tests
         }
 
         private static float Opacity(VisualElement element) => element.style.opacity.value;
+
+        [Test]
+        public void Given_ADrivenTweenOnAHeldClock_When_ItsPlaybackIsPausedAndTheClockSteps_Then_ItsValueStopsAdvancing()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            _scheduler.Clock = clock;
+            var element = OnPanel("driven");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible,
+                new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.Linear }, playback: playback);
+            for (var i = 0; i < 4; i++)
+            {
+                clock.Now += HeldMotionClock.FrameSec;
+                Tick();
+            }
+            var beforePause = Opacity(element);
+            playback.IsPaused = true;
+
+            // Act
+            for (var i = 0; i < 4; i++)
+            {
+                clock.Now += HeldMotionClock.FrameSec;
+                Tick();
+            }
+
+            // Assert
+            Assert.That(beforePause > 0f ? Opacity(element) : float.NaN, Is.EqualTo(beforePause).Within(1e-6f));
+        }
 
         [Test]
         public void Given_ABezierPlayAtHalfRate_When_ThePanelTicks_Then_ItHasCoveredHalfTheTimeOfAPlayOnNoPlayback()

@@ -660,8 +660,8 @@ but not the same instance.
   the element starts from outside the sequence, an exit included, starts from those values on the channels
   its classes name, as Framer's next animation starts from where the value sits, and the held values on the
   other channels stay where they are, through that play's end too. Translate is one style for both axes: a
-  play naming one axis leaves the other held. A play of no duration, a `Tween` or a teardown takes the held
-  values off instead. Inside the sequence, `controls.Play()` after a cancel starts it again from step 0 and
+  play naming one axis leaves the other held. A play of no duration, a `Tween` on the panel's clock or a teardown takes
+  the held values off instead; a `Tween` the mount's own clock drives starts from them as a `Bezier` does. Inside the sequence, `controls.Play()` after a cancel starts it again from step 0 and
   `controls.Restart()` reseeds it at step 0 still paused: the plays the reseed starts begin from the held
   values on the channels they name, and every value the cancel held that is still on, whatever its channel,
   comes off once the reseed commits.
