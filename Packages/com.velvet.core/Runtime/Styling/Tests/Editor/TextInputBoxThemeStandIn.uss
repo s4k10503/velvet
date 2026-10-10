@@ -1,0 +1,2 @@
+/* A theme declaring a text input's caret and selection colours on its input box. */
+.unity-base-text-field__input { --unity-cursor-color: #0000ff; --unity-selection-color: #0000ff; }
