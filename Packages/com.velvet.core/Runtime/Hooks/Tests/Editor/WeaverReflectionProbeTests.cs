@@ -464,7 +464,8 @@ namespace Velvet.Tests
         // Components the weaver cannot process, beside one it can. `Broken` names no declaring type, so any
         // walk reaching it throws; the walks reach it through a call in the body, through a helper, and through a
         // Velvet.Hooks member, which only the reach fold descends. InjectFails throws after the weave has
-        // started: a branch with no target follows its ret.
+        // started: a branch with no target follows its ret. It holds a local of its own, and a short branch to
+        // its ret follows the one with no target.
         private static ModuleDefinition BuildContainmentModule(out MethodDefinition injectFails,
             out MethodDefinition sibling)
         {
@@ -515,14 +516,17 @@ namespace Velvet.Tests
             }
             injectFails = AddProbeComponent(module, "InjectFails", il =>
             {
+                il.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Int32));
                 il.Append(Instruction.Create(OpCodes.Ldarg_0));
                 il.Append(Instruction.Create(OpCodes.Pop));
                 il.Append(Instruction.Create(OpCodes.Ldnull));
-                il.Append(Instruction.Create(OpCodes.Ret));
+                var ret = Instruction.Create(OpCodes.Ret);
+                il.Append(ret);
                 var noTarget = Instruction.Create(OpCodes.Nop);
                 noTarget.OpCode = OpCodes.Br;
                 noTarget.Operand = null;
                 il.Append(noTarget);
+                il.Append(Instruction.Create(OpCodes.Br_S, ret));
             });
             sibling = AddProbeComponent(module, "Sibling", il =>
             {
@@ -536,8 +540,21 @@ namespace Velvet.Tests
         // variables.
         private static string Describe(MethodDefinition method)
             => string.Join("|", method.Body.Instructions.Select(instr =>
-                $"{instr.Previous?.OpCode}<{instr.OpCode} {instr.Operand}>{instr.Next?.OpCode}"))
+                $"{instr.Previous?.OpCode}<{instr.OpCode} {OperandText(method.Body, instr.Operand)}>{instr.Next?.OpCode}"))
                + $"#{method.Body.Variables.Count}";
+
+        private static string OpCodesOf(MethodDefinition method)
+            => string.Join("|", method.Body.Instructions.Select(instr => instr.OpCode.ToString()));
+
+        private static string OperandsOf(MethodDefinition method)
+            => string.Join("|", method.Body.Instructions.Select(instr => OperandText(method.Body, instr.Operand)));
+
+        // A branch target is named by its place in the body: the offset an Instruction carries is not part of what
+        // the snapshot holds.
+        private static string OperandText(Mono.Cecil.Cil.MethodBody body, object? operand)
+            => operand is Instruction target
+                ? $"@{body.Instructions.IndexOf(target)}"
+                : operand?.ToString() ?? string.Empty;
 
         // What a weave left behind: its warnings, whether it reported a change, and what it threw if it threw. A
         // weaver without per-method containment lets an exception out, which a case reads as a value to compare
@@ -616,6 +633,54 @@ namespace Velvet.Tests
             // Assert
             Assert.That((outcome.Threw, Describe(injectFails)), Is.EqualTo((string.Empty, before)),
                 "The instructions, their links and the variables are those the weave found");
+        }
+
+        [Test]
+        public void Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_EachOperandIsAsItWas()
+        {
+            // Arrange — InjectFails ends in a short branch to its ret, and the weave retargets every branch to a
+            // ret onto the commit it injects ahead of that ret
+            using var module = BuildContainmentModule(out var injectFails, out _);
+            var before = OperandsOf(injectFails);
+
+            // Act
+            var outcome = WeaveWithoutLettingItThrow(module);
+
+            // Assert
+            Assert.That((outcome.Threw, OperandsOf(injectFails)), Is.EqualTo((string.Empty, before)),
+                "Each instruction's operand is the one the weave found");
+        }
+
+        [Test]
+        public void Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_EachOpCodeIsAsItWas()
+        {
+            // Arrange — InjectFails ends in a short branch, placed after the branch with no target
+            using var module = BuildContainmentModule(out var injectFails, out _);
+            var before = OpCodesOf(injectFails);
+
+            // Act
+            var outcome = WeaveWithoutLettingItThrow(module);
+
+            // Assert
+            Assert.That((outcome.Threw, OpCodesOf(injectFails)), Is.EqualTo((string.Empty, before)),
+                "Each instruction's opcode is the one the weave found");
+        }
+
+        [Test]
+        public void Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_TheLocalsAreAsTheyWere()
+        {
+            // Arrange — InjectFails holds one local, and the weave adds locals of its own
+            using var module = BuildContainmentModule(out var injectFails, out _);
+            var before = injectFails.Body.Variables.Select(variable => variable.VariableType.FullName).ToList();
+
+            // Act
+            var outcome = WeaveWithoutLettingItThrow(module);
+
+            // Assert
+            Assert.That(
+                (outcome.Threw, string.Join(",", injectFails.Body.Variables.Select(variable => variable.VariableType.FullName))),
+                Is.EqualTo((string.Empty, string.Join(",", before))),
+                "The locals are those the body declared, none of the weaver's and none of the body's removed");
         }
 
         [Test]
@@ -1057,6 +1122,51 @@ namespace Velvet.Tests
             var readIl = readMissing.Body.GetILProcessor();
             readIl.Append(Instruction.Create(OpCodes.Call, UndeclaredMethodOf(module)));
             readIl.Append(Instruction.Create(OpCodes.Ldnull));
+            readIl.Append(Instruction.Create(OpCodes.Ret));
+            module.Types.Single(type => type.FullName == "Velvet.Hooks").Methods.Add(readMissing);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Object));
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, readMissing));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_1));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((true, 0)),
+                "ReadMissing reaches nothing the reach fold can see, and UseId's value keys the cache");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads such a callee inside a Velvet.Hooks member as no hook as
+        // well. What it pins is the reach fold treating a callee whose Resolve() raises as reaching nothing:
+        // returning false from the `catch` in `HookReachFold.TryLeaf` hands the fold a null definition to descend,
+        // and the weave throws.
+        [Test]
+        public void Given_AHooksMemberCallingAMethodInAnAssemblyNoResolverFinds_When_CompilerWeaverRuns_Then_MethodIsWoven()
+        {
+            // Arrange — `var value = Hooks.ReadMissing(); var id = Hooks.UseId(null);`, where ReadMissing's body
+            // calls into an assembly no resolver finds. The safety fold classifies Hooks.* by name, so only the
+            // reach fold descends into ReadMissing.
+            using var module = BuildHookShapeProbeModule("HooksMemberUnresolvableProbe",
+                out var method, out var useId, out _, out _);
+            var missingScope = new AssemblyNameReference("Velvet.WeaverProbe.Missing", new Version(1, 0, 0, 0));
+            module.AssemblyReferences.Add(missingScope);
+            var missingType = new TypeReference("Probe.Missing", "Service", module, missingScope);
+            var missingMethod = new MethodReference("Run", module.TypeSystem.Object, missingType);
+            Assume.That(() => missingMethod.Resolve(), Throws.Exception,
+                "Precondition: Cecil raises for a reference into an assembly no resolver finds");
+            var readMissing = new MethodDefinition("ReadMissing",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Object);
+            readMissing.Body = new Mono.Cecil.Cil.MethodBody(readMissing);
+            var readIl = readMissing.Body.GetILProcessor();
+            readIl.Append(Instruction.Create(OpCodes.Call, missingMethod));
             readIl.Append(Instruction.Create(OpCodes.Ret));
             module.Types.Single(type => type.FullName == "Velvet.Hooks").Methods.Add(readMissing);
             method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Object));
