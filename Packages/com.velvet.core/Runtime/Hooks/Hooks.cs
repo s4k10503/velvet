@@ -1399,13 +1399,16 @@ namespace Velvet
 
             UseFrame(dt =>
             {
-                if (walker.Current.IsPaused)
+                // A speed of 0 holds the cursor as a pause does: Advance(0) would still cross a step that holds
+                // for no time, and apply a changed iteration count.
+                var speed = walker.Current.Playback.Rate;
+                if (walker.Current.IsPaused || speed == 0f)
                 {
                     return;
                 }
                 var beforeGeneration = walker.Current.Generation;
                 var wasComplete = walker.Current.IsComplete;
-                walker.Current.Advance(dt);
+                walker.Current.Advance(dt * speed);
                 if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete != wasComplete)
                 {
                     Rerender();
@@ -1416,14 +1419,30 @@ namespace Velvet
             // abandons the wait in the walker's own reseed, so this one is for unmount.
             UseEffect(() => walker.Current.AbandonAwait, Array.Empty<object>());
 
+            UseLayoutEffect(() =>
+            {
+                walker.Current.AfterCommit();
+                return (Action?)null;
+            });
+
             var controls = new AnimationSequenceControls(
-                play: () => walker.Current.IsPaused = false,
+                play: () =>
+                {
+                    // Unpaused before the reseed, so a step 0 Call callback that pauses the sequence stays paused.
+                    walker.Current.IsPaused = false;
+                    if (walker.Current.IsCancelled)
+                    {
+                        walker.Current.Reset(latestSteps.Current ?? steps);
+                        Rerender();
+                    }
+                },
                 pause: () => walker.Current.IsPaused = true,
                 restart: () =>
                 {
                     walker.Current.Reset(latestSteps.Current ?? steps);
                     Rerender();
                 },
+                cancel: () => walker.Current.Cancel(),
                 walker: walker.Current!);
 
             // Before the mount effect's first reseed the walker has seen no steps, so it would read a sequence

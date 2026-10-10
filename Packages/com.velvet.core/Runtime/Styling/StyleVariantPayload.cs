@@ -118,6 +118,7 @@ namespace Velvet
 
             // A clipped element's wrapper lays the element out from the same classes, so it takes the toggle too.
             ClipPathLayoutBox.SyncClasses(control);
+            ctx?.StyleAnimationScheduler.ReassertHeld(control);
         }
 
         // Where core lands: the control's input box for a surface utility (StyleInputBoxSurface), else the

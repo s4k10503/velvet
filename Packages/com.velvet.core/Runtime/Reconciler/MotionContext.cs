@@ -35,19 +35,26 @@ namespace Velvet
         public static readonly ComponentContext<MotionOrchestrationFrame> Orchestration =
             ComponentContext<MotionOrchestrationFrame>.Create(null);
 
+        // The playback the Motion pushing ActiveLabel hands the descendants that take that label
+        // (MotionVariantResolver.PlaybackForChildren). Kept in a snapshot that outlives its pass, unlike the
+        // orchestration: a playback is the sequence's own for as long as it plays, not one pass's.
+        public static readonly ComponentContext<MotionPlayback> Playback = ComponentContext<MotionPlayback>.Create(null);
+
         // What a Motion establishes for the subtree it reconciles, pushed together and popped together by
         // FiberNodeFactory.CreateForMotionNode and FiberNodePatcher.PatchMotion. FiberContextSpine rebuilds the
-        // two labels, and not the orchestration, for an isolated render.
+        // two labels and the playback, and not the orchestration, for an isolated render.
         public static void PushForChildren(ComponentContextStack stack, string label, string? initialLabel,
-            MotionOrchestrationFrame? orchestration)
+            MotionOrchestrationFrame? orchestration, MotionPlayback? playback)
         {
             stack.Push(ActiveLabel, label);
             stack.Push(InitialLabel, initialLabel);
             stack.Push(Orchestration, orchestration);
+            stack.Push(Playback, playback);
         }
 
         public static void PopForChildren(ComponentContextStack stack)
         {
+            stack.Pop(Playback);
             stack.Pop(Orchestration);
             stack.Pop(InitialLabel);
             stack.Pop(ActiveLabel);

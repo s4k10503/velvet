@@ -418,6 +418,14 @@ namespace Velvet
             };
             initialProvider.PushContext(stack);
             walk.Pushed.Add(initialProvider);
+            var playbackProvider = new ContextProviderNode<MotionPlayback>
+            {
+                Context = MotionContext.Playback,
+                Value = MotionVariantResolver.PlaybackForChildren(motion, stack.Get(MotionContext.Playback)),
+                Children = System.Array.Empty<VNode>(),
+            };
+            playbackProvider.PushContext(stack);
+            walk.Pushed.Add(playbackProvider);
             if (motion.Children is { Length: > 0 })
             {
                 if (PushEnclosingProviders(
@@ -426,9 +434,10 @@ namespace Velvet
                     return true;
                 }
             }
+            playbackProvider.PopContext(stack);
             initialProvider.PopContext(stack);
             motionProvider.PopContext(stack);
-            walk.Pushed.RemoveRange(walk.Pushed.Count - 2, 2);
+            walk.Pushed.RemoveRange(walk.Pushed.Count - 3, 3);
             return false;
         }
 

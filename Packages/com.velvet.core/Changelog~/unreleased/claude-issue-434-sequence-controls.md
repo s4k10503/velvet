@@ -2,8 +2,8 @@
 
 - `AnimationSequenceControls`, the handle `Hooks.UseAnimationSequence` returns, carries a read-only
   `TimeSec` beside `Play`, `Pause` and `Restart`: the Web Animations API's `currentTime` over the
-  sequence's own timeline, counting each hold at its authored length. A cancel, a playback rate, seek and
-  reverse are not offered; the motion guide's Timelines section says why.
+  sequence's own timeline, counting each hold at its authored length. Seek and reverse are not offered; the
+  motion guide's Timelines section says why.
 
 ### Fixed
 

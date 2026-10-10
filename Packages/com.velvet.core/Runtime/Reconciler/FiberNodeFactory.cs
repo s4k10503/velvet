@@ -310,7 +310,8 @@ namespace Velvet
                     var childOrchestration = FiberNodePatcher.ResolveChildOrchestration(motionNode,
                         enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec);
                     MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, enter.InitialLabel,
-                        childOrchestration);
+                        childOrchestration, MotionVariantResolver.PlaybackForChildren(motionNode,
+                            _ctx.ComponentContextStack.Get(MotionContext.Playback)));
                     try
                     {
                         ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
@@ -383,7 +384,9 @@ namespace Velvet
                         var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames,
                             enter.From!, enter.Transition!);
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, enter.From, enter.To,
-                            enter.Transition!, enterComplete, enter.DelaySec, onSwap);
+                            enter.Transition!, enterComplete, enter.DelaySec, onSwap,
+                            playback: MotionVariantResolver.PlaybackForChildren(motionNode,
+                                _ctx.ComponentContextStack.Get(MotionContext.Playback)));
                     }
                 }
                 else if (motionNode.Initial != null && motionNode.Animate != null)

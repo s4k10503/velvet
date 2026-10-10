@@ -82,6 +82,8 @@ namespace Velvet
             public (float from, float to)? Rotate;
             public List<ColorChannelPlan>? Colors;
             public List<LengthChannelPlan>? Lengths;
+            // The one translate axis the swap names, and where it lands, when it names one alone.
+            public (SpringAxis Axis, float To)? LoneTranslate;
 
             public bool IsEmpty => Opacity == null && TranslateX == null && TranslateY == null
                 && Scale == null && Rotate == null && Colors == null && Lengths == null;
@@ -206,6 +208,57 @@ namespace Velvet
             return plan;
         }
 
+        // `plan`, each channel `start` also holds starting from `start`'s value rather than its own from-side.
+        internal static SpringPlan StartingFrom(SpringPlan plan, SpringPlan start)
+        {
+            plan.Opacity = StartingFrom(plan.Opacity, start.Opacity);
+            plan.TranslateX = StartingFrom(plan.TranslateX, start.TranslateX);
+            plan.TranslateY = StartingFrom(plan.TranslateY, start.TranslateY);
+            plan.Scale = StartingFrom(plan.Scale, start.Scale);
+            plan.Rotate = StartingFrom(plan.Rotate, start.Rotate);
+            StartingFrom(plan.Colors, start.Colors, static (p, s) => p.Property == s.Property,
+                static (p, s) => new ColorChannelPlan(p.Property, s.From, p.To));
+            StartingFrom(plan.Lengths, start.Lengths, static (p, s) => p.Property == s.Property && p.Unit == s.Unit,
+                static (p, s) => new LengthChannelPlan(p.Property, s.From, p.To, p.Unit));
+            return plan;
+        }
+
+        private static (float from, float to)? StartingFrom((float from, float to)? channel, (float from, float to)? start)
+            => channel == null || start == null ? channel : (start.Value.from, channel.Value.to);
+
+        private static void StartingFrom<T>(List<T>? plan, List<T>? start, Func<T, T, bool> matches,
+            Func<T, T, T> startingFrom)
+        {
+            if (plan == null || start == null)
+            {
+                return;
+            }
+            for (var i = 0; i < plan.Count; i++)
+            {
+                var channel = plan[i];
+                var held = start.FindIndex(s => matches(channel, s));
+                if (held >= 0) plan[i] = startingFrom(channel, start[held]);
+            }
+        }
+
+        // A `start` for StartingFrom: each channel a driver's play has, holding the value given for it, so a play
+        // whose channels have all been released reads as empty.
+        internal static SpringPlan Holding<TColor, TLength>((float? opacity, float? translateX, float? translateY,
+                float? scale, float? rotate) axes, List<TColor>? colors, Converter<TColor, ColorChannelPlan> color,
+            List<TLength>? lengths, Converter<TLength, LengthChannelPlan> length)
+            => new()
+            {
+                Opacity = Holding(axes.opacity),
+                TranslateX = Holding(axes.translateX),
+                TranslateY = Holding(axes.translateY),
+                Scale = Holding(axes.scale),
+                Rotate = Holding(axes.rotate),
+                Colors = colors is { Count: > 0 } ? colors.ConvertAll(color) : null,
+                Lengths = lengths is { Count: > 0 } ? lengths.ConvertAll(length) : null,
+            };
+
+        private static (float from, float to)? Holding(float? value) => value is { } v ? (v, v) : null;
+
         private static (float from, float to)? PairAxis(in SideScan from, in SideScan to,
             ArbitraryProperty axis, float identity, MotionSlotContext? context)
         {
@@ -273,6 +326,13 @@ namespace Velvet
             }
             plan.TranslateX = x ?? (restingTranslateX, restingTranslateX);
             plan.TranslateY = y ?? (restingTranslateY, restingTranslateY);
+            // Read off the swap's classes rather than off x and y, which a resting translate class also fills.
+            var swapped = new SideScan { SwappedAxes = from.SwappedAxes | to.SwappedAxes };
+            var (swapsX, swapsY) = (swapped.WasSwapped(ArbitraryProperty.TranslateX),
+                swapped.WasSwapped(ArbitraryProperty.TranslateY));
+            plan.LoneTranslate = swapsX == swapsY ? null
+                : swapsX ? (SpringAxis.TranslateX, plan.TranslateX.Value.to)
+                : (SpringAxis.TranslateY, plan.TranslateY.Value.to);
         }
 
         /// <summary>

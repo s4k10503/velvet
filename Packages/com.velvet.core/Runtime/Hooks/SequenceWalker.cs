@@ -7,8 +7,9 @@ using System.Threading;
 namespace Velvet
 {
     // Frame-driven state machine walking an AnimationSequenceStep[] for Hooks.UseAnimationSequence. Owns no
-    // VisualElement/VNode/scheduler state of its own — Advance is driven by UseFrame's own per-frame delta
-    // (see Hooks.UseAnimationSequence), and every observable effect is read back out through ToState() so the
+    // VisualElement/VNode state of its own, and reaches the plays its steps start only through Playback — Advance
+    // is driven by UseFrame's own per-frame delta (see Hooks.UseAnimationSequence), and the label and transition
+    // a step commits are read back out through ToState() so the
     // caller can feed it straight into a coordinating V.Motion(animate:, transition:) prop. A step's effect
     // (a To step's label/transition, or a Call step's callback) commits the moment the walker ARRIVES at that
     // step, not once its hold elapses — "holds on this step" means the effect already happened and the cursor
@@ -43,9 +44,43 @@ namespace Velvet
         // DetachAwait clears both.
         private AwaitHold? _await;
 
-        // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is simply never called while
-        // true (the caller gates it), so there is nothing more for this flag to do here.
-        public bool IsPaused { get; set; }
+        // The plays the To steps start step by this, through the transition ToState hands out.
+        public MotionPlayback Playback { get; } = new();
+
+        // The copy of _currentTransition ToState hands out, kept while _currentTransition stays the same.
+        private StyleTransitionConfig? _handedTransition;
+
+        // Set by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is never called while true (the
+        // caller gates it), and the Spring and Bezier plays the steps started hold with it.
+        public bool IsPaused
+        {
+            get => Playback.IsPaused;
+            set => Playback.IsPaused = value;
+        }
+
+        // True from Cancel until the next reseed.
+        public bool IsCancelled { get; private set; }
+
+        private bool _releaseHeldAfterCommit;
+
+        // Called after every commit of the hook's component.
+        public void AfterCommit()
+        {
+            if (_releaseHeldAfterCommit)
+            {
+                _releaseHeldAfterCommit = false;
+                Playback.ReleaseHeldPlays();
+            }
+        }
+
+        // Framer Motion's cancel() over the sequence: the cursor stops where it is, and each Spring or Bezier play
+        // its steps started returns to its starting values and stops there (MotionPlayback.CancelPlays).
+        public void Cancel()
+        {
+            IsPaused = true;
+            IsCancelled = true;
+            Playback.CancelPlays();
+        }
 
         public bool IsComplete => _isComplete;
 
@@ -236,7 +271,22 @@ namespace Velvet
             ArriveAtStart(0);
         }
 
-        public AnimationSequenceState ToState() => new(_currentLabel, _currentTransition, _stepIndex, _isComplete);
+        public AnimationSequenceState ToState() => new(_currentLabel, HandedTransition(), _stepIndex, _isComplete);
+
+        // The coordinator Motion is handed a copy carrying Playback, which is how the plays its label starts find
+        // the sequence; the fold above keeps the authored configs.
+        private StyleTransitionConfig? HandedTransition()
+        {
+            if (_currentTransition == null)
+            {
+                return null;
+            }
+            if (!ReferenceEquals(_handedTransition?.PlaybackOrigin, _currentTransition))
+            {
+                _handedTransition = _currentTransition.WithPlayback(Playback);
+            }
+            return _handedTransition;
+        }
 
         // The wait a reseed leaves is abandoned only after the reseed has arrived, here and in ArriveAtStart's
         // drain: its token's callbacks are user code, so one that throws must find the walker reseeded rather
@@ -283,6 +333,11 @@ namespace Velvet
             _stepIndex = 0;
             _passesCompleted = 0;
             HasReseeded = true;
+            // A cancel holds its plays at their starting values. The reseed's own plays start from them on the
+            // elements whose label it changes, which they can do only in the commit that renders the reseed, so
+            // the rest are released after it (AfterCommit).
+            _releaseHeldAfterCommit |= IsCancelled;
+            IsCancelled = false;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
             _timeBeforeStepSec = 0f;

@@ -637,9 +637,42 @@ restarts it on every render, so a sequence that plays once per mount passes `Arr
 `useEffect(fn, [])` would. `controls.Restart()` returns to step 0 and re-commits its effect (including
 firing a `Call` step 0's callback again) without implicitly resuming a paused sequence.
 
-`controls` drive the sequence's own timeline -- its step cursor and its clock -- and not a Motion play a
-step's label has already started: `controls.Pause()` freezes the cursor, and the transition the current
-step handed out runs on to its end. The handle also carries `controls.TimeSec`, the Web Animations API's
+`controls` carry part of Framer Motion's sequence playback controls: `play`, `pause`, `speed`, `cancel` and
+a read-only `time`. Framer's `stop`, `complete`, `duration` and `then` (its `finished` promise) are not
+offered. They drive the sequence's own timeline -- its step cursor and its clock -- and the `Spring` and
+`Bezier` plays its steps' labels start, as Framer Motion's controls reach every animation of a sequence. A
+play is the sequence's when it starts on a Motion handed `state.CurrentTransition`, or on a descendant
+taking its label from that Motion (see "Label inheritance" above), whichever transition the swap itself
+plays -- a descendant's mount enter, and a presence child's enter, included when it mounts part-way through.
+`state.CurrentTransition` is a copy of the step's transition for that reason: equal to it in every setting,
+but not the same instance.
+
+- `controls.Pause()` freezes the cursor and holds those plays where they are, their delays included;
+  `controls.Play()` resumes both. A play a step starts while the sequence is paused, such as step 0's under
+  `autoplay: false`, holds at its start until `Play()`.
+- `controls.Speed` is Framer Motion's `speed` (the Web Animations API's `playbackRate`): 1 by default,
+  2 plays the timeline and those plays twice as fast, 0.5 half as fast, and 0 holds both as a pause does.
+  Setting it re-times the plays already running from the next frame, delays included. A negative, NaN or
+  infinite value throws `ArgumentOutOfRangeException`: reverse is not offered (see below).
+- `controls.Cancel()` is Framer Motion's `cancel()`: the cursor stops where it is, and each of those plays
+  returns to the values it started from and stops there, without its completion running, as a cancelled
+  Framer animation leaves its value at its start; the label stays the step's. A `Spring` or `Bezier` play
+  the element starts from outside the sequence, an exit included, starts from those values on the channels
+  its classes name, as Framer's next animation starts from where the value sits, and the held values on the
+  other channels stay where they are, through that play's end too. Translate is one style for both axes: a
+  play naming one axis leaves the other held. A play of no duration, a `Tween` on the panel's clock or a teardown takes
+  the held values off instead; a `Tween` the mount's own clock drives starts from them as a `Bezier` does. Inside the sequence, `controls.Play()` after a cancel starts it again from step 0 and
+  `controls.Restart()` reseeds it at step 0 still paused: the plays the reseed starts begin from the held
+  values on the channels they name, and every value the cancel held that is still on, whatever its channel,
+  comes off once the reseed commits.
+
+A `Tween` play -- the default `Type`, and that of `StyleTransition.Fade`, which a sequence takes until a step
+names a transition -- follows the controls only on a mount whose clock is not the panel's, where the per-frame
+driver plays it ([Clocks](#clocks-holding-motion-with-game-time)). On the default `MotionClock.Realtime` it is
+UI Toolkit's own transition, and none of the controls reaches it: it runs on to its end. Give the steps a
+`Spring` or `Bezier` transition where the plays have to follow the controls on any clock.
+
+The handle also carries `controls.TimeSec`, the Web Animations API's
 `currentTime` and Framer Motion's `time`, read-only: seconds into the timeline, counting each hold at its
 authored length. As `currentTime` does, it keeps growing across a loop's passes rather than starting from 0
 on each; a completed sequence reads its full length, and a reseed reads 0. Under `iterations` it counts a
@@ -647,13 +680,10 @@ on each; a completed sequence reads its full length, and a reseed reads 0. Under
 of length `L` ends at `n * L + (n - 1) * repeatDelaySec`, with no gap after the last pass. It is read live from
 the handle, where `state` is a per-render snapshot.
 
-A cancel, a playback rate (`playbackRate`, Framer Motion's `speed`), seek (a settable `time`) and reverse
-(`reverse()`, a negative `playbackRate`) are not offered. Each acts on the animation already running, and the
-sequence only hands a label's Motion its transition: it holds no handle on the play that starts, so none of
-them could reach it, as `Pause` cannot. A timeline of labels also cannot sample the interpolated motion
-between two of them, and running it backwards across a `Call` step has no settled answer to whether the
-callback fires again. To reverse a transition a label started, flip that Motion's `animate` label back: see
-"Springs" for what an interrupted spring keeps.
+Seek (a settable `time`) and reverse (`reverse()`, a negative `speed`) are not offered. A timeline of labels
+cannot yet sample the interpolated motion between two of them, and running it backwards across a `Call`
+step has no settled answer to whether the callback fires again. To reverse a transition a label started,
+flip that Motion's `animate` label back: see "Springs" for what an interrupted spring keeps.
 
 Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
 outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`

@@ -210,6 +210,27 @@ namespace Velvet
         /// <summary>Parsed array of ExitToClass.</summary>
         internal string[] ExitToClasses => _exitToClasses ??= ParseClasses(ExitToClass);
 
+        private MotionPlayback? _playback;
+        private StyleTransitionConfig? _playbackOrigin;
+
+        // The playback whose time the plays of a Motion handed this config step by, with those of the
+        // descendants that take their label from it (MotionVariantResolver.PlaybackForChildren). It rides on the
+        // node's own config rather than on the config a swap plays, since a pose naming its own transition plays
+        // that one.
+        internal MotionPlayback? Playback => _playback;
+
+        // The config WithPlayback copied, for a caller that hands out one copy per config.
+        internal StyleTransitionConfig? PlaybackOrigin => _playbackOrigin;
+
+        // A copy of every knob, so a knob added later is carried without being listed here.
+        internal StyleTransitionConfig WithPlayback(MotionPlayback playback)
+        {
+            var copy = (StyleTransitionConfig)MemberwiseClone();
+            copy._playback = playback;
+            copy._playbackOrigin = this;
+            return copy;
+        }
+
         /// <summary>
         /// Builds a new StyleTransitionConfig that overrides duration / easing on top of the preset.
         /// Class-name definitions are copied; only the specified parameters are overridden.
@@ -253,6 +274,9 @@ namespace Velvet
                 _enterToClasses = _enterToClasses,
                 _exitFromClasses = _exitFromClasses,
                 _exitToClasses = _exitToClasses,
+                // V.Motion tunes a sequence's transition through here when its call site also names a duration,
+                // easing or delay, and the copy has to stay on the sequence's playback.
+                _playback = _playback,
             };
         }
 

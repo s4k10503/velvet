@@ -376,6 +376,13 @@ namespace Velvet
             SyncLayoutOwner(element, state);
         }
 
+        // Holds translate at (x, y) from its next write on, the start values of a play CancelPlay holds.
+        public static void HoldTranslate(MotionSpringState state, float x, float y)
+        {
+            state.TranslateX = new SpringChannel(x, x);
+            state.TranslateY = new SpringChannel(y, y);
+        }
+
         internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)
         {
             if (!StyleArbitraryLonghands.Of(property).Overlaps(named))
@@ -393,6 +400,58 @@ namespace Velvet
         /// unbroken; only the goal it steps toward next changes.
         /// </summary>
         public static void Retarget(MotionSpringState state) => ForEachActiveChannel(state, static c => c.Target = c.RestingTarget);
+
+        /// <summary>
+        /// Puts every channel where a spring released at rest from its <see cref="SpringChannel.RestingTarget"/>
+        /// toward its target stands <paramref name="timeSec"/> later, writes it, and reports whether that is
+        /// settled — Framer Motion's spring generator sampled at a time, earlier or later than where the play
+        /// stands. A play on a <c>MotionPlayback</c> is driven by this; it starts at rest and is never retargeted,
+        /// which is what the sample assumes.
+        /// </summary>
+        public static bool SeekTo(VisualElement element, MotionSpringState state, float timeSec)
+        {
+            // Walked by hand rather than through ForEachActiveChannel, whose capturing lambda would allocate on
+            // every frame a play runs (MotionPlaybackAllocationTests).
+            var t = Mathf.Max(0f, timeSec);
+            SampleChannel(state.Opacity, state, t);
+            SampleChannel(state.TranslateX, state, t);
+            SampleChannel(state.TranslateY, state, t);
+            SampleChannel(state.Scale, state, t);
+            SampleChannel(state.Rotate, state, t);
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) SampleChannel(c.Progress, state, t);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) SampleChannel(l.Value, state, t);
+            }
+            // A zero step moves no integrator, so this writes the channels and reads their settle.
+            return Step(element, state, 0f);
+        }
+
+        private static void SampleChannel(SpringChannel? channel, MotionSpringState state, float timeSec)
+        {
+            if (channel == null)
+            {
+                return;
+            }
+            var (displacement, velocity) = SpringIntegrator.Solve(channel.RestingTarget - channel.Target, 0.0,
+                timeSec, (state.Stiffness, state.Damping, state.Mass));
+            channel.Integrator = new SpringIntegrator((float)(channel.Target + displacement), (float)velocity);
+        }
+
+        /// <summary>
+        /// The values a play started from on each channel, as a plan of from-to pairs that both hold them: what
+        /// <c>StyleAnimationScheduler</c> starts the next play on a held element from.
+        /// </summary>
+        public static MotionSpringClassParser.SpringPlan StartValues(MotionSpringState state)
+            => MotionSpringClassParser.Holding(
+                (state.Opacity?.RestingTarget, state.TranslateX?.RestingTarget, state.TranslateY?.RestingTarget,
+                    state.Scale?.RestingTarget, state.Rotate?.RestingTarget),
+                state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
+                state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property,
+                    l.Value.RestingTarget, l.Value.RestingTarget, l.Unit));
 
         /// <summary>
         /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref

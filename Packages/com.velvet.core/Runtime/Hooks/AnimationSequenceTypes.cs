@@ -117,7 +117,11 @@ namespace Velvet
         /// <summary>The label of the most recently activated <see cref="AnimationSequenceStep"/> <c>To</c> step, or null before the first one runs.</summary>
         public string? CurrentLabel { get; }
 
-        /// <summary>The transition that accompanied <see cref="CurrentLabel"/>.</summary>
+        /// <summary>
+        /// The transition that accompanied <see cref="CurrentLabel"/>: a copy of the step's own, equal to it in
+        /// every setting, that also ties the <c>Spring</c> and <c>Bezier</c> plays a <c>V.Motion</c> handed it
+        /// starts to this sequence's <see cref="AnimationSequenceControls"/>.
+        /// </summary>
         public StyleTransitionConfig? CurrentTransition { get; }
 
         /// <summary>Index into the authored <c>steps</c> array of the step currently holding the cursor.</summary>
@@ -140,22 +144,51 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Imperative controls for a sequence started by <see cref="Hooks.UseAnimationSequence"/>. They drive the
-    /// sequence's own timeline — its step cursor and clock — and not a <c>V.Motion</c> play already running from a
-    /// step's label: see the motion guide's Timelines section for what each reaches.
+    /// Imperative controls for a sequence started by <see cref="Hooks.UseAnimationSequence"/>, Framer Motion's
+    /// sequence playback controls. They drive the sequence's own timeline — its step cursor and clock — and the
+    /// <c>Spring</c> and <c>Bezier</c> plays its steps' labels start on a <c>V.Motion</c> handed
+    /// <see cref="AnimationSequenceState.CurrentTransition"/>: see the motion guide's Timelines section for what
+    /// each reaches.
     /// </summary>
     public readonly struct AnimationSequenceControls
     {
         private readonly SequenceWalker _walker;
 
-        /// <summary>Resumes advancing (idempotent). Also what <c>autoplay: true</c> starts with on mount.</summary>
+        /// <summary>
+        /// Resumes advancing (idempotent), the cursor and the <c>Spring</c> and <c>Bezier</c> plays its steps
+        /// started alike. Also what <c>autoplay: true</c> starts with on mount. After <see cref="Cancel"/>, starts
+        /// the sequence again from step 0.
+        /// </summary>
         public Action Play { get; }
 
-        /// <summary>Freezes the cursor at its current step — elapsed time stops accumulating toward the next hold.</summary>
+        /// <summary>
+        /// Freezes the cursor at its current step — elapsed time stops accumulating toward the next hold — and
+        /// holds the <c>Spring</c> and <c>Bezier</c> plays its steps started where they are.
+        /// </summary>
         public Action Pause { get; }
 
         /// <summary>Returns to step 0 and re-commits its effect (firing a <c>Call</c> step 0's callback again). Does not implicitly unpause.</summary>
         public Action Restart { get; }
+
+        /// <summary>
+        /// Stops the sequence, Framer Motion's <c>cancel()</c>: the cursor stays where it is, and each
+        /// <c>Spring</c> or <c>Bezier</c> play its steps started returns to the values it started from and stops
+        /// there, without its completion running. <see cref="Play"/> starts the sequence again from step 0.
+        /// </summary>
+        public Action Cancel { get; }
+
+        /// <summary>
+        /// The rate the timeline and the <c>Spring</c> and <c>Bezier</c> plays its steps started advance at,
+        /// delays included, Framer Motion's <c>speed</c>: 1 by
+        /// default, 2 twice as fast, 0.5 half as fast, and 0 holds both where they are. Setting it re-times the
+        /// running plays from the next frame. Throws <see cref="ArgumentOutOfRangeException"/> for a negative,
+        /// NaN or infinite value.
+        /// </summary>
+        public float Speed
+        {
+            get => _walker.Playback.Rate;
+            set => _walker.Playback.Rate = value;
+        }
 
         /// <summary>
         /// Seconds into the sequence's timeline, counting each step's hold at its authored length. Read live, not
@@ -163,11 +196,13 @@ namespace Velvet
         /// </summary>
         public float TimeSec => _walker.TimeSec;
 
-        internal AnimationSequenceControls(Action play, Action pause, Action restart, SequenceWalker walker)
+        internal AnimationSequenceControls(Action play, Action pause, Action restart, Action cancel,
+            SequenceWalker walker)
         {
             Play = play;
             Pause = pause;
             Restart = restart;
+            Cancel = cancel;
             _walker = walker;
         }
     }
