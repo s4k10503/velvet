@@ -33,6 +33,8 @@ namespace Velvet.Tests
     /// settles in that visit, after the commit.</item>
     /// <item>The world position of an element an update moved is current in the commit's layout effects, whether
     /// its own styles moved it or a sibling's growth did.</item>
+    /// <item>An update that moves an element moves the panel's version further than one that leaves it in place, as
+    /// the layout updater's visit does for an element whose position changed.</item>
     /// <item>A box a bundled stylesheet class sizes is laid out with that class's size.</item>
     /// <item>A layout effect inside a portal into another panel reads its own element there and an element of the
     /// panel the tree is mounted on.</item>
@@ -76,6 +78,9 @@ namespace Velvet.Tests
             s_rowHeightsReadInRef.Clear();
             s_geometryEventsReceived = 0;
             s_setAnchorOffset = default;
+            s_setAnchorRightMargin = default;
+            s_setAnchorLeftMargin = default;
+            s_panelVersionInLayoutEffect = 0;
             s_anchorWorldOffsetInLayoutEffect = float.NaN;
             s_scrollView = null;
             s_scrollerDisplayInLayoutEffect = null;
@@ -448,6 +453,36 @@ namespace Velvet.Tests
             Assert.That(s_anchorWorldOffsetInLayoutEffect, Is.EqualTo(AnchorOffset).Within(0.01f));
         }
 
+        [Test]
+        public void Given_AnAnchorTheLastFrameLaidOut_When_OneUpdateMovesItAndAnotherLeavesItInPlace_Then_OnlyTheMoveMovesThePanelsVersionFurther()
+        {
+            // Arrange — both updates change one margin of the anchor, so the style writes of the two are alike.
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(TwoMarginAnchorRender, key: "margins"));
+            var panel = _window.rootVisualElement.panel;
+            ForcePanelUpdate(panel);
+
+            // Act
+            var versionMovedByUpdateInPlace = VersionMovedByUpdate(panel, () => s_setAnchorRightMargin.Invoke(AnchorOffset));
+            ForcePanelUpdate(panel);
+            var versionMovedByUpdateThatMoves = VersionMovedByUpdate(panel, () => s_setAnchorLeftMargin.Invoke(AnchorOffset));
+
+            // Assert
+            Assert.That(versionMovedByUpdateThatMoves - versionMovedByUpdateInPlace, Is.GreaterThan(0));
+        }
+
+        // How far the panel's version has moved when the update's layout effect runs, which is after the commit's
+        // layout computation.
+        private long VersionMovedByUpdate(IPanel panel, Action update)
+        {
+            var before = ReadPanelVersion(panel);
+            update();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            return s_panelVersionInLayoutEffect - before;
+        }
+
+        private static long ReadPanelVersion(IPanel panel)
+            => (uint)EngineMember.PanelVersion.ResolveProperty()!.GetValue(panel);
+
         // GREEN_ON_BASE(characterization): the base's layout effect inside a ScrollView reads its scroller unsettled.
         // A ScrollView shows its scrollers from its own GeometryChangedEvents, which the panel's layout pass sends
         // after the commit, so the commit's layout computation leaves them as they were and that pass settles them.
@@ -689,6 +724,27 @@ namespace Velvet.Tests
                 return null;
             }), new object[] { offset });
             return V.Div(className: $"ml-[{offset}px] w-[20px] h-[20px]", name: "moving-anchor");
+        }
+
+        private static StateUpdater<float> s_setAnchorRightMargin;
+        private static StateUpdater<float> s_setAnchorLeftMargin;
+        private static long s_panelVersionInLayoutEffect;
+
+        // An anchor whose right margin leaves it where it is and whose left margin moves it; its layout effect runs
+        // after either, and records the panel's version.
+        [Component]
+        private static VNode TwoMarginAnchorRender()
+        {
+            var (left, setLeft) = Hooks.UseState(0f);
+            var (right, setRight) = Hooks.UseState(0f);
+            s_setAnchorLeftMargin = setLeft;
+            s_setAnchorRightMargin = setRight;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_panelVersionInLayoutEffect = ReadPanelVersion(s_root.panel);
+                return null;
+            }), new object[] { left, right });
+            return V.Div(className: $"ml-[{left}px] mr-[{right}px] w-[20px] h-[20px]", name: "margin-anchor");
         }
 
         private static ScrollView s_scrollView;
