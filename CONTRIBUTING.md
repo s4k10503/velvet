@@ -251,6 +251,46 @@ names, so a campaign dispatched from the default branch would be recorded agains
 rather than the head it measured. Running the campaign locally is optional: it answers the same question before
 a push, and before the label.
 
+**A head that asks what an earlier head asked is not measured again.** `mutation_check.py --key` prints
+a campaign key: one hash over six components, each printed beside it so a miss can say which moved.
+
+| Component | What it hashes | Why it is in |
+| --- | --- | --- |
+| `mutants` | the capped mutant list: file, line, column, operator and both texts of each | the question asked |
+| `mutated-files` | the full bytes of every file holding a mutant, comments included | a comment moves the lines the mutants sit on, and a reused pass is a stronger claim than a resumed kill, so it takes no comment-stripped form |
+| `test-sources` | every file under a `Tests/` directory of the package, and `TestUtilities/` | what is asked of the mutants |
+| `build-inputs` | every other file the editor compiles or imports, outside a `~` directory and not markdown: the package's remaining sources, `.asmdef`s and plugins, `Assets/`, `ProjectSettings/`, `Packages/manifest.json` and `packages-lock.json` | a test that kills a mutant in one file can reach it through another, and an editor or analyzer change moves what compiles |
+| `declarations` | each `MUTANT_SURVIVES` the mutated files hold, with whether this branch wrote it | the declarations' `written_here` moves with the merge base |
+| `tool` | `mutation_check.py`, its operator tables and priority order, `ci_mutation_shard.py` and `mutation.yml` | a verdict is the tool's |
+
+The test-source set is conservative on purpose: the whole of what the suites compile besides the
+mutated files, so a key equal across two heads means no file a launch reads differs. Prose, scripts
+and every other workflow are outside it, since the fixtures that read the repository's text are the
+ones no launch runs. The price is that a rebase onto a base that changed another production file
+measures again; narrowing `build-inputs` to the mutated files and the tests is a one-line change in
+`campaign_key`, and takes on the risk that an unmutated file alters what kills a mutant.
+
+A passing campaign uploads an artifact named `Mutation campaign key <hex>`, which a REST listing of
+the run's artifacts carries and which expires with the run's other artifacts. `mutation-plan` lists
+the newest 20 passing runs of the workflow on the head's branch (`scripts/ci/reuse_verdict.py`), and
+where one holds the head's key, the shards, the Library job and the PlayMode pass are skipped and
+`Mutation campaign (verdict)` passes, its summary naming the run it reused from. That run uploads the
+key too, citing the run that **measured** it and not the one it read it from, so a verdict is never
+reused from a reuse. A reading that fails reuses nothing. `scripts/pr/settle.py` checks the citation
+before a merge: a reused pass whose cited run is not a pass of the workflow that measured this very
+key holds the head. `scripts/pr/automerge.py` reads only whether the head's newest run concluded, as
+for any campaign, and the merge run it dispatches is settle's. `refuse/merge_unproven_head.py` does
+not read the citation, which a merge by hand therefore skips.
+
+**Every shard measures the plan's list, and a shard that did not report is not a survivor.**
+`mutation-plan` writes the mutant list it counted (`--emit-mutants`) and every later job hands it
+back (`--mutants`): a tree that generates another list refuses to run, rather than dealing its
+indices to other mutants. A shard that died, was cancelled or timed its baseline out records nothing,
+and the verdict job names it under `not measured`, with the shard's number: that is neither a
+survivor nor a stale declaration, and a declaration over a mutant of such a shard is not reported
+stale. The run still fails. Re-running only the failed jobs of the run completes it: the shard
+artifacts upload with `overwrite`, and the verdict job decides again over every record.
+
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
 on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land
 without a force-push. `.claude/hooks/refuse/amend_of_published_commit.py` refuses `git commit --amend`

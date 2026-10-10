@@ -291,11 +291,33 @@ def campaign_state(runs, jobs, now):
     return campaign.state(runs, lambda run: expected_checks.conclusion(run, jobs, now))
 
 
-def campaign_reason(labels, runs, jobs, now, head):
+def campaign_reason(labels, runs, jobs, now, head, unbacked=None):
     """`campaign.reason` for a head, naming how to end its newest campaign where it is stuck."""
     newest = campaign.newest(runs)
     return campaign.reason(labels, campaign_state(runs, jobs, now), head,
-                           expected_checks.stuck_exit(newest) if newest else "")
+                           expected_checks.stuck_exit(newest) if newest else "", unbacked)
+
+
+def campaign_backing(project, runs):
+    """`campaign.unbacked` for the head's newest campaign: why a verdict it reused does not stand.
+
+    A run that measured is answered from its own artifacts alone. One that reused is checked against
+    the run it cites, read here; a cited run that cannot be read is a verdict nobody can show.
+    """
+    newest = campaign.newest(runs)
+    if newest is None:
+        return None
+    slug = repository(project)
+    own = rest_json(campaign.artifacts_path(slug, newest.get("id")))
+    found = campaign.keyed(own)
+    if found is None or found[1] is None:
+        return None
+    try:
+        source = rest_json(campaign.run_path(slug, found[1]))
+        listing = rest_json(campaign.artifacts_path(slug, found[1]))
+    except RuntimeError:
+        return campaign.unbacked(own, None, None)
+    return campaign.unbacked(own, source, listing)
 
 
 def required_contexts(project, base):
@@ -533,7 +555,11 @@ def blocking_reasons(project, number, base=None, states=None):
     now = time.time()
     others = campaign.others(runs)
     jobs = run_jobs(project, runs, now)
-    owed_campaign = None if before.fork else campaign_reason(before.labels, runs, jobs, now, before.sha)
+    unbacked = None
+    if not before.fork and campaign_state(runs, jobs, now) == campaign.PASSED:
+        unbacked = campaign_backing(project, runs)
+    owed_campaign = None if before.fork else campaign_reason(before.labels, runs, jobs, now,
+                                                            before.sha, unbacked)
     results = checks(project, before.sha, runs, ignore_campaign_display=not before.fork)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
