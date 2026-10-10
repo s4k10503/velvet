@@ -68,7 +68,17 @@ namespace Velvet.Tests
                 "React throws the rejected read to the error boundary above the Suspense");
         }
 
-        private string Texts() => string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
+        // The labels a user sees: a Suspense keeps the children it hid mounted under an inline display: none.
+        private string Texts() => string.Join("|", _root.Query<Label>().ToList().Where(IsDisplayed).Select(label => label.text));
+
+        private static bool IsDisplayed(VisualElement element)
+        {
+            for (var ve = element; ve != null; ve = ve.parent)
+            {
+                if (ve.style.display == DisplayStyle.None) return false;
+            }
+            return true;
+        }
 
         private static VelvetTaskCompletionSource<int> s_source;
         private static StateUpdater<int> s_setOwn;
