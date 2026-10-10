@@ -89,7 +89,8 @@ namespace Velvet
 
         private void AttachMotion(VisualElement element, AnimateSpec spec)
         {
-            var binding = StyleAnimateDriver.Attach(element, spec, ResolvePanVertical(element, spec));
+            var binding = StyleAnimateDriver.Attach(element, spec, ResolvePanVertical(element, spec),
+                _ctx.StyleAnimationScheduler.Clock);
             _ctx.AnimationBindings[element] = binding;
             SyncGradientBoxScale(element, spec.Mode, binding.PanVertical);
         }

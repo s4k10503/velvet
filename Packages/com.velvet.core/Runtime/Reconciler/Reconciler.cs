@@ -603,6 +603,7 @@ namespace Velvet
             _ctx.MarkDisposed();
             _ctx.BatchScheduler.Clear();
             _ctx.StyleAnimationScheduler.CancelAll();
+            _ctx.StyleAnimationScheduler.ReleaseClock();
             _ctx.EventManager.Clear();
             _ctx.ComponentRegistry.Dispose();
             _ctx.PendingCaughtErrorReports.Clear();

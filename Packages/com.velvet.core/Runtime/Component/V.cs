@@ -1710,10 +1710,8 @@ namespace Velvet
         /// When placing multiple <c>V.ErrorBoundary</c> instances at the same position, always supply
         /// <paramref name="key"/> to avoid identity collisions in the reconciler. The helper's lambda body
         /// has the same MethodInfo on every call, so siblings cannot be distinguished without a key.<br/>
-        /// <paramref name="fallback"/> and <paramref name="children"/> are **captured into the closure on the
-        /// initial mount**; the same fiber is reused on parent re-renders so subsequent value changes are
-        /// not reflected. For dynamic cases, read values via Context / Hooks, or use the function-style
-        /// pattern with <c>[Component(IsErrorBoundary = true)]</c> + <c>Hooks.UseFallback</c>.<br/>
+        /// Each render of the parent hands the boundary the <paramref name="fallback"/> and
+        /// <paramref name="children"/> of that call.<br/>
         /// Each invocation allocates a closure (DisplayClass + delegate). The helper is intended for
         /// root boundaries directly under Mount; calling it repeatedly inside a render function will
         /// allocate on every render.
@@ -1733,6 +1731,55 @@ namespace Velvet
             Func<VNode> body = () =>
             {
                 Hooks.UseFallback(fallback);
+                return Fragment(children);
+            };
+
+            return CreateComponent(body, externalRef: null, key, forceErrorBoundary: true);
+        }
+
+        // V.ErrorBoundary for a boundary the framework renders for its own purposes, which Hooks.UseErrorBoundary
+        // passes over (ComponentFiber.IsFrameworkErrorBoundary).
+        internal static ComponentNode FrameworkErrorBoundary(Func<Exception, VNode> fallback, VNode?[] children)
+        {
+            Func<VNode> body = () =>
+            {
+                FiberAmbientStack.Current!.IsFrameworkErrorBoundary = true;
+                Hooks.UseFallback(fallback);
+                return Fragment(children);
+            };
+
+            return CreateComponent(body, externalRef: null, key: null, forceErrorBoundary: true);
+        }
+
+        /// <summary>
+        /// Variant of <see cref="ErrorBoundary(Func{Exception, VNode}, VNode[], string)"/> whose fallback receives the
+        /// boundary's reset — react-error-boundary's <c>&lt;ErrorBoundary fallbackRender resetKeys onReset&gt;</c>,
+        /// whose <c>fallbackRender</c> receives <c>error</c> and <c>resetErrorBoundary</c>.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="resetKeys"/> and <paramref name="onReset"/> behave as they do on
+        /// <see cref="Hooks.UseErrorBoundaryReset"/>, which states when the boundary resets.
+        /// </remarks>
+        /// <param name="fallbackRender">Receives the caught exception and the boundary's reset, and returns the fallback VNode.</param>
+        /// <param name="children">Child nodes rendered in the normal (non-error) path.</param>
+        /// <param name="resetKeys">Values whose change resets the boundary.</param>
+        /// <param name="onReset">Called before each reset, with what reset the boundary.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="ComponentNode"/> wrapping <paramref name="children"/> in an Error Boundary.</returns>
+        public static ComponentNode ErrorBoundary(
+            Func<Exception, ErrorBoundaryReset, VNode> fallbackRender,
+            VNode?[] children,
+            object?[]? resetKeys = null,
+            Action<ErrorBoundaryResetDetails>? onReset = null,
+            string? key = null)
+        {
+            if (fallbackRender == null) throw new ArgumentNullException(nameof(fallbackRender));
+            if (children == null) throw new ArgumentNullException(nameof(children));
+
+            Func<VNode> body = () =>
+            {
+                var reset = Hooks.UseErrorBoundaryReset(resetKeys, onReset);
+                Hooks.UseFallback(error => fallbackRender(error, reset));
                 return Fragment(children);
             };
 
