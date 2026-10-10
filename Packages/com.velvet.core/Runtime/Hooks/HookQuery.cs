@@ -561,8 +561,14 @@ namespace Velvet
         // from the entry's latest change.
         internal override void OnQueryUpdate()
         {
-            Update();
-            RestartInterval();
+            try
+            {
+                Update();
+            }
+            finally
+            {
+                RestartInterval();
+            }
         }
 
         // TanStack's #updateRefetchInterval. The interval is polled once a frame on the client's clock, as a

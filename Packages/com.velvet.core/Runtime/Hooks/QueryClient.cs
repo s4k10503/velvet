@@ -470,8 +470,16 @@ namespace Velvet
                 Error = null;
             }
 
-            Notify();
-            RunAsync(options, request).Forget();
+            // An observer's snapshot can throw (a placeholder function), and the request marked in flight above
+            // must still run, or later fetches would join one that does not exist.
+            try
+            {
+                Notify();
+            }
+            finally
+            {
+                RunAsync(options, request).Forget();
+            }
         }
 
         private async VelvetTask RunAsync(QueryFetchOptions<T> options, CancellationTokenSource request)

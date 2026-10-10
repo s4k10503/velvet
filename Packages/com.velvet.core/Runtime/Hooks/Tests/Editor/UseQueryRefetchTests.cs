@@ -756,6 +756,30 @@ namespace Velvet.Tests
                 "A client whose signal throws neither keeps the next client from being told nor ends the polling");
         });
 
+        [UnityTest]
+        public IEnumerator Given_AQueryWhosePlaceholderThrowsOnASignal_When_TheDeviceReconnects_Then_TheQueryFunctionRunsAgain()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the failed entry holds no data, so a signal's refetch makes the snapshot ask for a placeholder.
+            var throws = false;
+            s_placeholder = (_, _) =>
+            {
+                if (throws) throw new InvalidOperationException("placeholder-failed");
+                return 9;
+            };
+            using var mounted = Mount();
+            s_sources[0].TrySetException(new InvalidOperationException("fetch-failed"));
+            mounted.FlushStateForTest();
+            throws = true;
+            ContainedFailureLog.Expect<InvalidOperationException>(nameof(QueryClient), "placeholder-failed");
+
+            // Act
+            await DisconnectAndReconnect();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2), "The refetch a throwing observer interrupted still runs the query function");
+        });
+
         [Test]
         public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean()
         {
