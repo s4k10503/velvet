@@ -134,6 +134,8 @@ namespace Velvet
 
             // A filter tween still ticking would write its frames and its target onto the next consumer.
             StyleFilterTransitionDriver.Release(element);
+            // The clock its last mount recorded would otherwise answer for the next consumer's filter tweens.
+            MotionClock.Forget(element);
             ResetInlineStyle(element.style);
 
             element.userData = null;

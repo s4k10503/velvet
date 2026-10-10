@@ -26,6 +26,11 @@ namespace Velvet
         // deferred runaway re-arms every frame and burns the full cap forever.
         private const int NestedUpdateLimit = 50;
 
+        // How many immediate drains in a row may throw before the updates queued after the last of them are dropped
+        // rather than re-armed (see DrainImmediate). A drain that completes resets the count.
+        private const int ConsecutiveThrowingDrainLimit = 3;
+        private int _consecutiveThrowingDrains;
+
         // Insertion-ordered pending queues: the List preserves enqueue order so the drain matches the
         // pre-batching schedule.Execute registration order (a parent dirtied before its child flushes
         // first, so the parent's reconcile does not redundantly rebuild the child's subtree), and the
@@ -303,6 +308,37 @@ namespace Velvet
 
         private void DrainImmediate()
         {
+            var completed = false;
+            try
+            {
+                DrainImmediatePasses();
+                completed = true;
+            }
+            finally
+            {
+                // In a finally because an exception leaves a drain too (DrainExceptionRecoveryTests throws one from
+                // an imperative-handle factory), and a flag left raised has ArmImmediateDrain register nothing for a
+                // later request until the registered callback lowers it. Intake still queued here was requested by a
+                // settle on a drop, or enqueued before the exception, and the loop that would have consumed it has
+                // exited. Only the registered callback lowers the flag; see _inImmediateCallback.
+                if (_inImmediateCallback) _immediateScheduled = false;
+                _consecutiveThrowingDrains = completed ? 0 : _consecutiveThrowingDrains + 1;
+                if (_consecutiveThrowingDrains >= ConsecutiveThrowingDrainLimit && _immediateOrder.Count > 0)
+                {
+                    // A commit that throws and queues itself again on every drain would otherwise throw once a frame
+                    // for good, the same reason the nested-update cap drops its runaway rather than re-arming.
+                    FiberLogger.LogError("Scheduler",
+                        $"{ConsecutiveThrowingDrainLimit} update batches in a row threw, and the last left updates"
+                        + " queued. Those updates were dropped.");
+                    DropImmediateIntake();
+                }
+                if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
+                if (_immediateOrder.Count > 0) ArmImmediateDrain();
+            }
+        }
+
+        private void DrainImmediatePasses()
+        {
             // Commit-phase state writes (a callback ref invoked during the patch, an event
             // dispatched from a detach) re-enqueue their fiber mid-drain. Keep draining until the
             // queue is quiet so the follow-up render commits before this frame callback yields —
@@ -334,54 +370,79 @@ namespace Velvet
                         "Maximum update depth exceeded. A component repeatedly schedules state"
                         + " updates from its commit phase (a callback ref or an effect writing a"
                         + " new value on every pass). The runaway update was dropped.");
-                    _drainBuffer.Clear();
-                    _drainBuffer.AddRange(_immediateOrder);
-                    _immediateOrder.Clear();
-                    _immediateSet.Clear();
-                    for (var i = 0; i < _drainBuffer.Count; i++)
-                    {
-                        var dropped = _drainBuffer[i];
-                        // Direct field access through Lanes (not the dropped.LaneQueue read accessor): a
-                        // FiberLaneSet handed back by a property getter is a copy, so Remove() through it
-                        // would mutate a throwaway value instead of the backing queue.
-                        dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Urgent);
-                        dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Normal);
-                        // The promoted marker retires with the dropped Normal it rode, or it would keep
-                        // skipping the settle sweep for as long as any surviving lane stays queued.
-                        dropped.HasPromotedTransition = false;
-                        if (dropped.LaneQueue.Count == 0)
-                        {
-                            dropped.IsDirty = false;
-                            // MUTANT_SURVIVES(unreachable): the one fixture that reaches the cap declares no UseTransition, so this call finds no slot and no enrolment to settle.
-                            dropped.SettleTransitionPending();
-                        }
-                        // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
-                        // that tier, so its pending Transition work still commits there.
-                    }
-                    _drainBuffer.Clear();
+                    DropImmediateIntake();
                     break;
                 }
                 totalPasses++;
                 Drain(_immediateOrder, _immediateSet, immediateTier: true);
             }
-            if (_inImmediateCallback) _immediateScheduled = false;
-            if (_immediateOrder.Count == 0) _externalStoreRenderQueued = false;
-            // Only the drop path can leave the loop above with intake queued, and a settle it runs can request
-            // a render — the loop that would otherwise consume that request being the one it abandons.
-            // MUTANT_SURVIVES(unreachable): the guard is true only after that drop path re-queues, and the one fixture reaching the cap asserts that queue empty instead.
-            if (_immediateOrder.Count > 0) ArmImmediateDrain();
+        }
+
+        // Which lanes go, and why only these, is the nested-update cap's comment in DrainImmediatePasses.
+        // Copied out rather than walked in place: a settle below can request a render, which enqueues it again.
+        private void DropImmediateIntake()
+        {
+            var droppedFibers = _immediateOrder.ToArray();
+            _immediateOrder.Clear();
+            _immediateSet.Clear();
+            for (var i = 0; i < droppedFibers.Length; i++)
+            {
+                var dropped = droppedFibers[i];
+                // Direct field access through Lanes (not the dropped.LaneQueue read accessor): a
+                // FiberLaneSet handed back by a property getter is a copy, so Remove() through it
+                // would mutate a throwaway value instead of the backing queue.
+                dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Urgent);
+                dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Normal);
+                // The promoted marker retires with the dropped Normal it rode, or it would keep
+                // skipping the settle sweep for as long as any surviving lane stays queued.
+                // MUTANT_SURVIVES(unreachable): no fiber a fixture drops declares UseTransition, so no lane of a dropped fiber was ever promoted.
+                dropped.HasPromotedTransition = false;
+                // MUTANT_SURVIVES(unreachable, equality): a fiber left dirty with an empty queue is re-enrolled by a Normal update; see IsDirty below.
+                if (dropped.LaneQueue.Count == 0)
+                {
+                    // MUTANT_SURVIVES(unreachable): a Normal update re-enrols a dirty fiber whose queue is empty, and only a Transition one, which no fiber a fixture drops issues, would be stranded.
+                    dropped.IsDirty = false;
+                    // MUTANT_SURVIVES(unreachable): no fiber a fixture drops declares UseTransition, so this call finds no slot and no enrolment to settle.
+                    dropped.SettleTransitionPending();
+                }
+                // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
+                // that tier, so its pending Transition work still commits there.
+            }
         }
 
         // Drains every Transition-tier entry, whatever admission it waits for. No panel callback runs this;
         // VelvetPreviewHost.Settle does, to settle a story without the panel.
         internal void DrainDelayed() => DrainDelayedTier(null);
 
+        private void ReadmitEntries(DelayedAdmission spent)
+        {
+            DelayedAdmission? next = null;
+            for (var i = 0; i < _delayedOrder.Count; i++)
+            {
+                var fiber = _delayedOrder[i];
+                var entry = _delayedEntries[fiber];
+                if (entry.Admission != spent) continue;
+                next ??= PanelSchedulerCallback.InPassOf(_anchor) ? AdmissionForNextPass() : Unadmitted();
+                _delayedEntries[fiber] = new DelayedEntry(next, entry.Deferrals);
+            }
+        }
+
         private void DrainDelayedTier(DelayedAdmission? admission)
         {
             // The immediate queue is committed first rather than trusting the panel to run its callback ahead of
             // this one. A Transition lane that pass re-enrols takes a later admission (see ScheduleDelayed), so
             // only a drain of every admission picks it up below.
-            DrainImmediate();
+            try
+            {
+                DrainImmediate();
+            }
+            catch
+            {
+                // This admission's callback has run and registers nothing again, so entries still waiting for it
+                // would wait for a drain that never comes while their fibers stay dirty.
+                if (admission != null) ReadmitEntries(admission);
+                throw;
+            }
             var kept = 0;
             for (var i = 0; i < _delayedOrder.Count; i++)
             {
