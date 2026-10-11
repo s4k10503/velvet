@@ -8800,5 +8800,791 @@ class EditorCountTests(unittest.TestCase):
         self.assertEqual(patterns, {mutation_check.UNITY_RUNNING})
 
 
+class LedgerCampaign(StubbedCampaign):
+    """Two lines of one boundary mutant each, killed by the first and the second fixture respectively
+    unless `survives` names the mutant, so that a campaign leaves a ledger of known content.
+
+    The editor is stubbed as `StubbedCampaign` stubs it; what differs is that a killed mutant's result
+    names the case that failed, the way the editor's does, and that every mutant that reached it is
+    recorded in `measured`.
+    """
+
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b) => a <= b;
+                internal static bool Other(int a, int b) => a >= b;
+            }
+        }
+        """)
+    FIXTURES = {
+        "Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs": "ProbeTests",
+        "Packages/com.velvet.core/Runtime/Tests/Editor/OtherTests.cs": "OtherTests",
+    }
+    CASES = {"mutant-001.xml": "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe",
+             "mutant-002.xml": "Velvet.Tests.OtherTests.Given_A_When_B_Then_Other"}
+
+    def __init__(self, body=None):
+        super().__init__(body)
+        self.survives = set()
+        # The platforms whose suite kills a mutant, where it is not both.
+        self.only_on = {}
+        self.measured = []
+        self.ledgers = self.project / "ledgers"
+        for relative, fixture in self.FIXTURES.items():
+            self.write_fixture(relative, fixture, "Given_A_When_B_Then_" + fixture[:-5])
+
+    def write_fixture(self, relative, fixture, method, base=""):
+        path = self.project / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("namespace Velvet.Tests\n{{\n    internal sealed class {}{}\n    {{\n"
+                        "        [Test]\n        public void {}() {{ }}\n    }}\n}}\n".format(fixture, base, method))
+
+    def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
+        name = Path(results).name
+        self.measured.append(name)
+        Path(log).write_text("")
+        if name in self.CASES and name not in self.survives and platform in self.only_on.get(name, (platform,)):
+            Path(results).write_text(
+                '<test-run total="1" passed="0" failed="1" inconclusive="0">'
+                '<test-case fullname="{}" result="Failed" /></test-run>'.format(self.CASES[name]))
+        else:
+            Path(results).write_text(GREEN_RESULTS)
+        return 0.0, False, 0
+
+    def mutants_measured(self):
+        return sorted(name for name in self.measured if name.startswith("mutant-"))
+
+    def measure(self, *arguments):
+        return self.run_over_diff("--launch-per-mutant", "--shard", "0/1", "--output",
+                                  str(self.project / "edit"), *arguments)
+
+    def decide(self, *arguments):
+        """The verdict job's invocation, keeping the ledger it writes under `ledgers` as run 9001."""
+        with mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "9001"}):
+            code = self.run_over_diff("--platform", "PlayMode", "--survivors-of",
+                                      str(self.project / "edit"), "--collect", str(self.project / "play"),
+                                      "--emit-ledger", str(self.project / "ledger.json"), *arguments)
+        return code
+
+    def written_ledger(self):
+        """The ledger `decide` wrote, or {} where it wrote none."""
+        path = self.project / "ledger.json"
+        return json.loads(path.read_text()) if path.exists() else {}
+
+    def keep_ledger(self, run=9001):
+        """Files the ledger `decide` wrote where a later plan reads the branch's ledgers from."""
+        if not (self.project / "ledger.json").exists():
+            return
+        self.ledgers.mkdir(exist_ok=True)
+        (self.ledgers / "{:010d}-{}.json".format(run, run)).write_text(
+            (self.project / "ledger.json").read_text())
+
+    def plan(self, *arguments):
+        return self.run_over_diff("--plan", "--reuse-from", str(self.ledgers), "--emit-reuse",
+                                  str(self.project / "reuse.json"), *arguments)
+
+    def plan_output(self, name):
+        return next((line.split("=", 1)[1] for line in self.printed.splitlines()
+                     if line.startswith(name + "=")), None)
+
+    def after_a_campaign(self):
+        """One campaign run to its verdict and its ledger kept; the second mutant survives it."""
+        self.survives = {"mutant-002.xml"}
+        self.measure()
+        self.run_over_diff("--launch-per-mutant", "--platform", "PlayMode", "--survivors-of",
+                           str(self.project / "edit"), "--shard", "0/1", "--output",
+                           str(self.project / "play"))
+        self.decide()
+        self.keep_ledger()
+        self.survives = set()
+        self.measured.clear()
+
+
+class FixtureTraceTests(unittest.TestCase):
+    """Which source files a killing case stood on, read off the tree rather than the run."""
+
+    def trace(self, campaign, case):
+        return mutation_check.fixture_hashes(campaign.project, case, mutation_check.test_index(campaign.project))
+
+    def test_Given_ACaseOfAFixture_When_Traced_Then_TheFixturesFileIsHashed(self):
+        # Arrange
+        campaign = LedgerCampaign()
+
+        # Act
+        traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe")
+
+        # Assert
+        self.assertEqual(sorted(traced or {}), ["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"])
+
+    def test_Given_ACaseNoFixtureDeclares_When_Traced_Then_ItIsUntraceable(self):
+        # Arrange
+        campaign = LedgerCampaign()
+
+        # Act
+        traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Renamed")
+
+        # Assert
+        self.assertIsNone(traced)
+
+    def test_Given_ACaseNamedOnlyInAComment_When_Traced_Then_ItIsUntraceable(self):
+        # Arrange -- the method was deleted and its name left in prose.
+        campaign = LedgerCampaign()
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs", "ProbeTests",
+                               "Other")
+        path = campaign.project / "Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"
+        path.write_text(path.read_text() + "// Given_A_When_B_Then_Probe() was deleted\n")
+
+        # Act
+        traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe")
+
+        # Assert
+        self.assertIsNone(traced)
+
+    def test_Given_AFixtureDerivedFromABaseInAnotherFile_When_Traced_Then_BothFilesAreHashed(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/BaseTests.cs", "BaseTests",
+                               "Shared")
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs", "ProbeTests",
+                               "Given_A_When_B_Then_Probe", " : BaseTests")
+
+        # Act
+        traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe")
+
+        # Assert
+        self.assertEqual(sorted(name.rsplit("/", 1)[1] for name in traced or {}),
+                         ["BaseTests.cs", "ProbeTests.cs"])
+
+    def test_Given_AParameterisedCaseWithADottedArgument_When_Traced_Then_ItsFixtureIsFound(self):
+        # Arrange -- the argument's dot must not be read as a namespace separator.
+        campaign = LedgerCampaign()
+
+        # Act
+        traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe(1.5,\"a.b\")")
+
+        # Assert
+        self.assertEqual(len(traced or {}), 1)
+
+    def test_Given_ACaseOfANestedFixture_When_Traced_Then_TheDeclaringFileIsHashed(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        relative = "Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"
+        (campaign.project / relative).write_text(
+            "namespace Velvet.Tests\n{\n    internal sealed class ProbeTests\n    {\n"
+            "        internal sealed class Inner\n        {\n            public void Nested() { }\n"
+            "        }\n    }\n}\n")
+
+        # Act
+        traced = self.trace(campaign, "Velvet.Tests.ProbeTests+Inner.Nested")
+
+        # Assert
+        self.assertEqual(sorted(traced or {}), [relative])
+
+
+class KillStandingTests(unittest.TestCase):
+    """Whether a recorded kill still stands: every way the tree can have moved under it."""
+
+    CASE = LedgerCampaign.CASES["mutant-001.xml"]
+    PROBE = "Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"
+
+    def killed(self):
+        """(campaign, the mutant, its ledger record) for a kill by the first fixture's case."""
+        campaign = LedgerCampaign()
+        path = campaign.source.resolve()
+        mutant = next(m for m in mutation_check.mutations_for(
+            path, path.read_text(), {5}) if m.operator == "boundary")
+        mutant.verdict, mutant.killers, mutant.platform = mutation_check.KILLED, (self.CASE,), "EditMode"
+        index = mutation_check.test_index(campaign.project)
+        record = mutation_check.ledger_record(mutant, campaign.project, index, set(), "9001")
+        return campaign, mutant, record
+
+    def problem(self, campaign, mutant, record):
+        return mutation_check.kill_problem(record, mutant, campaign.project,
+                                           mutation_check.test_index(campaign.project))
+
+    def test_Given_ATreeNothingMovedIn_When_TheKillIsChecked_Then_ItStands(self):
+        # Arrange
+        campaign, mutant, record = self.killed()
+
+        # Act
+        problem = self.problem(campaign, mutant, record)
+
+        # Assert
+        self.assertEqual((problem, [held["case"] for held in record["killers"]]), (None, [self.CASE]))
+
+    def test_Given_TheKillingFixtureEdited_When_TheKillIsChecked_Then_ItNamesTheFixtureSource(self):
+        # Arrange
+        campaign, mutant, record = self.killed()
+        path = campaign.project / self.PROBE
+        path.write_text(path.read_text().replace("{ }", "{ int added = 1; }"))
+
+        # Act
+        problem = self.problem(campaign, mutant, record)
+
+        # Assert
+        self.assertIn("the fixture source " + self.PROBE + " of its killing case ProbeTests.", problem or "")
+
+    def test_Given_ACommentAddedToTheKillingFixture_When_TheKillIsChecked_Then_ItStillStands(self):
+        # Arrange
+        campaign, mutant, record = self.killed()
+        path = campaign.project / self.PROBE
+        path.write_text(path.read_text() + "// a note on the case\n")
+
+        # Act
+        problem = self.problem(campaign, mutant, record)
+
+        # Assert
+        self.assertIsNone(problem)
+
+    def test_Given_TheKillingCaseDeleted_When_TheKillIsChecked_Then_ItIsNoLongerInTheTree(self):
+        # Arrange
+        campaign, mutant, record = self.killed()
+        campaign.write_fixture(self.PROBE, "ProbeTests", "SomethingElse")
+
+        # Act
+        problem = self.problem(campaign, mutant, record)
+
+        # Assert
+        self.assertIn("is no longer in the tree", problem or "")
+
+    def test_Given_TheMutatedFileEdited_When_TheKillIsChecked_Then_ItsFileChanged(self):
+        # Arrange
+        campaign, mutant, record = self.killed()
+        campaign.source.write_text(campaign.source.read_text() + "// an edit\n")
+
+        # Act
+        problem = self.problem(campaign, mutant, record)
+
+        # Assert
+        self.assertEqual(problem, "its file changed since the kill was recorded")
+
+    def test_Given_ARecordOfASurvivor_When_TheKillIsChecked_Then_OnlyAKillIsReused(self):
+        # Arrange -- a survivor is never turned into a pass.
+        campaign, mutant, record = self.killed()
+        record["verdict"] = mutation_check.SURVIVED
+
+        # Act
+        problem = self.problem(campaign, mutant, record)
+
+        # Assert
+        self.assertIn("only a kill is reused", problem or "")
+
+    def test_Given_AKillWhoseCasesWereAllUntraceable_When_TheKillIsChecked_Then_ItDoesNotStand(self):
+        # Arrange
+        campaign, mutant, record = self.killed()
+        record["killers"] = []
+
+        # Act
+        problem = self.problem(campaign, mutant, record)
+
+        # Assert
+        self.assertIn("names no killing case", problem or "")
+
+    def test_Given_ARecordMissingItsFields_When_TheKillIsChecked_Then_ItCannotBeRead(self):
+        # Arrange
+        campaign, mutant, _ = self.killed()
+
+        # Act
+        problem = self.problem(campaign, mutant, {"verdict": mutation_check.KILLED})
+
+        # Assert
+        self.assertEqual(problem, "the record cannot be read")
+
+    def test_Given_ARecordOfAnotherMutant_When_TheKillIsChecked_Then_ItDoesNotStand(self):
+        # Arrange
+        campaign, mutant, record = self.killed()
+        record["mutant"]["column"] += 1
+
+        # Act
+        problem = self.problem(campaign, mutant, record)
+
+        # Assert
+        self.assertEqual(problem, "the record is of another mutant")
+
+
+class ReuseDecisionTests(unittest.TestCase):
+    """Which mutants a plan hands to the shards, given the ledgers of the branch's earlier campaigns."""
+
+    def mutants_of(self, campaign):
+        path = campaign.source.resolve()
+        return mutation_check.one_per_line(mutation_check.mutations_for(
+            path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
+
+    def ledger(self, campaign, run="9001"):
+        return campaign.written_ledger() | {"run": run}
+
+    def test_Given_NoLedger_When_Decided_Then_NothingIsReusedAndEveryMutantSaysWhy(self):
+        # Arrange
+        campaign = LedgerCampaign()
+
+        # Act
+        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [], campaign.project)
+
+        # Assert
+        self.assertEqual((reused, sorted(reasons)), ({}, [1, 2]))
+
+    def test_Given_ALedgerOfAnotherToolVersion_When_Decided_Then_NothingIsReused(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        ledger = self.ledger(campaign) | {"tool": "0" * 64}
+
+        # Act
+        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [ledger], campaign.project)
+
+        # Assert
+        self.assertEqual((reused, "another version of the tool" in reasons[1]), ({}, True))
+
+    def test_Given_ALedgerWhereOneMutantWasKilledAndOneSurvived_When_Decided_Then_OnlyTheKillIsReused(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+
+        # Act
+        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [self.ledger(campaign)], campaign.project)
+
+        # Assert
+        self.assertEqual((sorted(reused), reasons[2]), ([1], "run 9001: it was survived when last measured, "
+                                                          "and only a kill is reused"))
+
+    def test_Given_ANewerLedgerThatSawTheMutantSurvive_When_Decided_Then_AnOlderKillIsNotReused(self):
+        # Arrange -- the newest ledger that holds the mutant decides it.
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        older = self.ledger(campaign, "9000")
+        newer = json.loads(json.dumps(older)) | {"run": "9002"}
+        for record in newer.get("records", []):
+            record["verdict"] = mutation_check.SURVIVED
+
+        # Act
+        reused, _ = mutation_check.decide_reuse(self.mutants_of(campaign), [newer, older], campaign.project)
+
+        # Assert
+        self.assertEqual(reused, {})
+
+    def test_Given_ANewerLedgerThatLacksTheMutant_When_Decided_Then_AnOlderKillIsReusedFromItsRun(self):
+        # Arrange -- a newer campaign that stopped early recorded some mutants only.
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        older = self.ledger(campaign, "9000")
+        newer = json.loads(json.dumps(older)) | {"run": "9002", "records": []}
+
+        # Act
+        reused, _ = mutation_check.decide_reuse(self.mutants_of(campaign), [newer, older], campaign.project)
+
+        # Assert
+        self.assertEqual({number: record["reused_from"] for number, record in reused.items()}, {1: "9000"})
+
+    def test_Given_TheMutatedFileEditedSinceTheLedger_When_Decided_Then_EveryMutantInItIsMeasured(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        ledger = self.ledger(campaign)
+        campaign.source.write_text(campaign.BODY.replace("a <= b", "a <= b + 1"))
+
+        # Act
+        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [ledger], campaign.project)
+
+        # Assert
+        self.assertEqual((reused, "production code or project files" in reasons[1]), ({}, True))
+
+
+class LedgerContextTests(unittest.TestCase):
+    """What lapses every kill of a ledger: a file no record hashes, edited since it was written."""
+
+    SUPPORT = "Packages/com.velvet.core/Runtime/Tests/Editor/Support.cs"
+
+    def reused_after(self, edit, before=None):
+        """The mutants reused from a ledger written before `edit` was made to the tree, and the
+        reasons the others are measured; `before` shapes the tree the ledger is written over."""
+        campaign = LedgerCampaign()
+        if before is not None:
+            before(campaign)
+        campaign.write_fixture(self.SUPPORT, "Support", "Help")
+        (campaign.project / self.SUPPORT).write_text("namespace Velvet.Tests\n{\n    internal static class "
+                                                     "Support\n    {\n    }\n}\n")
+        campaign.after_a_campaign()
+        edit(campaign)
+        path = campaign.source.resolve()
+        mutants = mutation_check.one_per_line(mutation_check.mutations_for(
+            path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
+        ledger = campaign.written_ledger() | {"run": "9001"}
+        reused, reasons = mutation_check.decide_reuse(mutants, [ledger], campaign.project)
+        return sorted(reused), reasons
+
+    def append(self, relative, text="// edit\nclass Edited { }\n"):
+        def edit(campaign):
+            path = campaign.project / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text((path.read_text() if path.exists() else "") + text)
+        return edit
+
+    def test_Given_NothingEditedSinceTheLedger_When_Decided_Then_TheKillIsReused(self):
+        # Act
+        reused, _ = self.reused_after(lambda campaign: None)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    def test_Given_AnotherProductionFileEdited_When_Decided_Then_EveryKillLapses(self):
+        # Arrange -- a kill can be reached through a file that holds no mutant.
+        edit = self.append("Packages/com.velvet.core/Runtime/Other.cs")
+
+        # Act
+        reused, reasons = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual((reused, "production code or project files" in reasons[1]), ([], True))
+
+    def test_Given_ASharedTestHelperEdited_When_Decided_Then_EveryKillLapses(self):
+        # Arrange
+        edit = self.append("Packages/com.velvet.core/TestUtilities/Helper.cs")
+
+        # Act
+        reused, reasons = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual((reused, "test support files" in reasons[1]), ([], True))
+
+    def test_Given_AnAssemblyDefinitionEdited_When_Decided_Then_EveryKillLapses(self):
+        # Arrange
+        edit = self.append("Packages/com.velvet.core/Runtime/Velvet.asmdef", " \n")
+
+        # Act
+        reused, reasons = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual((reused, "production code or project files" in reasons[1]), ([], True))
+
+    def test_Given_ATestsHelperThatDeclaresNoTestEdited_When_Decided_Then_EveryKillLapses(self):
+        # Arrange
+        edit = self.append(self.SUPPORT, "// a helper changed\nclass Added { }\n")
+
+        # Act
+        reused, reasons = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual((reused, "test support files" in reasons[1]), ([], True))
+
+    def test_Given_ATestFileOfANonKillingFixtureEdited_When_Decided_Then_TheKillIsStillReused(self):
+        # Arrange -- the test-only fix: the survivor's fixture gains a case.
+        edit = self.append("Packages/com.velvet.core/Runtime/Tests/Editor/OtherTests.cs", "class Added { }\n")
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    TESTS = "Packages/com.velvet.core/Runtime/Tests/Editor/"
+
+    def test_Given_ANewFixtureFileAndItsMeta_When_Decided_Then_TheOtherKillsAreStillReused(self):
+        # Arrange -- the test-only fix adds a fixture; Unity writes a .cs.meta beside it.
+        def edit(campaign):
+            self.append(self.TESTS + "NewTests.cs", "class NewTests { [Test] public void Case() { } }\n")(campaign)
+            self.append(self.TESTS + "NewTests.cs.meta", "guid: 0123\n")(campaign)
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    def test_Given_ACommentEditedInASharedHelper_When_Decided_Then_TheKillIsStillReused(self):
+        # Arrange
+        helper = "Packages/com.velvet.core/TestUtilities/Helper.cs"
+        before = self.append(helper, "class Helper { }\n")
+
+        # Act
+        reused, _ = self.reused_after(self.append(helper, "// a note\n"), before)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    def test_Given_AFixtureWhoseAttributeSharesAListOrIsOnlyUnityTest_When_Added_Then_TheKillIsStillReused(self):
+        # Arrange -- none of these is support, whatever else the attribute list holds.
+        def edit(campaign):
+            self.append(self.TESTS + "A.cs", "class A { [Category(\"x\"), Test] void C() { } }\n")(campaign)
+            self.append(self.TESTS + "B.cs", "class B { [Timeout(1), UnityTest] void C() { } }\n")(campaign)
+            self.append(self.TESTS + "C.cs", "class C { [TestCaseSource(\"s\")] void C() { } }\n")(campaign)
+            self.append(self.TESTS + "D.cs", "class D { [NUnit.Framework.Test] void C() { } }\n")(campaign)
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    def test_Given_ASetUpFixtureFileAdded_When_Decided_Then_EveryKillLapses(self):
+        # Arrange
+        edit = self.append(self.TESTS + "Setup.cs", "[SetUpFixture] class Setup { [OneTimeSetUp] void S() { } [Test] void T() { } }\n")
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [])
+
+    def test_Given_AHelperWhoseTestAttributeIsCommentedOut_When_Added_Then_EveryKillLapses(self):
+        # Arrange
+        edit = self.append(self.TESTS + "Helper2.cs", "class Helper2 { // [Test]\n void Help() { } }\n")
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [])
+
+    def test_Given_ATestDataFileEdited_When_Decided_Then_EveryKillLapses(self):
+        # Arrange
+        edit = self.append(self.TESTS + "data.json", "{}\n")
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [])
+
+    def test_Given_APlanReusedUnderOneContext_When_TheVerdictReadsATreeWithOtherTestSupport_Then_TheKillLapses(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        campaign.plan()
+        reuse = str(campaign.project / "reuse.json")
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
+                               str(campaign.project / "edit"))
+        helper = campaign.project / "Packages/com.velvet.core/TestUtilities/Helper.cs"
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        helper.write_text("class Helper { }\n")
+
+        # Act
+        code = campaign.decide("--reuse", reuse)
+
+        # Assert
+        self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed), (1, True))
+
+    def test_Given_APlanReusedUnderOneContext_When_TheVerdictReadsAnotherTree_Then_TheKillLapses(self):
+        # Arrange -- a production file changed between the plan and the verdict.
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        campaign.plan()
+        reuse = str(campaign.project / "reuse.json")
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
+                               str(campaign.project / "edit"))
+        other = campaign.project / "Packages/com.velvet.core/Runtime/Other.cs"
+        other.write_text("namespace Velvet\n{\n}\n")
+
+        # Act
+        code = campaign.decide("--reuse", reuse)
+
+        # Assert
+        self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed), (1, True))
+
+
+class ReusedKillCampaignTests(unittest.TestCase):
+    """A campaign that has run once, and the one after it that only changed a test."""
+
+    def test_Given_ATestOnlyFixAfterASurvivor_When_Planned_Then_OnlyTheSurvivorIsLeftToMeasure(self):
+        # Arrange -- the second fixture gained the test the survivor asked for.
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        path = campaign.project / "Packages/com.velvet.core/Runtime/Tests/Editor/OtherTests.cs"
+        path.write_text(path.read_text() + "// the test written for the survivor\n")
+
+        # Act
+        campaign.plan()
+
+        # Assert
+        self.assertEqual((campaign.plan_output("mutants"), campaign.plan_output("reusing"),
+                          campaign.plan_output("shards")), ("2", "1", "[0]"))
+
+    def test_Given_EveryKillReusable_When_Planned_Then_NoShardIsOwed(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.survives = set()
+        campaign.measure()
+        campaign.decide()
+        campaign.keep_ledger()
+
+        # Act
+        campaign.plan()
+
+        # Assert
+        self.assertEqual((campaign.plan_output("reusing"), campaign.plan_output("shards")), ("2", "[]"))
+
+    def test_Given_AKillOnlyThePlayModeSuiteTook_When_Planned_Then_ItIsReusedToo(self):
+        # Arrange -- the EditMode pass left the second mutant surviving and the PlayMode pass killed it.
+        campaign = LedgerCampaign()
+        campaign.only_on = {"mutant-002.xml": ("PlayMode",)}
+        campaign.measure()
+        campaign.run_over_diff("--launch-per-mutant", "--platform", "PlayMode", "--survivors-of",
+                               str(campaign.project / "edit"), "--shard", "0/1", "--output",
+                               str(campaign.project / "play"))
+        campaign.decide()
+        campaign.keep_ledger()
+
+        # Act
+        campaign.plan()
+
+        # Assert
+        self.assertEqual((campaign.plan_output("reusing"), campaign.plan_output("shards"),
+                          [record["platform"] for record in campaign.written_ledger().get("records", [])]),
+                         ("2", "[]", ["EditMode", "PlayMode"]))
+
+    def test_Given_AReusingPlan_When_Printed_Then_ItCountsTheReusedAndNamesWhyTheOtherIsMeasured(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+
+        # Act
+        campaign.plan()
+
+        # Assert
+        self.assertEqual(
+            [line for line in campaign.printed.splitlines() if line.startswith(("---", "  Packages"))
+             and "unreached" not in line],
+            ["--- verdicts reused from earlier campaigns: 1 of 2 ---",
+             "--- measured again: 1 of 2 ---",
+             "  Packages/com.velvet.core/Runtime/Probe.cs:6 >= -> > (boundary): run 9001: it was survived "
+             "when last measured, and only a kill is reused"])
+
+    def test_Given_APlanThatReusedAKill_When_ThePassMeasures_Then_OnlyTheOtherMutantReachesTheEditor(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        campaign.plan()
+        campaign.measured.clear()
+
+        # Act
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", str(campaign.project / "reuse.json"),
+                               "--shard", "0/1", "--output", str(campaign.project / "again"))
+
+        # Assert
+        self.assertEqual(campaign.mutants_measured(), ["mutant-002.xml"])
+
+    def test_Given_AReusedKillAndAMeasuredOne_When_Decided_Then_BothAreKilledAndTheRunPasses(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        campaign.plan()
+        reuse = str(campaign.project / "reuse.json")
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
+                               str(campaign.project / "edit"))
+
+        # Act
+        code = campaign.decide("--reuse", reuse)
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^killed: \d+$", campaign.printed, re.MULTILINE)),
+                         (0, ["killed: 2"]))
+
+    def test_Given_AReusedKillWhoseKillingCaseIsGone_When_Decided_Then_TheRunFailsAndNamesIt(self):
+        # Arrange -- the plan reused the kill, and the case was deleted before the verdict read the tree.
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        campaign.plan()
+        reuse = str(campaign.project / "reuse.json")
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
+                               str(campaign.project / "edit"))
+        campaign.write_fixture("Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs", "ProbeTests",
+                               "SomethingElse")
+
+        # Act
+        code = campaign.decide("--reuse", reuse)
+
+        # Assert
+        self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed,
+                          "its killing case ProbeTests.Given_A_When_B_Then_Probe is no longer in the tree"
+                          in campaign.printed), (1, True, True))
+
+    def test_Given_AReuseFileThatRecordsASurvivorAsKilled_When_Decided_Then_TheSurvivorIsNotAPass(self):
+        # Arrange -- the second mutant survived, and the file claims a kill for it.
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        records = campaign.written_ledger().get("records", [])
+        survivor = next((record for record in records if record["verdict"] == mutation_check.SURVIVED), {})
+        kill = next((record for record in records if record["verdict"] == mutation_check.KILLED), {})
+        reuse = campaign.project / "reuse.json"
+        reuse.write_text(json.dumps({"schema": mutation_check.LEDGER_SCHEMA, "reasons": {},
+                                     "context": mutation_check.context_digests(campaign.project), "reused": {
+            "2": dict(survivor, killers=kill.get("killers"), reused_from="9001")}}))
+        campaign.survives = {"mutant-002.xml"}
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", str(reuse), "--shard", "0/1", "--output",
+                               str(campaign.project / "edit"))
+
+        # Act
+        code = campaign.decide("--reuse", str(reuse))
+
+        # Assert
+        self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed), (1, True))
+
+    def test_Given_AReuseFileOfAnotherMutantList_When_Read_Then_TheRunRefusesToMeasureAroundIt(self):
+        # Arrange -- the first mutant's kill filed under the second mutant's index.
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        kill = next((record for record in campaign.written_ledger().get("records", [])
+                     if record["verdict"] == mutation_check.KILLED), {})
+        reuse = campaign.project / "reuse.json"
+        reuse.write_text(json.dumps({"schema": mutation_check.LEDGER_SCHEMA, "reasons": {},
+                                     "context": mutation_check.context_digests(campaign.project),
+                                     "reused": {"2": dict(kill, reused_from="9001")}}))
+
+        # Act
+        code = campaign.run_over_diff("--launch-per-mutant", "--reuse", str(reuse), "--shard", "0/1",
+                                      "--output", str(campaign.project / "again"))
+
+        # Assert
+        self.assertIn("is not that mutant in this tree's list", str(code))
+
+    def test_Given_AReusedKill_When_TheLedgerIsWritten_Then_ItCarriesTheRunThatMeasuredIt(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        campaign.plan()
+        reuse = str(campaign.project / "reuse.json")
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
+                               str(campaign.project / "edit"))
+
+        # Act
+        campaign.decide("--reuse", reuse)
+
+        # Assert
+        records = campaign.written_ledger().get("records", [])
+        self.assertEqual([(record["verdict"], record["measured_by"]) for record in records],
+                         [(mutation_check.KILLED, "9001"), (mutation_check.KILLED, "9001")])
+
+    def test_Given_AMeasuredKill_When_TheLedgerIsWritten_Then_ItNamesTheCaseAndItsFixtureSource(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.survives = {"mutant-002.xml"}
+        campaign.measure()
+
+        # Act
+        campaign.decide()
+
+        # Assert
+        record = next(iter(campaign.written_ledger().get("records", [])), {})
+        self.assertEqual(
+            ([held["case"] for held in record.get("killers", [])],
+             [sorted(held["files"]) for held in record.get("killers", [])], record.get("platform")),
+            (["Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe"],
+             [["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"]], "EditMode"))
+
+    # GREEN_ON_BASE(characterization): a plan asked for no reuse printed none before this change
+    # either. The cases above are the ones that separate a plan reading ledgers from one that does not.
+    def test_Given_APlanOfALocalRun_When_NoLedgerIsGiven_Then_NoReuseLineIsPrinted(self):
+        # Arrange
+        campaign = LedgerCampaign()
+
+        # Act
+        campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual(("reusing=" in campaign.printed, "verdicts reused" in campaign.printed), (False, False))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -390,5 +390,69 @@ class ReasonTests(unittest.TestCase):
         self.assertEqual(held, "its mutation.yml run on aaaaaaa failed")
 
 
+class LedgerArtifactTests(unittest.TestCase):
+    def ledgers(self, *entries, total=None):
+        return {"total_count": len(entries) if total is None else total,
+                "artifacts": [{"id": 70 + position, "name": name, "expired": expired}
+                              for position, (name, expired) in enumerate(entries)]}
+
+    def test_Given_OneLiveLedger_When_Read_Then_ItsIdIsTaken(self):
+        # Arrange
+        payload = self.ledgers(("Mutation EditMode shard 0", False), (campaign.LEDGER_ARTIFACT, False))
+
+        # Act
+        found = campaign.ledger_artifact(payload)
+
+        # Assert
+        self.assertEqual(found, 71)
+
+    def test_Given_ALedgerThatExpired_When_Read_Then_NoneIsTaken(self):
+        # Arrange
+        payload = self.ledgers((campaign.LEDGER_ARTIFACT, True))
+
+        # Act
+        found = campaign.ledger_artifact(payload)
+
+        # Assert
+        self.assertIsNone(found)
+
+    def test_Given_TwoLiveLedgers_When_Read_Then_NoneIsTaken(self):
+        # Arrange
+        payload = self.ledgers((campaign.LEDGER_ARTIFACT, False), (campaign.LEDGER_ARTIFACT, False))
+
+        # Act
+        found = campaign.ledger_artifact(payload)
+
+        # Assert
+        self.assertIsNone(found)
+
+    def test_Given_APartialListing_When_Read_Then_NoneIsTaken(self):
+        # Arrange -- more artifacts exist than the page lists, so the ledger could be among the rest twice.
+        payload = self.ledgers((campaign.LEDGER_ARTIFACT, False), total=101)
+
+        # Act
+        found = campaign.ledger_artifact(payload)
+
+        # Assert
+        self.assertIsNone(found)
+
+    def test_Given_TheWorkflowsLedgerUpload_When_ItsNameIsRead_Then_ItIsTheNameTheReaderLooksFor(self):
+        # Arrange
+        workflow = (Path(__file__).resolve().parents[2] / campaign.PATH).read_text()
+
+        # Act
+        uploaded = "          name: " + campaign.LEDGER_ARTIFACT + "\n" in workflow
+
+        # Assert
+        self.assertEqual((uploaded, campaign.LEDGER_ARTIFACT), (True, "Mutation campaign ledger"))
+
+    def test_Given_AnAnswerOfTheWrongShape_When_Read_Then_NoneIsTaken(self):
+        # Act
+        found = campaign.ledger_artifact([])
+
+        # Assert
+        self.assertIsNone(found)
+
+
 if __name__ == "__main__":
     unittest.main()
