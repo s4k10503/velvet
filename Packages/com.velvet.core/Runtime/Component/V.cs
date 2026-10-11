@@ -2685,6 +2685,10 @@ namespace Velvet
         /// a descendant is pending does not force its siblings into fallback. When the parent re-renders, every
         /// boundary re-evaluates only its own pending state. Splitting children into separate components is not
         /// required to get per-boundary fallbacks.
+        /// <para>
+        /// Children the boundary has shown stay in the tree, hidden, while a later suspend shows the fallback;
+        /// the Suspense section of <c>Documentation~/react-migration.md</c> says what they keep.
+        /// </para>
         /// </remarks>
         /// <param name="fallback">VNode displayed while any descendant is suspended. Must not be null.</param>
         /// <param name="children">Child VNodes whose pending async resources trigger the boundary.</param>

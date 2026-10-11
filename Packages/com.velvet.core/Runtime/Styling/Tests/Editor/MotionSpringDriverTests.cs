@@ -9,19 +9,13 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins the spring-driven variant enter/exit (<c>StyleTransitionConfig.Type == Spring</c>) end to end: the
     /// from→to class swap lands at rest IMMEDIATELY (no CSS-transition-triggering frame boundary the tween path
-    /// needs), the per-frame physics tick (<see cref="MotionSpringDriver.Step"/>) moves the inline style toward
-    /// the target and reports settled once it arrives, an exit-cancel retarget
-    /// (<see cref="MotionSpringDriver.Retarget"/>) redirects a channel toward its resting value without resetting
-    /// its integrator; the axis-scope holes <c>Documentation~/motion.md</c>'s "Driven channels" documents
-    /// (percentage-based translate, per-axis <c>scale-x-</c>/<c>scale-y-</c>), which resolve as utilities but
-    /// plan no channel; the underlying pure physics of <see cref="SpringIntegrator"/> — it converges to its target
-    /// given enough time, an underdamped configuration overshoots before settling (Framer Motion's spring is
-    /// underdamped by default), and retargeting an in-flight spring carries its CURRENT value/velocity forward
-    /// instead of resetting them (the continuity an interrupted AnimatePresence exit/enter needs); validation of
-    /// user-supplied spring parameters, mirroring the tween path's duration guard, since a spring that can never
-    /// satisfy its settle predicate (zero/negative stiffness never approaches the target; NaN diverges into the
-    /// styles it writes) must warn and complete immediately instead of scheduling a forever tick whose completion
-    /// callback — on a presence exit, the only thing that removes the ghost — never fires; and
+    /// needs), the per-frame tick (<see cref="MotionSpringDriver.Step"/>) moves the inline style toward the target
+    /// and reports settled when the pass Framer Motion measures for the spring has run, an exit-cancel retarget
+    /// (<see cref="MotionSpringDriver.Retarget"/>) redirects a channel toward its resting value; the axis-scope
+    /// holes <c>Documentation~/motion.md</c>'s "Driven channels" documents (percentage-based translate, per-axis
+    /// <c>scale-x-</c>/<c>scale-y-</c>), which resolve as utilities but plan no channel; validation of
+    /// user-supplied spring parameters, mirroring the tween path's duration guard (see
+    /// <c>StyleAnimationScheduler.ValidateSpringParameters</c>); and
     /// <see cref="MotionLayoutIdDriver.ComputeDelta"/>'s pure old-rect/new-rect math behind
     /// V.Motion's layoutId (Framer's shared-element layout animation parity).
     /// </summary>
@@ -31,8 +25,7 @@ namespace Velvet.Tests
     /// resolution pass), and the recurring tick this scheduler registers (<c>schedule.Execute(...).Every(16)</c>)
     /// needs a live panel clock to FIRE automatically, which the EditMode batchmode PlayerLoop never drives. So
     /// the scheduler's synchronous setup is asserted directly (no tick needed to observe it), and the
-    /// recurring tick's own math — along with
-    /// the standalone integrator and the layoutId delta math, neither of which involves a panel or VisualElement
+    /// recurring tick's own math — along with the layoutId delta math, which involves no panel or VisualElement
     /// at all — is exercised by calling the driver directly in a loop instead of trying to pump a real/simulated
     /// scheduler clock. GWT, one assert per case: every fact a case depends on — channel recognition,
     /// settle/convergence, or a captured intermediate reading — folds into that single assertion via a
@@ -262,42 +255,51 @@ namespace Velvet.Tests
             Assert.That((targetMidExit, targetAfterRetarget), Is.EqualTo((0f, 1f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base settles a spring already at rest on its target on the next step.
         [Test]
-        public void Given_ACriticallyDampedSpring_When_SteppedForEnoughTime_Then_ItSettlesAtTheTarget()
+        public void Given_ASpringExitRetargetedBeforeItHasMoved_When_ItIsStepped_Then_ItHasNoTravelLeftAndEnds()
         {
-            // Arrange — stiffness 100 / mass 1 critically damps at damping = 2*sqrt(stiffness*mass) = 20 (no
-            // ringing, the fastest non-oscillating approach).
-            var spring = new SpringIntegrator(initialValue: 0f);
-            const float target = 100f;
+            // Arrange — the opacity is still on the value the reversal heads back to, so it travels nothing.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f);
 
-            // Act — 180 ticks (3 simulated seconds) is comfortably past this spring's settle time.
-            for (var i = 0; i < 180; i++)
+            // Act
+            var settled = false;
+            if (state != null)
             {
-                spring.Step(FixedDeltaSec, target, stiffness: 100f, damping: 20f, mass: 1f);
+                MotionSpringDriver.Retarget(state);
+                settled = MotionSpringDriver.Step(element, state, FixedDeltaSec);
             }
 
             // Assert
-            Assert.That(spring.Value, Is.EqualTo(target).Within(0.5f));
+            Assert.That(settled, Is.True);
         }
 
-        // Each row is a spring released 1 from its target at 2 per second, and where it is 0.1s later: an
-        // underdamped, a critically damped and an overdamped spring, the reference values integrated
-        // numerically (RK4, 200000 steps) rather than from the closed form under test.
-        [TestCase(100.0, 10.0, 1.0, 0.766401592, -5.082686035)]
-        [TestCase(100.0, 20.0, 1.0, 0.809334771, -3.678794412)]
-        [TestCase(100.0, 125.0, 1.0, 0.943613190, -0.759773369)]
-        public void Given_ASpringReleasedWithAVelocity_When_SolvedATenthOfASecondLater_Then_ItMatchesTheIntegratedMotion(
-            double stiffness, double damping, double mass, double displacement, double velocity)
+        [Test]
+        public void Given_ASpringThatDoesNotRepeat_When_ItsPassIsAboutToEndAndThenEnds_Then_ItSettlesOnlyAtTheEnd()
         {
-            // Arrange
-            var spring = (stiffness, damping, mass);
+            // Arrange — stiffness 200, damping 12: the easing Framer Motion hands an opacity's spring to the browser
+            // as, over a travel of 100, first rests on its 1 000 ms sample, which is when its animation finishes.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 200f, damping: 12f, mass: 1f);
 
-            // Act
-            var solved = SpringIntegrator.Solve(1.0, 2.0, 0.1, spring);
+            // Act — a frame at a time to 0.99 s, then the frame across 1 s. A plan that resolved no channel leaves
+            // (true, false).
+            var (beforeEnd, atEnd) = (true, false);
+            if (state != null)
+            {
+                beforeEnd = false;
+                for (var i = 0; i < 99 && !beforeEnd; i++)
+                {
+                    beforeEnd = MotionSpringDriver.Step(element, state, 0.01f);
+                }
+                atEnd = MotionSpringDriver.Step(element, state, 0.02f);
+            }
 
             // Assert
-            Assert.That(new[] { solved.Displacement, solved.Velocity },
-                Is.EqualTo(new[] { displacement, velocity }).Within(1e-6));
+            Assert.That((beforeEnd, atEnd), Is.EqualTo((false, true)));
         }
 
         [Test]
@@ -318,57 +320,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(settled, Is.True);
-        }
-
-        [Test]
-        public void Given_AnUnderdampedSpring_When_SteppedTowardATarget_Then_ItOvershootsBeforeSettling()
-        {
-            // Arrange — damping (2) sits well below critical (20 for this stiffness/mass), so the spring rings
-            // past its target before settling instead of approaching it monotonically.
-            var spring = new SpringIntegrator(initialValue: 0f);
-            const float target = 100f;
-            var peakValue = float.NegativeInfinity;
-
-            // Act — step long enough to pass through and beyond the target at least once.
-            for (var i = 0; i < 180; i++)
-            {
-                spring.Step(FixedDeltaSec, target, stiffness: 100f, damping: 2f, mass: 1f);
-                if (spring.Value > peakValue)
-                {
-                    peakValue = spring.Value;
-                }
-            }
-
-            // Assert
-            Assert.That(peakValue, Is.GreaterThan(target));
-        }
-
-        [Test]
-        public void Given_ASpringMidFlightTowardOneTarget_When_RetargetedToADifferentValue_Then_TheNextStepContinuesFromItsCurrentValueAndVelocity()
-        {
-            // Arrange — run partway toward 100 so the spring has accumulated a nonzero value/velocity, then
-            // capture that state right before retargeting.
-            var spring = new SpringIntegrator(initialValue: 0f);
-            for (var i = 0; i < 10; i++)
-            {
-                spring.Step(FixedDeltaSec, 100f, stiffness: 100f, damping: 10f, mass: 1f);
-            }
-            var capturedValue = spring.Value;
-            var capturedVelocity = spring.Velocity;
-
-            // Act — retarget to a wildly different value (mirrors an exit-cancel reversing back toward the
-            // resting value) and take one more step; a FRESH spring seeded with the exact captured state is the
-            // reference for what one step from "here" should produce with nothing reset.
-            spring.Step(FixedDeltaSec, -50f, stiffness: 100f, damping: 10f, mass: 1f);
-            var reference = new SpringIntegrator(capturedValue, capturedVelocity);
-            reference.Step(FixedDeltaSec, -50f, stiffness: 100f, damping: 10f, mass: 1f);
-            var valuesMatch = Mathf.Abs(spring.Value - reference.Value) <= 1e-6f;
-
-            // Assert — the spring had genuinely built up velocity before the retarget (otherwise "continues
-            // from its current value/velocity" would be indistinguishable from a reset to zero), and the
-            // retargeted spring's value matches the reference exactly: the retarget carried the SAME
-            // value/velocity forward (no discontinuity) rather than resetting either.
-            Assert.That((capturedVelocity != 0f, valuesMatch), Is.EqualTo((true, true)));
         }
 
         [Test]

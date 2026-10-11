@@ -25,6 +25,14 @@ namespace Velvet.CodeGen
                 + " post-processor from resolving it, then recompile.";
         }
 
+        // Formats the warning the compiler weaver emits for a body it left unwoven because processing it threw,
+        // naming the method and the exception so a weaver defect is visible rather than silent.
+        public static string FormatMethodFailureWarning(MethodDefinition method, System.Exception exception)
+        {
+            return $"Velvet auto-memoization left '{method.FullName}' unwoven because the IL post-processor threw"
+                + $" {exception.GetType().Name} while processing it: {exception.Message}";
+        }
+
         // Resolves fullName from one of module's referenced assemblies. Used when the type is not declared
         // in module itself (the case for every assembly except Velvet, which declares its own runtime
         // types directly). Returns null when no referenced assembly resolves or none declares the type.

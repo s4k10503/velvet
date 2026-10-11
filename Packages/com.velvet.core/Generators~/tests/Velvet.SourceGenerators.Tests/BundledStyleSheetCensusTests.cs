@@ -168,6 +168,27 @@ namespace Velvet.SourceGenerators.Tests
                 firstPreset);
         }
 
+        // StyleRelativeLengths reads a size or an inset a class declares without asking whether the rule is gated.
+        [Fact]
+        public void Given_TheDerivedTable_When_Compiled_Then_NoRuleGatedOnAStateWritesASizeOrAnInset()
+        {
+            // Arrange
+            var sheets = BundledStyleSheets();
+            Assume.NotEmpty(sheets, "the bundled stylesheets were located");
+            var probe = StyleTableTestHelper.Load(StyleTableTestHelper.Derive(sheets));
+            var sizing = new[] { "width", "height", "top", "right", "bottom", "left" };
+
+            // Act
+            var gatedSizing = Surveyed.GatesByClassName
+                .Where(pair => !pair.Value.Contains(UssGate.None))
+                .Where(pair => probe.PropertiesOf(pair.Key).Intersect(sizing).Any())
+                .Select(pair => pair.Key)
+                .ToList();
+
+            // Assert
+            Assert.Empty(gatedSizing);
+        }
+
         [Fact]
         public void Given_TheDerivedTable_When_Compiled_Then_TransitionFilterNamesFilterAlone()
         {

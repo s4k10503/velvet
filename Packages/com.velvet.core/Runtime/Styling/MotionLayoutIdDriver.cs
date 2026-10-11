@@ -34,9 +34,6 @@ namespace Velvet
     //
     internal static class MotionLayoutIdDriver
     {
-        // An edge this close to its layout, in pixels, and moving this slowly ends a projection's spring.
-        internal const float RestPixels = 0.1f;
-
         private static int s_pass;
         // How long the frame running the current pass stepped the tweens by, 0 for a pass outside one.
         private static float s_passDt;
@@ -205,7 +202,7 @@ namespace Velvet
             Share(projection, shared, crossfades, moves, fromBox.Look);
             projection.From = from;
             projection.Moving = moves;
-            projection.Progress = pending.Timing.Start(EdgeTravel(from, layout), shared);
+            projection.Progress = pending.Timing.Start();
             SyncFollows(layoutId, ctx);
             Project(host, ctx);
             EnsureFrame(host, ctx);
@@ -858,11 +855,6 @@ namespace Velvet
             return new LayoutIdDelta(translateChanged ? delta : Vector2.zero, scaleChanged ? scale : Vector2.one);
         }
 
-        // The farthest any edge of one rect lies from the same edge of the other.
-        private static float EdgeTravel(Rect a, Rect b) => Mathf.Max(
-            Mathf.Max(Mathf.Abs(a.xMin - b.xMin), Mathf.Abs(a.xMax - b.xMax)),
-            Mathf.Max(Mathf.Abs(a.yMin - b.yMin), Mathf.Abs(a.yMax - b.yMax)));
-
         // MUTANT_SURVIVES(equivalent): no float s puts |s - 1| at exactly 1e-5f. Near 1, s - 1 is exact and a
         // whole number of s's spacing, 2^-23 or 2^-24, and 1e-5f is a whole number of neither.
         private static bool IsUnit(Vector2 scale) => Mathf.Abs(scale.x - 1f) <= 1e-5f && Mathf.Abs(scale.y - 1f) <= 1e-5f;
@@ -1044,10 +1036,7 @@ namespace Velvet
                     : StyleAnimationScheduler.ValidateDuration(t.DurationSec, null);
         }
 
-        // travel: the farthest an edge moves, in pixels, which scales a spring's rest threshold. fades: the progress
-        // may draw an opacity too, so its rest is held within an opacity spring's however little the edges move
-        // (Given_TwoHoldersAtOneBoxOnASoftSpring_When_TheSecondHasTakenTheIdForTwoFrames_Then_ItIsStillFadingIn).
-        public LayoutIdProgress Start(float travel, bool fades) => new(this, travel, fades);
+        public LayoutIdProgress Start() => new(this);
 
         public float Ease(float t) => _config.Type == TransitionType.Bezier
             ? CubicBezierEvaluator.Evaluate(_config.BezierX1, _config.BezierY1, _config.BezierX2, _config.BezierY2, t)
@@ -1057,17 +1046,20 @@ namespace Velvet
     // How far a projection still has to go, from 1 at the old box to 0 at the layout.
     internal sealed class LayoutIdProgress
     {
+        // Framer Motion's projection animates a progress from 0 to 1000, at rest and on its main thread, whatever
+        // the boxes' distance, so a spring's rest and its end are measured on that travel.
+        private const float ProgressTravel = 1000f;
+
         private readonly LayoutIdTiming _timing;
-        private readonly float _rest;
-        // A mutable struct stepped in place, so a field rather than a property.
-        private SpringIntegrator _spring = new(1f);
+        private readonly float _springPassSec;
         private float _elapsedSec;
 
-        public LayoutIdProgress(LayoutIdTiming timing, float travel, bool fades)
+        public LayoutIdProgress(LayoutIdTiming timing)
         {
             _timing = timing;
-            _rest = MotionLayoutIdDriver.RestPixels / Mathf.Max(travel, MotionLayoutIdDriver.RestPixels);
-            if (fades) _rest = Mathf.Min(_rest, MotionSpringDriver.NormalizedRestDelta);
+            _springPassSec = timing.IsSpring
+                ? MotionSpringDriver.PassDurationSec(ProgressTravel, timing.Stiffness, timing.Damping, timing.Mass)
+                : 0f;
         }
 
         public float Value { get; private set; } = 1f;
@@ -1076,14 +1068,17 @@ namespace Velvet
         public bool Step(float dtSec)
         {
             _elapsedSec += dtSec;
-            // Inside the delay active is not positive, and needs no guard: SpringIntegrator.Step ignores a step
-            // that is not positive, and both curves clamp a time below 0 to their start.
+            // Inside the delay active is not positive: the spring is sampled at its start, and the tween's curve
+            // clamps a time below 0 to its start.
             var active = _elapsedSec - _timing.DelaySec;
             if (_timing.IsSpring)
             {
-                _spring.Step(Mathf.Min(dtSec, active), 0f, _timing.Stiffness, _timing.Damping, _timing.Mass);
-                Value = _spring.Value;
-                return _spring.IsSettled(0f, _rest, _rest);
+                // Ends as Framer's spring animation does, when its pass has run, and never for a spring that does
+                // not rest within 20 s.
+                var ended = active >= _springPassSec;
+                Value = ended ? 0f : 1f - MotionSpringDriver.SampleSpring(0f, ProgressTravel, 1f, 0f,
+                    System.Math.Max(active, 0f), (_timing.Stiffness, _timing.Damping, _timing.Mass)) / ProgressTravel;
+                return ended;
             }
             var t = active / _timing.DurationSec;
             Value = 1f - _timing.Ease(t);
