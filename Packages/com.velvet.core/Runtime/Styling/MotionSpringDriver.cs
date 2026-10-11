@@ -375,7 +375,10 @@ namespace Velvet
                 // The slope at the time, in the units of the clock the play is shown on: a step across the seek
                 // itself would average the whole jump, and a pause or a rate of zero leaves the value still.
                 var step = SeekSlopeStepSec;
+                // MUTANT_SURVIVES(equivalent, boundary): SeekTo is the only path here and stores a float widened to a double,
+                // and no float equals 1/1000, so the elapsed time is never exactly the step.
                 var from = state.ElapsedSec >= step ? state.ElapsedSec - step : state.ElapsedSec;
+                // MUTANT_SURVIVES(equivalent, boundary): the same comparison as the line above.
                 var to = state.ElapsedSec >= step ? state.ElapsedSec : state.ElapsedSec + step;
                 velocity = (ValueAt(state, channel, to, out _) - ValueAt(state, channel, from, out _))
                     / (float)(to - from) * scale;

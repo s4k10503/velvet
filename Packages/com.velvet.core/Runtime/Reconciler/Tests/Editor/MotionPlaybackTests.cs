@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -1222,5 +1223,56 @@ namespace Velvet.Tests
             => ((ICollection)typeof(MotionPlayback)
                 .GetField("_plays", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                 .GetValue(playback)).Count;
+
+        // The spring the scheduler is running for the element's enter, read from its private bookkeeping.
+        private MotionSpringState RunningEnterSpring(VisualElement element)
+        {
+            var enters = (IDictionary)typeof(StyleAnimationScheduler)
+                .GetField("_pendingEnters", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(_scheduler);
+            var pending = enters[element];
+            return (MotionSpringState)pending?.GetType().GetField("Spring")!.GetValue(pending);
+        }
+
+        [Test]
+        public void Given_ASpringPlayMovingOnAPausedPlayback_When_AnotherPlayInterruptsIt_Then_TheNewSpringStartsAtRest()
+        {
+            // Arrange
+            var element = OnPanel("paused-spring");
+            var playback = new MotionPlayback();
+            var spring = new StyleTransitionConfig { Type = TransitionType.Spring };
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, spring, playback: playback);
+            Ticks(6);
+            var movingBeforePause = RunningEnterSpring(element).Opacity.Integrator.Velocity > 0f;
+            playback.IsPaused = true;
+            Tick();
+
+            // Act
+            _scheduler.PlayVariantEnter(element, s_visible, s_hidden, spring);
+
+            // Assert
+            Assert.That((movingBeforePause, RunningEnterSpring(element).Opacity.StartVelocity),
+                Is.EqualTo((true, 0f)));
+        }
+
+        [Test]
+        public void Given_ADrivenOpacityTweenBesideAColorTransition_When_ItsPlaybackCancelsIt_Then_TheTransitionsAreNoLongerSuspended()
+        {
+            // Arrange
+            _scheduler.Clock = new HeldMotionClock();
+            var element = OnPanel("driven-beside-transition");
+            element.AddToClassList("transition-colors");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible,
+                new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.Linear }, playback: playback);
+            var suspendedWhileRunning = element.style.transitionProperty.keyword != StyleKeyword.Null;
+
+            // Act
+            playback.CancelPlays();
+
+            // Assert
+            Assert.That((suspendedWhileRunning, element.style.transitionProperty.keyword != StyleKeyword.Null),
+                Is.EqualTo((true, false)));
+        }
     }
 }
