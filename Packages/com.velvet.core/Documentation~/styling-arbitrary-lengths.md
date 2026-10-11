@@ -1,8 +1,9 @@
-# Bracketed lengths
+# Bracketed lengths and bare spacing steps
 
 A bracketed value such as `w-[120px]`, `top-[1in]` or `translate-x-[25%]` is resolved by Velvet rather
 than by a USS rule, because no stylesheet can declare every value a bracket can hold. This guide owns which
-lengths a bracket reads, which utilities read which of them, and what each is measured against.
+lengths a bracket reads, which utilities read which of them, and what each is measured against. The
+[last section](#bare-spacing-steps) owns the bare number a spacing utility takes without a bracket.
 
 ## What every length bracket reads
 
@@ -103,3 +104,21 @@ lands at once rather than animating.
   function inside one is written without spaces: `bg-linear-[to_right,#000000_0px,#ffffff_calc(1rem+4px)]`.
 - A spring or bezier `V.Motion` does not interpolate a length only an element can measure: the class still
   applies, uninterpolated, as `w-auto` does.
+
+## Bare spacing steps
+
+A spacing utility takes a bare number as Tailwind v4 does: any non-negative multiple of 0.25 written in
+canonical decimal form is that many 4px steps, so `p-13` is 52px, `gap-4.5` 18px and `w-0.25` 1px. `.5`,
+`4.50`, `05` and `4.1` are not steps and leave the class unresolved. The utilities are padding, margin
+(`m-*`, `mx-*`, `ps-*`, …), `gap-*`, `space-x-*` / `space-y-*`, `w-*`, `h-*`, `size-*`, `min-*` / `max-*`
+width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-x-*` / `translate-y-*`,
+and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). A minus
+sign negates the margin, inset, translate and `space-*` utilities (`-mt-13`, `-top-4.5`), as in Tailwind;
+padding, sizing, `basis-*` and `gap-*` take none.
+
+The steps the bundled stylesheets declare — `0`, `px`, `0-5` … `3-5`, `4` … `12` and the larger ones up to
+`96`, written with `-` for `.` — stay USS classes. Any other step resolves inline from C#, the way a bracket
+value does, so it takes part in variants, the `!` modifier and the cascade as `p-[52px]` does, and it
+never enters the class list. `p-1.5` is therefore the inline twin of the `p-1-5` class, both 6px.
+
+`z-<n>` takes any whole number the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).

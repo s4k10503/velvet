@@ -66,7 +66,8 @@ V.Div(className: "flex flex-col gap-4", children: ...);
 ```
 
 The numeric scale (`gap-0-5`, `gap-1`, `gap-1-5`, `gap-2`, … mapping to the `--space-*` tokens,
-1 unit = 4px) is Tailwind's; the classes are recognized in C#, not by USS selectors — see
+1 unit = 4px, and any other multiple of 0.25 such as `gap-13` or `gap-4.5`, as
+[styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps) describes) is Tailwind's; the classes are recognized in C#, not by USS selectors — see
 `Runtime/Styling/StyleGapManipulator.cs` and `Runtime/Styling/StyleGapClass.cs`.
 
 Tailwind's `space-x-*` / `space-y-*` (and their negative forms, `-space-x-4`) take the same scale and the
