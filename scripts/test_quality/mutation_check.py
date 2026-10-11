@@ -3850,11 +3850,20 @@ def mutant_record(mutant, project):
             "after": mutant.after, "shadowed": sorted(mutant.shadowed)}
 
 
+# The files besides this script that a campaign's shard runs, relative to `scripts/`: what
+# `ci_mutation_shard.py` activates and launches, the modules the campaign imports, the rewriter it
+# builds, and the step that reads the change base. `CampaignKeyTests` holds the list to the imports.
+TOOL_FILES = ("test_quality/ci_mutation_shard.py", "test_quality/unity_running.py",
+              "test_quality/schemata_tool.py", "test_quality/schemata/MutantSchemata.cs",
+              "ci/licensed_editor.py", "ci/change_base.py")
+
+
 def tool_digest(project):
-    """What a verdict depends on that is not the tree under test: this script, its operator tables
-    and the files that decide how a shard runs it."""
+    """What a verdict depends on that is not the tree under test: this script, `TOOL_FILES`, its
+    operator tables and the workflow that runs the shards."""
     here = Path(__file__).resolve()
-    held = [here, here.with_name("ci_mutation_shard.py"), project / ".github/workflows/mutation.yml"]
+    held = [here, *(here.parents[1] / name for name in TOOL_FILES),
+            project / ".github/workflows/mutation.yml"]
     parts = [repr((MUTATION_MODEL_VERSION, OPERATORS, WORD_OPERATORS, LINE_PRIORITY))]
     parts.extend("{}:{}".format(path.name, hashlib.sha256(path.read_bytes()).hexdigest())
                  for path in held if path.exists())

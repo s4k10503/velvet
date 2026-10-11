@@ -261,34 +261,46 @@ a campaign key: one hash over six components, each printed beside it so a miss c
 | `test-sources` | every file under a `Tests/` directory of the package, and `TestUtilities/` | what is asked of the mutants |
 | `build-inputs` | every other file the editor compiles or imports, outside a `~` directory and not markdown: the package's remaining sources, `.asmdef`s and plugins, `Assets/`, `ProjectSettings/`, `Packages/manifest.json` and `packages-lock.json` | a test that kills a mutant in one file can reach it through another, and an editor or analyzer change moves what compiles |
 | `declarations` | each `MUTANT_SURVIVES` the mutated files hold, with whether this branch wrote it | the declarations' `written_here` moves with the merge base |
-| `tool` | `mutation_check.py`, its operator tables and priority order, `ci_mutation_shard.py` and `mutation.yml` | a verdict is the tool's |
+| `tool` | `mutation_check.py`, its operator tables and priority order, `mutation.yml`, and the scripts the shards run or import: `ci_mutation_shard.py`, `unity_running.py`, `schemata_tool.py`, `schemata/MutantSchemata.cs`, `ci/licensed_editor.py` and `ci/change_base.py` (`TOOL_FILES`) | a verdict is the tool's |
 
-The test-source set is conservative on purpose: the whole of what the suites compile besides the
-mutated files, so a key equal across two heads means no file a launch reads differs. Prose, scripts
-and every other workflow are outside it, since the fixtures that read the repository's text are the
-ones no launch runs. The price is that a rebase onto a base that changed another production file
-measures again; narrowing `build-inputs` to the mutated files and the tests is a one-line change in
-`campaign_key`, and takes on the risk that an unmutated file alters what kills a mutant.
+The key is conservative on purpose: it hashes the mutated files, the test sources and the rest of
+what the editor compiles or imports, so an equal key means none of those files differs. It does not
+hash markdown (also inside the package), a directory ending in `~` (so `Generators~` sources, though
+the DLLs committed under `Runtime/Plugins/` are in), `Library`, `Temp`, `Logs` or `obj`, a workflow
+other than `mutation.yml`, a script outside `TOOL_FILES`, or what the registry serves behind the
+editor image's tag (the tag itself is written in `mutation.yml`). The fixtures that read
+the repository's text are the ones no launch runs, and nothing a campaign runs imports another
+script; `CampaignKeyTests` holds `TOOL_FILES` to the modules `mutation_check.py` and
+`ci_mutation_shard.py` import. The price is that a rebase onto a base that changed another production file measures again; narrowing `build-inputs`
+to the mutated files and the tests is a one-line change in `campaign_key`, and takes on the risk that
+an unmutated file alters what kills a mutant.
 
 A passing campaign uploads an artifact named `Mutation campaign key <hex>`, which a REST listing of
-the run's artifacts carries and which expires with the run's other artifacts. `mutation-plan` lists
+the run's artifacts carries and which lapses with the repository's artifact retention, as the run's
+other artifacts do; after that the head is measured. `mutation-plan` lists
 the newest 20 passing runs of the workflow on the head's branch (`scripts/ci/reuse_verdict.py`), and
 where one holds the head's key, the shards, the Library job and the PlayMode pass are skipped and
-`Mutation campaign (verdict)` passes, its summary naming the run it reused from. That run uploads the
-key too, citing the run that **measured** it and not the one it read it from, so a verdict is never
-reused from a reuse. A reading that fails reuses nothing. `scripts/pr/settle.py` checks the citation
+`Mutation campaign (verdict)` passes, its summary naming the run it reused from. Only a run whose own
+key artifact records that it measured the key is a source: a run that reused it is skipped, so no
+chain of reuses forms and a verdict outlives only the artifacts of the run that measured it. The
+reusing run uploads the key too, citing the run that measured it. A reading that fails for any reason,
+a malformed answer included, reuses nothing. `scripts/pr/settle.py` checks the citation
 before a merge: a reused pass whose cited run is not a pass of the workflow that measured this very
-key holds the head. `scripts/pr/automerge.py` reads only whether the head's newest run concluded, as
+key holds the head, and says which: the cited run could not be read, is not a pass, holds no readable
+key artifact, or did not measure the key. `scripts/pr/campaign_status.py` asks the same check before
+it displays a pass. `scripts/pr/automerge.py` reads only whether the head's newest run concluded, as
 for any campaign, and the merge run it dispatches is settle's. `refuse/merge_unproven_head.py` does
 not read the citation, which a merge by hand therefore skips.
 
 **Every shard measures the plan's list, and a shard that did not report is not a survivor.**
-`mutation-plan` writes the mutant list it counted (`--emit-mutants`) and every later job hands it
-back (`--mutants`): a tree that generates another list refuses to run, rather than dealing its
+`mutation-plan` writes the mutant list it counted (`--emit-mutants`) and each shard, the PlayMode plan
+and the verdict job hand it back (`--mutants`): a tree that generates another list refuses to run, rather than dealing its
 indices to other mutants. A shard that died, was cancelled or timed its baseline out records nothing,
 and the verdict job names it under `not measured`, with the shard's number: that is neither a
 survivor nor a stale declaration, and a declaration over a mutant of such a shard is not reported
-stale. The run still fails. Re-running only the failed jobs of the run completes it: the shard
+stale. An EditMode shard that died is named the same way, with the heading `EditMode`; its mutants are
+in no PlayMode pass's list, and no PlayMode shard is named then, since that pass is skipped when an
+EditMode shard fails. The run still fails. Re-running only the failed jobs of the run completes it: the shard
 artifacts upload with `overwrite`, and the verdict job decides again over every record.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken

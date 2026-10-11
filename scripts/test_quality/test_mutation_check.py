@@ -6228,6 +6228,50 @@ class CampaignKeyTests(unittest.TestCase):
         # Assert
         self.assertEqual(moved, ["tool"])
 
+    def test_Given_ASiblingModuleOfTheCampaignEdited_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
+        # Arrange -- a file standing in for one of `TOOL_FILES`, reached by a path from `scripts/`.
+        project = KeyedProject()
+        sibling = Path(project.holder) / "sibling.py"
+        sibling.write_text("RUNNING = 1\n")
+        scripts = Path(mutation_check.__file__).resolve().parents[1]
+        stood_in = (os.path.relpath(sibling, scripts),)
+        with mock.patch.object(mutation_check, "TOOL_FILES", stood_in):
+            _, before = project.key()
+            sibling.write_text("RUNNING = 2\n")
+
+            # Act
+            moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["tool"])
+
+    def test_Given_TheCampaignsToolFiles_When_Listed_Then_EachExists(self):
+        # Arrange
+        scripts = Path(mutation_check.__file__).resolve().parents[1]
+
+        # Act
+        missing = [name for name in mutation_check.TOOL_FILES if not (scripts / name).is_file()]
+
+        # Assert
+        self.assertEqual(missing, [])
+
+    def test_Given_TheModulesTheCampaignImports_When_ComparedWithTheToolFiles_Then_NoneIsLeftOut(self):
+        # Arrange -- a sibling module the campaign or its shard wrapper imports from scripts/ is part
+        # of what a verdict ran under.
+        scripts = Path(mutation_check.__file__).resolve().parents[1]
+        sources = [scripts / "test_quality" / name for name in ("mutation_check.py", "ci_mutation_shard.py")]
+        imported = set()
+        for source in sources:
+            imported.update(re.findall(r"^\s*(?:import|from)\s+(\w+)", source.read_text(), re.MULTILINE))
+        local = {path.relative_to(scripts).as_posix() for path in scripts.glob("*/*.py")
+                 if path.stem in imported and path.name != "mutation_check.py"}
+
+        # Act
+        left_out = sorted(local - set(mutation_check.TOOL_FILES))
+
+        # Assert
+        self.assertEqual(left_out, [])
+
     def test_Given_TheCampaignWorkflowEdited_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
         # Arrange
         project = KeyedProject()
