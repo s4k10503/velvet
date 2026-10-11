@@ -311,6 +311,9 @@ def campaign_backing(project, runs, read=None, slug=None):
     read = read or rest_json
     slug = slug or repository(project)
     own = read(campaign.artifacts_path(slug, newest.get("id")))
+    problem = campaign.own_problem(own)
+    if problem:
+        return problem
     found = campaign.keyed(own)
     if found is None or found[1] is None:
         return None

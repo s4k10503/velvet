@@ -1093,6 +1093,28 @@ class ReusedVerdictTests(unittest.TestCase):
         # Assert
         self.assertIsNone(why)
 
+    def test_Given_ACampaignWhoseOwnKeyArtifactExpired_When_Backed_Then_ItIsUnbacked(self):
+        # Arrange
+        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
+        own["artifacts"][0]["expired"] = True
+
+        # Act
+        why = self.reading(own)
+
+        # Assert
+        self.assertEqual(why, "holds a key artifact that has expired")
+
+    def test_Given_ACampaignHoldingTwoKeyArtifacts_When_Backed_Then_ItIsUnbacked(self):
+        # Arrange
+        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY),
+                             settle.campaign.key_artifact_name(self.KEY, 9500))
+
+        # Act
+        why = self.reading(own)
+
+        # Assert
+        self.assertEqual(why, "holds more than one key artifact")
+
     def test_Given_ACampaignWithNoKeyArtifact_When_Backed_Then_NothingIsOwed(self):
         # Arrange -- every campaign that ran before the key existed.
         why = self.reading(self.artifacts("Mutation EditMode shard 0"))
@@ -1166,7 +1188,7 @@ class ReusedVerdictTests(unittest.TestCase):
             decided = settle.blocking_reasons(Path("."), 1).reasons
 
         # Assert
-        self.assertEqual(decided, ["its mutation.yml run on 0000000 reused a verdict that " + why])
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 does not stand: it " + why])
 
     def test_Given_ABackedReuse_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange -- the control: the pass is the same, and nothing is owed for it.

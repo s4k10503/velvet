@@ -287,6 +287,51 @@ class UnbackedTests(unittest.TestCase):
         self.assertEqual(why, "cites run 9001, which did not itself measure this key")
 
 
+class OwnKeyArtifactTests(unittest.TestCase):
+    """A run's own record fails closed unless it is wholly absent, as on a run from before the key."""
+
+    def test_Given_ARunWhoseOnlyKeyArtifactExpired_When_Checked_Then_ItIsUnbacked(self):
+        # Arrange
+        name = campaign.key_artifact_name(KEY)
+
+        # Act
+        why = campaign.unbacked(listing(name, expired=(name,)), None, None)
+
+        # Assert
+        self.assertEqual(why, "holds a key artifact that has expired")
+
+    def test_Given_ARunHoldingTwoKeyArtifacts_When_Checked_Then_ItIsUnbacked(self):
+        # Arrange
+        own = listing(campaign.key_artifact_name(KEY), campaign.key_artifact_name(KEY, 9001))
+
+        # Act
+        why = campaign.unbacked(own, None, None)
+
+        # Assert
+        self.assertEqual(why, "holds more than one key artifact")
+
+    def test_Given_ARunWithNoKeyArtifactAtAll_When_Checked_Then_ItIsAcceptedAsALegacyRun(self):
+        # Arrange
+        own = listing("Mutation EditMode shard 0")
+
+        # Act
+        why = campaign.unbacked(own, None, None)
+
+        # Assert
+        self.assertIsNone(why)
+
+    def test_Given_AnExpiredKeyArtifactBesideALiveOne_When_Checked_Then_TheLiveOneStands(self):
+        # Arrange -- the control: only a record with nothing live left fails closed.
+        name = campaign.key_artifact_name(KEY)
+        old = campaign.key_artifact_name(KEY, 9001)
+
+        # Act
+        why = campaign.unbacked(listing(name, old, expired=(old,)), None, None)
+
+        # Assert
+        self.assertIsNone(why)
+
+
 class ReasonTests(unittest.TestCase):
     HEAD = "a" * 40
 
@@ -298,7 +343,7 @@ class ReasonTests(unittest.TestCase):
         held = campaign.reason({campaign.LABEL}, campaign.PASSED, self.HEAD, "", why)
 
         # Assert
-        self.assertEqual(held, "its mutation.yml run on aaaaaaa reused a verdict that " + why)
+        self.assertEqual(held, "its mutation.yml run on aaaaaaa does not stand: it " + why)
 
     def test_Given_APassedCampaignWithNothingUnbacked_When_Reasoned_Then_NothingHoldsTheHead(self):
         # Arrange -- the control: the reuse reading changes nothing for a pass that stands.

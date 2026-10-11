@@ -486,14 +486,17 @@ class ReconciliationTests(unittest.TestCase):
 
     def test_Given_EightEligiblePulls_When_Reconciled_Then_TheCompleteBoundaryFitsTheReadAndWriteBudget(self):
         # Arrange
-        listed = [{**pull(), "number": n} for n in range(1, 9)]
+        listed = [{**pull(), "number": n} for n in range(1, status.MAX_SWEEP_PULLS + 1)]
 
         # Act
         posted, wakes, paths, error = self.execute("schedule", listed)
 
         # Assert
-        self.assertEqual((len(posted), len(wakes), len(paths) + len(posted) <= 58, error),
-                         (8, 8, True, None))
+        # The budget decision: a sweep of MAX_SWEEP_PULLS heads may spend two reads of its own, six
+        # per head (the citation check's read included) and one status write per head.
+        budget = 2 + (6 + 1) * status.MAX_SWEEP_PULLS
+        self.assertEqual((len(posted), len(wakes), len(paths) + len(posted) <= budget, error),
+                         (status.MAX_SWEEP_PULLS, status.MAX_SWEEP_PULLS, True, None))
 
     def test_Given_ASelectedManualRecoveryAboveSweepCapacity_When_Dispatched_Then_OnlyTheSelectedHeadUsesTheSamePublisher(self):
         # Arrange

@@ -59,7 +59,7 @@ def reading(pull, runs, slug, event_run=None, released=False, backing=None):
     if found == settle.campaign.RUNNING:
         state, description = "pending", "Mutation campaign is running"
     elif unbacked:
-        state, description = "failure", "Mutation campaign reused a verdict that does not stand"
+        state, description = "failure", "Mutation campaign verdict cannot be shown to stand"
     elif settle.campaign.reason(labels, found, sha, "") is None:
         state = "success"
         description = "Mutation campaign passed" if found == settle.campaign.PASSED else "Cancelled campaign is not required"

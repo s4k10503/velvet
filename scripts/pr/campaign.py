@@ -113,11 +113,12 @@ def reason(labels, found, head, stuck, unbacked=None):
 
     One that ran has to have passed, and a head carrying the label has to have one that passed. A
     cancelled one measured nothing, so it holds a labelled head alone. A pass that reused a verdict
-    holds the head as well when `unbacked` says the run it cites did not measure.
+    holds the head as well when `unbacked` says its key record, or the run it cites, cannot be shown
+    to stand.
     """
     short = head[:7]
     if found == PASSED and unbacked:
-        return f"its {WORKFLOW} run on {short} reused a verdict that {unbacked}"
+        return f"its {WORKFLOW} run on {short} does not stand: it {unbacked}"
     if found == PASSED or (found in (None, CANCELLED) and LABEL not in labels):
         return None
     if found is None:
@@ -184,6 +185,26 @@ def reusable(key, candidates):
     return None
 
 
+def own_problem(payload):
+    """Why a run's own key artifacts cannot be relied on, or None.
+
+    A run with no key artifact at all is a pre-change run and is accepted. One whose key artifact
+    exists but has expired, or that holds two live ones, fails closed: the record that would say
+    whether it measured or reused is unreadable.
+    """
+    listed = payload.get("artifacts") if isinstance(payload, dict) else None
+    if not isinstance(listed, list):
+        return None
+    found = [item for item in listed if isinstance(item, dict)
+             and KEY_ARTIFACT.fullmatch(item.get("name") or "")]
+    live = [item for item in found if not item.get("expired")]
+    if found and not live:
+        return "holds a key artifact that has expired"
+    if len(live) > 1:
+        return "holds more than one key artifact"
+    return None
+
+
 def unbacked(payload, source_run, source_payload):
     """Why the verdict a run reused does not stand, or None where it was measured or stands.
 
@@ -191,6 +212,9 @@ def unbacked(payload, source_run, source_payload):
     cites and that run's, each None where it could not be read. The cited run has to be a pass of
     `WORKFLOW` whose own key artifact says it measured this very key.
     """
+    problem = own_problem(payload)
+    if problem:
+        return problem
     found = keyed(payload)
     if found is None or found[1] is None:
         return None
