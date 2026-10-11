@@ -1104,8 +1104,19 @@ class ReusedVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(why, "holds a key artifact that has expired")
 
-    def test_Given_ACampaignHoldingTwoKeyArtifacts_When_Backed_Then_ItIsUnbacked(self):
+    def test_Given_ACampaignHoldingArtifactsOfTwoKeys_When_Backed_Then_ItIsUnbacked(self):
         # Arrange
+        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY),
+                             settle.campaign.key_artifact_name("b2" * 32))
+
+        # Act
+        why = self.reading(own)
+
+        # Assert
+        self.assertEqual(why, "holds key artifacts of more than one key")
+
+    def test_Given_ACampaignThatMeasuredWhatItHadReused_When_Backed_Then_NothingIsOwed(self):
+        # Arrange -- both names of one key: the re-run measured.
         own = self.artifacts(settle.campaign.key_artifact_name(self.KEY),
                              settle.campaign.key_artifact_name(self.KEY, 9500))
 
@@ -1113,7 +1124,7 @@ class ReusedVerdictTests(unittest.TestCase):
         why = self.reading(own)
 
         # Assert
-        self.assertEqual(why, "holds more than one key artifact")
+        self.assertIsNone(why)
 
     def test_Given_ACampaignWithNoKeyArtifact_When_Backed_Then_NothingIsOwed(self):
         # Arrange -- every campaign that ran before the key existed.

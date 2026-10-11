@@ -296,9 +296,12 @@ chain of reuses forms and a verdict outlives only the artifacts of the run that 
 reusing run uploads the key too, citing the run that measured it. A reading that fails for any reason,
 a malformed answer included, reuses nothing. `scripts/pr/settle.py` checks the citation
 before a merge: a reused pass whose cited run is not a pass of the workflow that measured this very
-key holds the head, as does a run whose own key artifact has expired or is doubled (a run with no key artifact at all
-predates the key and is accepted as measured), and it says which: the cited run could not be read, is not a pass, holds no readable
-key artifact, or did not measure the key. `scripts/pr/campaign_status.py` asks the same check before
+key holds the head, as does a run whose own key artifact has expired or is ambiguous (artifacts of
+two keys, or two citations of one). The measured and the reused name of one key, which a re-run that
+measured leaves beside the earlier reuse, read as measured, and such a run can serve as a reuse
+source. A run with no key artifact at all predates the key and is accepted as measured. The hold says
+which: the cited run could not be read, is not a pass, holds no readable key artifact, or did not
+measure the key. `scripts/pr/campaign_status.py` asks the same check before
 it displays a pass. `scripts/pr/automerge.py` reads only whether the head's newest run concluded, as
 for any campaign, and the merge run it dispatches is settle's. `refuse/merge_unproven_head.py` does
 not read the citation, which a merge by hand therefore skips.

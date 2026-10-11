@@ -151,8 +151,8 @@ def key_artifact_name(key, reused_from=None):
 def keyed(payload):
     """(key, the run that measured it or None) from a run's artifacts listing, or None.
 
-    None where the listing is not a whole one, holds no unexpired key artifact, or holds more than
-    one: a run answers for one key.
+    None where the listing is not a whole one, holds no unexpired key artifact, or holds artifacts of
+    more than one key: a run answers for one key. Both names of one key read as measured.
     """
     listed = payload.get("artifacts") if isinstance(payload, dict) else None
     if not isinstance(listed, list) or payload.get("total_count", len(listed)) > len(listed):
@@ -160,10 +160,18 @@ def keyed(payload):
     found = [KEY_ARTIFACT.fullmatch(item.get("name") or "") for item in listed
              if isinstance(item, dict) and not item.get("expired")]
     found = [match for match in found if match]
-    if len(found) != 1:
+    keys = {match.group(1) for match in found}
+    if len(keys) != 1:
         return None
-    reused = found[0].group(2)
-    return found[0].group(1), int(reused) if reused else None
+    # A run that measured a key it had reused before, on a re-run, carries both names; the measuring
+    # one is the later and stronger claim.
+    chosen = next((match for match in found if not match.group(2)), None)
+    if chosen is None:
+        if len({match.group(2) for match in found}) != 1:
+            return None
+        chosen = found[0]
+    reused = chosen.group(2)
+    return chosen.group(1), int(reused) if reused else None
 
 
 def passed_run(run):
@@ -200,7 +208,10 @@ def own_problem(payload):
     live = [item for item in found if not item.get("expired")]
     if found and not live:
         return "holds a key artifact that has expired"
-    if len(live) > 1:
+    names = [KEY_ARTIFACT.fullmatch(item["name"]) for item in live]
+    if len({match.group(1) for match in names}) > 1:
+        return "holds key artifacts of more than one key"
+    if len(names) > 1 and keyed(payload) is None:
         return "holds more than one key artifact"
     return None
 

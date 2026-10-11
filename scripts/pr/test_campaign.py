@@ -300,15 +300,45 @@ class OwnKeyArtifactTests(unittest.TestCase):
         # Assert
         self.assertEqual(why, "holds a key artifact that has expired")
 
-    def test_Given_ARunHoldingTwoKeyArtifacts_When_Checked_Then_ItIsUnbacked(self):
+    def test_Given_ARunHoldingArtifactsOfTwoKeys_When_Checked_Then_ItIsUnbacked(self):
         # Arrange
+        own = listing(campaign.key_artifact_name(KEY), campaign.key_artifact_name(OTHER))
+
+        # Act
+        why = campaign.unbacked(own, None, None)
+
+        # Assert
+        self.assertEqual(why, "holds key artifacts of more than one key")
+
+    def test_Given_ARunHoldingMeasuredAndReusedNamesOfOneKey_When_Checked_Then_ItReadsAsMeasured(self):
+        # Arrange -- a re-run that measured what it had reused.
         own = listing(campaign.key_artifact_name(KEY), campaign.key_artifact_name(KEY, 9001))
+
+        # Act
+        why, found = campaign.unbacked(own, None, None), campaign.keyed(own)
+
+        # Assert
+        self.assertEqual((why, found), (None, (KEY, None)))
+
+    def test_Given_ARunHoldingTwoReusedNamesOfOneKey_When_Checked_Then_ItIsUnbacked(self):
+        # Arrange
+        own = listing(campaign.key_artifact_name(KEY, 9001), campaign.key_artifact_name(KEY, 9002))
 
         # Act
         why = campaign.unbacked(own, None, None)
 
         # Assert
         self.assertEqual(why, "holds more than one key artifact")
+
+    def test_Given_ARunHoldingMeasuredAndReusedNamesOfOneKey_When_Looked_For_Then_ItIsASource(self):
+        # Arrange
+        both = listing(campaign.key_artifact_name(KEY, 9001), campaign.key_artifact_name(KEY))
+
+        # Act
+        found = campaign.reusable(KEY, [(run(4), both)])
+
+        # Assert
+        self.assertEqual(found, 9004)
 
     def test_Given_ARunWithNoKeyArtifactAtAll_When_Checked_Then_ItIsAcceptedAsALegacyRun(self):
         # Arrange
