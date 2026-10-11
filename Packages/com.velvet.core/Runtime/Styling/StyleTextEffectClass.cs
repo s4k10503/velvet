@@ -86,7 +86,7 @@ namespace Velvet
     // so it multiplies whatever font-size is in effect where the rich-text tag is generated. EmLength is an
     // em or percentage bracket value: CSS computes it to a length on the element that declares it, and
     // StyleTextEffectResolver.ResolveEmLength turns it into Pixel where it can. Pixel is an absolute
-    // length (a bracket px or rem value). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind,
+    // length (a bracket px or rem value, or a leading-<n> spacing step). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind,
     // this axis has deliberately no explicit-reset member: the leading-* utility scale defines no reset value below
     // leading-none, and every named preset — including leading-none's own multiplier of 1 — is already a
     // real, meaningful value rather than a sentinel standing in for "reset to nothing" the way normal-case /
@@ -337,14 +337,28 @@ namespace Velvet
                 }
                 return true;
             }
-            if (s_leadingPresets.TryGetValue(cls, out var em))
+            if (TryParseLeading(cls, out var leading))
             {
-                facets.Leading = new LeadingValue(LeadingUnit.Em, em);
+                facets.Leading = leading;
                 return true;
             }
-            if (TryParseLeadingBracket(cls, out var bracketLeading))
+            return false;
+        }
+
+        private static bool TryParseLeading(string cls, out LeadingValue leading)
+        {
+            if (s_leadingPresets.TryGetValue(cls, out var em))
             {
-                facets.Leading = bracketLeading;
+                leading = new LeadingValue(LeadingUnit.Em, em);
+                return true;
+            }
+            if (TryParseLeadingBracket(cls, out leading))
+            {
+                return true;
+            }
+            if (TryParseLeadingSpacing(cls, out var spacingPx))
+            {
+                leading = new LeadingValue(LeadingUnit.Pixel, spacingPx);
                 return true;
             }
             return false;
@@ -405,6 +419,18 @@ namespace Velvet
             }
             leading = new LeadingValue(unit, amount);
             return true;
+        }
+
+        // leading-<n> reads the --space-* scale, as Tailwind's bare-number line height is n spacing units.
+        private static bool TryParseLeadingSpacing(string cls, out float px)
+        {
+            px = 0f;
+            const string prefix = "leading-";
+            if (!cls.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            return StyleArbitraryValueResolver.TryGetSpacingPx(cls.Substring(prefix.Length), out px);
         }
 
         private static bool TryParseLineHeight(ReadOnlySpan<char> value, out float amount, out LeadingUnit unit)

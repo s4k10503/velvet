@@ -26,8 +26,9 @@ namespace Velvet
     /// <c>--color-*</c> value; keyword lengths (<c>w-auto</c>, <c>w-full</c>, <c>basis-auto</c>, <c>top-auto</c>) are not
     /// magnitudes; <c>rounded-full</c> is a saturating radius sentinel; preset font sizes (<c>text-lg</c>) resolve
     /// through <c>--text-*</c> tokens with no C# mirror, so only the bracket form (<c>text-[20px]</c>) is
-    /// claimed. An unrecognized class is simply skipped — it still applies as a plain class, it just is not
-    /// interpolated.
+    /// claimed; a bracketed length only an element can measure (<c>w-[2em]</c>, <c>w-[50vw]</c>,
+    /// <c>w-[calc(50%-1rem)]</c>) is a length of no fixed size. An unrecognized class is simply skipped — it
+    /// still applies as a plain class, it just is not interpolated.
     /// </para>
     /// </remarks>
     internal static class MotionPropertyClassParser
@@ -82,7 +83,7 @@ namespace Velvet
             // resolve through the arbitrary-value dispatch; only the in-scope subset of its properties is
             // claimed here, so an opacity/transform/filter token stays with its own owner.
             if (StyleArbitraryValueResolver.TryParse(core, out var arbitrary) && !arbitrary.Auto
-                && IsDrivable(arbitrary.Property))
+                && arbitrary.Expression == null && IsDrivable(arbitrary.Property))
             {
                 style = arbitrary;
                 return true;

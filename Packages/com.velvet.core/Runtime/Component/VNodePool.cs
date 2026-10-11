@@ -85,8 +85,7 @@ namespace Velvet
                         s_ownedProps.Remove(props);
                         break;
                     case FiberEventBinding[] events:
-                        s_ownedSingleEventArrays.Remove(events);
-                        s_ownedMultiEventArrays.Remove(events);
+                        s_ownedEventArrays.Remove(events);
                         break;
                     case VNode?[] nodes:
                         s_ownedNodeArrays.Remove(nodes);
@@ -201,56 +200,41 @@ namespace Velvet
         {
             if (node is not BaseElementNode element) return;
             if (element.Props != null) s_ownedProps.Remove(element.Props);
-            if (element.Events is { Length: 1 }) s_ownedSingleEventArrays.Remove(element.Events);
-            if (element.Events is { Length: > 1 }) s_ownedMultiEventArrays.Remove(element.Events);
+            DisownEventArray(element.Events);
         }
 
         #region FiberEventBinding[]
 
+        // One stack per array length. The one-slot stack keeps a field of its own because a fixture
+        // reflects for it by name.
         private static readonly Stack<FiberEventBinding[]> s_singleEventPool = new();
 
+        private static readonly Dictionary<int, Stack<FiberEventBinding[]>> s_eventArrayPools =
+            new() { [1] = s_singleEventPool };
+
         // Identity set mirroring s_ownedProps (rent-scoped membership): only arrays currently rented
-        // out by RentSingleEventArray may be cleared and recycled — V.Motion accepts a raw `events:`
-        // array a consumer may cache and reuse across renders, and clearing slot 0 would sever the
-        // caller's handler in place.
-        private static readonly HashSet<FiberEventBinding[]> s_ownedSingleEventArrays = new();
+        // out by RentEventArray may be cleared and recycled — a factory's `events:` array is the caller's,
+        // which a consumer may cache and reuse across renders, and clearing its slots would sever the
+        // caller's handlers in place.
+        private static readonly HashSet<FiberEventBinding[]> s_ownedEventArrays = new();
 
-        public static FiberEventBinding[] RentSingleEventArray()
-        {
-            var rented = s_singleEventPool.Count > 0 ? s_singleEventPool.Pop() : new FiberEventBinding[1];
-            s_ownedSingleEventArrays.Add(rented);
-            Journal(rented);
-            return rented;
-        }
-
-        // Arrays of more than one binding (V.TextField's handlers) are pooled per length, on the same
-        // rent-scoped membership as the single arrays above.
-        private static readonly Dictionary<int, Stack<FiberEventBinding[]>> s_multiEventPools = new();
-        private static readonly HashSet<FiberEventBinding[]> s_ownedMultiEventArrays = new();
+        public static FiberEventBinding[] RentSingleEventArray() => RentEventArray(1);
 
         public static FiberEventBinding[] RentEventArray(int length)
         {
-            if (length == 1) return RentSingleEventArray();
-            var rented = s_multiEventPools.TryGetValue(length, out var pool) && pool.Count > 0
+            var rented = s_eventArrayPools.TryGetValue(length, out var pool) && pool.Count > 0
                 ? pool.Pop()
                 : new FiberEventBinding[length];
-            s_ownedMultiEventArrays.Add(rented);
+            s_ownedEventArrays.Add(rented);
             Journal(rented);
             return rented;
         }
 
         public static void ReturnEventArray(FiberEventBinding[] array)
         {
-            if (array is { Length: > 1 })
-            {
-                ReturnMultiEventArray(array);
-                return;
-            }
-
-            if (array == null || array.Length != 1) return;
-            // Only recycle arrays rented out by the pool; a caller-owned or already-returned array is
-            // left untouched — Remove doubles as the membership test.
-            if (!s_ownedSingleEventArrays.Remove(array)) return;
+            // Only recycle arrays rented out by the pool; a caller-owned, already-returned or null array
+            // is left untouched — Remove doubles as the membership test.
+            if (!s_ownedEventArrays.Remove(array)) return;
             if (s_releaseScopeDepth > 0)
             {
                 s_stagedEventArrays.Add(array);
@@ -261,45 +245,15 @@ namespace Velvet
 
         internal static void DisownEventArray(FiberEventBinding[]? array)
         {
-            if (array == null) return;
-            s_ownedSingleEventArrays.Remove(array);
-            s_ownedMultiEventArrays.Remove(array);
-        }
-
-        private static void ReturnMultiEventArray(FiberEventBinding[] array)
-        {
-            if (!s_ownedMultiEventArrays.Remove(array)) return;
-            if (s_releaseScopeDepth > 0)
-            {
-                s_stagedEventArrays.Add(array);
-                return;
-            }
-            ReleaseEventArray(array);
+            if (array != null) s_ownedEventArrays.Remove(array);
         }
 
         private static void ReleaseEventArray(FiberEventBinding[] array)
         {
-            if (array.Length > 1)
-            {
-                ReleaseMultiEventArray(array);
-                return;
-            }
-
-            if (s_singleEventPool.Count >= MaxPoolSize)
-            {
-                return;
-            }
-
-            array[0] = null!;
-            s_singleEventPool.Push(array);
-        }
-
-        private static void ReleaseMultiEventArray(FiberEventBinding[] array)
-        {
-            if (!s_multiEventPools.TryGetValue(array.Length, out var pool))
+            if (!s_eventArrayPools.TryGetValue(array.Length, out var pool))
             {
                 pool = new Stack<FiberEventBinding[]>();
-                s_multiEventPools[array.Length] = pool;
+                s_eventArrayPools[array.Length] = pool;
             }
 
             if (pool.Count >= MaxPoolSize)
@@ -523,10 +477,12 @@ namespace Velvet
             s_stagedNodeArrays.Clear();
             s_propsPool.Clear();
             s_ownedProps.Clear();
-            s_singleEventPool.Clear();
-            s_ownedSingleEventArrays.Clear();
-            s_multiEventPools.Clear();
-            s_ownedMultiEventArrays.Clear();
+            // MUTANT_SURVIVES(equivalent): ReleaseEventArray cleared every slot of a pooled array, so one
+            // kept across the reset is handed out as a new one would be.
+            foreach (var pool in s_eventArrayPools.Values) pool.Clear();
+            // MUTANT_SURVIVES(equivalent): an array still in the set is one a node rented, and it goes back
+            // to a pool clean either way, so keeping its membership across the reset changes no rental.
+            s_ownedEventArrays.Clear();
             s_nodeArrayPools.Clear();
             s_ownedNodeArrays.Clear();
             s_labelPool.Clear();

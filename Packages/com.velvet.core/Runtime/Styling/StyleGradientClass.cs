@@ -818,7 +818,7 @@ namespace Velvet
         }
 
         // Splits on separator wherever it sits outside a (...) group, so rgb(255,0,0) stays one argument.
-        private static List<string> SplitTopLevel(string s, char separator)
+        internal static List<string> SplitTopLevel(string s, char separator)
         {
             var parts = new List<string>();
             var depth = 0;
@@ -899,8 +899,8 @@ namespace Velvet
             return TryParseStopLength(token, out px);
         }
 
-        // A palette name or [bracketed] value as from-/via-/to- take it, or a bare CSS colour (#hex, rgb(),
-        // a named colour), which is how a CSS argument list spells one.
+        // A palette name or [bracketed] value as from-/via-/to- take it, or a bare CSS colour, which is how a
+        // CSS argument list spells one.
         private static bool TryParseListColor(string token, out Color color)
         {
             if (VelvetPalette.TryResolveColorToken(token, out color))

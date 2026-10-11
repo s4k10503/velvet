@@ -308,7 +308,7 @@ namespace Velvet
                 if (childLabel != null)
                 {
                     var childOrchestration = FiberNodePatcher.ResolveChildOrchestration(motionNode,
-                        enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec);
+                        enter.Transition, enter.Resolved, enter.Ambient, enter.DelaySec, enter.From, enter.To);
                     MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, enter.InitialLabel,
                         childOrchestration, MotionVariantResolver.PlaybackForChildren(motionNode,
                             _ctx.ComponentContextStack.Get(MotionContext.Playback)));
@@ -559,6 +559,7 @@ namespace Velvet
             var controller = new FiberVirtualListController(
                 scrollView, virtualListNode, bridge, _ctx.FiberStack.Current, _ctx.ComponentContextStack);
             _ctx.VirtualListControllers[scrollView] = controller;
+            _ctx.FiberElementFactory.ApplyEvents(scrollView, virtualListNode.Events);
 
             // Apply class-driven styling the same way the ElementNode path does, so a virtualized
             // list container honours variants and the font layer. Gap is intentionally omitted: a

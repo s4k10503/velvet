@@ -52,6 +52,9 @@ namespace Velvet.Experimental
         /// <summary><see cref="UnityEngine.UIElements.VisualElement.name"/>, equivalent to the <c>name</c> factory argument.</summary>
         public string? Name { get; set; }
 
+        /// <summary>Event bindings applied to the element, equivalent to the <c>events</c> factory argument.</summary>
+        public FiberEventBinding[]? Events { get; set; }
+
         private List<VNode>? _children;
 
         /// <param name="className">Initial value for <see cref="Class"/>; pass positionally for the concise form.</param>
@@ -170,7 +173,7 @@ namespace Velvet.Experimental
 
         /// <inheritdoc/>
         public override VNode Build() =>
-            V.Div(className: Class, key: Key, name: Name, children: BuildChildren());
+            V.Div(className: Class, key: Key, name: Name, children: BuildChildren(), events: Events);
     }
 
     /// <summary>
@@ -187,7 +190,7 @@ namespace Velvet.Experimental
 
         /// <inheritdoc/>
         public override VNode Build() =>
-            V.Label(className: Class, text: Text, key: Key, name: Name);
+            V.Label(className: Class, text: Text, key: Key, name: Name, events: Events);
     }
 
     /// <summary>
@@ -210,7 +213,7 @@ namespace Velvet.Experimental
         /// <inheritdoc/>
         public override VNode Build() =>
             V.Button(className: Class, text: Text, onClick: OnClick, key: Key, name: Name,
-                enabled: Enabled, children: BuildChildren());
+                enabled: Enabled, children: BuildChildren(), events: Events);
     }
 
     /// <summary>
@@ -224,12 +227,12 @@ namespace Velvet.Experimental
 
         /// <inheritdoc/>
         public override VNode Build() =>
-            V.ScrollView(className: Class, key: Key, name: Name, children: BuildChildren());
+            V.ScrollView(className: Class, key: Key, name: Name, children: BuildChildren(), events: Events);
     }
 
     /// <summary>
     /// <b>EXPERIMENTAL.</b> Initializer-style builder for a custom <see cref="UnityEngine.UIElements.VisualElement"/>
-    /// subclass. Maps to <see cref="V.Custom{T}(string, string, string, System.Func{UnityEngine.UIElements.VisualElement, System.Action}, VNode[])"/>;
+    /// subclass. Maps to <see cref="V.Custom{T}(string, string, string, FiberElementProps, System.Func{UnityEngine.UIElements.VisualElement, System.Action}, VNode[], string, string, string, IReadOnlyDictionary{string, string}, IReadOnlyDictionary{string, string}, FiberEventBinding[])"/>;
     /// children added via the collection initializer are kept.
     /// </summary>
     /// <typeparam name="T">Concrete VisualElement subclass to instantiate.</typeparam>
@@ -240,7 +243,7 @@ namespace Velvet.Experimental
 
         /// <inheritdoc/>
         public override VNode Build() =>
-            V.Custom<T>(className: Class, key: Key, name: Name, children: BuildChildren());
+            V.Custom<T>(className: Class, key: Key, name: Name, children: BuildChildren(), events: Events);
     }
 
     /// <summary>
@@ -310,7 +313,7 @@ namespace Velvet.Experimental
                 label: Label, isPasswordField: IsPasswordField, placeholder: Placeholder, maxLength: MaxLength,
                 isReadOnly: IsReadOnly, isDelayed: IsDelayed, multiline: Multiline, keyboardType: KeyboardType,
                 autoCorrection: AutoCorrection, enabled: Enabled, onSubmit: OnSubmit, onKeyDown: OnKeyDown,
-                onKeyUp: OnKeyUp, onFocus: OnFocus, onBlur: OnBlur);
+                onKeyUp: OnKeyUp, onFocus: OnFocus, onBlur: OnBlur, events: Events);
     }
 
     /// <summary>
@@ -350,7 +353,7 @@ namespace Velvet.Experimental
         public override VNode Build() =>
             V.Slider(className: Class, value: Value, lowValue: LowValue, highValue: HighValue,
                 onValueChanged: OnChange, key: Key, name: Name, enabled: Enabled, direction: Direction,
-                inverted: Inverted, step: Step);
+                inverted: Inverted, step: Step, events: Events);
     }
 
     /// <summary>
@@ -390,7 +393,7 @@ namespace Velvet.Experimental
         public override VNode Build() =>
             V.SliderInt(className: Class, value: Value, lowValue: LowValue, highValue: HighValue,
                 onValueChanged: OnChange, key: Key, name: Name, enabled: Enabled, direction: Direction,
-                inverted: Inverted, step: Step);
+                inverted: Inverted, step: Step, events: Events);
     }
 
     /// <summary>
@@ -417,7 +420,7 @@ namespace Velvet.Experimental
         /// <inheritdoc/>
         public override VNode Build() =>
             V.Toggle(className: Class, value: Value, onValueChanged: OnChange, key: Key, name: Name,
-                label: Label, enabled: Enabled);
+                label: Label, enabled: Enabled, events: Events);
     }
 
     /// <summary>
@@ -445,6 +448,7 @@ namespace Velvet.Experimental
         /// <inheritdoc/>
         public override VNode Build() =>
             V.Image(className: Class, key: Key, name: Name, styles: Styles,
-                whileHoverClass: WhileHoverClass, whileTapClass: WhileTapClass, whileFocusClass: WhileFocusClass);
+                whileHoverClass: WhileHoverClass, whileTapClass: WhileTapClass, whileFocusClass: WhileFocusClass,
+                events: Events);
     }
 }

@@ -159,6 +159,20 @@ namespace Velvet.Tests
             Assert.That(found && spec.Color.a == 0.5f, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): runs of spaces read as one separator before and still do.
+        [Test]
+        public void Given_AnArbitraryShadowWithDoubledSpaces_When_Extracted_Then_TheEmptyTokensAreSkipped()
+        {
+            // Arrange
+            var classes = new[] { "shadow-[_0__4px_8px__#101820_]" };
+
+            // Act
+            var found = StyleShadowClass.TryExtract(classes, out var spec);
+
+            // Assert
+            Assert.That(found && spec.OffsetY == 4f, Is.True);
+        }
+
         [Test]
         public void Given_ADropShadowPreset_When_Extracted_Then_AShadowIsWanted()
         {

@@ -407,6 +407,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AGappedRowWhoseFirstChildGoesDisplayNoneWithNoChildListChange_When_TheGapReapplies_Then_TheFirstShownChildTakesNoGap()
+        {
+            // Arrange — the child list stays as it was, so only the display change can tell this apply from the last
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+            container[0].style.display = DisplayStyle.None;
+
+            // Act
+            InvokeApply(GetGapManipulator(scope.Reconciler, container));
+
+            // Assert — the next child still takes the gap, so the gap did run.
+            Assert.That((container[1].style.marginLeft.keyword, container[2].style.marginLeft.value.value),
+                Is.EqualTo((StyleKeyword.Null, Space4)));
+        }
+
+        [Test]
         public void Given_AWrappingRowWithOnlyARowGap_When_Reconciled_Then_EachChildTakesHalfOfItAboveAndBelow()
         {
             // Arrange

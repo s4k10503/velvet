@@ -2796,6 +2796,259 @@ class NamedDeclarationTests(unittest.TestCase):
         self.assertEqual(stale, [12])
 
 
+class OnePerLineTests(unittest.TestCase):
+    """The campaign keeps one mutant for each changed line, and a declaration keeps its meaning."""
+
+    TWO_OPERATORS = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b, bool c) { return a <= b && c; }
+                internal static int Sum(int a, int b) { return a + b; }
+            }
+        }
+        """)
+
+    def at(self, operator, column=0, line=12, path="probe.cs"):
+        return mutation_check.Mutant(Path(path), line, column, "a", "b", operator)
+
+    def decide(self, mutants, declared, deferred=frozenset()):
+        unanswered, stale = mutation_check.answered(mutants, set(deferred), declared)
+        return ([complaint for _, complaint in unanswered],
+                [held.line for _, _, held in stale])
+
+    def test_Given_ALineCarryingSeveralOperators_When_TheCapIsApplied_Then_OnlyTheBoundaryFlipStays(self):
+        # Arrange
+        every = mutants_of(self.TWO_OPERATORS)
+        crowded = [mutant for mutant in every if mutant.line == 5]
+
+        # Act
+        kept = mutation_check.one_per_line(crowded)
+
+        # Assert -- the operators the line generates ride along, so a line that generated one
+        # mutant cannot satisfy it.
+        self.assertEqual((sorted(mutant.operator for mutant in crowded),
+                          [mutant.operator for mutant in kept]),
+                         (["boundary", "clause removed", "logic"], ["boundary"]))
+
+    def test_Given_EveryOperatorOnOneLine_When_TheCapIsApplied_Then_EachOutranksTheOnesAfterIt(self):
+        # Arrange
+        order = mutation_check.LINE_PRIORITY
+
+        # Act
+        chosen = [mutation_check.one_per_line([self.at(name) for name in order[index:]])[0].operator
+                  for index in range(len(order))]
+
+        # Assert
+        self.assertEqual(chosen, list(order))
+
+    def test_Given_TheOperatorsGenerationEmits_When_TheCapReadsThem_Then_EachHasARank(self):
+        # Arrange
+        emitted = {operator for _, _, operator in mutation_check.OPERATORS}
+        emitted |= {operator for _, _, operator in mutation_check.WORD_OPERATORS}
+        emitted |= {mutant.operator for mutant in mutants_of(self.TWO_OPERATORS)}
+        emitted |= {"clause removed", "guard removed", "line removed"}
+
+        # Act
+        unranked = sorted(emitted - set(mutation_check.LINE_PRIORITY))
+
+        # Assert
+        self.assertEqual(unranked, [])
+
+    def test_Given_TheSameMutantsInAnyOrder_When_TheCapIsApplied_Then_TheSameOneStays(self):
+        # Arrange
+        crowded = [self.at("logic", 30), self.at("boundary", 40), self.at("literal", 5),
+                   self.at("boundary", 20), self.at("line removed", 1)]
+
+        # Act
+        forwards = mutation_check.one_per_line(list(crowded))[0]
+        backwards = mutation_check.one_per_line(list(reversed(crowded)))[0]
+        rotated = mutation_check.one_per_line(crowded[2:] + crowded[:2])[0]
+
+        # Assert
+        self.assertEqual([(m.operator, m.column) for m in (forwards, backwards, rotated)],
+                         [("boundary", 20)] * 3)
+
+    def test_Given_TwoMutantsOfTheSameOperator_When_TheCapIsApplied_Then_TheLeftmostStays(self):
+        # Arrange
+        right, left = self.at("arithmetic", 31), self.at("arithmetic", 9)
+
+        # Act
+        kept = [mutation_check.one_per_line([right, left])[0].column,
+                mutation_check.one_per_line([left, right])[0].column]
+
+        # Assert
+        self.assertEqual(kept, [9, 9])
+
+    def test_Given_MutantsOnSeveralLinesAndFiles_When_TheCapIsApplied_Then_OneStaysForEach(self):
+        # Arrange
+        every = [self.at("boundary", 1, 3), self.at("logic", 2, 3), self.at("equality", 1, 4),
+                 self.at("boundary", 1, 3, "other.cs"), self.at("logic", 2, 3, "other.cs")]
+
+        # Act
+        kept = mutation_check.one_per_line(every)
+
+        # Assert
+        self.assertEqual(sorted((str(m.path), m.line, m.operator) for m in kept),
+                         [("other.cs", 3, "boundary"), ("probe.cs", 3, "boundary"),
+                          ("probe.cs", 4, "equality")])
+
+    def test_Given_ALineWhoseOtherMutantsWereDropped_When_TheCapIsApplied_Then_TheSurvivorNamesThem(self):
+        # Arrange
+        every = [self.at("logic", 30), self.at("boundary", 40), self.at("line removed", 1)]
+
+        # Act
+        kept = mutation_check.one_per_line(every)[0]
+
+        # Assert
+        self.assertEqual((kept.operator, set(kept.shadowed)),
+                         ("boundary", {"logic", "line removed"}))
+
+    def test_Given_ALoneMutantOnItsLine_When_TheCapIsApplied_Then_NothingIsShadowed(self):
+        # Arrange
+        alone = self.at("logic")
+
+        # Act
+        kept = mutation_check.one_per_line([alone])[0]
+
+        # Assert
+        self.assertEqual((kept is alone, set(kept.shadowed)), (True, set()))
+
+    def test_Given_ALineCarryingSeveralOperators_When_TheCampaignIsListed_Then_OneMutantIsPrintedForIt(self):
+        # Arrange
+        campaign = StubbedCampaign(self.TWO_OPERATORS)
+
+        # Act
+        campaign.run("--list")
+
+        # Assert -- line 6 is the control: its one mutant is printed, so a list that printed
+        # nothing for the crowded line could not pass.
+        listed = [line for line in campaign.printed.splitlines() if "Probe.cs:" in line and " -> " in line]
+        self.assertEqual([(line.split("Probe.cs:")[1].split(" ")[0], line.rsplit("(", 1)[1])
+                          for line in listed],
+                         [("5", "boundary)"), ("6", "arithmetic)")])
+
+    # GREEN_ON_BASE(characterization): the base answers a declaration naming another operator than the survivor's with this complaint too.
+    # It is the side the allowance for a stood-for operator must not take.
+    def test_Given_ADeclarationNamingADroppedOperator_When_TheRepresentativeSurvives_Then_ItIsUnanswered(self):
+        # Arrange -- a survivor of another operator is owed its own answer.
+        kept = survivor(Path("probe.cs"), 12, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="logic")}
+
+        # Act
+        unanswered, _ = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(unanswered, ["the declaration above answers for 'logic', not for this"])
+
+    def test_Given_ADeclarationNamingTheOperatorThatStoodForTheLine_When_ItSurvives_Then_ItIsAnswered(self):
+        # Arrange -- the kept mutant did not compile and the dropped logic flip was measured in its place.
+        kept = survivor(Path("probe.cs"), 12, operator="arithmetic")
+        kept.shadowed = frozenset({"logic"})
+        kept.stood = "logic"
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="logic")}
+
+        # Act
+        unanswered, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual((unanswered, stale), ([], []))
+
+    def test_Given_ADeclarationNamingTheKeptOperatorThatDidNotCompile_When_AnAlternateSurvives_Then_ItIsUnanswered(self):
+        # Arrange -- the kept arithmetic mutant was no program; the survivor is the logic flip.
+        kept = survivor(Path("probe.cs"), 12, operator="arithmetic")
+        kept.shadowed = frozenset({"logic"})
+        kept.stood = "logic"
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="arithmetic")}
+
+        # Act
+        unanswered, _ = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(unanswered, ["the declaration above answers for 'arithmetic', not for this"])
+
+    # GREEN_ON_BASE(characterization): the base answers an unnamed declaration over a survivor, which is what the name says.
+    def test_Given_AnUnnamedDeclarationOverASurvivingThinnedLine_When_Decided_Then_ItAnswersAsBefore(self):
+        # Arrange
+        kept = survivor(Path("probe.cs"), 12, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12)}
+
+        # Act
+        unanswered, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual((unanswered, stale), ([], []))
+
+    # GREEN_ON_BASE(characterization): the base refuses a declaration naming another operator than the survivor's.
+    # Its comment names it as the control for the allowance the cases around it add.
+    def test_Given_ADeclarationNamingAnOperatorTheLineNeverCarried_When_TheRepresentativeSurvives_Then_ItIsUnanswered(self):
+        # Arrange -- the control: naming is still checked, only what the cap dropped is let through.
+        kept = survivor(Path("probe.cs"), 12, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="literal")}
+
+        # Act
+        unanswered, _ = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(unanswered, ["the declaration above answers for 'literal', not for this"])
+
+    def test_Given_ANamedDeclarationWhoseOperatorWasDropped_When_TheRepresentativeDies_Then_ItIsNotStale(self):
+        # Arrange
+        kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="logic")}
+
+        # Act
+        _, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(stale, [])
+
+    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale.
+    # It is the control for the case above it, where a dropped operator is let through.
+    def test_Given_ANamedDeclarationWhoseOperatorWasNotDropped_When_TheRepresentativeDies_Then_ItIsStale(self):
+        # Arrange -- the control for the case above.
+        kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="literal")}
+
+        # Act
+        _, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(stale, [12])
+
+    def test_Given_AnUnnamedDeclarationOverALineWithDroppedMutants_When_TheRepresentativeDies_Then_ItIsNotStale(self):
+        # Arrange -- an unnamed declaration answered for the whole line, and some of that line was
+        # never generated, so a dead representative does not show it described a past state.
+        kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12)}
+
+        # Act
+        _, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(stale, [])
+
+    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale.
+    # It is the control for the case above it, where a dropped operator is let through.
+    def test_Given_AnUnnamedDeclarationOverALineWithNothingDropped_When_TheMutantDies_Then_ItIsStale(self):
+        # Arrange -- the control for the case above, and the base's own reading.
+        kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
+        declared = {(Path("probe.cs"), 12): declaration(12)}
+
+        # Act
+        _, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(stale, [12])
+
+
 class DeclarationFormatTests(unittest.TestCase):
     """What the guide shows and what the tree holds, against what the script will actually accept.
 
@@ -4040,6 +4293,87 @@ class InapplicableOperatorTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, mutation_check.UNCOMPILABLE in campaign.printed), (1, True))
+
+class RejectingJoinCampaign(StubbedCampaign):
+    """`Log(a + b, ok && other);` on one line: the cap keeps the `+ -> -` rewrite, which the compiler
+    rejects for strings, and drops a clause removal and a logic flip behind it. The editor is replaced
+    by a function of the text on disk: CS0019 where the join was rewritten, a failing suite where the
+    text holds `kills_when`, a green one otherwise."""
+
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static void Run(string a, string b, bool ok, bool other) { Log(a + b, ok && other); }
+            }
+        }
+        """)
+    kills_when = None
+
+    def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
+        mutant = Path(results).name != "baseline.xml"
+        text = self.source.read_text()
+        Path(log).write_text(
+            "Packages/com.velvet.core/Runtime/Probe.cs(5,80): error CS0019: Operator '-' cannot be "
+            "applied to operands of type 'string' and 'string'\n" if mutant and "a - b" in text else "")
+        Path(results).write_text(FAILING_RESULTS if mutant and self.kills_when and self.kills_when in text
+                                 else GREEN_RESULTS)
+        return 0.0, False, 0
+
+    def stood(self):
+        return json.loads((self.project / "out" / "mutant-001.json").read_text())
+
+
+class InapplicableFallbackTests(unittest.TestCase):
+    """A line whose kept mutant is no program is asked about through the next one the cap dropped."""
+
+    def test_Given_AJoinTheCompilerRejects_When_TheLineHoldsAnotherMutant_Then_ThatOneIsMeasured(self):
+        # Arrange
+        campaign = RejectingJoinCampaign()
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert
+        record = campaign.stood()
+        self.assertEqual((record["verdict"], record.get("stood", "no such field")),
+                         (mutation_check.SURVIVED, "clause removed"))
+
+    def test_Given_AJoinTheCompilerRejects_When_TheNextMutantIsKilled_Then_TheLineIsKilledAndPasses(self):
+        # Arrange
+        campaign = RejectingJoinCampaign()
+        campaign.kills_when = "Log(a + b, ok);"
+
+        # Act
+        code = campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual((code, campaign.stood()["verdict"]), (0, mutation_check.KILLED))
+
+    def test_Given_TheFallbackStood_When_TheVerdictIsRecorded_Then_TheKeptMutantIsTheRecordsKey(self):
+        # Arrange
+        campaign = RejectingJoinCampaign()
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert -- the record is the kept mutant's, so the verdict job reading the plan's list finds it.
+        record = campaign.stood()
+        self.assertEqual((record["mutant"].endswith("+ -> - (arithmetic)"), record.get("stood", "no such field")),
+                         (True, "clause removed"))
+
+    def test_Given_NoOtherMutantOnTheLine_When_TheKeptOneIsRejected_Then_TheLineIsInapplicable(self):
+        # Arrange -- the control: nothing to fall back to is today's verdict.
+        campaign = RejectingJoinCampaign(RejectingJoinCampaign.BODY.replace(" ok && other", " 0"))
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual((campaign.stood()["verdict"], campaign.stood().get("stood", "no such field")),
+                         (mutation_check.INAPPLICABLE, None))
+
 
 class HoldOrderingTests(unittest.TestCase):
     """The record is written before the mutation, which is the whole of the interruption mechanism.
@@ -5810,6 +6144,533 @@ class ShardedCampaignTests(unittest.TestCase):
         self.assertEqual(code, 0)
 
 
+class KeyedProject(StubbedCampaign):
+    """A project holding the kinds of file a campaign key is read over, each committed on the base."""
+
+    FILES = {
+        "Packages/com.velvet.core/Runtime/Other.cs":
+            "namespace Velvet\n{\n    internal static class Other\n    {\n    }\n}\n",
+        "Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs":
+            "namespace Velvet.Tests\n{\n    internal sealed class ProbeTests\n    {\n    }\n}\n",
+        "Packages/com.velvet.core/TestUtilities/Helper.cs":
+            "namespace Velvet.Tests\n{\n    internal static class Helper\n    {\n    }\n}\n",
+        "Packages/com.velvet.core/Runtime/Velvet.asmdef": "{\"name\": \"Velvet\"}\n",
+        "Packages/com.velvet.core/CHANGELOG.md": "# Changelog\n",
+        "Packages/com.velvet.core/Documentation~/guide.md": "# Guide\n",
+        "Packages/com.velvet.core/Generators~/Tool.cs": "internal static class Tool { }\n",
+        "Packages/manifest.json": "{}\n",
+        "ProjectSettings/ProjectVersion.txt": "m_EditorVersion: 6000.3.23f1\n",
+        "scripts/tool.py": "print(1)\n",
+        ".github/workflows/mutation.yml": "name: Mutation campaign\n",
+        ".github/workflows/test.yml": "name: Test\n",
+        "CONTRIBUTING.md": "# Contributing\n",
+    }
+
+    def __init__(self, body=None):
+        super().__init__(body)
+        for relative, text in self.FILES.items():
+            self.write(relative, text)
+        subprocess.run(["git", "-C", str(self.project), "add", *self.FILES], capture_output=True)
+        subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@t", "-c", "user.name=t",
+                        "commit", "-qm", "files"], capture_output=True)
+
+    def write(self, relative, text):
+        path = self.project / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def append(self, relative, text):
+        path = self.project / relative
+        path.write_text(path.read_text() + text)
+
+    def key(self):
+        """(the key, {component: digest}) the run printed."""
+        self.run_over_diff("--key")
+        lines = self.printed.splitlines()
+        key = next((line.split("=", 1)[1] for line in lines if line.startswith("campaign-key=")), None)
+        parts = {line.split()[1]: line.split()[2] for line in lines if line.startswith("key-part ")}
+        return key, parts
+
+    def moved(self, before):
+        """The components whose digest differs from `before`'s."""
+        _, now = self.key()
+        return sorted(name for name in now if now[name] != before.get(name))
+
+
+class CampaignKeyTests(unittest.TestCase):
+    """What a head's campaign key moves with, and what it leaves alone.
+
+    A key that moved with a documentation edit would never be reused; one that sat still through a
+    test edit would pass a head whose tests nobody measured the mutants against.
+    """
+
+    def test_Given_TheSameTreeTwice_When_ItIsKeyed_Then_TheKeysAreEqual(self):
+        # Arrange
+        project = KeyedProject()
+
+        # Act
+        first, second = project.key()[0], project.key()[0]
+
+        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
+        self.assertEqual((first == second, len(first or "")), (True, 64))
+
+    def test_Given_TheSameContentInTwoCheckouts_When_ItIsKeyed_Then_TheKeysAreEqual(self):
+        # Arrange
+        first, second = KeyedProject(), KeyedProject()
+
+        # Act
+        keys = (first.key()[0], second.key()[0])
+
+        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
+        self.assertEqual((keys[0] == keys[1], first.project != second.project, len(keys[0] or "")),
+                         (True, True, 64))
+
+    def test_Given_ProseScriptsAndOtherWorkflowsEdited_When_ItIsKeyed_Then_TheKeyIsTheSame(self):
+        # Arrange
+        project = KeyedProject()
+        before = project.key()[0]
+        project.append("Packages/com.velvet.core/CHANGELOG.md", "an entry\n")
+        project.append("Packages/com.velvet.core/Documentation~/guide.md", "a paragraph\n")
+        project.append("CONTRIBUTING.md", "a rule\n")
+        project.append("scripts/tool.py", "print(2)\n")
+        project.append(".github/workflows/test.yml", "on: push\n")
+
+        # Act
+        after = project.key()[0]
+
+        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
+        self.assertEqual((after == before, len(before or "")), (True, 64))
+
+    def test_Given_ASourceUnderADirectoryUnityDoesNotImport_When_ItIsEdited_Then_TheKeyIsTheSame(self):
+        # Arrange -- the generators' solution is built by dotnet, and nothing under a `~` directory
+        # reaches the editor's compile.
+        project = KeyedProject()
+        before = project.key()[0]
+        project.append("Packages/com.velvet.core/Generators~/Tool.cs", "// edit\n")
+
+        # Act
+        after = project.key()[0]
+
+        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
+        self.assertEqual((after == before, len(before or "")), (True, 64))
+
+    def test_Given_AnEditToTheMutatedFile_When_ItIsKeyed_Then_TheMutantsAndTheFileMoveTheKey(self):
+        # Arrange
+        project = KeyedProject()
+        _, before = project.key()
+        project.source.write_text(project.BODY.replace("a <= b", "a <= b + 1"))
+
+        # Act
+        moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["mutants", "mutated-files"])
+
+    def test_Given_ACommentAddedToTheMutatedFile_When_ItIsKeyed_Then_TheFileMovesTheKey(self):
+        # Arrange -- full content rather than the comment-stripped form `scope_digest` takes: a
+        # reused pass is a stronger claim than a resumed kill, and prose is cheap to re-measure.
+        project = KeyedProject()
+        _, before = project.key()
+        project.source.write_text(project.BODY.replace("    {\n        internal static bool",
+                                                       "    {\n        // a note\n        internal static bool", 1))
+
+        # Act
+        moved = project.moved(before)
+
+        # Assert -- the line moves with the comment, so the mutant does too.
+        self.assertEqual("mutated-files" in moved, True)
+
+    def test_Given_ATestFileEdited_When_ItIsKeyed_Then_TheTestSourcesMoveTheKey(self):
+        # Arrange
+        project = KeyedProject()
+        _, before = project.key()
+        project.append("Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs", "// edit\n")
+
+        # Act
+        moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["test-sources"])
+
+    def test_Given_ASharedTestHelperEdited_When_ItIsKeyed_Then_TheTestSourcesMoveTheKey(self):
+        # Arrange
+        project = KeyedProject()
+        _, before = project.key()
+        project.append("Packages/com.velvet.core/TestUtilities/Helper.cs", "// edit\n")
+
+        # Act
+        moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["test-sources"])
+
+    def test_Given_AnotherProductionFileEdited_When_ItIsKeyed_Then_TheBuildInputsMoveTheKey(self):
+        # Arrange -- a test that kills a mutant in one file can reach it through another.
+        project = KeyedProject()
+        _, before = project.key()
+        project.append("Packages/com.velvet.core/Runtime/Other.cs", "// edit\n")
+
+        # Act
+        moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["build-inputs"])
+
+    def test_Given_AnAssemblyDefinitionOrEditorVersionEdited_When_ItIsKeyed_Then_TheBuildInputsMoveTheKey(self):
+        # Arrange
+        project = KeyedProject()
+        _, before = project.key()
+        project.append("Packages/com.velvet.core/Runtime/Velvet.asmdef", " \n")
+        project.write("ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 6000.4.0f1\n")
+        project.append("Packages/manifest.json", " \n")
+
+        # Act
+        moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["build-inputs"])
+
+    def test_Given_TheToolChanged_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
+        # Arrange
+        project = KeyedProject()
+        _, before = project.key()
+
+        # Act
+        with mock.patch.object(mutation_check, "MUTATION_MODEL_VERSION",
+                               mutation_check.MUTATION_MODEL_VERSION + 1):
+            moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["tool"])
+
+    def test_Given_ThePriorityOrderChanged_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
+        # Arrange -- the order decides which mutant of a line is kept, so a verdict measured under
+        # another order was measured over other mutants.
+        project = KeyedProject()
+        _, before = project.key()
+
+        # Act
+        with mock.patch.object(mutation_check, "LINE_PRIORITY",
+                               tuple(reversed(mutation_check.LINE_PRIORITY))):
+            moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["tool"])
+
+    def test_Given_ASiblingModuleOfTheCampaignEdited_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
+        # Arrange -- a file standing in for one of `TOOL_FILES`, reached by a path from `scripts/`.
+        project = KeyedProject()
+        sibling = Path(project.holder) / "sibling.py"
+        sibling.write_text("RUNNING = 1\n")
+        scripts = Path(mutation_check.__file__).resolve().parents[1]
+        stood_in = (os.path.relpath(sibling, scripts),)
+        with mock.patch.object(mutation_check, "TOOL_FILES", stood_in):
+            _, before = project.key()
+            sibling.write_text("RUNNING = 2\n")
+
+            # Act
+            moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["tool"])
+
+    def test_Given_TheCampaignsToolFiles_When_Listed_Then_EachExists(self):
+        # Arrange
+        scripts = Path(mutation_check.__file__).resolve().parents[1]
+
+        # Act
+        missing = [name for name in mutation_check.TOOL_FILES if not (scripts / name).is_file()]
+
+        # Assert
+        self.assertEqual(missing, [])
+
+    def test_Given_TheModulesTheCampaignImports_When_ComparedWithTheToolFiles_Then_NoneIsLeftOut(self):
+        # Arrange -- a sibling module the campaign or its shard wrapper imports from scripts/ is part
+        # of what a verdict ran under.
+        scripts = Path(mutation_check.__file__).resolve().parents[1]
+        sources = [scripts / "test_quality" / name for name in ("mutation_check.py", "ci_mutation_shard.py")]
+        imported = set()
+        for source in sources:
+            imported.update(re.findall(r"^\s*(?:import|from)\s+(\w+)", source.read_text(), re.MULTILINE))
+        local = {path.relative_to(scripts).as_posix() for path in scripts.glob("*/*.py")
+                 if path.stem in imported and path.name != "mutation_check.py"}
+
+        # Act
+        left_out = sorted(local - set(mutation_check.TOOL_FILES))
+
+        # Assert
+        self.assertEqual(left_out, [])
+
+    def test_Given_ASourceInANestedFolderNamedLogs_When_ItIsEdited_Then_TheBuildInputsMoveTheKey(self):
+        # Arrange -- only a folder at the project root is generated; one inside a root holds sources.
+        project = KeyedProject()
+        for name in ("Logs", "obj", "Temp", "Library"):
+            project.write("Packages/com.velvet.core/Runtime/Foo/{}/X.cs".format(name), "class X { }\n")
+        _, before = project.key()
+        for name in ("Logs", "obj", "Temp", "Library"):
+            project.append("Packages/com.velvet.core/Runtime/Foo/{}/X.cs".format(name), "// edited\n")
+
+        # Act
+        moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["build-inputs"])
+
+    def test_Given_TheCampaignWorkflowEdited_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
+        # Arrange
+        project = KeyedProject()
+        _, before = project.key()
+        project.append(".github/workflows/mutation.yml", "# a bound moved\n")
+
+        # Act
+        moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["tool"])
+
+    def test_Given_ADeclarationNoLongerWrittenByTheBranch_When_ItIsKeyed_Then_OnlyTheDeclarationsMoveTheKey(self):
+        # Arrange
+        project = KeyedProject()
+        source = project.source
+        mutants = mutants_of(project.BODY)
+        for mutant in mutants:
+            mutant.path = source
+        own = {(source, 5): declaration(5, written_here=True)}
+        base = {(source, 5): declaration(5, written_here=False)}
+
+        # Act
+        _, written = mutation_check.campaign_key(mutants, own, project.project)
+        _, inherited = mutation_check.campaign_key(mutants, base, project.project)
+
+        # Assert
+        self.assertEqual(sorted(name for name in written if written[name] != inherited[name]),
+                         ["declarations"])
+
+    def test_Given_OneMutantFewer_When_ItIsKeyed_Then_OnlyTheMutantsMoveTheKey(self):
+        # Arrange
+        project = KeyedProject()
+        mutants = mutants_of(KeyedProject.BODY.replace("a <= b", "a <= b && b <= a"))
+        for mutant in mutants:
+            mutant.path = project.source
+
+        # Act
+        _, whole = mutation_check.campaign_key(mutants, {}, project.project)
+        _, fewer = mutation_check.campaign_key(mutants[:-1], {}, project.project)
+
+        # Assert -- the file holding them is the same, and so is everything else.
+        self.assertEqual(sorted(name for name in whole if whole[name] != fewer[name]), ["mutants"])
+
+    def test_Given_FilesNamedInsteadOfADiff_When_ItIsKeyed_Then_ItRefuses(self):
+        # Arrange
+        project = KeyedProject()
+
+        # Act
+        code = project.run("--key")
+
+        # Assert
+        self.assertEqual(("campaign-key=" in project.printed, "merge base" in str(code)),
+                         (False, True))
+
+
+class MutantListHandOffTests(unittest.TestCase):
+    """The plan's mutant list, which every shard and the verdict measure and decide over."""
+
+    def test_Given_APlanThatWroteItsList_When_TheSameTreeIsHandedIt_Then_TheRunIsNotRefused(self):
+        # Arrange
+        project = KeyedProject()
+        listing = project.project / "mutants.json"
+        project.run_over_diff("--plan", "--emit-mutants", str(listing))
+
+        # Act
+        code = project.run_over_diff("--list", "--mutants", str(listing))
+
+        # Assert -- the list is not empty, so a plan that wrote nothing cannot satisfy it.
+        written = json.loads(listing.read_text() if listing.is_file() else "[]")
+        self.assertEqual((code, len(written) > 0), (0, True))
+
+    def test_Given_APlanThatWroteItsList_When_AnotherTreeIsHandedIt_Then_TheRunIsRefused(self):
+        # Arrange
+        project = KeyedProject()
+        listing = project.project / "mutants.json"
+        project.run_over_diff("--plan", "--emit-mutants", str(listing))
+        project.source.write_text(project.BODY.replace("a <= b", "a < b"))
+
+        # Act
+        code = project.run_over_diff("--list", "--mutants", str(listing))
+
+        # Assert
+        self.assertEqual("does not generate the plan's mutant list" in str(code), True)
+
+    def test_Given_AListWithAnExtraMutant_When_ItIsComparedWithTheTree_Then_TheCountIsNamed(self):
+        # Arrange
+        mutants = mutants_of(KeyedProject.BODY)
+        expected = [mutation_check.mutant_record(mutant, Path("."))
+                    for mutant in mutants] + [{"path": "probe.cs"}]
+
+        # Act
+        mismatch = mutation_check.list_mismatch(expected, mutants, Path("."))
+
+        # Assert
+        self.assertEqual(mismatch, "the plan's list holds {} mutants and this tree generates {}".format(
+            len(mutants) + 1, len(mutants)))
+
+    def test_Given_AListWhoseNthMutantDiffers_When_ItIsCompared_Then_ThatMutantIsNamed(self):
+        # Arrange
+        mutants = mutants_of(KeyedProject.BODY)
+        expected = [mutation_check.mutant_record(mutant, Path(".")) for mutant in mutants]
+        expected[0] = dict(expected[0], operator="logic")
+
+        # Act
+        mismatch = mutation_check.list_mismatch(expected, mutants, Path("."))
+
+        # Assert
+        self.assertEqual(str(mismatch).startswith("mutant 1 is "), True)
+
+    def test_Given_AListOfTheTreesOwnMutants_When_ItIsCompared_Then_NothingIsWrong(self):
+        # Arrange
+        mutants = mutants_of(KeyedProject.BODY)
+        expected = [mutation_check.mutant_record(mutant, Path(".")) for mutant in mutants]
+
+        # Act
+        mismatch = mutation_check.list_mismatch(expected, mutants, Path("."))
+
+        # Assert
+        self.assertEqual((mismatch, len(expected) > 0), (None, True))
+
+
+class ManyMutantsCampaign(StubbedCampaign):
+    """Twelve lines of one boundary mutant each, which the plan deals to two shards of six, every
+    mutant killed."""
+
+    BODY = "namespace Velvet\n{\n    internal static class Probe\n    {\n" + "".join(
+        "        internal static bool M{0}(int a, int b) => a <= b;\n".format(number)
+        for number in range(12)) + "    }\n}\n"
+    kills = True
+
+    def shard(self, spec, directory):
+        return self.run_over_diff("--shard", spec, "--output", str(self.project / directory))
+
+    def collect(self, *directories):
+        return self.run_over_diff("--collect", *(str(self.project / name) for name in directories))
+
+
+class UnreportedShardTests(unittest.TestCase):
+    """A shard that recorded nothing is not measured, which is neither a survivor nor a stale answer."""
+
+    def test_Given_AShardThatRecordedNothing_When_TheRunIsCollected_Then_ItIsNamedNotMeasured(self):
+        # Arrange -- the second shard's job died, so its output never uploaded.
+        campaign = ManyMutantsCampaign()
+        campaign.shard("0/2", "out0")
+
+        # Act
+        code = campaign.collect("out0")
+
+        # Assert
+        self.assertEqual((code, "--- not measured: 1 of 2 EditMode shard(s) recorded nothing ---" in campaign.printed,
+                          "shard 1 of 2 was dealt 6 mutant(s)" in campaign.printed),
+                         (1, True, True))
+
+    # GREEN_ON_BASE(characterization): the base prints no not-measured heading for any run, so a complete one passes there.
+    # The dead-shard case above is the one that separates the two.
+    def test_Given_EveryShardRecorded_When_TheRunIsCollected_Then_NoShardIsNamedNotMeasured(self):
+        # Arrange -- the control: the heading is the dead shard's, not every collect's.
+        campaign = ManyMutantsCampaign()
+        campaign.shard("0/2", "out0")
+        campaign.shard("1/2", "out1")
+
+        # Act
+        code = campaign.collect("out0", "out1")
+
+        # Assert
+        self.assertEqual((code, "not measured:" in campaign.printed), (0, False))
+
+    # GREEN_ON_BASE(characterization): the base prints no not-measured heading for any run, so a complete one passes there.
+    # The dead-shard case above is the one that separates the two.
+    def test_Given_ADeadShardAndTheOtherRerun_When_TheRunIsCollected_Then_ThePassIsComplete(self):
+        # Arrange -- only the failed shard is run again, into the directory its first attempt left.
+        campaign = ManyMutantsCampaign()
+        campaign.shard("0/2", "out0")
+        campaign.collect("out0")
+        campaign.shard("1/2", "out1")
+
+        # Act
+        code = campaign.collect("out0", "out1")
+
+        # Assert
+        self.assertEqual((code, "not measured" in campaign.printed), (0, False))
+
+    def test_Given_ADeclarationOverAMutantOfTheDeadShard_When_TheRunIsCollected_Then_ItIsNotStale(self):
+        # Arrange -- the declaration's mutant is the last line's, dealt to the shard that never reported.
+        body = ManyMutantsCampaign.BODY.replace(
+            "        internal static bool M11",
+            "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound, so both agree.\n"
+            "        internal static bool M11")
+        campaign = ManyMutantsCampaign(body)
+        campaign.shard("0/2", "out0")
+
+        # Act
+        campaign.collect("out0")
+
+        # Assert
+        self.assertEqual("STALE" in campaign.printed, False)
+
+    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale.
+    # It is the control for the case that leaves a dead shard's declaration alone.
+    def test_Given_ADeclarationOverAKilledMutantTheShardRecorded_When_TheRunIsCollected_Then_ItIsStale(self):
+        # Arrange -- the control: the same declaration over a mutant that was measured and died.
+        body = ManyMutantsCampaign.BODY.replace(
+            "        internal static bool M11",
+            "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound, so both agree.\n"
+            "        internal static bool M11")
+        campaign = ManyMutantsCampaign(body)
+        campaign.shard("0/2", "out0")
+        campaign.shard("1/2", "out1")
+
+        # Act
+        campaign.collect("out0", "out1")
+
+        # Assert
+        self.assertEqual("STALE" in campaign.printed, True)
+
+    def test_Given_AShardPartlyRecorded_When_Counted_Then_ItIsNotNamedAsDead(self):
+        # Arrange
+        mutants = [survivor(Path("probe.cs"), number, verdict=verdict)
+                   for number, verdict in ((1, mutation_check.KILLED), (2, mutation_check.UNRECORDED),
+                                           (3, mutation_check.UNRECORDED), (4, mutation_check.UNRECORDED),
+                                           (5, mutation_check.UNRECORDED), (6, mutation_check.UNRECORDED),
+                                           (7, mutation_check.UNRECORDED))]
+
+        # Act
+        named, count = mutation_check.unreported_shards(list(range(1, 8)), "EditMode", mutants)
+
+        # Assert -- shard 0 holds a recorded mutant (indices 1, 3, 5, 7), so only shard 1 is dead.
+        self.assertEqual((sorted(named), count), ([1], 2))
+
+    def test_Given_AnUnrecordedMutantUnderADeclaration_When_Decided_Then_TheDeclarationIsNotStale(self):
+        # Arrange
+        mutants = [survivor(Path("probe.cs"), 12, verdict=mutation_check.UNRECORDED)]
+        declared = {(Path("probe.cs"), 12): declaration(12)}
+
+        # Act
+        _, stale = mutation_check.answered(mutants, set(), declared)
+
+        # Assert
+        self.assertEqual([held.line for _, _, held in stale], [])
+
+    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale.
+    # It is the control for the case that leaves an unrecorded mutant's declaration alone.
+    def test_Given_AKilledMutantUnderADeclaration_When_Decided_Then_TheDeclarationIsStale(self):
+        # Arrange -- the control for the case above.
+        mutants = [survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED)]
+        declared = {(Path("probe.cs"), 12): declaration(12)}
+
+        # Act
+        _, stale = mutation_check.answered(mutants, set(), declared)
+
+        # Assert
+        self.assertEqual([held.line for _, _, held in stale], [12])
+
+
 class TwoPlatformCampaign(StubbedCampaign):
     """Four mutants on four lines, where the EditMode suite kills the first and third and the PlayMode
     suite kills all four, so the second and fourth are killed only where the PlayMode pass runs."""
@@ -5850,6 +6711,91 @@ class TwoPlatformCampaign(StubbedCampaign):
 
     def collect(self):
         return self.play_pass("--collect", str(self.project / "play"))
+
+
+class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
+    """Twelve mutants the EditMode suite never kills and the PlayMode suite always does, dealt to two
+    EditMode shards of six and six PlayMode shards of two: the shape the workflow's verdict job
+    collects."""
+
+    def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
+        mutant = Path(results).name != "baseline.xml"
+        Path(log).write_text("")
+        Path(results).write_text(FAILING_RESULTS if mutant and platform == "PlayMode" else GREEN_RESULTS)
+        return 0.0, False, 0
+
+    def edit_shard(self, spec, directory):
+        return self.shard(spec, directory)
+
+    def play_shard(self, number, edit_directories, directory):
+        return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
+                                  *(str(self.project / name) for name in edit_directories),
+                                  "--shard", "{}/6".format(number), "--output", str(self.project / directory))
+
+    def collect_both(self, edit_directories, play_directories):
+        return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
+                                  *(str(self.project / name) for name in edit_directories),
+                                  "--collect", *(str(self.project / name) for name in play_directories))
+
+
+class DeadShardReportingTests(unittest.TestCase):
+    """The verdict job's shape: a PlayMode pass over the EditMode shards' survivors, collected."""
+
+    HEADING = "--- not measured: {} of {} {} shard(s) recorded nothing ---"
+
+    def test_Given_ADeadEditModeShard_When_BothPassesAreCollected_Then_TheEditModeShardIsNamed(self):
+        # Arrange -- shard 1 of 2 never reported, so its six mutants are in no pass's list.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+
+        # Act
+        campaign.collect_both(["edit0"], ["play"])
+
+        # Assert
+        self.assertEqual((self.HEADING.format(1, 2, "EditMode") in campaign.printed,
+                          "EditMode shard 1 of 2 was dealt 6 mutant(s)" in campaign.printed),
+                         (True, True))
+
+    def test_Given_ADeadEditModeShard_When_BothPassesAreCollected_Then_NoPlayModeShardIsCalledDead(self):
+        # Arrange -- the PlayMode pass does not run when an EditMode shard died, so none of its
+        # shards recorded anything for a reason that is not theirs.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+
+        # Act
+        campaign.collect_both(["edit0"], ["play"])
+
+        # Assert
+        self.assertEqual((self.HEADING.format(1, 2, "EditMode") in campaign.printed,
+                          "PlayMode shard(s) recorded nothing" in campaign.printed), (True, False))
+
+    def test_Given_EveryEditModeShardAndNoPlayModeShard_When_BothPassesAreCollected_Then_ThePlayModeShardsAreNamed(self):
+        # Arrange -- the control: the PlayMode pass was owed, and none of its six shards reported.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+        campaign.edit_shard("1/2", "edit1")
+
+        # Act
+        campaign.collect_both(["edit0", "edit1"], ["play"])
+
+        # Assert
+        self.assertEqual((self.HEADING.format(6, 6, "PlayMode") in campaign.printed,
+                          "EditMode shard(s) recorded nothing" in campaign.printed), (True, False))
+
+    def test_Given_EveryEditModeShardAndOneDeadPlayModeShard_When_BothPassesAreCollected_Then_OnlyThatShardIsNamed(self):
+        # Arrange
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+        campaign.edit_shard("1/2", "edit1")
+        for number in range(5):
+            campaign.play_shard(number, ["edit0", "edit1"], "play{}".format(number))
+
+        # Act
+        campaign.collect_both(["edit0", "edit1"], ["play{}".format(number) for number in range(5)])
+
+        # Assert
+        self.assertEqual((self.HEADING.format(1, 6, "PlayMode") in campaign.printed,
+                          "shard 5 of 6 was dealt 2 mutant(s)" in campaign.printed), (True, True))
 
 
 class HangingTwoPlatformCampaign(TwoPlatformCampaign):

@@ -181,6 +181,11 @@ namespace Velvet
                 if (custom.HasValue) return custom.Value;
             }
 
+            {
+                var slice = TryParseSliceValue(prefix, valueSpan, negate, out result);
+                if (slice.HasValue) return slice.Value;
+            }
+
             if (!TryGetProperty(prefix, out var property))
             {
                 return false;
@@ -188,7 +193,7 @@ namespace Velvet
 
             if (!TryParseValue(valueSpan, out var value, out var unit))
             {
-                return false;
+                return TryParseRelativeLength(property, valueSpan, negate, out result);
             }
 
             // FloatSetters write a StyleFloat, which carries no unit, and none of their longhands takes a
@@ -204,6 +209,22 @@ namespace Velvet
             }
 
             result = new ArbitraryStyle(property, value, unit);
+            return true;
+        }
+
+        // A length only an element can measure — em, a viewport unit, or a math function mixing a percentage
+        // with a pixel length — is carried unresolved to ApplyInline, and only for the properties PropertySetters
+        // writes, whose setters name the axis their percentage is taken of.
+        private static bool TryParseRelativeLength(
+            ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!PropertySetters.ContainsKey(property) || !StyleLengthExpression.TryParse(valueSpan, out var expression)
+                || !expression!.IsFinite())
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(property, negate ? expression!.Negated() : expression!);
             return true;
         }
 
@@ -516,6 +537,115 @@ namespace Velvet
             return false;
         }
 
+        private static readonly Dictionary<string, ArbitraryProperty> s_sliceInsetPrefixes = new()
+        {
+            ["slice-"] = ArbitraryProperty.Slice,
+            ["slice-x-"] = ArbitraryProperty.SliceX,
+            ["slice-y-"] = ArbitraryProperty.SliceY,
+            ["slice-t-"] = ArbitraryProperty.SliceTop,
+            ["slice-r-"] = ArbitraryProperty.SliceRight,
+            ["slice-b-"] = ArbitraryProperty.SliceBottom,
+            ["slice-l-"] = ArbitraryProperty.SliceLeft,
+        };
+
+        // Null when prefix names neither family.
+        private static bool? TryParseSliceValue(
+            string prefix, ReadOnlySpan<char> value, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (prefix == "slice-scale-")
+            {
+                if (negate || !TryParseFloat(value, out var factor) || factor < 0f)
+                {
+                    return false;
+                }
+                result = new ArbitraryStyle(ArbitraryProperty.SliceScale, factor, LengthUnit.Pixel);
+                return true;
+            }
+            if (!s_sliceInsetPrefixes.TryGetValue(prefix, out var property))
+            {
+                return null;
+            }
+            if (negate)
+            {
+                return false;
+            }
+            if (property == ArbitraryProperty.Slice)
+            {
+                return TryParseSliceShorthand(value, out result);
+            }
+            if (!TryParseSliceInset(value, out var inset, out var percent))
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(property, inset, 0f, 0f, 0f, percent ? 1 : 0);
+            return true;
+        }
+
+        // border-image-slice's one to four values, '_' standing for the space between them: one sets every edge,
+        // two the vertical then the horizontal pair, three the top, the horizontal pair and the bottom, and four
+        // the top, right, bottom and left. The fill keyword may stand before or after them; UI Toolkit draws a
+        // sliced background's centre whether or not it is given, so it is read and dropped.
+        private static bool TryParseSliceShorthand(ReadOnlySpan<char> value, out ArbitraryStyle result)
+        {
+            result = default;
+            value = WithoutFill(value);
+            Span<float> insets = stackalloc float[4];
+            Span<bool> percents = stackalloc bool[4];
+            var count = 0;
+            while (true)
+            {
+                var gap = value.IndexOf('_');
+                // MUTANT_SURVIVES(equivalent, boundary): at a gap of 0 the part is empty or starts with '_', and
+                // neither parses as an inset.
+                var part = gap < 0 ? value : value.Slice(0, gap);
+                if (count == insets.Length || !TryParseSliceInset(part, out insets[count], out percents[count]))
+                {
+                    return false;
+                }
+                count++;
+                // MUTANT_SURVIVES(equivalent, boundary): a gap of 0 left an empty part, which returned above.
+                if (gap < 0)
+                {
+                    break;
+                }
+                value = value.Slice(gap + 1);
+            }
+            // The given value each of the right, bottom and left edges takes when fewer than four are given.
+            var right = count > 1 ? 1 : 0;
+            var bottom = count > 2 ? 2 : 0;
+            var left = count > 3 ? 3 : right;
+            var percentEdges = (percents[0] ? 1 : 0) | (percents[right] ? 2 : 0) | (percents[bottom] ? 4 : 0)
+                | (percents[left] ? 8 : 0);
+            result = new ArbitraryStyle(ArbitraryProperty.Slice, insets[0], insets[right], insets[bottom], insets[left],
+                percentEdges);
+            return true;
+        }
+
+        private static ReadOnlySpan<char> WithoutFill(ReadOnlySpan<char> value)
+        {
+            if (value.StartsWith("fill_".AsSpan()))
+            {
+                return value.Slice("fill_".Length);
+            }
+            return value.EndsWith("_fill".AsSpan()) ? value.Slice(0, value.Length - "_fill".Length) : value;
+        }
+
+        // A whole, non-negative number of pixels, bare as border-image-slice writes it or with px, or a
+        // non-negative percentage of the image's size.
+        private static bool TryParseSliceInset(ReadOnlySpan<char> value, out float inset, out bool percent)
+        {
+            percent = value.EndsWith("%".AsSpan());
+            if (percent)
+            {
+                return TryParseFloat(value.Slice(0, value.Length - 1), out inset) && inset >= 0f;
+            }
+            var digits = value.EndsWith("px".AsSpan()) ? value.Slice(0, value.Length - 2) : value;
+            var whole = int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var pixels);
+            inset = pixels;
+            return whole;
+        }
+
         // Parses a duration-[..] time value to SECONDS. Accepts "<n>ms" / "<n>s" (duration-[400ms] /
         // duration-[.4s]); a bare number is rejected (a unit is required on arbitrary durations).
         private static bool TryParseDurationSeconds(ReadOnlySpan<char> value, out float seconds)
@@ -665,54 +795,79 @@ namespace Velvet
 
         #region Delegate Table
 
-        // Single source of truth for Apply / Clear. Shorthands hold multiple setters.
-        private static readonly Dictionary<ArbitraryProperty, Action<IStyle, StyleLength>[]> PropertySetters = new()
+        // Single source of truth for Apply / Clear. Shorthands hold multiple setters. Each setter names the axis
+        // CSS takes a percentage of for the longhand it writes, which a relative length (StyleLengthExpression)
+        // resolves against — so a vertical padding or margin edge reads the parent's width, as in CSS.
+        private static readonly Dictionary<ArbitraryProperty, LengthSetter[]> PropertySetters = new()
         {
-            [ArbitraryProperty.Width] = new Action<IStyle, StyleLength>[] { (s, v) => s.width = v },
-            [ArbitraryProperty.Height] = new Action<IStyle, StyleLength>[] { (s, v) => s.height = v },
-            [ArbitraryProperty.MinWidth] = new Action<IStyle, StyleLength>[] { (s, v) => s.minWidth = v },
-            [ArbitraryProperty.MinHeight] = new Action<IStyle, StyleLength>[] { (s, v) => s.minHeight = v },
-            [ArbitraryProperty.MaxWidth] = new Action<IStyle, StyleLength>[] { (s, v) => s.maxWidth = v },
-            [ArbitraryProperty.MaxHeight] = new Action<IStyle, StyleLength>[] { (s, v) => s.maxHeight = v },
-            [ArbitraryProperty.Top] = new Action<IStyle, StyleLength>[] { (s, v) => s.top = v },
-            [ArbitraryProperty.Right] = new Action<IStyle, StyleLength>[] { (s, v) => s.right = v },
-            [ArbitraryProperty.Bottom] = new Action<IStyle, StyleLength>[] { (s, v) => s.bottom = v },
-            [ArbitraryProperty.Left] = new Action<IStyle, StyleLength>[] { (s, v) => s.left = v },
-            [ArbitraryProperty.Inset] = new Action<IStyle, StyleLength>[]
+            [ArbitraryProperty.Width] = new[] { Across((s, v) => s.width = v) },
+            [ArbitraryProperty.Height] = new[] { Down((s, v) => s.height = v) },
+            [ArbitraryProperty.MinWidth] = new[] { new LengthSetter((s, v) => s.minWidth = v, RelativeLengthAxis.Width, null) },
+            [ArbitraryProperty.MinHeight] = new[] { new LengthSetter((s, v) => s.minHeight = v, RelativeLengthAxis.Height, null) },
+            [ArbitraryProperty.MaxWidth] = new[] { new LengthSetter((s, v) => s.maxWidth = v, RelativeLengthAxis.Width, StyleKeyword.None) },
+            [ArbitraryProperty.MaxHeight] = new[] { new LengthSetter((s, v) => s.maxHeight = v, RelativeLengthAxis.Height, StyleKeyword.None) },
+            [ArbitraryProperty.Top] = new[] { Down((s, v) => s.top = v) },
+            [ArbitraryProperty.Right] = new[] { Across((s, v) => s.right = v) },
+            [ArbitraryProperty.Bottom] = new[] { Down((s, v) => s.bottom = v) },
+            [ArbitraryProperty.Left] = new[] { Across((s, v) => s.left = v) },
+            [ArbitraryProperty.Inset] = new[]
             {
-                (s, v) => s.top = v, (s, v) => s.right = v,
-                (s, v) => s.bottom = v, (s, v) => s.left = v,
+                Down((s, v) => s.top = v), Across((s, v) => s.right = v),
+                Down((s, v) => s.bottom = v), Across((s, v) => s.left = v),
             },
-            [ArbitraryProperty.InsetX] = new Action<IStyle, StyleLength>[] { (s, v) => s.left = v, (s, v) => s.right = v },
-            [ArbitraryProperty.InsetY] = new Action<IStyle, StyleLength>[] { (s, v) => s.top = v, (s, v) => s.bottom = v },
-            [ArbitraryProperty.PaddingTop] = new Action<IStyle, StyleLength>[] { (s, v) => s.paddingTop = v },
-            [ArbitraryProperty.PaddingRight] = new Action<IStyle, StyleLength>[] { (s, v) => s.paddingRight = v },
-            [ArbitraryProperty.PaddingBottom] = new Action<IStyle, StyleLength>[] { (s, v) => s.paddingBottom = v },
-            [ArbitraryProperty.PaddingLeft] = new Action<IStyle, StyleLength>[] { (s, v) => s.paddingLeft = v },
-            [ArbitraryProperty.Padding] = new Action<IStyle, StyleLength>[]
+            [ArbitraryProperty.InsetX] = new[] { Across((s, v) => s.left = v), Across((s, v) => s.right = v) },
+            [ArbitraryProperty.InsetY] = new[] { Down((s, v) => s.top = v), Down((s, v) => s.bottom = v) },
+            [ArbitraryProperty.PaddingTop] = new[] { Edge((s, v) => s.paddingTop = v) },
+            [ArbitraryProperty.PaddingRight] = new[] { Edge((s, v) => s.paddingRight = v) },
+            [ArbitraryProperty.PaddingBottom] = new[] { Edge((s, v) => s.paddingBottom = v) },
+            [ArbitraryProperty.PaddingLeft] = new[] { Edge((s, v) => s.paddingLeft = v) },
+            [ArbitraryProperty.Padding] = new[]
             {
-                (s, v) => s.paddingTop = v, (s, v) => s.paddingRight = v,
-                (s, v) => s.paddingBottom = v, (s, v) => s.paddingLeft = v,
+                Edge((s, v) => s.paddingTop = v), Edge((s, v) => s.paddingRight = v),
+                Edge((s, v) => s.paddingBottom = v), Edge((s, v) => s.paddingLeft = v),
             },
-            [ArbitraryProperty.PaddingX] = new Action<IStyle, StyleLength>[] { (s, v) => s.paddingLeft = v, (s, v) => s.paddingRight = v },
-            [ArbitraryProperty.PaddingY] = new Action<IStyle, StyleLength>[] { (s, v) => s.paddingTop = v, (s, v) => s.paddingBottom = v },
-            [ArbitraryProperty.MarginTop] = new Action<IStyle, StyleLength>[] { (s, v) => s.marginTop = v },
-            [ArbitraryProperty.MarginRight] = new Action<IStyle, StyleLength>[] { (s, v) => s.marginRight = v },
-            [ArbitraryProperty.MarginBottom] = new Action<IStyle, StyleLength>[] { (s, v) => s.marginBottom = v },
-            [ArbitraryProperty.MarginLeft] = new Action<IStyle, StyleLength>[] { (s, v) => s.marginLeft = v },
-            [ArbitraryProperty.Margin] = new Action<IStyle, StyleLength>[]
+            [ArbitraryProperty.PaddingX] = new[] { Edge((s, v) => s.paddingLeft = v), Edge((s, v) => s.paddingRight = v) },
+            [ArbitraryProperty.PaddingY] = new[] { Edge((s, v) => s.paddingTop = v), Edge((s, v) => s.paddingBottom = v) },
+            [ArbitraryProperty.MarginTop] = new[] { Edge((s, v) => s.marginTop = v) },
+            [ArbitraryProperty.MarginRight] = new[] { Edge((s, v) => s.marginRight = v) },
+            [ArbitraryProperty.MarginBottom] = new[] { Edge((s, v) => s.marginBottom = v) },
+            [ArbitraryProperty.MarginLeft] = new[] { Edge((s, v) => s.marginLeft = v) },
+            [ArbitraryProperty.Margin] = new[]
             {
-                (s, v) => s.marginTop = v, (s, v) => s.marginRight = v,
-                (s, v) => s.marginBottom = v, (s, v) => s.marginLeft = v,
+                Edge((s, v) => s.marginTop = v), Edge((s, v) => s.marginRight = v),
+                Edge((s, v) => s.marginBottom = v), Edge((s, v) => s.marginLeft = v),
             },
-            [ArbitraryProperty.MarginX] = new Action<IStyle, StyleLength>[] { (s, v) => s.marginLeft = v, (s, v) => s.marginRight = v },
-            [ArbitraryProperty.MarginY] = new Action<IStyle, StyleLength>[] { (s, v) => s.marginTop = v, (s, v) => s.marginBottom = v },
-            [ArbitraryProperty.FontSize] = new Action<IStyle, StyleLength>[] { (s, v) => s.fontSize = v },
-            [ArbitraryProperty.LetterSpacing] = new Action<IStyle, StyleLength>[] { (s, v) => s.letterSpacing = v },
+            [ArbitraryProperty.MarginX] = new[] { Edge((s, v) => s.marginLeft = v), Edge((s, v) => s.marginRight = v) },
+            [ArbitraryProperty.MarginY] = new[] { Edge((s, v) => s.marginTop = v), Edge((s, v) => s.marginBottom = v) },
+            [ArbitraryProperty.FontSize] = new[] { new LengthSetter((s, v) => s.fontSize = v, RelativeLengthAxis.ParentFont, StyleKeyword.Null) },
+            [ArbitraryProperty.LetterSpacing] = new[] { new LengthSetter((s, v) => s.letterSpacing = v, RelativeLengthAxis.OwnFont, StyleKeyword.Null) },
             // size-[..] fans out to width + height (same dual-setter shape as Inset).
-            [ArbitraryProperty.Size] = new Action<IStyle, StyleLength>[] { (s, v) => s.width = v, (s, v) => s.height = v },
-            [ArbitraryProperty.FlexBasis] = new Action<IStyle, StyleLength>[] { (s, v) => s.flexBasis = v },
+            [ArbitraryProperty.Size] = new[] { Across((s, v) => s.width = v), Down((s, v) => s.height = v) },
+            [ArbitraryProperty.FlexBasis] = new[] { new LengthSetter((s, v) => s.flexBasis = v, RelativeLengthAxis.MainAxis, StyleKeyword.Auto) },
         };
+
+        private readonly struct LengthSetter
+        {
+            public readonly Action<IStyle, StyleLength> Set;
+            public readonly RelativeLengthAxis Axis;
+            // What a percentage of an indefinite size writes: auto where the longhand takes it, none on a maximum.
+            // Null on a minimum, a padding or a margin, whose percentage is then taken as zero and the rest of the
+            // length kept, which is what CSS gives such a percentage while it sizes the parent.
+            public readonly StyleKeyword? Indefinite;
+
+            public LengthSetter(Action<IStyle, StyleLength> set, RelativeLengthAxis axis, StyleKeyword? indefinite)
+            {
+                Set = set;
+                Axis = axis;
+                Indefinite = indefinite;
+            }
+        }
+
+        private static LengthSetter Across(Action<IStyle, StyleLength> set) => new(set, RelativeLengthAxis.Width, StyleKeyword.Auto);
+
+        private static LengthSetter Down(Action<IStyle, StyleLength> set) => new(set, RelativeLengthAxis.Height, StyleKeyword.Auto);
+
+        private static LengthSetter Edge(Action<IStyle, StyleLength> set) => new(set, RelativeLengthAxis.Width, null);
 
         // The corner radii are not written here but handed to CornerRadiusFit, which owns those four slots.
         private static readonly Dictionary<ArbitraryProperty, RadiusCorners> RadiusCornersOf = new()
@@ -758,6 +913,24 @@ namespace Velvet
             // grow-[..] / shrink-[..] are unitless factors.
             [ArbitraryProperty.FlexGrow] = new Action<IStyle, StyleFloat>[] { (s, v) => s.flexGrow = v },
             [ArbitraryProperty.FlexShrink] = new Action<IStyle, StyleFloat>[] { (s, v) => s.flexShrink = v },
+            [ArbitraryProperty.SliceScale] = new Action<IStyle, StyleFloat>[] { (s, v) => s.unitySliceScale = v },
+        };
+
+        // Integer-valued counterpart to PropertySetters: the nine-slice insets. Slice is here for ClearInline;
+        // ApplyInline writes its four edges from the payload itself.
+        private static readonly Dictionary<ArbitraryProperty, Action<IStyle, StyleInt>[]> IntSetters = new()
+        {
+            [ArbitraryProperty.Slice] = new Action<IStyle, StyleInt>[]
+            {
+                (s, v) => s.unitySliceTop = v, (s, v) => s.unitySliceRight = v,
+                (s, v) => s.unitySliceBottom = v, (s, v) => s.unitySliceLeft = v,
+            },
+            [ArbitraryProperty.SliceX] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceLeft = v, (s, v) => s.unitySliceRight = v },
+            [ArbitraryProperty.SliceY] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceTop = v, (s, v) => s.unitySliceBottom = v },
+            [ArbitraryProperty.SliceTop] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceTop = v },
+            [ArbitraryProperty.SliceRight] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceRight = v },
+            [ArbitraryProperty.SliceBottom] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceBottom = v },
+            [ArbitraryProperty.SliceLeft] = new Action<IStyle, StyleInt>[] { (s, v) => s.unitySliceLeft = v },
         };
 
         #endregion
@@ -805,6 +978,18 @@ namespace Velvet
             // The containers that re-apply when a class of this element's own changes — see
             // StyleChildOwnership. Lazily allocated: only a claimed child gets one.
             public List<IChildClassWatcher>? Watchers;
+
+            // Set while a winning layer holds a relative length (ArbitraryStyle.Expression) — see
+            // ReresolveRelativeLengths.
+            public RelativeLengthPoll? RelativePoll;
+
+            // What each writer of the background image last asked for — see WriteBackgroundImage. Lazily
+            // allocated: only an element something writes a background image to gets one.
+            public BackgroundImageSources? BackgroundImage;
+
+            // Watches the image a percentage inset was resolved against — see WatchShownImage. Lazily allocated:
+            // only an element holding a percentage inset gets one.
+            public ShownImageWatch? ImageWatch;
 
             private readonly Dictionary<(ArbitraryProperty Property, long Priority), long> _arrivals = new();
             private long _nextArrival;
@@ -1109,6 +1294,7 @@ namespace Velvet
                 if (layers.Count == 0) map.Remove(property);
             }
             ResolveAndApply(element, property, map);
+            ReleaseUnusedShownImageWatch(element, map);
             Reproject(element, map);
         }
 
@@ -1250,7 +1436,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                StyleHeldSlots.WriteLayered(element.style, slot, winner);
+                WriteLayered(element, slot, winner);
                 yielded |= StyleHeldSlots.Bit(slot);
             }
             holds.Reassert(element.style, slots & ~yielded);
@@ -1276,11 +1462,24 @@ namespace Velvet
             map.Holds?.Drop(slot);
             if (TryLayeredWinner(map, slot, out var winner))
             {
-                StyleHeldSlots.WriteLayered(element.style, slot, winner);
+                WriteLayered(element, slot, winner);
             }
             else
             {
                 StyleHeldSlots.WriteNull(element.style, slot);
+            }
+        }
+
+        // Every held length slot is a margin edge or the width, each of which takes a percentage of the parent's
+        // width and stands in for an indefinite one as PropertySetters' setter for it does. A length that cannot
+        // be measured yet leaves the slot as it is, as ApplyInline does.
+        private static void WriteLayered(VisualElement element, HeldSlot slot, in ArbitraryStyle winner)
+        {
+            var length = winner.ToStyleLength();
+            if (winner.Expression == null || StyleRelativeLengths.TryResolve(element, winner.Expression,
+                    RelativeLengthAxis.Width, slot == HeldSlot.Width ? StyleKeyword.Auto : null, out length))
+            {
+                StyleHeldSlots.WriteLayered(element.style, slot, length, winner);
             }
         }
 
@@ -1440,10 +1639,224 @@ namespace Velvet
                 && map.TryGetValue(property, out var layers)
                 && layers.Count > 0;
 
+        // The element's own writers of the background image: a StyleOverrides member and the utilities
+        // (bg-[addr:…] and the gradients, which coordinate between themselves). Neither is an ArbitraryProperty
+        // layer, since a StyleBackground is no ArbitraryStyle payload, so they are ranked here instead, as
+        // InlineStyle ranks the layers: the override wins unless the utility is important.
+        internal sealed class BackgroundImageSources
+        {
+            public StyleBackground? Override;
+            public StyleBackground? Utility;
+            public bool UtilityImportant;
+            // What ResolveBackgroundImage last wrote, to tell an inline image a refCallback wrote since.
+            public StyleBackground? Written;
+        }
+
+        // Whether the inline background image is still the one these writers last put there.
+        internal static bool ShowsOwnBackground(VisualElement element)
+            => s_layers.TryGetValue(element, out var map) && map.BackgroundImage?.Written is { } written
+                && element.style.backgroundImage.Equals(written);
+
+        // Whether a StyleOverrides.BackgroundImage is the image showing, over the utilities'.
+        internal static bool OverrideBackgroundWins(VisualElement element)
+            => s_layers.TryGetValue(element, out var map) && OverrideWins(map.BackgroundImage);
+
+        private static bool OverrideWins(BackgroundImageSources? sources)
+            => sources is { Override: not null, UtilityImportant: false };
+
+        // A StyleOverrides.BackgroundImage, or null when the node declares none.
+        internal static void WriteBackgroundImageOverride(VisualElement element, StyleBackground? value)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            var sources = map.BackgroundImage ??= new BackgroundImageSources();
+            sources.Override = value is { keyword: not StyleKeyword.Null } ? value : null;
+            ResolveBackgroundImage(element, map, sources);
+        }
+
+        // A utility's background image, or null when the utilities let go of it.
+        internal static void WriteBackgroundImageUtility(VisualElement element, StyleBackground? value, bool important)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            var sources = map.BackgroundImage ??= new BackgroundImageSources();
+            sources.Utility = value;
+            sources.UtilityImportant = important;
+            ResolveBackgroundImage(element, map, sources);
+        }
+
+        internal static void ClearBackgroundImageUtility(VisualElement element)
+            => WriteBackgroundImageUtility(element, null, important: default);
+
+        // The image the utilities last wrote, whether or not it is the one showing.
+        internal static StyleBackground UtilityBackgroundImage(VisualElement element)
+            => s_layers.TryGetValue(element, out var map) && map.BackgroundImage?.Utility is { } utility
+                ? utility
+                : new StyleBackground(StyleKeyword.Null);
+
+        private static void ResolveBackgroundImage(VisualElement element, LayerMap map, BackgroundImageSources sources)
+        {
+            var winner = sources.Override is { } own && !sources.UtilityImportant
+                ? own
+                : sources.Utility ?? new StyleBackground(StyleKeyword.Null);
+            SceneViewElement.WriteBackground(element, winner);
+            sources.Written = winner;
+            // Resolved now rather than after the next style pass: NineSlicePercentPanelTests pins that an element
+            // the panel has styled lets go of a withdrawn inline image in its resolved style at once.
+            ReresolvePercentSlices(element, map);
+        }
+
+        internal sealed class ShownImageWatch
+        {
+            public Background Seen;
+        }
+
+        // Static, so registering one again is a no-op; each looks the element's current layer map up rather than
+        // holding one.
+        private static readonly EventCallback<GeometryChangedEvent> s_recheckOnGeometry =
+            evt => RecheckShownImage((VisualElement)evt.currentTarget);
+
+        private static readonly EventCallback<CustomStyleResolvedEvent> s_recheckOnStyle =
+            evt => RecheckShownImage((VisualElement)evt.currentTarget);
+
+        internal const string ShownImageMarkerClass = "velvet-slice-percent";
+
+        // An image Velvet does not write — a stylesheet's, or one a refCallback set — reaches the resolved style
+        // or the inline slot without passing through ResolveBackgroundImage, so a percentage inset is checked
+        // again whenever the element is restyled or its geometry changes. The restyle arrives only through the
+        // marker class's custom property in _backgrounds.uss, the way LeadingLengthProbe's does.
+        private static void WatchShownImage(VisualElement element)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            if (map.ImageWatch is { } watching)
+            {
+                watching.Seen = ShownImage(element);
+                return;
+            }
+            map.ImageWatch = new ShownImageWatch { Seen = ShownImage(element) };
+            element.AddToClassList(ShownImageMarkerClass);
+            element.RegisterCallback(s_recheckOnGeometry);
+            element.RegisterCallback(s_recheckOnStyle);
+        }
+
+        // The watch and its marker go with the last percentage inset layer, wherever it sat in the stack.
+        private static void ReleaseUnusedShownImageWatch(VisualElement element, LayerMap map)
+        {
+            if (map.ImageWatch == null || Array.Exists(s_sliceInsetProperties,
+                    property => map.TryGetValue(property, out var layers)
+                        && System.Linq.Enumerable.Any(layers.Values, layer => layer.PercentEdges != 0)))
+            {
+                return;
+            }
+            map.ImageWatch = null;
+            ReleaseShownImageWatch(element);
+        }
+
+        // Also the cleaner's, beside ClearAll, which drops the watch with the rest of the layer map.
+        internal static void ReleaseShownImageWatch(VisualElement element)
+        {
+            element.RemoveFromClassList(ShownImageMarkerClass);
+            // MUTANT_SURVIVES(equivalent, line removed): a callback left registered finds no watch and returns.
+            element.UnregisterCallback(s_recheckOnGeometry);
+            // MUTANT_SURVIVES(equivalent, line removed): the style callback returns the same way.
+            element.UnregisterCallback(s_recheckOnStyle);
+        }
+
+        private static void RecheckShownImage(VisualElement element)
+        {
+            if (!s_layers.TryGetValue(element, out var map) || map.ImageWatch is not { } watch
+                || ShownImage(element).Equals(watch.Seen))
+            {
+                return;
+            }
+            ReresolvePercentSlices(element, map);
+        }
+
+        // A percentage inset is of the background image's size, so the slice properties are written again once
+        // the image changes; one holding no percentage writes what it wrote before.
+        private static void ReresolvePercentSlices(VisualElement element, LayerMap map)
+        {
+            foreach (var property in s_sliceInsetProperties)
+            {
+                if (map.ContainsKey(property))
+                {
+                    ResolveAndApply(element, property, map);
+                }
+            }
+        }
+
+        // The single-value slice properties whose insets are of the image's width.
+        private static readonly HashSet<ArbitraryProperty> s_horizontalSlices = new()
+        {
+            ArbitraryProperty.SliceX, ArbitraryProperty.SliceLeft, ArbitraryProperty.SliceRight,
+        };
+
+        private static readonly ArbitraryProperty[] s_sliceInsetProperties =
+        {
+            ArbitraryProperty.Slice, ArbitraryProperty.SliceX, ArbitraryProperty.SliceY, ArbitraryProperty.SliceTop,
+            ArbitraryProperty.SliceRight, ArbitraryProperty.SliceBottom, ArbitraryProperty.SliceLeft,
+        };
+
+        // The background image's size, which a percentage inset is of: the inline image, else the resolved one.
+        // Zero when there is none.
+        private static Vector2 BackgroundImagePixels(VisualElement element)
+        {
+            var image = ShownImage(element);
+            if (image.texture != null)
+            {
+                return new Vector2(image.texture.width, image.texture.height);
+            }
+            if (image.sprite != null)
+            {
+                return image.sprite.rect.size;
+            }
+            if (image.vectorImage != null)
+            {
+                return new Vector2(image.vectorImage.width, image.vectorImage.height);
+            }
+            return image.renderTexture != null
+                ? new Vector2(image.renderTexture.width, image.renderTexture.height)
+                : Vector2.zero;
+        }
+
+        private static Background ShownImage(VisualElement element)
+            => element.style.backgroundImage.keyword == StyleKeyword.Undefined
+                ? element.style.backgroundImage.value
+                : element.resolvedStyle.backgroundImage;
+
+        // One inset as written: the keyword of a keyword value, else the value, resolved against the image's
+        // width (horizontal) or height when it is a percentage. A percentage past 100 is read as 100, as
+        // border-image-slice reads an inset larger than the image.
+        private static StyleInt SliceInset(VisualElement element, in ArbitraryStyle style, float value, int edge,
+            bool horizontal)
+        {
+            if (style.Keyword != StyleKeyword.Undefined)
+            {
+                return new StyleInt(style.Keyword);
+            }
+            if ((style.PercentEdges & (1 << edge)) == 0)
+            {
+                return new StyleInt((int)value);
+            }
+            WatchShownImage(element);
+            var pixels = BackgroundImagePixels(element);
+            return new StyleInt(Mathf.RoundToInt(Mathf.Min(value, 100f) / 100f * (horizontal ? pixels.x : pixels.y)));
+        }
+
+        // Through the pan loop's gate, which holds the slot while a pan runs.
+        private static void WriteRepeat(VisualElement element, in ArbitraryStyle style)
+            => StyleAnimateDriver.WriteBackgroundRepeat(element, style.Keyword == StyleKeyword.Undefined
+                ? new StyleBackgroundRepeat(new BackgroundRepeat((Repeat)style.Value, (Repeat)style.Value2))
+                : new StyleBackgroundRepeat(style.Keyword));
+
+        private static void WriteSliceType(VisualElement element, in ArbitraryStyle style)
+            => element.style.unitySliceType = style.Keyword == StyleKeyword.Undefined
+                ? new StyleEnum<SliceType>((SliceType)style.Value)
+                : new StyleEnum<SliceType>(style.Keyword);
+
         // Drops all arbitrary-value layers tracked for element. Called when the element is
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
         {
+            if (element != null && s_layers.TryGetValue(element, out var map)) map.RelativePoll?.Stop();
             if (element != null) s_layers.Remove(element);
             // What the fit records the radius layers as declaring goes with them.
             if (element != null) CornerRadiusFit.Release(element);
@@ -1463,7 +1876,7 @@ namespace Velvet
             }
             else if (StyleBackgroundImageResolver.TryParse(core, out var texture))
             {
-                StyleBackgroundImageResolver.Apply(element, texture);
+                StyleBackgroundImageResolver.Apply(element, texture, (priority & StyleLayerPriority.Important) != 0);
             }
             else if (addToClassListFallback)
             {
@@ -1583,12 +1996,61 @@ namespace Velvet
                 ApplyTransitionDuration(element, map);
                 return;
             }
-            if (!TryWinningLayer(map, property, out _))
+            if (!TryWinningLayer(map, property, out var winner))
             {
                 ClearInline(element, property);
             }
+            else if (winner.Expression != null)
+            {
+                map.RelativePoll ??= new RelativeLengthPoll(element, ReresolveRelativeLengths);
+            }
             var rewritten = ResolveSharedLonghands(element, property, map);
             ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property) | rewritten);
+        }
+
+        // Reused by every tick: a tick runs alone and resolves nothing re-entrantly.
+        private static readonly List<ArbitraryProperty> s_relativeWinners = new();
+
+        // The poll's tick: re-resolves every property a relative length wins once what it measures has moved, and
+        // stops the poll once none wins.
+        private static void ReresolveRelativeLengths(VisualElement element)
+        {
+            // MUTANT_SURVIVES(unreachable): a ticking poll always finds its element's map holding a poll.
+            // Every poll is stopped where its map lets go of it: by ClearAll, and below once no relative length wins.
+            if (!s_layers.TryGetValue(element, out var map) || map.RelativePoll == null)
+            {
+                return;
+            }
+            s_relativeWinners.Clear();
+            foreach (var property in map.Keys)
+            {
+                if (TryWinningLayer(map, property, out var style) && style.Expression != null)
+                {
+                    s_relativeWinners.Add(property);
+                }
+            }
+            if (s_relativeWinners.Count == 0)
+            {
+                map.RelativePoll.Stop();
+                map.RelativePoll = null;
+                return;
+            }
+            if (!map.RelativePoll.Moved())
+            {
+                return;
+            }
+            var hold = new StyleRelativeLengths.TransitionHold(element);
+            try
+            {
+                foreach (var property in s_relativeWinners)
+                {
+                    ResolveAndApply(element, property, map);
+                }
+            }
+            finally
+            {
+                hold.Release();
+            }
         }
 
         // Settles every longhand property shares with another property's layers (m-[4px] beside mt-[8px] and
@@ -1631,11 +2093,22 @@ namespace Velvet
         // The winning layer of every property connected to property through a shared longhand, however many
         // steps away — a writer re-written can reach a longhand property never touches — with its key; null
         // when nothing else shares one.
+        private static readonly HashSet<ArbitraryProperty> s_remainingWriters = new();
+
         private static List<(long Key, ArbitraryStyle Style)>? ConnectedWriters(ArbitraryProperty property,
             LayerMap map)
         {
             var reached = StyleArbitraryLonghands.Of(property);
-            var remaining = new HashSet<ArbitraryProperty>(map.Keys);
+            // One set reused across calls, filled through the key collection's own enumerator: a property nothing
+            // else shares a longhand with — a StyleOverrides colour beside unrelated layers — allocates nothing.
+            var remaining = s_remainingWriters;
+            // MUTANT_SURVIVES(equivalent): a member left by an earlier call is either a key of this map, added again
+            // here, or sits unremoved through every pass, and a pass compares the count only against its own start.
+            remaining.Clear();
+            foreach (var key in map.Keys)
+            {
+                remaining.Add(key);
+            }
             remaining.Remove(property);
             HashSet<ArbitraryProperty>? taken = null;
             // MUTANT_SURVIVES(equivalent, boundary): each productive pass consumes a candidate;
@@ -1986,7 +2459,7 @@ namespace Velvet
             {
                 // Among transform properties, scale (uniform + per-axis) and both translate axes are composed
                 // by ResolveAndApply's combined appliers and never reach here; what lands is every transform
-                // property written in one go — rotate, transform-origin — plus aspect-ratio.
+                // property written in one go — rotate, transform-origin — plus aspect-ratio and the four-edge Slice.
                 case ArbitraryProperty.Rotate:
                     element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
                     return;
@@ -1998,6 +2471,21 @@ namespace Velvet
                 case ArbitraryProperty.Opacity:
                     MotionOpacity.WriteTransitioned(element, style.Value);
                     return;
+                case ArbitraryProperty.Slice:
+                {
+                    var slices = element.style;
+                    slices.unitySliceTop = SliceInset(element, style, style.Value, 0, horizontal: false);
+                    slices.unitySliceRight = SliceInset(element, style, style.Value2, 1, horizontal: true);
+                    slices.unitySliceBottom = SliceInset(element, style, style.Value3, 2, horizontal: false);
+                    slices.unitySliceLeft = SliceInset(element, style, style.Value4, 3, horizontal: true);
+                    return;
+                }
+                case ArbitraryProperty.BackgroundRepeat:
+                    WriteRepeat(element, style);
+                    return;
+                case ArbitraryProperty.SliceType:
+                    WriteSliceType(element, style);
+                    return;
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
@@ -2008,7 +2496,9 @@ namespace Velvet
 
             if (ColorSetters.TryGetValue(style.Property, out var colorSetters))
             {
-                var color = new StyleColor(style.Color);
+                var color = style.Keyword == StyleKeyword.Undefined
+                    ? new StyleColor(style.Color)
+                    : new StyleColor(style.Keyword);
                 var cs = element.style;
                 foreach (var setter in colorSetters)
                 {
@@ -2017,9 +2507,22 @@ namespace Velvet
                 return;
             }
 
+            if (IntSetters.TryGetValue(style.Property, out var intSetters))
+            {
+                var inset = SliceInset(element, style, style.Value, 0, s_horizontalSlices.Contains(style.Property));
+                var ins = element.style;
+                foreach (var setter in intSetters)
+                {
+                    setter(ins, inset);
+                }
+                return;
+            }
+
             if (FloatSetters.TryGetValue(style.Property, out var floatSetters))
             {
-                var width = new StyleFloat(style.Value);
+                var width = style.Keyword == StyleKeyword.Undefined
+                    ? new StyleFloat(style.Value)
+                    : new StyleFloat(style.Keyword);
                 var fs = ClipPathLayoutBox.StyleFor(element, style.Property);
                 foreach (var setter in floatSetters)
                 {
@@ -2039,11 +2542,28 @@ namespace Velvet
                 return;
             }
 
+            WriteLength(element, ClipPathLayoutBox.BoxFor(element, style.Property).style, style, setters);
+        }
+
+        // A relative length is measured per setter, since each carries its own axis and its own stand-in for an
+        // indefinite one; a length that cannot be measured yet leaves that slot as it is.
+        private static void WriteLength(VisualElement element, IStyle target, in ArbitraryStyle style, LengthSetter[] setters)
+        {
+            if (style.Expression != null)
+            {
+                foreach (var setter in setters)
+                {
+                    if (StyleRelativeLengths.TryResolve(element, style.Expression, setter.Axis, setter.Indefinite, out var resolved))
+                    {
+                        setter.Set(target, resolved);
+                    }
+                }
+                return;
+            }
             var length = style.ToStyleLength();
-            var s = ClipPathLayoutBox.StyleFor(element, style.Property);
             foreach (var setter in setters)
             {
-                setter(s, length);
+                setter.Set(target, length);
             }
         }
 
@@ -2064,6 +2584,17 @@ namespace Velvet
                 foreach (var setter in colorSetters)
                 {
                     setter(cs, nullColor);
+                }
+                return;
+            }
+
+            if (IntSetters.TryGetValue(property, out var intSetters))
+            {
+                var nullInt = new StyleInt(StyleKeyword.Null);
+                var ins = element.style;
+                foreach (var setter in intSetters)
+                {
+                    setter(ins, nullInt);
                 }
                 return;
             }
@@ -2094,7 +2625,7 @@ namespace Velvet
             var s = ClipPathLayoutBox.StyleFor(element, property);
             foreach (var setter in setters)
             {
-                setter(s, nullStyle);
+                setter.Set(s, nullStyle);
             }
         }
 
@@ -2133,6 +2664,14 @@ namespace Velvet
                     return true;
                 case ArbitraryProperty.TransitionDuration:
                     element.style.transitionDuration = StyleKeyword.Null;
+                    return true;
+                case ArbitraryProperty.BackgroundRepeat:
+                    StyleAnimateDriver.WriteBackgroundRepeat(element, StyleKeyword.Null);
+                    // MUTANT_SURVIVES(equivalent): background repeat has no entry in the fallback setter tables ClearInline reads.
+                    return true;
+                case ArbitraryProperty.SliceType:
+                    element.style.unitySliceType = StyleKeyword.Null;
+                    // MUTANT_SURVIVES(equivalent): slice type has no entry in the fallback setter tables ClearInline reads.
                     return true;
             }
 
@@ -2264,7 +2803,8 @@ namespace Velvet
         // mm, pt, pc, Q) or no suffix is pixel (bare numbers default to px, and rem is converted at the fixed
         // 1rem = 16px scale because UI Toolkit has no rem unit and no document root to resolve a relative font
         // size against). A calc() / min() / max() / clamp() is read when it comes to one pixel length or one
-        // percentage; one mixing the two is declined.
+        // percentage whatever it is measured against; one that needs an element to measure against is declined
+        // here, and TryParseBracketValue keeps it for the properties that can measure it.
         // InvariantCulture, finite values only. Internal so other utility parsers (clip-path) share THE
         // length grammar instead of re-implementing it.
         internal static bool TryParseValue(ReadOnlySpan<char> valueStr, out float value, out LengthUnit unit)

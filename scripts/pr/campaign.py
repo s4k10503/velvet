@@ -7,7 +7,14 @@ on. CONTRIBUTING.md's continuous-integration section owns the label's meaning. `
 
 A campaign is a run of `WORKFLOW` whose head is the pull request's head, read off the Actions runs
 API by its workflow file: a check of any other workflow carrying a campaign job's name is not one.
+
+A campaign that passes leaves its key in the name of an artifact (`key_artifact_name`), and a later
+head whose key is the same reuses that verdict instead of measuring (`reusable`). The reusing run is
+still a run of `WORKFLOW` on its head, so everything above reads it as it reads a measuring one;
+`unbacked` is the one reading that tells them apart, and asks whether the run it cites measured.
 """
+
+import re
 
 LABEL = "automerge"
 
@@ -25,6 +32,10 @@ AFTER = ".github/workflows/test.yml"
 AGGREGATE = "Required checks (Unity)"
 
 RUNNING, PASSED, CANCELLED, FAILED = "running", "passed", "cancelled", "failed"
+
+# The artifact a passing campaign uploads: its key, and for a run that reused a verdict the run that
+# measured it. A name rather than a file, so a REST listing of the run's artifacts carries it.
+KEY_ARTIFACT = re.compile(r"Mutation campaign key ([0-9a-f]{64})(?: reused from run ([1-9][0-9]*))?")
 
 
 def newest(runs):
@@ -96,14 +107,18 @@ def superseded_suites(runs):
             if run.get("path") == PATH and run is not kept}
 
 
-def reason(labels, found, head, stuck):
+def reason(labels, found, head, stuck, unbacked=None):
     """Why the campaign on a head blocks its merge, or None. `found` is `state`'s answer, and
     `stuck` is how to end the newest campaign where GitHub never will, which a running one names.
 
     One that ran has to have passed, and a head carrying the label has to have one that passed. A
-    cancelled one measured nothing, so it holds a labelled head alone.
+    cancelled one measured nothing, so it holds a labelled head alone. A pass that reused a verdict
+    holds the head as well when `unbacked` says its key record, or the run it cites, cannot be shown
+    to stand.
     """
     short = head[:7]
+    if found == PASSED and unbacked:
+        return f"its {WORKFLOW} run on {short} does not stand: it {unbacked}"
     if found == PASSED or (found in (None, CANCELLED) and LABEL not in labels):
         return None
     if found is None:
@@ -126,3 +141,111 @@ def dispatch_owed(found):
     failed jobs asks again.
     """
     return found in (None, CANCELLED)
+
+
+def key_artifact_name(key, reused_from=None):
+    """The artifact name that records `key`, and the run it was measured by where a run reused it."""
+    return f"Mutation campaign key {key}" + (f" reused from run {reused_from}" if reused_from else "")
+
+
+def keyed(payload):
+    """(key, the run that measured it or None) from a run's artifacts listing, or None.
+
+    None where the listing is not a whole one, holds no unexpired key artifact, or holds artifacts of
+    more than one key: a run answers for one key. Both names of one key read as measured.
+    """
+    listed = payload.get("artifacts") if isinstance(payload, dict) else None
+    if not isinstance(listed, list) or payload.get("total_count", len(listed)) > len(listed):
+        return None
+    found = [KEY_ARTIFACT.fullmatch(item.get("name") or "") for item in listed
+             if isinstance(item, dict) and not item.get("expired")]
+    found = [match for match in found if match]
+    keys = {match.group(1) for match in found}
+    if len(keys) != 1:
+        return None
+    # A run that measured a key it had reused before, on a re-run, carries both names; the measuring
+    # one is the later and stronger claim.
+    chosen = next((match for match in found if not match.group(2)), None)
+    if chosen is None:
+        if len({match.group(2) for match in found}) != 1:
+            return None
+        chosen = found[0]
+    reused = chosen.group(2)
+    return chosen.group(1), int(reused) if reused else None
+
+
+def passed_run(run):
+    return (isinstance(run, dict) and run.get("path") == PATH and run.get("status") == "completed"
+            and run.get("conclusion") == "success")
+
+
+def reusable(key, candidates):
+    """The run that measured `key`, from `candidates` -- (run, artifacts listing) pairs, newest first.
+
+    Only a run whose own key artifact says it measured the key is a source. One that reused the key
+    is skipped, so a chain of reuses never forms and a verdict outlives only the artifacts of the
+    run that measured it: once those lapse, nothing is found and the head is measured.
+    """
+    for run, payload in candidates:
+        found = keyed(payload)
+        if passed_run(run) and found is not None and found == (key, None):
+            return run.get("id")
+    return None
+
+
+def own_problem(payload):
+    """Why a run's own key artifacts cannot be relied on, or None.
+
+    A run with no key artifact at all is a pre-change run and is accepted. One whose key artifact
+    exists but has expired, or that holds two live ones, fails closed: the record that would say
+    whether it measured or reused is unreadable.
+    """
+    listed = payload.get("artifacts") if isinstance(payload, dict) else None
+    if not isinstance(listed, list):
+        return None
+    found = [item for item in listed if isinstance(item, dict)
+             and KEY_ARTIFACT.fullmatch(item.get("name") or "")]
+    live = [item for item in found if not item.get("expired")]
+    if found and not live:
+        return "holds a key artifact that has expired"
+    names = [KEY_ARTIFACT.fullmatch(item["name"]) for item in live]
+    if len({match.group(1) for match in names}) > 1:
+        return "holds key artifacts of more than one key"
+    if len(names) > 1 and keyed(payload) is None:
+        return "holds more than one key artifact"
+    return None
+
+
+def unbacked(payload, source_run, source_payload):
+    """Why the verdict a run reused does not stand, or None where it was measured or stands.
+
+    `payload` is the run's own artifacts listing, and `source_run` with `source_payload` the run it
+    cites and that run's, each None where it could not be read. The cited run has to be a pass of
+    `WORKFLOW` whose own key artifact says it measured this very key.
+    """
+    problem = own_problem(payload)
+    if problem:
+        return problem
+    found = keyed(payload)
+    if found is None or found[1] is None:
+        return None
+    key, cited = found
+    if source_run is None:
+        return f"cites run {cited}, which could not be read"
+    if not passed_run(source_run) or source_run.get("id") != cited:
+        return f"cites run {cited}, which is not a pass of {WORKFLOW}"
+    measuring = keyed(source_payload)
+    if measuring is None:
+        return f"cites run {cited}, whose key artifact is missing, expired or ambiguous"
+    if measuring != (key, None):
+        return f"cites run {cited}, which did not itself measure this key"
+    return None
+
+
+def artifacts_path(slug, run_id):
+    """The listing, below the API root, of the artifacts of a run."""
+    return f"repos/{slug}/actions/runs/{run_id}/artifacts?per_page=100"
+
+
+def run_path(slug, run_id):
+    return f"repos/{slug}/actions/runs/{run_id}"

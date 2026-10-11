@@ -204,6 +204,7 @@ namespace Velvet
             // speculative orphan rolled back — still owes the setup the walk queued for it. Cancelling it
             // is what keeps the drain from installing a ref on an element no tree holds.
             _ctx.DropPendingRefAttach(element);
+            _ctx.ForgetRefDetachedWhileHidden(element);
             if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
                 _ctx.RefCallbacks.Remove(element);
@@ -280,6 +281,7 @@ namespace Velvet
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);
+            StyleArbitraryValueResolver.ReleaseShownImageWatch(element);
             // Same reason for the per-frame drivers' transition suspension: a driver whose release this teardown
             // pre-empted would otherwise stay recorded as an owner, and the reused element's next play would read
             // that stale owner as "another driver is still live" and never hand transitions back to the cascade.

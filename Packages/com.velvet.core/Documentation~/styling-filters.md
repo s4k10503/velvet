@@ -17,7 +17,7 @@ Every filter utility on an element — built-in or custom — composes into the 
 
 | Utility | Values | Notes |
 |---|---|---|
-| `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`) or a bare number (px); no `%`, as CSS `blur()` takes none. A math function that comes to pixels is read ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). Other CSS lengths (`em`, `vw`, …) are not recognized |
+| `blur` / `blur-<k>` / `blur-[N]` | bare = 8px; `none`/`sm`/`md`/`lg`/`xl`/`2xl`/`3xl` = 0/4/12/16/24/40/64px | bracket: `px`, `rem` (at 16px), an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`) or a bare number (px); no `%`, as CSS `blur()` takes none. A math function that comes to pixels is read; `em`, `vw` and the other lengths only an element can measure are not ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)) |
 | `contrast-<n>` / `contrast-[N]` | presets 0–200 (× 0.01); bracket ≥ 0, or a percentage | |
 | `grayscale` / `grayscale-0` / `grayscale-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
 | `invert` / `invert-0` / `invert-[N]` | bare = 100% | N ≥ 0, or a percentage; above 1 is clamped to 1, as CSS clamps it |
@@ -69,8 +69,8 @@ V.Div(className: "filter-[glow:#ff0000:2] hover:filter-[glow:#ff0000:4]");
 
 `filter-[name]` or `filter-[name:arg(:arg)*]`. Arguments fill the definition's **declared
 parameters** in order, and each one is parsed by its slot's declared type: a float slot takes
-a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar (`#rgb` /
-`#rrggbb` / `rgb(…)` / a named color). A missing tail is padded from the declaration's
+a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar
+([styling-colors.md](styling-colors.md)). A missing tail is padded from the declaration's
 defaults — the same values the USS parser pads with — so a bare `filter-[name]` applies the
 declared defaults outright. Supplying more arguments than the declaration, or an argument that
 fails its slot's grammar, rejects the whole token. (UI Toolkit's `FilterFunction` holds at most 4

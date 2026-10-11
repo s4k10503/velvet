@@ -472,10 +472,17 @@ namespace Velvet
 
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
 
-        void IReconcilerBridge.DrainRefAttachesForController()
+        void IReconcilerBridge.HoldRowLayoutEffects()
+            => _ctx.HeldRowLayoutEffects.Push(new List<(ComponentFiber fiber, bool mountDoubleInvoke)>());
+
+        // The rows are placed, so the refs the range held attach now, ahead of the rows' layout effects as a pass's
+        // refs attach ahead of its own.
+        void IReconcilerBridge.CommitHeldRowLayoutEffects()
         {
+            var held = _ctx.HeldRowLayoutEffects.Pop();
             _ctx.DrainRefAttaches();
             _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
+            FiberEffects.CommitHeldRowLayoutEffects(_ctx, held);
         }
 
         // Every range render ends here, and one run from a geometry or scroll callback has no pass whose end would

@@ -180,11 +180,11 @@ namespace Velvet
             return binding != null ? binding.Inner : outer;
         }
 
-        // Where an inline write of property to element belongs.
-        internal static IStyle StyleFor(VisualElement element, ArbitraryProperty property)
-        {
-            return s_outerProperty[(int)property] ? Of(element).style : element.style;
-        }
+        // The element an inline write of property to element belongs on.
+        internal static VisualElement BoxFor(VisualElement element, ArbitraryProperty property)
+            => s_outerProperty[(int)property] ? Of(element) : element;
+
+        internal static IStyle StyleFor(VisualElement element, ArbitraryProperty property) => BoxFor(element, property).style;
 
         // Runs once the element is the wrapper's child: moves the element's outer-layout inline values onto the
         // wrapper, holds the element neutral, holds the wrapper's paint inert and mirrors the classes.

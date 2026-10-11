@@ -323,6 +323,41 @@ namespace Velvet.Tests
             Assert.That(writers, Is.Null);
         }
 
+        private static object? s_sink;
+
+        [Test]
+        public void Given_AColourBesideUnrelatedLayers_When_CollectingConnectedWriters_Then_NothingIsAllocated()
+        {
+            // Arrange — a compiled call, since a reflected Invoke allocates its argument array; the canary
+            // allocates one object, so a probe stuck at zero cannot pass.
+            var element = new VisualElement();
+            foreach (var token in new[] { "w-[20px]", "mt-[30px]", "bg-[#ff0000]" })
+            {
+                StyleArbitraryValueResolver.TryParse(token, out var style);
+                StyleArbitraryValueResolver.Apply(element, style, 2);
+            }
+            var map = LayerMap(element);
+            var method = typeof(StyleArbitraryValueResolver).GetMethod("ConnectedWriters", BindingFlags.Static | BindingFlags.NonPublic)!;
+            var property = System.Linq.Expressions.Expression.Parameter(typeof(ArbitraryProperty));
+            var host = System.Linq.Expressions.Expression.Parameter(typeof(object));
+            var collect = System.Linq.Expressions.Expression.Lambda<Func<ArbitraryProperty, object, object>>(
+                System.Linq.Expressions.Expression.Call(method, property,
+                    System.Linq.Expressions.Expression.Convert(host, method.GetParameters()[1].ParameterType)),
+                property, host).Compile();
+            void Once() => collect(ArbitraryProperty.BackgroundColor, map);
+            for (var i = 0; i < 64; i++)
+            {
+                Once();
+            }
+
+            // Act
+            var canary = GCAllocationProbe.MedianBlocksDuring(() => s_sink = new object());
+            var blocks = GCAllocationProbe.MedianBlocksDuring(Once);
+
+            // Assert
+            Assert.That((canary > 0, blocks), Is.EqualTo((true, 0)));
+        }
+
         private static List<(long Key, ArbitraryStyle Style)>? CollectWriters(ArbitraryProperty property,
             params string[] tokens)
         {

@@ -60,6 +60,8 @@ namespace Velvet.Tests
 
         private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryThatCaught_When_ItsParentRendersAgainWithNothingThrowing_Then_ItShowsItsFallbackWithTheCaughtErrorAndTheNewProps()
         {
@@ -76,7 +78,9 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("fallback:2:Sticky boundary throw"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base renders the children of a boundary given a new key too.
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: the merge base renders the children of a boundary given a new key too.
         // A boundary keeps its fallback until it remounts now, and a new key remounting it is what this pins.
         [Test]
         public void Given_ABoundaryThatCaught_When_ItsParentGivesItANewKey_Then_ItRendersItsChildren()
@@ -95,6 +99,8 @@ namespace Velvet.Tests
             Assert.That(caught + "|" + Texts(), Is.EqualTo("fallback:0:Sticky boundary throw|child"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryShowingItsFallback_When_ItsParentsRenderMakesTheFallbacksContentThrow_Then_TheBoundaryAboveCatchesIt()
         {
@@ -114,6 +120,8 @@ namespace Velvet.Tests
             Assert.That(Texts() + ", inner factory ran " + s_innerFactoryRuns, Is.EqualTo("outer-fallback, inner factory ran 2"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryShowingItsFallback_When_ItsOwnUpdateMakesTheFallbacksContentThrow_Then_TheBoundaryAboveCatchesIt()
         {
@@ -133,6 +141,8 @@ namespace Velvet.Tests
             Assert.That(Texts() + ", inner factory ran " + s_innerFactoryRuns, Is.EqualTo("outer-fallback, inner factory ran 2"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryShowingItsFallback_When_ItsFallbacksContentThrowsAndTheFallbackForThatErrorRenders_Then_TheBoundaryKeepsThatFallback()
         {
@@ -150,6 +160,8 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("content-error-fallback"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryThatCaughtOnItsOwnUpdate_When_ItsNextOwnUpdateMakesItsFallbacksContentThrowOnce_Then_ItShowsTheFallbackForThatError()
         {
@@ -171,7 +183,9 @@ namespace Velvet.Tests
             Assert.That((afterOwnUpdate, Texts()), Is.EqualTo(("inner-fallback", "content-error-fallback")));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base renders the boundary's children again, the shared node among
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: the merge base renders the boundary's children again, the shared node among
         // them. What this pins is that the node the kept fallback shares with the body stays out of the pool.
         [Test]
         public void Given_AFallbackBuiltFromANodeTheBodyAlsoReturns_When_TheNextRenderDropsAPropTheFirstGaveIt_Then_TheElementLosesThatProp()
@@ -192,6 +206,8 @@ namespace Velvet.Tests
             Assert.That((button?.text, string.IsNullOrEmpty(button?.tooltip)), Is.EqualTo(("shared:2", true)));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryInASuspensePrimaryThatSuspends_When_ItCaughtInThatRenderAndTheResourceResolves_Then_ItRendersItsChildren()
         {
@@ -210,7 +226,9 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("child,loaded:value"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base renders a boundary's children again on any later render,
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: the merge base renders a boundary's children again on any later render,
         // so this reads the same there. What this pins is that a catch the suspended render took inside an element
         // of the primary does not keep the boundary on its fallback once the primary is revealed.
         [Test]
@@ -235,6 +253,8 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("child,loaded:value"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryInASuspensePrimaryThatSuspends_When_ItCaughtInThatRender_Then_NothingIsReported()
         {
@@ -252,6 +272,8 @@ namespace Velvet.Tests
             Assert.That(Texts() + ", reports " + reports, Is.EqualTo("loading, reports 0"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_ABoundaryShowingItsFallback_When_ItsFactoryGivesNoFallbackOnALaterRender_Then_TheBoundaryAboveCatchesTheError()
         {
@@ -270,7 +292,9 @@ namespace Velvet.Tests
             Assert.That(caught + "|" + Texts(), Is.EqualTo("inner-fallback|outer-fallback"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base double-renders a boundary's body, which matches its commit.
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: the merge base double-renders a boundary's body, which matches its commit.
         // A boundary showing its fallback commits the fallback instead, and no impure report for that is what this pins.
         [Test]
         public void Given_StrictModeAndABoundaryThatCaught_When_ItsParentRendersAgain_Then_NoImpureRenderIsReported()
@@ -288,7 +312,9 @@ namespace Velvet.Tests
             LogAssert.NoUnexpectedReceived();
         }
 
-        // GREEN_ON_BASE(characterization): the merge base commits and later retires what this body renders.
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: the merge base commits and later retires what this body renders.
         // A boundary showing its fallback discards it at each render instead, and handing it back is what this pins.
         [Test]
         public void Given_ABoundaryShowingItsFallbackWhoseBodyRentsPooledNodes_When_ItRendersAgainAndIsDisposed_Then_ThePoolCountsNothingRentedOut()
@@ -314,15 +340,7 @@ namespace Velvet.Tests
 
         // Read by reflection for the reason MemoCacheCollisionTests reads the same sets.
         private static (int Props, int EventArrays, int NodeArrays) Rented()
-        {
-            int Count(string field)
-            {
-                var set = typeof(VNodePool).GetField(field, System.Reflection.BindingFlags.NonPublic
-                    | System.Reflection.BindingFlags.Static).GetValue(null);
-                return (int)set.GetType().GetProperty("Count").GetValue(set);
-            }
-            return (Count("s_ownedProps"), Count("s_ownedSingleEventArrays"), Count("s_ownedNodeArrays"));
-        }
+            => VNodePoolTestAccess.RentedOutCountsForTest();
 
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode PooledBoundaryRender(int tick)

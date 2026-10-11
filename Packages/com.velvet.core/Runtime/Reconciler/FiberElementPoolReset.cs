@@ -137,6 +137,7 @@ namespace Velvet
             // The clock its last mount recorded would otherwise answer for the next consumer's filter tweens.
             MotionClock.Forget(element);
             ResetInlineStyle(element.style);
+            SuspenseHiddenElements.Release(element);
 
             element.userData = null;
             element.name = string.Empty;
@@ -223,6 +224,12 @@ namespace Velvet
             style.backgroundPositionX = StyleKeyword.Null;
             style.backgroundPositionY = StyleKeyword.Null;
             style.backgroundRepeat = StyleKeyword.Null;
+            style.unitySliceTop = StyleKeyword.Null;
+            style.unitySliceRight = StyleKeyword.Null;
+            style.unitySliceBottom = StyleKeyword.Null;
+            style.unitySliceLeft = StyleKeyword.Null;
+            style.unitySliceScale = StyleKeyword.Null;
+            style.unitySliceType = StyleKeyword.Null;
             // animate-pulse drives opacity each frame; scrubbing it here keeps a pooled element from ghosting a
             // mid-pulse opacity onto its next consumer (also covers opacity-* arbitrary values).
             style.opacity = StyleKeyword.Null;
