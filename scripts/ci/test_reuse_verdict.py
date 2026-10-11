@@ -7,6 +7,8 @@ Run: python3 scripts/ci/test_reuse_verdict.py
 import contextlib
 import importlib.util
 import io
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -171,6 +173,158 @@ class ReuseTests(unittest.TestCase):
         # Assert
         self.assertEqual(reader.asked, [
             "repos/owner/name/actions/workflows/mutation.yml/runs?status=success&branch=topic&per_page=20"])
+
+
+def finished(number, conclusion="success"):
+    return dict(passed(number), conclusion=conclusion)
+
+
+class LedgerReader:
+    """The API as a ledger fetch sees it: runs, each run's artifacts, and what a download writes."""
+
+    def __init__(self, runs, ledgers, expired=(), undownloadable=(), contents=None):
+        self.runs, self.ledgers, self.expired = runs, ledgers, set(expired)
+        self.undownloadable, self.contents, self.downloaded = set(undownloadable), contents or {}, []
+
+    def __call__(self, path):
+        if "/workflows/mutation.yml/runs" in path:
+            self.listing = path
+            return {"workflow_runs": self.runs}
+        run_id = int(path.split("/runs/")[1].split("/")[0])
+        names = self.ledgers.get(run_id, [])
+        return {"total_count": len(names),
+                "artifacts": [{"id": run_id * 10 + position, "name": name, "expired": run_id in self.expired}
+                              for position, name in enumerate(names)]}
+
+    def download(self, _slug, run_id, directory):
+        self.downloaded.append(run_id)
+        if run_id in self.undownloadable:
+            raise RuntimeError("gh run download failed: HTTP 404")
+        Path(directory, "ledger.json").write_text(self.contents.get(run_id, json.dumps({"run": run_id})))
+
+
+def fetched(reader, environ=ENVIRONMENT):
+    """(the files the fetch left, what it printed) over a fresh directory."""
+    printed = io.StringIO()
+    with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(printed), \
+            contextlib.redirect_stderr(io.StringIO()):
+        code = reuse_verdict.main(["--ledgers", directory], environ, reader, reader.download)
+        files = sorted(path.name for path in Path(directory).iterdir())
+    return code, files, printed.getvalue().strip()
+
+
+LEDGER = campaign.LEDGER_ARTIFACT
+
+
+class LedgerFetchTests(unittest.TestCase):
+    def test_Given_AFailedAndAPassedRunWithLedgers_When_Fetched_Then_BothAreKept(self):
+        # Arrange -- a campaign that failed on a survivor is the one whose kills the next round needs.
+        reader = LedgerReader([finished(1, "failure"), finished(2)], {9001: [LEDGER], 9002: [LEDGER]})
+
+        # Act
+        code, files, _ = fetched(reader)
+
+        # Assert
+        self.assertEqual((code, files), (0, ["0000000001-9001.json", "0000000002-9002.json"]))
+
+    def test_Given_AListingOfFinishedRuns_When_Fetched_Then_TheListingIsNotFilteredToPasses(self):
+        # Arrange
+        reader = LedgerReader([], {})
+
+        # Act
+        fetched(reader)
+
+        # Assert
+        self.assertEqual(reader.listing,
+                         "repos/owner/name/actions/workflows/mutation.yml/runs?status=completed&branch=topic&per_page=20")
+
+    def test_Given_ARunWithoutALedger_When_Fetched_Then_NothingIsDownloadedForIt(self):
+        # Arrange -- a run that reused a whole verdict, or predates ledgers.
+        reader = LedgerReader([finished(1)], {9001: [campaign.key_artifact_name(KEY)]})
+
+        # Act
+        fetched(reader)
+
+        # Assert
+        self.assertEqual(reader.downloaded, [])
+
+    def test_Given_ALedgerThatExpired_When_Fetched_Then_NothingIsDownloadedForIt(self):
+        # Arrange
+        reader = LedgerReader([finished(1)], {9001: [LEDGER]}, expired=[9001])
+
+        # Act
+        fetched(reader)
+
+        # Assert
+        self.assertEqual(reader.downloaded, [])
+
+    def test_Given_TwoLedgersInOneRun_When_Fetched_Then_NeitherIsTaken(self):
+        # Arrange -- which of the two the run wrote is not something the listing says.
+        reader = LedgerReader([finished(1)], {9001: [LEDGER, LEDGER]})
+
+        # Act
+        _, files, _ = fetched(reader)
+
+        # Assert
+        self.assertEqual(files, [])
+
+    def test_Given_ADownloadThatFails_When_Fetched_Then_TheOtherRunsAreStillTaken(self):
+        # Arrange
+        reader = LedgerReader([finished(1), finished(2)], {9001: [LEDGER], 9002: [LEDGER]},
+                              undownloadable=[9002])
+
+        # Act
+        code, files, _ = fetched(reader)
+
+        # Assert
+        self.assertEqual((code, files), (0, ["0000000001-9001.json"]))
+
+    def test_Given_ALedgerThatIsNotJson_When_Fetched_Then_ItIsLeftOut(self):
+        # Arrange
+        reader = LedgerReader([finished(1)], {9001: [LEDGER]}, contents={9001: "<html>"})
+
+        # Act
+        _, files, _ = fetched(reader)
+
+        # Assert
+        self.assertEqual(files, [])
+
+    def test_Given_TheCurrentRunsOwnLedger_When_Fetched_Then_ItIsNotItsOwnSource(self):
+        # Arrange -- a re-run of the plan lists the run it is in.
+        reader = LedgerReader([finished(100)], {9100: [LEDGER]})
+
+        # Act
+        _, files, _ = fetched(reader)
+
+        # Assert
+        self.assertEqual(files, [])
+
+    def test_Given_AListingThatFails_When_Fetched_Then_NothingIsFetchedAndTheStepPasses(self):
+        # Arrange
+        def failing(_path):
+            raise RuntimeError("gh api failed: HTTP 502")
+
+        reader = LedgerReader([], {})
+        printed = io.StringIO()
+
+        # Act
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()), \
+                contextlib.redirect_stdout(printed):
+            code = reuse_verdict.main(["--ledgers", directory], ENVIRONMENT, failing, reader.download)
+
+        # Assert
+        self.assertEqual((code, printed.getvalue()), (0, ""))
+
+    def test_Given_ARunOfAnotherWorkflow_When_Fetched_Then_ItIsNotASource(self):
+        # Arrange
+        other = dict(finished(1), path=".github/workflows/test.yml")
+        reader = LedgerReader([other], {9001: [LEDGER]})
+
+        # Act
+        fetched(reader)
+
+        # Assert
+        self.assertEqual(reader.downloaded, [])
 
 
 class NameTests(unittest.TestCase):

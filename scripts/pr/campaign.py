@@ -12,6 +12,11 @@ A campaign that passes leaves its key in the name of an artifact (`key_artifact_
 head whose key is the same reuses that verdict instead of measuring (`reusable`). The reusing run is
 still a run of `WORKFLOW` on its head, so everything above reads it as it reads a measuring one;
 `unbacked` is the one reading that tells them apart, and asks whether the run it cites measured.
+
+A head whose key is new still reuses what an earlier campaign on its branch killed: every campaign
+leaves a ledger of its per-mutant verdicts (`LEDGER_ARTIFACT`), and `mutation_check.py` reuses a kill
+whose file and killing fixtures are unchanged. That reuse is decided inside the run, which measures
+every other mutant, so nothing here reads it.
 """
 
 import re
@@ -36,6 +41,12 @@ RUNNING, PASSED, CANCELLED, FAILED = "running", "passed", "cancelled", "failed"
 # The artifact a passing campaign uploads: its key, and for a run that reused a verdict the run that
 # measured it. A name rather than a file, so a REST listing of the run's artifacts carries it.
 KEY_ARTIFACT = re.compile(r"Mutation campaign key ([0-9a-f]{64})(?: reused from run ([1-9][0-9]*))?")
+
+
+# The artifact a campaign's verdict job uploads whatever the verdict was: what it measured per mutant,
+# for a later campaign on the branch to reuse a kill from (`mutation_check.py --reuse-from`). A name
+# rather than a file, so a REST listing of the run's artifacts carries it.
+LEDGER_ARTIFACT = "Mutation campaign ledger"
 
 
 def newest(runs):
@@ -172,6 +183,20 @@ def keyed(payload):
         chosen = found[0]
     reused = chosen.group(2)
     return chosen.group(1), int(reused) if reused else None
+
+
+def ledger_artifact(payload):
+    """The id of the one live ledger in a run's artifacts listing, or None.
+
+    None where the listing is not a whole one, holds no unexpired ledger, or holds two: a run that
+    cannot say which of two it wrote is read as having written neither, and its mutants are measured.
+    """
+    listed = payload.get("artifacts") if isinstance(payload, dict) else None
+    if not isinstance(listed, list) or payload.get("total_count", len(listed)) > len(listed):
+        return None
+    live = [item for item in listed if isinstance(item, dict) and item.get("name") == LEDGER_ARTIFACT
+            and not item.get("expired")]
+    return live[0].get("id") if len(live) == 1 else None
 
 
 def passed_run(run):

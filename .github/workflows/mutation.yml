@@ -85,6 +85,8 @@ jobs:
       shards: ${{ steps.reuse.outputs.reused == '' && steps.plan.outputs.shards || '[]' }}
       key: ${{ steps.key.outputs.campaign-key }}
       reused: ${{ steps.reuse.outputs.reused }}
+      # How many mutants an earlier campaign's kill answers for. Empty where the plan decided no reuse.
+      reusing: ${{ steps.plan.outputs.reusing }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -92,6 +94,13 @@ jobs:
 
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
+      # The per-mutant ledgers of the branch's earlier campaigns, failed ones included. A fetch that
+      # fails leaves the directory short, and the plan then measures what it cannot find a kill for.
+      - if: needs.license-check.outputs.has_license == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/reuse_verdict.py --ledgers Logs/mutation-ledgers
 
       # The summary is written before the status is read, and carries stderr, where a refusal other
       # than the ceiling's is printed, so a refused plan names why in it. Over the ceiling with no
@@ -102,7 +111,8 @@ jobs:
           HAS_LICENSE: ${{ needs.license-check.outputs.has_license }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan --emit-mutants mutants.json > plan.txt 2>&1
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan --emit-mutants mutants.json \
+            --reuse-from Logs/mutation-ledgers --emit-reuse reuse.json > plan.txt 2>&1
           status=$?
           cat plan.txt
           { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
@@ -111,20 +121,26 @@ jobs:
             exit 0
           fi
           [ "$status" -eq 0 ] || exit "$status"
-          grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
+          grep -E '^(mutants|shards|reusing)=' plan.txt >> "$GITHUB_OUTPUT"
 
       # The list every shard and the verdict job hands back to mutation_check.py, which refuses a tree
-      # that generates another.
+      # that generates another, and the kills the plan reused, which each of them measures around.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: steps.plan.outputs.shards != '[]' && needs.license-check.outputs.has_license == 'true'
+        if: >-
+          (steps.plan.outputs.shards != '[]' || (steps.plan.outputs.reusing || '0') != '0')
+          && needs.license-check.outputs.has_license == 'true'
         with:
           name: Mutation mutant list
-          path: mutants.json
+          path: |
+            mutants.json
+            reuse.json
           overwrite: true
 
       # What the head asks of the campaign, as one hash. CONTRIBUTING.md owns what goes into it.
       - id: key
-        if: steps.plan.outputs.shards != '[]' && needs.license-check.outputs.has_license == 'true'
+        if: >-
+          (steps.plan.outputs.shards != '[]' || (steps.plan.outputs.reusing || '0') != '0')
+          && needs.license-check.outputs.has_license == 'true'
         env:
           BASE: ${{ steps.base.outputs.sha }}
         run: |
@@ -240,6 +256,7 @@ jobs:
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
               --base "$BASE" --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
+              --reuse Logs/mutation-list/reuse.json \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
               --output Logs/mutation-shard
 
@@ -290,7 +307,7 @@ jobs:
         run: |
           set +e
           python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" --plan --mutants Logs/mutation-list/mutants.json \
-            --platform PlayMode --survivors-of Logs/mutation-shards > plan.txt 2>&1
+            --reuse Logs/mutation-list/reuse.json --platform PlayMode --survivors-of Logs/mutation-shards > plan.txt 2>&1
           status=$?
           cat plan.txt
           { echo '### Mutation campaign PlayMode plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
@@ -357,7 +374,7 @@ jobs:
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
               --base "$BASE" --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
-              --platform PlayMode --survivors-of Logs/mutation-shards \
+              --reuse Logs/mutation-list/reuse.json --platform PlayMode --survivors-of Logs/mutation-shards \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
               --output Logs/mutation-playmode-shard
 
@@ -374,7 +391,8 @@ jobs:
     if: >-
       !cancelled() && needs.license-check.outputs.has_license == 'true'
       && needs.mutation-plan.result == 'success'
-      && (needs.mutation-plan.outputs.shards != '[]' || needs.mutation-plan.outputs.reused != '')
+      && (needs.mutation-plan.outputs.shards != '[]' || needs.mutation-plan.outputs.reused != ''
+          || (needs.mutation-plan.outputs.reusing || '0') != '0')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -415,8 +433,9 @@ jobs:
         if: needs.mutation-plan.outputs.reused == ''
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
-      # A mutant the EditMode pass killed keeps that verdict; one it left surviving takes the PlayMode
-      # pass's, and a survivor no PlayMode shard recorded is unmeasured.
+      # A mutant the plan reused a kill for keeps it, once its killing cases are found unchanged in
+      # this tree. A mutant the EditMode pass killed keeps that verdict; one it left surviving takes the
+      # PlayMode pass's, and a survivor no PlayMode shard recorded is unmeasured.
       - if: needs.mutation-plan.outputs.reused == ''
         env:
           BASE: ${{ steps.base.outputs.sha }}
@@ -424,12 +443,22 @@ jobs:
         run: |
           set +e
           python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" \
-            --mutants Logs/mutation-list/mutants.json \
+            --mutants Logs/mutation-list/mutants.json --reuse Logs/mutation-list/reuse.json \
             --platform PlayMode --survivors-of Logs/mutation-shards \
-            --collect Logs/mutation-playmode-shards --output Logs/mutation-verdict | tee verdict.txt
+            --collect Logs/mutation-playmode-shards --output Logs/mutation-verdict \
+            --emit-ledger Logs/mutation-ledger/ledger.json | tee verdict.txt
           status=${PIPESTATUS[0]}
           { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
+
+      # Uploaded whatever the verdict was: a campaign that failed on a survivor is the one whose kills
+      # the next round reuses. What a ledger holds is checked against the tree that reads it.
+      - if: ${{ !cancelled() && needs.mutation-plan.outputs.reused == '' && hashFiles('Logs/mutation-ledger/ledger.json') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Mutation campaign ledger
+          path: Logs/mutation-ledger/ledger.json
+          overwrite: true
 
       # Recorded only once the steps above passed, so a key names a campaign that passed. A run that
       # reused one cites the run that measured it, not the one it read the key from.
