@@ -310,6 +310,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
             ("campaign_runs", lambda _project, sha: by_sha[sha].runs),
             ("run_jobs", lambda _project, runs, _now: {
                 run.get("id"): by_run[run.get("id")] for run in runs if run.get("id") in by_run}),
+            ("campaign_backing", lambda *_: None),
             ("head_sha", lambda _project, number: states[number].after),
             ("contains_commit", lambda _project, branch, sha: (
                 _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
@@ -1055,6 +1056,180 @@ def check_run(name, conclusion, suite):
             "check_suite": {"id": suite}}
 
 
+class ReusedVerdictTests(unittest.TestCase):
+    """A campaign that reused a verdict merges only while the run it cites stands."""
+
+    KEY = "a1" * 32
+
+    def artifacts(self, *names):
+        return {"total_count": len(names), "artifacts": [{"name": name} for name in names]}
+
+    def reading(self, own, cited_run=None, cited_artifacts=None, fails=False):
+        """`campaign_backing` over a head whose one campaign has run 9001's artifacts `own`."""
+        def rest_json(path):
+            if fails and path.endswith("/actions/runs/9500"):
+                raise RuntimeError("gh api failed: HTTP 404")
+            if path.endswith("/actions/runs/9001/artifacts?per_page=100"):
+                return own
+            if path.endswith("/actions/runs/9500"):
+                return cited_run
+            if path.endswith("/actions/runs/9500/artifacts?per_page=100"):
+                return cited_artifacts
+            raise AssertionError(path)
+        with mock.patch.object(settle, "repository", lambda *_: "owner/name"), \
+                mock.patch.object(settle, "rest_json", rest_json):
+            return settle.campaign_backing(Path("."), [campaign_run(1, "success")])
+
+    def reuses(self):
+        return self.artifacts(settle.campaign.key_artifact_name(self.KEY, 9500))
+
+    def test_Given_ACampaignThatMeasuredItself_When_Backed_Then_NothingIsOwed(self):
+        # Arrange
+        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
+
+        # Act
+        why = self.reading(own)
+
+        # Assert
+        self.assertIsNone(why)
+
+    def test_Given_ACampaignWhoseOwnKeyArtifactExpired_When_Backed_Then_ItIsUnbacked(self):
+        # Arrange
+        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
+        own["artifacts"][0]["expired"] = True
+
+        # Act
+        why = self.reading(own)
+
+        # Assert
+        self.assertEqual(why, "holds a key artifact that has expired")
+
+    def test_Given_ACampaignHoldingArtifactsOfTwoKeys_When_Backed_Then_ItIsUnbacked(self):
+        # Arrange
+        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY),
+                             settle.campaign.key_artifact_name("b2" * 32))
+
+        # Act
+        why = self.reading(own)
+
+        # Assert
+        self.assertEqual(why, "holds key artifacts of more than one key")
+
+    def test_Given_ACampaignThatMeasuredWhatItHadReused_When_Backed_Then_NothingIsOwed(self):
+        # Arrange -- both names of one key: the re-run measured.
+        own = self.artifacts(settle.campaign.key_artifact_name(self.KEY),
+                             settle.campaign.key_artifact_name(self.KEY, 9500))
+
+        # Act
+        why = self.reading(own)
+
+        # Assert
+        self.assertIsNone(why)
+
+    def test_Given_ACampaignWithNoKeyArtifact_When_Backed_Then_NothingIsOwed(self):
+        # Arrange -- every campaign that ran before the key existed.
+        why = self.reading(self.artifacts("Mutation EditMode shard 0"))
+
+        # Assert
+        self.assertIsNone(why)
+
+    def test_Given_AReusedVerdictWhoseCitedRunMeasuredIt_When_Backed_Then_NothingIsOwed(self):
+        # Arrange
+        cited = campaign_run(1, "success")
+        cited["id"] = 9500
+        measured = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
+
+        # Act
+        why = self.reading(self.reuses(), cited, measured)
+
+        # Assert
+        self.assertIsNone(why)
+
+    def test_Given_AReusedVerdictWhoseCitedRunFailed_When_Backed_Then_ItIsUnbacked(self):
+        # Arrange
+        cited = campaign_run(1, "failure")
+        cited["id"] = 9500
+        measured = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
+
+        # Act
+        why = self.reading(self.reuses(), cited, measured)
+
+        # Assert
+        self.assertEqual(why, "cites run 9500, which is not a pass of mutation.yml")
+
+    def test_Given_AReusedVerdictWhoseCitedRunCannotBeRead_When_Backed_Then_ItIsUnbacked(self):
+        # Act
+        why = self.reading(self.reuses(), fails=True)
+
+        # Assert
+        self.assertEqual(why, "cites run 9500, which could not be read")
+
+    def test_Given_AReusedVerdictWhoseCitedRunHasNoReadableKeyArtifact_When_Backed_Then_TheMessageNamesThat(self):
+        # Arrange -- the cited run is a pass, and its artifacts listing is what lapsed.
+        cited = campaign_run(1, "success")
+        cited["id"] = 9500
+        lapsed = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
+        lapsed["artifacts"][0]["expired"] = True
+
+        # Act
+        why = self.reading(self.reuses(), cited, lapsed)
+
+        # Assert
+        self.assertEqual(why, "cites run 9500, whose key artifact is missing, expired or ambiguous")
+
+    def test_Given_AReusedVerdictWhoseCitedRunItselfReused_When_Backed_Then_TheMessageNamesThat(self):
+        # Arrange
+        cited = campaign_run(1, "success")
+        cited["id"] = 9500
+        chained = self.artifacts(settle.campaign.key_artifact_name(self.KEY, 9400))
+
+        # Act
+        why = self.reading(self.reuses(), cited, chained)
+
+        # Assert
+        self.assertEqual(why, "cites run 9500, which did not itself measure this key")
+
+    def test_Given_AUnbackedReuse_When_TheMergeIsDecided_Then_TheHeadIsRefused(self):
+        # Arrange
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED)}
+        why = "cites run 9500, which did not itself measure this key"
+
+        # Act
+        with fabricated_readings(states), mock.patch.object(settle, "campaign_backing", lambda *_: why):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["its mutation.yml run on 0000000 does not stand: it " + why])
+
+    # GREEN_ON_BASE(characterization): the base reads no backing, so a pass that owes none merges there too.
+    # It is the side the refusal above must not take, which a rule holding every reuse would.
+    def test_Given_ABackedReuse_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
+        # Arrange -- the control: the pass is the same, and nothing is owed for it.
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED)}
+
+        # Act
+        with fabricated_readings(states), mock.patch.object(settle, "campaign_backing", lambda *_: None):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    # GREEN_ON_BASE(characterization): the base reads no backing, so it asks for none of a failed run either.
+    # What it pins is that the new reading is not made for a campaign that did not pass.
+    def test_Given_ACampaignThatFailed_When_TheMergeIsDecided_Then_ItsArtifactsAreNotRead(self):
+        # Arrange -- a verdict that did not pass has nothing to be backed.
+        states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "failure")])}
+        asked = []
+
+        # Act
+        with fabricated_readings(states), mock.patch.object(
+                settle, "campaign_backing", lambda *_: asked.append(1)):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual((decided, asked), (["its mutation.yml run on 0000000 failed"], []))
+
+
 class CampaignDisplayMergeTests(unittest.TestCase):
     def decide(self, runs, state, labels=(AUTOMERGE,), context="Mutation campaign", checks=()):
         statuses = {"total_count": 1, "statuses": [{"context": context, "state": state}]}
@@ -1630,7 +1805,7 @@ class RedBaseMergeTests(unittest.TestCase):
         self.assertEqual(decided, [RED_REASON])
 
     # GREEN_ON_BASE(characterization): an unlabelled head behind a green base still merges.
-    # The `checks` double now accepts the optional display-status argument; its arranged verdict is unchanged.
+    # This change only adds a `campaign_backing` double to the stack; the arranged verdict is unchanged.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
@@ -1645,6 +1820,7 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("checks", lambda *_, **__: PASSING),
                 ("campaign_runs", lambda *_: []),
                 ("run_jobs", lambda *_: {}),
+                ("campaign_backing", lambda *_: None),
                 ("head_sha", lambda *_: GREEN),
                 ("project_state", lambda _project, base: base_state(set(), base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),

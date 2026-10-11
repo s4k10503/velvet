@@ -28,7 +28,7 @@ namespace Velvet
             {
                 return;
             }
-            if (IsPanMode(spec.Mode) && !_ctx.GradientBackgrounds.ContainsKey(element))
+            if (IsPanMode(spec.Mode) && !HasGradientShowing(element))
             {
                 // A pan utility with no gradient to pan is a no-op (parity with a lone gradient stop).
                 return;
@@ -45,8 +45,8 @@ namespace Velvet
         {
             var bound = _ctx.AnimationBindings.TryGetValue(element, out var binding);
             var want = StyleAnimateClass.TryExtract(classNames, out var spec);
-            // A pan mode needs a gradient; if it is gone, the motion cannot run.
-            if (want && IsPanMode(spec.Mode) && !_ctx.GradientBackgrounds.ContainsKey(element))
+            // A pan mode needs a gradient showing; if it is gone or covered, the motion cannot run.
+            if (want && IsPanMode(spec.Mode) && !HasGradientShowing(element))
             {
                 want = false;
             }
@@ -86,6 +86,10 @@ namespace Velvet
             SyncGradientBoxScale(element, AnimateMode.None, false);
             RestoreSharedInlineSlot(element, teardownMode, classNames);
         }
+
+        // A gradient under a StyleOverrides.BackgroundImage is not the image showing, so there is nothing to pan.
+        private bool HasGradientShowing(VisualElement element)
+            => _ctx.GradientBackgrounds.ContainsKey(element) && !StyleArbitraryValueResolver.OverrideBackgroundWins(element);
 
         private void AttachMotion(VisualElement element, AnimateSpec spec)
         {

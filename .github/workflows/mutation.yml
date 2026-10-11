@@ -75,9 +75,16 @@ jobs:
     needs: license-check
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # actions: read, for the earlier campaigns the reuse step lists.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       mutants: ${{ steps.plan.outputs.mutants }}
-      shards: ${{ steps.plan.outputs.shards }}
+      # Empty where a verdict is reused, which is what skips every job that measures.
+      shards: ${{ steps.reuse.outputs.reused == '' && steps.plan.outputs.shards || '[]' }}
+      key: ${{ steps.key.outputs.campaign-key }}
+      reused: ${{ steps.reuse.outputs.reused }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -95,7 +102,7 @@ jobs:
           HAS_LICENSE: ${{ needs.license-check.outputs.has_license }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan > plan.txt 2>&1
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan --emit-mutants mutants.json > plan.txt 2>&1
           status=$?
           cat plan.txt
           { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
@@ -105,6 +112,34 @@ jobs:
           fi
           [ "$status" -eq 0 ] || exit "$status"
           grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
+
+      # The list every shard and the verdict job hands back to mutation_check.py, which refuses a tree
+      # that generates another.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.plan.outputs.shards != '[]' && needs.license-check.outputs.has_license == 'true'
+        with:
+          name: Mutation mutant list
+          path: mutants.json
+          overwrite: true
+
+      # What the head asks of the campaign, as one hash. CONTRIBUTING.md owns what goes into it.
+      - id: key
+        if: steps.plan.outputs.shards != '[]' && needs.license-check.outputs.has_license == 'true'
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+        run: |
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --key | tee key.txt
+          { echo '### Mutation campaign key'; echo '```'; cat key.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^campaign-key=' key.txt >> "$GITHUB_OUTPUT"
+
+      # An earlier passing campaign on this branch that measured the same key. A lookup that fails
+      # reuses nothing, and the campaign then measures.
+      - id: reuse
+        if: steps.key.outputs.campaign-key != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: ${{ steps.key.outputs.campaign-key }}
+        run: python3 scripts/ci/reuse_verdict.py --key "$KEY" | tee -a "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
   # The Library every EditMode shard restores. Test's unity-tests jobs save theirs under the pull
@@ -177,6 +212,11 @@ jobs:
           restore-keys: |
             Library-EditMode-
 
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Mutation mutant list
+          path: Logs/mutation-list
+
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
@@ -199,7 +239,7 @@ jobs:
             --env PYTHONDONTWRITEBYTECODE=1 \
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
-              --base "$BASE" --max "$MUTANTS" \
+              --base "$BASE" --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
               --output Logs/mutation-shard
 
@@ -208,6 +248,8 @@ jobs:
         with:
           name: Mutation EditMode shard ${{ matrix.shard }}
           path: Logs/mutation-shard
+          # A re-run of the failed shards replaces what the first attempt left.
+          overwrite: true
 
   # Skipped where an EditMode shard failed: the campaign has failed already, and the PlayMode pass
   # would spend a matrix on it. The verdict job still runs, and reports every EditMode survivor as a
@@ -233,6 +275,11 @@ jobs:
           path: Logs/mutation-shards
           merge-multiple: true
 
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Mutation mutant list
+          path: Logs/mutation-list
+
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
@@ -242,7 +289,7 @@ jobs:
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" --plan \
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" --plan --mutants Logs/mutation-list/mutants.json \
             --platform PlayMode --survivors-of Logs/mutation-shards > plan.txt 2>&1
           status=$?
           cat plan.txt
@@ -284,6 +331,11 @@ jobs:
           path: Logs/mutation-shards
           merge-multiple: true
 
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Mutation mutant list
+          path: Logs/mutation-list
+
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
@@ -304,7 +356,8 @@ jobs:
             --env PYTHONDONTWRITEBYTECODE=1 \
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
-              --base "$BASE" --max "$MUTANTS" --platform PlayMode --survivors-of Logs/mutation-shards \
+              --base "$BASE" --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
+              --platform PlayMode --survivors-of Logs/mutation-shards \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
               --output Logs/mutation-playmode-shard
 
@@ -313,13 +366,15 @@ jobs:
         with:
           name: Mutation PlayMode shard ${{ matrix.shard }}
           path: Logs/mutation-playmode-shard
+          overwrite: true
 
   mutation-verdict:
     name: Mutation campaign (verdict)
     needs: [license-check, mutation-plan, mutation-shard, mutation-playmode-plan, mutation-playmode-shard]
     if: >-
       !cancelled() && needs.license-check.outputs.has_license == 'true'
-      && needs.mutation-plan.result == 'success' && needs.mutation-plan.outputs.shards != '[]'
+      && needs.mutation-plan.result == 'success'
+      && (needs.mutation-plan.outputs.shards != '[]' || needs.mutation-plan.outputs.reused != '')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -327,34 +382,74 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      # The head's key is a key a campaign already passed on: no mutant is measured here, and the run
+      # cited is the one that measured it. scripts/pr/settle.py reads that citation before a merge.
+      - if: needs.mutation-plan.outputs.reused != ''
+        env:
+          REUSED: ${{ needs.mutation-plan.outputs.reused }}
+          KEY: ${{ needs.mutation-plan.outputs.key }}
+        run: |
+          { echo '### Mutation campaign'; echo "Verdict reused from run $REUSED: its head asked the same mutants of the same code, tests and tool (key $KEY). No mutant was measured in this run."; } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - if: needs.mutation-plan.outputs.reused == ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Mutation mutant list
+          path: Logs/mutation-list
+
+      - if: needs.mutation-plan.outputs.reused == ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: Mutation EditMode shard *
           path: Logs/mutation-shards
           merge-multiple: true
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - if: needs.mutation-plan.outputs.reused == ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: Mutation PlayMode shard *
           path: Logs/mutation-playmode-shards
           merge-multiple: true
 
       - id: base
+        if: needs.mutation-plan.outputs.reused == ''
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
       # A mutant the EditMode pass killed keeps that verdict; one it left surviving takes the PlayMode
       # pass's, and a survivor no PlayMode shard recorded is unmeasured.
-      - env:
+      - if: needs.mutation-plan.outputs.reused == ''
+        env:
           BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
         run: |
           set +e
           python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" \
+            --mutants Logs/mutation-list/mutants.json \
             --platform PlayMode --survivors-of Logs/mutation-shards \
             --collect Logs/mutation-playmode-shards --output Logs/mutation-verdict | tee verdict.txt
           status=${PIPESTATUS[0]}
           { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
+
+      # Recorded only once the steps above passed, so a key names a campaign that passed. A run that
+      # reused one cites the run that measured it, not the one it read the key from.
+      - id: recorded
+        env:
+          KEY: ${{ needs.mutation-plan.outputs.key }}
+          REUSED: ${{ needs.mutation-plan.outputs.reused }}
+        run: |
+          if [ -n "$REUSED" ]; then
+            python3 scripts/ci/reuse_verdict.py --name "$KEY" --from "$REUSED" >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/ci/reuse_verdict.py --name "$KEY" >> "$GITHUB_OUTPUT"
+          fi
+          echo "$KEY" > campaign-key.txt
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.recorded.outputs.name }}
+          path: campaign-key.txt
+          overwrite: true
 
   # ---------------------------------------------------------------------------
   # The merge reads the run's conclusion rather than this job's, through scripts/pr/campaign.py; this

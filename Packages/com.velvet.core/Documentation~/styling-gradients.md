@@ -46,9 +46,9 @@ The last shape utility in the class list wins, and a stop utility with no shape 
 percentage; a negative or fractional one is written in brackets (`from-[-50%]`, `via-[12.5%]`). A stop may
 also sit at a length in `px`, `rem` (1rem is 16px, as elsewhere) or an absolute unit (`in`, `cm`, `mm`, `pt`,
 `pc`, `Q`, at CSS's fixed ratios), negative allowed, written in brackets (`from-[20px]`, `via-[-1rem]`), or
-a math function that comes to one length or one percentage (`from-[calc(1rem+4px)]`,
-[styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). The units that need an element or panel to
-measure against (`em`, `vw`, `vh`, …) are not read, here or in any other utility's length. With only one of `from-` and `to-` given, the other end
+a math function that comes to one length or one percentage (`from-[calc(1rem+4px)]`); the lengths only an
+element can measure (`em`, `vw`, a percentage mixed with a length) are not read here
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). With only one of `from-` and `to-` given, the other end
 is that colour made transparent, and `via-` alone fades in from and out to its own transparent colour.
 
 ## Stop lists in the shape's brackets

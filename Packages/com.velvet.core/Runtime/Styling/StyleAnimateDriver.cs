@@ -73,6 +73,16 @@ namespace Velvet
         // the slots adds these to its own frame.
         public Vector2 LiftPx;
         public float PingFactor = 1f;
+        // A pan mode's sizing, position on its axis and no-repeat stand over the element's own inline values (a
+        // StyleOverrides.BackgroundRepeat, the gradient's stretch-to-fill, anything a refCallback wrote, or none,
+        // leaving the slot to its classes); these are those values, written back when the loop lets go.
+        public StyleBackgroundRepeat RepeatUnderPan = StyleKeyword.Null;
+        public StyleBackgroundSize SizeUnderPan = StyleKeyword.Null;
+        public StyleBackgroundPosition PositionUnderPan = StyleKeyword.Null;
+        // The sizing and position the pan itself last wrote: a slot holding anything else at the end was written
+        // since by something outside the loop, and keeps it.
+        public StyleBackgroundSize PanSize = StyleKeyword.Null;
+        public StyleBackgroundPosition PanPosition = StyleKeyword.Null;
     }
 
     // Drives the animate-* motions. The texture is baked ONCE (the static gradient path); this only writes a
@@ -322,7 +332,10 @@ namespace Velvet
             // transparent-ended band can sweep fully in and out. Both disable repeat so off-box is empty.
             if (spec.Mode == AnimateMode.Gradient || spec.Mode == AnimateMode.Shimmer)
             {
-                ApplyPanSizing(element, spec.Mode, panVertical);
+                binding.RepeatUnderPan = element.style.backgroundRepeat;
+                binding.SizeUnderPan = element.style.backgroundSize;
+                binding.PositionUnderPan = panVertical ? element.style.backgroundPositionY : element.style.backgroundPositionX;
+                ApplyPanSizing(element, binding);
             }
 
             SeedOwnValues(element, binding);
@@ -374,9 +387,22 @@ namespace Velvet
         };
 #pragma warning restore CS8524
 
+        // An inline background-repeat written from outside the loop. While a pan mode holds the slot the value
+        // waits for Detach to write it, so the pan keeps its no-repeat and the element ends on the newest value.
+        public static void WriteBackgroundRepeat(VisualElement element, StyleBackgroundRepeat value)
+        {
+            if (s_running.TryGetValue(element, out var binding)
+                && (binding.Spec.Mode == AnimateMode.Gradient || binding.Spec.Mode == AnimateMode.Shimmer))
+            {
+                binding.RepeatUnderPan = value;
+                return;
+            }
+            element.style.backgroundRepeat = value;
+        }
+
         // Tears down a running motion: hands back any transition suspension, pauses the tick, removes any
-        // deferred-attach callback, and restores the styles the motion drove. Pan modes restore the gradient's
-        // stretch-to-fill (the gradient itself may still be bound) and clear the panned position; each
+        // deferred-attach callback, and restores the styles the motion drove. Pan modes write back the background
+        // sizing, position and repeat they covered (StyleAnimateBinding.RepeatUnderPan and its siblings); each
         // shared-slot mode clears the slot it owned (filter for Hue, opacity for Pulse, rotate for Spin).
         public static void Detach(VisualElement element, StyleAnimateBinding binding)
         {
@@ -399,12 +425,7 @@ namespace Velvet
 
             if (binding.Spec.Mode == AnimateMode.Gradient || binding.Spec.Mode == AnimateMode.Shimmer)
             {
-                // Restore the gradient's stretch-to-fill (matches GradientBackground.Apply) and drop the pan.
-                element.style.backgroundSize = new StyleBackgroundSize(
-                    new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
-                element.style.backgroundPositionX = StyleKeyword.Null;
-                element.style.backgroundPositionY = StyleKeyword.Null;
-                element.style.backgroundRepeat = StyleKeyword.Null;
+                RestoreUnderPan(element.style, binding);
             }
             else if (binding.Spec.Mode == AnimateMode.Hue)
             {
@@ -448,7 +469,7 @@ namespace Velvet
         {
             if (binding.Spec.Mode == AnimateMode.Gradient || binding.Spec.Mode == AnimateMode.Shimmer)
             {
-                ApplyPanSizing(element, binding.Spec.Mode, binding.PanVertical);
+                ApplyPanSizing(element, binding);
             }
         }
 
@@ -564,10 +585,12 @@ namespace Velvet
                     if (binding.PanVertical)
                     {
                         element.style.backgroundPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, offset);
+                        binding.PanPosition = element.style.backgroundPositionY;
                     }
                     else
                     {
                         element.style.backgroundPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, offset);
+                        binding.PanPosition = element.style.backgroundPositionX;
                     }
                     break;
                 }
@@ -721,9 +744,10 @@ namespace Velvet
         private static float LengthPx(Length length, float extent)
             => length.unit == LengthUnit.Percent ? length.value / 100f * extent : length.value;
 
-        private static void ApplyPanSizing(VisualElement element, AnimateMode mode, bool panVertical)
+        private static void ApplyPanSizing(VisualElement element, StyleAnimateBinding binding)
         {
-            if (mode == AnimateMode.Gradient)
+            var panVertical = binding.PanVertical;
+            if (binding.Spec.Mode == AnimateMode.Gradient)
             {
                 var pan = Length.Percent(GradientOversize);
                 var cross = Length.Percent(100f);
@@ -736,7 +760,37 @@ namespace Velvet
                 element.style.backgroundSize = new StyleBackgroundSize(
                     new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
             }
-            element.style.backgroundRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
+            element.style.backgroundRepeat = PanRepeat;
+            binding.PanSize = element.style.backgroundSize;
+        }
+
+        private static readonly StyleBackgroundRepeat PanRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
+
+        // Writes back each slot the pan covered that still holds the pan's own write; the other position axis
+        // the pan never wrote.
+        private static void RestoreUnderPan(IStyle style, StyleAnimateBinding binding)
+        {
+            if (style.backgroundSize.Equals(binding.PanSize))
+            {
+                style.backgroundSize = binding.SizeUnderPan;
+            }
+            if (style.backgroundRepeat.Equals(PanRepeat))
+            {
+                style.backgroundRepeat = binding.RepeatUnderPan;
+            }
+            var panned = binding.PanVertical ? style.backgroundPositionY : style.backgroundPositionX;
+            if (!panned.Equals(binding.PanPosition))
+            {
+                return;
+            }
+            if (binding.PanVertical)
+            {
+                style.backgroundPositionY = binding.PositionUnderPan;
+            }
+            else
+            {
+                style.backgroundPositionX = binding.PositionUnderPan;
+            }
         }
 
         // Schedules the recurring tick on the panel root, or defers to AttachToPanelEvent when the element is

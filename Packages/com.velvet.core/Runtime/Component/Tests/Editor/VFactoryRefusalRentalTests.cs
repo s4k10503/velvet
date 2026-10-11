@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.Experimental;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -30,10 +31,6 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class VFactoryRefusalRentalTests
     {
-        private const string OwnedPropsFieldName = "s_ownedProps";
-        private const string OwnedEventArraysFieldName = "s_ownedSingleEventArrays";
-        private const string OwnedNodeArraysFieldName = "s_ownedNodeArrays";
-        private const string CountPropertyName = "Count";
 
         private const string NulKey = "a\0b";
         private const string AcceptedKey = "ab";
@@ -79,30 +76,12 @@ namespace Velvet.Tests
             VNodePool.ReturnNodeArray(nodes);
         }
 
-        private static int RentedCount(string fieldName)
-        {
-            var field = typeof(VNodePool).GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic);
-            if (field == null)
-            {
-                throw new MissingFieldException(typeof(VNodePool).FullName, fieldName);
-            }
-            var set = field.GetValue(null)!;
-            var count = set.GetType().GetProperty(CountPropertyName, BindingFlags.Instance | BindingFlags.Public);
-            if (count == null)
-            {
-                throw new MissingMemberException(set.GetType().FullName, CountPropertyName);
-            }
-            return (int)count.GetValue(set)!;
-        }
-
         // The refused parameter travels with the growth so one comparison covers both: a refusal
         // swapped for a silently empty Fragment rents nothing either, and the growth alone reads
         // that as the fix.
         private static (string? RefusedParam, int Props, int EventArrays, int NodeArrays) Measure(Action call)
         {
-            var props = RentedCount(OwnedPropsFieldName);
-            var eventArrays = RentedCount(OwnedEventArraysFieldName);
-            var nodeArrays = RentedCount(OwnedNodeArraysFieldName);
+            var before = VNodePoolTestAccess.RentedOutCountsForTest();
             string? refusedParam = null;
             try
             {
@@ -113,9 +92,9 @@ namespace Velvet.Tests
                 refusedParam = ex.ParamName;
             }
             return (refusedParam,
-                RentedCount(OwnedPropsFieldName) - props,
-                RentedCount(OwnedEventArraysFieldName) - eventArrays,
-                RentedCount(OwnedNodeArraysFieldName) - nodeArrays);
+                VNodePoolTestAccess.RentedOutCountsForTest().Props - before.Props,
+                VNodePoolTestAccess.RentedOutCountsForTest().EventArrays - before.EventArrays,
+                VNodePoolTestAccess.RentedOutCountsForTest().NodeArrays - before.NodeArrays);
         }
 
         // Neither renderer passes a props: bag of its own, so V.Draggable rents one per item.
@@ -123,7 +102,9 @@ namespace Velvet.Tests
 
         private static VNode RenderByIndex(int item, int index) => V.Draggable("row" + item + index);
 
-        // GREEN_ON_BASE(refactor): the base refuses this key ahead of the mapping already; what changed
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as refactor: the base refuses this key ahead of the mapping already; what changed
         // here is the event-array term the measurement gained, which reads zero on both sides.
         [Test]
         public void Given_AKeyedListFragmentWithANulKey_When_TheKeyIsRefused_Then_TheCallRentsNothing()
@@ -136,7 +117,9 @@ namespace Velvet.Tests
             Assert.That(refusal, Is.EqualTo(("key", 0, 0, 0)));
         }
 
-        // GREEN_ON_BASE(refactor): the overload above's reason, on the overload taking the index.
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as refactor: the overload above's reason, on the overload taking the index.
         [Test]
         public void Given_AnIndexedListFragmentWithANulKey_When_TheKeyIsRefused_Then_TheCallRentsNothing()
         {
@@ -148,7 +131,9 @@ namespace Velvet.Tests
             Assert.That(refusal, Is.EqualTo(("key", 0, 0, 0)));
         }
 
-        // GREEN_ON_BASE(characterization): the base accepts this key and rents the same three objects,
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: the base accepts this key and rents the same three objects,
         // the event-array term this measurement gained reading zero there too. It is the control for the
         // two refusal cases above, which assert absences: a probe over a set that never moved would
         // satisfy their zeroes, and this is their call with the NUL taken out of the key.
@@ -192,6 +177,8 @@ namespace Velvet.Tests
 
         private static string Report(IEnumerable<string> rows) => string.Join(" ", rows);
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_EveryFactoryRentingBeforeItsNode_When_ANulKeyIsRefused_Then_TheCallRentsNothing()
         {
@@ -207,7 +194,9 @@ namespace Velvet.Tests
                 FactoriesRentingBeforeTheirNode, factory => $"{factory.Name}=key/0/0/0"))));
         }
 
-        // GREEN_ON_BASE(characterization): every row rents on the base too, its key being accepted there.
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: every row rents on the base too, its key being accepted there.
         // It is the control for the row report above, which asserts absences: a row whose call happens to
         // rent nothing satisfies that report's zeroes without the refusal having done anything.
         [Test]
@@ -239,6 +228,8 @@ namespace Velvet.Tests
             ("Image", k => V.Image(className: "row", key: k, data: OneDataAttribute)),
         };
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_EveryFactoryRentingInsideItsInitializer_When_ANulKeyIsRefused_Then_TheCallRentsNothing()
         {
@@ -254,7 +245,9 @@ namespace Velvet.Tests
                 FactoriesRentingInsideTheirInitializer, factory => $"{factory.Name}=key/0/0/0"))));
         }
 
-        // GREEN_ON_BASE(characterization): all three rows rent on the base as well, their keys accepted
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: all three rows rent on the base as well, their keys accepted
         // there. It is the control for the row report above, which asserts absences: a row whose call
         // happens to rent nothing satisfies that report's zeroes without the member order having done
         // anything.
@@ -284,6 +277,8 @@ namespace Velvet.Tests
             ("VCustom", child => new VCustom<Label>("row") { child }),
         };
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_EveryBuilderRentingForItsChildren_When_ANulKeyIsRefused_Then_TheBuildRentsNothing()
         {
@@ -304,7 +299,9 @@ namespace Velvet.Tests
                 BuildersRentingForTheirChildren, builder => $"{builder.Name}=key/0/0/0"))));
         }
 
-        // GREEN_ON_BASE(characterization): every builder takes a child array on the base too. Its key
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: every builder takes a child array on the base too. Its key
         // is accepted there, and it is the control for the report above, which asserts absences: a
         // builder whose Build() happens to rent nothing satisfies those zeroes without the refusal
         // having done anything.
@@ -327,6 +324,8 @@ namespace Velvet.Tests
                 BuildersRentingForTheirChildren, builder => $"{builder.Name}=/0/0/1"))));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AKeyedListSelectorReturningANulKey_When_TheKeyIsRefused_Then_TheChildArrayIsGivenBack()
         {
@@ -339,6 +338,8 @@ namespace Velvet.Tests
             Assert.That(refusal, Is.EqualTo(("key", 1, 0, 0)));
         }
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AnIndexedListSelectorReturningANulKey_When_TheKeyIsRefused_Then_TheChildArrayIsGivenBack()
         {
@@ -349,7 +350,9 @@ namespace Velvet.Tests
             Assert.That(refusal, Is.EqualTo(("key", 1, 0, 0)));
         }
 
-        // GREEN_ON_BASE(characterization): the base accepts these keys and keeps the array out on loan.
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: the base accepts these keys and keeps the array out on loan.
         // It is the control for the two cases above: an array the call never rented would satisfy their
         // zero without the refusal having given anything back.
         [Test]

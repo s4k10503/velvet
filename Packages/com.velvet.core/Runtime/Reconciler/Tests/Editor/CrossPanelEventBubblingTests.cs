@@ -222,6 +222,88 @@ namespace Velvet.Tests
             Assert.That((innerFired, outerFired), Is.EqualTo((true, false)));
         }
 
+        private static int s_ancestorRuns;
+        private static StateUpdater<VisualElement> s_setLayerRoot;
+
+        // A layer portal, and beside it a portal into the root of the layer's host panel once a render hands it
+        // that root: the root is the host's bridge anchor and a portal target both.
+        [Component]
+        private static VNode PortalIntoTheLayerRootRender()
+        {
+            var (root, setRoot) = Hooks.UseState((VisualElement)null);
+            s_setLayerRoot = setRoot;
+            return V.Fragment(
+                V.Portal(UILayer.Overlay, children: new VNode[] { V.Motion(name: "layer-child") }),
+                root == null ? null : V.Portal(root, children: new VNode[] { V.Motion(name: "root-child") }));
+        }
+
+        private UIDocument MountPortalIntoTheLayerRoot()
+        {
+            var binding = new PointerDownBinding { Handler = _ => s_ancestorRuns++ };
+            _mounted = V.Mount(_host.Root, V.Motion(
+                events: new FiberEventBinding[] { binding },
+                children: new VNode[] { V.Component(PortalIntoTheLayerRootRender) }));
+            var hostDoc = FindHostDocumentContaining("layer-child");
+            s_setLayerRoot.Invoke(hostDoc.rootVisualElement);
+            _mounted.FlushStateForTest();
+            return hostDoc;
+        }
+
+        [Test]
+        public void Given_APortalIntoALayerHostsRoot_When_APointerDownBubblesFromTheLayersChild_Then_TheAncestorRunsOnce()
+        {
+            // Arrange
+            s_ancestorRuns = 0;
+            var hostDoc = MountPortalIntoTheLayerRoot();
+            var root = hostDoc.rootVisualElement;
+
+            // Act
+            using var evt = PointerDownEvent.GetPooled();
+            root.SimulateBubbledEvent(evt, root.Q<VisualElement>("layer-child"));
+
+            // Assert — the second portal's child is folded in, since a portal that never mounted into the root
+            // would satisfy the count on its own.
+            Assert.That((root.Q<VisualElement>("root-child") != null, s_ancestorRuns), Is.EqualTo((true, 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base attaches the host's listeners and the root portal's apart, so
+        // the host's stay when that portal leaves; the hold count the change puts on the root must keep them.
+        [Test]
+        public void Given_APortalIntoALayerHostsRootThatLeaves_When_APointerDownBubblesFromTheLayersChild_Then_TheAncestorStillRuns()
+        {
+            // Arrange
+            s_ancestorRuns = 0;
+            var hostDoc = MountPortalIntoTheLayerRoot();
+            var root = hostDoc.rootVisualElement;
+            s_setLayerRoot.Invoke((VisualElement)null);
+            _mounted.FlushStateForTest();
+
+            // Act
+            using var evt = PointerDownEvent.GetPooled();
+            root.SimulateBubbledEvent(evt, root.Q<VisualElement>("layer-child"));
+
+            // Assert — the second portal's child is folded in, since a portal that never left would satisfy the
+            // count on its own.
+            Assert.That((root.Q<VisualElement>("root-child") == null, s_ancestorRuns), Is.EqualTo((true, 1)));
+        }
+
+        [Test]
+        public void Given_APortalIntoALayerHostsRoot_When_TheHostIsDestroyedTwice_Then_TheRootKeepsThePortalsBridge()
+        {
+            // Arrange
+            var root = MountPortalIntoTheLayerRoot().rootVisualElement;
+            var context = _mounted.Root.Reconciler!.Context;
+            PanelHostRecord record = null;
+            foreach (var host in context.LayerHosts.Values) record = host;
+
+            // Act
+            PanelHostFactory.Destroy(record);
+            PanelHostFactory.Destroy(record);
+
+            // Assert
+            Assert.That(context.EventManager.IsBridgeAnchor(root), Is.True);
+        }
+
         private UIDocument FindHostDocumentContaining(string childName)
         {
             foreach (var doc in UnityEngine.Resources.FindObjectsOfTypeAll<UIDocument>())

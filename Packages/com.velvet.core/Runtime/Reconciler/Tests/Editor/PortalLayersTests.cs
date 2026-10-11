@@ -626,6 +626,24 @@ namespace Velvet.Tests
             Assert.That(NewDocs().Count, Is.EqualTo(0));
         }
 
+        [Test]
+        public void Given_AConditionalRemoval_When_TheWorldSpaceLeavesTheTree_Then_ItsRootCarriesNoBridge()
+        {
+            // Arrange
+            MountAndLayout(V.Component(ConditionalWorldSpaceHost, key: "root"));
+            var events = _mounted.Root.Reconciler!.Context.EventManager;
+            var root = NewDocs()[0].rootVisualElement;
+            var bridgedWhileMounted = events.IsBridgeAnchor(root);
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — the mounted reading is folded in, since a root that never carried a bridge would
+            // otherwise satisfy the released reading on its own.
+            Assert.That((bridgedWhileMounted, events.IsBridgeAnchor(root)), Is.EqualTo((true, false)));
+        }
+
         // GREEN_ON_BASE(refactor): the enum is respelled for 6.5 and later, and at the floor it names the
         // same member the base's assertion named.
         [Test]

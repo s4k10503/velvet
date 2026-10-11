@@ -4,7 +4,7 @@
 declarative animation API on Unity UI Toolkit. This guide covers the variant-driven feature set:
 labels and inheritance, mount enters, exits and `PopLayout`, orchestration
 (`staggerChildren` / `delayChildren` / `when`), per-property transition overrides, spring physics,
-and exact cubic-bezier easing — plus the transition semantics that tie them together: **the node's
+exact cubic-bezier easing and repeating a play — plus the transition semantics that tie them together: **the node's
 own config as the default a pose overrides** (and the instant opt-out; see the last section).
 
 The `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …) and
@@ -198,8 +198,12 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
 ```
 
 - `When = Together` (default): children start at `DelayChildrenSec` + their stagger slot.
-- `When = BeforeChildren`: children additionally wait out the parent's own
-  `DelaySec + DurationSec` span.
+- `When = BeforeChildren`: children additionally wait out the parent's own delay and play: its
+  `DurationSec` for a tween or a bezier, the time its slowest channel takes to rest for a spring
+  (measured as *Repeating a play* gives), and every repeat of either (see *Repeating a play*). A
+  spring's wait is measured from the pose classes at rest, so a spring that interrupts a running
+  one, starting where that one stood and with its velocity, can end before or after its children
+  start, where Framer's children wait for the animation itself.
 - `When = AfterChildren` is not orchestratable under label propagation; it warns once and falls
   back to `Together`.
 - Each Motion numbers its own inheriting children, as Framer numbers each variant parent's: a child
@@ -259,13 +263,15 @@ new StyleTransitionConfig
 }
 ```
 
-- Springs drive the channels of a variant delta (see *Driven channels* below) with a
-  velocity-preserving integrator: **interrupting a spring retargets from the current value *and
-  velocity***, Framer's signature interruptible feel. An exit whose delta resolves no channel at
-  all completes immediately.
-- `DurationSec` is ignored for springs — settling time comes from the physics.
-- Springs drive mount enters, presence exits, and runtime `animate` label swaps alike — flipping
-  a label mid-spring retargets from the current value and velocity.
+- Springs drive the channels of a variant delta (see *Driven channels* below), each sampled from
+  Framer Motion's spring by the time since the play started. **Interrupting a running spring — a
+  label change mid-spring, or an exit cancelled mid-flight — releases a new one from the current
+  value *and velocity***, as Framer starts an interrupted value's next animation. A spring that
+  interrupts a bezier play starts at rest, since a bezier play keeps no velocity. An exit whose delta resolves no channel at all completes immediately.
+- `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
+  slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
+  so a frame that arrives late moves the spring as far as the time it covers.
+- Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
 
@@ -394,6 +400,69 @@ function is a function of time and so must be monotone; a value outside that ran
 falls back to the default curve with a one-shot console warning instead of being silently clamped.
 `BezierY1` / `BezierY2` are left unclamped, so an overshoot/anticipate curve genuinely passes its
 target mid-tween.
+
+## Repeating a play (`Repeat` / `RepeatType` / `RepeatDelaySec`)
+
+Framer Motion's `repeat`, `repeatType` and `repeatDelay`, on `StyleTransitionConfig`, played by
+`TransitionType.Bezier` and `TransitionType.Spring`:
+
+```csharp
+// A down-arrow that bobs for as long as it is on screen.
+var bob = new StyleTransitionConfig
+{
+    Type = TransitionType.Bezier, DurationSec = 0.6f,
+    Repeat = float.PositiveInfinity, RepeatType = TransitionRepeatType.Reverse,
+};
+V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
+```
+
+- `Repeat` counts the passes after the first, as Framer's `repeat` does: `Repeat = 2` plays three.
+  `float.PositiveInfinity` repeats until a later play, an exit or an unmount replaces the play. A
+  negative, NaN or fractional value throws `ArgumentOutOfRangeException`; Framer accepts a fraction.
+- `RepeatType = Loop` (the default) starts every pass at the from-pose. `Reverse` plays every second
+  pass backwards in time: a bezier's easing comes back reversed, so an ease-out pass returns as an
+  ease-in one, as CSS's `animation-direction: alternate` does, and a spring retraces its own path,
+  overshoot included. `Mirror` plays every second pass from the to-pose back to the from-pose: a bezier
+  on the same easing, a spring released from the to-pose.
+- `RepeatDelaySec` waits that many seconds after each pass but the last before the next one starts.
+  A bezier holds the value its pass ended on; a spring keeps being sampled past its pass, as Framer's
+  is, so it shows whatever small motion its spring still has. A negative or non-finite value throws
+  `ArgumentOutOfRangeException`.
+- A spring's pass is the duration Framer measures for it, which also ends a play that does not
+  repeat: the first 50 ms sample at which the spring rests, within 0.5 of its target and moving at
+  no more than 2 per second over a travel of 5 or more, within 0.005 and at 0.01 per second under it.
+  Framer hands an opacity and a background color to the browser unless the repeat mirrors or waits
+  between passes. There the spring becomes an easing over a travel of 100, cut at 20 s, onto which
+  the value's velocity is carried unscaled, so an opacity on the default spring ends at 1.05 s. Any
+  other channel — a translate, scale or rotate among them, since Framer's `x`, `y`, `scale` and
+  `rotate` are values of their own that it keeps on its main thread — and any channel under a
+  mirrored or waiting repeat, runs on Framer's main thread over its own travel, a color's being 100,
+  an interrupted color's too: one that has not rested by 20 s never ends, and under a repeat plays
+  its first pass on. Framer animates each value on its own, so the channels can fall out of step;
+  the play ends when its slowest channel does.
+- A play of an odd `Repeat` under `Reverse` or `Mirror` ends on its from-pose, as Framer's does, and
+  holds it there although the element's classes are the to-pose's, until a later play, an exit or a
+  teardown cancels it; a pose that lands at once takes over only the properties it names. Every other
+  finished play hands its values back to the to-pose's classes, as a play that does not repeat does.
+- The repeat covers enters, label changes and exits alike. An exit repeating without end never
+  completes, so its `AnimatePresence` keeps the element.
+- A cancelled exit's reversal plays once, whatever the exit repeated.
+- A `layoutId` move on a spring springs a progress over Framer's travel of 1000, on its main thread,
+  and ends when that spring's duration has run.
+- `When = BeforeChildren` waits for every pass and every wait between them. A parent repeating without
+  end never finishes, so its children's plays never start, as Framer's never do: they hold the pose
+  they were at.
+- A `Hooks.UseAnimationSequence` `To` step deriving its hold counts a repeat below 20. Framer's
+  sequence ignores a segment's repeat of 20 or more, an endless one included, and so does a `To`
+  step: it hands out its transition without the repeat, holds for one pass and logs a warning, once
+  per transition. A spring step's pass is Framer's sequence duration over a travel of 100, which is
+  also the play's for a channel Framer hands to the browser; under a mirrored or waiting repeat, or
+  for a channel on Framer's main thread, the play can run longer or shorter, since a label tells the
+  sequence nothing of the classes it plays between.
+
+A `Tween` does not play a repeat yet: a play on one with `Repeat` above zero plays once, and the first
+such play in a mounted tree logs a warning. A `layoutId` move plays once whatever its transition
+repeats.
 
 ## Shared-element layout animation (`layoutId`)
 
@@ -596,7 +665,8 @@ A step is exactly one of:
   elapses) -- "holds on this step" means the label is already active and the cursor is waiting before
   moving to the next one. `transition` reuses the most recent non-null transition earlier in the
   sequence when omitted (falling back to `StyleTransition.Fade` if none has been set yet); `holdSec`
-  defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step holds for its
+  defaults to that transition's `DurationSec + DelaySec` for a tween or a bezier, lengthened by a
+  `Bezier` or `Spring` repeat (see *Repeating a play*). A `Spring`-typed step holds for its
   `DelaySec` plus the duration Framer Motion's sequence gives the same spring (clamped to zero when
   the negative delay consumes the hold): a travel of 100,
   sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
@@ -684,9 +754,11 @@ A finished sequence keeps its last step current, as `animation-fill-mode: forwar
 commits nothing, as the default `animation-fill-mode: none` would. Where this differs from the Web Animations API
 and CSS: the count is a whole number, where both accept a fraction such as `2.5`.
 
-An alternate direction (CSS's `animation-direction: alternate`, Framer Motion's `repeatType: "reverse"`)
-is not offered: playing a `Call` step backwards has no settled answer to whether its callback fires
-again, and a `To` step played backwards would need the label before it rather than its own.
+An alternate direction for the sequence as a whole (CSS's `animation-direction: alternate`, Framer
+Motion's `repeatType: "reverse"` on a sequence) is not offered: playing a `Call` step backwards has no
+settled answer to whether its callback fires again, and a `To` step played backwards would need the label
+before it rather than its own. A single label swap that goes there and back is a `To` step whose
+`Bezier` or `Spring` transition repeats (see *Repeating a play*).
 
 ## Transition semantics: a node default a pose overrides
 
@@ -742,7 +814,7 @@ Three consequences worth knowing:
 - **A pose's transition carries the child-orchestration knobs too.** `StaggerChildrenSec`,
   `DelayChildrenSec` and `When` are read off whichever config drives the swap, so a coordinator's
   pose can orchestrate its inheriting descendants — and a `When = BeforeChildren` wait is measured
-  from that pose's own `DelaySec + DurationSec` span.
+  from that pose's own delay and play (see *Orchestration*).
 - **`transition-*` utilities are optional for variant swaps.** They still govern property
   changes outside the variant system (a `hover:` state flipping, an arbitrary class toggle); a
   variant swap's inline transition simply takes precedence while it plays and is released

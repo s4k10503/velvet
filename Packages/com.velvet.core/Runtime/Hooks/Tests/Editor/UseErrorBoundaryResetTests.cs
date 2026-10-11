@@ -525,7 +525,7 @@ namespace Velvet.Tests
             using var reconciler = new Reconciler();
             var boundary = new ComponentFiber { Reconciler = reconciler, QueuedReset = QueuedErrorBoundaryReset.AnyLane };
             var suspense = new SuspenseNode { Fallback = V.Label(text: "loading") };
-            reconciler.Context.SetSuspenseFallbackShown(boundary, null, null, 0, suspense, shown: true);
+            reconciler.Context.SetSuspenseFallbackShown(boundary, null, null, 0, new ReconcilerContext.SuspenseFallbackRecord(suspense, true));
 
             // Act
             FiberErrorBoundary.OutputOf(boundary, Array.Empty<VNode>());

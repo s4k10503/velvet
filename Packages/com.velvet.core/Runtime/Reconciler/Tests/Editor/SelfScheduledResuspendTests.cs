@@ -25,10 +25,11 @@ namespace Velvet.Tests
             s_setOther = default;
         }
 
-        // GREEN_ON_BASE(characterization): the base already catches this suspend in FiberWorkLoop.FlushState.
-        // What this pins is the fallback, and an unrelated update committing beside it in the next drain. Whether
-        // a drain is registered after an exception is DrainExceptionRecoveryTests' question; this suspend throws
-        // nothing out of the drain.
+        // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown. What this pins
+        // is the fallback, and an unrelated update committing beside it in the next drain. Read as every label
+        // rather than the displayed ones, this reddens on SetPrimaryHidden keeping the reader's label in the tree,
+        // hidden. Whether a drain is registered after an exception is DrainExceptionRecoveryTests' question; this
+        // suspend throws nothing out of the drain.
         [Test]
         public void Given_ARevealedBoundaryWhoseChildsOwnUpdateSuspends_When_AnUnrelatedComponentUpdatesInTheNextDrain_Then_ItCommitsBesideTheFallback()
         {
@@ -47,7 +48,8 @@ namespace Velvet.Tests
                 "React shows the fallback again, and an unrelated update still commits in the next drain");
         }
 
-        // GREEN_ON_BASE(characterization): the base already routes this faulted read to the error boundary.
+        // GREEN_ON_BASE(characterization): the base already routes this faulted read to the error boundary. What
+        // this pins, read as the displayed labels, is that the error fallback is all a user sees.
         [Test]
         public void Given_AChildWhoseOwnUpdateSuspendedARevealedBoundary_When_ItsResourceFaults_Then_TheErrorBoundaryShowsItsFallback()
         {
@@ -68,7 +70,17 @@ namespace Velvet.Tests
                 "React throws the rejected read to the error boundary above the Suspense");
         }
 
-        private string Texts() => string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
+        // The labels a user sees: a Suspense keeps the children it hid mounted under an inline display: none.
+        private string Texts() => string.Join("|", _root.Query<Label>().ToList().Where(IsDisplayed).Select(label => label.text));
+
+        private static bool IsDisplayed(VisualElement element)
+        {
+            for (var ve = element; ve != null; ve = ve.parent)
+            {
+                if (ve.style.display == DisplayStyle.None) return false;
+            }
+            return true;
+        }
 
         private static VelvetTaskCompletionSource<int> s_source;
         private static StateUpdater<int> s_setOwn;

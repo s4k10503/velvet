@@ -18,7 +18,7 @@ def identity(run):
     return run.get("id"), run.get("run_attempt") or 1
 
 
-def reading(pull, runs, slug, event_run=None, released=False):
+def reading(pull, runs, slug, event_run=None, released=False, backing=None):
     head = pull.get("head") or {}
     sha = head.get("sha", "")
     if (pull.get("state") != "open" or not re.fullmatch(r"[0-9a-f]{40}", sha)
@@ -54,8 +54,12 @@ def reading(pull, runs, slug, event_run=None, released=False):
         return None
     found = settle.campaign.state([latest], lambda item: item.get("conclusion")
                                   if item.get("status") == "completed" else None)
+    # Asked only of a pass, the one verdict `settle` can hold for a citation it cannot show.
+    unbacked = backing(runs) if backing is not None and found == settle.campaign.PASSED else None
     if found == settle.campaign.RUNNING:
         state, description = "pending", "Mutation campaign is running"
+    elif unbacked:
+        state, description = "failure", "Mutation campaign verdict cannot be shown to stand"
     elif settle.campaign.reason(labels, found, sha, "") is None:
         state = "success"
         description = "Mutation campaign passed" if found == settle.campaign.PASSED else "Cancelled campaign is not required"
@@ -103,7 +107,12 @@ def publish(project, number, event_run=None, read=settle.rest_json, post=None, r
     runs = settle.expected_checks.listed_runs(payload)
     if runs is None:
         raise RuntimeError("campaign run listing is incomplete")
-    result = reading(current, runs, slug, event_run, released)
+    # Only the second reading is backed: the first decides whether to go on, which the citation
+    # cannot change, and each backing costs a read of the API budget the sweep is sized to.
+    def backing(listed):
+        return settle.campaign_backing(project, listed, read, slug)
+
+    result = reading(current, runs, slug, event_run, released, backing)
     if result is None or result["sha"] != initial["sha"]:
         return None
     if existing is not None and all(existing.get(key) == result[key]

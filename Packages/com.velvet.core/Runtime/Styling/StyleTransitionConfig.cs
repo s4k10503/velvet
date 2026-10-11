@@ -133,6 +133,60 @@ namespace Velvet
         /// </summary>
         public StyleTransitionConfig? Layout { get; init; }
 
+        private readonly float _repeat;
+        private readonly float _repeatDelaySec;
+
+        /// <summary>
+        /// The passes a play makes after its first — Framer Motion's <c>repeat</c>, so <c>Repeat = 2</c> plays three
+        /// times. <c>float.PositiveInfinity</c> repeats until a later play, an exit or an unmount replaces it; 0,
+        /// the default, plays once. <see cref="RepeatType"/> decides each later pass's direction and
+        /// <see cref="RepeatDelaySec"/> the wait between passes. Played when <see cref="Type"/> is
+        /// <see cref="TransitionType.Bezier"/> or <see cref="TransitionType.Spring"/>; a
+        /// <see cref="TransitionType.Tween"/> play plays once, and the first in a mounted tree logs a warning.
+        /// <c>Documentation~/motion.md</c> owns the full contract, including where a play ends and what a
+        /// <c>layoutId</c> move does with it.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN, or neither a whole number nor
+        /// <c>float.PositiveInfinity</c>.</exception>
+        public float Repeat
+        {
+            get => _repeat;
+            init
+            {
+                if (!(value >= 0f) || (!float.IsPositiveInfinity(value) && value != MathF.Floor(value)))
+                {
+                    throw new ArgumentOutOfRangeException(nameof(Repeat), value,
+                        "Repeat counts whole passes after the first: zero or more, or float.PositiveInfinity.");
+                }
+                _repeat = value;
+            }
+        }
+
+        /// <summary>
+        /// How each pass after the first runs — Framer Motion's <c>repeatType</c>. Defaults to
+        /// <see cref="TransitionRepeatType.Loop"/>. Read only when <see cref="Repeat"/> is above zero.
+        /// </summary>
+        public TransitionRepeatType RepeatType { get; init; } = TransitionRepeatType.Loop;
+
+        /// <summary>
+        /// Seconds a repeating play holds the value one pass ends on before the next pass starts — Framer Motion's
+        /// <c>repeatDelay</c>. No wait follows the last pass, so it never delays completion. 0 by default.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The value is negative or not finite.</exception>
+        public float RepeatDelaySec
+        {
+            get => _repeatDelaySec;
+            init
+            {
+                if (!(value >= 0f) || float.IsInfinity(value))
+                {
+                    throw new ArgumentOutOfRangeException(nameof(RepeatDelaySec), value,
+                        "RepeatDelaySec must be finite and zero or more.");
+                }
+                _repeatDelaySec = value;
+            }
+        }
+
         /// <summary>
         /// Optional per-property transition overrides layered on top of the top-level <see cref="DurationSec"/> /
         /// <see cref="Easing"/> / <see cref="DelaySec"/> (e.g. opacity tweening in 0.15s while scale takes 0.5s).
@@ -222,6 +276,13 @@ namespace Velvet
             EasingMode? easing = null,
             EasingMode? exitEasing = null,
             float? delaySec = null)
+            => Copy(durationSec ?? DurationSec, easing ?? Easing, exitEasing ?? ExitEasing, delaySec ?? DelaySec, Repeat);
+
+        // This config with no repeat, for a sequence step whose repeat Framer Motion's sequence ignores.
+        internal StyleTransitionConfig WithoutRepeat() => Copy(DurationSec, Easing, ExitEasing, DelaySec, 0f);
+
+        private StyleTransitionConfig Copy(float durationSec, EasingMode easing, EasingMode? exitEasing, float delaySec,
+            float repeat)
         {
             return new StyleTransitionConfig
             {
@@ -229,12 +290,13 @@ namespace Velvet
                 EnterToClass = EnterToClass,
                 ExitFromClass = ExitFromClass,
                 ExitToClass = ExitToClass,
-                DurationSec = durationSec ?? DurationSec,
-                Easing = easing ?? Easing,
-                ExitEasing = exitEasing ?? ExitEasing,
-                DelaySec = delaySec ?? DelaySec,
-                // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
-                // the child-orchestration knobs, the spring model, or the transition a layoutId move takes.
+                DurationSec = durationSec,
+                Easing = easing,
+                ExitEasing = exitEasing,
+                DelaySec = delaySec,
+                // Passed through unchanged: a copy's callers choose only the top-level timing and the repeat count,
+                // not per-property overrides, the child-orchestration knobs, the spring model, the repeat's type and
+                // delay, or the transition a layoutId move takes.
                 PropertyOverrides = PropertyOverrides,
                 Layout = Layout,
                 StaggerChildrenSec = StaggerChildrenSec,
@@ -248,6 +310,9 @@ namespace Velvet
                 BezierY1 = BezierY1,
                 BezierX2 = BezierX2,
                 BezierY2 = BezierY2,
+                Repeat = repeat,
+                RepeatType = RepeatType,
+                RepeatDelaySec = RepeatDelaySec,
                 // Class names are identical, so share the parsed arrays (avoids re-parsing).
                 _enterFromClasses = _enterFromClasses,
                 _enterToClasses = _enterToClasses,
@@ -286,6 +351,9 @@ namespace Velvet
                 BezierY1 = BezierY1,
                 BezierX2 = BezierX2,
                 BezierY2 = BezierY2,
+                Repeat = Repeat,
+                RepeatType = RepeatType,
+                RepeatDelaySec = RepeatDelaySec,
             };
         }
 
@@ -370,6 +438,29 @@ namespace Velvet
     }
 
     /// <summary>
+    /// How each pass after the first of a repeating play runs — Framer Motion's <c>repeatType</c>. See
+    /// <see cref="StyleTransitionConfig.Repeat"/>.
+    /// </summary>
+    public enum TransitionRepeatType
+    {
+        /// <summary>Every pass runs from the from-values to the to-values. The default.</summary>
+        Loop,
+
+        /// <summary>
+        /// Every second pass plays the one before it backwards in time — CSS's
+        /// <c>animation-direction: alternate</c>. A bezier's easing comes back reversed, so an ease-out pass
+        /// returns as an ease-in one, and a spring retraces its path.
+        /// </summary>
+        Reverse,
+
+        /// <summary>
+        /// Every second pass runs from the to-values back to the from-values: a bezier on the same easing, so an
+        /// ease-out pass returns ease-out, and a spring released from the to-values.
+        /// </summary>
+        Mirror,
+    }
+
+    /// <summary>
     /// Sequences a Motion's own class swap against its inheriting descendants' swaps — see
     /// <see cref="StyleTransitionConfig.When"/> and <see cref="StyleTransitionConfig.StaggerChildrenSec"/>.
     /// </summary>
@@ -385,9 +476,10 @@ namespace Velvet
         /// <summary>
         /// Inheriting descendants wait for this Motion's OWN transition to finish before starting: every
         /// descendant's computed delay additionally includes this Motion's own
-        /// <see cref="StyleTransitionConfig.DelaySec"/> + <see cref="StyleTransitionConfig.DurationSec"/> — the
-        /// full span of its swap, not just the duration, since the swap does not even START until DelaySec has
-        /// elapsed.
+        /// <see cref="StyleTransitionConfig.DelaySec"/> and the time its play takes — its
+        /// <see cref="StyleTransitionConfig.DurationSec"/>, or a spring's time to rest, over every
+        /// <see cref="StyleTransitionConfig.Repeat"/> pass. The swap does not even START until DelaySec has
+        /// elapsed. A play repeating without end never finishes, so its descendants never start.
         /// </summary>
         BeforeChildren,
 

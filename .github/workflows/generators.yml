@@ -117,6 +117,9 @@ jobs:
       - name: Campaign status tests
         run: python3 scripts/test_quality/run_suite.py scripts/pr/test_campaign_status.py
 
+      - name: Campaign tests
+        run: python3 scripts/test_quality/run_suite.py scripts/pr/test_campaign.py
+
       - name: Suite runner tests
         run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_run_suite.py
 

@@ -98,13 +98,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ViewportHeightClass_When_Parsed_Then_DeclinesAsUnsupportedUnit()
+        public void Given_ViewportHeightClass_When_Parsed_Then_ItIsClaimedAsAHeight()
         {
-            // Act — vh/vw need the panel viewport and are not yet supported, so the class stays unrecognized.
-            var ok = StyleArbitraryValueResolver.TryParse("h-[50vh]", out _);
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("h-[50vh]", out var s);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That((ok, s.Property), Is.EqualTo((true, ArbitraryProperty.Height)));
         }
 
         #endregion

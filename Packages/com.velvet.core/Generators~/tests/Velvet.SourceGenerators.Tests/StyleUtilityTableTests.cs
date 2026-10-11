@@ -48,6 +48,27 @@ namespace Velvet.SourceGenerators.Tests
             Assert.Equal(new[] { "overflow", "text-overflow", "white-space" }, properties);
         }
 
+        [Theory]
+        [InlineData(".h-full { height: 100%; }", "h-full", "height", "")]
+        [InlineData(".h-auto { height: auto; }", "h-auto", "", "height")]
+        [InlineData(".h-4 { height: 16px; }", "h-4", "", "")]
+        [InlineData(".h-4 { height: var(--space-4); }", "h-4", "", "")]
+        [InlineData(".size-full { width: 100%; height: 100%; }", "size-full", "height,width", "")]
+        [InlineData(".m-auto { margin: 0 auto; }", "m-auto", "", "")]
+        [InlineData(".h-4 { height: 16px; } .h-full { height: 100%; }", "h-full", "height", "")]
+        public void Given_ADeclaredValue_When_TheTableIsDerived_Then_ItsKindIsRecordedPerLonghand(
+            string uss, string className, string percentages, string keywords)
+        {
+            // Arrange
+            var table = StyleTableTestHelper.Load(StyleTableTestHelper.Derive(StyleSheetInput.Uss(uss)));
+
+            // Act
+            var kinds = string.Join(",", table.PercentagesOf(className)) + "|" + string.Join(",", table.KeywordsOf(className));
+
+            // Assert
+            Assert.Equal(percentages + "|" + keywords, kinds);
+        }
+
         [Fact]
         public void Given_AClassWithNoRule_When_TheTableIsQueried_Then_TheLookupMisses()
         {
