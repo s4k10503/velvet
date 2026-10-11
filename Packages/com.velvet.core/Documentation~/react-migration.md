@@ -934,13 +934,14 @@ When you need to add USS beyond the existing `StyleUtilities.uss` / `_tokens.uss
 
 1. **Arbitrary value** — check whether you can express it with an arbitrary value such as `w-[120px]`
 2. **A PR adding a utility to the Velvet package** — if it is general-purpose, propose adding a token/utility
-3. **inline style (last resort)** — handle it with `refCallback` + `element.style.xxx = ...`
+3. **inline style (last resort)** — pass `styles: new StyleOverrides { ... }` for a value a class cannot express (a runtime texture or colour); write what `StyleOverrides` has no member for with `refCallback:` and `element.style.xxx = ...`
 
 | React | Velvet | Notes |
 |-------|--------|------|
 | Don't create `.css` files beyond `globals.css` | **No new `.uss`** | Project convention |
 | CSS Modules / styled-components | **Not adopted** | Intentionally excluded as it conflicts with the Tailwind philosophy |
-| `style={{ padding: 16 }}` (inline) | `refCallback` + `element.style.xxx` | An escape hatch. Use as a last resort |
+| `style={{ backgroundColor: c }}` (inline) | `styles: new StyleOverrides { BackgroundColor = c }` | Covers background image, repeat and nine-slice, background colour and text colour; see [styling-backgrounds.md](styling-backgrounds.md#styleoverrides). Use as a last resort |
+| `style={{ padding: 16 }}` (inline) | Class `p-4` or `p-[16px]`; for a property `StyleOverrides` has no member for, `refCallback:` + `element.style.xxx` | The imperative escape hatch. Use as a last resort |
 
 ---
 
