@@ -1166,6 +1166,10 @@ namespace Velvet
             var stepSec = pending.Playback!.Scale(dtSec);
             if (stepSec == 0f)
             {
+                if (pending.Spring != null)
+                {
+                    MotionSpringDriver.Halt(pending.Spring);
+                }
                 return;
             }
             pending.PlayTimeSec += stepSec;
@@ -1182,14 +1186,22 @@ namespace Velvet
             var inDelay = pending.PlayTimeSec < 0f;
             var timeSec = Math.Max(0f, pending.PlayTimeSec);
             var done = pending.Spring != null
-                ? MotionSpringDriver.SeekTo(element, pending.Spring, timeSec)
+                ? MotionSpringDriver.SeekTo(element, pending.Spring, timeSec, pending.Playback!.Scale(1f))
                 : BezierTweenDriver.SeekTo(element, pending.Bezier!, timeSec);
             return done && !inDelay;
         }
 
         private void Finish(VisualElement element, PendingAnimation pending)
         {
-            pending.Playback!.Untrack(pending);
+            // A play ending on its from-values stays registered holding them (FinishBezier, FinishSpring), so it
+            // stays listed for the cancel or the reseed that releases them.
+            var holdsFromValues = pending.Spring != null
+                ? MotionSpringDriver.EndsAtFrom(pending.Spring)
+                : BezierTweenDriver.EndsAtFrom(pending.Bezier!);
+            if (!holdsFromValues)
+            {
+                pending.Playback!.Untrack(pending);
+            }
             if (pending.Spring != null)
             {
                 FinishSpring(element, pending, pending.Spring);
@@ -1289,7 +1301,7 @@ namespace Velvet
         {
             if (pending.Spring != null)
             {
-                MotionSpringDriver.SeekTo(element, pending.Spring, 0f);
+                MotionSpringDriver.SeekTo(element, pending.Spring, 0f, timeScale: 0f);
             }
             else
             {

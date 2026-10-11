@@ -659,6 +659,29 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Undefined, false)));
         }
 
+        // An odd Reverse repeat ends on its from-values, which the play keeps inline and registered, so the
+        // playback must still list it for the cancel and the release to reach them.
+        [Test]
+        public void Given_AReverseRepeatPlayEndedOnItsFromValues_When_ThePlaybackCancelsAndReleasesItsPlays_Then_TheElementCarriesNoInlineOpacity()
+        {
+            // Arrange
+            var element = OnPanel("reversed");
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, s_hidden, s_visible, new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f,
+                BezierY2 = 1f, Repeat = 1f, RepeatType = TransitionRepeatType.Reverse,
+            }, playback: playback);
+            AdvancePast(2.5f);
+
+            // Act
+            playback.CancelPlays();
+            playback.ReleaseHeldPlays();
+
+            // Assert
+            Assert.That(element.style.opacity.keyword == StyleKeyword.Undefined, Is.False);
+        }
+
         // A reseed starts its plays on the playback before it releases the held ones the plays did not replace.
         [Test]
         public void Given_APlayACancelHolds_When_ThePlaybackStartsAPlayElsewhereAndThenReleasesItsHeldPlays_Then_TheHeldElementCarriesNoInlineOpacity()
