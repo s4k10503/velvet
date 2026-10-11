@@ -26,12 +26,17 @@ namespace Velvet.Tests
     /// on its first render, and refetches only once the result is as old as the stale time or the entry was
     /// invalidated. A result landing between a reader's render and its subscription re-renders it.</item>
     /// <item>An entry nothing reads is removed once it has gone unread for the longest garbage-collection time
-    /// a query asked for, by the next sweep — an invalidation or a subscription — and removing it cancels its
-    /// request. An entry something reads again, or still reads, is not removed, and a new entry for a key
+    /// a query asked for, by the next sweep — an invalidation or a subscription — unless a request of a function
+    /// taking no token is still in flight for it: then it stays, and readable, until a whole gcTime has passed since the request settled, a
+    /// gcTime of zero included. An entry something reads again, or still reads, is not removed, and a new entry for a key
     /// whose old entry was removed is not swept with it. An expired entry reads as absent before the sweep,
     /// and a reader mounting over it subscribes to a new entry, while one left by a reader in the commit that
     /// brings the next reader is handed over, whatever its gcTime — a keyed remount, and StrictMode's extra
-    /// cleanup and setup of a mounting reader's effects, which joins the request the first setup started.</item>
+    /// cleanup and setup of a mounting reader's effects, which joins the request of a function taking no token
+    /// that the first setup started.</item>
+    /// <item>The last reader leaving a request in flight cancels the token of a function taking one and puts
+    /// the entry back as it stood before the request, so a result arriving later lands nothing and the next
+    /// reader fetches afresh; a function taking no token runs on and lands its result.</item>
     /// <item>A key change requests the new key and releases the old key's entry, and the old key's request
     /// landing is never shown as the new key's data. Until the commit's effect moves the subscription, the
     /// old entry keeps the old key's query function. A change of client moves the query to the new one.</item>
@@ -75,6 +80,8 @@ namespace Velvet.Tests
         private static TimeSpan? s_staleTime;
         private static TimeSpan? s_gcTimeB;
         private static FetchMode s_mode;
+        private static bool s_takesToken;
+        private static bool s_replaceFunction;
         private static Action<CancellationToken>? s_onToken;
         private static QueryOptions<int>? s_badOptions;
         private static readonly List<string> s_fetched = new();
@@ -98,6 +105,8 @@ namespace Velvet.Tests
             s_staleTime = null;
             s_gcTimeB = null;
             s_mode = FetchMode.Pending;
+            s_takesToken = true;
+            s_replaceFunction = false;
             s_onToken = null;
             s_badOptions = null;
             s_client = NewClient();
@@ -183,6 +192,261 @@ namespace Velvet.Tests
             // Assert
             Assert.That((s_fetched.Count, s_tokens[1].IsCancellationRequested), Is.EqualTo((2, false)),
                 "Mounting is not an explicit refetch, so it joins the request in flight rather than starting over");
+        }
+
+        #endregion
+
+        #region The last reader leaving a request in flight
+
+        [Test]
+        public void Given_ARequestWhoseFunctionTakesTheToken_When_TheLastReaderLeaves_Then_TheTokenIsCancelled()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.True,
+                "v5 aborts the signal of a request when its last observer leaves, if the function read the signal");
+        }
+
+        [Test]
+        public void Given_ARequestWhoseFunctionTakesNoToken_When_TheLastReaderLeaves_Then_TheRequestLands()
+        {
+            // Arrange
+            s_takesToken = false;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+
+            // Act
+            s_sources[0].TrySetResult(7);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)?.Data, Is.EqualTo(7),
+                "v5 lets a request whose function never read the signal run on, and its result lands in the entry");
+        }
+
+        [Test]
+        public void Given_AFirstRequestWhoseFunctionTakesTheToken_When_TheLastReaderLeaves_Then_TheEntryIsPendingAndIdle()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            var entry = s_client.Peek<int>(Todos);
+            Assert.That((entry!.Status, entry.IsFetching), Is.EqualTo((QueryStatus.Pending, false)),
+                "Cancelling with revert puts the entry back as it was before the request, which is not fetching");
+        }
+
+        [Test]
+        public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+            Last(s_rendersA).Refetch();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            var entry = s_client.Peek<int>(Todos);
+            Assert.That((s_tokens[1].IsCancellationRequested, entry!.Status, entry.Data, entry.IsFetching),
+                Is.EqualTo((true, QueryStatus.Success, 1, false)),
+                "The refetch is cancelled and the data it would have replaced stays");
+        }
+
+        [Test]
+        public void Given_ACancelledRequest_When_ItsFunctionCompletesAfterwards_Then_TheEntryIsNotChanged()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+
+            // Act
+            s_sources[0].TrySetResult(7);
+
+            // Assert
+            var entry = s_client.Peek<int>(Todos);
+            Assert.That((entry!.Status, entry.Data), Is.EqualTo((QueryStatus.Pending, 0)),
+                "A request cancelled by its last reader leaving lands nothing");
+        }
+
+        [Test]
+        public void Given_ACancelledFirstRequest_When_AReaderMountsAgain_Then_ItStartsANewRequest()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+
+            // Act
+            Show(mounted);
+
+            // Assert
+            Assert.That(s_fetched.Count, Is.EqualTo(2), "The entry is pending again, so the next reader fetches it");
+        }
+
+        [Test]
+        public void Given_ARequestWithTwoReaders_When_OneLeavesAndThenTheOther_Then_TheTokenIsCancelledOnlyAtTheSecond()
+        {
+            // Arrange
+            var mounted = V.Mount(_root, V.Component(Pair, key: "pair"));
+            mounted.FlushEffectsForTest();
+            var token = s_tokens[0];
+            Hide(mounted);
+            var afterTheFirst = token.IsCancellationRequested;
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That((afterTheFirst, token.IsCancellationRequested), Is.EqualTo((false, true)),
+                "The request is cancelled when the last observer leaves, not the first");
+        }
+
+        [Test]
+        public void Given_TokenlessOptionsWhoseFunctionIsReplacedByOneTakingTheToken_When_TheLastReaderLeaves_Then_TheTokenIsCancelled()
+        {
+            // Arrange
+            s_takesToken = false;
+            s_replaceFunction = true;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.True,
+                "Whether a request is cancelled follows the function the options carry now, not the constructor that built them");
+        }
+
+        [Test]
+        public void Given_AFailedEntryRefetched_When_TheLastReaderLeaves_Then_ItsErrorIsBack()
+        {
+            // Arrange
+            using var mounted = FailedThenRefetched();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.Error?.Message, Is.EqualTo("failed"),
+                "Cancelling with revert restores the error the request found");
+        }
+
+        [Test]
+        public void Given_AFailedEntryRefetched_When_TheLastReaderLeaves_Then_ItsStatusIsError()
+        {
+            // Arrange
+            using var mounted = FailedThenRefetched();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.Status, Is.EqualTo(QueryStatus.Error),
+                "A first request that failed leaves the entry in Error when its refetch is cancelled");
+        }
+
+        [Test]
+        public void Given_DataSetByHandDuringARefetch_When_TheLastReaderLeaves_Then_TheDataTheRequestFoundIsBack()
+        {
+            // Arrange
+            using var mounted = MountInvalidatedRefetchThenSetByHand();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.Data, Is.EqualTo(1), "Revert puts back the data held when the request started");
+        }
+
+        [Test]
+        public void Given_DataSetByHandDuringAnInvalidatedRefetch_When_TheLastReaderLeaves_Then_TheEntryIsInvalidatedAgain()
+        {
+            // Arrange
+            using var mounted = MountInvalidatedRefetchThenSetByHand();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.IsInvalidated, Is.True,
+                "The entry was invalidated when the request started, and setting data cleared that");
+        }
+
+        [Test]
+        public void Given_DataSetByHandDuringARefetch_When_TheLastReaderLeaves_Then_TheDataIsAsOldAsItWas()
+        {
+            // Arrange
+            using var mounted = MountInvalidatedRefetchThenSetByHand();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.DataUpdatedAt, Is.EqualTo(TimeSpan.Zero),
+                "Revert puts back the time the held data landed");
+        }
+
+        [Test]
+        public void Given_DataSetByHandDuringAFirstRequest_When_TheLastReaderLeaves_Then_TheEntryHoldsNoData()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            s_client.SetQueryData(Todos, 5);
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos)!.HasData, Is.False, "The entry had no data when the request started");
+        }
+
+        [Test]
+        public void Given_ACancelledRequest_When_TheGcTimePassesAfterTheReaderLeft_Then_TheEntryIsCollected()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+
+            // Act
+            s_now = GcTime;
+            s_client.InvalidateQueries(Unrelated);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos), Is.Null,
+                "The request is gone, so nothing keeps the entry past its gcTime");
+        }
+
+        [Test]
+        public void Given_StrictModeAndATokenTakingFunction_When_AReaderMounts_Then_ItsSecondSubscriptionStartsANewRequest()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+            s_sources[1].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_fetched.Count, s_tokens[0].IsCancellationRequested, Last(s_rendersA).Data),
+                Is.EqualTo((2, true, 7)),
+                "The first setup's request is cancelled by the cleanup and the second setup fetches again, as v5 does");
         }
 
         #endregion
@@ -464,6 +728,7 @@ namespace Velvet.Tests
         {
             // Arrange — the refetch outlives the reader that started it, a new reader renders while it is in
             // flight, and it lands before that reader's subscription runs.
+            s_takesToken = false;
             s_staleTime = TimeSpan.FromMinutes(1);
             using var mounted = MountResolvedSolo(1);
             Last(s_rendersA).Refetch();
@@ -582,6 +847,7 @@ namespace Velvet.Tests
         {
             // Arrange — StrictMode runs a mounting component's effects, cleans them up and runs them again,
             // so the reader subscribes, leaves the entry with nobody reading it, and subscribes again.
+            s_takesToken = false;
             s_client = NewClient(TimeSpan.Zero);
             FiberStrictMode.Enabled = true;
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
@@ -592,8 +858,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_fetched.Count, s_tokens[0].IsCancellationRequested, Last(s_rendersA).Data),
-                Is.EqualTo((1, false, 7)),
+            Assert.That((s_fetched.Count, Last(s_rendersA).Data), Is.EqualTo((1, 7)),
                 "The resubscription takes the entry back, however short its gcTime, and joins its request");
         }
 
@@ -601,6 +866,7 @@ namespace Velvet.Tests
         public void Given_StrictModeAndTheDefaultGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest()
         {
             // Arrange
+            s_takesToken = false;
             FiberStrictMode.Enabled = true;
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
 
@@ -610,9 +876,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_fetched.Count, s_tokens[0].IsCancellationRequested, Last(s_rendersA).Data),
-                Is.EqualTo((1, false, 7)),
-                "The last reader leaving does not cancel the request, so the resubscription joins it");
+            Assert.That((s_fetched.Count, Last(s_rendersA).Data), Is.EqualTo((1, 7)),
+                "A request whose function takes no token is not cancelled by the last reader leaving, so the resubscription joins it");
         }
 
         [Test]
@@ -629,9 +894,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnUnreadEntryWithARequestInFlight_When_ItIsRemoved_Then_TheRequestIsCancelled()
+        public void Given_AnUnreadEntryWithARequestInFlight_When_ASweepRunsPastItsGcTime_Then_TheRequestStillLands()
         {
             // Arrange
+            s_takesToken = false;
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
             mounted.FlushEffectsForTest();
             Hide(mounted);
@@ -639,10 +905,127 @@ namespace Velvet.Tests
             // Act
             s_now = GcTime;
             s_client.InvalidateQueries(Unrelated);
+            s_sources[0].TrySetResult(7);
 
             // Assert
-            Assert.That(s_tokens[0].IsCancellationRequested, Is.True,
-                "Removing an entry cancels the request it still had in flight");
+            Assert.That(s_client.Peek<int>(Todos)?.Data, Is.EqualTo(7),
+                "An entry still fetching is not removed, as v5's optionalRemove reschedules the removal instead");
+        }
+
+        [Test]
+        public void Given_AnUnreadEntryWithARequestInFlight_When_ItIsReadPastItsGcTime_Then_ItIsStillThere()
+        {
+            // Arrange
+            s_takesToken = false;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+
+            // Act
+            s_now = GcTime;
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry, Is.Not.Null, "An entry fetching does not read as expired");
+        }
+
+        [Test]
+        public void Given_AnUnreadEntryWhoseRequestLandedPastItsGcTime_When_ReadJustBeforeAGcTimeSinceItLanded_Then_ItHoldsTheData()
+        {
+            // Arrange — unread from three minutes, a gcTime of five, and the request lands at nine.
+            using var mounted = MountUnreadAtThreeMinutesWhileFetching();
+            s_now = TimeSpan.FromMinutes(9);
+            s_sources[0].TrySetResult(7);
+
+            // Act
+            s_now = TimeSpan.FromMinutes(14) - TimeSpan.FromTicks(1);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry?.Data, Is.EqualTo(7),
+                "The request settling starts the removal over, a whole gcTime from then, as v5's scheduleGc does");
+        }
+
+        // GREEN_ON_BASE(characterization): the base has collected the entry since its first gcTime; this case pins that the removal a settled request starts over still comes, a gcTime after it settled.
+        [Test]
+        public void Given_AnUnreadEntryWhoseRequestLandedPastItsGcTime_When_AGcTimeHasPassedSinceItLanded_Then_ItIsCollected()
+        {
+            // Arrange
+            using var mounted = MountUnreadAtThreeMinutesWhileFetching();
+            s_now = TimeSpan.FromMinutes(9);
+            s_sources[0].TrySetResult(7);
+
+            // Act
+            s_now = TimeSpan.FromMinutes(14);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry, Is.Null, "A gcTime after the request settled, the entry is removed");
+        }
+
+        [Test]
+        public void Given_AnEntryUnreadFromZeroWhoseRequestLandsAtFour_When_ReadJustBeforeNine_Then_ItHoldsTheData()
+        {
+            // Arrange
+            using var mounted = MountUnreadAtZeroLandingAtFour();
+
+            // Act
+            s_now = TimeSpan.FromMinutes(9) - TimeSpan.FromTicks(1);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry?.Data, Is.EqualTo(7),
+                "The removal runs a gcTime from the settle, not at the gcTime since the entry went unread");
+        }
+
+        // GREEN_ON_BASE(characterization): the base has collected the entry since five; this case pins that the removal started over at the settle still comes at nine.
+        [Test]
+        public void Given_AnEntryUnreadFromZeroWhoseRequestLandsAtFour_When_ReadAtNine_Then_ItIsCollected()
+        {
+            // Arrange
+            using var mounted = MountUnreadAtZeroLandingAtFour();
+
+            // Act
+            s_now = TimeSpan.FromMinutes(9);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry, Is.Null, "A gcTime after the request settled, the entry is removed");
+        }
+
+        [Test]
+        public void Given_AnUnreadEntryWhoseRequestLandsExactlyAtItsGcTime_When_ReadAMinuteLater_Then_ItHoldsTheData()
+        {
+            // Arrange
+            using var mounted = MountUnreadAtThreeMinutesWhileFetching();
+            s_now = TimeSpan.FromMinutes(8);
+            s_sources[0].TrySetResult(7);
+
+            // Act
+            s_now = TimeSpan.FromMinutes(9);
+            var entry = s_client.Peek<int>(Todos);
+
+            // Assert
+            Assert.That(entry?.Data, Is.EqualTo(7), "A request in flight at the gcTime itself puts the removal off");
+        }
+
+        // GREEN_ON_BASE(characterization): with a gcTime of zero the base reads the entry as expired at once too; this case pins that a zero gcTime restarted at the settle still removes the entry at once.
+        [Test]
+        public void Given_AZeroGcTimeAndARequestInFlight_When_ItLandsAfterTheReaderLeft_Then_TheEntryIsCollected()
+        {
+            // Arrange
+            s_takesToken = false;
+            s_client = NewClient(TimeSpan.Zero);
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+            s_now = TimeSpan.FromSeconds(1);
+
+            // Act
+            s_sources[0].TrySetResult(7);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(Todos), Is.Null, "With a gcTime of zero the entry goes as soon as its request settles");
         }
 
         [Test]
@@ -932,10 +1315,28 @@ namespace Velvet.Tests
 
             // Act
             Last(s_rendersA).Refetch();
+            s_sources[2].TrySetResult(2);
 
             // Assert
             Assert.That(s_fetched.Count, Is.EqualTo(3),
                 "A query function's cancellation callback is reported, and the refetch that cancelled it still starts");
+        }
+
+        [Test]
+        public void Given_ARequestWhoseTokenCallbackThrows_When_TheLastReaderLeaves_Then_TheTokenIsCancelledAndTheThrowIsLogged()
+        {
+            // Arrange
+            s_onToken = token => token.Register(() => throw new InvalidOperationException("query-cancellation-threw"));
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            ContainedFailureLog.Expect<InvalidOperationException>("QueryClient", "query-cancellation-threw");
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.True,
+                "The application's callback on the token is reported like any other, and the request is cancelled");
         }
 
         [Test]
@@ -1138,7 +1539,7 @@ namespace Velvet.Tests
         public void Given_OptionsWithoutAFunction_When_AQueryRenders_Then_ItThrowsNamingTheFunction()
         {
             // Arrange
-            s_badOptions = new QueryOptions<int>(Todos, null!);
+            s_badOptions = new QueryOptions<int>(Todos, (Func<CancellationToken, VelvetTask<int>>)null!);
             LogAssert.Expect(LogType.Exception, new Regex("QueryOptions.QueryFn must not be null"));
 
             // Act
@@ -1166,7 +1567,11 @@ namespace Velvet.Tests
         private static QueryOptions<int> Options(params object[] parts)
         {
             var key = new QueryKey(parts);
-            return new QueryOptions<int>(key, token => Fetch(key, token))
+            var options = s_takesToken
+                ? new QueryOptions<int>(key, token => Fetch(key, token))
+                : new QueryOptions<int>(key, () => Fetch(key, default));
+            if (s_replaceFunction) options = options with { QueryFn = token => Fetch(key, token) };
+            return options with
             {
                 StaleTime = s_staleTime,
                 Retry = 0,
@@ -1196,6 +1601,26 @@ namespace Velvet.Tests
 
         private static T Last<T>(List<T> renders) => renders[renders.Count - 1];
 
+        private MountedTree FailedThenRefetched()
+        {
+            var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetException(new InvalidOperationException("failed"));
+            mounted.FlushStateForTest();
+            Last(s_rendersA).Refetch();
+            return mounted;
+        }
+
+        // The request in flight started over an invalidated entry holding 1, and a write then replaced it with 2 five minutes later.
+        private MountedTree MountInvalidatedRefetchThenSetByHand()
+        {
+            var mounted = MountResolvedSolo(1);
+            s_client.InvalidateQueries();
+            s_now = TimeSpan.FromMinutes(5);
+            s_client.SetQueryData(Todos, 2);
+            return mounted;
+        }
+
         private MountedTree MountResolvedSolo(int data)
         {
             var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
@@ -1217,6 +1642,27 @@ namespace Velvet.Tests
             s_now = GcTime;
             s_rendersA.Clear();
             s_rendersB.Clear();
+            return mounted;
+        }
+
+        private MountedTree MountUnreadAtZeroLandingAtFour()
+        {
+            s_takesToken = false;
+            var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+            s_now = TimeSpan.FromMinutes(4);
+            s_sources[0].TrySetResult(7);
+            return mounted;
+        }
+
+        private MountedTree MountUnreadAtThreeMinutesWhileFetching()
+        {
+            s_takesToken = false;
+            var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            s_now = TimeSpan.FromMinutes(3);
+            Hide(mounted);
             return mounted;
         }
 
