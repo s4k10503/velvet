@@ -3922,8 +3922,8 @@ def campaign_key(mutants, declared, project):
 LEDGER_SCHEMA = 1
 
 # A kill is recorded with at most this many of its behavioural killing cases, first by name. Each one
-# is a condition on reusing it, so recording every case a widely reaching mutant reddens would make
-# a kill that any edit to a test file voids.
+# is a condition on reusing it, so recording every case a widely reaching mutant reddens would tie the
+# kill to an edit in any of that many fixtures.
 MAX_RECORDED_KILLERS = 10
 
 REUSE_LAPSED = "not measured (the reused kill no longer stands)"
@@ -4145,8 +4145,8 @@ def reuse_report(mutants, reused, reasons, project):
 def write_ledger(path, mutants, reused, project):
     """What this campaign knows about each mutant it decided, for the next one to reuse.
 
-    A reused kill is carried as it stands, with the run that measured it. A mutant no shard recorded
-    and a reused kill that lapsed are left out: neither is a measurement.
+    A reused kill is carried as it stands, with the run that measured it. A mutant without a decided
+    verdict is left out: one no shard recorded, one that timed out, and a reused kill that lapsed.
     """
     run = os.environ.get("GITHUB_RUN_ID", "")
     index, text_readers = test_index(project), text_reading_fixtures(project)

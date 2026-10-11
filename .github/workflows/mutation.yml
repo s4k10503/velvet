@@ -451,8 +451,8 @@ jobs:
           { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
-      # Uploaded whatever the verdict was: a campaign that failed on a survivor is the one whose kills
-      # the next round reuses. What a ledger holds is checked against the tree that reads it.
+      # Uploaded whether the decision passed or failed: a campaign that failed on a survivor is the one
+      # whose kills the next round reuses. What a ledger holds is checked against the tree that reads it.
       - if: ${{ !cancelled() && needs.mutation-plan.outputs.reused == '' && hashFiles('Logs/mutation-ledger/ledger.json') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
