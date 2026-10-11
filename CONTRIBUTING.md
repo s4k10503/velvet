@@ -196,11 +196,11 @@ on nothing else, so every shard and every later run reads the same list.
 
 What the cap leaves out is not measured, and a survivor count is a statement about the mutants kept.
 `--list` prints the kept ones. A declaration that names an operator the cap dropped from its line
-(`MUTANT_SURVIVES(equivalent, logic)` over a line whose boundary flip was kept) is not stale when the
+(a survival declaration naming the logic operator over a line whose boundary flip was kept) is not stale when the
 kept mutant dies or is absent, because the mutant it described is no longer generated and there is
 nothing to measure it against; an unnamed declaration is not stale over a line with dropped mutants
 either. It does not answer a kept mutant of another operator that survives: that survivor stays
-`UNANSWERED` ("answers for 'logic', not for this") until the line is written so that its own
+unanswered ("answers for 'logic', not for this") until the line is written so that its own
 operator is the one kept — split the expression over lines. A declaration naming an operator the
 line never carried is refused.
 
@@ -269,13 +269,13 @@ a campaign key: one hash over six components, each printed beside it so a miss c
 | `mutated-files` | the full bytes of every file holding a mutant, comments included | a comment moves the lines the mutants sit on, and a reused pass is a stronger claim than a resumed kill, so it takes no comment-stripped form |
 | `test-sources` | every file whose path has a `Tests/` directory at any depth under the hashed roots (the package, `Assets/`, `ProjectSettings/`), and every file under `Packages/com.velvet.core/TestUtilities/` | what is asked of the mutants |
 | `build-inputs` | every other file the editor compiles or imports, outside a `~` directory and not markdown: the package's remaining sources, `.asmdef`s and plugins, `Assets/`, `ProjectSettings/`, `Packages/manifest.json` and `packages-lock.json` | a test that kills a mutant in one file can reach it through another, and an editor or analyzer change moves what compiles |
-| `declarations` | each `MUTANT_SURVIVES` the mutated files hold, with whether this branch wrote it | the declarations' `written_here` moves with the merge base |
+| `declarations` | each survival declaration the mutated files hold, with whether this branch wrote it | the declarations' `written_here` moves with the merge base |
 | `tool` | `mutation_check.py`, its operator tables and priority order, `mutation.yml`, and the scripts the shards run or import: `ci_mutation_shard.py`, `unity_running.py`, `schemata_tool.py`, `schemata/MutantSchemata.cs`, `ci/licensed_editor.py` and `ci/change_base.py` (`TOOL_FILES`) | a verdict is the tool's |
 
 The key is conservative on purpose: it hashes the mutated files, the test sources and the rest of
 what the editor compiles or imports, so an equal key means none of those files differs. It does not
 hash markdown (also inside the package), a directory ending in `~` (so `Generators~` sources, though
-the DLLs committed under `Runtime/Plugins/` are in), the root-level `Library`, `Temp` and `Logs`, which
+the DLLs committed under `Runtime/Plugins/` are in), the root-level `Library` and `Logs` and the Temp directory, which
 lie outside the hashed roots (a folder of those names inside a root is hashed), a workflow
 other than `mutation.yml`, a script outside `TOOL_FILES`, or what the registry serves behind the
 editor image's tag (the tag itself is written in `mutation.yml`). The fixtures that read
