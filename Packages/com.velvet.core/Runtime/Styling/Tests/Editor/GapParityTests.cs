@@ -1030,8 +1030,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_UnknownSpaceSuffix_When_Parsed_Then_DeclinesToParse()
         {
-            // Act — a suffix outside the --space-* scale is not a recognized gap utility.
-            var ok = StyleGapClass.TryParse("space-x-999", out _, out _);
+            // Act — a suffix that is no multiple of 0.25 is not a recognized gap utility.
+            var ok = StyleGapClass.TryParse("space-x-9.9", out _, out _);
 
             // Assert
             Assert.That(ok, Is.False);

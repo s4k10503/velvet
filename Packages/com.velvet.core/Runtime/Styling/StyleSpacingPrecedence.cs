@@ -70,7 +70,8 @@ namespace Velvet
         // beside rewritten to its inline form (pt-2 as pt-[8px], mx-auto as mx-[auto], w-full as w-[100%]), and
         // each logical utility dropped for the physical one of its own side (ps-13 beside pl-2: Tailwind sorts
         // padding-inline-start ahead of padding-left, so the physical one holds the side whichever is written
-        // first); tokens itself when neither applies. Tokens are grouped by importance and by the set of their
+        // first), the physical one written inline when it is a stylesheet class so that it is not left to a rule
+        // the logical token's removal no longer has anything to outrank; tokens itself when neither applies. Tokens are grouped by importance and by the set of their
         // variants, so `sm:p-13 sm:pt-2` is judged apart from `p-13 pt-2`, and `hover:focus:` is `focus:hover:`.
         internal static string[] Normalize(string[] tokens)
         {
@@ -89,9 +90,24 @@ namespace Velvet
             List<int>? dropped = null;
             foreach (var reading in readings)
             {
-                if (reading.Logical && readings.Exists(other => !other.Logical && SameSlot(reading, other)))
+                // Behind a variant the rule keys already order a logical utility ahead of the physical one of its side
+                // (StyleRuleOrder), so only the base layer, whose keys tie, needs this.
+                if (!reading.Logical || reading.Variants.Length != 0)
                 {
-                    (dropped ??= new List<int>()).Add(reading.Index);
+                    continue;
+                }
+                var physical = readings.FindIndex(other => !other.Logical && SameSlot(reading, other));
+                if (physical < 0)
+                {
+                    continue;
+                }
+                (dropped ??= new List<int>()).Add(reading.Index);
+                // The physical class stays, and is written inline like the pair it would otherwise be one of: a
+                // sheet rule is the one layer the logical token's removal would leave unable to hold the side.
+                if (readings[physical].Backed)
+                {
+                    rewritten ??= (string[])tokens.Clone();
+                    rewritten[readings[physical].Index] = Inlined(readings[physical]);
                 }
             }
             foreach (var candidate in readings)

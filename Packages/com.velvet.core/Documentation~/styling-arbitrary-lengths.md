@@ -150,7 +150,8 @@ the logical utilities have ([react-migration.md](react-migration.md)).
 The rule is made where a shorthand and a longhand meet in one `className` string; these differ:
 - A logical utility (`ps-*`, `ms-*`, `start-*`, the block forms) beside the physical utility of its own side
   gives way to it, since Tailwind sorts `padding-inline-start` ahead of `padding-left`: `ps-13 pl-2` and
-  `pl-2 ps-13` leave the left at 8px, and the logical one is dropped from the list.
+  `pl-2 ps-13` leave the left at 8px, and the logical one is dropped from the list and the physical class
+  written inline. Behind a variant the rule keys already give the physical one the side.
 - A `V.Motion` pose overrides the node's own spacing, as Framer Motion's `animate` overrides `style`: a base
   `pt-[8px]` beside a pose `p-[52px]` leaves the top at 52px, the base token being left out while that pose
   applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-13` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.

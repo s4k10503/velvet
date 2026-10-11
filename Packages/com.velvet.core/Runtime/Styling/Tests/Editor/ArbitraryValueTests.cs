@@ -1230,7 +1230,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnOlderBaseLonghandAndLaterBaseShorthand_When_AnUpperLonghandClears_Then_TheBaseArrivalOrderIsRestored()
+        public void Given_AnOlderBaseLonghandAndLaterBaseShorthand_When_AnUpperLonghandClears_Then_TheBaseCascadeOrderIsRestored()
         {
             // Arrange
             var element = new VisualElement();
@@ -1269,7 +1269,7 @@ namespace Velvet.Tests
             Assert.That((upper, restored, released && !arrivals.ContainsKey(target),
                     survivorKept && arrivals[survivor] == survivingArrival && element.style.width.value.value == 5f,
                     registered, freshArrival, element.style.paddingTop.value.value),
-                Is.EqualTo((4f, 8f, true, true, 6f, true, 8f)));
+                Is.EqualTo((4f, 2f, true, true, 6f, true, 2f)));
         }
 
         // GREEN_ON_BASE(characterization): adding an unrelated class already leaves an unchanged inline token alone.
@@ -1303,7 +1303,7 @@ namespace Velvet.Tests
             // Assert
             var after = padding ? element.style.paddingTop.value.value : element.style.width.value.value;
             Assert.That((initial, before, after, element.style.height.value.value),
-                Is.EqualTo((padding ? 8f : 20f, 99f, 99f, height)));
+                Is.EqualTo((padding ? 2f : 20f, 99f, 99f, height)));
         }
 
         // GREEN_ON_BASE(characterization): active hover payloads already keep their rule priority after a class reorder.

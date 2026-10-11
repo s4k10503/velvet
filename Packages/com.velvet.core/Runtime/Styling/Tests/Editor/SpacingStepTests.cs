@@ -381,10 +381,9 @@ namespace Velvet.Tests
         [TestCase("size-[40px] w-full", "size-[40px] w-[100%]")]
         [TestCase("h-full size-13", "h-[100%] size-13")]
         [TestCase("hover:focus:pt-2 focus:hover:p-13", "hover:focus:pt-[8px] focus:hover:p-13")]
-        [TestCase("ps-13 pl-2", "pl-2")]
-        [TestCase("pl-2 ps-13", "pl-2")]
+        [TestCase("ps-13 pl-2", "pl-[8px]")]
+        [TestCase("pl-2 ps-13", "pl-[8px]")]
         [TestCase("ps-13 pl-[8px] flex", "pl-[8px] flex")]
-        [TestCase("hover:ps-13 hover:pl-2 ps-1", "hover:pl-2 ps-1")]
         [TestCase("size-13 w-4", "size-13 w-[16px]")]
         [TestCase("p-[52px] pt-2 flex", "p-[52px] pt-[8px] flex")]
         public void Given_AStylesheetClassBesideAnInlineShorthandOfItsFamily_When_ClassNamesAreParsed_Then_TheClassIsWrittenInline(
@@ -408,6 +407,7 @@ namespace Velvet.Tests
         [TestCase("!p-13 pt-2")]
         [TestCase("p-4 pt-2")]
         [TestCase("size-4 w-13")]
+        [TestCase("hover:ps-13 hover:pl-2")]
         public void Given_AClassListThatNeedsNoRewrite_When_ClassNamesAreParsed_Then_TheyAreAsWritten(string className)
         {
             // Act

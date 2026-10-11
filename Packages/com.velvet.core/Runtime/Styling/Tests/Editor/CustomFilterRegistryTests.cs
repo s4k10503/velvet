@@ -533,7 +533,7 @@ namespace Velvet.Tests
             // Assert — only the blur remains; the unregistered name's layer is gone.
             var f = el.style.filter.value;
             Assert.That((filterKept, padding, warnings, f.Count, f[0].type),
-                Is.EqualTo((true, reorder ? 8f : 2f, 0, 1, FilterFunctionType.Blur)));
+                Is.EqualTo((true, 2f, 0, 1, FilterFunctionType.Blur)));
         }
 
         // GREEN_ON_BASE(characterization): the base keyed the layer by rank alone, so its off-toggle matched; the
