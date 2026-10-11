@@ -116,9 +116,28 @@ and `leading-*` (an absolute line height; a named leading such as `leading-tight
 sign negates the margin, inset, translate and `space-*` utilities (`-mt-13`, `-top-4.5`), as in Tailwind;
 padding, sizing, `basis-*` and `gap-*` take none.
 
+What a step becomes depends on the utility. Padding, margin, sizing, `basis-*`, the insets and `translate-*`
+write an inline style, as a bracket value does, so they take part in variants, the `!` modifier and the
+cascade as `p-[52px]` does, and never enter the class list. `gap-*` and `space-*` are applied by the gap
+manipulator as inter-child margins ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)), and
+`leading-*` becomes a line-height tag in the text ([fonts.md](fonts.md)).
+
 The steps the bundled stylesheets declare — `0`, `px`, `0-5` … `3-5`, `4` … `12` and the larger ones up to
-`96`, written with `-` for `.` — stay USS classes. Any other step resolves inline from C#, the way a bracket
-value does, so it takes part in variants, the `!` modifier and the cascade as `p-[52px]` does, and it
-never enters the class list. `p-1.5` is therefore the inline twin of the `p-1-5` class, both 6px.
+`96`, written with `-` for `.` — stay USS classes in the box utilities above. `p-1.5` is therefore the inline
+twin of the `p-1-5` class, both 6px. A stylesheet of your own that declares a class named like a step it does
+not (`.w-100`, `.p-30`) is shadowed by the inline value.
+
+### A shorthand and its longhand
+
+Where two utilities of one family meet on an element, the longhand holds its side whichever comes first in
+`className`, as in Tailwind, which emits `padding` ahead of `padding-top`: `p-13 pt-2` and `pt-2 p-13` both
+leave the top at 8px and the other sides at 52px. The order is Tailwind's property order: the all-sides
+shorthand, then the axis (`px-*` / `py-*`, `inset-x-*` / `inset-y-*`), then a single side, and `size-*` ahead
+of `w-*` and `h-*`. It applies to padding, margin, the insets and `size-*` / `w-*` / `h-*`, at one priority —
+a variant or `!` outranks the plain utility as it does anywhere. A bracket value takes part the same way
+(`p-[52px] pt-2`). When an inline utility of the family stands beside a stylesheet class that is the
+narrower of the two, Velvet writes that class inline too, as its bracket form (`pt-2` as `pt-[8px]`), because
+an inline value would otherwise outrank it. That rewrite is made where a `className` string is split, so a
+class list assembled elsewhere is not rewritten.
 
 `z-<n>` takes any whole number the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).
