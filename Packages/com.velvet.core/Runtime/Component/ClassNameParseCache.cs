@@ -31,16 +31,11 @@ namespace Velvet
     // thread does not call back into Velvet.
     internal sealed class ClassNameParseCache
     {
-        // Reached through a delegate on purpose. The build-time weaver follows every call below each V.* factory
-        // and reads an open virtual dispatch anywhere under one as opaque, which leaves a component that calls a
-        // factory ahead of its hooks unmemoized; the spacing normalizer parses lengths and so reaches one.
-        // CompilerILPostProcessorE2ETests pins that such a component stays woven.
-        private static readonly Func<string[], string[]> s_normalize = StyleSpacingPrecedence.Normalize;
-
         internal const int ProbationGenerationSize = 128;
         internal const int FirstSightingsPerWindow = 2048;
         private const int InitialCacheCapacity = 256;
 
+        private Func<string[], string[]>? _normalize;
         private Dictionary<string, string[]> _current = new(InitialCacheCapacity);
         private Dictionary<string, string[]> _previous = new(InitialCacheCapacity);
         private Dictionary<string, string[]> _probationCurrent = new(ProbationGenerationSize);
@@ -64,7 +59,15 @@ namespace Velvet
                 return tokens;
             }
 
-            tokens = s_normalize(classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            // Reached through a delegate on purpose. The build-time weaver follows every call below each V.* factory
+            // and reads an open virtual dispatch anywhere under one as opaque, which leaves a component that calls a
+            // factory ahead of its hooks unmemoized; the spacing normalizer parses lengths and so reaches one.
+            // CompilerILPostProcessorE2ETests pins that such a component stays woven. The delegate is made here, at
+            // the first parse, where the direct call used to first reach the normalizer, and not in a static
+            // initializer: made there, it left the ordering and spacing utilities resolving as they did without
+            // this change.
+            _normalize ??= StyleSpacingPrecedence.Normalize;
+            tokens = _normalize(classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries));
             var hash = classNames.GetHashCode();
             if (_seenRecent.Contains(hash) || _seenOlder.Contains(hash))
             {
