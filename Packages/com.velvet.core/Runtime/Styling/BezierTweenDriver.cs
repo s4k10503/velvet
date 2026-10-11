@@ -95,6 +95,9 @@ namespace Velvet
         // DurationSec is one pass; ElapsedSec counts from the play's start across every pass Repeat adds.
         public float DurationSec;
         public float ElapsedSec;
+        // Set by a seek to the start of the run, cleared by the next step: a channel of no duration then still shows
+        // its From where it would otherwise land, since the play has not advanced past its start.
+        public bool SeekedToStart;
         public MotionRepeat Repeat;
 
         // Set for a Tween a mount's clock drives (StyleAnimationScheduler.StartDrivenTween): the curve UI Toolkit
@@ -248,6 +251,22 @@ namespace Velvet
             ApplyEased(element, state);
         }
 
+        /// <summary>
+        /// Takes back the all-slots suspension a driven Tween's <see cref="ApplyCurrentValues"/> put in place, leaving
+        /// the one its channels alone call for, for a play held after a cancel: the element's other transitions run
+        /// again while the hold lasts.
+        /// </summary>
+        public static void NarrowSuspension(VisualElement element, BezierTweenState state)
+        {
+            if (!state.Easing.HasValue)
+            {
+                return;
+            }
+            MotionNativeTransitionGuard.Release(element, state);
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state),
+                MotionNativeTransitionGuard.LengthLonghands(element, element, state.Lengths, static channel => channel.Property));
+        }
+
         private static void SyncLayoutOwner(VisualElement element, BezierTweenState state)
             => state.NativeLayoutOwner = MotionNativeTransitionGuard.SyncLayoutOwner(element, state,
                 state.NativeLayoutOwner, state.Lengths, static channel => channel.Property, DrivenSlots(state));
@@ -275,6 +294,7 @@ namespace Velvet
             if (dtSec > 0f)
             {
                 state.ElapsedSec = state.Repeat.Fold(state.ElapsedSec + dtSec, state.DurationSec);
+                state.SeekedToStart = false;
             }
             ApplyEased(element, state);
             return state.ElapsedSec >= state.EndSec;
@@ -282,6 +302,28 @@ namespace Velvet
 
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).
         public static bool EndsAtFrom(BezierTweenState state) => state.Repeat.EndsAtFrom;
+
+        /// <summary>
+        /// Writes the tween at <paramref name="timeSec"/> into its run, earlier or later than where it stands, and
+        /// reports whether that time has reached <see cref="BezierTweenState.EndSec"/>. A play on a <c>MotionPlayback</c> is driven by
+        /// this, and a cancel of one writes it at time 0.
+        /// </summary>
+        public static bool SeekTo(VisualElement element, BezierTweenState state, float timeSec)
+        {
+            state.ElapsedSec = Mathf.Max(0f, timeSec);
+            state.SeekedToStart = timeSec <= 0f;
+            ApplyEased(element, state);
+            return state.ElapsedSec >= state.EndSec;
+        }
+
+        /// <summary>The bezier sibling of <see cref="MotionSpringDriver.StartValues"/>.</summary>
+        public static MotionSpringClassParser.SpringPlan StartValues(BezierTweenState state)
+            => MotionSpringClassParser.Holding(
+                (state.Opacity?.From, state.TranslateX?.From, state.TranslateY?.From, state.Scale?.From,
+                    state.Rotate?.From),
+                state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
+                state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property, l.Value.From,
+                    l.Value.From, l.Unit));
 
         /// <summary>
         /// Releases every inline slot this state ever wrote — and the transition suspension
@@ -344,6 +386,13 @@ namespace Velvet
             StyleAnimateDriver.HoldAgainstLoop(element, state, DrivenSlots(state));
             StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));
             SyncLayoutOwner(element, state);
+        }
+
+        // The bezier sibling of MotionSpringDriver.HoldTranslate.
+        public static void HoldTranslate(BezierTweenState state, float x, float y)
+        {
+            state.TranslateX = new BezierTweenChannel(x, x);
+            state.TranslateY = new BezierTweenChannel(y, y);
         }
 
         /// <summary>
@@ -425,7 +474,7 @@ namespace Velvet
         // every channel taking it.
         private static float Eased(BezierTweenState state, BezierTweenChannel channel, float shared)
             => channel.Timing is { } own
-                ? UssEasing.Evaluate(own.Easing, Progress(state.ElapsedSec - own.DelaySec, own.DurationSec))
+                ? UssEasing.Evaluate(own.Easing, Progress(state, state.ElapsedSec - own.DelaySec, own.DurationSec))
                 : shared;
 
         // A zero duration reads as complete once its delay has passed rather than dividing by zero — the scheduler
@@ -434,7 +483,7 @@ namespace Velvet
         private static float SharedEased(BezierTweenState state)
         {
             return state.Easing is { } mode
-                ? UssEasing.Evaluate(mode, Progress(state.ElapsedSec - state.DelaySec, state.DurationSec))
+                ? UssEasing.Evaluate(mode, Progress(state, state.ElapsedSec - state.DelaySec, state.DurationSec))
                 : RepeatedBezierFraction(state);
         }
 
@@ -445,7 +494,7 @@ namespace Velvet
         {
             if (state.DurationSec <= 0f)
             {
-                return CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, 1f);
+                return state.SeekedToStart ? 0f : CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, 1f);
             }
             if (state.ElapsedSec >= state.EndSec)
             {
@@ -457,8 +506,9 @@ namespace Velvet
             return mirrored ? 1f - eased : eased;
         }
 
-        private static float Progress(float activeSec, float durationSec)
-            => durationSec > 0f ? Mathf.Clamp01(activeSec / durationSec) : activeSec >= 0f ? 1f : 0f;
+        private static float Progress(BezierTweenState state, float activeSec, float durationSec)
+            => durationSec > 0f ? Mathf.Clamp01(activeSec / durationSec)
+                : (state.SeekedToStart ? activeSec > 0f : activeSec >= 0f) ? 1f : 0f;
 
         private static void ApplyEased(VisualElement element, BezierTweenState state)
         {

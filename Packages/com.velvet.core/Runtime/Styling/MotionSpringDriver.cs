@@ -323,19 +323,27 @@ namespace Velvet
         public static bool Step(VisualElement element, MotionSpringState state, float dtSec)
         {
             state.ElapsedSec += dtSec;
+            return SampleAll(element, state, dtSec, seekScale: null);
+        }
+
+        // dtSec is the time since the channels were last sampled, which a stepped play's velocity divides by.
+        // seekScale is set for a play sampled at a time: its velocity is then the curve's slope at that time,
+        // times seekScale.
+        private static bool SampleAll(VisualElement element, MotionSpringState state, float dtSec, float? seekScale)
+        {
             var settled = true;
-            if (state.Opacity != null) settled &= SampleRepeating(state, state.Opacity, dtSec);
-            if (state.TranslateX != null) settled &= SampleRepeating(state, state.TranslateX, dtSec);
-            if (state.TranslateY != null) settled &= SampleRepeating(state, state.TranslateY, dtSec);
-            if (state.Scale != null) settled &= SampleRepeating(state, state.Scale, dtSec);
-            if (state.Rotate != null) settled &= SampleRepeating(state, state.Rotate, dtSec);
+            if (state.Opacity != null) settled &= SampleRepeating(state, state.Opacity, dtSec, seekScale);
+            if (state.TranslateX != null) settled &= SampleRepeating(state, state.TranslateX, dtSec, seekScale);
+            if (state.TranslateY != null) settled &= SampleRepeating(state, state.TranslateY, dtSec, seekScale);
+            if (state.Scale != null) settled &= SampleRepeating(state, state.Scale, dtSec, seekScale);
+            if (state.Rotate != null) settled &= SampleRepeating(state, state.Rotate, dtSec, seekScale);
             if (state.Colors != null)
             {
-                foreach (var color in state.Colors) settled &= SampleRepeating(state, color.Progress, dtSec);
+                foreach (var color in state.Colors) settled &= SampleRepeating(state, color.Progress, dtSec, seekScale);
             }
             if (state.Lengths != null)
             {
-                foreach (var length in state.Lengths) settled &= SampleRepeating(state, length.Value, dtSec);
+                foreach (var length in state.Lengths) settled &= SampleRepeating(state, length.Value, dtSec, seekScale);
             }
 
             // Every channel's Integrator.Value was just sampled above; re-applying them is exactly what the initial
@@ -350,31 +358,56 @@ namespace Velvet
         // released with the opposite velocity, and a channel past its last pass holds the value
         // MotionRepeat.EndsAtFrom names, so a play that does not repeat ends when its pass does, as its play span
         // says. Every channel reaching that end is the play's settle. The integrator takes each sample, with the
-        // velocity since the last, which is what an interruption releases the next spring with; the scheduler's tick
+        // velocity on screen, which is what an interruption releases the next spring with; the scheduler's tick
         // and pre-roll step by a positive time, which that velocity divides by.
-        private static bool SampleRepeating(MotionSpringState state, SpringChannel channel, float dtSec)
+        private static bool SampleRepeating(MotionSpringState state, SpringChannel channel, float dtSec, float? seekScale)
         {
             var previous = channel.Integrator.Value;
-            var ended = state.ElapsedSec >= state.Repeat.TotalSec(channel.PassSec);
-            float value;
+            var value = ValueAt(state, channel, state.ElapsedSec, out var ended);
+            float velocity;
             if (ended)
             {
-                value = state.Repeat.EndsAtFrom ? channel.Origin : channel.Target;
+                // A finished value has stopped, so an interruption after its end releases the next spring at rest.
+                velocity = 0f;
+            }
+            else if (seekScale is { } scale)
+            {
+                // The slope at the time, in the units of the clock the play is shown on: a step across the seek
+                // itself would average the whole jump, and a pause or a rate of zero leaves the value still.
+                var step = SeekSlopeStepSec;
+                // MUTANT_SURVIVES(equivalent, boundary): SeekTo is the only path here and stores a float widened to a double,
+                // and no float equals 1/1000, so the elapsed time is never exactly the step.
+                var from = state.ElapsedSec >= step ? state.ElapsedSec - step : state.ElapsedSec;
+                // MUTANT_SURVIVES(equivalent, boundary): the same comparison as the line above.
+                var to = state.ElapsedSec >= step ? state.ElapsedSec : state.ElapsedSec + step;
+                velocity = (ValueAt(state, channel, to, out _) - ValueAt(state, channel, from, out _))
+                    / (float)(to - from) * scale;
             }
             else
             {
-                // A spring that does not rest within 20 s has no pass to repeat, so it plays its first pass on.
-                var mirrored = false;
-                var passTime = float.IsPositiveInfinity(channel.PassSec)
-                    ? state.ElapsedSec
-                    : state.Repeat.PassTime(state.ElapsedSec, channel.PassSec, out mirrored);
-                value = mirrored
-                    ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, state)
-                    : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, state);
+                velocity = dtSec > 0f ? (value - previous) / dtSec : 0f;
             }
-            // A finished value has stopped, so an interruption after its end releases the next spring at rest.
-            channel.Integrator.Set(value, ended ? 0f : (value - previous) / dtSec);
+            channel.Integrator.Set(value, velocity);
             return ended;
+        }
+
+        private const double SeekSlopeStepSec = 1.0 / 1000.0;
+
+        private static float ValueAt(MotionSpringState state, SpringChannel channel, double elapsedSec, out bool ended)
+        {
+            ended = elapsedSec >= state.Repeat.TotalSec(channel.PassSec);
+            if (ended)
+            {
+                return state.Repeat.EndsAtFrom ? channel.Origin : channel.Target;
+            }
+            // A spring that does not rest within 20 s has no pass to repeat, so it plays its first pass on.
+            var mirrored = false;
+            var passTime = float.IsPositiveInfinity(channel.PassSec)
+                ? elapsedSec
+                : state.Repeat.PassTime(elapsedSec, channel.PassSec, out mirrored);
+            return mirrored
+                ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, state)
+                : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, state);
         }
 
         private static float SampleSpring(float from, float to, float scale, float velocity, double t,
@@ -492,6 +525,13 @@ namespace Velvet
             SyncLayoutOwner(element, state);
         }
 
+        // Holds translate at (x, y) from its next write on, the start values of a play CancelPlay holds.
+        public static void HoldTranslate(MotionSpringState state, float x, float y)
+        {
+            state.TranslateX = new SpringChannel(x, x);
+            state.TranslateY = new SpringChannel(y, y);
+        }
+
         internal static bool ReleasesProperty(VisualElement element, ArbitraryProperty property, StyleLonghandSet named)
         {
             if (!StyleArbitraryLonghands.Of(property).Overlaps(named))
@@ -518,6 +558,59 @@ namespace Velvet
                 Release(state, c, c.Integrator.Value, c.Integrator.Velocity);
             });
         }
+
+        /// <summary>
+        /// Puts the play at <paramref name="timeSec"/> into its run, earlier or later than where it stands, writes
+        /// every channel there, and reports whether that is settled — Framer Motion's spring generator sampled at a
+        /// time. A play on a <c>MotionPlayback</c> is driven by this. The velocity the channels keep is the curve's
+        /// slope there times <paramref name="timeScale"/>, the playback's seconds per second on screen.
+        /// </summary>
+        public static bool SeekTo(VisualElement element, MotionSpringState state, float timeSec, float timeScale = 1f)
+        {
+            state.ElapsedSec = Mathf.Max(0f, timeSec);
+            return SampleAll(element, state, 0f, timeScale);
+        }
+
+        /// <summary>
+        /// Leaves every channel still: what a play on a paused or stopped <c>MotionPlayback</c> shows, so an
+        /// interruption releases the next spring at rest.
+        /// </summary>
+        public static void Halt(MotionSpringState state)
+        {
+            HaltChannel(state.Opacity);
+            HaltChannel(state.TranslateX);
+            HaltChannel(state.TranslateY);
+            HaltChannel(state.Scale);
+            HaltChannel(state.Rotate);
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) HaltChannel(c.Progress);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) HaltChannel(l.Value);
+            }
+        }
+
+        private static void HaltChannel(SpringChannel? channel)
+        {
+            if (channel != null)
+            {
+                channel.Integrator.Set(channel.Integrator.Value, 0f);
+            }
+        }
+
+        /// <summary>
+        /// The values a play started from on each channel, as a plan of from-to pairs that both hold them: what
+        /// <c>StyleAnimationScheduler</c> starts the next play on a held element from.
+        /// </summary>
+        public static MotionSpringClassParser.SpringPlan StartValues(MotionSpringState state)
+            => MotionSpringClassParser.Holding(
+                (state.Opacity?.RestingTarget, state.TranslateX?.RestingTarget, state.TranslateY?.RestingTarget,
+                    state.Scale?.RestingTarget, state.Rotate?.RestingTarget),
+                state.Colors, static c => new MotionSpringClassParser.ColorChannelPlan(c.Property, c.From, c.From),
+                state.Lengths, static l => new MotionSpringClassParser.LengthChannelPlan(l.Property,
+                    l.Value.RestingTarget, l.Value.RestingTarget, l.Unit));
 
         /// <summary>
         /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref

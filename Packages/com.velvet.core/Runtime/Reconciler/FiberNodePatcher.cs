@@ -593,6 +593,8 @@ namespace Velvet
             }
 
             var childLabel = MotionVariantResolver.LabelForChildren(newNode, motionAmbient);
+            var playback = MotionVariantResolver.PlaybackForChildren(newNode,
+                _ctx.ComponentContextStack.Get(MotionContext.Playback));
             // Compare against the label THIS element propagated to children last time (not merely whether ITS
             // OWN classes changed — a "coordinator" Motion may propagate a label while carrying no Variants of
             // its own) to detect an ACTUAL change before (re-)establishing a fresh orchestration frame: a
@@ -621,7 +623,7 @@ namespace Velvet
                     ambientOrchestration, extraDelaySec, oldVariantClasses, newVariantClasses);
                 MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
                     MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
-                    childOrchestration);
+                    childOrchestration, playback);
                 try
                 {
                     PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
@@ -659,7 +661,7 @@ namespace Velvet
             {
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
                     playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap,
-                    appliedClasses: appliedNew);
+                    appliedClasses: appliedNew, playback: playback);
             }
             RemoveStaleInlineTokens(element, playedTransition, oldVariantClasses,
                 new MotionAppliedClassSet(appliedNew, newVariantClasses));
