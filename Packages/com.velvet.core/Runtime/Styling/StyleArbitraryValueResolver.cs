@@ -192,6 +192,13 @@ namespace Velvet
                 return false;
             }
 
+            if (!negate && valueSpan.SequenceEqual("auto".AsSpan()) && IsSpacingProperty(property)
+                && !IsPaddingProperty(property))
+            {
+                result = ArbitraryStyle.AutoLength(property);
+                return true;
+            }
+
             if (!TryParseValue(valueSpan, out var value, out var unit))
             {
                 return TryParseRelativeLength(property, valueSpan, negate, out result);
@@ -322,6 +329,59 @@ namespace Velvet
         }
 
         internal static bool IsSpacingProperty(ArbitraryProperty property) => s_spacingProperties.Contains(property);
+
+        // CSS padding takes no auto.
+        private static bool IsPaddingProperty(ArbitraryProperty property)
+            => property is ArbitraryProperty.Padding or ArbitraryProperty.PaddingX or ArbitraryProperty.PaddingY
+                or ArbitraryProperty.PaddingTop or ArbitraryProperty.PaddingRight
+                or ArbitraryProperty.PaddingBottom or ArbitraryProperty.PaddingLeft;
+
+        // A stylesheet class of a spacing family and the inline token that resolves to the same thing: a step
+        // becomes its pixel bracket, `auto` the bracket keyword (every family but padding) and `full` a
+        // hundred percent (the sizing families, whose rules are the only `full` the sheets declare in these
+        // families). The stylesheets declare no other name in them.
+        internal static bool TryReadStylesheetClass(string cls, out ArbitraryProperty property, out string inlineForm)
+        {
+            property = default;
+            inlineForm = string.Empty;
+            if (TryReadSpacingStep(cls, out var step, out var backed) && backed)
+            {
+                property = step.Property;
+                TryGetSpacingPrefix(property, out var stepPrefix);
+                inlineForm = stepPrefix + "[" + step.Value.ToString("R", CultureInfo.InvariantCulture) + "px]";
+                return true;
+            }
+            if (cls.Length < 4 || cls[0] == '-')
+            {
+                return false;
+            }
+            foreach (var (prefix, familyProperty, _) in s_spacingFamilies)
+            {
+                if (!cls.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                var name = cls.AsSpan(prefix.Length);
+                if (name.SequenceEqual("auto".AsSpan()) && !IsPaddingProperty(familyProperty))
+                {
+                    property = familyProperty;
+                    inlineForm = prefix + "[auto]";
+                    return true;
+                }
+                if (name.SequenceEqual("full".AsSpan()) && IsSizingProperty(familyProperty))
+                {
+                    property = familyProperty;
+                    inlineForm = prefix + "[100%]";
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsSizingProperty(ArbitraryProperty property)
+            => property is ArbitraryProperty.Width or ArbitraryProperty.Height or ArbitraryProperty.Size
+                or ArbitraryProperty.MinWidth or ArbitraryProperty.MinHeight
+                or ArbitraryProperty.MaxWidth or ArbitraryProperty.MaxHeight or ArbitraryProperty.FlexBasis;
 
         // The prefix (with its trailing '-') whose utility writes property.
         internal static bool TryGetSpacingPrefix(ArbitraryProperty property, out string prefix)

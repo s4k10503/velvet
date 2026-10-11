@@ -78,9 +78,11 @@ namespace Velvet
                 return parsed;
             }
 
-            var merged = new string[baseClasses.Length + parsed.Length];
-            Array.Copy(baseClasses, merged, baseClasses.Length);
-            Array.Copy(parsed, 0, merged, baseClasses.Length, parsed.Length);
+            // A pose overrides the node's own spacing, though a longhand outranks a shorthand in one class list.
+            var own = StyleSpacingPrecedence.WithoutOverriddenBase(baseClasses, parsed);
+            var merged = new string[own.Length + parsed.Length];
+            Array.Copy(own, merged, own.Length);
+            Array.Copy(parsed, 0, merged, own.Length, parsed.Length);
             return merged;
         }
 

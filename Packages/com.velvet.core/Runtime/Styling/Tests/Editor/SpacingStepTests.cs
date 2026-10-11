@@ -280,6 +280,8 @@ namespace Velvet.Tests
             "paddingLeft" => element.style.paddingLeft.value.value,
             "marginTop" => element.style.marginTop.value.value,
             "top" => element.style.top.value.value,
+            "left" => element.style.left.value.value,
+            "marginLeft" => element.style.marginLeft.value.value,
             "width" => element.style.width.value.value,
             _ => throw new System.ArgumentOutOfRangeException(nameof(side), side, null),
         };
@@ -298,6 +300,13 @@ namespace Velvet.Tests
         [TestCase("!p-13 !pt-2", "paddingTop", 8f)]
         [TestCase("!pt-2 !p-13", "paddingTop", 8f)]
         [TestCase("w-4 size-13", "width", 16f)]
+        [TestCase("ps-13 pl-2", "paddingLeft", 8f)]
+        [TestCase("pl-2 ps-13", "paddingLeft", 8f)]
+        [TestCase("pl-[8px] ps-13", "paddingLeft", 8f)]
+        [TestCase("ms-13 ml-2", "marginLeft", 8f)]
+        [TestCase("start-13 left-2", "left", 8f)]
+        [TestCase("p-13 ps-2", "paddingLeft", 8f)]
+        [TestCase("ps-2 p-13", "paddingLeft", 8f)]
         public void Given_AShorthandAndALonghandOfOneFamily_When_Reconciled_Then_TheLonghandHoldsItsSide(
             string className, string side, float expected)
         {
@@ -366,6 +375,16 @@ namespace Velvet.Tests
         [TestCase("!p-13 pt-2!", "!p-13 pt-[8px]!")]
         [TestCase("px-13 pl-2", "px-13 pl-[8px]")]
         [TestCase("p-13 py-1.5 pt-2", "p-13 py-1.5 pt-[8px]")]
+        [TestCase("m-13 mx-auto", "m-13 mx-[auto]")]
+        [TestCase("m-[8px] mt-auto", "m-[8px] mt-[auto]")]
+        [TestCase("size-13 w-full", "size-13 w-[100%]")]
+        [TestCase("size-[40px] w-full", "size-[40px] w-[100%]")]
+        [TestCase("h-full size-13", "h-[100%] size-13")]
+        [TestCase("hover:focus:pt-2 focus:hover:p-13", "hover:focus:pt-[8px] focus:hover:p-13")]
+        [TestCase("ps-13 pl-2", "pl-2")]
+        [TestCase("pl-2 ps-13", "pl-2")]
+        [TestCase("ps-13 pl-[8px] flex", "pl-[8px] flex")]
+        [TestCase("hover:ps-13 hover:pl-2 ps-1", "hover:pl-2 ps-1")]
         [TestCase("size-13 w-4", "size-13 w-[16px]")]
         [TestCase("p-[52px] pt-2 flex", "p-[52px] pt-[8px] flex")]
         public void Given_AStylesheetClassBesideAnInlineShorthandOfItsFamily_When_ClassNamesAreParsed_Then_TheClassIsWrittenInline(
@@ -396,6 +415,134 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", tokens), Is.EqualTo(className));
+        }
+
+        [Test]
+        public void Given_AutoMarginOnASideBesideAnInlineMarginShorthand_When_Reconciled_Then_TheSideIsAuto()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var tree = new VNode[] { V.Div("m-13 mx-auto") };
+
+            // Act
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(root.ElementAt(0).style.marginLeft.keyword, Is.EqualTo(StyleKeyword.Auto));
+        }
+
+        [Test]
+        public void Given_AutoMarginTopBesideABracketMarginShorthand_When_Reconciled_Then_TheTopIsAuto()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var tree = new VNode[] { V.Div("m-[8px] mt-auto") };
+
+            // Act
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(root.ElementAt(0).style.marginTop.keyword, Is.EqualTo(StyleKeyword.Auto));
+        }
+
+        [TestCase("size-13 w-full")]
+        [TestCase("size-[40px] w-full")]
+        public void Given_FullWidthBesideAnInlineSize_When_Reconciled_Then_TheWidthIsAllOfTheParent(string className)
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var tree = new VNode[] { V.Div(className) };
+
+            // Act
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            var width = root.ElementAt(0).style.width.value;
+            Assert.That((width.value, width.unit), Is.EqualTo((100f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_FullHeightWrittenBeforeAnInlineSize_When_Reconciled_Then_TheHeightIsAllOfTheParent()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var tree = new VNode[] { V.Div("h-full size-13") };
+
+            // Act
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            var height = root.ElementAt(0).style.height.value;
+            Assert.That((height.value, height.unit), Is.EqualTo((100f, LengthUnit.Percent)));
+        }
+
+        [TestCase("mx-[auto]", ArbitraryProperty.MarginX)]
+        [TestCase("w-[auto]", ArbitraryProperty.Width)]
+        [TestCase("basis-[auto]", ArbitraryProperty.FlexBasis)]
+        [TestCase("top-[auto]", ArbitraryProperty.Top)]
+        public void Given_AnAutoBracketOnAnAutoFamily_When_Parsed_Then_ResolvesTheAutoKeyword(
+            string className, object property)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var style);
+
+            // Assert
+            Assert.That((ok, style.Property, style.Auto), Is.EqualTo((true, (ArbitraryProperty)property, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base declines an auto bracket everywhere, and padding takes no auto.
+        // Dropping `IsPaddingProperty` from the bracket path accepts `p-[auto]` and reddens this.
+        [TestCase("p-[auto]")]
+        [TestCase("pt-[auto]")]
+        [TestCase("-mt-[auto]")]
+        public void Given_AnAutoBracketOnPaddingOrNegated_When_Parsed_Then_ItIsDeclined(string className)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [TestCase("pt-[8px]", "p-[52px]", 52f)]
+        [TestCase("pt-[8px]", "p-13", 52f)]
+        [TestCase("pt-2", "p-13", 52f)]
+        public void Given_ABaseLonghandAndAPoseShorthand_When_TheMotionMerges_Then_ThePoseHoldsTheTop(
+            string className, string pose, float expected)
+        {
+            // Arrange
+            var root = new VisualElement();
+            var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = pose };
+
+            // Act
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: className, variants: variants, animate: "on"));
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("leaf").style.paddingTop.value.value, Is.EqualTo(expected));
+        }
+
+        [TestCase("pt-[8px] flex", "p-[52px]", "flex")]
+        [TestCase("pt-[8px] pb-[8px]", "py-[52px]", "")]
+        [TestCase("ps-1", "p-13", "")]
+        [TestCase("p-[52px]", "pt-[8px]", "p-[52px]")]
+        [TestCase("pt-[8px]", "pt-[10px]", "pt-[8px]")]
+        [TestCase("pt-[8px]", "hover:p-[52px]", "pt-[8px]")]
+        [TestCase("!pt-[8px]", "p-[52px]", "!pt-[8px]")]
+        [TestCase("pt-[8px]", "flex", "pt-[8px]")]
+        [TestCase("pt-2", "p-[52px]", "pt-2")]
+        public void Given_BaseAndPoseClasses_When_TheBaseIsFilteredForThePose_Then_OnlyTheOverriddenSpacingGoes(
+            string baseClasses, string pose, string expected)
+        {
+            // Act
+            var kept = StyleSpacingPrecedence.WithoutOverriddenBase(
+                V.ParseClassNames(baseClasses), V.ParseClassNames(pose));
+
+            // Assert
+            Assert.That(string.Join(" ", kept), Is.EqualTo(expected));
         }
     }
 }

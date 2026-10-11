@@ -1137,8 +1137,8 @@ namespace Velvet.Tests
             var root = new VisualElement();
             var bang = important ? "!" : "";
             var extra = largeList ? " flex relative items-start justify-start overflow-hidden opacity-50 bg-red-500" : "";
-            // rounded-r and rounded-t share the top-right corner and Tailwind orders neither ahead of the other, so
-            // arrival decides it; a padding pair would not do, as its shorthand sorts ahead of its longhand.
+            // rounded-r and rounded-t share the top-right corner and StyleSpacingPrecedence ranks neither, so arrival
+            // decides it; a padding pair would not do, as its shorthand sorts ahead of its longhand.
             var padding = bang + "rounded-r-[8px]";
             var top = bang + "rounded-t-[2px]";
             var (oldClasses, newClasses, oldValue, newValue) = change switch

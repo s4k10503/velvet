@@ -1,7 +1,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 
 namespace Velvet
 {
@@ -11,9 +10,9 @@ namespace Velvet
     // side colour already is (StyleBorderSideColor.CompareCascade), instead of by which arrived last.
     //
     // A stylesheet class cannot take part: an inline value outranks every class on the element it sits on, so
-    // `p-13 pt-2` would paint 52px at the top with pt-2 a class. Normalize rewrites such a class into its
-    // bracket form (pt-2 becomes pt-[8px]) when an inline utility of an overlapping family stands beside it, so
-    // both are inline layers and the order above decides.
+    // `p-13 pt-2` would paint 52px at the top with pt-2 a class. Normalize rewrites such a class into an inline
+    // form (pt-2 becomes pt-[8px]) when an inline utility of an overlapping family stands beside it, so both
+    // are inline layers and the order above decides.
     internal static class StyleSpacingPrecedence
     {
         private static readonly int[] s_rank = BuildRanks();
@@ -68,65 +67,140 @@ namespace Velvet
         }
 
         // tokens with each stylesheet-backed spacing class that an inline utility of an overlapping family stands
-        // beside rewritten to its bracket form; tokens itself when none is. Variant tokens are grouped by their
-        // variants, so `sm:p-13 sm:pt-2` is judged apart from `p-13 pt-2`.
+        // beside rewritten to its inline form (pt-2 as pt-[8px], mx-auto as mx-[auto], w-full as w-[100%]), and
+        // each logical utility dropped for the physical one of its own side (ps-13 beside pl-2: Tailwind sorts
+        // padding-inline-start ahead of padding-left, so the physical one holds the side whichever is written
+        // first); tokens itself when neither applies. Tokens are grouped by importance and by the set of their
+        // variants, so `sm:p-13 sm:pt-2` is judged apart from `p-13 pt-2`, and `hover:focus:` is `focus:hover:`.
         internal static string[] Normalize(string[] tokens)
         {
             if (tokens.Length < 2)
             {
                 return tokens;
             }
-            // Almost every class list that reaches here has no stylesheet-backed spacing class beside an inline
-            // one, so the cheap reading of the backed ones goes first.
-            if (!HasStylesheetStep(tokens))
+            // Almost every class list that reaches here has no stylesheet-backed spacing class and no logical
+            // utility, so the cheap reading of those goes first.
+            if (!Array.Exists(tokens, IsStylesheetClassOrLogical))
             {
                 return tokens;
             }
+            var readings = ReadAll(tokens);
+            string[]? rewritten = null;
+            List<int>? dropped = null;
+            foreach (var reading in readings)
+            {
+                if (reading.Logical && readings.Exists(other => !other.Logical && SameSlot(reading, other)))
+                {
+                    (dropped ??= new List<int>()).Add(reading.Index);
+                }
+            }
+            foreach (var candidate in readings)
+            {
+                if (candidate.Backed && IsNarrowerThanAnInlineNeighbour(candidate, readings, dropped))
+                {
+                    rewritten ??= (string[])tokens.Clone();
+                    rewritten[candidate.Index] = Inlined(candidate);
+                }
+            }
+            if (dropped == null)
+            {
+                return rewritten ?? tokens;
+            }
+            var source = rewritten ?? tokens;
+            var kept = new List<string>(tokens.Length);
+            for (var i = 0; i < source.Length; i++)
+            {
+                if (!dropped.Contains(i))
+                {
+                    kept.Add(source[i]);
+                }
+            }
+            return kept.ToArray();
+        }
+
+        // baseClasses without the inline spacing tokens a pose of the same Motion overrides: a pose is Framer
+        // Motion's animate, which overrides the node's own style, so a base pt-[8px] must not outrank a pose's
+        // p-[52px] on the top edge as it would in one class list. A base token goes when the pose token's property
+        // contains everything it writes; baseClasses itself when none does.
+        internal static string[] WithoutOverriddenBase(string[] baseClasses, string[] pose)
+        {
+            if (baseClasses.Length == 0 || pose.Length == 0)
+            {
+                return baseClasses;
+            }
+            var poseReadings = ReadAll(pose);
+            if (poseReadings.Count == 0)
+            {
+                return baseClasses;
+            }
+            var overridden = new HashSet<int>();
+            foreach (var own in ReadAll(baseClasses))
+            {
+                if (!own.Backed && poseReadings.Exists(posed => Overrides(posed, own)))
+                {
+                    overridden.Add(own.Index);
+                }
+            }
+            if (overridden.Count == 0)
+            {
+                return baseClasses;
+            }
+            var kept = new List<string>(baseClasses.Length);
+            for (var i = 0; i < baseClasses.Length; i++)
+            {
+                if (!overridden.Contains(i))
+                {
+                    kept.Add(baseClasses[i]);
+                }
+            }
+            return kept.ToArray();
+        }
+
+        private static bool Overrides(Reading posed, Reading own)
+        {
+            if (posed.Property == own.Property || posed.Important != own.Important || posed.VariantSet != own.VariantSet)
+            {
+                return false;
+            }
+            var posedWritten = StyleArbitraryLonghands.Of(posed.Property);
+            return posedWritten.Union(StyleArbitraryLonghands.Of(own.Property)) == posedWritten;
+        }
+
+        private static List<Reading> ReadAll(string[] tokens)
+        {
             var readings = new List<Reading>();
-            var inline = false;
             for (var i = 0; i < tokens.Length; i++)
             {
                 if (TryRead(tokens[i], i, out var reading))
                 {
                     readings.Add(reading);
-                    inline |= !reading.Backed;
                 }
             }
-            if (!inline)
-            {
-                return tokens;
-            }
-            string[]? rewritten = null;
-            foreach (var candidate in readings)
-            {
-                if (candidate.Backed && IsNarrowerThanAnInlineNeighbour(candidate, readings))
-                {
-                    rewritten ??= (string[])tokens.Clone();
-                    rewritten[candidate.Index] = Bracketed(candidate);
-                }
-            }
-            return rewritten ?? tokens;
+            return readings;
         }
 
-        private static bool HasStylesheetStep(string[] tokens) => Array.Exists(tokens, IsStylesheetStep);
-
-        private static bool IsStylesheetStep(string token)
+        private static bool IsStylesheetClassOrLogical(string token)
         {
             var core = StyleArbitraryValueResolver.StripImportant(token, out _);
             var variantsLength = VariantsLength(core);
             var payload = variantsLength == 0 ? core : core.Substring(variantsLength);
-            return StyleArbitraryValueResolver.TryReadSpacingStep(payload, out _, out var backed) && backed;
+            return StyleArbitraryValueResolver.TryReadStylesheetClass(payload, out _, out _)
+                || StyleLogicalUtilities.SortPropertiesOf(payload) != null;
         }
 
         private readonly struct Reading
         {
             public int Index { get; init; }
             public string Variants { get; init; }
+            // The variants as a sorted set, so stacking order does not tell two tokens apart.
+            public string VariantSet { get; init; }
             public bool Important { get; init; }
             public bool TrailingBang { get; init; }
             public ArbitraryProperty Property { get; init; }
-            public float Pixels { get; init; }
+            // The inline token a stylesheet-backed class resolves to when it is rewritten.
+            public string InlineForm { get; init; }
             public bool Backed { get; init; }
+            public bool Logical { get; init; }
         }
 
         private static bool TryRead(string token, int index, out Reading reading)
@@ -141,12 +215,12 @@ namespace Velvet
             var variants = core.Substring(0, variantsLength);
             var payload = variantsLength == 0 ? core : core.Substring(variantsLength);
             var trailingBang = important && token[token.Length - 1] == '!';
-            if (StyleArbitraryValueResolver.TryReadSpacingStep(payload, out var step, out var backed))
+            if (StyleArbitraryValueResolver.TryReadStylesheetClass(payload, out var property, out var form))
             {
                 reading = new Reading
                 {
-                    Index = index, Variants = variants, Important = important, TrailingBang = trailingBang,
-                    Property = step.Property, Pixels = step.Value, Backed = backed,
+                    Index = index, Variants = variants, VariantSet = VariantSetOf(variants), Important = important,
+                    TrailingBang = trailingBang, Property = property, InlineForm = form, Backed = true,
                 };
                 return true;
             }
@@ -156,8 +230,9 @@ namespace Velvet
             {
                 reading = new Reading
                 {
-                    Index = index, Variants = variants, Important = important, TrailingBang = trailingBang,
-                    Property = style.Property, Pixels = style.Value, Backed = false,
+                    Index = index, Variants = variants, VariantSet = VariantSetOf(variants), Important = important,
+                    TrailingBang = trailingBang, Property = style.Property, InlineForm = string.Empty,
+                    Logical = StyleLogicalUtilities.SortPropertiesOf(payload) != null,
                 };
                 return true;
             }
@@ -187,16 +262,50 @@ namespace Velvet
             return length;
         }
 
+        // `hover:focus:` and `focus:hover:` name one rule's variants, so they compare as the same set.
+        private static string VariantSetOf(string variants)
+        {
+            if (variants.Length == 0)
+            {
+                return variants;
+            }
+            var parts = new List<string>();
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i < variants.Length; i++)
+            {
+                if (variants[i] == '[')
+                {
+                    depth++;
+                }
+                else if (variants[i] == ']')
+                {
+                    depth--;
+                }
+                else if (variants[i] == ':' && depth == 0)
+                {
+                    parts.Add(variants.Substring(start, i - start));
+                    start = i + 1;
+                }
+            }
+            parts.Sort(StringComparer.Ordinal);
+            return string.Join(":", parts);
+        }
+
+        private static bool SameSlot(Reading a, Reading z)
+            => a.Property == z.Property && a.Important == z.Important && a.VariantSet == z.VariantSet;
+
         // Whether an inline reading in the same variants and importance writes some of what candidate does
         // without candidate containing all of it: where candidate contains it the inline one is the narrower
         // utility and an inline value beating a class is already the order Tailwind gives.
-        private static bool IsNarrowerThanAnInlineNeighbour(Reading candidate, List<Reading> readings)
-            => readings.Exists(other => !other.Backed && Narrows(candidate, other));
+        private static bool IsNarrowerThanAnInlineNeighbour(Reading candidate, List<Reading> readings, List<int>? dropped)
+            => readings.Exists(other => !other.Backed && Narrows(candidate, other)
+                && (dropped == null || !dropped.Contains(other.Index)));
 
         private static bool Narrows(Reading candidate, Reading other)
         {
             if (other.Property == candidate.Property || other.Important != candidate.Important
-                || other.Variants != candidate.Variants)
+                || other.VariantSet != candidate.VariantSet)
             {
                 return false;
             }
@@ -205,12 +314,9 @@ namespace Velvet
             return written.Overlaps(otherWritten) && written.Union(otherWritten) != written;
         }
 
-        private static string Bracketed(Reading candidate)
+        private static string Inlined(Reading candidate)
         {
-            StyleArbitraryValueResolver.TryGetSpacingPrefix(candidate.Property, out var prefix);
-            var pixels = candidate.Pixels.ToString("R", CultureInfo.InvariantCulture);
-            var payload = prefix + "[" + pixels + "px]";
-            var core = candidate.Variants + payload;
+            var core = candidate.Variants + candidate.InlineForm;
             if (!candidate.Important)
             {
                 return core;
