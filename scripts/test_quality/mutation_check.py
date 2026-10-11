@@ -3985,15 +3985,50 @@ def fixture_hashes(project, case, index):
     return {relative: hashlib.sha256(texts[relative].encode()).hexdigest() for relative in sorted(files)}
 
 
-TEST_ATTRIBUTE = re.compile(r"\[\s*(?:Test|TestCase|TestCaseSource|UnityTest|Theory|Property)\b")
+# An attribute list that holds a test attribute anywhere in it: `[Category("x"), Test]`,
+# `[Timeout(1), UnityTest]`, `[NUnit.Framework.Test]`.
+TEST_ATTRIBUTE = re.compile(
+    r"\[([^\]]*)\]")
+TEST_ATTRIBUTE_NAME = re.compile(
+    r"(?:^|,)\s*(?:[A-Za-z_]\w*\.)*(?:Test|TestCase|TestCaseSource|UnityTest|Theory|Property)\s*(?:\(|,|$)")
+
+# Unity writes a `.meta` beside every file, and one that holds a guid only moves with the file it
+# names. An assembly definition's or reference's is kept: other definitions resolve it by that guid.
+GUID_ONLY_META = re.compile(r"\.meta$")
+KEPT_META = (".asmdef.meta", ".asmref.meta")
+
+
+def declares_a_test(text):
+    return any(TEST_ATTRIBUTE_NAME.search(body) for body in TEST_ATTRIBUTE.findall(text))
 
 
 def is_test_support(relative, text):
     """Whether a test-side file supports fixtures rather than being one: the shared helpers, every
-    assembly definition and reference, data, and a `.cs` that declares no test or sets up a fixture."""
+    assembly definition and reference, data, and a `.cs` that declares no test or sets up a fixture.
+
+    `text` is the file's comment-free form, so a test attribute that is commented out declares nothing.
+    A `.meta` is not support unless it belongs to an assembly definition or reference: a new fixture
+    file brings its own, and that must not move what the existing fixtures' kills rest on.
+    """
+    if GUID_ONLY_META.search(relative):
+        return relative.endswith(KEPT_META)
     if relative.startswith(PACKAGE + "/TestUtilities/") or not relative.endswith(".cs"):
         return True
-    return not TEST_ATTRIBUTE.search(text) or "SetUpFixture" in text
+    return not declares_a_test(text) or "SetUpFixture" in text
+
+
+def support_digest(project, relatives):
+    """`files_digest` over the support files, with a C# file in its comment-free form so that a comment
+    edited in a shared helper moves nothing."""
+    parts = []
+    for relative in relatives:
+        path = project / relative
+        if relative.endswith(".cs"):
+            held = digestible(path.read_text(encoding="utf-8", errors="replace")).encode()
+        else:
+            held = path.read_bytes()
+        parts.append("{}:{}".format(relative, hashlib.sha256(held).hexdigest()))
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
 def context_digests(project):
@@ -4006,11 +4041,14 @@ def context_digests(project):
     holding no reusable kill.
     """
     tests, rest = key_inputs(project)
-    support = [relative for relative in tests
-               if is_test_support(relative, (project / relative).read_text(encoding="utf-8",
-                                                                           errors="replace")
-                                  if relative.endswith(".cs") else "")]
-    return {"build-inputs": files_digest(project, rest), "test-support": files_digest(project, support)}
+    support = []
+    for relative in tests:
+        text = ""
+        if relative.endswith(".cs"):
+            text = digestible((project / relative).read_text(encoding="utf-8", errors="replace"))
+        if is_test_support(relative, text):
+            support.append(relative)
+    return {"build-inputs": files_digest(project, rest), "test-support": support_digest(project, support)}
 
 
 def context_moved(recorded, current):

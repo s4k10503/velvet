@@ -9197,9 +9197,12 @@ class LedgerContextTests(unittest.TestCase):
 
     SUPPORT = "Packages/com.velvet.core/Runtime/Tests/Editor/Support.cs"
 
-    def reused_after(self, edit):
-        """The mutants reused from a ledger written before `edit` was made to the tree."""
+    def reused_after(self, edit, before=None):
+        """The mutants reused from a ledger written before `edit` was made to the tree, and the
+        reasons the others are measured; `before` shapes the tree the ledger is written over."""
         campaign = LedgerCampaign()
+        if before is not None:
+            before(campaign)
         campaign.write_fixture(self.SUPPORT, "Support", "Help")
         (campaign.project / self.SUPPORT).write_text("namespace Velvet.Tests\n{\n    internal static class "
                                                      "Support\n    {\n    }\n}\n")
@@ -9275,6 +9278,93 @@ class LedgerContextTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(reused, [1])
+
+    TESTS = "Packages/com.velvet.core/Runtime/Tests/Editor/"
+
+    def test_Given_ANewFixtureFileAndItsMeta_When_Decided_Then_TheOtherKillsAreStillReused(self):
+        # Arrange -- the test-only fix adds a fixture; Unity writes a .cs.meta beside it.
+        def edit(campaign):
+            self.append(self.TESTS + "NewTests.cs", "class NewTests { [Test] public void Case() { } }\n")(campaign)
+            self.append(self.TESTS + "NewTests.cs.meta", "guid: 0123\n")(campaign)
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    def test_Given_ACommentEditedInASharedHelper_When_Decided_Then_TheKillIsStillReused(self):
+        # Arrange
+        helper = "Packages/com.velvet.core/TestUtilities/Helper.cs"
+        before = self.append(helper, "class Helper { }\n")
+
+        # Act
+        reused, _ = self.reused_after(self.append(helper, "// a note\n"), before)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    def test_Given_AFixtureWhoseAttributeSharesAListOrIsOnlyUnityTest_When_Added_Then_TheKillIsStillReused(self):
+        # Arrange -- none of these is support, whatever else the attribute list holds.
+        def edit(campaign):
+            self.append(self.TESTS + "A.cs", "class A { [Category(\"x\"), Test] void C() { } }\n")(campaign)
+            self.append(self.TESTS + "B.cs", "class B { [Timeout(1), UnityTest] void C() { } }\n")(campaign)
+            self.append(self.TESTS + "C.cs", "class C { [TestCaseSource(\"s\")] void C() { } }\n")(campaign)
+            self.append(self.TESTS + "D.cs", "class D { [NUnit.Framework.Test] void C() { } }\n")(campaign)
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [1])
+
+    def test_Given_ASetUpFixtureFileAdded_When_Decided_Then_EveryKillLapses(self):
+        # Arrange
+        edit = self.append(self.TESTS + "Setup.cs", "[SetUpFixture] class Setup { [OneTimeSetUp] void S() { } [Test] void T() { } }\n")
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [])
+
+    def test_Given_AHelperWhoseTestAttributeIsCommentedOut_When_Added_Then_EveryKillLapses(self):
+        # Arrange
+        edit = self.append(self.TESTS + "Helper2.cs", "class Helper2 { // [Test]\n void Help() { } }\n")
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [])
+
+    def test_Given_ATestDataFileEdited_When_Decided_Then_EveryKillLapses(self):
+        # Arrange
+        edit = self.append(self.TESTS + "data.json", "{}\n")
+
+        # Act
+        reused, _ = self.reused_after(edit)
+
+        # Assert
+        self.assertEqual(reused, [])
+
+    def test_Given_APlanReusedUnderOneContext_When_TheVerdictReadsATreeWithOtherTestSupport_Then_TheKillLapses(self):
+        # Arrange
+        campaign = LedgerCampaign()
+        campaign.after_a_campaign()
+        campaign.plan()
+        reuse = str(campaign.project / "reuse.json")
+        campaign.run_over_diff("--launch-per-mutant", "--reuse", reuse, "--shard", "0/1", "--output",
+                               str(campaign.project / "edit"))
+        helper = campaign.project / "Packages/com.velvet.core/TestUtilities/Helper.cs"
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        helper.write_text("class Helper { }\n")
+
+        # Act
+        code = campaign.decide("--reuse", reuse)
+
+        # Assert
+        self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed), (1, True))
 
     def test_Given_APlanReusedUnderOneContext_When_TheVerdictReadsAnotherTree_Then_TheKillLapses(self):
         # Arrange -- a production file changed between the plan and the verdict.

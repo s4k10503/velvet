@@ -285,10 +285,13 @@ and `mutation_check.py --reuse-from` decides each mutant from the newest ledger 
 compiles or imports other than a test source, so an edit to any production file, stylesheet, assembly
 definition, project setting or package manifest, and a merged-in base that changed one, lapses every
 kill of the ledger. `test-support` hashes every test-side file that is not a fixture: everything under
-`Packages/com.velvet.core/TestUtilities/`, every assembly definition and reference, every non-C# file
-under a `Tests/` directory, and every C# file there that declares no test or declares a
-`SetUpFixture`. Any change to it lapses every kill of the ledger as well, and the plan's summary says
-which of the two moved. What stays reusable across a change is therefore a fixture file's: an edit
+`Packages/com.velvet.core/TestUtilities/`, every assembly definition and reference with its `.meta`,
+every other non-C# file under a `Tests/` directory except a `.meta` (a guid only, which a new fixture
+file brings along), and every C# file there that declares no test attribute or declares a
+`SetUpFixture`. A test attribute is read anywhere in an attribute list, in the file with its comments
+removed; a C# file is hashed that way too, so a comment edited in a helper moves nothing. Any other
+change to it lapses every kill of the ledger, and the plan's summary says which of the two moved.
+What stays reusable across a change is therefore a fixture file's: an edit
 to a fixture that killed nothing, or a comment in one that did.
 
 Everything else is measured: a survivor, a declared one included, a mutant no ledger holds, one on a
