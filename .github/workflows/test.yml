@@ -425,6 +425,8 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_change_base.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_reuse_verdict.py
+
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_job_timeouts.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_platform_base_red.py
