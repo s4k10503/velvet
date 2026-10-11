@@ -20,4 +20,4 @@
   the insets and `size-*` / `w-*` / `h-*`; a logical utility gives way to the physical one of its side; a
   `V.Motion` pose overrides the node's own spacing; and a spring or bezier play reads the same order. A
   stylesheet class that takes part is written inline, so it leaves the element's class list.
-- A margin, size, `basis-*` or inset takes `[auto]` (`mx-[auto]`).
+- A margin, `w-*`, `h-*`, `size-*`, `basis-*` or inset takes `[auto]` (`mx-[auto]`); padding and the minimum and maximum sizes take none.

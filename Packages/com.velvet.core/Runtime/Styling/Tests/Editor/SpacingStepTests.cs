@@ -484,6 +484,8 @@ namespace Velvet.Tests
         [TestCase("w-[auto]", ArbitraryProperty.Width)]
         [TestCase("basis-[auto]", ArbitraryProperty.FlexBasis)]
         [TestCase("top-[auto]", ArbitraryProperty.Top)]
+        [TestCase("size-[auto]", ArbitraryProperty.Size)]
+        [TestCase("inset-[auto]", ArbitraryProperty.Inset)]
         public void Given_AnAutoBracketOnAnAutoFamily_When_Parsed_Then_ResolvesTheAutoKeyword(
             string className, object property)
         {
@@ -494,12 +496,15 @@ namespace Velvet.Tests
             Assert.That((ok, style.Property, style.Auto), Is.EqualTo((true, (ArbitraryProperty)property, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base declines an auto bracket everywhere, and padding takes no auto.
-        // Dropping `IsPaddingProperty` from the bracket path accepts `p-[auto]` and reddens this.
+        // GREEN_ON_BASE(characterization): the base declines an auto bracket everywhere, and padding, a minimum and a maximum take none.
+        // Dropping the padding test from `TakesAuto` accepts `p-[auto]`, and dropping its minimum and maximum test
+        // accepts `max-w-[auto]`; either reddens this.
         [TestCase("p-[auto]")]
         [TestCase("pt-[auto]")]
         [TestCase("-mt-[auto]")]
-        public void Given_AnAutoBracketOnPaddingOrNegated_When_Parsed_Then_ItIsDeclined(string className)
+        [TestCase("max-w-[auto]")]
+        [TestCase("min-h-[auto]")]
+        public void Given_AnAutoBracketOnPaddingMinMaxOrNegated_When_Parsed_Then_ItIsDeclined(string className)
         {
             // Act
             var ok = StyleArbitraryValueResolver.TryParse(className, out _);
@@ -510,7 +515,6 @@ namespace Velvet.Tests
 
         [TestCase("pt-[8px]", "p-[52px]", 52f)]
         [TestCase("pt-[8px]", "p-13", 52f)]
-        [TestCase("pt-2", "p-13", 52f)]
         public void Given_ABaseLonghandAndAPoseShorthand_When_TheMotionMerges_Then_ThePoseHoldsTheTop(
             string className, string pose, float expected)
         {
@@ -523,6 +527,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(root.Q<VisualElement>("leaf").style.paddingTop.value.value, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): an inline pose shorthand already outranks a base class longhand, as the base has no rank.
+        // Rewriting the base class inline too, as the narrower of a pair, would hand the top to its longhand and redden it.
+        [Test]
+        public void Given_AClassBaseLonghandAndAnInlinePoseShorthand_When_TheMotionMerges_Then_ThePoseHoldsTheTop()
+        {
+            // Arrange
+            var root = new VisualElement();
+            var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "p-13" };
+
+            // Act
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "pt-2", variants: variants, animate: "on"));
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("leaf").style.paddingTop.value.value, Is.EqualTo(52f));
         }
 
         [TestCase("pt-[8px] flex", "p-[52px]", "flex")]
@@ -573,6 +593,8 @@ namespace Velvet.Tests
             Assert.That(root.Q<VisualElement>("leaf").style.paddingLeft.value.value, Is.EqualTo(52f));
         }
 
+        // GREEN_ON_BASE(characterization): a label that names no pose leaves the base as written, which the base does too.
+        // A merge that dropped the base without a pose to override it would redden this.
         [Test]
         public void Given_AnInlineBaseShorthandAndNoPoseNaming_When_TheMotionMerges_Then_TheBaseHoldsTheTop()
         {
@@ -619,6 +641,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", inlined), Is.EqualTo(expected));
+        }
+
+        // Every hold composes the applied set here, so a base token the pose overrides must stay out of it or
+        // the swap would play from the base's value instead of the held pose's.
+        [TestCase("pt-[8px]", "p-[10px]", "p-[52px]", "p-[52px]")]
+        [TestCase("pt-[8px] flex", "p-[10px]", "", "flex")]
+        [TestCase("pt-[8px]", "", "p-[52px]", "p-[52px]")]
+        [TestCase("p-[52px]", "pt-[10px]", "", "p-[52px]")]
+        public void Given_ABaseSpacingTokenAndAPoseOrHeldToken_When_AHoldComposesTheAppliedSet_Then_TheOverriddenBaseStaysOut(
+            string baseClasses, string variantClasses, string held, string expected)
+        {
+            // Act
+            var composed = FiberNodePatcher.ComposeWithHeldTokens(
+                V.ParseClassNames(baseClasses), V.ParseClassNames(variantClasses), V.ParseClassNames(held));
+
+            // Assert
+            Assert.That(string.Join(" ", composed), Is.EqualTo(expected));
         }
     }
 }

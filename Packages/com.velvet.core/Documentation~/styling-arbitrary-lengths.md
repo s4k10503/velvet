@@ -113,7 +113,7 @@ canonical decimal form is that many 4px steps, so `p-13` is 52px, `gap-4.5` 18px
 (`m-*`, `mx-*`, `ps-*`, …), `gap-*`, `space-x-*` / `space-y-*`, `w-*`, `h-*`, `size-*`, `min-*` / `max-*`
 width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-x-*` / `translate-y-*`,
 and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). A margin,
-size, `basis-*` or inset also takes `[auto]` (`mx-[auto]`), as it does `auto` unbracketed. A minus
+size, `basis-*` or inset also takes `[auto]` (`mx-[auto]`); padding and the minimum and maximum sizes take none. A minus
 sign negates the margin, inset, translate and `space-*` utilities (`-mt-13`, `-top-4.5`), as in Tailwind;
 padding, sizing, `basis-*` and `gap-*` take none.
 
@@ -147,14 +147,14 @@ the list are unchanged. And the rewrite writes the pixel value of the step as Ve
 stylesheet that redefines `--space-2` moves `pt-2` and leaves `pt-[8px]` where it was, the same limit as
 the logical utilities have ([react-migration.md](react-migration.md)).
 
-The rule holds only where the tokens meet in one `className` string:
+The rule is made where a shorthand and a longhand meet in one `className` string; these differ:
 - A logical utility (`ps-*`, `ms-*`, `start-*`, the block forms) beside the physical utility of its own side
   gives way to it, since Tailwind sorts `padding-inline-start` ahead of `padding-left`: `ps-13 pl-2` and
   `pl-2 ps-13` leave the left at 8px, and the logical one is dropped from the list.
 - A `V.Motion` pose overrides the node's own spacing, as Framer Motion's `animate` overrides `style`: a base
   `pt-[8px]` beside a pose `p-[52px]` leaves the top at 52px, the base token being left out while that pose
   applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-13` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.
-- A class list assembled outside a `className` string is not rewritten.
+- A class list assembled outside a `className` string, or beside a class list of another element, is not ordered this way.
 - Border radii are not ordered this way: `rounded-r-*` and `rounded-t-*` on one corner are left to whichever is
   written last.
 

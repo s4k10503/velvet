@@ -123,13 +123,17 @@ namespace Velvet
         // p-[52px] on the top edge as it would in one class list. A base token goes when the pose token's property
         // contains everything it writes, which includes the same property (a logical pose and the physical base of
         // its side share one layer slot); baseClasses itself when none does.
-        internal static string[] WithoutOverriddenBase(string[] baseClasses, string[] pose)
+        internal static string[] WithoutOverriddenBase(string[] baseClasses, string[] pose, string[]? morePose = null)
         {
-            if (baseClasses.Length == 0 || pose.Length == 0)
+            if (!MayHoldSpacing(pose) && (morePose == null || !MayHoldSpacing(morePose)) || !MayHoldSpacing(baseClasses))
             {
                 return baseClasses;
             }
             var poseReadings = ReadAll(pose);
+            if (morePose != null)
+            {
+                poseReadings.AddRange(ReadAll(morePose));
+            }
             if (poseReadings.Count == 0)
             {
                 return baseClasses;
@@ -157,12 +161,33 @@ namespace Velvet
             return kept.ToArray();
         }
 
+        // Whether any token can be a spacing utility, read without allocating for the many class lists that hold
+        // none: the Motion paths ask it of every pose on every render.
+        private static bool MayHoldSpacing(string[] tokens)
+        {
+            var any = false;
+            foreach (var token in tokens)
+            {
+                any = any || MayBeSpacing(token);
+            }
+            return any;
+        }
+
+        private static bool MayBeSpacing(string token)
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(token, out _);
+            var variantsLength = VariantsLength(core);
+            var payload = variantsLength == 0 ? core : core.Substring(variantsLength);
+            return StyleArbitraryValueResolver.StartsWithSpacingPrefix(payload)
+                || StyleLogicalUtilities.SortPropertiesOf(payload) != null;
+        }
+
         // pose with each stylesheet-backed spacing class that is the narrower of a pair with an inline base token
         // written inline (pt-2 as pt-[8px]), because a pose class would otherwise lose its side to the base's
         // inline shorthand; pose itself when none is.
         internal static string[] InlineNarrowerPose(string[] baseClasses, string[] pose)
         {
-            if (baseClasses.Length == 0 || pose.Length == 0)
+            if (baseClasses.Length == 0 || pose.Length == 0 || !MayHoldSpacing(pose) || !MayHoldSpacing(baseClasses))
             {
                 return pose;
             }
@@ -290,7 +315,9 @@ namespace Velvet
             return length;
         }
 
-        // `hover:focus:` and `focus:hover:` name one rule's variants, so they compare as the same set.
+        // `hover:focus:` and `focus:hover:` name one rule's variants, so plain ones compare as a set. An arbitrary
+        // selector variant (`[&>*]:`) is order-sensitive, as Tailwind reads `[&>*]:hover:` and `hover:[&>*]:` as
+        // different selectors, so those keep their order.
         private static string VariantSetOf(string variants)
         {
             if (variants.Length == 0)
@@ -298,6 +325,7 @@ namespace Velvet
                 return variants;
             }
             var parts = new List<string>();
+            var ordered = new List<string>();
             var depth = 0;
             var start = 0;
             for (var i = 0; i < variants.Length; i++)
@@ -312,12 +340,13 @@ namespace Velvet
                 }
                 else if (variants[i] == ':' && depth == 0)
                 {
-                    parts.Add(variants.Substring(start, i - start));
+                    var part = variants.Substring(start, i - start);
+                    (part.StartsWith("[", StringComparison.Ordinal) ? ordered : parts).Add(part);
                     start = i + 1;
                 }
             }
             parts.Sort(StringComparer.Ordinal);
-            return string.Join(":", parts);
+            return string.Join(":", parts) + "|" + string.Join(":", ordered);
         }
 
         private static bool SameSlot(Reading a, Reading z)

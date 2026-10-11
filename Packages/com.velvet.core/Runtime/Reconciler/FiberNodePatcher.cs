@@ -940,11 +940,15 @@ namespace Velvet
 
         // The base classes, then the variant's classes other than its inline-resolved ones, then the held
         // tokens: the variant tail stays last, where MotionVariantResolver.ResolveApplied puts it.
-        private static string[] ComposeWithHeldTokens(string[] baseClasses, string[] variantClasses,
+        //
+        // A base spacing token a pose or a held token overrides stays out, as it does in
+        // MotionVariantResolver.ResolveApplied, so a hold neither restores it under the held pose nor plays the
+        // swap from it. Every hold composes here, which is the one place that has to say so.
+        internal static string[] ComposeWithHeldTokens(string[] baseClasses, string[] variantClasses,
             string[] heldTokens)
         {
             var composed = new List<string>();
-            composed.AddRange(baseClasses);
+            composed.AddRange(StyleSpacingPrecedence.WithoutOverriddenBase(baseClasses, variantClasses, heldTokens));
             foreach (var cls in variantClasses)
             {
                 if (!TryGetInlineResolvedCore(cls, out _, out _))

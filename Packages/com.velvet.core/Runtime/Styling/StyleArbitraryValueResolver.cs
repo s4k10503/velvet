@@ -192,8 +192,7 @@ namespace Velvet
                 return false;
             }
 
-            if (!negate && valueSpan.SequenceEqual("auto".AsSpan()) && IsSpacingProperty(property)
-                && !IsPaddingProperty(property))
+            if (!negate && valueSpan.SequenceEqual("auto".AsSpan()) && TakesAuto(property))
             {
                 result = ArbitraryStyle.AutoLength(property);
                 return true;
@@ -330,16 +329,38 @@ namespace Velvet
 
         internal static bool IsSpacingProperty(ArbitraryProperty property) => s_spacingProperties.Contains(property);
 
-        // CSS padding takes no auto.
+        // The families whose longhand takes `auto`: CSS gives padding none, and a minimum or maximum none either (a
+        // maximum's unbounded value is none, which the setters write as StyleKeyword.None).
+        private static bool TakesAuto(ArbitraryProperty property)
+            => IsSpacingProperty(property) && !IsPaddingProperty(property)
+                && property is not (ArbitraryProperty.MinWidth or ArbitraryProperty.MinHeight
+                    or ArbitraryProperty.MaxWidth or ArbitraryProperty.MaxHeight);
+
         private static bool IsPaddingProperty(ArbitraryProperty property)
             => property is ArbitraryProperty.Padding or ArbitraryProperty.PaddingX or ArbitraryProperty.PaddingY
                 or ArbitraryProperty.PaddingTop or ArbitraryProperty.PaddingRight
                 or ArbitraryProperty.PaddingBottom or ArbitraryProperty.PaddingLeft;
 
+        // True when text begins with the prefix of a spacing family, ignoring a leading minus: the cheap test that
+        // a token can be a spacing utility, which allocates nothing.
+        internal static bool StartsWithSpacingPrefix(string text)
+        {
+            var body = text.AsSpan(text.Length > 0 && text[0] == '-' ? 1 : 0);
+            foreach (var (prefix, _, _) in s_spacingFamilies)
+            {
+                if (body.StartsWith(prefix.AsSpan()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // A stylesheet class of a spacing family and the inline token that resolves to the same thing: a step
-        // becomes its pixel bracket, `auto` the bracket keyword (every family but padding) and `full` a
-        // hundred percent (the sizing families, whose rules are the only `full` the sheets declare in these
-        // families). The stylesheets declare no other name in them.
+        // becomes its pixel bracket, `auto` the bracket keyword and `full` a hundred percent. Whether the sheets
+        // declare the class is read from StyleUtilityProperties, which is generated from them, so only a name
+        // with a rule counts: the sheets declare `-auto` for margins, size, width, height and basis and `-full`
+        // for sizes and basis, and nothing else in these families.
         internal static bool TryReadStylesheetClass(string cls, out ArbitraryProperty property, out string inlineForm)
         {
             property = default;
@@ -351,7 +372,7 @@ namespace Velvet
                 inlineForm = stepPrefix + "[" + step.Value.ToString("R", CultureInfo.InvariantCulture) + "px]";
                 return true;
             }
-            if (cls.Length < 4 || cls[0] == '-')
+            if (cls.Length < 4 || cls[0] == '-' || !StyleUtilityProperties.TryGet(cls, out _))
             {
                 return false;
             }
@@ -362,13 +383,13 @@ namespace Velvet
                     continue;
                 }
                 var name = cls.AsSpan(prefix.Length);
-                if (name.SequenceEqual("auto".AsSpan()) && !IsPaddingProperty(familyProperty))
+                if (name.SequenceEqual("auto".AsSpan()) && TakesAuto(familyProperty))
                 {
                     property = familyProperty;
                     inlineForm = prefix + "[auto]";
                     return true;
                 }
-                if (name.SequenceEqual("full".AsSpan()) && IsSizingProperty(familyProperty))
+                if (name.SequenceEqual("full".AsSpan()))
                 {
                     property = familyProperty;
                     inlineForm = prefix + "[100%]";
@@ -377,11 +398,6 @@ namespace Velvet
             }
             return false;
         }
-
-        private static bool IsSizingProperty(ArbitraryProperty property)
-            => property is ArbitraryProperty.Width or ArbitraryProperty.Height or ArbitraryProperty.Size
-                or ArbitraryProperty.MinWidth or ArbitraryProperty.MinHeight
-                or ArbitraryProperty.MaxWidth or ArbitraryProperty.MaxHeight or ArbitraryProperty.FlexBasis;
 
         // The prefix (with its trailing '-') whose utility writes property.
         internal static bool TryGetSpacingPrefix(ArbitraryProperty property, out string prefix)
