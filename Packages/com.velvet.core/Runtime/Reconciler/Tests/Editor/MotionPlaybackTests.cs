@@ -251,13 +251,14 @@ namespace Velvet.Tests
         }
 
         // Its from-value is already within the spring's rest distance of its target, so the first step it takes
-        // settles it, and none may be taken inside the delay.
+        // settles it, and none may be taken inside the delay. A translate stands for it: an opacity spring measures
+        // its pass over a normalized travel (MotionSpringDriver.Release), so it plays out whatever its distance.
         [Test]
         public void Given_ADelayedSpringPlayOnAPlaybackStartingAtRest_When_ThePanelTicksInsideAndThenPastTheDelay_Then_ItCompletesOnlyPastIt()
         {
             // Arrange
             var completions = 0;
-            _scheduler.PlayVariantEnter(OnPanel("resting"), new[] { "opacity-[.9995]" }, s_visible,
+            _scheduler.PlayVariantEnter(OnPanel("resting"), new[] { "translate-x-[.9995px]" }, new[] { "translate-x-[1px]" },
                 new StyleTransitionConfig { Type = TransitionType.Spring, DelaySec = 0.5f },
                 onComplete: () => completions++, playback: new MotionPlayback());
 
@@ -1188,7 +1189,7 @@ namespace Velvet.Tests
             var completions = 0;
 
             // Act
-            _scheduler.PlayVariantEnter(OnPanel("resting"), new[] { "opacity-[.9995]" }, s_visible,
+            _scheduler.PlayVariantEnter(OnPanel("resting"), new[] { "translate-x-[.9995px]" }, new[] { "translate-x-[1px]" },
                 new StyleTransitionConfig { Type = TransitionType.Spring }, onComplete: () => completions++,
                 playback: new MotionPlayback());
 
