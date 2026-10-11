@@ -50,6 +50,8 @@ namespace Velvet.Tests
         private static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
 
         private VisualElement _root = null!;
+        private readonly List<string> _exceptionsLogged = new();
+        private UnityEngine.Application.LogCallback? _onLog;
         private static QueryClient s_client = null!;
         private static TimeSpan s_now;
         private static bool s_visible;
@@ -117,6 +119,8 @@ namespace Velvet.Tests
         public void TearDown()
         {
             LogAssert.ignoreFailingMessages = false;
+            if (_onLog != null) UnityEngine.Application.logMessageReceived -= _onLog;
+            _onLog = null;
             NetworkSignals.IsVisible = null;
             NetworkSignals.IsOnline = null;
         }
@@ -612,6 +616,46 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_TheDeviceWentOffline_When_TheOnlineReadingThenFails_Then_NothingIsFetched()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var fails = false;
+            NetworkSignals.IsOnline = () => fails ? throw new InvalidOperationException("online-failed") : s_online;
+            LogAssert.ignoreFailingMessages = true;
+            using var mounted = MountResolved();
+            s_online = false;
+            await Pass(TimeSpan.Zero);
+
+            // Act
+            fails = true;
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "A reading that fails is no reading, so it is not a reconnect");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_TheApplicationWasHidden_When_TheVisibilityReadingThenFails_Then_NothingIsFetched()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var fails = false;
+            NetworkSignals.IsVisible = () => fails ? throw new InvalidOperationException("visibility-failed") : s_visible;
+            LogAssert.ignoreFailingMessages = true;
+            using var mounted = MountResolved();
+            s_visible = false;
+            await Pass(TimeSpan.Zero);
+
+            // Act
+            fails = true;
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(1), "A reading that fails is no reading, so it is not a focus");
+        });
+
+        [UnityTest]
         public IEnumerator Given_StaleDataAndFocusNever_When_TheDeviceComesBackOnline_Then_TheQueryFetchesAgain()
             => VelvetTask.ToCoroutine(async () =>
         {
@@ -731,6 +775,36 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_calls, Is.EqualTo(1), "A function that throws sets no interval");
         });
+
+        [Test]
+        public void Given_ARefetchIntervalFunctionThatThrows_When_TheQueryMounts_Then_TheFailureIsLogged()
+        {
+            // Arrange
+            LogExceptionsContaining("interval-failed");
+            s_intervalFn = _ => throw new InvalidOperationException("interval-failed");
+
+            // Act
+            using var mounted = Mount();
+
+            // Assert
+            Assert.That(_exceptionsLogged.Count, Is.EqualTo(1), "A function that throws is reported, not swallowed");
+        }
+
+        [Test]
+        public void Given_ARefetchIntervalFunctionThatThrows_When_TheQueryCommitsAgain_Then_ItsFailureIsLoggedOnce()
+        {
+            // Arrange
+            LogExceptionsContaining("interval-failed");
+            s_intervalFn = _ => throw new InvalidOperationException("interval-failed");
+            using var mounted = MountResolved();
+
+            // Act
+            Rerender(mounted);
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(_exceptionsLogged.Count, Is.EqualTo(1), "The same function failing at every commit is logged once");
+        }
 
         [UnityTest]
         public IEnumerator Given_AWindowFocusFunctionReturningAlways_When_TheApplicationBecomesVisibleOverFreshData_Then_TheQueryFetchesAgain()
@@ -958,6 +1032,19 @@ namespace Velvet.Tests
             Assert.That(IsWatched(s_client), Is.False, "A client with no reader is not polled for");
         }
 
+        [Test]
+        public void Given_NoPollRunning_When_AQueryMounts_Then_TheSignalsArePolled()
+        {
+            // Arrange
+            SetSignalsStatic("s_polling", false);
+
+            // Act
+            using var mounted = Mount();
+
+            // Assert
+            Assert.That(IsPolling(), Is.True, "Watching a client marks the poll as running, so the next watch joins it");
+        }
+
         [UnityTest]
         public IEnumerator Given_EveryWatchedClientsReadersUnmounted_When_FramesPass_Then_ThePollingStops()
             => VelvetTask.ToCoroutine(async () =>
@@ -1135,6 +1222,17 @@ namespace Velvet.Tests
         #endregion
 
         #region Components and helpers
+
+        private void LogExceptionsContaining(string text)
+        {
+            LogAssert.ignoreFailingMessages = true;
+            _exceptionsLogged.Clear();
+            _onLog = (condition, _, type) =>
+            {
+                if (type == UnityEngine.LogType.Exception && condition.Contains(text)) _exceptionsLogged.Add(condition);
+            };
+            UnityEngine.Application.logMessageReceived += _onLog;
+        }
 
         private static void SetSignalsStatic(string name, object value)
             => typeof(QueryClientSignals)

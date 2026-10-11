@@ -860,7 +860,6 @@ namespace Velvet
                 client, IsVisible(), TryRead(s_readOnline, ref s_onlineFailureLogged) ?? true));
             // MUTANT_SURVIVES(equivalent, guard removed): a second poll runs after the first has stored the frame's readings in every watcher, so it finds no change to report.
             if (s_polling) return;
-            // MUTANT_SURVIVES(equivalent, line removed): left unset, each watch starts a poll of its own, and a second poll finds no change for the reason above.
             s_polling = true;
             Poll().Forget();
         }
