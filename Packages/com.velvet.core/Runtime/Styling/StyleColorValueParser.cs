@@ -184,7 +184,12 @@ namespace Velvet
             {
                 return false;
             }
-            if (!TryParseAlphaModifier(token.AsSpan(slash + 1), out var alpha))
+            return TryScaleAlpha(token.AsSpan(slash + 1), ref color);
+        }
+
+        internal static bool TryScaleAlpha(ReadOnlySpan<char> modifier, ref Color color)
+        {
+            if (!TryParseAlphaModifier(modifier, out var alpha))
             {
                 return false;
             }

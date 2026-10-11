@@ -257,13 +257,7 @@ namespace Velvet
                 return false;
             }
 
-            if (!StyleColorValueParser.TryParseAlphaModifier(System.MemoryExtensions.AsSpan(suffix, Current.Length + 1), out var alpha))
-            {
-                return false;
-            }
-
-            color.a *= alpha;
-            return true;
+            return StyleColorValueParser.TryScaleAlpha(System.MemoryExtensions.AsSpan(suffix, Current.Length + 1), ref color);
         }
 
         private static VisualElement? BoxOf(TextElement input)
