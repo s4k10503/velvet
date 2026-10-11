@@ -225,8 +225,8 @@ base with the pull request's base, taking the readings `--list` takes, and stops
 changed, or because no operator reaches the lines that did. The second passes, where a local run
 refuses it: its job summary names the lines, and the pull request body says why the change is not
 something a mutation can ask about. Where a licence is configured, a diff of more mutants than ten
-shards of 16 can measure inside the shard job's timeout is refused at the plan and is split into
-smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
+shards of 16 can measure inside the shard job's timeout — not counting the kills reused from an
+earlier campaign, below — is refused at the plan and is split into smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
 Otherwise,
 where a licence is configured, the mutants are measured in two passes, because a mutant is killed
 when either suite fails on it, and one only a PlayMode fixture notices survives the EditMode suite.
@@ -244,7 +244,7 @@ against the whole
 PlayMode suite, in up to ten jobs of its own. That pass has a ceiling of its own, and over it the
 pass is refused: EditMode tests for the survivors bring the count under it, since the count is of
 EditMode survivors and no PlayMode test lowers it, and otherwise the pull request is split.
-`Mutation campaign ▸ mutation-verdict` reads both passes' records and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
+`Mutation campaign ▸ mutation-verdict` reads both passes' records and the kills the plan reused, and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
 a mutant nothing measured fails it, and a survivor of the EditMode pass that no PlayMode shard
 recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
 `--max`. A shard whose baseline is red fails on its own. Its job summary names each survivor and each
@@ -260,8 +260,51 @@ names, so a campaign dispatched from the default branch would be recorded agains
 rather than the head it measured. Running the campaign locally is optional: it answers the same question before
 a push, and before the label.
 
-**A head that asks what an earlier head asked is not measured again.** `mutation_check.py --key` prints
+**A kill an earlier campaign recorded is not measured again, and a head that asks what an earlier head
+asked is not measured at all.** The second reading below reuses a whole verdict when nothing at all
+differs; the first reuses a kill at a time, which is what a review round that only adds a test needs.
+
+**A kill is reused when the mutant, its file and its killing cases are as they were.** Every
+campaign's verdict job uploads `Mutation campaign ledger`, whether the campaign passed or failed: a
+campaign that failed on a survivor is the one whose kills the next round needs. The ledger holds a record per mutant
+the campaign decided: the mutant (file, line, column, operator and both texts), a hash of the mutated file's
+bytes, its verdict and the platform whose pass gave it, and for a kill the run that measured it
+and up to `MAX_RECORDED_KILLERS` of its behavioural killing cases (the first by name), each with the hash of every source file
+that declares the case's fixture or one it derives from. `mutation-plan` fetches the ledgers of the newest 20
+finished runs of the workflow on the head's branch (`scripts/ci/reuse_verdict.py`), and
+`mutation_check.py --reuse-from` decides each mutant from the newest ledger that holds it:
+
+- the mutant's record is a kill, and its ledger was written under the same `tool` digest as below;
+- the mutated file has the same bytes, and the mutant is the same one;
+- every recorded killing case is still declared in the tree, and no file of its fixture has changed.
+
+Everything else is measured: a survivor, a declared one included, a mutant no ledger holds, one on a
+file that changed, one whose killing case was renamed, deleted or whose fixture was edited, and any
+record that cannot be read in full — a ledger that is missing, expired, listed twice or not JSON
+is only a measurement owed. The plan's summary says how many verdicts were reused and, for each mutant it
+measures again, why. A reused kill reaches no shard: the plan writes its decision into the
+artifact that carries the mutant list, every later job hands it back with `--reuse`, and the shards, the
+PlayMode plan and the shard count are dealt over the mutants not reused, and the ceiling above counts
+only those. A kill
+the PlayMode pass took is reused like an EditMode one, and neither pass is asked about it. The verdict
+job reads each reused kill against its own tree rather than trusting the plan's file, and a kill whose
+case is gone or whose fixture changed in between is `not measured (the reused kill no longer stands)`: the
+run fails, and a reuse never turns a survivor into a pass. The ledger it uploads carries a reused kill
+with the run that measured it, so a kill stays reusable for as long as its fixtures stand, not for as
+long as the artifacts of one run do. A campaign that reused kills records its key below as one it
+measured, since it decided every mutant in its own run.
+
+What a record does not cover is what the whole key below does: a production file other than the
+mutated one, an assembly definition, and a file the fixture uses without deriving from, a shared
+helper under `Packages/com.velvet.core/TestUtilities/` included. A kill a test reaches through one of
+those stays reused after it changes, and a rebase onto a base that changed another production file
+voids no reused kill. The price is that a campaign can pass a kill the tree as it now stands would
+no longer give; the whole-tree reading stays with the key.
+
+**A head whose whole key was passed is not measured at all.** `mutation_check.py --key` prints
 a campaign key: one hash over six components, each printed beside it so a miss can say which moved.
+Where a head's key equals one a campaign passed on, the verdict of that run stands as a whole, survivors
+and declarations included, and no ledger is read; any other head takes the reading above.
 
 | Component | What it hashes | Why it is in |
 | --- | --- | --- |

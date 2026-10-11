@@ -436,6 +436,16 @@ class LedgerArtifactTests(unittest.TestCase):
         # Assert
         self.assertIsNone(found)
 
+    def test_Given_TheWorkflowsLedgerUpload_When_ItsNameIsRead_Then_ItIsTheNameTheReaderLooksFor(self):
+        # Arrange
+        workflow = (Path(__file__).resolve().parents[2] / campaign.PATH).read_text()
+
+        # Act
+        uploaded = "          name: " + campaign.LEDGER_ARTIFACT + "\n" in workflow
+
+        # Assert
+        self.assertEqual((uploaded, campaign.LEDGER_ARTIFACT), (True, "Mutation campaign ledger"))
+
     def test_Given_AnAnswerOfTheWrongShape_When_Read_Then_NoneIsTaken(self):
         # Act
         found = campaign.ledger_artifact([])

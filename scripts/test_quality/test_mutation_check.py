@@ -8829,6 +8829,8 @@ class LedgerCampaign(StubbedCampaign):
     def __init__(self, body=None):
         super().__init__(body)
         self.survives = set()
+        # The platforms whose suite kills a mutant, where it is not both.
+        self.only_on = {}
         self.measured = []
         self.ledgers = self.project / "ledgers"
         for relative, fixture in self.FIXTURES.items():
@@ -8840,11 +8842,11 @@ class LedgerCampaign(StubbedCampaign):
         path.write_text("namespace Velvet.Tests\n{{\n    internal sealed class {}{}\n    {{\n"
                         "        public void {}() {{ }}\n    }}\n}}\n".format(fixture, base, method))
 
-    def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
+    def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
         name = Path(results).name
         self.measured.append(name)
         Path(log).write_text("")
-        if name in self.CASES and name not in self.survives:
+        if name in self.CASES and name not in self.survives and platform in self.only_on.get(name, (platform,)):
             Path(results).write_text(
                 '<test-run total="1" passed="0" failed="1" inconclusive="0">'
                 '<test-case fullname="{}" result="Failed" /></test-run>'.format(self.CASES[name]))
@@ -8867,7 +8869,15 @@ class LedgerCampaign(StubbedCampaign):
                                       "--emit-ledger", str(self.project / "ledger.json"), *arguments)
         return code
 
+    def written_ledger(self):
+        """The ledger `decide` wrote, or {} where it wrote none."""
+        path = self.project / "ledger.json"
+        return json.loads(path.read_text()) if path.exists() else {}
+
     def keep_ledger(self, run=9001):
+        """Files the ledger `decide` wrote where a later plan reads the branch's ledgers from."""
+        if not (self.project / "ledger.json").exists():
+            return
         self.ledgers.mkdir(exist_ok=True)
         (self.ledgers / "{:010d}-{}.json".format(run, run)).write_text(
             (self.project / "ledger.json").read_text())
@@ -9086,21 +9096,20 @@ class KillStandingTests(unittest.TestCase):
 class ReuseDecisionTests(unittest.TestCase):
     """Which mutants a plan hands to the shards, given the ledgers of the branch's earlier campaigns."""
 
-    def decide(self, campaign, ledgers):
+    def mutants_of(self, campaign):
         path = campaign.source.resolve()
-        mutants = mutation_check.one_per_line(mutation_check.mutations_for(
+        return mutation_check.one_per_line(mutation_check.mutations_for(
             path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
-        return mutation_check.decide_reuse(mutants, ledgers, campaign.project)
 
     def ledger(self, campaign, run="9001"):
-        return json.loads((campaign.project / "ledger.json").read_text()) | {"run": run}
+        return campaign.written_ledger() | {"run": run}
 
     def test_Given_NoLedger_When_Decided_Then_NothingIsReusedAndEveryMutantSaysWhy(self):
         # Arrange
         campaign = LedgerCampaign()
 
         # Act
-        reused, reasons = self.decide(campaign, [])
+        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [], campaign.project)
 
         # Assert
         self.assertEqual((reused, sorted(reasons)), ({}, [1, 2]))
@@ -9112,7 +9121,7 @@ class ReuseDecisionTests(unittest.TestCase):
         ledger = self.ledger(campaign) | {"tool": "0" * 64}
 
         # Act
-        reused, reasons = self.decide(campaign, [ledger])
+        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [ledger], campaign.project)
 
         # Assert
         self.assertEqual((reused, "another version of the tool" in reasons[1]), ({}, True))
@@ -9123,7 +9132,7 @@ class ReuseDecisionTests(unittest.TestCase):
         campaign.after_a_campaign()
 
         # Act
-        reused, reasons = self.decide(campaign, [self.ledger(campaign)])
+        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [self.ledger(campaign)], campaign.project)
 
         # Assert
         self.assertEqual((sorted(reused), reasons[2]), ([1], "run 9001: it was survived when last measured, "
@@ -9135,11 +9144,11 @@ class ReuseDecisionTests(unittest.TestCase):
         campaign.after_a_campaign()
         older = self.ledger(campaign, "9000")
         newer = json.loads(json.dumps(older)) | {"run": "9002"}
-        for record in newer["records"]:
+        for record in newer.get("records", []):
             record["verdict"] = mutation_check.SURVIVED
 
         # Act
-        reused, _ = self.decide(campaign, [newer, older])
+        reused, _ = mutation_check.decide_reuse(self.mutants_of(campaign), [newer, older], campaign.project)
 
         # Assert
         self.assertEqual(reused, {})
@@ -9152,7 +9161,7 @@ class ReuseDecisionTests(unittest.TestCase):
         newer = json.loads(json.dumps(older)) | {"run": "9002", "records": []}
 
         # Act
-        reused, _ = self.decide(campaign, [newer, older])
+        reused, _ = mutation_check.decide_reuse(self.mutants_of(campaign), [newer, older], campaign.project)
 
         # Assert
         self.assertEqual({number: record["reused_from"] for number, record in reused.items()}, {1: "9000"})
@@ -9165,7 +9174,7 @@ class ReuseDecisionTests(unittest.TestCase):
         campaign.source.write_text(campaign.BODY.replace("a <= b", "a <= b + 1"))
 
         # Act
-        reused, reasons = self.decide(campaign, [ledger])
+        reused, reasons = mutation_check.decide_reuse(self.mutants_of(campaign), [ledger], campaign.project)
 
         # Assert
         self.assertEqual((reused, "its content changed" in reasons[1]), ({}, True))
@@ -9201,6 +9210,25 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((campaign.plan_output("reusing"), campaign.plan_output("shards")), ("2", "[]"))
+
+    def test_Given_AKillOnlyThePlayModeSuiteTook_When_Planned_Then_ItIsReusedToo(self):
+        # Arrange -- the EditMode pass left the second mutant surviving and the PlayMode pass killed it.
+        campaign = LedgerCampaign()
+        campaign.only_on = {"mutant-002.xml": ("PlayMode",)}
+        campaign.measure()
+        campaign.run_over_diff("--launch-per-mutant", "--platform", "PlayMode", "--survivors-of",
+                               str(campaign.project / "edit"), "--shard", "0/1", "--output",
+                               str(campaign.project / "play"))
+        campaign.decide()
+        campaign.keep_ledger()
+
+        # Act
+        campaign.plan()
+
+        # Assert
+        self.assertEqual((campaign.plan_output("reusing"), campaign.plan_output("shards"),
+                          [record["platform"] for record in campaign.written_ledger().get("records", [])]),
+                         ("2", "[]", ["EditMode", "PlayMode"]))
 
     def test_Given_AReusingPlan_When_Printed_Then_ItCountsTheReusedAndNamesWhyTheOtherIsMeasured(self):
         # Arrange
@@ -9272,14 +9300,12 @@ class ReusedKillCampaignTests(unittest.TestCase):
         # Arrange -- the second mutant survived, and the file claims a kill for it.
         campaign = LedgerCampaign()
         campaign.after_a_campaign()
-        campaign.plan()
+        records = campaign.written_ledger().get("records", [])
+        survivor = next((record for record in records if record["verdict"] == mutation_check.SURVIVED), {})
+        kill = next((record for record in records if record["verdict"] == mutation_check.KILLED), {})
         reuse = campaign.project / "reuse.json"
-        held = json.loads(reuse.read_text())
-        survivor = next(record for record in json.loads((campaign.ledgers / "0000009001-9001.json")
-                                                        .read_text())["records"]
-                        if record["verdict"] == mutation_check.SURVIVED)
-        held["reused"]["2"] = dict(survivor, reused_from="9001")
-        reuse.write_text(json.dumps(held))
+        reuse.write_text(json.dumps({"schema": mutation_check.LEDGER_SCHEMA, "reasons": {}, "reused": {
+            "2": dict(survivor, killers=kill.get("killers"), reused_from="9001")}}))
         campaign.survives = {"mutant-002.xml"}
         campaign.run_over_diff("--launch-per-mutant", "--reuse", str(reuse), "--shard", "0/1", "--output",
                                str(campaign.project / "edit"))
@@ -9291,14 +9317,14 @@ class ReusedKillCampaignTests(unittest.TestCase):
         self.assertEqual((code, mutation_check.REUSE_LAPSED in campaign.printed), (1, True))
 
     def test_Given_AReuseFileOfAnotherMutantList_When_Read_Then_TheRunRefusesToMeasureAroundIt(self):
-        # Arrange
+        # Arrange -- the first mutant's kill filed under the second mutant's index.
         campaign = LedgerCampaign()
         campaign.after_a_campaign()
-        campaign.plan()
+        kill = next((record for record in campaign.written_ledger().get("records", [])
+                     if record["verdict"] == mutation_check.KILLED), {})
         reuse = campaign.project / "reuse.json"
-        held = json.loads(reuse.read_text())
-        held["reused"]["2"] = held["reused"].pop("1")
-        reuse.write_text(json.dumps(held))
+        reuse.write_text(json.dumps({"schema": mutation_check.LEDGER_SCHEMA, "reasons": {},
+                                     "reused": {"2": dict(kill, reused_from="9001")}}))
 
         # Act
         code = campaign.run_over_diff("--launch-per-mutant", "--reuse", str(reuse), "--shard", "0/1",
@@ -9320,7 +9346,7 @@ class ReusedKillCampaignTests(unittest.TestCase):
         campaign.decide("--reuse", reuse)
 
         # Assert
-        records = json.loads((campaign.project / "ledger.json").read_text())["records"]
+        records = campaign.written_ledger().get("records", [])
         self.assertEqual([(record["verdict"], record["measured_by"]) for record in records],
                          [(mutation_check.KILLED, "9001"), (mutation_check.KILLED, "9001")])
 
@@ -9334,13 +9360,15 @@ class ReusedKillCampaignTests(unittest.TestCase):
         campaign.decide()
 
         # Assert
-        record = json.loads((campaign.project / "ledger.json").read_text())["records"][0]
+        record = next(iter(campaign.written_ledger().get("records", [])), {})
         self.assertEqual(
-            ([held["case"] for held in record["killers"]],
-             [sorted(held["files"]) for held in record["killers"]], record["platform"]),
+            ([held["case"] for held in record.get("killers", [])],
+             [sorted(held["files"]) for held in record.get("killers", [])], record.get("platform")),
             (["Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe"],
              [["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"]], "EditMode"))
 
+    # GREEN_ON_BASE(characterization): a plan asked for no reuse printed none before this change
+    # either. The cases above are the ones that separate a plan reading ledgers from one that does not.
     def test_Given_APlanOfALocalRun_When_NoLedgerIsGiven_Then_NoReuseLineIsPrinted(self):
         # Arrange
         campaign = LedgerCampaign()

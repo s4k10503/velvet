@@ -8,6 +8,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -179,6 +180,11 @@ def finished(number, conclusion="success"):
     return dict(passed(number), conclusion=conclusion)
 
 
+# The name the workflow uploads a campaign's ledger under, spelt out: the cases below find no ledger
+# in a listing under any other, and `LedgerArtifactTests` holds the workflow to the same spelling.
+LEDGER = "Mutation campaign ledger"
+
+
 class LedgerReader:
     """The API as a ledger fetch sees it: runs, each run's artifacts, and what a download writes."""
 
@@ -203,39 +209,32 @@ class LedgerReader:
         Path(directory, "ledger.json").write_text(self.contents.get(run_id, json.dumps({"run": run_id})))
 
 
-def fetched(reader, environ=ENVIRONMENT):
-    """(the files the fetch left, what it printed) over a fresh directory."""
-    printed = io.StringIO()
-    with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(printed), \
-            contextlib.redirect_stderr(io.StringIO()):
-        code = reuse_verdict.main(["--ledgers", directory], environ, reader, reader.download)
-        files = sorted(path.name for path in Path(directory).iterdir())
-    return code, files, printed.getvalue().strip()
-
-
-LEDGER = campaign.LEDGER_ARTIFACT
-
-
 class LedgerFetchTests(unittest.TestCase):
+    """What a plan downloads of the branch's earlier campaigns. Each case calls the fetch itself, so
+    the `fetch_ledgers` it names is the surface under test."""
+
     def test_Given_AFailedAndAPassedRunWithLedgers_When_Fetched_Then_BothAreKept(self):
         # Arrange -- a campaign that failed on a survivor is the one whose kills the next round needs.
         reader = LedgerReader([finished(1, "failure"), finished(2)], {9001: [LEDGER], 9002: [LEDGER]})
 
         # Act
-        code, files, _ = fetched(reader)
+        with tempfile.TemporaryDirectory() as directory:
+            reuse_verdict.fetch_ledgers("owner/name", "topic", "9100", directory, reader, reader.download)
+            files = sorted(os.listdir(directory))
 
         # Assert
-        self.assertEqual((code, files), (0, ["0000000001-9001.json", "0000000002-9002.json"]))
+        self.assertEqual(files, ["0000000001-9001.json", "0000000002-9002.json"])
 
     def test_Given_AListingOfFinishedRuns_When_Fetched_Then_TheListingIsNotFilteredToPasses(self):
         # Arrange
         reader = LedgerReader([], {})
 
         # Act
-        fetched(reader)
+        with tempfile.TemporaryDirectory() as directory:
+            reuse_verdict.fetch_ledgers("owner/name", "topic", "9100", directory, reader, reader.download)
 
         # Assert
-        self.assertEqual(reader.listing,
+        self.assertEqual(getattr(reader, "listing", None),
                          "repos/owner/name/actions/workflows/mutation.yml/runs?status=completed&branch=topic&per_page=20")
 
     def test_Given_ARunWithoutALedger_When_Fetched_Then_NothingIsDownloadedForIt(self):
@@ -243,7 +242,8 @@ class LedgerFetchTests(unittest.TestCase):
         reader = LedgerReader([finished(1)], {9001: [campaign.key_artifact_name(KEY)]})
 
         # Act
-        fetched(reader)
+        with tempfile.TemporaryDirectory() as directory:
+            reuse_verdict.fetch_ledgers("owner/name", "topic", "9100", directory, reader, reader.download)
 
         # Assert
         self.assertEqual(reader.downloaded, [])
@@ -253,7 +253,8 @@ class LedgerFetchTests(unittest.TestCase):
         reader = LedgerReader([finished(1)], {9001: [LEDGER]}, expired=[9001])
 
         # Act
-        fetched(reader)
+        with tempfile.TemporaryDirectory() as directory:
+            reuse_verdict.fetch_ledgers("owner/name", "topic", "9100", directory, reader, reader.download)
 
         # Assert
         self.assertEqual(reader.downloaded, [])
@@ -263,7 +264,9 @@ class LedgerFetchTests(unittest.TestCase):
         reader = LedgerReader([finished(1)], {9001: [LEDGER, LEDGER]})
 
         # Act
-        _, files, _ = fetched(reader)
+        with tempfile.TemporaryDirectory() as directory:
+            reuse_verdict.fetch_ledgers("owner/name", "topic", "9100", directory, reader, reader.download)
+            files = sorted(os.listdir(directory))
 
         # Assert
         self.assertEqual(files, [])
@@ -274,17 +277,21 @@ class LedgerFetchTests(unittest.TestCase):
                               undownloadable=[9002])
 
         # Act
-        code, files, _ = fetched(reader)
+        with tempfile.TemporaryDirectory() as directory:
+            reuse_verdict.fetch_ledgers("owner/name", "topic", "9100", directory, reader, reader.download)
+            files = sorted(os.listdir(directory))
 
         # Assert
-        self.assertEqual((code, files), (0, ["0000000001-9001.json"]))
+        self.assertEqual(files, ["0000000001-9001.json"])
 
     def test_Given_ALedgerThatIsNotJson_When_Fetched_Then_ItIsLeftOut(self):
         # Arrange
         reader = LedgerReader([finished(1)], {9001: [LEDGER]}, contents={9001: "<html>"})
 
         # Act
-        _, files, _ = fetched(reader)
+        with tempfile.TemporaryDirectory() as directory:
+            reuse_verdict.fetch_ledgers("owner/name", "topic", "9100", directory, reader, reader.download)
+            files = sorted(os.listdir(directory))
 
         # Assert
         self.assertEqual(files, [])
@@ -294,26 +301,11 @@ class LedgerFetchTests(unittest.TestCase):
         reader = LedgerReader([finished(100)], {9100: [LEDGER]})
 
         # Act
-        _, files, _ = fetched(reader)
+        with tempfile.TemporaryDirectory() as directory:
+            reuse_verdict.fetch_ledgers("owner/name", "topic", "9100", directory, reader, reader.download)
 
         # Assert
-        self.assertEqual(files, [])
-
-    def test_Given_AListingThatFails_When_Fetched_Then_NothingIsFetchedAndTheStepPasses(self):
-        # Arrange
-        def failing(_path):
-            raise RuntimeError("gh api failed: HTTP 502")
-
-        reader = LedgerReader([], {})
-        printed = io.StringIO()
-
-        # Act
-        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()), \
-                contextlib.redirect_stdout(printed):
-            code = reuse_verdict.main(["--ledgers", directory], ENVIRONMENT, failing, reader.download)
-
-        # Assert
-        self.assertEqual((code, printed.getvalue()), (0, ""))
+        self.assertEqual(reader.downloaded, [])
 
     def test_Given_ARunOfAnotherWorkflow_When_Fetched_Then_ItIsNotASource(self):
         # Arrange
@@ -321,10 +313,26 @@ class LedgerFetchTests(unittest.TestCase):
         reader = LedgerReader([other], {9001: [LEDGER]})
 
         # Act
-        fetched(reader)
+        with tempfile.TemporaryDirectory() as directory:
+            reuse_verdict.fetch_ledgers("owner/name", "topic", "9100", directory, reader, reader.download)
 
         # Assert
         self.assertEqual(reader.downloaded, [])
+
+    def test_Given_AListingThatFails_When_TheStepRuns_Then_ItPasses(self):
+        # Arrange
+        def failing(_path):
+            raise RuntimeError("gh api failed: HTTP 502")
+
+        # Act
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()):
+            try:
+                code = reuse_verdict.main(["--ledgers", directory], ENVIRONMENT, failing)
+            except SystemExit as stop:
+                code = stop.code
+
+        # Assert
+        self.assertEqual(code, 0)
 
 
 class NameTests(unittest.TestCase):
