@@ -6516,6 +6516,90 @@ class TwoPlatformCampaign(StubbedCampaign):
         return self.play_pass("--collect", str(self.project / "play"))
 
 
+class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
+    """Twelve mutants the EditMode suite never kills and the PlayMode suite always does, dealt to two
+    EditMode shards of six and six PlayMode shards of two: the shape the workflow's verdict job
+    collects."""
+
+    def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
+        mutant = Path(results).name != "baseline.xml"
+        Path(log).write_text("")
+        Path(results).write_text(FAILING_RESULTS if mutant and platform == "PlayMode" else GREEN_RESULTS)
+        return 0.0, False, 0
+
+    def edit_shard(self, spec, directory):
+        return self.shard(spec, directory)
+
+    def play_shard(self, number, edit_directories, directory):
+        return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
+                                  *(str(self.project / name) for name in edit_directories),
+                                  "--shard", "{}/6".format(number), "--output", str(self.project / directory))
+
+    def collect_both(self, edit_directories, play_directories):
+        return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
+                                  *(str(self.project / name) for name in edit_directories),
+                                  "--collect", *(str(self.project / name) for name in play_directories))
+
+
+class DeadShardReportingTests(unittest.TestCase):
+    """The verdict job's shape: a PlayMode pass over the EditMode shards' survivors, collected."""
+
+    HEADING = "--- not measured: {} of {} {} shard(s) recorded nothing ---"
+
+    def test_Given_ADeadEditModeShard_When_BothPassesAreCollected_Then_TheEditModeShardIsNamed(self):
+        # Arrange -- shard 1 of 2 never reported, so its six mutants are in no pass's list.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+
+        # Act
+        campaign.collect_both(["edit0"], ["play"])
+
+        # Assert
+        self.assertEqual((self.HEADING.format(1, 2, "EditMode") in campaign.printed,
+                          "EditMode shard 1 of 2 was dealt 6 mutant(s)" in campaign.printed),
+                         (True, True))
+
+    def test_Given_ADeadEditModeShard_When_BothPassesAreCollected_Then_NoPlayModeShardIsCalledDead(self):
+        # Arrange -- the PlayMode pass does not run when an EditMode shard died, so none of its
+        # shards recorded anything for a reason that is not theirs.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+
+        # Act
+        campaign.collect_both(["edit0"], ["play"])
+
+        # Assert
+        self.assertEqual("PlayMode shard(s) recorded nothing" in campaign.printed, False)
+
+    def test_Given_EveryEditModeShardAndNoPlayModeShard_When_BothPassesAreCollected_Then_ThePlayModeShardsAreNamed(self):
+        # Arrange -- the control: the PlayMode pass was owed, and none of its six shards reported.
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+        campaign.edit_shard("1/2", "edit1")
+
+        # Act
+        campaign.collect_both(["edit0", "edit1"], ["play"])
+
+        # Assert
+        self.assertEqual((self.HEADING.format(6, 6, "PlayMode") in campaign.printed,
+                          "EditMode shard(s) recorded nothing" in campaign.printed), (True, False))
+
+    def test_Given_EveryEditModeShardAndOneDeadPlayModeShard_When_BothPassesAreCollected_Then_OnlyThatShardIsNamed(self):
+        # Arrange
+        campaign = ShardedTwoPlatformCampaign()
+        campaign.edit_shard("0/2", "edit0")
+        campaign.edit_shard("1/2", "edit1")
+        for number in range(5):
+            campaign.play_shard(number, ["edit0", "edit1"], "play{}".format(number))
+
+        # Act
+        campaign.collect_both(["edit0", "edit1"], ["play{}".format(number) for number in range(5)])
+
+        # Assert
+        self.assertEqual((self.HEADING.format(1, 6, "PlayMode") in campaign.printed,
+                          "shard 5 of 6 was dealt 2 mutant(s)" in campaign.printed), (True, True))
+
+
 class HangingTwoPlatformCampaign(TwoPlatformCampaign):
     """The same four mutants, where the suite hangs instead of reporting on each mutant `hung_on` names
     for its platform."""

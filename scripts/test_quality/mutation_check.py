@@ -4756,6 +4756,9 @@ def main():
         if args.plan:
             return plan_survivors(args, coverage, mutants, chosen, first)
         firsts = {index: mutant.verdict for index, mutant in enumerate(mutants, start=1)}
+        # Read here, before the collect below overwrites the verdicts: a first-pass shard that died
+        # left its mutants UNRECORDED, and they are in no pass's `chosen`.
+        dead_first, first_count = unreported_shards(list(range(1, len(mutants) + 1)), first, mutants)
     if args.collect is not None:
         print(coverage)
         for index in chosen:
@@ -4801,7 +4804,17 @@ def main():
         for mutant in unmeasured:
             print("{}  {}".format(mutant.describe(project), mutant.detail))
 
-    if args.collect is not None:
+    if args.collect is not None and first is not None and dead_first:
+        print("\n--- not measured: {} of {} {} shard(s) recorded nothing ---".format(
+            len(dead_first), first_count, first))
+        for shard, dealt in sorted(dead_first.items()):
+            print("{} shard {} of {} was dealt {} mutant(s), none with a verdict: it died, was "
+                  "cancelled or timed its baseline out".format(first, shard, first_count, len(dealt)))
+        print("Those mutants are not in the {} pass, which chooses the survivors of the first, so "
+              "no {} shard is named: the pass did not run over them.".format(args.platform,
+                                                                             args.platform))
+        print("Re-run only the failed jobs; the verdict job then decides again over every record.")
+    elif args.collect is not None:
         named, count = unreported_shards(chosen, args.platform, mutants)
         if named:
             # Not a survivor and not a stale declaration: the shard never reached the mutants, so
