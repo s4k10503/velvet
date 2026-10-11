@@ -224,8 +224,7 @@ call started elsewhere under `Online` continues on the main thread.
 The readings come from `NetworkSignals`, which an application replaces once for every mutation and every
 query, and from the policy's `IsOnline` / `IsFocused`, which replace them for one. Both are polled once per
 frame. Online is `Application.internetReachability` not being `NotReachable`, which can read a local-network-only
-server as unreachable, and visible is `Application.isFocused` on every platform, as
-[§1-2b](#1-2b-cached-queries--hooksusequery) describes. The reading gates the retries of every `RetryPolicy`, a
+server as unreachable, and visible is the rule [§1-2b](#1-2b-cached-queries--hooksusequery) states. The reading gates the retries of every `RetryPolicy`, a
 `RetryPolicy.RunAsync` around a `Hooks.Use` loader included.
 
 While a call waits, `MutationResult.IsPaused` is true, and `FailureCount` / `FailureReason` follow v5's reducer:
@@ -377,7 +376,15 @@ hidden, or the device comes back online, a mounted query fetches again under `Re
 `RefetchOnReconnect`: `IfStale`, the default, when its data is stale, `Always` whatever its age, `Never`
 not at all; set them on one query or for every query on `QueryClientOptions`. That refetch joins a request
 in flight. `NetworkSignals` holds both readings: online is `Application.internetReachability`, and visible
-is `Application.isFocused` on every platform, the Editor included.
+is as v5's focus manager reads `document.visibilityState` rather than focus: a window that has lost focus but
+is still shown is visible, so alt-tabbing pauses and refetches nothing. Velvet asks each platform:
+a mobile platform for `Application.isFocused`, since a backgrounded app has lost it; Windows whether the
+main thread's top-level window is minimized; macOS whether NSApplication is hidden or, when it has windows,
+none is both visible and not miniaturized (no windows reads as visible). Linux and WebGL have no reading and
+count as visible. The first failure of a native read, or on Windows the absence of a window to ask, logs one
+warning and is latched: every later read answers visible without asking the platform again, until the
+scripts reload. No test runs the native readings themselves, so replace them through
+`NetworkSignals.IsVisible` where the platform's answer matters.
 `NetworkSignals.IsVisible` / `IsOnline` replace them, for an application that reads its window's state or
 measures being online for itself. A reading that throws is no reading
 to the poll, which then reports no change, and counts as visible or online where one is needed: an interval's

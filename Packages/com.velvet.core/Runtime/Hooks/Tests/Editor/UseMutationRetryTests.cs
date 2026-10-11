@@ -583,7 +583,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That((s_captured.IsPaused, s_captured.FailureCount, s_captured.Status, attempts),
                 Is.EqualTo((true, 1, MutationStatus.Pending, 1)),
-                "A retry that is due while the application is unfocused waits, and the handle says so");
+                "A retry that is due while the application is not visible waits, and the handle says so");
         }
 #endif
 

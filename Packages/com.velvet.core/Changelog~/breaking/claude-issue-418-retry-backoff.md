@@ -7,8 +7,7 @@
   devices; set `NetworkSignals.IsOnline` once at startup to read connectivity another way, or give the
   mutation `Retry = new RetryPolicy { Retry = false, NetworkMode = NetworkMode.Always }` to never wait.
 
-- A retry that comes due while the application is not focused now waits until it is, for every `RetryPolicy`, a
-  `RetryPolicy.RunAsync` around a `Hooks.Use` loader included, on the visibility reading `NetworkSignals` holds
-  for `Hooks.UseQuery`. Set `NetworkSignals.IsVisible = () => true` to never wait, or give one policy its own
-  `IsFocused`. A mutation started under the default `Online` mode from another thread now continues on the
-  main thread, where the connectivity reading is taken.
+- On Windows and macOS a retry that comes due while the window is minimized (or, on macOS, the application is
+  hidden) now waits until it is shown, for every `RetryPolicy`, a `RetryPolicy.RunAsync` around a `Hooks.Use`
+  loader included. A window that has merely lost focus does not wait. A mutation started under the default
+  `Online` mode from another thread now continues on the main thread, where the connectivity reading is taken.
