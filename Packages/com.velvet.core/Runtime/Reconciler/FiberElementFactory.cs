@@ -22,6 +22,7 @@ namespace Velvet
             ApplyProps(element, node.Props);
             ApplyStyles(element, node.Styles);
             ApplyEvents(element, node.Events);
+            StyleTextInputColors.Track(element);
             return element;
         }
 
@@ -39,6 +40,7 @@ namespace Velvet
             ApplyClassNames(element, appliedClasses);
             ApplyProps(element, node.Props);
             ApplyEvents(element, node.Events);
+            StyleTextInputColors.Track(element);
             return element;
         }
 
@@ -72,6 +74,11 @@ namespace Velvet
             if (type == typeof(Slider))
             {
                 return VNodePool.RentSlider();
+            }
+
+            if (type == typeof(SliderInt))
+            {
+                return VNodePool.RentSliderInt();
             }
 
             if (type == typeof(ScrollView))
@@ -225,6 +232,14 @@ namespace Velvet
 
         internal static void ApplyProps(VisualElement element, FiberElementProps? props)
         {
+            // Ordering: before anything can type into the field, and whether or not any props are declared.
+            // A field a refCallback makes delayed can hold typing by the first render that declares a limit
+            // or multiline, and a record taken then would take that typing for Velvet's own text.
+            if (element is TextField field)
+            {
+                FiberPropApplier.RecordShownText(field);
+            }
+
             if (props == null)
             {
                 return;
@@ -270,6 +285,11 @@ namespace Velvet
                 FiberPropApplier.ApplySlider(element, null, props.Slider, props.FieldValue);
             }
 
+            if (props.SliderInt != null)
+            {
+                FiberPropApplier.ApplySliderInt(element, null, props.SliderInt, props.FieldValue);
+            }
+
             if (props.FieldValue != null)
             {
                 FiberPropApplier.ApplyFieldValue(element, props.FieldValue);
@@ -292,27 +312,7 @@ namespace Velvet
         }
 
         internal static void ApplyStyles(VisualElement element, StyleOverrides? styles)
-        {
-            if (styles == null)
-            {
-                return;
-            }
-
-            if (styles.BackgroundImage.HasValue)
-            {
-                element.style.backgroundImage = styles.BackgroundImage.Value;
-            }
-
-            if (styles.BackgroundColor.HasValue)
-            {
-                element.style.backgroundColor = styles.BackgroundColor.Value;
-            }
-
-            if (styles.Color.HasValue)
-            {
-                element.style.color = styles.Color.Value;
-            }
-        }
+            => StyleOverridesLayer.Diff(element, StyleOverrides.Empty, styles ?? StyleOverrides.Empty);
 
         internal void ApplyEvents(VisualElement element, FiberEventBinding[] events)
         {

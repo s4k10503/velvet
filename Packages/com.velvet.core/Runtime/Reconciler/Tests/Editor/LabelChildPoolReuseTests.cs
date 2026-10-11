@@ -119,12 +119,12 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins which poolable primitives may have their child container emptied on pool return. Button and Label
     /// construct nothing into it, so <c>Clear()</c> there can only remove a previous tenant's content; Toggle,
-    /// Slider and TextField each build a sub-element into that same container (their <c>contentContainer</c>
+    /// Slider, SliderInt and TextField each build a sub-element into that same container (their <c>contentContainer</c>
     /// is the element itself), so the same call would delete the control's own structure. This fails if a
     /// UI Toolkit version changes those baselines, which is what makes it safe for
-    /// <c>FiberPrimitiveElementPool</c> to treat the five differently.
+    /// <c>FiberPrimitiveElementPool</c> to treat the six differently.
     /// <para>
-    /// The second case pins the classification the three composites' reset depends on in place of a count:
+    /// The second case pins the classification the four composites' reset depends on in place of a count:
     /// the field's input and label USS classes identify what the constructor left, in the unlabelled and the
     /// labelled shape alike, which is what lets the reset keep it while detaching a
     /// <c>V.Custom&lt;T&gt;</c> child. Why a count will not do is pinned next to the reset itself, in
@@ -134,22 +134,26 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class PoolableWidgetChildBaselineTests
     {
+        // GREEN_ON_BASE(characterization): UI Toolkit builds a SliderInt's child container this way on the base
+        // too. Its row is here because this branch pools SliderInt, and its reset relies on that baseline.
         [Test]
         public void Given_FreshlyConstructedPoolablePrimitives_When_TheirChildContainersAreCounted_Then_OnlyTheCompositesArrivePopulated()
         {
             // Arrange — one freshly constructed instance of each poolable primitive.
             var widgets = new VisualElement[]
             {
-                new Button(), new Label(), new Toggle(), new Slider(), new TextField(),
+                new Button(), new Label(), new Toggle(), new Slider(), new SliderInt(), new TextField(),
             };
 
             // Act — count what each one already holds in the container children are placed into.
             var counts = Array.ConvertAll(widgets, w => FiberNodePatcher.GetChildContainer(w).childCount);
 
-            // Assert — the two clearable types start empty; the three composites do not.
-            Assert.That(counts, Is.EqualTo(new[] { 0, 0, 1, 1, 1 }));
+            // Assert — the two clearable types start empty; the four composites do not.
+            Assert.That(counts, Is.EqualTo(new[] { 0, 0, 1, 1, 1, 1 }));
         }
 
+        // GREEN_ON_BASE(characterization): UI Toolkit gives a SliderInt's own children these classes on the base
+        // too. Its rows are here because this branch pools SliderInt, and its reset detaches by them.
         [Test]
         public void Given_Composites_When_TheirOwnChildrenAreClassified_Then_TheFieldInputAndLabelClassesIdentifyEveryOne()
         {
@@ -160,9 +164,11 @@ namespace Velvet.Tests
             {
                 (new Toggle(), BaseField<bool>.inputUssClassName, BaseField<bool>.labelUssClassName),
                 (new Slider(), BaseField<float>.inputUssClassName, BaseField<float>.labelUssClassName),
+                (new SliderInt(), BaseField<int>.inputUssClassName, BaseField<int>.labelUssClassName),
                 (new TextField(), BaseField<string>.inputUssClassName, BaseField<string>.labelUssClassName),
                 (new Toggle("l"), BaseField<bool>.inputUssClassName, BaseField<bool>.labelUssClassName),
                 (new Slider("l", 0f, 10f), BaseField<float>.inputUssClassName, BaseField<float>.labelUssClassName),
+                (new SliderInt("l", 0, 10), BaseField<int>.inputUssClassName, BaseField<int>.labelUssClassName),
                 (new TextField("l"), BaseField<string>.inputUssClassName, BaseField<string>.labelUssClassName),
             };
 
@@ -183,7 +189,7 @@ namespace Velvet.Tests
             // is what lets the pool reset detach a V.Custom child by exclusion instead of emptying the
             // container.
             Assert.That(string.Join(",", summary), Is.EqualTo(
-                "Toggle 1/1,Slider 1/1,TextField 1/1,Toggle 2/2,Slider 2/2,TextField 2/2"));
+                "Toggle 1/1,Slider 1/1,SliderInt 1/1,TextField 1/1,Toggle 2/2,Slider 2/2,SliderInt 2/2,TextField 2/2"));
         }
     }
 }

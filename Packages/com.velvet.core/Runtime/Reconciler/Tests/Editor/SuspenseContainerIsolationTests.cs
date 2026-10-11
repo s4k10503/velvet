@@ -694,6 +694,9 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the merge base keeps this state and removes the primary.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping the
+        // primary's labels in the tree, hidden.
         [Test]
         public void Given_AHiddenCommittedPrimaryAfterAnEarlierFailingSibling_When_TheRenderItCaughtInRetries_Then_ItsStateSurvives()
         {
@@ -702,29 +705,31 @@ namespace Velvet.Tests
             _mounted = V.Mount(_root, V.Component(EarlyAbortHost), CaughtErrors.Unlogged);
             s_setCount.Invoke(1);
             _mounted.FlushStateForTest();
-            var committed = string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
+            var committed = _root.DisplayedLabelTexts("|");
             s_resource = new VelvetTaskCompletionSource<string>();
             s_setAbortTick.Invoke(1);
             _mounted.FlushStateForTest();
-            var before = string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
+            var before = _root.DisplayedLabelTexts("|");
 
             // Act
             s_abortThrows = true;
             s_setAbortTick.Invoke(2);
             _mounted.FlushStateForTest();
-            var afterCatch = string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
+            var afterCatch = _root.DisplayedLabelTexts("|");
             s_abortThrows = false;
             s_resource.TrySetResult("value");
             s_setAbortTick.Invoke(3);
             _mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((committed, before, afterCatch, string.Join("|", _root.Query<Label>().ToList().Select(label => label.text))),
+            Assert.That((committed, before, afterCatch, _root.DisplayedLabelTexts("|")),
                 Is.EqualTo(("okay:0|primary:1|loaded:0:initial", "okay:1|loading", "error|loading", "error|primary:1|loaded:3:value")));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base keeps this effect by stopping the pass short of it.
+        // GREEN_ON_BASE(characterization): the merge base keeps this effect and removes the primary.
         // The catch taken in the walk keeps it by rendering the Suspense again, still pending, which this pins.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping the
+        // primary's labels in the tree, hidden.
         [Test]
         public void Given_AHiddenCommittedPrimaryAfterAnEarlierFailingSibling_When_ItsSiblingCatches_Then_ItsPassiveEffectStaysSubscribed()
         {
@@ -735,7 +740,7 @@ namespace Velvet.Tests
             s_resource = new VelvetTaskCompletionSource<string>();
             s_setAbortTick.Invoke(1);
             _mounted.FlushStateForTest();
-            var before = string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
+            var before = _root.DisplayedLabelTexts("|");
             var cleanupsBefore = s_abortCounterCleanups;
 
             // Act
@@ -744,7 +749,7 @@ namespace Velvet.Tests
             _mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((before, string.Join("|", _root.Query<Label>().ToList().Select(label => label.text)),
+            Assert.That((before, _root.DisplayedLabelTexts("|"),
                     s_abortCounterSubscriptions, cleanupsBefore, s_abortCounterCleanups),
                 Is.EqualTo(("okay:1|loading", "error|loading", 1, 0, 0)));
         }

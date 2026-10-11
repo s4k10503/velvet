@@ -380,14 +380,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ahead of the mapping now: a refused call runs no renderer and takes nothing from a pool.
 
 - A navigation to a path that matches no route no longer cancels the navigation already in flight, nor
-  takes `Router.Status` away from it. It used to cancel and to write its status before matching, so a
-  stale deep link or a renamed `redirectTo` target made a navigation the user had actually asked for
-  return `NavigationResult.Cancelled` with no error anywhere, and left `Router.Status` reading `NotFound`
-  while `Router.PendingLocation` still named the destination that attempt was loading — the state
-  `Hooks.UseNavigation` renders a pending branch from. An attempt now cancels its predecessor and writes
-  `Router.Status` only once it has matched, so `RouterStatus.Matching` spans the guards and blockers of a
-  matched navigation rather than the match itself, and an attempt that matches nothing reports through
-  its `NavigationResult` alone whenever another is in flight.
+  stops `Hooks.UseNavigation` reporting it. It used to cancel and to write its status before matching, so
+  a stale deep link or a renamed `redirectTo` target made a navigation the user had actually asked for
+  return `NavigationResult.Cancelled` with no error anywhere, and left the router reporting `NotFound`
+  while still naming the destination that attempt was loading — the state `Hooks.UseNavigation` renders
+  a pending branch from. An attempt now cancels its predecessor and publishes itself only once it has
+  matched, so the navigation `Hooks.UseNavigation` reports spans the guards of a matched navigation
+  rather than the match itself, and an attempt that matches nothing reports through its
+  `NavigationResult` alone.
 
 - A Loader's cancellation callback that throws no longer escapes the navigation or the disposal that
   ends its round. Ending a round cancels the source its Loaders ran under, which runs the callbacks they
@@ -395,8 +395,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and through the link, where a navigation parked on an `Await` loader has the source it runs under
   cancelled by a newer navigation or by `Router.Dispose`. A failure there was raised at whoever was
   navigating or disposing and took the rest of that operation with it: a commit landed its location with
-  `Router.Status` still reporting the navigation as in flight, a navigation superseding a parked one
-  raised at its caller with `Router.Status` left on the navigation it had just cancelled, and
+  the router still reporting the navigation as in flight, a navigation superseding a parked one raised
+  at its caller with the router left reporting the navigation it had just cancelled, and
   `Router.Dispose` left the router in `Router.Current` with its loader rounds unreleased. It is reported
   through `Debug.LogException` now, on the terms a Suspend loader's subscriber failure already was, and
   the navigation or disposal runs to its end either way.
@@ -892,13 +892,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leaves `NavigateAsync` genuinely asynchronous, so a caller that took its result synchronously has to
   await it. A navigation whose loaders all hand back already-completed tasks still completes
   synchronously.
-
-- `Router.PendingLocation` — the location an in-flight navigation is heading for, resolved against the
-  route tree so it carries the destination's `Params` and `Matches`, and null whenever no navigation is
-  in flight. `Hooks.UseNavigation().Location` reports it while `State` is `NavigationLifecycle.Loading`,
-  which is React Router's `navigation.location` and what a pending-UI branch is keyed on. It used to
-  report the location already on screen in that window. The idle half of it still reports the committed
-  location where React Router reports `undefined`; the guide states why and what to branch on instead.
 
 - **Minimum supported Unity raised to 6000.3.23f1**, from 6000.3.11f1 — `unity` stays `6000.3` and
   `unityRelease` moves to `23f1`, so a project on an earlier release of the 6.3 line updates its editor

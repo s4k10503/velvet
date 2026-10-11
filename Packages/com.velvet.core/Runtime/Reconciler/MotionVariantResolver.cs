@@ -96,6 +96,12 @@ namespace Velvet
         public static string? LabelForChildren(MotionNode node, string? ambientLabel)
             => IsControlling(node) ? node.Animate : ambientLabel;
 
+        // The playback a Motion's own swap steps by and hands its descendants, following its label: a descendant
+        // taking its label from an ancestor takes that ancestor's playback with it, so a sequence's controls reach
+        // the plays its label starts below the Motion it was handed to.
+        public static MotionPlayback? PlaybackForChildren(MotionNode node, MotionPlayback? ambientPlayback)
+            => node.Transition?.Playback ?? (IsControlling(node) ? null : ambientPlayback);
+
         // LabelForChildren's counterpart for the initial label.
         public static string? InitialLabel(MotionNode node, string? ambientInitial)
             => IsControlling(node) ? node.Initial : ambientInitial;

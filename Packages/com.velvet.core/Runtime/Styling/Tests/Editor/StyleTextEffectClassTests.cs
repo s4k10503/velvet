@@ -428,6 +428,59 @@ namespace Velvet.Tests
             Assert.That(result, Is.EqualTo(expected));
         }
 
+        [TestCase("leading-6", "<line-height=24px>hi</line-height>")]
+        [TestCase("leading-3-5", "<line-height=14px>hi</line-height>")]
+        [TestCase("leading-0", "<line-height=0px>hi</line-height>")]
+        [TestCase("leading-px", "<line-height=1px>hi</line-height>")]
+        public void Given_LeadingOnTheSpacingScale_When_ParsedAndApplied_Then_ProducesThePxTag(
+            string cls, string expected)
+        {
+            // Arrange
+            var classNames = new[] { cls };
+
+            // Act
+            var effect = StyleTextEffectClass.Parse(classNames);
+            var result = StyleTextEffectClass.Apply("hi", null, null, null, effect.Leading);
+
+            // Assert
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AnImportantSpacingLeadingBeforeALaterPlainPreset_When_Parsed_Then_TheSpacingLeadingWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "!leading-6", "leading-loose" });
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Pixel, 24f)));
+        }
+
+        [Test]
+        public void Given_LeadingOnTheSpacingScale_When_AskedWhetherItIsATextEffectToken_Then_ItIs()
+        {
+            // Act
+            var recognised = StyleTextEffectClass.IsTextEffectToken("leading-6");
+
+            // Assert
+            Assert.That(recognised, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): a suffix the spacing scale lacks leaves Leading unset.
+        // The base recognises no bare-number leading at all.
+        [Test]
+        public void Given_ANonSpacingLeadingSuffix_When_Parsed_Then_LeadingIsUnsetNull()
+        {
+            // Arrange
+            var classNames = new[] { "leading-abc" };
+
+            // Act
+            var effect = StyleTextEffectClass.Parse(classNames);
+
+            // Assert
+            Assert.That(effect.Leading, Is.Null);
+        }
+
         // GREEN_ON_BASE(characterization): the base rejects every non-px bracket value; these pin what the
         // widened grammar still rejects.
         [TestCase("leading-[2vw]")]

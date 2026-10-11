@@ -31,6 +31,8 @@ def api_read(responses):
     runs = iter(item for item in responses if "workflow_runs" in item)
     statuses = iter(item for item in responses if "statuses" in item)
     def read(path):
+        if "/artifacts" in path:
+            return {"total_count": 0, "artifacts": []}
         if "/status?" in path:
             return next(statuses, {"sha": SHA, "total_count": 0, "statuses": []})
         return next(pulls if "/pulls/" in path else runs)
@@ -229,6 +231,69 @@ class CampaignStatusTests(unittest.TestCase):
                               read=responses, post=lambda result: None)
 
 
+class ReusedVerdictDisplayTests(unittest.TestCase):
+    """A display never reports ready a head that `settle` holds for a citation it cannot show."""
+
+    KEY = "a1" * 32
+
+    def passed(self):
+        return {**run(), "status": "completed", "conclusion": "success"}
+
+    def artifacts(self, *names):
+        return {"total_count": len(names), "artifacts": [{"name": name} for name in names]}
+
+    def reader(self, cited_artifacts):
+        """The API for a head whose one campaign, run 12, reused a verdict run 9500 measured."""
+        campaign = status.settle.campaign
+        cited_run = {"id": 9500, "path": campaign.PATH, "status": "completed", "conclusion": "success"}
+        responses = {
+            "/actions/runs/12/artifacts": self.artifacts(campaign.key_artifact_name(self.KEY, 9500)),
+            "/actions/runs/9500/artifacts": cited_artifacts,
+            "/actions/runs/9500": cited_run,
+        }
+
+        def read(path):
+            if "/status?" in path:
+                return {"sha": SHA, "total_count": 0, "statuses": []}
+            if "/pulls/" in path:
+                return pull()
+            if "head_sha=" in path:
+                return {"workflow_runs": [self.passed()]}
+            for suffix, answer in responses.items():
+                if suffix in path and (path.endswith(suffix) or path.endswith(suffix + "?per_page=100")):
+                    return answer
+            raise AssertionError(path)
+        return read
+
+    def published(self, cited_artifacts):
+        posted = []
+        with mock.patch.object(status.settle, "repository", return_value=SLUG):
+            status.publish(Path("."), 7, self.passed(), read=self.reader(cited_artifacts),
+                           post=posted.append)
+        return posted
+
+    def test_Given_AReuseWhoseCitedRunMeasuredTheKey_When_Published_Then_TheDisplayIsGreen(self):
+        # Arrange -- the control: the same pass with a citation that stands.
+        measured = self.artifacts(status.settle.campaign.key_artifact_name(self.KEY))
+
+        # Act
+        posted = self.published(measured)
+
+        # Assert
+        self.assertEqual([item["state"] for item in posted], ["success"])
+
+    def test_Given_AReuseWhoseCitedRunsArtifactsExpired_When_Published_Then_TheDisplayIsNotGreen(self):
+        # Arrange
+        lapsed = self.artifacts(status.settle.campaign.key_artifact_name(self.KEY))
+        lapsed["artifacts"][0]["expired"] = True
+
+        # Act
+        posted = self.published(lapsed)
+
+        # Assert
+        self.assertEqual([item["state"] for item in posted], ["failure"])
+
+
 class PublisherMainTests(unittest.TestCase):
     # GREEN_ON_BASE(characterization): an isolated event still binds the success hand-off to this publisher run.
     def test_Given_ThePublisherFinishes_When_OnlyASuccessfulCampaignIsReported_Then_TheMergeWakeWaitsForThisRun(self):
@@ -306,6 +371,8 @@ class ReconciliationTests(unittest.TestCase):
                 return pulls
             if "/pulls/" in path:
                 return by_number[int(path.rsplit("/", 1)[1])]
+            if "/artifacts" in path:
+                return {"total_count": 0, "artifacts": []}
             sha = re.search(r"(?:head_sha=|commits/)([0-9a-f]{40})", path).group(1)
             if "/status?" in path:
                 entries = [] if existing is None else [{"context": status.CONTEXT, **existing}]
@@ -419,14 +486,19 @@ class ReconciliationTests(unittest.TestCase):
 
     def test_Given_EightEligiblePulls_When_Reconciled_Then_TheCompleteBoundaryFitsTheReadAndWriteBudget(self):
         # Arrange
-        listed = [{**pull(), "number": n} for n in range(1, 9)]
+        listed = [{**pull(), "number": n} for n in range(1, status.MAX_SWEEP_PULLS + 1)]
 
         # Act
         posted, wakes, paths, error = self.execute("schedule", listed)
 
         # Assert
-        self.assertEqual((len(posted), len(wakes), len(paths) + len(posted) <= 50, error),
-                         (8, 8, True, None))
+        # The budget decision: a sweep of MAX_SWEEP_PULLS heads may spend two reads of its own, six
+        # per head (the citation check's read included) and one status write per head.
+        budget = 2 + (6 + 1) * status.MAX_SWEEP_PULLS
+        self.assertEqual((len(posted), len(wakes), sum("/artifacts" in p for p in paths),
+                          len(paths) + len(posted) <= budget, error),
+                         (status.MAX_SWEEP_PULLS, status.MAX_SWEEP_PULLS, status.MAX_SWEEP_PULLS,
+                          True, None))
 
     def test_Given_ASelectedManualRecoveryAboveSweepCapacity_When_Dispatched_Then_OnlyTheSelectedHeadUsesTheSamePublisher(self):
         # Arrange

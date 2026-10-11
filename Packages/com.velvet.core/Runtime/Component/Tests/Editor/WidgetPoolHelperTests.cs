@@ -230,6 +230,42 @@ namespace Velvet.Tests
     }
 
     /// <summary>
+    /// Specifies <see cref="FiberSliderPoolHelper.ResetSliderIntForReuse"/> on top of the shared pool contract in
+    /// <see cref="PoolHelperTestsBase{TElement}"/>. Everything else the reset restores is the float slider's
+    /// reset, which <c>PooledElementSurfaceResetTests</c> compares against a fresh <see cref="SliderInt"/>.
+    /// </summary>
+    internal sealed class SliderIntPoolHelperTests : PoolHelperTestsBase<SliderInt>
+    {
+        protected override void ClearPool() => VNodePoolTestAccess.ClearSliderIntPoolForTest();
+        protected override SliderInt Rent() => VNodePool.RentSliderInt();
+        protected override void Return(SliderInt element) => VNodePool.ReturnSliderInt(element);
+        protected override void Reset(SliderInt element) => FiberSliderPoolHelper.ResetSliderIntForReuse(element);
+        protected override int MaxPoolSize => 32;
+
+        protected override void SetElementSpecificGhost(SliderInt slider) => slider.value = 7;
+
+        protected override void AssertElementSpecificGhostCleared(SliderInt slider)
+        {
+            Assert.That(slider.value, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ASliderIntWithACustomRange_When_Reset_Then_TheRangeIsZeroToTen()
+        {
+            // Arrange
+            var slider = new SliderInt { lowValue = 1, highValue = 100 };
+            var custom = (slider.lowValue, slider.highValue);
+
+            // Act
+            FiberSliderPoolHelper.ResetSliderIntForReuse(slider);
+
+            // Assert
+            Assert.That(
+                (custom.lowValue, custom.highValue, slider.lowValue, slider.highValue), Is.EqualTo((1, 100, 0, 10)));
+        }
+    }
+
+    /// <summary>
     /// Specifies the TextField-specific reset contract enforced by
     /// <see cref="FiberTextFieldPoolHelper.ResetTextFieldForReuse"/> on top of the shared pool contract in
     /// <see cref="PoolHelperTestsBase{TElement}"/>. TextField is security-critical: a pooled instance may have

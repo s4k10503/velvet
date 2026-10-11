@@ -46,13 +46,42 @@ namespace Velvet
             // Selects both the exit-shaped self-cancel and which bookkeeping map the play registers into — a
             // separate map field would only ever repeat that same choice.
             internal bool IsExit { get; init; }
+            internal MotionPlayback? Playback { get; init; }
+            // How a bezier or spring play repeats; a tween does not read it.
+            internal MotionRepeat Repeat { get; init; }
         }
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingEnters = new();
+        // The Spring and Bezier plays CancelPlay stopped at their starting values, kept until ReleaseHeld.
+        private readonly Dictionary<VisualElement, PendingAnimation> _held = new();
         // Scoped to this scheduler instance so a leaked or double-returned rent stays contained to it instead
         // of corrupting a pool every other scheduler instance also draws from (see TimeValueListPool).
         private readonly TimeValueListPool _listPool = new();
+
+        // Set once by the mount before its first render, which is what lets a mount enter take it.
+        internal MotionClock Clock { get; set; } = MotionClock.Realtime;
+        private bool _retainsClock;
+
+        // A mount's own clock. One other than Realtime keeps MotionClock's element record live until ReleaseClock.
+        internal void MountOn(MotionClock clock)
+        {
+            Clock = clock;
+            if (!clock.StepsOnPanelTime)
+            {
+                MotionClock.RetainMount();
+                _retainsClock = true;
+            }
+        }
+
+        internal void ReleaseClock()
+        {
+            if (_retainsClock)
+            {
+                _retainsClock = false;
+                MotionClock.ReleaseMount();
+            }
+        }
 
         // The next-frame class swap (EnterFromClass -> EnterToClass) is what fires the CSS transition.
         // additionalDelaySec: extra delay (seconds) added on top of the StyleTransitionConfig delay, used by
@@ -97,6 +126,13 @@ namespace Velvet
                 IsExit = false,
             };
 
+            if (DrivesTween(config.DurationSec))
+            {
+                StartDrivenTween(in play, config.DurationSec, config.Easing, propertyOverrides: null,
+                    removesToClasses: true);
+                return;
+            }
+
             // Classic transition enter: the to-classes are a TRANSIENT overlay, so they are removed on
             // completion (variantMode: false). Per-property overrides are wired only where a variant swap sets
             // transition-property: all (see PlayVariantEnter / PlayExit); a preset's own USS-declared
@@ -111,14 +147,17 @@ namespace Velvet
         // and one cancelled before its swap never does.
         // appliedClasses: the element's whole resting class set once this play lands — its own classes and the
         // pose's — where the caller knows it (see CancelSwapAhead); the to classes stand in for it elsewhere.
+        // playback: the MotionPlayback a Spring, a Bezier or a driven Tween (DrivesTween) runs on; a Tween on the
+        // panel's clock runs on UI Toolkit's own transition and does not read it.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f,
-            Action? onSwap = null, string[]? appliedClasses = null)
+            Action? onSwap = null, string[]? appliedClasses = null, MotionPlayback? playback = null)
         {
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
                 config.Type, config.Stiffness, config.Damping, config.Mass,
-                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses);
+                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses,
+                playback, MotionRepeat.Of(config));
         }
 
         internal static bool RunsOnSwap(StyleTransitionConfig config)
@@ -152,13 +191,14 @@ namespace Velvet
         // default — the caller passes the config's own values through, since this overload takes the
         // already-unpacked timing primitives rather than the config itself).
         // bezierX1/bezierY1/bezierX2/bezierY2: the config's cubic-bezier control points (cubic-bezier(0.4, 0,
-        // 0.2, 1) by default), meaningful only when type is Bezier — passed through the same way.
+        // 0.2, 1) by default), meaningful only when type is Bezier — passed through the same way, as is repeat.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
             TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f,
             float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
-            Action? onSwap = null, string[]? appliedClasses = null)
+            Action? onSwap = null, string[]? appliedClasses = null, MotionPlayback? playback = null,
+            MotionRepeat repeat = default)
         {
             if (element == null)
             {
@@ -178,8 +218,11 @@ namespace Velvet
                 DelaySec = delaySec,
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = false,
+                Playback = playback,
+                Repeat = repeat,
             };
 
+            WarnRepeatNotPlayed(type, repeat);
             if (type == TransitionType.Spring)
             {
                 StartSpringVariant(in play, stiffness, damping, mass);
@@ -192,6 +235,14 @@ namespace Velvet
                 return;
             }
 
+            if (DrivesTween(durationSec))
+            {
+                StartDrivenTween(in play, durationSec, easing, propertyOverrides, removesToClasses: false);
+                return;
+            }
+
+            // From here the play is a Tween on the panel's clock, UI Toolkit's own transition, which runs on the
+            // panel's time whatever playback it was started on, or a Bezier of no duration, which lands at once.
             if (!IsPlayableDuration(durationSec))
             {
                 CancelSwapAhead(element, resolvedTo, appliedClasses ?? resolvedTo);
@@ -207,6 +258,8 @@ namespace Velvet
             var fromClasses = play.FromClasses;
             var toClasses = play.ToClasses;
             var onComplete = play.OnComplete;
+            // A tween starts from the values the element resolves, which a held play's would override.
+            ReleaseHeld(element);
 
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
@@ -214,17 +267,20 @@ namespace Velvet
             {
                 return;
             }
-
             // Cancel any existing enter animation.
             CancelEnter(element);
 
             var (staggerDelayMs, delayOffsetSec) = SplitNativeDelay(play.DelaySec, play.AdditionalDelaySec,
                 variantMode ? propertyOverrides : null);
+            var neverStarts = NeverStarts(play.AdditionalDelaySec);
 
             // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
             // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
-            var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, play.DelaySec,
-                allProperties: variantMode, propertyOverrides: propertyOverrides, delayOffsetSec: delayOffsetSec);
+            var (durationList, delayList) = ApplyTransitionStyles(element, new TweenSpec
+            {
+                DurationSec = durationSec, Easing = easing, DelaySec = play.DelaySec, DelayOffsetSec = delayOffsetSec,
+                AllProperties = variantMode, PropertyOverrides = propertyOverrides,
+            }, out var timing);
             if (variantMode)
             {
                 StyleAnimationClassUtils.RemoveClasses(element, toClasses);
@@ -243,6 +299,7 @@ namespace Velvet
                 RestingClasses = play.RestingClasses,
                 DurationList = durationList,
                 DelayList = delayList,
+                Timing = timing,
                 AnimatingElement = element,
                 OnSwap = play.OnSwap,
                 SwapAhead = variantMode,
@@ -277,6 +334,10 @@ namespace Velvet
                 }
                 var host = panel.visualTree;
 
+                if (neverStarts)
+                {
+                    return;
+                }
                 var startAction = new Action(() =>
                     RunEnterStartAction(pending, host, variantMode, onComplete));
 
@@ -342,11 +403,11 @@ namespace Velvet
             // ring band fades in lockstep with it.
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
-            // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
-            // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
+            // Step 3: after the duration, restore the element's transition timing. Classic enter also removes the
+            // transient to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
             // SLOWEST animating property (SlowestPropertyTimeoutMs) rather than just the top-level
             // durationSec/delaySec: PropertyOverrides can give one property a longer duration than the
-            // top-level value, and completing on the top-level timing alone would clear the inline
+            // top-level value, and completing on the top-level timing alone would restore the element's own
             // transition-duration (snapping the still-mid-tween slower property to its resting value) before
             // it actually finishes.
             var durationMs = (long)SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList)
@@ -361,7 +422,7 @@ namespace Velvet
                     }
                     // Target is opaque now — stop the co-fade and release the band's inline opacity.
                     RingCoFadeCoordinator.EndRingCoFade(completed);
-                    ClearTransitionStyles(element);
+                    RestoreTransitionStyles(element, completed.Timing);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
                     onComplete?.Invoke();
@@ -402,8 +463,10 @@ namespace Velvet
                 DelaySec = config.DelaySec,
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = true,
+                Repeat = MotionRepeat.Of(config),
             };
 
+            WarnRepeatNotPlayed(config.Type, play.Repeat);
             if (config.Type == TransitionType.Spring)
             {
                 // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
@@ -422,12 +485,21 @@ namespace Velvet
                 return;
             }
 
+            if (DrivesTween(config.DurationSec))
+            {
+                // Per-property overrides reach the variant exit alone, as below.
+                StartDrivenTween(in play, config.DurationSec, config.ExitEasing ?? config.Easing,
+                    restoreFromOnCancel ? config.PropertyOverrides : null, removesToClasses: false);
+                return;
+            }
+
+            // As PlayEnterInternal's.
+            ReleaseHeld(element);
             // StyleTransitionConfig.None (DurationSec=0): complete immediately (no warning).
             if (!ValidateDuration(config.DurationSec, onComplete))
             {
                 return;
             }
-
             // Cancel any existing exit animation.
             CancelExit(element);
 
@@ -441,10 +513,12 @@ namespace Velvet
             // transition-property is untouched).
             var (staggerDelayMs, delayOffsetSec) = SplitNativeDelay(config.DelaySec, additionalDelaySec,
                 restoreFromOnCancel ? config.PropertyOverrides : null);
-            var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing,
-                config.DelaySec, allProperties: restoreFromOnCancel,
-                propertyOverrides: restoreFromOnCancel ? config.PropertyOverrides : null,
-                delayOffsetSec: delayOffsetSec);
+            var (durationList, delayList) = ApplyTransitionStyles(element, new TweenSpec
+            {
+                DurationSec = config.DurationSec, Easing = exitEasing, DelaySec = config.DelaySec,
+                DelayOffsetSec = delayOffsetSec, AllProperties = restoreFromOnCancel,
+                PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null,
+            }, out var timing);
             StyleAnimationClassUtils.AddClasses(element, fromClasses);
 
             // Step 2: swap classes on the next frame.
@@ -455,6 +529,7 @@ namespace Velvet
                 RestingClasses = restoreFromOnCancel ? fromClasses : null,
                 DurationList = durationList,
                 DelayList = delayList,
+                Timing = timing,
                 AnimatingElement = element,
                 OnSwap = onSwap,
             };
@@ -486,6 +561,10 @@ namespace Velvet
 
                 var panel = element.panel;
                 if (panel == null)
+                {
+                    return;
+                }
+                if (NeverStarts(additionalDelaySec))
                 {
                     return;
                 }
@@ -553,12 +632,9 @@ namespace Velvet
                 if (_pendingExits.Remove(element, out var completed))
                 {
                     RingCoFadeCoordinator.EndRingCoFade(completed);
-                    // Clear BEFORE returning the lists (mirrors the enter completion): the inline
-                    // slots retain the list references, and a completed exit's element can outlive
-                    // its drop (a re-entry preempting the drop render) — leaving them set would make
-                    // later class changes tween unexpectedly, and a re-rented list would silently
-                    // mutate this element's timing through the retained reference.
-                    ClearTransitionStyles(element);
+                    // A completed exit's element can outlive its drop (a re-entry preempting the drop
+                    // render), so the exit's timing must not stay on it for later class changes to tween by.
+                    RestoreTransitionStyles(element, completed.Timing);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
                     onComplete?.Invoke();
@@ -617,12 +693,19 @@ namespace Velvet
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
                 restingTranslate.x.value, restingTranslate.y.value,
                 MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
+            plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
             var state = ValidateSpringParameters(stiffness, damping, mass)
-                ? MotionSpringDriver.Create(plan, stiffness, damping, mass)
+                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat)
                 : null;
+            // A spring this one interrupts hands on its velocity, read before the cancel below ends it.
+            var interrupted = map.GetValueOrDefault(element)?.Spring;
+            if (state != null && interrupted != null)
+            {
+                MotionSpringDriver.InheritVelocity(state, interrupted);
+            }
 
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
             // CancelEnter(element) / PlayExit's CancelExit(element) self-cancel).
@@ -650,6 +733,7 @@ namespace Velvet
                 RestingClasses = play.RestingClasses,
                 AnimatingElement = element,
                 Spring = state,
+                Playback = play.Playback,
             };
             // Seed the ring band with the spring exactly like the tween paths (PlayEnterInternal / PlayExit):
             // at the from-value NOW (synchronously, before the spring ever ticks) so there is no first-frame
@@ -663,6 +747,7 @@ namespace Velvet
             RingCoFadeCoordinator.BindRing(element, pending, isExit ? 1f : 0f);
             state.OnSettled = onComplete;
             map[element] = pending;
+            play.Playback?.Track(this, element, pending);
 
             void ScheduleStart()
             {
@@ -672,12 +757,20 @@ namespace Velvet
                     return;
                 }
                 var totalDelaySec = delaySec + additionalDelaySec;
+                if (NeverStarts(totalDelaySec))
+                {
+                    return;
+                }
+                if (pending.Playback != null)
+                {
+                    StartOnPlayback(element, pending, totalDelaySec);
+                    return;
+                }
                 if (totalDelaySec <= 0f)
                 {
                     StartSpringTick(element, pending, -totalDelaySec);
                     return;
                 }
-                var totalDelayMs = (long)(totalDelaySec * 1000);
 
                 // A delayed start is parked on the panel-root host, not element.schedule: ScheduleStart only
                 // ever runs once attached (called directly below, or from DeferUntilAttached's onAttach), but
@@ -691,17 +784,15 @@ namespace Velvet
                 {
                     return;
                 }
-                var scheduled = host.schedule.Execute(() =>
+                pending.ScheduledItem = ScheduleDelayedStart(host, totalDelaySec, pastSec =>
                 {
                     // Re-check on fire, not just on schedule: the host outlives a transient detach, so this
                     // closure can still run after a later cancel/supersede replaced this exact pending.
                     if (map.TryGetValue(element, out var stillCurrent) && ReferenceEquals(stillCurrent, pending))
                     {
-                        StartSpringTick(element, pending);
+                        StartSpringTick(element, pending, pastSec);
                     }
                 });
-                scheduled.ExecuteLater(totalDelayMs);
-                pending.ScheduledItem = scheduled;
             }
 
             if (element.panel != null)
@@ -720,31 +811,61 @@ namespace Velvet
         // (StartBezierTick) drives the resolved channels via inline styles. The one difference from the spring is
         // its completion is a fixed duration (BezierTweenDriver.Step reports done once elapsed reaches it) rather
         // than a dynamic settle. x1/y1/x2/y2 are the CSS cubic-bezier control points; durationSec is the fixed
-        // tween length; VariantPlay owns the rest, and StartSpringVariant the shared off-panel-defer contract.
+        // length of one pass, which the play's Repeat plays again; VariantPlay owns the rest, and StartSpringVariant the
+        // shared off-panel-defer contract.
         private void StartBezierVariant(in VariantPlay play, float x1, float y1, float x2, float y2,
             float durationSec)
+        {
+            // Copied out because a lambda cannot capture an `in` parameter.
+            var repeat = play.Repeat;
+            StartDriven(in play, play.FromClasses, play.ToClasses,
+                plan => ValidateBezierParameters(x1, y1, x2, y2, durationSec)
+                    ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat)
+                    : null,
+                play.DelaySec + play.AdditionalDelaySec, removesToClasses: false);
+        }
+
+        // A Tween on a mount whose clock is not the panel's, which UI Toolkit's transition would run on the panel's
+        // time instead: the bezier path's driver runs it, eased by the curve the transition eases by (UssEasing) on
+        // the transition's own timing, PropertyOverrides included. removesToClasses: a classic enter's, whose
+        // to-classes are a transient overlay its completion takes off, as PlayEnterInternal's does.
+        private void StartDrivenTween(in VariantPlay play, float durationSec, EasingMode easing,
+            IReadOnlyList<StylePropertyTransition>? propertyOverrides, bool removesToClasses)
+        {
+            var timing = new DrivenTweenTiming(play.DelaySec, durationSec, easing, propertyOverrides);
+            StartDriven(in play, MotionPresetClasses.Expand(play.FromClasses), MotionPresetClasses.Expand(play.ToClasses),
+                plan => BezierTweenDriver.CreateTween(plan, timing),
+                play.AdditionalDelaySec + timing.StartDelaySec, removesToClasses);
+        }
+
+        private bool DrivesTween(float durationSec) => !Clock.StepsOnPanelTime && IsPlayableDuration(durationSec);
+
+        // The bezier driver's half of a play, shared by a Bezier (StartBezierVariant) and a driven Tween. planFrom /
+        // planTo: the classes the plan is read from, where a preset's tokens stand in for its classes. create: the
+        // state for the resolved plan, null to land the classes and complete at once. startDelaySec: how long the
+        // tick waits, a negative one starting it that far in.
+        private void StartDriven(in VariantPlay play, string[] planFrom, string[] planTo,
+            Func<MotionSpringClassParser.SpringPlan, BezierTweenState?> create, float startDelaySec,
+            bool removesToClasses)
         {
             // Copied out because a local function cannot capture an `in` parameter.
             var element = play.Element;
             var fromClasses = play.FromClasses;
             var toClasses = play.ToClasses;
             var onComplete = play.OnComplete;
-            var delaySec = play.DelaySec;
-            var additionalDelaySec = play.AdditionalDelaySec;
             var map = play.IsExit ? _pendingExits : _pendingEnters;
 
             // Read BEFORE the class swap lands (same rationale as StartSpringVariant): a translate axis the swap
             // names on neither side rests at the element's own current inline translate rather than snapping to 0.
             var restingTranslate = element.style.translate.value;
-            var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
+            var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
                 restingTranslate.x.value, restingTranslate.y.value,
-                MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
-            // An invalid configuration (see ValidateBezierParameters) degrades exactly like an empty plan below:
+                MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot)));
+            plan = StartFromHeld(element, plan, planFrom, planTo);
+            // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
-            var state = ValidateBezierParameters(x1, y1, x2, y2, durationSec)
-                ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec)
-                : null;
+            var state = create(plan);
 
             CancelPending(map, element, animateReversal: play.IsExit);
 
@@ -767,10 +888,13 @@ namespace Velvet
                 RestingClasses = play.RestingClasses,
                 AnimatingElement = element,
                 Bezier = state,
+                Playback = play.Playback,
+                RemovesToClasses = removesToClasses,
             };
             RingCoFadeCoordinator.BindRing(element, pending, play.IsExit ? 1f : 0f);
             state.OnSettled = onComplete;
             map[element] = pending;
+            play.Playback?.Track(this, element, pending);
 
             void ScheduleStart()
             {
@@ -779,13 +903,20 @@ namespace Velvet
                 {
                     return;
                 }
-                var totalDelaySec = delaySec + additionalDelaySec;
-                if (totalDelaySec <= 0f)
+                if (NeverStarts(startDelaySec))
                 {
-                    StartBezierTick(element, pending, -totalDelaySec);
                     return;
                 }
-                var totalDelayMs = (long)(totalDelaySec * 1000);
+                if (pending.Playback != null)
+                {
+                    StartOnPlayback(element, pending, startDelaySec);
+                    return;
+                }
+                if (startDelaySec <= 0f)
+                {
+                    StartBezierTick(element, pending, -startDelaySec);
+                    return;
+                }
 
                 // See StartSpringVariant for why a delayed start parks on the panel-root host (survives a
                 // transient reorder detach) rather than element.schedule.
@@ -794,15 +925,13 @@ namespace Velvet
                 {
                     return;
                 }
-                var scheduled = host.schedule.Execute(() =>
+                pending.ScheduledItem = ScheduleDelayedStart(host, startDelaySec, pastSec =>
                 {
                     if (map.TryGetValue(element, out var stillCurrent) && ReferenceEquals(stillCurrent, pending))
                     {
-                        StartBezierTick(element, pending);
+                        StartBezierTick(element, pending, pastSec);
                     }
                 });
-                scheduled.ExecuteLater(totalDelayMs);
-                pending.ScheduledItem = scheduled;
             }
 
             if (element.panel != null)
@@ -819,14 +948,14 @@ namespace Velvet
         // tick's own rationale: a recurring item survives a keyed reorder's detach/re-attach of the animating
         // element on its own (UI Toolkit pauses and reschedules it automatically), but the panel root is
         // already where the co-fade sampling and the rest of this pending animation's bookkeeping run, so this
-        // tick shares that same stable host rather than tracking a second one. Each tick reads the elapsed time
-        // from the SAME clock the scheduler itself used to decide when to fire this callback
-        // (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
+        // tick shares that same stable host rather than tracking a second one. Under MotionClock.Realtime each
+        // tick reads the elapsed time from the SAME clock the scheduler itself used to decide when to fire this
+        // callback (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
         // own time source, which a test's simulated panel overrides) rather than sampling a different clock
-        // (e.g. Time.realtimeSinceStartupAsDouble) that could disagree with it: a hitch is still absorbed by
-        // SpringIntegrator's own dt clamp, but the elapsed time now always matches what actually elapsed on the
-        // clock this tick is scheduled against. No-op if there is no host (should not happen for the on-panel /
-        // already-deferred-to-attach cases this is called from, but this guards rather than throws).
+        // (e.g. Time.realtimeSinceStartupAsDouble) that could disagree with it, so the elapsed time always matches
+        // what actually elapsed on the clock this tick is scheduled against. No-op if there is no host (should
+        // not happen for the on-panel / already-deferred-to-attach cases this is called from, but this guards
+        // rather than throws).
         private void StartSpringTick(VisualElement element, PendingAnimation pending, float preRollSec = 0f)
         {
             var state = pending.Spring;
@@ -845,7 +974,6 @@ namespace Velvet
             // moment its CSS transition would have started firing.
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
-            // Stepped a frame at a time, because the integrator clamps a longer step.
             for (var remaining = preRollSec; remaining > 0f; remaining -= PreRollStepSec)
             {
                 if (MotionSpringDriver.Step(element, state, Math.Min(remaining, PreRollStepSec)))
@@ -855,14 +983,18 @@ namespace Velvet
                 }
             }
 
+            var clock = Clock;
+            var lastSec = clock.NowSec;
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
-                // TimerState.start is the previous callback's time for a repeating item (or the schedule time
-                // for the first firing), so deltaTime is already exactly the elapsed interval this tick needs
-                // — no separate "last tick" bookkeeping to maintain.
-                var dt = ts.deltaTime / 1000f;
+                var dt = clock.StepSince(ref lastSec, ts);
                 if (dt <= 0f)
                 {
+                    return;
+                }
+                if (pending.Playback != null)
+                {
+                    StepOnPlayback(element, pending, dt);
                     return;
                 }
 
@@ -875,10 +1007,45 @@ namespace Velvet
 
         private const float PreRollStepSec = StyleAnimateDriver.TickMs / 1000f;
 
+        // A clock other than the panel's counts the delay itself, polled at the tick cadence, so a clock that
+        // holds still holds the delay too rather than letting it run out on the panel's time. start takes how far
+        // past the delay the play already is when it fires, which its first step carries.
+        private IVisualElementScheduledItem ScheduleDelayedStart(VisualElement host, float delaySec, Action<float> start)
+        {
+            var clock = Clock;
+            if (clock.StepsOnPanelTime)
+            {
+                var scheduled = host.schedule.Execute((TimerState ts) =>
+                    start(Math.Max(0f, (ts.now - ts.start) / 1000f - delaySec)));
+                scheduled.ExecuteLater((long)(delaySec * 1000));
+                return scheduled;
+            }
+            var startSec = clock.NowSec;
+            IVisualElementScheduledItem? polling = null;
+            polling = host.schedule.Execute(() =>
+            {
+                var pastSec = clock.NowSec - startSec - delaySec;
+                if (pastSec < 0d)
+                {
+                    return;
+                }
+                polling!.Pause();
+                start((float)pastSec);
+            }).Every(StyleAnimateDriver.TickMs);
+            return polling;
+        }
+
         private void FinishSpring(VisualElement element, PendingAnimation pending, MotionSpringState state)
         {
             state.Tick?.Pause();
             state.Tick = null;
+            if (MotionSpringDriver.EndsAtFrom(state))
+            {
+                // Held as FinishBezier holds a bezier play that ends on its from-values.
+                RingCoFadeCoordinator.HoldRingCoFade(pending);
+                state.OnSettled?.Invoke();
+                return;
+            }
             // Removes this entry from whichever of the two bookkeeping maps currently owns it — ordinarily
             // the map this play was started into, but an exit-cancel reversal hand-off (CancelPending) can
             // have MOVED it into _pendingEnters since then, so both are probed rather than assuming the
@@ -892,6 +1059,7 @@ namespace Velvet
             RingCoFadeCoordinator.EndRingCoFade(pending);
             MotionSpringDriver.ClearInlineOverrides(element, state);
             ReapplyMotionOwnedInlineValues(element);
+            ReassertHeld(element);
             state.OnSettled?.Invoke();
         }
 
@@ -920,11 +1088,18 @@ namespace Velvet
                 return;
             }
 
+            var clock = Clock;
+            var lastSec = clock.NowSec;
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
-                var dt = ts.deltaTime / 1000f;
+                var dt = clock.StepSince(ref lastSec, ts);
                 if (dt <= 0f)
                 {
+                    return;
+                }
+                if (pending.Playback != null)
+                {
+                    StepOnPlayback(element, pending, dt);
                     return;
                 }
 
@@ -939,6 +1114,15 @@ namespace Velvet
         {
             state.Tick?.Pause();
             state.Tick = null;
+            if (BezierTweenDriver.EndsAtFrom(state))
+            {
+                // The classes the play landed are its to-pose, so clearing the inline values would jump the element
+                // there. The play stays registered holding its from-values, and its ring band the opacity they
+                // leave, until a cancel releases them as it releases a running play's.
+                RingCoFadeCoordinator.HoldRingCoFade(pending);
+                state.OnSettled?.Invoke();
+                return;
+            }
             // Probe both maps, not just the one this play started into: an exit-cancel reversal hand-off
             // (CancelPending) can have MOVED it into _pendingEnters since then (same as the spring path).
             if (!RemoveIfCurrent(_pendingExits, element, pending))
@@ -946,13 +1130,218 @@ namespace Velvet
                 RemoveIfCurrent(_pendingEnters, element, pending);
             }
             RingCoFadeCoordinator.EndRingCoFade(pending);
+            if (pending.RemovesToClasses)
+            {
+                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
+            }
             BezierTweenDriver.ClearInlineOverrides(element, state);
             ReapplyMotionOwnedInlineValues(element);
+            ReassertHeld(element);
             state.OnSettled?.Invoke();
         }
 
+        // A play on a playback starts on the playback's time, less its delay, so a delay is waited out in the tick,
+        // where a pause holds it and a rate stretches it as in a Framer Motion sequence's timeline.
+        private void StartOnPlayback(VisualElement element, PendingAnimation pending, float delaySec)
+        {
+            pending.PlayTimeSec = -delaySec;
+            if (SeekOnPlayback(element, pending))
+            {
+                Finish(element, pending);
+                return;
+            }
+            if (pending.Spring != null)
+            {
+                StartSpringTick(element, pending);
+            }
+            else
+            {
+                StartBezierTick(element, pending);
+            }
+        }
+
+        // A frame of a play on a playback: its time moves by the playback's share of the frame.
+        private void StepOnPlayback(VisualElement element, PendingAnimation pending, float dtSec)
+        {
+            var stepSec = pending.Playback!.Scale(dtSec);
+            if (stepSec == 0f)
+            {
+                if (pending.Spring != null)
+                {
+                    MotionSpringDriver.Halt(pending.Spring);
+                }
+                return;
+            }
+            pending.PlayTimeSec += stepSec;
+            if (SeekOnPlayback(element, pending))
+            {
+                Finish(element, pending);
+            }
+        }
+
+        // Writes the play at its time and reports whether that time has reached its end. Inside its delay it holds
+        // its from-values and has not.
+        private static bool SeekOnPlayback(VisualElement element, PendingAnimation pending)
+        {
+            var inDelay = pending.PlayTimeSec < 0f;
+            var timeSec = Math.Max(0f, pending.PlayTimeSec);
+            var done = pending.Spring != null
+                ? MotionSpringDriver.SeekTo(element, pending.Spring, timeSec, pending.Playback!.Scale(1f))
+                : BezierTweenDriver.SeekTo(element, pending.Bezier!, timeSec);
+            return done && !inDelay;
+        }
+
+        private void Finish(VisualElement element, PendingAnimation pending)
+        {
+            // A play ending on its from-values stays registered holding them (FinishBezier, FinishSpring), so it
+            // stays listed for the cancel or the reseed that releases them.
+            var holdsFromValues = pending.Spring != null
+                ? MotionSpringDriver.EndsAtFrom(pending.Spring)
+                : BezierTweenDriver.EndsAtFrom(pending.Bezier!);
+            if (!holdsFromValues)
+            {
+                pending.Playback!.Untrack(pending);
+            }
+            if (pending.Spring != null)
+            {
+                FinishSpring(element, pending, pending.Spring);
+            }
+            else
+            {
+                FinishBezier(element, pending, pending.Bezier!);
+            }
+        }
+
+        // Framer Motion's cancel(): the play returns to its time-0 values, its starting ones, and stops there with
+        // no completion. It leaves the enter map for _held, its inline values and its ring co-fade kept, so the
+        // next play on the element starts from those values (StartFromHeld) and a later play of no duration,
+        // a reseed or a teardown takes them off (ReleaseHeld).
+        internal void CancelPlay(VisualElement element, object play)
+        {
+            if (!_pendingEnters.TryGetValue(element, out var pending) || !ReferenceEquals(pending, play))
+            {
+                return;
+            }
+            _pendingEnters.Remove(element);
+            pending.ScheduledItem?.Pause();
+            // MUTANT_SURVIVES(equivalent): the deferred start finds a held entry in neither map and returns.
+            // That identity check in ScheduleStart is what keeps a held play from starting on attach.
+            if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
+            pending.Spring?.Tick?.Pause();
+            pending.Bezier?.Tick?.Pause();
+            // An element holds one play: an earlier held one, which this play took the channels it names from,
+            // gives up the rest too rather than staying on with no entry to release it by.
+            ReleaseHeld(element);
+            SeekToStart(element, pending);
+            if (pending.Bezier != null)
+            {
+                BezierTweenDriver.NarrowSuspension(element, pending.Bezier);
+            }
+            _held[element] = pending;
+        }
+
+        // A held play's values are the ones the element's next Spring or Bezier play on the channels both drive
+        // starts from, as Framer Motion's next animation starts from where a cancelled one left its value.
+        private MotionSpringClassParser.SpringPlan StartFromHeld(VisualElement element,
+            MotionSpringClassParser.SpringPlan plan, string[]? fromClasses, string[]? toClasses)
+        {
+            if (!_held.TryGetValue(element, out var held))
+            {
+                return plan;
+            }
+            var start = HeldValues(held);
+            HandOver(element, held, plan, start, fromClasses, toClasses);
+            return MotionSpringClassParser.StartingFrom(plan, start);
+        }
+
+        private static MotionSpringClassParser.SpringPlan HeldValues(PendingAnimation held)
+            => held.Spring != null
+                ? MotionSpringDriver.StartValues(held.Spring)
+                : BezierTweenDriver.StartValues(held.Bezier!);
+
+        // The held play gives up the channels the starting play's classes name and keeps the rest where the cancel
+        // left them, as a Framer Motion value no later animation touches stays there. Translate is one style for
+        // both axes, so where the play names one axis alone the pair stays held, that axis at where the play lands
+        // it, for ReassertHeld to write back once the play has finished.
+        private void HandOver(VisualElement element, PendingAnimation held, MotionSpringClassParser.SpringPlan plan,
+            MotionSpringClassParser.SpringPlan start, string[]? fromClasses, string[]? toClasses)
+        {
+            var named = FiberNodePatcher.LonghandsOf(fromClasses ?? Array.Empty<string>())
+                .Union(FiberNodePatcher.LonghandsOf(toClasses ?? Array.Empty<string>()));
+            if (held.Spring != null)
+            {
+                MotionSpringDriver.ReleaseChannels(element, held.Spring, named);
+            }
+            else
+            {
+                BezierTweenDriver.ReleaseChannels(element, held.Bezier!, named);
+            }
+            if (start.TranslateX != null && plan.LoneTranslate != null)
+            {
+                var (axis, to) = plan.LoneTranslate.Value;
+                var (x, y) = axis == SpringAxis.TranslateX
+                    ? (to, start.TranslateY!.Value.from)
+                    : (start.TranslateX.Value.from, to);
+                if (held.Spring != null)
+                {
+                    MotionSpringDriver.HoldTranslate(held.Spring, x, y);
+                }
+                else
+                {
+                    BezierTweenDriver.HoldTranslate(held.Bezier!, x, y);
+                }
+            }
+            if (HeldValues(held).IsEmpty)
+            {
+                ReleaseHeld(element);
+            }
+        }
+
+        private static void SeekToStart(VisualElement element, PendingAnimation pending)
+        {
+            if (pending.Spring != null)
+            {
+                MotionSpringDriver.SeekTo(element, pending.Spring, 0f, timeScale: 0f);
+            }
+            else
+            {
+                BezierTweenDriver.SeekTo(element, pending.Bezier!, 0f);
+            }
+        }
+
+        // Takes a held play's values off its element, which then shows the pose its classes name.
+        private void ReleaseHeld(VisualElement element)
+        {
+            if (!_held.Remove(element, out var held))
+            {
+                return;
+            }
+            RingCoFadeCoordinator.EndRingCoFade(held);
+            if (held.Spring != null)
+            {
+                MotionSpringDriver.ClearInlineOverrides(element, held.Spring);
+            }
+            else
+            {
+                BezierTweenDriver.ClearInlineOverrides(element, held.Bezier!);
+            }
+            ReapplyMotionOwnedInlineValues(element);
+            held.Playback!.Untrack(held);
+        }
+
+        // ReleaseHeld for `play`, where it is still the element's held play.
+        internal void ReleaseHeldPlay(VisualElement element, object play)
+        {
+            if (_held.TryGetValue(element, out var held) && ReferenceEquals(held, play))
+            {
+                ReleaseHeld(element);
+            }
+        }
+
+        // A held play counts, so the slots it holds read as its values rather than as resting inline holders.
         private bool DrivenByRunningPlay(VisualElement element, ArbitraryProperty slot)
-            => Drives(_pendingEnters, element, slot) || Drives(_pendingExits, element, slot);
+            => Drives(_pendingEnters, element, slot) || Drives(_pendingExits, element, slot)
+                || Drives(_held, element, slot);
 
         private static bool Drives(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
             ArbitraryProperty slot)
@@ -1026,6 +1415,18 @@ namespace Velvet
             }
         }
 
+        // Writes the element's held play's values back over whatever wrote the same inline slots since: another
+        // play's clear and ReapplyMotionOwnedInlineValues as it finishes or is stopped, translate's other axis
+        // included, or a hover:, focus: or other variant payload (StyleVariantPayload.Apply), so the element shows
+        // what the next play will start from, as it does while a play runs.
+        internal void ReassertHeld(VisualElement element)
+        {
+            if (_held.TryGetValue(element, out var held))
+            {
+                SeekToStart(element, held);
+            }
+        }
+
         // Cancels the exit animation on the given element and removes the applied CSS classes; the
         // element reverses toward its resting classes with the transition kept alive (the inline
         // transition styles are cleared only after the reversal has run its course).
@@ -1046,8 +1447,12 @@ namespace Velvet
         // panel-root-scheduled tick keeps calling MotionSpringDriver.Step and writing inline styles — nothing
         // ever calls CancelEnter on this element again to catch that re-added entry, so it would otherwise
         // keep corrupting whatever the pooled element is reused for next.
-        public void CancelExitForTeardown(VisualElement element) =>
+        public void CancelExitForTeardown(VisualElement element)
+        {
             CancelPending(_pendingExits, element, animateReversal: true, forTeardown: true);
+            // A held play's values would otherwise go to the pool with the element.
+            ReleaseHeld(element);
+        }
 
         // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
         public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
@@ -1100,7 +1505,9 @@ namespace Velvet
         }
 
         // Whether a spring or bezier enter is still running on the element, whose settle re-applies the inline
-        // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens).
+        // values its class list names (FiberNodePatcher.RemoveStaleInlineTokens). A bezier or spring enter
+        // holding its from-values after its last pass counts, and its cancel is what re-applies them. One
+        // CancelPlay holds is in _held, since it never settles.
         internal bool IsDriving(VisualElement element)
             => _pendingEnters.TryGetValue(element, out var enter) && (enter.Spring != null || enter.Bezier != null);
 
@@ -1211,12 +1618,7 @@ namespace Velvet
                 }
             }
             element.style.transitionProperty = names;
-            element.style.transitionDuration = durations;
-            element.style.transitionTimingFunction = easings;
-            if (delays != null)
-            {
-                element.style.transitionDelay = delays;
-            }
+            MotionTweenTiming.Write(element, durations, easings, delays);
         }
 
         private static void AppendLanding(List<StylePropertyName> names, List<TimeValue> durations,
@@ -1273,6 +1675,10 @@ namespace Velvet
         {
             CancelAllInMap(_pendingExits);
             CancelAllInMap(_pendingEnters);
+            foreach (var element in new List<VisualElement>(_held.Keys))
+            {
+                ReleaseHeld(element);
+            }
         }
 
         private static void RunOnSwap(PendingAnimation pending)
@@ -1286,6 +1692,23 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent, boundary): durationSec != 0f already rules out both zeros.
             // They are the only values where durationSec < 0f and durationSec <= 0f disagree.
             => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
+
+        // Once per scheduler. A tween hands its interpolation to UI Toolkit's transitions, which play it once.
+        private bool _warnedRepeatNotPlayed;
+
+        internal const string RepeatNotPlayedWarning =
+            "StyleTransitionConfig.Repeat is not played by TransitionType.Tween; this transition plays once. Use "
+            + "Type = TransitionType.Bezier or TransitionType.Spring for a play that repeats.";
+
+        private void WarnRepeatNotPlayed(TransitionType type, MotionRepeat repeat)
+        {
+            if (type != TransitionType.Tween || repeat.Count == 0f || _warnedRepeatNotPlayed)
+            {
+                return;
+            }
+            _warnedRepeatNotPlayed = true;
+            FiberLogger.LogWarning("Motion", RepeatNotPlayedWarning);
+        }
 
         internal static bool ValidateDuration(float durationSec, Action? onComplete)
         {
@@ -1304,14 +1727,11 @@ namespace Velvet
             return true;
         }
 
-        // Mirrors ValidateDuration's guard, for the spring path: a non-finite or non-positive stiffness/damping
-        // makes SpringIntegrator.Step's settle predicate unsatisfiable forever — zero/negative stiffness never
-        // pulls the value toward its target, zero/negative damping never dissipates velocity, and NaN
-        // propagates into every inline style write and never compares equal to anything (including itself), so
-        // IsSettled never returns true. Left unvalidated, the panel-root tick this drives would run
-        // indefinitely and its completion callback — the ONLY thing that removes a presence exit's ghost —
-        // would never fire. A non-positive or non-finite mass does the same through the square roots
-        // SpringIntegrator.Solve takes.
+        // Mirrors ValidateDuration's guard, for the spring path: under a non-finite or non-positive stiffness,
+        // damping or mass, MotionSpringDriver.PassDurationSec finds no sample at which a spring the play has to
+        // move rests, so a channel on Framer's main-thread rule never ends. Left unvalidated, the panel-root tick
+        // this drives would run indefinitely and its completion callback — the ONLY thing that removes a
+        // presence exit's ghost — would never fire.
         internal static bool ValidateSpringParameters(float stiffness, float damping, float mass)
         {
             if (SpringIntegrator.AreValidParameters(stiffness, damping, mass))
@@ -1355,16 +1775,23 @@ namespace Velvet
         }
 
         // C# becomes the Single Source of Truth, so they need not be defined in USS.
-        // GC tuning: the EasingFunction list is cached statically per EasingMode; TimeValue lists are
-        // reused via TimeValueListPool.
-        // transition-property: all — a shared, never-mutated list (StyleList retains the reference as-is, so a
-        // static instance is safe; ClearTransitionStyles releases it via StyleKeyword.Null).
+        // The EasingFunction lists are cached per EasingMode and the TimeValue lists rented from TimeValueListPool,
+        // and the element receives MotionTweenTiming's copy of each, never one of these.
         private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
             new() { new UnityEngine.UIElements.StylePropertyName("all") };
+
+        // A delay that never runs out — a BeforeChildren wait on a parent repeating without end — leaves the play
+        // registered at its from-pose and never starts it, as Framer Motion never starts a child animation that waits
+        // on one. A cancel still finds it.
+        private static bool NeverStarts(float delaySec) => float.IsPositiveInfinity(delaySec);
 
         private static (long swapDelayMs, float transitionOffsetSec) SplitNativeDelay(float delaySec,
             float additionalDelaySec, IReadOnlyList<StylePropertyTransition>? overrides)
         {
+            if (NeverStarts(additionalDelaySec))
+            {
+                return (0, 0f);
+            }
             var earliestDelaySec = Math.Min(0f, delaySec);
             if (overrides != null)
             {
@@ -1377,10 +1804,24 @@ namespace Velvet
             return ((long)(swapDelaySec * 1000), additionalDelaySec - swapDelaySec);
         }
 
-        private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
-            VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false,
-            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null, float delayOffsetSec = 0f)
+        private readonly struct TweenSpec
         {
+            public float DurationSec { get; init; }
+            public EasingMode Easing { get; init; }
+            public float DelaySec { get; init; }
+            public float DelayOffsetSec { get; init; }
+            // A variant swap's: transition-property: all, and the per-property overrides that extend it.
+            public bool AllProperties { get; init; }
+            public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
+        }
+
+        private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
+            VisualElement element, TweenSpec spec, out MotionTweenTiming.Play timing)
+        {
+            var (durationSec, easing, delaySec, delayOffsetSec) =
+                (spec.DurationSec, spec.Easing, spec.DelaySec, spec.DelayOffsetSec);
+            var (allProperties, propertyOverrides) = (spec.AllProperties, spec.PropertyOverrides);
+            timing = MotionTweenTiming.Begin(element);
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
@@ -1392,8 +1833,7 @@ namespace Velvet
 
             var durationMs = (int)(durationSec * 1000);
             var durationList = _listPool.RentDurationList(durationMs);
-            element.style.transitionDuration = durationList;
-            element.style.transitionTimingFunction = GetOrCreateEasingList(easing);
+            MotionTweenTiming.Write(element, durationList, GetOrCreateEasingList(easing), null);
 
             // Variant animations swap user utility classes (e.g. opacity-0 ↔ opacity-100) that carry no
             // transition-* of their own, so UITK has no property to tween and the swap would snap. Set
@@ -1410,7 +1850,7 @@ namespace Velvet
             {
                 var delayMs = (int)(delaySec * 1000);
                 delayList = _listPool.RentDelayList(delayMs);
-                element.style.transitionDelay = delayList;
+                MotionTweenTiming.Write(element, null, null, delayList);
             }
 
             return (durationList, delayList);
@@ -1484,8 +1924,7 @@ namespace Velvet
             }
 
             element.style.transitionProperty = propertyNames;
-            element.style.transitionDuration = durationList;
-            element.style.transitionTimingFunction = easingList;
+            MotionTweenTiming.Write(element, durationList, easingList, null);
 
             // Mirrors the single-entry path: transition-delay is set only when at least one property actually
             // needs one (an all-zero delay list is behaviorally identical to leaving it unset) — the rented list
@@ -1496,7 +1935,7 @@ namespace Velvet
                 _listPool.ReturnDelayList(delayList);
                 return (durationList, null);
             }
-            element.style.transitionDelay = delayList;
+            MotionTweenTiming.Write(element, null, null, delayList);
             return (durationList, delayList);
         }
 
@@ -1512,6 +1951,7 @@ namespace Velvet
         {
             if (map.Remove(element, out var pending))
             {
+                pending.Playback?.Untrack(pending);
                 // Written back onto the pending, since a reversal hand-off below carries it on and a later cancel
                 // of that reversal reads both again.
                 if (restingOverride != null && pending.RestingClasses != null)
@@ -1570,13 +2010,12 @@ namespace Velvet
             if (!forTeardown && animateReversal && element.panel != null && spring.Tick != null)
             {
                 // Hand off to a reversal spring: retarget every channel toward the value it STARTED
-                // from (continuity — each channel's SpringIntegrator instance, and therefore its
-                // current value/velocity, is untouched by this), drop the original completion (a
-                // reversal settling is not "finishing" anything the original caller asked for), and
-                // move ownership into the enter map — mirroring the tween reversal's own move into
-                // _pendingEnters below. The recurring tick keeps running uninterrupted throughout;
-                // only its targets and its eventual finalize action change. Requires a tick that has
-                // actually started (spring.Tick != null): a cancel that lands before then — still
+                // from, released from the value and velocity it was last sampled at (see
+                // MotionSpringDriver.Retarget), drop the original completion (a reversal settling is
+                // not "finishing" anything the original caller asked for), and move ownership into the
+                // enter map — mirroring the tween reversal's own move into _pendingEnters below. The
+                // recurring tick keeps running uninterrupted throughout; only the springs it samples and
+                // its eventual finalize action change. Requires a tick that has actually started (spring.Tick != null): a cancel that lands before then — still
                 // parked behind its delay — has no running tick to keep alive, and nothing would ever
                 // start one for it (its ScheduledItem was already paused above, and a still-off-panel
                 // PendingAttach was already unregistered), so handing off here would just park a dead
@@ -1595,6 +2034,7 @@ namespace Velvet
                 spring.Tick = null;
                 MotionSpringDriver.ClearInlineOverrides(element, spring);
                 ReapplyMotionOwnedInlineValues(element);
+                ReassertHeld(element);
             }
         }
 
@@ -1621,6 +2061,7 @@ namespace Velvet
                 bezier.Tick = null;
                 BezierTweenDriver.ClearInlineOverrides(element, bezier);
                 ReapplyMotionOwnedInlineValues(element);
+                ReassertHeld(element);
             }
         }
 
@@ -1642,7 +2083,7 @@ namespace Velvet
             }
             else
             {
-                ClearTransitionStyles(element);
+                RestoreTransitionStyles(element, pending.Timing);
                 _listPool.ReturnDurationList(pending.DurationList);
                 _listPool.ReturnDelayList(pending.DelayList);
             }
@@ -1662,13 +2103,14 @@ namespace Velvet
                 RestingClasses = pending.RestingClasses,
                 DurationList = pending.DurationList,
                 DelayList = pending.DelayList,
+                Timing = pending.Timing,
             };
             var timeoutMs = SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList);
             var timeout = element.schedule.Execute(() =>
             {
                 if (_pendingEnters.Remove(element))
                 {
-                    ClearTransitionStyles(element);
+                    RestoreTransitionStyles(element, reversal.Timing);
                     _listPool.ReturnDurationList(reversal.DurationList);
                     _listPool.ReturnDelayList(reversal.DelayList);
                 }
@@ -1678,12 +2120,12 @@ namespace Velvet
             _pendingEnters[element] = reversal;
         }
 
-        // How long a tween must stay alive before it is safe to clear the inline transition styles / fire
+        // How long a tween must stay alive before it is safe to restore the element's transition timing / fire
         // completion: the SLOWEST animating property's delay + duration. For the single-entry case (no
         // PropertyOverrides) that is just duration[0] + delay[0], same as a plain top-level DurationSec/DelaySec;
         // PropertyOverrides can give each property its own duration / delay, so an interrupted reversal, and an
         // enter/exit's own completion, must both wait for whichever property finishes last, not just the first
-        // (or the first-declared) one — otherwise a slower property's transition-duration gets cleared (snapping
+        // (or the first-declared) one — otherwise a slower property's transition-duration gets replaced (snapping
         // it to the resting value, or dropping the ghost) while it is still mid-tween. Shared by
         // ScheduleReversalCleanup (a cancelled exit's reversal) and PlayEnterInternal / PlayExit's own
         // completion timeout, all three of which already hold the exact duration/delay lists ApplyTransitionStyles
@@ -1722,34 +2164,28 @@ namespace Velvet
                 RingCoFadeCoordinator.EndRingCoFade(pending);
                 if (pending.Spring != null)
                 {
-                    // A hard stop, no reversal: pause the tick and drop the inline overrides it owns (the
-                    // tween-only ClearTransitionStyles/ReturnDurationList/ReturnDelayList below are no-ops for
-                    // a spring entry, which never touches transition-* styles or rents a TimeValue list).
+                    // A hard stop, no reversal: pause the tick and drop the inline overrides it owns.
                     pending.Spring.Tick?.Pause();
                     MotionSpringDriver.ClearInlineOverrides(element, pending.Spring);
                     ReapplyMotionOwnedInlineValues(element);
                 }
                 if (pending.Bezier != null)
                 {
-                    // A hard stop, no reversal (same as the spring branch above; the tween-only clears below are
-                    // no-ops for a bezier entry, which never touches transition-* styles or rents a TimeValue list).
+                    // A hard stop, no reversal, as the spring branch above.
                     pending.Bezier.Tick?.Pause();
                     BezierTweenDriver.ClearInlineOverrides(element, pending.Bezier);
                     ReapplyMotionOwnedInlineValues(element);
                 }
-                ClearTransitionStyles(element);
+                RestoreTransitionStyles(element, pending.Timing);
                 _listPool.ReturnDurationList(pending.DurationList);
                 _listPool.ReturnDelayList(pending.DelayList);
             }
             map.Clear();
         }
 
-        private void ClearTransitionStyles(VisualElement element)
+        private void RestoreTransitionStyles(VisualElement element, MotionTweenTiming.Play? timing)
         {
-            // Releases UIElements' internal list reference, making pool return safe.
-            element.style.transitionDuration = StyleKeyword.Null;
-            element.style.transitionTimingFunction = StyleKeyword.Null;
-            element.style.transitionDelay = StyleKeyword.Null;
+            MotionTweenTiming.End(element, timing);
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).
             // Routed through the guard rather than nulled here: a per-frame animate-* driver can be holding the
@@ -1757,9 +2193,6 @@ namespace Velvet
             MotionNativeTransitionGuard.RestoreAfterForeignWrite(element);
         }
 
-        // StyleList<T> retains the List reference as-is (no copy), so cached lists must not be mutated
-        // after creation.
-        // The reference is released when StyleKeyword.Null is assigned in ClearTransitionStyles, so it is safe.
         private static List<EasingFunction> GetOrCreateEasingList(EasingMode easing)
         {
             if (!s_easingCache.TryGetValue(easing, out var list))
@@ -1785,6 +2218,8 @@ namespace Velvet
             public string[]? RestingClasses;
             public List<TimeValue>? DurationList;
             public List<TimeValue>? DelayList;
+            // The tween timing this play wrote, which a reversal it hands on to carries.
+            public MotionTweenTiming.Play? Timing;
             // The element whose transition-interpolated opacity the co-fade tick samples each frame (the
             // animating subtree root). Stored so the tick reads it without recapturing.
             public VisualElement? AnimatingElement;
@@ -1810,6 +2245,8 @@ namespace Velvet
             public Action? OnSwap;
             // True from a tween variant enter's registration until its swap runs; false for every other entry.
             public bool SwapAhead;
+            // A driven classic enter's (StartDrivenTween): its settle takes the transient to-classes off.
+            public bool RemovesToClasses;
             // A tween enter's completion, which CancelSwapAhead runs when it cancels the entry before its swap.
             public Action? OnComplete;
             // The classes a CancelExit caller kept (see CancelExit), for a reversal that is cancelled in turn.
@@ -1818,6 +2255,11 @@ namespace Velvet
             // The animating element's OWN ring band, when it has one. Only its own: a band belonging to a
             // DESCENDANT is a child of a descendant, so UI Toolkit's opacity compositing already fades it.
             public VisualElement? RingOverlay;
+
+            // A spring or bezier play's MotionPlayback, null for one on none, and the play's time on it, negative
+            // inside its delay.
+            public MotionPlayback? Playback;
+            public float PlayTimeSec;
         }
 
         // Ring-band co-fade bookkeeping for every StyleAnimationScheduler play (tween / spring / bezier, enter /
@@ -1877,6 +2319,11 @@ namespace Velvet
                     overlay.style.opacity = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
                 }).Every(StyleAnimateDriver.TickMs);
             }
+
+            // Stops the co-fade tick of a play holding its from-values past its end, which no longer moves the
+            // opacity it samples; the cancel that ends the hold releases the band through EndRingCoFade.
+            internal static void HoldRingCoFade(StyleAnimationScheduler.PendingAnimation pending)
+                => pending.RingTick?.Pause();
 
             // Stops the co-fade tick and releases the band's inline opacity (null-safe; balanced one-for-one
             // with BindRing).

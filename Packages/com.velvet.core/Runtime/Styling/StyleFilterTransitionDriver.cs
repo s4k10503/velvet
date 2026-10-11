@@ -16,12 +16,17 @@ namespace Velvet
         // reorder — which briefly detaches the element and would make UI Toolkit silently drop a per-element
         // scheduled item — does not stall the tween. Paused + nulled on settle and on teardown.
         public IVisualElementScheduledItem? Scheduled;
-        // Wall-clock start (Time.realtimeSinceStartupAsDouble). Progress is elapsed/duration so a dropped
-        // frame never accumulates drift.
+        // Start on Clock. Progress is elapsed/duration so a dropped frame never accumulates drift.
         public double StartTime;
+        // The clock of the mount that created the element, read as the tween starts (MotionClock.Of).
+        public MotionClock Clock = MotionClock.Realtime;
         public float DurationSec;
         public float DelaySec;
         public EasingMode Easing;
+        // The value a change has to return to for it to reverse this tween, and the tween's reversing shortening
+        // factor (TryStartOrRedirect).
+        public List<FilterFunction>? AdjustedStart;
+        public float ReversingFactor = 1f;
         // Precomputed aligned interpolation slots. Parameters are snapshotted at start (decoupled from the
         // live inline list the tick overwrites every frame).
         public StyleFilterTransitionDriver.Channel[] Channels = Array.Empty<StyleFilterTransitionDriver.Channel>();
@@ -34,8 +39,8 @@ namespace Velvet
     // (same repaint-dirtying reason as the Hue arm of StyleAnimateDriver).
     //
     // Velvet runs a filter change wherever an entry runs for filter, except where the engine's own animation takes
-    // the write with that entry's timing (EngineTimesFilterWrites), which keeps the engine's shortening of a
-    // reversed transition there. The inline-filter setter animates a list write by the entry for background-size;
+    // the write with that entry's timing (EngineTimesFilterWrites) on a mount whose MotionClock is the panel's,
+    // which keeps the engine's shortening of a reversed transition there. The inline-filter setter animates a list write by the entry for background-size;
     // where that entry runs on other timing than filter's, StyleFilterEngineWrite writes past it with transitions
     // suspended. TryFindTransition decides which entry runs. That decision is TryStartOrRedirect's resolvedStyle
     // probe, not the class list, and the tick re-checks it every frame so a value that changes mid-tween hands
@@ -119,11 +124,15 @@ namespace Velvet
             var delayMs = 0;
             var easing = EasingMode.Ease;
             var channels = Array.Empty<Channel>();
+            var clock = MotionClock.Of(element);
             // An animate-hue motion masks a filter utility's change, so it starts no transition, as a CSS
             // animation masks the change in both the before- and after-change styles; and nor does the change an
             // ended motion uncovers (StyleFilterEngineWrite.WithoutTransition).
+            // A mount on another clock than the panel's leaves no write for the engine to animate, since the
+            // engine animates it on the panel's time.
             var runs = element.panel != null && !StyleAnimateDriver.DrivesFilter(element)
-                && !StyleFilterEngineWrite.TransitionsWithheld && !EngineTimesFilterWrites(element)
+                && !StyleFilterEngineWrite.TransitionsWithheld
+                && !(clock.StepsOnPanelTime && EngineTimesFilterWrites(element))
                 && TryFindTransition(element, FilterPropertyName, null, out durationMs, out delayMs, out easing);
             // Read the CURRENT applied list as the from-side. During an in-flight tween this is last frame's
             // interpolated list, so a redirect starts from where the eye is — not the tween's original start.
@@ -142,13 +151,28 @@ namespace Velvet
                 return false;
             }
 
+            // A change back to where the running tween started reverses it as the engine reverses a transition: CSS
+            // Transitions' reversing shortening, whose factor is the running tween's eased output weighted by that
+            // tween's own factor, and which shortens the duration and a negative delay.
+            var factor = 1f;
+            var adjustedStart = element.style.filter.value;
+            if (bound?.Scheduled != null && SameList(bound.AdjustedStart, to))
+            {
+                var eased = UssEasing.Evaluate(bound.Easing, Progress(bound));
+                factor = Mathf.Clamp01(Mathf.Abs(eased * bound.ReversingFactor + 1f - bound.ReversingFactor));
+                adjustedStart = bound.Target;
+            }
             var b = bound ?? Bind(element);
             b.Channels = channels;
             b.Target = to;
-            b.DurationSec = Mathf.Max(0, durationMs) / 1000f;
-            b.DelaySec = delayMs / 1000f;
+            b.AdjustedStart = adjustedStart;
+            b.ReversingFactor = factor;
+            b.DurationSec = Mathf.Max(0, durationMs) / 1000f * factor;
+            // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
+            b.DelaySec = delayMs < 0 ? delayMs / 1000f * factor : delayMs / 1000f;
             b.Easing = easing;
-            b.StartTime = Time.realtimeSinceStartupAsDouble;
+            b.Clock = clock;
+            b.StartTime = clock.NowSec;
             // Write the start frame now so there is no one-frame flash of the pre-change value.
             ApplyFrame(element, b, Progress(b));
             // Reuse a running tick — resetting StartTime/Channels/Target redirects it in place (the tick reads
@@ -249,7 +273,7 @@ namespace Velvet
         // jumps to the end once the delay has passed, as a USS transition does.
         private static float Progress(StyleFilterTransitionBinding b)
         {
-            var active = Time.realtimeSinceStartupAsDouble - b.StartTime - b.DelaySec;
+            var active = b.Clock.NowSec - b.StartTime - b.DelaySec;
             return Mathf.Clamp01((float)(active / Math.Max(b.DurationSec, 1e-6)));
         }
 
@@ -309,7 +333,7 @@ namespace Velvet
                 // takes a filter write from that moment, every frame write is taken over by it and restarted from the
                 // painted value, so the paint would crawl behind a target that moves each tick. Hand over by
                 // settling once instead, as where nothing runs for filter any more.
-                if (EngineTimesFilterWrites(element) || !FilterTransitionRuns(element))
+                if ((b.Clock.StepsOnPanelTime && EngineTimesFilterWrites(element)) || !FilterTransitionRuns(element))
                 {
                     Settle(element, b);
                     return;

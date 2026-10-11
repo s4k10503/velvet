@@ -17,6 +17,7 @@ namespace Velvet
     internal sealed class EngineMember
     {
         private static readonly Assembly UIElements = typeof(VisualElement).Assembly;
+        private static readonly Assembly IMGUI = typeof(UnityEngine.GUIUtility).Assembly;
 
         private const string FocusControllerType = "UnityEngine.UIElements.FocusController";
         private const string VisualElementType = "UnityEngine.UIElements.VisualElement";
@@ -50,6 +51,16 @@ namespace Velvet
         // FocusManager's composite-field scope.
         internal static readonly EngineMember IsCompositeRoot =
             ReadProperty(UIElements, VisualElementType, "isCompositeRoot", "System.Boolean");
+
+        // V.TextField's onSubmit: — the input's record of an open IME composition.
+        internal static readonly EngineMember TextEditingManipulator = ReadProperty(UIElements,
+            "UnityEngine.UIElements.TextElement", "editingManipulator", "UnityEngine.UIElements.TextEditingManipulator");
+
+        internal static readonly EngineMember TextEditingUtilities = Field(UIElements,
+            "UnityEngine.UIElements.TextEditingManipulator", "editingUtilities", "UnityEngine.TextEditingUtilities");
+
+        internal static readonly EngineMember TextCompositionActive =
+            Field(IMGUI, "UnityEngine.TextEditingUtilities", "isCompositionActive", "System.Boolean");
 
         // EnabledSelfWrites.
         internal static readonly EngineMember PropertyChangedEvent = ConstructedType(UIElements,
@@ -101,6 +112,49 @@ namespace Velvet
 
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
             "UnityEngine.UIElements.StylePropertyName", "id", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
+
+        // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
+        private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";
+        private const string UpdatePhaseShape = "enum:" + UpdatePhaseType;
+        private const string LayoutNodeType = "UnityEngine.UIElements.Layout.LayoutNode";
+        private const string VersionChangeType = "UnityEngine.UIElements.VersionChangeType";
+
+        internal static readonly EngineMember PanelGetUpdater = Method(UIElements, "UnityEngine.UIElements.Panel",
+            "GetUpdater", "UnityEngine.UIElements.IVisualTreeUpdater", UpdatePhaseShape);
+
+        internal static readonly EngineMember PanelVersion =
+            ReadProperty(UIElements, "UnityEngine.UIElements.Panel", "version", "System.UInt32");
+
+        internal static readonly EngineMember StyleUpdaterApplying =
+            Field(UIElements, "UnityEngine.UIElements.VisualTreeStyleUpdater", "m_IsApplyingStyles", "System.Boolean");
+
+        internal static readonly EngineMember StylesUpdatePhase = Field(UIElements, UpdatePhaseType, "Styles", UpdatePhaseShape);
+
+        internal static readonly EngineMember StyleUpdaterUpdate =
+            Method(UIElements, "UnityEngine.UIElements.VisualTreeStyleUpdater", "Update", "System.Void");
+
+        internal static readonly EngineMember ElementLayoutNode =
+            Field(UIElements, VisualElementType, "m_LayoutNode", LayoutNodeType);
+
+        internal static readonly EngineMember LayoutNodeCalculate =
+            Method(UIElements, LayoutNodeType, "CalculateLayout", "System.Void", "System.Single", "System.Single");
+
+        internal static readonly EngineMember LayoutNodeDirty =
+            WrittenProperty(UIElements, LayoutNodeType, "IsDirty", "System.Boolean");
+
+        internal static readonly EngineMember LayoutNodeHasNewLayout =
+            ReadProperty(UIElements, LayoutNodeType, "HasNewLayout", "System.Boolean");
+
+        internal static readonly EngineMember ElementLastLayout = Field(UIElements, VisualElementType, "lastLayout", "UnityEngine.Rect");
+
+        internal static readonly EngineMember ElementIncrementVersion = Method(UIElements, VisualElementType,
+            "IncrementVersion", "System.Void", "enum:" + VersionChangeType);
+
+        internal static readonly EngineMember TransformVersionChange =
+            Field(UIElements, VersionChangeType, "Transform", "enum:" + VersionChangeType);
+
+        internal static readonly EngineMember PanelDuringLayoutPhase = ReadProperty(UIElements,
+            "UnityEngine.UIElements.BaseVisualElementPanel", "duringLayoutPhase", "System.Boolean");
 
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;

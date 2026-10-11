@@ -24,9 +24,9 @@ namespace Velvet.TestUtilities
         private const string ButtonPoolFieldName = "s_buttonPool";
         private const string TogglePoolFieldName = "s_togglePool";
         private const string SliderPoolFieldName = "s_sliderPool";
+        private const string SliderIntPoolFieldName = "s_sliderIntPool";
         private const string TextFieldPoolFieldName = "s_textFieldPool";
         private const string OwnedPropsFieldName = "s_ownedProps";
-        private const string OwnedEventArraysFieldName = "s_ownedSingleEventArrays";
         private const string OwnedNodeArraysFieldName = "s_ownedNodeArrays";
         private const string RentalJournalFieldName = "s_rentalJournal";
         private const string ClearMethodName = "Clear";
@@ -46,6 +46,9 @@ namespace Velvet.TestUtilities
         public static void ClearSliderPoolForTest() => Clear(SliderPoolFieldName);
 
         // Bypasses: nothing — it resets a static pool, which no production path does.
+        public static void ClearSliderIntPoolForTest() => Clear(SliderIntPoolFieldName);
+
+        // Bypasses: nothing — it resets a static pool, which no production path does.
         public static void ClearTextFieldPoolForTest() => Clear(TextFieldPoolFieldName);
 
         // Bypasses: nothing — it reads a static pool's depth.
@@ -57,6 +60,9 @@ namespace Velvet.TestUtilities
         // Bypasses: nothing — it reads a static pool's depth.
         public static int TextFieldPoolCountForTest => Count(TextFieldPoolFieldName);
 
+        // Bypasses: nothing — it reads a static pool's depth.
+        public static int SliderIntPoolCountForTest => Count(SliderIntPoolFieldName);
+
         // For a case whose identity term has to tell a patch from a discard-and-recreate at a pooled slot.
         // ChildReconciler.PatchOrReplaceAtSlot removes the occupant before it creates the replacement and
         // the pools pop the last element pushed, so with room left the discard is rented straight back as
@@ -66,13 +72,39 @@ namespace Velvet.TestUtilities
         public static bool SaturateLabelPoolForTest()
             => Saturate(LabelPoolFieldName, () => VNodePool.ReturnLabel(new Label()));
 
+        // The Sliders are built by the pool's own factory, so a later rent gets the keyboard callbacks a pooled
+        // Slider carries.
+        // Bypasses: FiberElementCleaner — it returns Sliders no tree mounted, through ReturnSlider.
+        public static bool SaturateSliderPoolForTest()
+            => Saturate(SliderPoolFieldName, () => VNodePool.ReturnSlider(FiberSliderKeyboard.Create()));
+
         // Bypasses: FiberElementCleaner — it returns TextFields no tree mounted, through ReturnTextField.
         public static bool SaturateTextFieldPoolForTest()
             => Saturate(TextFieldPoolFieldName, () => VNodePool.ReturnTextField(new TextField()));
 
-        // Bypasses: nothing — it reads how many props bags, single-event arrays and node arrays are rented out.
+        // Bypasses: nothing — it reads how many props bags, event arrays and node arrays are rented out.
         public static (int Props, int EventArrays, int NodeArrays) RentedOutCountsForTest()
-            => (Count(OwnedPropsFieldName), Count(OwnedEventArraysFieldName), Count(OwnedNodeArraysFieldName));
+            => (Count(OwnedPropsFieldName), OwnedEventArrayCount(), Count(OwnedNodeArraysFieldName));
+
+        // The rented-out event arrays are every static HashSet<FiberEventBinding[]> the pool holds, found by
+        // that type and summed, so a fixture reading them names no field and reads the same however many
+        // sets the pool keeps them in.
+        private static int OwnedEventArrayCount()
+        {
+            var sets = 0;
+            var count = 0;
+            foreach (var field in typeof(VNodePool).GetFields(BindingFlags.Static | BindingFlags.NonPublic))
+            {
+                if (field.FieldType != typeof(HashSet<FiberEventBinding[]>)) continue;
+                sets++;
+                count += CountOf(field.GetValue(null)!);
+            }
+            if (sets == 0)
+            {
+                throw new MissingFieldException(typeof(VNodePool).FullName, "HashSet<FiberEventBinding[]>");
+            }
+            return count;
+        }
 
         // Bypasses: nothing — it reads whether the pool counts a props bag as rented out.
         public static bool IsRentedOutForTest(FiberElementProps props)
@@ -108,9 +140,10 @@ namespace Velvet.TestUtilities
             clear.Invoke(pool, null);
         }
 
-        private static int Count(string fieldName)
+        private static int Count(string fieldName) => CountOf(Pool(fieldName));
+
+        private static int CountOf(object pool)
         {
-            var pool = Pool(fieldName);
             var count = pool.GetType().GetProperty(CountPropertyName, BindingFlags.Instance | BindingFlags.Public);
             if (count == null)
             {

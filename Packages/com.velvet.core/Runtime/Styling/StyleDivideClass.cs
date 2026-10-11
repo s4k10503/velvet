@@ -307,7 +307,7 @@ namespace Velvet
         }
 
         // divide-{color}: a named palette color (divide-gray-200, divide-white, …) or the
-        // arbitrary form divide-[#e5e7eb] / divide-[rgb(...)]. Returns false for a non-color suffix so
+        // arbitrary form divide-[<color>]. Returns false for a non-color suffix so
         // the caller leaves the accumulated spec untouched (e.g. divide-dashed, divide-solid).
         private static bool TryParseColor(string cls, out Color color) =>
             VelvetPalette.TryResolveColorToken(cls.Substring("divide-".Length), out color);

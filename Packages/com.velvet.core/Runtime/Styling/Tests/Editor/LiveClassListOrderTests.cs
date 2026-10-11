@@ -71,6 +71,14 @@ namespace Velvet.Tests
             "System.Int32 Velvet.CascadeSnapshot.ClassKey(UnityEngine.UIElements.VisualElement)";
         private const string HostStampReader =
             "System.Int32 Velvet.VelvetStyleUtilities.ClassStamp(System.Int32, UnityEngine.UIElements.VisualElement)";
+        private const string SelectionDrawingClassesReader =
+            "System.Void Velvet.SelectionTextOverlay.Place(UnityEngine.UIElements.TextElement)";
+        private const string TextInputColorReader =
+            "System.Void Velvet.StyleTextInputColors.Consider(UnityEngine.UIElements.VisualElement, System.String, "
+            + "UnityEngine.UIElements.TextElement, Velvet.StyleTextInputColors/Winner&)";
+        private const string DeclaredKindReader =
+            "Velvet.StyleRelativeLengths/Declared Velvet.StyleRelativeLengths.DeclaredKind("
+            + "UnityEngine.UIElements.VisualElement, Velvet.StyleLonghand, UnityEngine.UIElements.StyleLength)";
 
         // Marks the case that measures one reader's verdict. The roster reads these off the methods carrying
         // [Test] rather than off a list of its own, and the case beside it reads the marked method's IL, so
@@ -109,11 +117,20 @@ namespace Velvet.Tests
         private static readonly MethodInfo StampHostClasses = typeof(VelvetStyleUtilities)
             .GetMethod("ClassStamp", BindingFlags.NonPublic | BindingFlags.Static);
 
+        private static readonly MethodInfo ReadDeclaredKind = typeof(StyleRelativeLengths)
+            .GetMethod("DeclaredKind", BindingFlags.NonPublic | BindingFlags.Static)!;
+
         // Null on a tree without the pointer-events utilities, which PointerEventsOf reports as an answer no
         // case expects rather than throw.
         private static readonly MethodInfo ReadPointerEvents = typeof(V).Assembly
             .GetType("Velvet.StylePointerEventsClass")
             ?.GetMethod("Read", BindingFlags.Public | BindingFlags.Static);
+
+        private static readonly MethodInfo PlaceSelectionDrawing = typeof(SelectionTextOverlay)
+            .GetMethod("Place", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        private static readonly MethodInfo ResolveSelectionColor = typeof(StyleTextInputColors)
+            .GetMethod("TryResolveSelection", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         // A helper that applies classes runs the production routing, and the routing reaches production code
         // an arrangement can leave unexecuted.
@@ -198,6 +215,59 @@ namespace Velvet.Tests
 
         private static void Settle(VisualElement element)
             => SettleMotionOwnedInlineValues.Invoke(null, new object[] { element });
+
+        // The classes a selection drawing takes from an input that carries these, after the engine's own.
+        private static string DrawingClassesBeside(params string[] inputClasses)
+        {
+            var input = (TextElement)new TextField().textEdition;
+            foreach (var cls in inputClasses)
+            {
+                input.AddToClassList(cls);
+            }
+            var drawing = new TextElement();
+            PlaceSelectionDrawing.Invoke(new SelectionTextOverlay(input), new object[] { drawing });
+            return SortedClassList(drawing);
+        }
+
+        // The selection background a box carrying these classes, added in this order, resolves to.
+        private static Color SelectionBackgroundOf(params string[] boxClasses)
+        {
+            var box = new VisualElement();
+            foreach (var cls in boxClasses)
+            {
+                box.AddToClassList(cls);
+            }
+            var arguments = new object[] { box, "selection:bg-", new TextElement(), null };
+            ResolveSelectionColor.Invoke(null, arguments);
+            return (Color)arguments[3];
+        }
+
+        [Test]
+        [ReaderVerdict(SelectionDrawingClassesReader)]
+        public void Given_AnInputsClassesInEitherOrder_When_ItsSelectionDrawingIsPlaced_Then_TheDrawingCarriesTheSameSet()
+        {
+            // Arrange / Act — a copy, so the set is the answer and the order the classes arrived in has no say.
+            var added = DrawingClassesBeside("theme-one", "theme-two");
+            var reversed = DrawingClassesBeside("theme-two", "theme-one");
+
+            // Assert — the copied class is read beside the comparison, so a drawing copying nothing cannot pass.
+            Assert.That((added == reversed, added.Contains("theme-one")), Is.EqualTo((true, true)), added + " | " + reversed);
+        }
+
+        [Test]
+        [ReaderVerdict(TextInputColorReader)]
+        public void Given_TwoSelectionColorsInEitherOrder_When_TheSelectionColorIsResolved_Then_TheOneTailwindEmitsLastWinsBoth()
+        {
+            // Arrange
+            VelvetPalette.TryGet("red-500", out var red);
+
+            // Act — Tailwind emits selection:bg-blue-500 before selection:bg-red-500, whatever the class order.
+            var added = SelectionBackgroundOf("selection:bg-red-500", "selection:bg-blue-500");
+            var reversed = SelectionBackgroundOf("selection:bg-blue-500", "selection:bg-red-500");
+
+            // Assert
+            Assert.That((added, reversed), Is.EqualTo((red, red)));
+        }
 
         // Classes the app set on a document root, in the order given, as the app writes them rather than through
         // the reconciler's routing.
@@ -835,6 +905,33 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, false)),
                 "the follow re-syncs a portal host when the document root's classes change order");
         }
+
+        // What shows the case can fail is widening `rule.CascadePosition > position` in DeclaredKind to take
+        // every match: the class arriving last then decides, which the two arrangements put in different places.
+        [Test]
+        [ReaderVerdict(DeclaredKindReader)]
+        public void Given_APercentageAndALengthHeightClass_When_TheOrderTheyWereAddedInIsReversed_Then_TheDeclaredKindIsTheSameBothWays()
+        {
+            // Arrange — h-full declares a percentage and h-16 a length, so the two arrangements answer
+            // differently wherever the later arrival rather than the later cascade position wins.
+            var added = Carrying("h-full", "h-16");
+            var reversed = Carrying("h-16", "h-full");
+            var fullAlone = DeclaredHeight(Carrying("h-full"));
+            var sixteenAlone = DeclaredHeight(Carrying("h-16"));
+
+            // Act
+            var fromAdded = DeclaredHeight(added);
+            var fromReversed = DeclaredHeight(reversed);
+
+            // Assert — that the two classes declare different kinds rides along, since two of one kind would
+            // agree here whatever decided between them.
+            Assert.That((fromAdded == fromReversed, fullAlone == sixteenAlone), Is.EqualTo((true, false)),
+                "the later cascade position decides what a parent declares, not the later place in the class list");
+        }
+
+        private static string DeclaredHeight(VisualElement element)
+            => ReadDeclaredKind.Invoke(null, new object[] { element, StyleLonghand.Height, element.style.height })!
+                .ToString();
 
         // GREEN_ON_BASE(characterization): the base already picks this winner by cascade position.
         // What shows the case can fail is widening `position > winningPosition` to take every match:

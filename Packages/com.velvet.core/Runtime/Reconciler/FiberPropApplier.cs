@@ -122,10 +122,10 @@ namespace Velvet
                 s_textFieldDefaults.Remove(textField);
                 ForgetShownText(textField);
             }
-            else if (element is Slider slider)
+            else if (element is Slider or SliderInt)
             {
-                s_sliderDefaults.Remove(slider);
-                FiberSliderKeyboard.ForgetStep(slider);
+                s_sliderDefaults.Remove(element);
+                FiberSliderKeyboard.ForgetStep(element);
             }
         }
 
@@ -208,11 +208,6 @@ namespace Velvet
         // every call would rewrite a range a refCallback set each time a render changes only the direction
         // or the flag. Those two take ApplyTextField's recorded-default shape, for the reason given there.
         // SliderDirectionPropTests measures both.
-        //
-        // A declared value that arrives with a range change is written in between: the range widens to hold
-        // both ranges, the value is placed inside the new one without a notification, and only then do the
-        // bounds narrow, so the value neither falls to the old range nor reports a clamp the render never asked
-        // for. SliderDirectionPropTests measures both.
         public static void ApplySlider(
             VisualElement element, SliderSettings? previous, SliderSettings? settings, object? declaredValue = null)
         {
@@ -224,35 +219,72 @@ namespace Velvet
             FiberSliderKeyboard.SetStep(sliderEl, settings?.Step);
             if (previous?.LowValue != settings?.LowValue || previous?.HighValue != settings?.HighValue)
             {
-                var low = Resolve(settings?.LowValue, 0f);
-                var high = Resolve(settings?.HighValue, 10f);
-                if (declaredValue is float value)
-                {
-                    sliderEl.lowValue = UnityEngine.Mathf.Min(sliderEl.lowValue, low);
-                    sliderEl.highValue = UnityEngine.Mathf.Max(sliderEl.highValue, high);
-                    sliderEl.SetValueWithoutNotify(UnityEngine.Mathf.Clamp(value, low, high));
-                }
-
-                sliderEl.lowValue = low;
-                sliderEl.highValue = high;
+                WriteRange(sliderEl, Resolve(settings?.LowValue, 0f), Resolve(settings?.HighValue, 10f), declaredValue,
+                    default(FloatSliderNumber));
             }
 
-            if (!s_sliderDefaults.TryGetValue(sliderEl, out var built))
+            ApplyOrientation(sliderEl, settings?.Direction, settings?.Inverted);
+        }
+
+        // ApplySlider's rules over SliderInt's members; SliderIntPropTests measures them on this path.
+        public static void ApplySliderInt(
+            VisualElement element, SliderIntSettings? previous, SliderIntSettings? settings, object? declaredValue = null)
+        {
+            if (element is not SliderInt sliderEl)
             {
-                if (settings?.Direction == null && settings?.Inverted == null)
+                return;
+            }
+
+            FiberSliderKeyboard.SetStep(sliderEl, settings?.Step);
+            if (previous?.LowValue != settings?.LowValue || previous?.HighValue != settings?.HighValue)
+            {
+                WriteRange(sliderEl, Resolve(settings?.LowValue, 0), Resolve(settings?.HighValue, 10), declaredValue,
+                    default(IntSliderNumber));
+            }
+
+            ApplyOrientation(sliderEl, settings?.Direction, settings?.Inverted);
+        }
+
+        // A declared value that arrives with a range change is written in between: the range widens to hold
+        // both ranges, the value is placed inside the new one without a notification, and only then do the
+        // bounds narrow, so narrowing them does not clamp the old value and report a change the render never
+        // asked for. SliderDirectionPanelTests and SliderIntPanelTests measure that on a panel, the only place
+        // the clamp notifies.
+        private static void WriteRange<T, TNumber>(BaseSlider<T> slider, T low, T high, object? declaredValue, TNumber number)
+            where T : struct, System.IComparable<T>
+            where TNumber : struct, ISliderNumber<T>
+        {
+            if (declaredValue is T value)
+            {
+                slider.lowValue = number.Min(slider.lowValue, low);
+                slider.highValue = number.Max(slider.highValue, high);
+                slider.SetValueWithoutNotify(number.Clamp(value, low, high));
+            }
+
+            slider.lowValue = low;
+            slider.highValue = high;
+        }
+
+        private static void ApplyOrientation<T>(BaseSlider<T> slider, SliderDirection? direction, bool? inverted)
+            where T : System.IComparable<T>
+        {
+            if (!s_sliderDefaults.TryGetValue(slider, out var built))
+            {
+                if (direction == null && inverted == null)
                 {
                     return;
                 }
 
                 built = new SliderDefaults();
-                s_sliderDefaults.Add(sliderEl, built);
+                s_sliderDefaults.Add(slider, built);
             }
 
-            ApplyDirection(sliderEl, settings?.Direction, built);
-            ApplyInverted(sliderEl, settings?.Inverted, built);
+            ApplyDirection(slider, direction, built);
+            ApplyInverted(slider, inverted, built);
         }
 
-        private static void ApplyDirection(Slider slider, SliderDirection? declared, SliderDefaults built)
+        private static void ApplyDirection<T>(BaseSlider<T> slider, SliderDirection? declared, SliderDefaults built)
+            where T : System.IComparable<T>
         {
             if (declared is { } value)
             {
@@ -265,7 +297,8 @@ namespace Velvet
             }
         }
 
-        private static void ApplyInverted(Slider slider, bool? declared, SliderDefaults built)
+        private static void ApplyInverted<T>(BaseSlider<T> slider, bool? declared, SliderDefaults built)
+            where T : System.IComparable<T>
         {
             if (declared is { } value)
             {
@@ -284,7 +317,7 @@ namespace Velvet
             public Recorded<bool>? Inverted;
         }
 
-        private static readonly ConditionalWeakTable<Slider, SliderDefaults> s_sliderDefaults = new();
+        private static readonly ConditionalWeakTable<VisualElement, SliderDefaults> s_sliderDefaults = new();
 
         public static void ApplyScrollView(VisualElement element, ScrollViewSettings? settings)
         {
@@ -323,11 +356,6 @@ namespace Velvet
                 s_textFieldDefaults.Add(tfEl, built);
             }
 
-            if (!s_shownText.TryGetValue(tfEl, out _))
-            {
-                RecordShownText(tfEl);
-            }
-
             ApplyPasswordFlag(tfEl, settings?.IsPassword, built);
             ApplyPlaceholder(tfEl, settings?.Placeholder, built);
             ApplyMaxLength(tfEl, settings?.MaxLength, built);
@@ -357,40 +385,36 @@ namespace Velvet
         }
 
         // Turning multiline on puts the field's value back on screen, which on a delayed field holding an
-        // uncommitted edit replaces the typed text with the value it has not received yet. So the shown text
-        // is carried across the write when it differs from SingleLineDisplay — and only then, since the value
-        // is what brings back line breaks and characters the single-line display left out.
-        // SingleLineDisplay is what ApplyFieldValue's silent value write leaves on a single-line field. A
-        // write that changes the limit leaves the value cut with its breaks still in it instead: where a break
-        // survives the cut, that differs and is carried, and it is the text the restore would have written.
-        // TextFieldMultilineEngineTests pins the limit write's form, and TextFieldMultilineKeyboardPropTests
-        // the value write's and the restore.
-        // The silent setter, because the carried text is not a new edit.
+        // uncommitted edit replaces the typed text with the value it has not received yet, so that edit is
+        // carried across the write through the silent setter. Turning it off carries nothing across the
+        // write, since the engine leaves the edit there without its line breaks, but it does hold the edit:
+        // without them it can equal the value's single-line display. A write leaving the flag as it was holds
+        // nothing, so a render that only repeats the declaration does not hold typing Velvet never carried.
+        // With no edit pending, what the write left on screen becomes the record; left unrecorded, the text
+        // multiline coming off leaves reads as typed to the next multiline or limit write, which then holds it
+        // on screen for a blur to commit. TextFieldMultilineKeyboardPropTests pins each of these.
         private static void WriteMultiline(TextField field, bool value)
         {
-            if (!value || !field.isDelayed)
+            var edit = HasUncommittedEdit(field) ? field.text : null;
+            var turns = field.multiline != value;
+            field.multiline = value;
+            if (edit == null)
             {
-                field.multiline = value;
+                RecordShownText(field);
                 return;
             }
 
-            var shown = field.text;
-            var uncommitted = shown != SingleLineDisplay(field);
-            field.multiline = true;
-            if (uncommitted)
+            if (!turns)
             {
-                ((INotifyValueChanged<string>)(TextElement)field.textEdition).SetValueWithoutNotify(shown);
+                return;
             }
-        }
 
-        private static string SingleLineDisplay(TextField field)
-        {
-            var display = (field.value ?? string.Empty).Replace("\n", string.Empty);
-            // MUTANT_SURVIVES(equivalent, boundary): a cut to the display's own length returns it unchanged,
-            // and a field limited to no characters shows nothing whether its display is cut or carried.
-            return field.maxLength >= 0 && display.Length > field.maxLength
-                ? display.Substring(0, field.maxLength)
-                : display;
+            if (value)
+            {
+                ((INotifyValueChanged<string>)(TextElement)field.textEdition).SetValueWithoutNotify(edit);
+            }
+
+            HoldEdit(field);
         }
 
         // The engine writes keyboardType back to Default and autoCorrection back to false when the field
@@ -540,10 +564,7 @@ namespace Velvet
             if (HasUncommittedEdit(field) && field.textEdition is TextElement shown)
             {
                 held = shown;
-                // MUTANT_SURVIVES(equivalent, boundary): at a length equal to the limit Substring(0, limit) returns the text itself.
-                var overLimit = field.text.Length > limit;
-                // MUTANT_SURVIVES(equivalent, boundary): measured, a zero limit leaves "" on the second write with or without this bound; TextFieldInputPropTests pins that outcome.
-                edit = limit >= 0 && overLimit ? field.text.Substring(0, limit) : field.text;
+                edit = CutToLimit(field.text, limit);
                 ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit);
             }
 
@@ -555,20 +576,56 @@ namespace Velvet
             }
 
             ((INotifyValueChanged<string>)held).SetValueWithoutNotify(edit!);
+            HoldEdit(field);
         }
 
-        // The text Velvet's own writes, and the engine's commits, last left on screen. A delayed field
-        // holds the user's typing in the shown text while the value lags, and nothing else tells that
-        // apart from a rewrite: a single-line field shows its value with line breaks stripped, so shown
-        // text differing from the value does not mean anyone typed. Every Velvet write that can change the
-        // shown text records it — ApplyFieldValue, WriteMaxLength and the baseline ApplyTextField takes —
-        // and a commit records it through the callback below, since an edit that was committed and then
-        // changed again is an edit against the committed text. ForgetRecordedDefaults forgets the record and
-        // its callback on every removal, so a recycled field carries neither.
+        // A delayed field holds the user's typing in the shown text while the value lags. Shown text is an
+        // edit when it differs from the record — the text Velvet's own writes and the engine's commits last
+        // left on screen — and, unless ShownText holds it, both from that record as multiline coming off
+        // since would leave it and from the field's display of its own value.
+        // The record is taken by each write of Velvet's own text — ApplyFieldValue, WriteMaxLength and
+        // WriteMultiline when no edit is pending, and the baseline FiberElementFactory.ApplyProps takes as
+        // the element is created — and by a commit through ShownText's callback, since an edit that was
+        // committed and then changed again is an edit against the committed text. ForgetRecordedDefaults
+        // forgets the record and its callback on every removal, so a recycled field carries neither.
+        // The display is asked because code outside Velvet can write the value silently, which moves the
+        // shown text and not the record, where typing moves the text and not the value. It is not asked
+        // alone: where the limit cuts the value after a line break, the text multiline coming off leaves
+        // matches no form of it. Nor is it asked while ShownText holds an edit: a limit change or a turn of
+        // multiline over a pending edit holds it, since the cut to a narrower limit, or the line breaks
+        // multiline coming off drops, can leave it equal to the value's display.
         internal static bool HasUncommittedEdit(TextField field)
-            => field.isDelayed
-               && s_shownText.TryGetValue(field, out var left)
-               && field.text != left.Text;
+        {
+            if (!field.isDelayed || !s_shownText.TryGetValue(field, out var left))
+            {
+                return false;
+            }
+
+            return !left.Shows(field)
+                   && (left.HoldsEditOver(field) || (!left.ShowsWithoutBreaks(field) && !ShowsItsValue(field)));
+        }
+
+        // The two forms an engine write of the value leaves: the value cut to the limit, which a limit write
+        // shows with its line breaks, and on a single-line field a value write's form, breaks dropped and
+        // then cut. TextFieldMultilineEngineTests pins both.
+        private static bool ShowsItsValue(TextField field)
+        {
+            var value = field.value ?? string.Empty;
+            var text = field.text;
+            return text == CutToLimit(value, field.maxLength)
+                   || (!field.multiline && text == CutToLimit(value.Replace("\n", string.Empty), field.maxLength));
+        }
+
+        private static string CutToLimit(string text, int limit)
+        {
+            if (limit < 0)
+            {
+                return text;
+            }
+
+            // MUTANT_SURVIVES(equivalent, boundary): at a length equal to the limit Substring(0, limit) returns the text itself.
+            return text.Length > limit ? text.Substring(0, limit) : text;
+        }
 
         internal static void RecordShownText(TextField field)
         {
@@ -579,7 +636,16 @@ namespace Velvet
                 field.RegisterValueChangedCallback(left.OnChange);
             }
 
-            left.Text = field.text;
+            left.Take();
+        }
+
+        // Called after a write that turned multiline or changed the limit over a pending edit.
+        private static void HoldEdit(TextField field)
+        {
+            if (s_shownText.TryGetValue(field, out var left))
+            {
+                left.Hold();
+            }
         }
 
         internal static void ForgetShownText(TextField field)
@@ -594,10 +660,40 @@ namespace Velvet
         private sealed class ShownText
         {
             private readonly TextField _field;
-
-            public string? Text;
+            private string? _text;
+            private bool _multiline;
+            private bool _holding;
+            private string? _heldOver;
 
             public ShownText(TextField field) => _field = field;
+
+            public void Take()
+            {
+                _text = _field.text;
+                _multiline = _field.multiline;
+                _holding = false;
+            }
+
+            // A record ends the hold, so a write of Velvet's own text or a commit does. It does not apply while
+            // the value differs from the one the edit was held over, or while the shown text equals the value.
+            // Typing on does not end it, since what the user types over that value is still theirs. Code
+            // outside Velvet writing the value away and back silently takes no record, so the hold applies
+            // again once the value is back.
+            public void Hold()
+            {
+                _holding = true;
+                _heldOver = _field.value;
+            }
+
+            public bool Shows(TextField field) => field.text == _text;
+
+            // Code outside Velvet turning multiline off drops the line breaks from what the field shows, so
+            // with no edit it shows the record without them; TextFieldMultilineEngineTests pins that write.
+            public bool ShowsWithoutBreaks(TextField field)
+                => _multiline && !field.multiline && field.text == _text?.Replace("\n", string.Empty);
+
+            public bool HoldsEditOver(TextField field)
+                => _holding && field.value == _heldOver && field.text != field.value;
 
             // Only the field's own event is a commit of the value; TextFieldInputPropTests pins that an
             // event from the inner element does not move the record.
@@ -605,7 +701,7 @@ namespace Velvet
             {
                 if (evt.target == _field)
                 {
-                    Text = _field.text;
+                    Take();
                 }
             }
         }

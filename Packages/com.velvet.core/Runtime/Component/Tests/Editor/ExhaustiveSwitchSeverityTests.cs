@@ -477,8 +477,8 @@ namespace Velvet.Tests
         /// <para>
         /// The two <c>Router</c> switches could be named, and naming them would move a public failure. A
         /// mode outside the enum is reported by the commit's own switch, and these two are what carry it
-        /// there; arms here would raise it earlier, before the navigation Status the caller reads has been
-        /// set. Where the router should reject such a cast is a question for the router rather than for
+        /// there; arms here would raise it earlier, before the attempt has published itself in
+        /// <c>Router.Navigation</c>. Where the router should reject such a cast is a question for the router rather than for
         /// this reading.
         /// </para>
         /// </summary>

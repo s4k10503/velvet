@@ -71,6 +71,9 @@ namespace Velvet
             return definition == typeof(TextInputBaseField<>) || definition == typeof(BasePopupField<,>);
         }
 
+        public static bool IsTextInputControl(VisualElement element)
+            => element.ClassListContains(TextInputBaseField<string>.ussClassName);
+
         public static bool IsControl(VisualElement element)
             => element.ClassListContains(TextInputBaseField<string>.ussClassName)
                || element.ClassListContains(BasePopupField<string, string>.ussClassName);
@@ -141,12 +144,16 @@ namespace Velvet
 
         public static bool IsSurfaceCore(string core)
             => core.StartsWith("bg-", StringComparison.Ordinal)
+               // The nine-slice utilities follow the background image bg-[addr:…] puts on the box.
+               || core.StartsWith("slice-", StringComparison.Ordinal)
                || core == "border" || core.StartsWith("border-", StringComparison.Ordinal)
                || core == "rounded" || core.StartsWith("rounded-", StringComparison.Ordinal)
                || StartsWithAny(core, s_paddings)
                || StyleShadowClass.IsShadowClass(core)
                || StyleRingClass.IsRingClass(core)
-               || StyleGradientClass.IsGradientClass(core);
+               || StyleGradientClass.IsGradientClass(core)
+               || core.StartsWith("caret-", StringComparison.Ordinal)
+               || core.StartsWith("selection:", StringComparison.Ordinal);
 
         private static bool StartsWithAny(string text, string[] prefixes)
             => Array.Exists(prefixes, prefix => text.StartsWith(prefix, StringComparison.Ordinal));

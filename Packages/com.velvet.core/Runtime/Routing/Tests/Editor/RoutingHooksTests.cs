@@ -674,6 +674,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMountedNavigationHook_When_ItIsUnmounted_Then_ItNoLongerListensToTheRouter()
+        {
+            // Arrange
+            var router = new Router(new[] { Route("home", element: V.Component(StubA)) });
+            router.NavigateSync("/home");
+            var mounted = MountWith(router, V.Component(Capture.Render, key: "cap"));
+            mounted.FlushEffectsForTest();
+            var listenersWhileMounted = NavigationListeners(router);
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That($"mounted={listenersWhileMounted} unmounted={NavigationListeners(router)}",
+                Is.EqualTo("mounted=1 unmounted=0"));
+        }
+
+        // A field-like event's backing field carries the event's own name.
+        private static int NavigationListeners(Router router)
+            => (typeof(Router).GetField(nameof(Router.OnNavigationChanged),
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?.GetValue(router) as Delegate)?.GetInvocationList().Length ?? 0;
+
+        [Test]
         public void Given_NavigateElement_When_Mounted_Then_RedirectsToTarget()
         {
             // Arrange
@@ -715,7 +739,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_SettledNavigation_When_UseNavigation_Then_ReRendersExactlyOnce()
         {
-            // A navigation whose loaders never suspend raises its status and location events inside one
+            // A navigation whose loaders never suspend publishes its Loading and its Idle inside one
             // synchronous stack, so the state updates they schedule are drained in a single batch.
             // Arrange
             var router = new Router(new[]

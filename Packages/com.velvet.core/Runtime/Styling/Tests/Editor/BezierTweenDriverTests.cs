@@ -510,5 +510,38 @@ namespace Velvet.Tests
                 (result.BezierX1, result.BezierY1, result.BezierX2, result.BezierY2),
                 Is.EqualTo((0.11f, 0.22f, 0.33f, 0.44f)));
         }
+
+        [Test]
+        public void Given_ABezierPlayOfNoDuration_When_SeekedToTime0_Then_ItShowsItsFromValue()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, durationSec: 0f);
+
+            // Act
+            BezierTweenDriver.SeekTo(element, state, 0f);
+
+            // Assert
+            Assert.That((element.style.opacity.keyword, element.style.opacity.value),
+                Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_ADrivenTweenOfNoDurationHeldAtItsStart_When_SteppedByNoTime_Then_ItShowsItsFromValue()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = BezierTweenDriver.CreateTween(plan, new DrivenTweenTiming(0f, 0f, EasingMode.Linear, null));
+            state.SeekedToStart = true;
+
+            // Act
+            BezierTweenDriver.Step(element, state, 0f);
+
+            // Assert
+            Assert.That((element.style.opacity.keyword, element.style.opacity.value),
+                Is.EqualTo((StyleKeyword.Undefined, 0f)));
+        }
     }
 }

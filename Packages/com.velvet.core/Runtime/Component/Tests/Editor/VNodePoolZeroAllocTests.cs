@@ -89,6 +89,25 @@ namespace Velvet.Tests.Performance
             Assert.That(GCAllocationProbe.MedianBlocksDuring(cycle), Is.Zero);
         }
 
+        [Test]
+        public void Given_WarmMultiBindingEventArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
+        {
+            // Arrange — the length V.TextField rents for three handlers; the first cycle warms the pool and
+            // the delegate.
+            Action cycle = () =>
+            {
+                var events = VNodePool.RentEventArray(3);
+                VNodePool.ReturnEventArray(events);
+            };
+            cycle();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(cycle);
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
         // GREEN_ON_BASE(characterization): the base already allocates what this case pins.
         // This change reads it over three windows.
         [Test]

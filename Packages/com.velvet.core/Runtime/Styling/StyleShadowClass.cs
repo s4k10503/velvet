@@ -214,8 +214,7 @@ namespace Velvet
 
         // Parses the inner body of a shadow-[…] arbitrary value. Tokens are whitespace-separated (the
         // className uses '_' for spaces); each is classified as a length (CSS box-shadow offset/blur/spread,
-        // assigned positionally as x, y, blur, spread) or a color (#hex / named / rgb() / rgba(), via the shared
-        // StyleArbitraryValueResolver grammar). At least the x+y offsets are required (matching CSS); blur/spread
+        // assigned positionally as x, y, blur, spread) or a color (the shared StyleColorValueParser grammar). At least the x+y offsets are required (matching CSS); blur/spread
         // default to 0 and the color defaults to the DEFAULT preset tint. Percent lengths are rejected (the SDF
         // bake is pixel-based).
         private static bool TryParseArbitrary(string body, out ShadowSpec spec)
@@ -226,7 +225,9 @@ namespace Velvet
                 return false;
             }
 
-            var tokens = body.Replace('_', ' ').Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            // Split outside parentheses, so a colour function's own spaces (rgb(0_0_0_/_25%)) stay in its token.
+            var tokens = StyleGradientClass.SplitTopLevel(body.Replace('_', ' '), ' ');
+            tokens.RemoveAll(t => t.Length == 0);
             var lengths = new float[4]; // x, y, blur, spread
             var lengthCount = 0;
             var color = ShadowColor(0.20f); // the bare-shadow DEFAULT tint

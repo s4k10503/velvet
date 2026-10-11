@@ -60,6 +60,17 @@ namespace Velvet.Tests
                 new StyleTransitionConfig { DurationSec = 0.5f, When = TransitionWhen.BeforeChildren }),
         };
 
+        // The coordinator's resting pose springs an opacity, which Framer's default spring ends at 1.05 s on the
+        // browser, while its DurationSec, which a spring does not read, declares 0.05 s.
+        private static readonly Dictionary<string, MotionVariant> s_springCoordinatorPoses = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = new MotionVariant("opacity-100", new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, DurationSec = 0.05f, When = TransitionWhen.BeforeChildren,
+            }),
+        };
+
         private static readonly Dictionary<string, MotionVariant> s_plainFade = new()
         {
             ["hidden"] = "opacity-0",
@@ -324,6 +335,19 @@ namespace Velvet.Tests
                     V.Motion(key: "c0", name: "c0", variants: s_plainFade,
                         transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                     V.Motion(key: "c1", name: "c1", variants: s_plainFade,
+                        transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                });
+        }
+
+        [Component]
+        private static VNode SpringBeforeChildrenCoordinator()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(key: "p", name: "p", variants: s_springCoordinatorPoses, animate: label,
+                transition: new StyleTransitionConfig { DurationSec = 0.02f },
+                children: new VNode[]
+                {
+                    V.Motion(key: "c", name: "c", variants: s_plainFade,
                         transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                 });
         }
@@ -750,6 +774,48 @@ namespace Velvet.Tests
             Assert.That(
                 (PoseOf(Root.Q<VisualElement>("p")), PoseOf(Root.Q<VisualElement>("c"))),
                 Is.EqualTo(("visible", "hidden")));
+        }
+
+        [Test]
+        public void Given_BeforeChildrenOnASpringPose_When_ItsLabelFlips_Then_ChildrenWaitForTheSpringToRest()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(SpringBeforeChildrenCoordinator, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — sample past the 0.05 s the pose declares and well inside the spring's 1.05 s.
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+            Advance(0.3f);
+
+            // Assert — the coordinator's spring landed its classes and the inheriting child is still parked.
+            Assert.That(
+                (PoseOf(Root.Q<VisualElement>("p")), PoseOf(Root.Q<VisualElement>("c"))),
+                Is.EqualTo(("visible", "hidden")));
+        }
+
+        // GREEN_ON_BASE(characterization): the child swaps once the spring has rested, which the base reaches by
+        // not waiting at all; this pins that the wait the case above holds does end.
+        [Test]
+        public void Given_BeforeChildrenOnASpringPose_When_TheSpringHasRested_Then_ChildrenSwap()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(SpringBeforeChildrenCoordinator, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — past the spring's 1.05 s.
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+            Advance(1.4f);
+
+            // Assert
+            Assert.That(PoseOf(Root.Q<VisualElement>("c")), Is.EqualTo("visible"));
         }
 
         [Test]

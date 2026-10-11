@@ -215,8 +215,14 @@ The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim
 as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-height`'s values: a
 unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
-(`leading-[150%]`), and `px`, `rem` (1rem = 16px, as `w-[…]` takes it) or an absolute unit (`in`, `cm`, `mm`, `pt`, `pc`, `Q`), which emit an absolute
-`<line-height=Npx>`. A negative value, any other unit, or a malformed value is ignored.
+(`leading-[150%]`), and `px`, `rem` (1rem = 16px, as `w-[…]` takes it) or an absolute unit (`in`, `cm`,
+`mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. A math function is read where it
+comes to one of those pixel lengths or one percentage
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A negative value, any other unit, or a
+malformed value is ignored. A bare spacing step (`leading-6`, `leading-3-5`, `leading-px`) emits
+`<line-height=Npx>` at the px value the `--space-*` scale gives that step, as Tailwind's
+spacing-based `leading-*` does (`leading-6` is 24px, as `p-6` is, and `leading-px` is 1px); its steps
+are that scale's, written with `-` for `.`.
 
 A preset and a unitless value are numbers, as in CSS: they emit an em tag, which the **text engine
 itself** resolves against whichever font size is in effect at that point in the string, so every
@@ -230,7 +236,8 @@ re-resolves the text whenever that size changes. Until the panel has resolved it
 not yet on a panel — the text carries the em tag. `tracking-*` is the contrast: USS `letter-spacing` has no
 `em` unit (see `_typography.uss`), so its em scale had to be **baked to px at Tailwind's 16px root
 font** — `tracking-wide`'s 0.4px is only 0.025em at exactly 16px and drifts off-ratio at any other
-size. `leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
+size. A bracketed `tracking-[0.025em]` is measured on the element's own font size instead
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). `leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
 ancestor's `leading-*` overrides a farther one's). It has no reset utility, unlike the other three
 axes: Tailwind defines no `leading-auto` below `leading-none`, and every preset — `leading-none`'s
 multiplier of 1 included — is already a real value, so there is nothing to reset back to.

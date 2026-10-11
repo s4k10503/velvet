@@ -40,7 +40,7 @@ namespace Velvet.Tests
         #region Initial state
 
         [Test]
-        public void Given_FreshRouter_When_NotYetNavigated_Then_StatusIsIdle()
+        public void Given_FreshRouter_When_NotYetNavigated_Then_NoNavigationIsInFlight()
         {
             // Arrange
 
@@ -48,7 +48,7 @@ namespace Velvet.Tests
             var router = new Router(_routes);
 
             // Assert
-            Assert.That(router.Status, Is.EqualTo(RouterStatus.Idle));
+            Assert.That(router.Navigation.State, Is.EqualTo(NavigationLifecycle.Idle));
         }
 
         #endregion
@@ -69,7 +69,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ValidPath_When_Navigating_Then_StatusBecomesReady()
+        public void Given_ValidPath_When_Navigating_Then_NoNavigationIsLeftInFlight()
         {
             // Arrange
             var router = new Router(_routes);
@@ -78,7 +78,9 @@ namespace Velvet.Tests
             router.NavigateSync("/home");
 
             // Assert
-            Assert.That(router.Status, Is.EqualTo(RouterStatus.Ready));
+            Assert.That(
+                $"state={router.Navigation.State} location={router.Navigation.Location?.Path ?? "none"}",
+                Is.EqualTo("state=Idle location=none"));
         }
 
         [Test]
@@ -108,69 +110,219 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_UnmatchedPath_When_Navigating_Then_StatusBecomesNotFound()
+        public void Given_ACommittedLocation_When_AnUnmatchedPathIsNavigatedTo_Then_TheRouterStillDescribesThatLocation()
         {
+            // The router's state describes the committed location and the navigation in flight, and an
+            // attempt that matched nothing is neither: it answers its own caller and leaves both as they were.
             // Arrange
-            var router = new Router(_routes);
+            var router = BuildRouter("/home", _routes);
+            var published = new List<NavigationLifecycle>();
+            router.OnNavigationChanged += navigation => published.Add(navigation.State);
 
             // Act
-            router.NavigateSync("/nonexistent");
+            var result = router.NavigateSync("/nonexistent");
 
             // Assert
-            Assert.That(router.Status, Is.EqualTo(RouterStatus.NotFound));
+            Assert.That(
+                $"result={result} path={router.CurrentLocation?.Path} state={router.Navigation.State} "
+                + $"published={string.Join(",", published)}",
+                Is.EqualTo("result=NotFound path=/home state=Idle published="));
         }
 
-        // GREEN_ON_BASE(characterization): the status a path that resolves to nothing leaves behind.
-        // The base writes it from this branch unconditionally, where the report is now conditional on
-        // nobody else holding a claim. Delete the `ReportUnclaimedOutcome(RouterStatus.NotFound)` call in
-        // `NavigateCore`'s null-path branch and this is what reddens.
         [Test]
-        public void Given_APathThatResolvesToNothing_When_Navigating_Then_StatusBecomesNotFound()
+        public void Given_ACommittedLocation_When_APathThatResolvesToNothingIsNavigatedTo_Then_TheRouterStillDescribesThatLocation()
         {
-            // The case above is refused by the match; this one is refused before it, and the two branches
-            // report through separate calls, so a status read after either says nothing about the other.
+            // The case above is refused by the match; this one is refused before it, by a separate branch.
             // Arrange
-            var router = new Router(_routes);
+            var router = BuildRouter("/home", _routes);
+            var published = new List<NavigationLifecycle>();
+            router.OnNavigationChanged += navigation => published.Add(navigation.State);
 
             // Act
             var result = router.NavigateSync(null);
 
             // Assert
             Assert.That(
-                $"result={result} status={router.Status}", Is.EqualTo("result=NotFound status=NotFound"));
+                $"result={result} path={router.CurrentLocation?.Path} state={router.Navigation.State} "
+                + $"published={string.Join(",", published)}",
+                Is.EqualTo("result=NotFound path=/home state=Idle published="));
         }
 
         [Test]
-        public void Given_ADisposedRouter_When_NavigatingToAnUnmatchedPath_Then_ItIsCancelledWithoutAStatusChange()
+        public void Given_ASubscriberNavigatingWhenACommitGoesIdle_When_ItsNavigationCommits_Then_ItsLocationIsTheLastAnnounced()
+        {
+            // The subscriber's navigation commits inside the outer commit's Idle event, so the outer one's
+            // location is announced, if at all, after it.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"), Route("x"));
+            var announced = new List<string>();
+            router.OnLocationChanged += location => announced.Add(location.Path);
+            var navigated = false;
+            router.OnNavigationChanged += navigation =>
+            {
+                if (navigation.State != NavigationLifecycle.Idle || navigated) return;
+                navigated = true;
+                router.NavigateSync("/x");
+            };
+
+            // Act
+            router.NavigateSync("/about");
+
+            // Assert
+            Assert.That(
+                $"current={router.CurrentLocation?.Path} last={(announced.Count == 0 ? "none" : announced[announced.Count - 1])}",
+                Is.EqualTo("current=/x last=/x"));
+        }
+
+        [Test]
+        public void Given_ALocationSubscriberThatNavigates_When_ItsNavigationCommits_Then_TheSubscriberAfterItIsLeftOnTheNewerLocation()
+        {
+            // The first subscriber's navigation commits inside the announcement of /about, before the second
+            // subscriber has been handed /about.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"), Route("x"));
+            var navigated = false;
+            router.OnLocationChanged += location =>
+            {
+                if (location.Path != "/about" || navigated) return;
+                navigated = true;
+                router.NavigateSync("/x");
+            };
+            var received = new List<string>();
+            router.OnLocationChanged += location => received.Add(location.Path);
+
+            // Act
+            router.NavigateSync("/about");
+
+            // Assert
+            Assert.That(
+                $"current={router.CurrentLocation?.Path} last={(received.Count == 0 ? "none" : received[received.Count - 1])}",
+                Is.EqualTo("current=/x last=/x"));
+        }
+
+        [Test]
+        public void Given_ALocationSubscriberThatRemovesItselfAndTheNextOne_When_ALocationIsAnnounced_Then_BothHearOnlyThatAnnouncement()
+        {
+            // As with a multicast delegate, a removal reaches the announcements after the one it is made in.
+            // The first subscriber is the first registration, so its own removal is of the list's head.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"), Route("x"));
+            var received = new List<string>();
+            Action<RouterLocation> second = location => received.Add("second:" + location.Path);
+            Action<RouterLocation> first = null;
+            first = location =>
+            {
+                received.Add("first:" + location.Path);
+                router.OnLocationChanged -= second;
+                router.OnLocationChanged -= first;
+            };
+            router.OnLocationChanged += first;
+            router.OnLocationChanged += second;
+
+            // Act
+            router.NavigateSync("/about");
+            router.NavigateSync("/x");
+
+            // Assert
+            Assert.That(string.Join(",", received), Is.EqualTo("first:/about,second:/about"));
+        }
+
+        [Test]
+        public void Given_ALocationSubscriberThatAddsAnother_When_LocationsAreAnnounced_Then_TheAddedOneHearsFromTheNextAnnouncement()
+        {
+            // As with a multicast delegate, an addition reaches the announcements after the one it is made in.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"), Route("x"));
+            var received = new List<string>();
+            Action<RouterLocation> added = location => received.Add(location.Path);
+            var adding = true;
+            router.OnLocationChanged += _ =>
+            {
+                if (!adding) return;
+                adding = false;
+                router.OnLocationChanged += added;
+            };
+
+            // Act
+            router.NavigateSync("/about");
+            router.NavigateSync("/x");
+
+            // Assert
+            Assert.That(string.Join(",", received), Is.EqualTo("/x"));
+        }
+
+        [Test]
+        public void Given_ARouterNobodyHasSubscribedTo_When_AHandlerIsRemovedFromIt_Then_ItStillNavigates()
+        {
+            // Arrange
+            var router = new Router(_routes);
+
+            // Act
+            router.OnLocationChanged -= _ => { };
+            var result = router.NavigateSync("/home");
+
+            // Assert
+            Assert.That(result, Is.EqualTo(NavigationResult.Success));
+        }
+
+        [Test]
+        public void Given_ASubscriberNavigatingWhenACommitGoesIdle_When_ItsNavigationIsStillLoading_Then_TheCommittedLocationIsAnnounced()
+        {
+            // The subscriber's navigation parks on its loader, so the location the outer commit landed is the
+            // one on show while it loads.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"),
+                Route("slow", loader: (ctx, ct) => new VelvetTaskCompletionSource<object>().Task));
+            var announced = new List<string>();
+            router.OnLocationChanged += location => announced.Add(location.Path);
+            var navigated = false;
+            router.OnNavigationChanged += navigation =>
+            {
+                if (navigation.State != NavigationLifecycle.Idle || navigated) return;
+                navigated = true;
+                router.NavigateAsync("/slow").Forget();
+            };
+
+            // Act
+            router.NavigateSync("/about");
+
+            // Assert
+            Assert.That(
+                $"announced={string.Join(",", announced)} loading={router.Navigation.Location?.Path ?? "none"}",
+                Is.EqualTo("announced=/about loading=/slow"));
+        }
+
+        [Test]
+        public void Given_ADisposedRouter_When_NavigatingToAnUnmatchedPath_Then_ItIsCancelledWithoutPublishingANavigation()
         {
             // Arrange
             var router = BuildRouter("/home", _routes);
             router.Dispose();
-            var statusEvents = new List<RouterStatus>();
-            router.OnStatusChanged += status => statusEvents.Add(status);
+            var published = new List<NavigationLifecycle>();
+            router.OnNavigationChanged += navigation => published.Add(navigation.State);
 
             // Act
             var result = router.NavigateSync("/nonexistent");
 
             // Assert
-            Assert.That($"result={result} events={string.Join(",", statusEvents)}", Is.EqualTo("result=Cancelled events="),
+            Assert.That($"result={result} published={string.Join(",", published)}", Is.EqualTo("result=Cancelled published="),
                 "A disposed router refuses the navigation rather than reporting that no route matched");
         }
 
         [Test]
-        public void Given_ADisposedRouter_When_NavigatingToAPathThatResolvesToNothing_Then_ItIsCancelledWithoutAStatusChange()
+        public void Given_ADisposedRouter_When_NavigatingToAPathThatResolvesToNothing_Then_ItIsCancelledWithoutPublishingANavigation()
         {
             // Arrange
             var router = BuildRouter("/home", _routes);
             router.Dispose();
-            var statusEvents = new List<RouterStatus>();
-            router.OnStatusChanged += status => statusEvents.Add(status);
+            var published = new List<NavigationLifecycle>();
+            router.OnNavigationChanged += navigation => published.Add(navigation.State);
 
             // Act
             var result = router.NavigateSync(null);
 
             // Assert
-            Assert.That($"result={result} events={string.Join(",", statusEvents)}", Is.EqualTo("result=Cancelled events="),
+            Assert.That($"result={result} published={string.Join(",", published)}", Is.EqualTo("result=Cancelled published="),
                 "A disposed router refuses the navigation rather than reporting that the path resolved to nothing");
         }
 
@@ -329,18 +481,20 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABackModeNavigationAtTheFirstEntry_When_Requested_Then_TheRouterStaysOnTheLocationItIsOn()
         {
-            // GoBack refuses the same step without moving Status off Ready. Reaching the refusal partway
-            // through the navigation instead announced a Matching that nothing would finish and left the
-            // router reporting Idle while a location was committed and rendering.
+            // GoBack refuses the same step without publishing a navigation. Reaching the refusal partway
+            // through the navigation instead would announce one that was never going to commit.
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("about"));
             Assume.That(router.CanGoBack, Is.False, "Precondition: the start entry is the only one on the stack");
+            var published = new List<NavigationLifecycle>();
+            router.OnNavigationChanged += navigation => published.Add(navigation.State);
 
             // Act
             var result = router.NavigateAsync("/about", NavigationMode.Back).GetAwaiter().GetResult();
 
             // Assert
-            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Cancelled status=Ready"),
+            Assert.That($"result={result} published={string.Join(",", published)}",
+                Is.EqualTo("result=Cancelled published="),
                 "A refused step leaves the router as the convenience wrapper leaves it");
         }
 
@@ -354,12 +508,15 @@ namespace Velvet.Tests
             var router = BuildRouter("/home",
                 Route("home"), Route("guarded", guard: _ => "/target"), Route("target"));
             Assume.That(router.CanGoForward, Is.False, "Precondition: the start entry is the last on the stack");
+            var published = new List<NavigationLifecycle>();
+            router.OnNavigationChanged += navigation => published.Add(navigation.State);
 
             // Act
             var result = router.NavigateAsync("/guarded", NavigationMode.Forward).GetAwaiter().GetResult();
 
             // Assert
-            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Cancelled status=Ready"));
+            Assert.That($"result={result} published={string.Join(",", published)}",
+                Is.EqualTo("result=Cancelled published="));
         }
 
         #endregion
@@ -1144,8 +1301,9 @@ namespace Velvet.Tests
             var result = await router.GoBack(cts.Token);
 
             // Assert
-            Assert.That($"result={result} status={router.Status} pending={router.PendingLocation?.Path ?? "none"}",
-                Is.EqualTo("result=Cancelled status=Idle pending=none"));
+            Assert.That(
+                $"result={result} state={router.Navigation.State} pending={router.Navigation.Location?.Path ?? "none"}",
+                Is.EqualTo("result=Cancelled state=Idle pending=none"));
         });
 
         // GREEN_ON_BASE(characterization): the base leaves a cancelled Back uncommitted the same way.
@@ -1175,7 +1333,7 @@ namespace Velvet.Tests
         public IEnumerator Given_ACancellationCallbackThatNavigatesDuringATakeover_When_BothNavigationsFinish_Then_OnlyTheOneStartedLastCommits()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // The status is read while the later navigation is still loading, the window the one taking over
+            // The navigation is read while the later one is still loading, the window the one taking over
             // would otherwise report into.
             // Arrange
             var lastLoader = new VelvetTaskCompletionSource<object>();
@@ -1194,7 +1352,7 @@ namespace Velvet.Tests
 
             // Act
             var takeover = await router.NavigateAsync("/takeover");
-            var whileLastLoads = $"{router.Status} {router.PendingLocation?.Path ?? "none"}";
+            var whileLastLoads = $"{router.Navigation.State} {router.Navigation.Location?.Path ?? "none"}";
             lastLoader.TrySetResult("last-data");
             await VelvetTask.Yield();
             var landed = $"{router.CurrentLocation?.Path} forward={router.CanGoForward}";

@@ -61,12 +61,12 @@ namespace Velvet
         // Attaches the fiber to mountPoint and runs the initial render + layout effects.
         // fiber: Fiber to mount. Must not already be mounted.
         // mountPoint: VisualElement that hosts the rendered tree. Must not be null.
-        // sharedContext, onCaughtError: see SetupMount.
+        // sharedContext, onCaughtError, motionClock: see SetupMount.
         public static void Mount(
             ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
-            Action<Exception, ErrorInfo>? onCaughtError = null)
+            Action<Exception, ErrorInfo>? onCaughtError = null, MotionClock? motionClock = null)
         {
-            SetupMount(fiber, mountPoint, sharedContext, onCaughtError);
+            SetupMount(fiber, mountPoint, sharedContext, onCaughtError, motionClock);
             var context = fiber.Reconciler!.Context;
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
@@ -210,11 +210,11 @@ namespace Velvet
         // Reconciler+ReconcilerContext there silently detaches the fiber from the caller's registries /
         // FiberStack / IsAborted flag. Left null only by V.Mount's direct root-fiber path,
         // which has no context to join and must bootstrap its own (this fiber becomes the owner).
-        // onCaughtError is written only onto a context this call bootstraps, before the render that follows
-        // it, since that first render can already throw into a boundary.
+        // onCaughtError and motionClock are written only onto a context this call bootstraps, before the render
+        // that follows it, since that first render can already throw into a boundary and start a mount enter.
         private static void SetupMount(
             ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
-            Action<Exception, ErrorInfo>? onCaughtError = null)
+            Action<Exception, ErrorInfo>? onCaughtError = null, MotionClock? motionClock = null)
         {
             if (fiber.IsMounted)
             {
@@ -242,6 +242,7 @@ namespace Velvet
             {
                 fiber.Reconciler.Context.BatchScheduler.SetAnchor(mountPoint);
                 if (onCaughtError != null) fiber.Reconciler.Context.OnCaughtError = onCaughtError;
+                if (motionClock != null) fiber.Reconciler.Context.StyleAnimationScheduler.MountOn(motionClock);
             }
 
             // On the Unmount → Mount path that reuses the same fiber, clear IsDisposed so that setter closures
@@ -794,6 +795,9 @@ namespace Velvet
                 SuspendWithoutBoundary(fiber);
                 return;
             }
+            // A boundary whose own pass a read outside every Suspense gave up renders when that read resolves; asked
+            // for now, it gives that pass up again, and a drain asking each time reached the nested-update limit.
+            if (boundary.SuspendedOn != null) return;
             FiberWorkLoop.RequestRenderFromHook(fiber);
             boundary.InvalidateMemoCache();
             FiberWorkLoop.RequestRenderFromHook(boundary);
@@ -838,9 +842,12 @@ namespace Velvet
                     () => PanelSchedulerCallback.Run(fiber.MountPoint, fiber, NotifyAsyncResourceCompleted));
                 return;
             }
-            // Searched from the parent, as React takes the nearest Suspense above the component that suspended: a
-            // boundary this fiber renders itself wraps its output, never its own read.
-            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
+            // A fiber a Suspense keeps offscreen records which one. Any other is searched from its parent, as React
+            // takes the nearest Suspense above the component that suspended: a boundary this fiber renders itself
+            // wraps its output, never its own read.
+            var boundary = fiber.IsOffscreen
+                ? fiber.OffscreenUnder
+                : ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber.Parent!);
             if (boundary == null)
             {
                 // What React retries is the work that suspended on this read; with none waiting on it, nothing
@@ -848,8 +855,18 @@ namespace Velvet
                 RetrySuspendedPasses(fiber);
                 return;
             }
+            // A primary the boundary keeps hidden is still in the container, and the boundary's re-render diffs its
+            // elements against this fiber's PreviousTree: the render below would move that past what they hold. The
+            // boundary renders this fiber instead, as SuspendPassOwner has it.
+            if (fiber.IsOffscreen && fiber.Reconciler!.Context.IsBoundaryHidingPrimary(boundary))
+            {
+                FiberWorkLoop.RequestRenderFromHook(fiber);
+                boundary.InvalidateMemoCache();
+                FiberWorkLoop.RequestRenderFromHook(boundary);
+                return;
+            }
             // Settle the child's subtree to its resolved output. The child's host slot is currently occupied by
-            // the fallback, so render WITHOUT committing (deferReconcile): the boundary's re-render below commits
+            // the fallback, or hidden behind it, so render WITHOUT committing (deferReconcile): the boundary's re-render below commits
             // the fallback→children reveal in one pass: a resolved resource schedules the boundary itself, not the
             // child. This single render handles all three resolve outcomes: a resolved child settles its
             // PreviousTree for the boundary to reuse; a faulted child's Use<T> throws a real exception that routes

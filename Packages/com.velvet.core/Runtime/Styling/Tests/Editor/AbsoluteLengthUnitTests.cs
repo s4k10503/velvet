@@ -33,12 +33,12 @@ namespace Velvet.Tests
             Assert.That((ok, s.Property, s.Unit), Is.EqualTo((true, ArbitraryProperty.Top, UnityEngine.UIElements.LengthUnit.Pixel)));
         }
 
-        // GREEN_ON_BASE(characterization): a unit needing element or panel context was never read, and still is not.
+        // GREEN_ON_BASE(characterization): a font-metric unit other than em was never read, and still is not.
         [Test]
         public void Given_AnUnknownUnitTop_When_Parsed_Then_TheClassIsDeclined()
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("top-[1vw]", out _);
+            var ok = StyleArbitraryValueResolver.TryParse("top-[1ex]", out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -84,6 +84,7 @@ namespace Velvet.Tests
             Assert.That(spec.OffsetX, Is.EqualTo(96f).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(refactor): the same reading, now failing by assertion where the class is declined.
         [Test]
         public void Given_AnInchClipPathInset_When_Extracted_Then_ItIsNinetySixPixelsNotAPercentage()
         {
@@ -91,7 +92,8 @@ namespace Velvet.Tests
             StyleClipPathClass.TryExtract(new[] { "clip-path-[inset(1in)]" }, out var spec);
 
             // Assert
-            Assert.That((spec!.InsetTop.Value, spec.InsetTop.IsPercent), Is.EqualTo((96f, false)));
+            Assert.That((spec != null, spec?.InsetTop.Value, spec?.InsetTop.IsPercent),
+                Is.EqualTo((true, (float?)96f, (bool?)false)));
         }
 
         [Test]

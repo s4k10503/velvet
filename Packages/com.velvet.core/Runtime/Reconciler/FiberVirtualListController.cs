@@ -261,6 +261,29 @@ namespace Velvet
 
         private void RenderRange(int newFirst, int newLast)
         {
+            // A row's refs and layout effects read the row, which is in the list only once RebuildVisibleContainer
+            // places it. Committed after DisposeUntakenRows too, so a recycled item's ref cleanup runs before the
+            // setup of whatever took its place.
+            _reconciler.HoldRowLayoutEffects();
+            try
+            {
+                PlaceRange(newFirst, newLast);
+            }
+            finally
+            {
+                try
+                {
+                    _reconciler.CommitHeldRowLayoutEffects();
+                }
+                finally
+                {
+                    _reconciler.CommitStrandedLayoutWorkForController();
+                }
+            }
+        }
+
+        private void PlaceRange(int newFirst, int newLast)
+        {
             var newCount = newLast - newFirst + 1;
 
             IndexOldRenderedItems();
@@ -300,15 +323,7 @@ namespace Velvet
             if (_isDisposed)
             {
                 ClearRenderedItems();
-                _reconciler.CommitStrandedLayoutWorkForController();
-                return;
             }
-
-            // After DisposeUntakenRows, so a recycled item's ref cleanup runs before the setup of
-            // whatever took its place, and after the container rebuild, so a setup reads an item that is
-            // already in the list.
-            _reconciler.DrainRefAttachesForController();
-            _reconciler.CommitStrandedLayoutWorkForController();
         }
 
         // Indexes the still-rendered items into the two old-row tables, for RenderRange's reuse/patch

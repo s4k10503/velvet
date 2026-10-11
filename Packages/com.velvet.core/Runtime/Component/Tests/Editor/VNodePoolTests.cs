@@ -13,7 +13,7 @@ namespace Velvet.Tests
     /// leaks stale state to the next consumer.</item>
     /// <item>The shared empty singleton is never pooled, so renting never hands back the singleton.</item>
     /// <item>A rented single-event array has length one; returning then renting reuses it with its element
-    /// cleared, and an empty array is never pooled.</item>
+    /// cleared, and an empty array is never pooled. A longer event array is pooled per length the same way.</item>
     /// <item>A rented node array has the requested length; returning then renting reuses it with its elements
     /// cleared.</item>
     /// <item>The pool caps at its maximum size, so returning more instances than the cap forces new
@@ -43,6 +43,25 @@ namespace Velvet.Tests
             Assert.That(props.Slider, Is.Null);
             Assert.That(props.ScrollView, Is.Null);
             Assert.That(props.TextField, Is.Null);
+        }
+
+        [Test]
+        public void Given_ReturnedPropsCarryingSliderIntSettings_When_RentedAgain_Then_TheSettingsAreCleared()
+        {
+            // Arrange
+            var props = VNodePool.RentProps();
+            props.SliderInt = new SliderIntSettings(LowValue: 2);
+            var carried = props.SliderInt != null;
+            VNodePool.ReturnProps(props);
+
+            // Act
+            var reused = VNodePool.RentProps();
+
+            // Assert — the identity term is what makes this a reading of the returned bag; a fresh one
+            // carries nothing on its own.
+            Assert.That(
+                (carried, ReferenceEquals(reused, props), reused.SliderInt),
+                Is.EqualTo((true, true, (SliderIntSettings?)null)));
         }
 
         [Test]
@@ -149,6 +168,39 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(reused[0], Is.Null, "The delegate is cleared on return");
+        }
+
+        [Test]
+        public void Given_AReturnedMultiBindingEventArray_When_ItsLengthIsRentedAgain_Then_ItComesBackCleared()
+        {
+            // Arrange
+            var arr = VNodePool.RentEventArray(3);
+            arr[0] = new ClickedBinding { Handler = () => { } };
+            arr[2] = new ClickedBinding { Handler = () => { } };
+            VNodePool.ReturnEventArray(arr);
+
+            // Act
+            var reused = VNodePool.RentEventArray(3);
+
+            // Assert
+            Assert.That((ReferenceEquals(reused, arr), reused[0], reused[2]), Is.EqualTo((true, (FiberEventBinding)null, (FiberEventBinding)null)));
+        }
+
+        [Test]
+        public void Given_ACallerOwnedMultiBindingEventArray_When_Returned_Then_ItIsNeitherClearedNorPooled()
+        {
+            // Arrange
+            var binding = new ClickedBinding { Handler = () => { } };
+            var owned = new FiberEventBinding[] { binding, binding };
+
+            // Act
+            VNodePool.ReturnEventArray(owned);
+
+            // Assert — the expected tuple is typed as the actual one is: NUnit compares tuples of different
+            // element types as unequal whatever they hold.
+            Assert.That(
+                (owned[0], ReferenceEquals(VNodePool.RentEventArray(2), owned)),
+                Is.EqualTo(((FiberEventBinding)binding, false)));
         }
 
         [Test]

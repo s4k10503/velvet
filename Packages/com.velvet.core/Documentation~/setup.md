@@ -33,7 +33,10 @@ grep -ho '^\.[a-zA-Z0-9_-]*' Packages/com.velvet.core/Runtime/Styles/*.uss | sor
 ```
 
 A class that prints is declared in the sheet and needs it. A class that does not carries no USS
-payload and behaves identically with or without it.
+payload of its own, and the families listed above behave identically with or without the sheet. The
+text-input colour utilities, `caret-*`, `selection:bg-*` and `selection:text-*`, do not: they print
+nothing, yet a field reads them only once the sheet's `.velvet-text-input` rule fires its style event,
+so without the sheet they do nothing.
 
 So a screen built from a mixture renders with the right sizes, the right gaps, a visible ring and
 working filters while every palette, layout and scale class does nothing. If `flex-row` leaves a

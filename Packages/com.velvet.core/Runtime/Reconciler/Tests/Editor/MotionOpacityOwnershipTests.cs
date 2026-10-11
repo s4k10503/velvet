@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -21,15 +22,28 @@ namespace Velvet.Tests
             return element;
         }
 
-        private VisualElement Carrying()
+        // Plays the tween whose one-second linear timing Carrying holds inline.
+        private StyleAnimationScheduler _scheduler;
+
+        // A drawn element under a tween holding a one-second opacity transition inline, its own opacity carried
+        // towards 0.2; own is a transition duration the element carries of its own, if any.
+        private VisualElement Carrying(List<TimeValue> own = null)
         {
             var element = Drawn();
+            if (own != null) element.style.transitionDuration = own;
             element.style.transitionProperty = new List<StylePropertyName> { new("opacity") };
-            element.style.transitionDuration = new List<TimeValue> { new(1f) };
-            element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+            _scheduler = new StyleAnimationScheduler();
+            _scheduler.PlayEnter(element, new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.Linear });
             MotionOpacity.Draw(element, Half, 0f);
             MotionOpacity.WriteTransitioned(element, 0.2f);
             return element;
+        }
+
+        // Ends the tween, and releases transition-property as a variant swap's end does.
+        private void EndSwap(VisualElement element)
+        {
+            _scheduler.CancelEnter(element);
+            element.style.transitionProperty = StyleKeyword.Null;
         }
 
         private static object Drawing(VisualElement element)
@@ -101,6 +115,42 @@ namespace Velvet.Tests
             Tail(element, 0.5f);
             // Assert
             Assert.That(element.style.opacity.value, Is.EqualTo(0.5f).Within(0.001f));
+        }
+
+        [Test]
+        public void Given_ACarryingOpacityOnAHeldClock_When_TheCrossfadeEndsAndThePanelTicks_Then_TheTailMovesOnlyAsFarAsTheClock()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = Carrying();
+            MotionOpacity.End(element, clock);
+
+            // Act
+            for (var i = 0; i < 10; i++) Tick();
+            var held = element.style.opacity.value;
+            clock.Now += 0.25;
+            Tick();
+
+            // Assert — a quarter of the second-long carry from 0.8 to 0.2.
+            Assert.That(new[] { held, element.style.opacity.value }, Is.EqualTo(new[] { 0.8f, 0.65f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ACarryingOpacityWhoseCrossfadeEndsTwice_When_TheClockSteps_Then_ItsTailStepsOnce()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            var element = Carrying();
+            MotionOpacity.End(element, clock);
+            MotionOpacity.End(element, clock);
+
+            // Act
+            Tick();
+            clock.Now += 0.25;
+            Tick();
+
+            // Assert — a quarter of the carry, where two tails would have stepped it half way.
+            Assert.That(element.style.opacity.value, Is.EqualTo(0.65f).Within(1e-3f));
         }
 
         [Test]
@@ -231,12 +281,30 @@ namespace Velvet.Tests
             Assert.That((held, element.style.transitionProperty.keyword), Is.EqualTo((true, StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(characterization): the base clears the inline timing at a tween's end, which drops what it held.
+        // Restoring the element's own timing instead must drop the held timing all the same.
         [Test]
-        public void Given_AHeldOpacityTransition_When_TheInlineDurationIsCleared_Then_TheHeldTimingIsDropped()
+        public void Given_AHeldOpacityTransition_When_TheSwapEnds_Then_TheHeldTimingIsDropped()
         {
             // Arrange
             var element = Carrying();
-            element.style.transitionDuration = StyleKeyword.Null;
+            EndSwap(element);
+            // Act
+            MotionOpacity.Draw(element, Half, 0f);
+            MotionOpacity.WriteTransitioned(element, 0.6f);
+            MotionOpacity.Draw(element, Half, 0.5f);
+            // Assert
+            Assert.That(MotionOpacity.Own(element), Is.EqualTo(0.6f).Within(0.001f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base clears the element's own duration at a tween's end, so no list is
+        // left to read. Once that list is restored, the tween's end must still drop the held timing.
+        [Test]
+        public void Given_AHeldOpacityTransitionOnAnElementWithItsOwnDuration_When_TheSwapEnds_Then_TheHeldTimingIsDropped()
+        {
+            // Arrange — the swap's end puts the element's own 400ms list back in the slot.
+            var element = Carrying(new List<TimeValue> { new(0.4f) });
+            EndSwap(element);
             // Act
             MotionOpacity.Draw(element, Half, 0f);
             MotionOpacity.WriteTransitioned(element, 0.6f);
@@ -334,7 +402,7 @@ namespace Velvet.Tests
 
         private static void EndProjectionFade(VisualElement element, LayoutIdProjection projection) =>
             typeof(MotionLayoutIdDriver).GetMethod("WriteOpacity", BindingFlags.Static | BindingFlags.NonPublic)
-                .Invoke(null, new object[] { element, projection, null });
+                .Invoke(null, new object[] { element, projection, null, new ReconcilerContext() });
 
         [Test]
         public void Given_AnEndedProjectionFade_When_AnInlineWritePrecedesItsNextPass_Then_TheTailAdoptsTheWrite()

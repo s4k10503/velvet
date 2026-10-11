@@ -177,6 +177,41 @@ records' key so that a kill a PlayMode run took is never kept for an EditMode on
 takes a run on one platform as the first of two passes: the run on the other platform measures only
 that run's survivors and decides over both, which is the decision CI takes.
 
+**A changed line is asked about once.** A line can generate several mutants — `a <= b && c` has a
+boundary flip, a logic flip and a clause removal — and the campaign keeps one of them, so its cost
+grows with the lines a branch changed rather than with how many operators each of them admits.
+That is a decision about cost, motivated by Google's "Practical Mutation Testing at Scale"; none of
+its figures is claimed to hold for this repository. The mutant kept is the first of these that the line generates, and where one operator
+generates several, the leftmost:
+
+`boundary`, `equality`, `arithmetic`, `clause removed`, `logic`, `literal`, `guard removed`,
+`line removed`
+
+The order puts first the mutant that changes least about what the line does. A test is least likely
+to notice it, so a line whose first mutant dies is taken to have been noticed, and one whose first
+mutant survives is the question worth asking. The order is a decision and not a measurement:
+`mutation_check.LINE_PRIORITY` holds it, `OnePerLineTests` pins it, and a different order is a change
+to that tuple together with this paragraph. The choice depends on the mutants a line generates and
+on nothing else, so every shard and every later run reads the same list.
+
+What the cap leaves out is not measured, and a survivor count is a statement about the mutants kept.
+`--list` prints the kept ones. A declaration that names an operator the cap dropped from its line
+(a survival declaration naming the logic operator over a line whose boundary flip was kept) is not stale when the
+kept mutant dies or is absent, because the mutant it described is no longer generated and there is
+nothing to measure it against; an unnamed declaration is not stale over a line with dropped mutants
+either. It does not answer a kept mutant of another operator that survives: that survivor stays
+unanswered ("answers for 'logic', not for this") until the line is written so that its own
+operator is the one kept — split the expression over lines. A declaration naming an operator the
+line never carried is refused.
+
+A kept mutant the compiler rejects as no program is replaced by the next dropped mutant of its line
+in the same order, until one compiles or none remain; the line is then reported as rejected, as
+before. Only an arithmetic `+` rewritten to `-` over operands that turn out to be strings is ever
+rejected that way, so that is the only case the fallback has. The verdict record stays the kept
+mutant's, which is what the plan's list names, and carries the operator that stood; a declaration
+then answers for that operator. Every shard regenerates the dropped mutants from the tree, so the
+fallback needs nothing beyond the shared list.
+
 The run also fails or stops rather than pass over a mutant nobody asked about, and
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 says when it does which.
@@ -190,8 +225,8 @@ base with the pull request's base, taking the readings `--list` takes, and stops
 changed, or because no operator reaches the lines that did. The second passes, where a local run
 refuses it: its job summary names the lines, and the pull request body says why the change is not
 something a mutation can ask about. Where a licence is configured, a diff of more mutants than ten
-shards of 16 can measure inside the shard job's timeout is refused at the plan and is split into
-smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
+shards of 16 can measure inside the shard job's timeout — not counting the kills reused from an
+earlier campaign, below — is refused at the plan and is split into smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
 Otherwise,
 where a licence is configured, the mutants are measured in two passes, because a mutant is killed
 when either suite fails on it, and one only a PlayMode fixture notices survives the EditMode suite.
@@ -209,7 +244,7 @@ against the whole
 PlayMode suite, in up to ten jobs of its own. That pass has a ceiling of its own, and over it the
 pass is refused: EditMode tests for the survivors bring the count under it, since the count is of
 EditMode survivors and no PlayMode test lowers it, and otherwise the pull request is split.
-`Mutation campaign ▸ mutation-verdict` reads both passes' records and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
+`Mutation campaign ▸ mutation-verdict` reads both passes' records and the kills the plan reused, and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
 a mutant nothing measured fails it, and a survivor of the EditMode pass that no PlayMode shard
 recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
 `--max`. A shard whose baseline is red fails on its own. Its job summary names each survivor and each
@@ -224,6 +259,119 @@ ran the test merge's copy: a dispatch records its runs and checks against the co
 names, so a campaign dispatched from the default branch would be recorded against that branch's tip
 rather than the head it measured. Running the campaign locally is optional: it answers the same question before
 a push, and before the label.
+
+**A kill an earlier campaign recorded is not measured again, and a head whose whole key was passed is not
+measured at all.** Two readings follow: reusing a kill at a time, which is what a review round that
+only changes tests needs, and reusing a whole verdict under an equal key.
+
+**A kill is reused when the mutant, its file and its killing cases are as they were.** Every
+campaign's verdict job uploads `Mutation campaign ledger`, whether the campaign passed or failed: a
+campaign that failed on a survivor is the one whose kills the next round needs. The ledger holds a record per mutant
+the campaign decided: the mutant (file, line, column, operator and both texts), a hash of the mutated file's
+bytes, its verdict and the platform whose pass gave it, and for a kill the run that measured it
+and up to `MAX_RECORDED_KILLERS` of its behavioural killing cases (the first by name), each with the
+hash of every source file that declares the case's fixture or one it derives from, comments left
+out. The ledger's header holds the `tool` digest below and two more, `build-inputs` and
+`test-support`. `mutation-plan` fetches the ledgers of the newest 20 finished runs of the workflow on
+the head's branch (`scripts/ci/reuse_verdict.py`; a run that left no ledger counts against the 20),
+and `mutation_check.py --reuse-from` decides each mutant from the newest ledger that holds it:
+
+- the ledger's `tool`, `build-inputs` and `test-support` digests equal this tree's, and the mutant's
+  record is a kill;
+- the mutated file has the same bytes, and the mutant is the same one;
+- every recorded killing case is still declared in the tree, and no code of its fixture has changed.
+
+`build-inputs` is the key's component of that name, with the mutated files in it: every file the editor
+compiles or imports other than a test source, so an edit to any production file, stylesheet, assembly
+definition, project setting or package manifest, and a merged-in base that changed one, lapses every
+kill of the ledger. `test-support` hashes every test-side file that is not a fixture: everything under
+`Packages/com.velvet.core/TestUtilities/`, every assembly definition and reference with its `.meta`,
+every other non-C# file under a `Tests/` directory except a `.meta` (a guid only, which a new fixture
+file brings along), and every C# file there that declares no test attribute or declares a
+NUnit set-up fixture (the SetUpFixture attribute). A test attribute is read anywhere in an attribute list, in the file with its comments
+removed; a C# file is hashed that way too, so a comment edited in a helper moves nothing. Any other
+change to it lapses every kill of the ledger, and the plan's summary says which of the two moved.
+What stays reusable across a change is therefore a fixture file's: an edit
+to a fixture that killed nothing, or a comment in one that did.
+
+Everything else is measured: a survivor, a declared one included, a mutant no ledger holds, one on a
+file that changed, one whose killing case was renamed, deleted or whose fixture was edited, and any
+record that cannot be read in full — a ledger that is missing, expired, listed twice or not JSON
+is only a measurement owed. The plan's summary says how many verdicts were reused and, for each mutant it
+measures again, why. A reused kill reaches no shard: the plan writes its decision into the
+artifact that carries the mutant list, every later job hands it back with `--reuse`, and the shards, the
+PlayMode plan and the shard count are dealt over the mutants not reused, and the ceiling above counts
+only those. A kill
+the PlayMode pass took is reused like an EditMode one, and neither pass is asked about it. The verdict
+job reads each reused kill against its own tree rather than trusting the plan's file, and a kill whose
+case is gone or whose fixture changed in between is `not measured (the reused kill no longer stands)`: the
+run fails, and a reuse never turns a survivor into a pass. The ledger it uploads carries a reused kill
+with the run that measured it, so a kill stays reusable for as long as its fixtures stand, not for as
+long as the artifacts of one run do. A campaign that reused kills records its key below as one it
+measured, since it decided every mutant in its own run.
+
+What the digests leave uncovered is a test file that declares tests and is not on the killing case's
+fixture chain, but that the fixture's code calls: a static helper declared in a file that also holds
+tests of its own. A kill that depends on one stays reused after that file changes.
+
+**A head whose whole key was passed is not measured at all.** `mutation_check.py --key` prints
+a campaign key: one hash over six components, each printed beside it so a miss can say which moved.
+Where a head's key equals one a campaign passed on, the verdict of that run stands as a whole, survivors
+and declarations included, and no ledger is read; any other head takes the reading above.
+
+| Component | What it hashes | Why it is in |
+| --- | --- | --- |
+| `mutants` | the capped mutant list: file, line, column, operator and both texts of each | the question asked |
+| `mutated-files` | the full bytes of every file holding a mutant, comments included | a comment moves the lines the mutants sit on, and a reused pass is a stronger claim than a resumed kill, so it takes no comment-stripped form |
+| `test-sources` | every file whose path has a `Tests/` directory at any depth under the hashed roots (the package, `Assets/`, `ProjectSettings/`), and every file under `Packages/com.velvet.core/TestUtilities/` | what is asked of the mutants |
+| `build-inputs` | every other file the editor compiles or imports, outside a `~` directory and not markdown: the package's remaining sources, `.asmdef`s and plugins, `Assets/`, `ProjectSettings/`, `Packages/manifest.json` and `packages-lock.json` | a test that kills a mutant in one file can reach it through another, and an editor or analyzer change moves what compiles |
+| `declarations` | each survival declaration the mutated files hold, with whether this branch wrote it | the declarations' `written_here` moves with the merge base |
+| `tool` | `mutation_check.py`, its operator tables and priority order, `mutation.yml`, and the scripts the shards run or import: `ci_mutation_shard.py`, `unity_running.py`, `schemata_tool.py`, `schemata/MutantSchemata.cs`, `ci/licensed_editor.py` and `ci/change_base.py` (`TOOL_FILES`) | a verdict is the tool's |
+
+The key is conservative on purpose: it hashes the mutated files, the test sources and the rest of
+what the editor compiles or imports, so an equal key means none of those files differs. It does not
+hash markdown (also inside the package), a directory ending in `~` (so `Generators~` sources, though
+the DLLs committed under `Runtime/Plugins/` are in), the root-level `Library` and `Logs` and the Temp directory, which
+lie outside the hashed roots (a folder of those names inside a root is hashed), a workflow
+other than `mutation.yml`, a script outside `TOOL_FILES`, or what the registry serves behind the
+editor image's tag (the tag itself is written in `mutation.yml`). The fixtures that read
+the repository's text are the ones no launch runs. `CampaignKeyTests` holds `TOOL_FILES` to the
+modules `mutation_check.py` and `ci_mutation_shard.py` import directly; a module those import in
+turn is not checked; the listed ones import nothing outside the list. The price is that a rebase onto a base that changed another production file measures again; narrowing `build-inputs`
+to the mutated files and the tests is a one-line change in `campaign_key`, and takes on the risk that
+an unmutated file alters what kills a mutant.
+
+A passing campaign uploads an artifact named `Mutation campaign key <hex>`, which a REST listing of
+the run's artifacts carries and which lapses with the repository's artifact retention, as the run's
+other artifacts do; after that the head is measured. `mutation-plan` lists
+the newest 20 passing runs of the workflow on the head's branch (`scripts/ci/reuse_verdict.py`), and
+where one holds the head's key, the shards, the Library job and the PlayMode pass are skipped and
+`Mutation campaign (verdict)` passes, its summary naming the run it reused from. Only a run whose own
+key artifact records that it measured the key is a source: a run that reused it is skipped, so no
+chain of reuses forms and a verdict outlives only the artifacts of the run that measured it. The
+reusing run uploads the key too, citing the run that measured it. A reading that fails for any reason,
+a malformed answer included, reuses nothing. `scripts/pr/settle.py` checks the citation
+before a merge: a reused pass whose cited run is not a pass of the workflow that measured this very
+key holds the head, as does a run whose own key artifact has expired or is ambiguous (artifacts of
+two keys, or two citations of one). The measured and the reused name of one key, which a re-run that
+measured leaves beside the earlier reuse, read as measured, and such a run can serve as a reuse
+source. A run with no key artifact at all predates the key and is accepted as measured. The hold says
+which: the cited run could not be read, is not a pass, holds no readable key artifact, or did not
+measure the key. `scripts/pr/campaign_status.py` asks the same check before
+it displays a pass. `scripts/pr/automerge.py` reads only whether the head's newest run concluded, as
+for any campaign, and the merge run it dispatches is settle's. `refuse/merge_unproven_head.py` does
+not read the citation, which a merge by hand therefore skips.
+
+**Every shard measures the plan's list, and a shard that did not report is not a survivor.**
+`mutation-plan` writes the mutant list it counted (`--emit-mutants`) and each shard, the PlayMode plan
+and the verdict job hand it back (`--mutants`): a tree that generates another list refuses to run, rather than dealing its
+indices to other mutants. A shard that died, was cancelled or timed its baseline out records nothing,
+and the verdict job names it under `not measured`, with the shard's number: that is neither a
+survivor nor a stale declaration, and a declaration over a mutant of such a shard is not reported
+stale. An EditMode shard that died is named the same way, with the heading `EditMode`; its mutants are
+in no PlayMode pass's list, and no PlayMode shard is named then, since that pass is skipped when an
+EditMode shard fails. The run still fails. Re-running only the failed jobs of the run completes it: the shard
+artifacts upload with `overwrite`, and the verdict job decides again over every record.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
 on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land

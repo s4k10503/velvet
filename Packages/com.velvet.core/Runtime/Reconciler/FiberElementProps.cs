@@ -97,6 +97,10 @@ namespace Velvet
         public SliderSettings? Slider { get => _slider; set { ThrowIfReadOnly(); _slider = value; } }
         private SliderSettings? _slider;
 
+        /// <summary>SliderInt-specific settings.</summary>
+        public SliderIntSettings? SliderInt { get => _sliderInt; set { ThrowIfReadOnly(); _sliderInt = value; } }
+        private SliderIntSettings? _sliderInt;
+
         /// <summary>ScrollView-specific settings.</summary>
         public ScrollViewSettings? ScrollView { get => _scrollView; set { ThrowIfReadOnly(); _scrollView = value; } }
         private ScrollViewSettings? _scrollView;
@@ -172,6 +176,17 @@ namespace Velvet
             HighValue = this.HighValue;
         }
     }
+
+    /// <summary>
+    /// SliderInt.lowValue / highValue / direction / inverted, and the keyboard step: <see cref="SliderSettings"/>
+    /// over whole numbers, with the same undeclared and default rules.
+    /// </summary>
+    public sealed record SliderIntSettings(
+        int? LowValue = null,
+        int? HighValue = null,
+        SliderDirection? Direction = null,
+        bool? Inverted = null,
+        int? Step = null);
 
     /// <summary>Controls ScrollView scroller visibility and touch-scroll behavior.</summary>
     public sealed record ScrollViewSettings(
@@ -277,12 +292,35 @@ namespace Velvet
     /// remaining members (wrapping within the nearest containing scope, if any); Tab entering from outside
     /// — in either direction — lands on the last-focused member, else the scope's first. Members keep
     /// tabIndex 0, so engine 2D arrow/dpad navigation moves between them; a 2D move that lands outside the
-    /// subtree returns to the member it started from.</param>
+    /// subtree returns to the member it started from, and <see cref="Orientation"/> ignores one axis's
+    /// moves.</param>
     public sealed record FocusScopeSettings(
         bool Contain = false,
         bool RestoreFocus = false,
         bool AutoFocus = false,
-        bool SingleTabStop = false);
+        bool SingleTabStop = false)
+    {
+        /// <summary>
+        /// The axis arrow/d-pad moves travel inside a <see cref="SingleTabStop"/> group, as React Aria's
+        /// <c>useToolbar</c> takes an <c>orientation</c>. A move on the other axis is ignored before it moves
+        /// focus. Of nested groups, the outermost one's value decides; without <see cref="SingleTabStop"/>
+        /// it is not read.
+        /// </summary>
+        public FocusScopeOrientation Orientation { get; init; }
+    }
+
+    /// <summary>The axes an arrow/d-pad move may travel inside a <c>singleTabStop</c> group.</summary>
+    public enum FocusScopeOrientation
+    {
+        /// <summary>Moves on both axes travel between members; the geometry decides.</summary>
+        Both,
+
+        /// <summary>Left and right moves travel; up and down keep focus on the member.</summary>
+        Horizontal,
+
+        /// <summary>Up and down moves travel; left and right keep focus on the member.</summary>
+        Vertical,
+    }
 
     /// <summary>
     /// The 3D Transform an Anchored element's screen position tracks, plus the camera whose projection

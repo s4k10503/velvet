@@ -21,7 +21,8 @@ namespace Velvet.Tests
     /// <item>A click binding dispatches to its handler; typed change bindings dispatch the changed value (float,
     /// bool, string) to their handler.</item>
     /// <item>Binding a null element is tolerated and binds nothing.</item>
-    /// <item>Binding the same delegate twice for one element collapses to a single registration.</item>
+    /// <item>Binding the same delegate twice for one element, as the same kind of binding, collapses to a single
+    /// registration; two delegates of one kind stay two.</item>
     /// <item><c>UnbindAll</c> removes every handler for an element and is idempotent; <c>Clear</c> unbinds every
     /// element, after which a per-element unbind is a no-op.</item>
     /// <item><c>HasSameBindings</c> reports equality by delegate identity and count: same delegate(s) is equal,
@@ -215,6 +216,29 @@ namespace Velvet.Tests
             Assert.That(_manager.HasSameBindings(button, singleEvent), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): two delegates of one binding kind stay two registrations.
+        // The duplicate check now matches the kind as well as the delegate, and this is what it must keep.
+        [Test]
+        public void Given_TwoDelegatesOfOneKind_When_BothAreBound_Then_BothAreRegistered()
+        {
+            // Arrange
+            var button = new Button();
+            Action first = () => { };
+            Action second = () => { };
+            var bothEvents = new FiberEventBinding[]
+            {
+                new ClickedBinding { Handler = first },
+                new ClickedBinding { Handler = second },
+            };
+            _manager.Bind(button, new ClickedBinding { Handler = first });
+
+            // Act
+            _manager.Bind(button, new ClickedBinding { Handler = second });
+
+            // Assert
+            Assert.That(_manager.HasSameBindings(button, bothEvents), Is.True);
+        }
+
         #region HasSameBindings
 
         [Test]
@@ -267,9 +291,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_SingleBoundDelegate_When_ComparedWithTwoBindings_Then_NotSameBindings()
+        public void Given_SingleBoundDelegate_When_ComparedWithThatDelegateTwice_Then_HasSameBindings()
         {
-            // Arrange
+            // Arrange — binding these two collapses them to the one registration already there, which is
+            // what a factory's onClick: beside the same delegate in its events: array hands the patcher.
             var button = new Button();
             Action handler = () => { };
             _manager.Bind(button, new ClickedBinding { Handler = handler });
@@ -279,6 +304,90 @@ namespace Velvet.Tests
             {
                 new ClickedBinding { Handler = handler },
                 new ClickedBinding { Handler = handler },
+            };
+
+            // Assert
+            Assert.That(_manager.HasSameBindings(button, newEvents), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a binding without a handler as a mismatch.
+        // The repeat-aware comparison must keep that; answering true there is what reddens this.
+        [Test]
+        public void Given_ABoundDelegate_When_ComparedWithABindingWithoutAHandler_Then_NotSameBindings()
+        {
+            // Arrange
+            var button = new Button();
+            _manager.Bind(button, new ClickedBinding { Handler = () => { } });
+
+            // Act
+            var same = _manager.HasSameBindings(button, new FiberEventBinding[] { new ClickedBinding() });
+
+            // Assert
+            Assert.That(same, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads more delegates than are bound as a mismatch.
+        // The repeat-aware comparison must keep that; reading past the bound list is what reddens this.
+        [Test]
+        public void Given_OneBoundDelegate_When_ComparedWithItAndAnother_Then_NotSameBindings()
+        {
+            // Arrange
+            var button = new Button();
+            Action first = () => { };
+            _manager.Bind(button, new ClickedBinding { Handler = first });
+
+            // Act
+            var same = _manager.HasSameBindings(button, new FiberEventBinding[]
+            {
+                new ClickedBinding { Handler = first },
+                new ClickedBinding { Handler = () => { } },
+            });
+
+            // Assert
+            Assert.That(same, Is.False);
+        }
+
+        [Test]
+        public void Given_TwoBoundDelegates_When_ComparedWithThemAndTheFirstAgain_Then_HasSameBindings()
+        {
+            // Arrange — the repeat sits after a different delegate, so telling it a repeat takes reading past
+            // the entry just before it.
+            var button = new Button();
+            Action first = () => { };
+            Action second = () => { };
+            _manager.Bind(button, new ClickedBinding { Handler = first });
+            _manager.Bind(button, new ClickedBinding { Handler = second });
+
+            // Act
+            var newEvents = new FiberEventBinding[]
+            {
+                new ClickedBinding { Handler = first },
+                new ClickedBinding { Handler = second },
+                new ClickedBinding { Handler = first },
+            };
+
+            // Assert
+            Assert.That(_manager.HasSameBindings(button, newEvents), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base compares the two counts and reads false here already.
+        // What reddens it is the final `bound == delegates.Count` check returning true unconditionally.
+        [Test]
+        public void Given_TwoBoundDelegates_When_ComparedWithTheFirstTwice_Then_NotSameBindings()
+        {
+            // Arrange — the counterpart of the case above: passing over a repeat must not also pass over a
+            // handler the element holds and the new array lacks.
+            var button = new Button();
+            Action first = () => { };
+            Action second = () => { };
+            _manager.Bind(button, new ClickedBinding { Handler = first });
+            _manager.Bind(button, new ClickedBinding { Handler = second });
+
+            // Act
+            var newEvents = new FiberEventBinding[]
+            {
+                new ClickedBinding { Handler = first },
+                new ClickedBinding { Handler = first },
             };
 
             // Assert

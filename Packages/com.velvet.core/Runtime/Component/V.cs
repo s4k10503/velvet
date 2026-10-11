@@ -19,17 +19,73 @@ namespace Velvet
         private static readonly VNode?[] EmptyChildren = Array.Empty<VNode>();
         private static readonly FiberEventBinding[] EmptyEvents = Array.Empty<FiberEventBinding>();
 
-        // Wraps a single event binding in a pooled one-element array (or the shared empty array when the
-        // handler was null). Callers pass `onX != null ? new XxxBinding { Handler = onX } : null` so the
-        // binding is allocated only when a handler is supplied — preserving the no-handler zero-alloc path.
-        private static FiberEventBinding[] SingleEvent(FiberEventBinding? binding)
+        // A factory's own callback binding (onClick:, onValueChanged:) goes ahead of the caller's events:.
+        // Callers pass `onX != null ? new XxxBinding { Handler = onX } : null` so the binding is allocated
+        // only when a handler is supplied. The caller's array is handed on as it is when nothing goes
+        // ahead of it, and never written: a component may cache it across renders, and the pool clears
+        // only what it rented.
+        private static FiberEventBinding[] Bindings(FiberEventBinding? own, FiberEventBinding[]? events)
         {
-            if (binding == null)
+            if (events == null)
             {
-                return EmptyEvents;
+                if (own == null)
+                {
+                    return EmptyEvents;
+                }
+                var single = VNodePool.RentSingleEventArray();
+                single[0] = own;
+                return single;
             }
-            var events = VNodePool.RentSingleEventArray();
-            events[0] = binding;
+
+            if (own == null)
+            {
+                return events;
+            }
+
+            var bindings = VNodePool.RentEventArray(events.Length + 1);
+            bindings[0] = own;
+            Array.Copy(events, 0, bindings, 1, events.Length);
+            return bindings;
+        }
+
+        private static ElementNode Shorthand(Type elementType, string[] classNames, VNode?[]? children,
+            FiberEventBinding[]? events) =>
+            new ElementNode
+            {
+                ElementType = elementType,
+                ClassNames = classNames,
+                Children = children == null || children.Length == 0 ? EmptyChildren : children,
+                Events = events ?? EmptyEvents,
+            };
+
+        // V.TextField's handlers in a fixed order, which FiberEventBindingManager.HasSameBindings relies on to
+        // match one render's array against the last, and the caller's events: behind them.
+        private static FiberEventBinding[] TextFieldEvents(
+            Action<string>? onValueChanged,
+            Action<string>? onSubmit,
+            EventCallback<KeyDownEvent>? onKeyDown,
+            EventCallback<KeyUpEvent>? onKeyUp,
+            (EventCallback<FocusInEvent>? In, EventCallback<FocusOutEvent>? Out) focus,
+            FiberEventBinding[]? callerEvents)
+        {
+            var (onFocus, onBlur) = focus;
+            var count = (onValueChanged != null ? 1 : 0) + (onSubmit != null ? 1 : 0) + (onKeyDown != null ? 1 : 0)
+                        + (onKeyUp != null ? 1 : 0) + (onFocus != null ? 1 : 0) + (onBlur != null ? 1 : 0);
+            if (count == 0)
+            {
+                return callerEvents ?? EmptyEvents;
+            }
+
+            var callers = callerEvents ?? EmptyEvents;
+            var events = VNodePool.RentEventArray(count + callers.Length);
+            Array.Copy(callers, 0, events, count, callers.Length);
+            var next = 0;
+            if (onValueChanged != null) events[next++] = new ChangeEventBinding<string> { Handler = onValueChanged };
+            if (onSubmit != null) events[next++] = new TextFieldSubmitBinding { Handler = onSubmit };
+            if (onKeyDown != null) events[next++] = new KeyDownBinding { Handler = onKeyDown };
+            if (onKeyUp != null) events[next++] = new KeyUpBinding { Handler = onKeyUp };
+            if (onFocus != null) events[next++] = new TextFieldFocusBinding { Handler = onFocus };
+            if (onBlur != null) events[next] = new TextFieldBlurBinding { Handler = onBlur };
             return events;
         }
 
@@ -64,6 +120,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this element.</returns>
         public static ElementNode Div(
             string? className = null,
@@ -77,7 +134,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             return new ElementNode
             {
@@ -88,7 +146,7 @@ namespace Velvet
                 Props = WithAttributes(props, data, aria),
                 Styles = styles,
                 Children = children ?? EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -115,6 +173,17 @@ namespace Velvet
             };
 
         /// <summary>
+        /// Shorthand overload with event bindings: positional <paramref name="className"/>,
+        /// <paramref name="events"/> and variadic <c>children</c>, building a <c>div</c> element.
+        /// </summary>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode Div(string className, FiberEventBinding[] events, params VNode?[] children) =>
+            Shorthand(typeof(VisualElement), ParseClassNames(className), children, events);
+
+        /// <summary>
         /// Creates an element backed by a custom <see cref="VisualElement"/> subclass <typeparamref name="T"/>,
         /// for control types the built-in factories (<see cref="Div"/>, <see cref="Label"/>, …) do not expose.
         /// Long form: every prop is a named optional parameter. For the shorthand
@@ -132,6 +201,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this element.</returns>
         public static ElementNode Custom<T>(
             string? className = null,
@@ -144,7 +214,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null) where T : VisualElement
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null) where T : VisualElement
         {
             return new ElementNode
             {
@@ -154,7 +225,7 @@ namespace Velvet
                 ClassNames = ParseCustomClassNames<T>(className),
                 Props = WithAttributes(props, data, aria),
                 Children = children ?? EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -183,6 +254,19 @@ namespace Velvet
             };
 
         /// <summary>
+        /// Shorthand overload with event bindings: positional <paramref name="className"/>,
+        /// <paramref name="events"/> and variadic <c>children</c>, building a <typeparamref name="T"/> element.
+        /// </summary>
+        /// <typeparam name="T">Concrete VisualElement subclass to instantiate.</typeparam>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode Custom<T>(string className, FiberEventBinding[] events, params VNode?[] children)
+            where T : VisualElement =>
+            Shorthand(typeof(T), ParseCustomClassNames<T>(className), children, events);
+
+        /// <summary>
         /// Creates a ScrollView.
         /// Long form: every prop is a named optional parameter. For the shorthand
         /// <c>V.ScrollView("class", child1, child2)</c> form, see the <c>params</c> overload.
@@ -201,6 +285,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing the ScrollView.</returns>
         public static ElementNode ScrollView(
             string? className = null,
@@ -216,7 +301,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             FiberElementProps? props = null;
@@ -236,7 +322,7 @@ namespace Velvet
                 ClassNames = ParseClassNames(className),
                 Props = props,
                 Children = children ?? EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 OnCreated = onCreated,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
@@ -264,6 +350,17 @@ namespace Velvet
             };
 
         /// <summary>
+        /// Shorthand overload with event bindings: positional <paramref name="className"/>,
+        /// <paramref name="events"/> and variadic <c>children</c>, building a <c>ScrollView</c> element.
+        /// </summary>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode ScrollView(string className, FiberEventBinding[] events, params VNode?[] children) =>
+            Shorthand(typeof(ScrollView), ParseClassNames(className), children, events);
+
+        /// <summary>
         /// Creates a Button.
         /// <c>text</c> and <c>children</c> can be combined. UI Toolkit's Button inherits from TextElement and
         /// keeps the <c>text</c> property and child VisualElements independently, so use <c>children</c> when
@@ -285,6 +382,7 @@ namespace Velvet
         /// <param name="children">Child VNodes (e.g. icon + label) rendered inside the button.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element, bound after <paramref name="onClick"/>'s own (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this button.</returns>
         public static ElementNode Button(
             string? className = null,
@@ -302,10 +400,11 @@ namespace Velvet
             string? whileFocusClass = null,
             VNode?[]? children = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var events = SingleEvent(onClick != null ? new ClickedBinding { Handler = onClick } : null);
+            var bindings = Bindings(onClick != null ? new ClickedBinding { Handler = onClick } : null, events);
 
             FiberElementProps? props = null;
             if (text != null || tooltip != null || enabled.HasValue)
@@ -326,7 +425,7 @@ namespace Velvet
                 Props = props,
                 Styles = styles,
                 Children = children ?? EmptyChildren,
-                Events = events,
+                Events = bindings,
                 RefCallback = refCallback,
                 WrapElement = wrapElement,
                 WhileHoverClass = whileHoverClass,
@@ -354,6 +453,17 @@ namespace Velvet
             };
 
         /// <summary>
+        /// Shorthand overload with event bindings: positional <paramref name="className"/>,
+        /// <paramref name="events"/> and variadic <c>children</c>, building a <c>Button</c>.
+        /// </summary>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode Button(string className, FiberEventBinding[] events, params VNode?[] children) =>
+            Shorthand(typeof(Button), ParseClassNames(className), children, events);
+
+        /// <summary>
         /// Creates a Label.
         /// </summary>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
@@ -366,6 +476,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this label.</returns>
         public static ElementNode Label(
             string? className = null,
@@ -377,7 +488,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             FiberElementProps? props = null;
@@ -396,7 +508,7 @@ namespace Velvet
                 ClassNames = ParseClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -431,6 +543,7 @@ namespace Velvet
         /// land on, counted from <paramref name="lowValue"/>. Null is Radix's default of 1.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="direction"/> names no member of
         /// <see cref="SliderDirection"/>, or <paramref name="step"/> is not above zero and finite.</exception>
+        /// <param name="events">Event bindings applied to the element, bound after <paramref name="onValueChanged"/>'s own (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this slider.</returns>
         public static ElementNode Slider(
             string? className = null,
@@ -450,22 +563,18 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? aria = null,
             SliderDirection? direction = null,
             bool? inverted = null,
-            float? step = null)
+            float? step = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             // Above both rents below, so a refusal here strands no event array or bag this factory rented.
-            if (direction is not (null or SliderDirection.Horizontal or SliderDirection.Vertical))
-            {
-                throw new ArgumentOutOfRangeException(nameof(direction), direction,
-                    "V.Slider takes a member of SliderDirection as its direction.");
-            }
-
+            RequireSliderDirection(direction, "V.Slider takes a member of SliderDirection as its direction.");
             if (step is { } stepValue && !(stepValue > 0f && float.IsFinite(stepValue)))
             {
                 throw new ArgumentOutOfRangeException(nameof(step), step,
                     "V.Slider takes a step above zero and finite.");
             }
-            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<float> { Handler = onValueChanged } : null);
+            var bindings = Bindings(onValueChanged != null ? new ChangeEventBinding<float> { Handler = onValueChanged } : null, events);
 
             FiberElementProps? props = null;
             if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue
@@ -489,13 +598,109 @@ namespace Velvet
                 ClassNames = ParseClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
-                Events = events,
+                Events = bindings,
                 RefCallback = refCallback,
                 OnCreated = onCreated,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
                 WhileFocusClass = whileFocusClass,
             };
+        }
+
+        /// <summary>
+        /// Creates a SliderInt: <see cref="Slider"/> over whole numbers, reporting an <c>int</c>.
+        /// </summary>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="value">Current slider value (controlled).</param>
+        /// <param name="lowValue">Minimum value of the slider range.</param>
+        /// <param name="highValue">Maximum value of the slider range.</param>
+        /// <param name="onValueChanged">Handler invoked when the slider value changes.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="enabled">When false, disables the slider input.</param>
+        /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="onCreated">Callback invoked once when the SliderInt VisualElement is first created.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="direction">Axis the slider runs along, as <see cref="Slider"/>'s <c>direction</c>.</param>
+        /// <param name="inverted">When true, swaps the ends the low and high values sit at, as
+        /// <see cref="Slider"/>'s <c>inverted</c>.</param>
+        /// <param name="step">Distance one arrow key moves the value, and the grid Home, End and the paging keys
+        /// land on, counted from <paramref name="lowValue"/>. Null is Radix's default of 1.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="direction"/> names no member of
+        /// <see cref="SliderDirection"/>, or <paramref name="step"/> is not above zero.</exception>
+        /// <returns>The created <see cref="ElementNode"/> representing this slider.</returns>
+        public static ElementNode SliderInt(
+            string? className = null,
+            int? value = null,
+            int? lowValue = null,
+            int? highValue = null,
+            Action<int>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
+            bool? enabled = null,
+            Func<VisualElement, Action>? refCallback = null,
+            Action<VisualElement>? onCreated = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null,
+            SliderDirection? direction = null,
+            bool? inverted = null,
+            int? step = null,
+            FiberEventBinding[]? events = null)
+        {
+            VNode.RequireKey(key);
+            // Above both rents below, for V.Slider's reason.
+            RequireSliderDirection(direction, "V.SliderInt takes a member of SliderDirection as its direction.");
+            if (step is <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(step), step, "V.SliderInt takes a step above zero.");
+            }
+            var bindings = Bindings(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null, events);
+
+            FiberElementProps? props = null;
+            if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue
+                || direction.HasValue || inverted.HasValue || step.HasValue)
+            {
+                props = VNodePool.RentProps();
+                props.FieldValue = value;
+                props.Enabled = enabled;
+                props.SliderInt = (lowValue.HasValue || highValue.HasValue || direction.HasValue || inverted.HasValue
+                        || step.HasValue)
+                    ? new SliderIntSettings(lowValue, highValue, direction, inverted, step)
+                    : null;
+            }
+            props = WithAttributes(props, data, aria);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(SliderInt),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = props,
+                Children = EmptyChildren,
+                Events = bindings,
+                RefCallback = refCallback,
+                OnCreated = onCreated,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        private static void RequireSliderDirection(SliderDirection? direction, string message)
+        {
+            if (direction is not (null or SliderDirection.Horizontal or SliderDirection.Vertical))
+            {
+                throw new ArgumentOutOfRangeException(nameof(direction), direction, message);
+            }
         }
 
         /// <summary>
@@ -514,6 +719,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element, bound after <paramref name="onValueChanged"/>'s own (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this toggle.</returns>
         public static ElementNode Toggle(
             string? className = null,
@@ -528,10 +734,11 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<bool> { Handler = onValueChanged } : null);
+            var bindings = Bindings(onValueChanged != null ? new ChangeEventBinding<bool> { Handler = onValueChanged } : null, events);
 
             FiberElementProps? props = null;
             if (value.HasValue || label != null || enabled.HasValue)
@@ -551,7 +758,7 @@ namespace Velvet
                 ClassNames = ParseClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
-                Events = events,
+                Events = bindings,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -589,6 +796,13 @@ namespace Velvet
         /// <param name="multiline">When true, the field is multi-line (HTML <c>&lt;textarea&gt;</c>).</param>
         /// <param name="keyboardType">Written to the field's <c>keyboardType</c> (HTML <c>inputmode</c>).</param>
         /// <param name="autoCorrection">Written to the field's <c>autoCorrection</c> (HTML <c>autocorrect</c>).</param>
+        /// <param name="onSubmit">Handler invoked with the field's value when Enter commits a single-line field (a form's <c>onSubmit</c> from Enter in its <c>&lt;input&gt;</c>). Not invoked in a multi-line field.</param>
+        /// <param name="onKeyDown">Handler invoked for each key pressed while the field holds focus, before the field takes the key; stopping the event's propagation keeps the key out of the field.</param>
+        /// <param name="onKeyUp">Handler invoked for each key released while the field holds focus.</param>
+        /// <param name="onFocus">Handler invoked when focus enters the field from outside it.</param>
+        /// <param name="onBlur">Handler invoked when focus leaves the field for somewhere outside it.</param>
+        /// <param name="onCreated">Callback invoked once when the TextField VisualElement is first created.</param>
+        /// <param name="events">Event bindings applied to the element, bound after the field's own handlers above (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -614,10 +828,17 @@ namespace Velvet
             bool? isDelayed = null,
             bool? multiline = null,
             TouchScreenKeyboardType? keyboardType = null,
-            bool? autoCorrection = null)
+            bool? autoCorrection = null,
+            Action<string>? onSubmit = null,
+            EventCallback<KeyDownEvent>? onKeyDown = null,
+            EventCallback<KeyUpEvent>? onKeyUp = null,
+            EventCallback<FocusInEvent>? onFocus = null,
+            EventCallback<FocusOutEvent>? onBlur = null,
+            Action<VisualElement>? onCreated = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
+            var bindings = TextFieldEvents(onValueChanged, onSubmit, onKeyDown, onKeyUp, (onFocus, onBlur), events);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
                                     || isReadOnly.HasValue || isDelayed.HasValue || multiline.HasValue
@@ -649,7 +870,8 @@ namespace Velvet
                 ClassNames = ParseFieldClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
-                Events = events,
+                Events = bindings,
+                OnCreated = onCreated,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -670,6 +892,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this image.</returns>
         public static ElementNode Image(
             string? className = null,
@@ -681,7 +904,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             return new ElementNode
             {
@@ -692,7 +916,7 @@ namespace Velvet
                 Props = WithAttributes(null, data, aria),
                 Styles = styles,
                 Children = EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -724,6 +948,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this scene view.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="resolutionScale"/> is &lt;= 0 or NaN.</exception>
         public static ElementNode SceneView(
@@ -738,7 +963,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             // Validated BEFORE renting pooled props so a throwing call leaks nothing (the settings
@@ -758,7 +984,7 @@ namespace Velvet
                 Props = WithAttributes(props, data, aria),
                 Styles = styles,
                 Children = EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -788,6 +1014,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this particles element.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="pixelsPerUnit"/> is not positive,
         /// or when <paramref name="playOn"/> names no member of <see cref="PlayTrigger"/>.</exception>
@@ -804,7 +1031,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             if (playOn is not (PlayTrigger.Mount or PlayTrigger.Manual))
@@ -829,7 +1057,7 @@ namespace Velvet
                 Props = WithAttributes(props, data, aria),
                 Styles = styles,
                 Children = EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -854,6 +1082,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element, bound after <paramref name="onValueChanged"/>'s own (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this dropdown.</returns>
         public static ElementNode DropdownField(
             string? className = null,
@@ -869,10 +1098,11 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
+            var bindings = Bindings(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null, events);
 
             FiberElementProps? props = null;
             if (value != null || choices != null || label != null || enabled.HasValue)
@@ -893,7 +1123,7 @@ namespace Velvet
                 ClassNames = ParseFieldClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
-                Events = events,
+                Events = bindings,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -915,6 +1145,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this list view.</returns>
         public static ElementNode ListView(
             string? className = null,
@@ -927,7 +1158,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             FiberElementProps? props = null;
@@ -947,7 +1179,7 @@ namespace Velvet
                 Props = props,
                 Styles = styles,
                 Children = EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -971,6 +1203,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element, bound after <paramref name="onValueChanged"/>'s own (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this radio button.</returns>
         public static ElementNode RadioButton(
             string? className = null,
@@ -985,10 +1218,11 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<bool> { Handler = onValueChanged } : null);
+            var bindings = Bindings(onValueChanged != null ? new ChangeEventBinding<bool> { Handler = onValueChanged } : null, events);
 
             FiberElementProps? props = null;
             if (value.HasValue || label != null || enabled.HasValue)
@@ -1008,7 +1242,7 @@ namespace Velvet
                 ClassNames = ParseClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
-                Events = events,
+                Events = bindings,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -1033,6 +1267,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element, bound after <paramref name="onValueChanged"/>'s own (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this radio button group.</returns>
         public static ElementNode RadioButtonGroup(
             string? className = null,
@@ -1048,10 +1283,11 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null);
+            var bindings = Bindings(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null, events);
 
             FiberElementProps? props = null;
             if (value.HasValue || choices != null || label != null || enabled.HasValue)
@@ -1072,7 +1308,7 @@ namespace Velvet
                 ClassNames = ParseClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
-                Events = events,
+                Events = bindings,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -1096,6 +1332,7 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="events">Event bindings applied to the element, bound after <paramref name="onValueChanged"/>'s own (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this integer field.</returns>
         public static ElementNode IntegerField(
             string? className = null,
@@ -1110,10 +1347,11 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
-            var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null);
+            var bindings = Bindings(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null, events);
 
             FiberElementProps? props = null;
             if (value.HasValue || label != null || enabled.HasValue)
@@ -1133,7 +1371,7 @@ namespace Velvet
                 ClassNames = ParseFieldClassNames(className),
                 Props = props,
                 Children = EmptyChildren,
-                Events = events,
+                Events = bindings,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -1472,10 +1710,8 @@ namespace Velvet
         /// When placing multiple <c>V.ErrorBoundary</c> instances at the same position, always supply
         /// <paramref name="key"/> to avoid identity collisions in the reconciler. The helper's lambda body
         /// has the same MethodInfo on every call, so siblings cannot be distinguished without a key.<br/>
-        /// <paramref name="fallback"/> and <paramref name="children"/> are **captured into the closure on the
-        /// initial mount**; the same fiber is reused on parent re-renders so subsequent value changes are
-        /// not reflected. For dynamic cases, read values via Context / Hooks, or use the function-style
-        /// pattern with <c>[Component(IsErrorBoundary = true)]</c> + <c>Hooks.UseFallback</c>.<br/>
+        /// Each render of the parent hands the boundary the <paramref name="fallback"/> and
+        /// <paramref name="children"/> of that call.<br/>
         /// Each invocation allocates a closure (DisplayClass + delegate). The helper is intended for
         /// root boundaries directly under Mount; calling it repeatedly inside a render function will
         /// allocate on every render.
@@ -1495,6 +1731,55 @@ namespace Velvet
             Func<VNode> body = () =>
             {
                 Hooks.UseFallback(fallback);
+                return Fragment(children);
+            };
+
+            return CreateComponent(body, externalRef: null, key, forceErrorBoundary: true);
+        }
+
+        // V.ErrorBoundary for a boundary the framework renders for its own purposes, which Hooks.UseErrorBoundary
+        // passes over (ComponentFiber.IsFrameworkErrorBoundary).
+        internal static ComponentNode FrameworkErrorBoundary(Func<Exception, VNode> fallback, VNode?[] children)
+        {
+            Func<VNode> body = () =>
+            {
+                FiberAmbientStack.Current!.IsFrameworkErrorBoundary = true;
+                Hooks.UseFallback(fallback);
+                return Fragment(children);
+            };
+
+            return CreateComponent(body, externalRef: null, key: null, forceErrorBoundary: true);
+        }
+
+        /// <summary>
+        /// Variant of <see cref="ErrorBoundary(Func{Exception, VNode}, VNode[], string)"/> whose fallback receives the
+        /// boundary's reset — react-error-boundary's <c>&lt;ErrorBoundary fallbackRender resetKeys onReset&gt;</c>,
+        /// whose <c>fallbackRender</c> receives <c>error</c> and <c>resetErrorBoundary</c>.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="resetKeys"/> and <paramref name="onReset"/> behave as they do on
+        /// <see cref="Hooks.UseErrorBoundaryReset"/>, which states when the boundary resets.
+        /// </remarks>
+        /// <param name="fallbackRender">Receives the caught exception and the boundary's reset, and returns the fallback VNode.</param>
+        /// <param name="children">Child nodes rendered in the normal (non-error) path.</param>
+        /// <param name="resetKeys">Values whose change resets the boundary.</param>
+        /// <param name="onReset">Called before each reset, with what reset the boundary.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="ComponentNode"/> wrapping <paramref name="children"/> in an Error Boundary.</returns>
+        public static ComponentNode ErrorBoundary(
+            Func<Exception, ErrorBoundaryReset, VNode> fallbackRender,
+            VNode?[] children,
+            object?[]? resetKeys = null,
+            Action<ErrorBoundaryResetDetails>? onReset = null,
+            string? key = null)
+        {
+            if (fallbackRender == null) throw new ArgumentNullException(nameof(fallbackRender));
+            if (children == null) throw new ArgumentNullException(nameof(children));
+
+            Func<VNode> body = () =>
+            {
+                var reset = Hooks.UseErrorBoundaryReset(resetKeys, onReset);
+                Hooks.UseFallback(error => fallbackRender(error, reset));
                 return Fragment(children);
             };
 
@@ -1836,6 +2121,7 @@ namespace Velvet
         /// never touches <c>style.scale</c>, so it composes with a <c>scale-*</c> class or a Motion scale
         /// variant on the same element; a non-null value OWNS that style slot every tick instead and will
         /// fight either of those for it. Must be positive when supplied.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="distanceFactor"/> is &lt;= 0, NaN, or positive infinity.</exception>
         public static ElementNode Anchored(
@@ -1857,7 +2143,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             // Validated BEFORE renting pooled props so a throwing call leaks nothing (mirrors V.SceneView):
@@ -1877,7 +2164,7 @@ namespace Velvet
                 Props = mergedProps,
                 Styles = styles,
                 Children = children ?? EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -1904,6 +2191,9 @@ namespace Velvet
         /// the scope's first focusable descendant.</param>
         /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
         /// arrow/dpad navigation moves between members and never leaves the subtree.</param>
+        /// <param name="orientation">With <paramref name="singleTabStop"/>, the axis arrow/dpad moves travel;
+        /// a move on the other axis is ignored. Not read without <paramref name="singleTabStop"/>.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode FocusScope(
             string? className = null,
@@ -1921,11 +2211,16 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FocusScopeOrientation orientation = FocusScopeOrientation.Both,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
-            mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop);
+            mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop)
+            {
+                Orientation = orientation,
+            };
 
             return new ElementNode
             {
@@ -1936,7 +2231,7 @@ namespace Velvet
                 Props = mergedProps,
                 Styles = styles,
                 Children = children ?? EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -1960,6 +2255,7 @@ namespace Velvet
         /// <param name="collisionDetection">Collision strategy; null means
         /// <see cref="DndCollisions.RectIntersection"/>.</param>
         /// <param name="activation">Scope-wide activation default; a per-draggable override wins.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode DndContext(
             Action<DragStartArgs>? onDragStart = null,
@@ -1979,7 +2275,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
@@ -1995,7 +2292,7 @@ namespace Velvet
                 Props = mergedProps,
                 Styles = styles,
                 Children = children ?? EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -2019,6 +2316,7 @@ namespace Velvet
         /// zero-re-render isDragging channel.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="movement"/> names no member of
         /// <see cref="DragMovement"/>.</exception>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Draggable(
             string id,
@@ -2038,7 +2336,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             // Above the rent below, so a refusal here strands no bag this factory rented.
@@ -2060,7 +2359,7 @@ namespace Velvet
                 Props = mergedProps,
                 Styles = styles,
                 Children = children ?? EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -2078,6 +2377,7 @@ namespace Velvet
         /// <param name="whileOverClass">Classes applied while this target is the winning collision.</param>
         /// <param name="whileDragActiveClass">Classes applied to every enabled candidate while any drag
         /// is live in scope.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Droppable(
             string id,
@@ -2096,7 +2396,8 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
         {
             VNode.RequireKey(key);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
@@ -2112,7 +2413,7 @@ namespace Velvet
                 Props = mergedProps,
                 Styles = styles,
                 Children = children ?? EmptyChildren,
-                Events = EmptyEvents,
+                Events = events ?? EmptyEvents,
                 RefCallback = refCallback,
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
@@ -2384,6 +2685,10 @@ namespace Velvet
         /// a descendant is pending does not force its siblings into fallback. When the parent re-renders, every
         /// boundary re-evaluates only its own pending state. Splitting children into separate components is not
         /// required to get per-boundary fallbacks.
+        /// <para>
+        /// Children the boundary has shown stay in the tree, hidden, while a later suspend shows the fallback;
+        /// the Suspense section of <c>Documentation~/react-migration.md</c> says what they keep.
+        /// </para>
         /// </remarks>
         /// <param name="fallback">VNode displayed while any descendant is suspended. Must not be null.</param>
         /// <param name="children">Child VNodes whose pending async resources trigger the boundary.</param>
@@ -2422,6 +2727,7 @@ namespace Velvet
         /// <param name="className">Utility classes for the list.</param>
         /// <param name="name">The list element's name.</param>
         /// <param name="listRef">Receives the mounted list's handle.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         public static VirtualListNode VirtualList<T>(
             IReadOnlyList<T> items,
             Func<T, string> keySelector,
@@ -2431,8 +2737,9 @@ namespace Velvet
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null)
-            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
+            Ref<VirtualListHandle>? listRef = null,
+            FiberEventBinding[]? events = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef, events);
 
         /// <summary>
         /// Virtualized list component for rendering large item collections.
@@ -2460,6 +2767,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
         /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
@@ -2474,7 +2782,8 @@ namespace Velvet
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null)
+            Ref<VirtualListHandle>? listRef = null,
+            FiberEventBinding[]? events = null)
         {
             RequireVirtualListArguments(items, keySelector, renderer);
             return new VirtualListNode(
@@ -2489,6 +2798,7 @@ namespace Velvet
                 Key = key,
                 ListRef = listRef,
                 Horizontal = horizontal,
+                Events = events ?? EmptyEvents,
             };
         }
 
@@ -2503,6 +2813,7 @@ namespace Velvet
         /// <param name="className">Utility classes for the list.</param>
         /// <param name="name">The list element's name.</param>
         /// <param name="listRef">Receives the mounted list's handle.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         public static VirtualListNode VirtualList<T>(
             IReadOnlyList<T> items,
             Func<T, string> keySelector,
@@ -2512,13 +2823,14 @@ namespace Velvet
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null)
-            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef);
+            Ref<VirtualListHandle>? listRef = null,
+            FiberEventBinding[]? events = null)
+            => VirtualList(items, keySelector, itemHeight, renderer, false, overscan, key, className, name, listRef, events);
 
         /// <summary>
         /// Virtualized list whose items each take the height <paramref name="itemHeight"/> gives for their
         /// index — react-window's <c>rowHeight</c> function. Every other parameter is
-        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle})"/>'s.
+        /// <see cref="VirtualList{T}(IReadOnlyList{T}, Func{T, string}, float, Func{T, VNode}, bool, int, string, string, string, Ref{VirtualListHandle}, FiberEventBinding[])"/>'s.
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. Must not be null.</param>
@@ -2531,6 +2843,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="listRef">Ref set to the list's <see cref="VirtualListHandle"/> while it is mounted.</param>
+        /// <param name="events">Event bindings applied to the list's ScrollView (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <param name="horizontal">Lay the items out in a row and scroll the list sideways, FlashList's
         /// <c>horizontal</c>; <paramref name="itemHeight"/> is then each item's width.</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
@@ -2545,7 +2858,8 @@ namespace Velvet
             string? key = null,
             string? className = null,
             string? name = null,
-            Ref<VirtualListHandle>? listRef = null)
+            Ref<VirtualListHandle>? listRef = null,
+            FiberEventBinding[]? events = null)
         {
             RequireVirtualListArguments(items, keySelector, renderer);
             return new VirtualListNode(
@@ -2560,6 +2874,7 @@ namespace Velvet
                 Key = key,
                 ListRef = listRef,
                 Horizontal = horizontal,
+                Events = events ?? EmptyEvents,
             };
         }
 
@@ -2751,6 +3066,9 @@ namespace Velvet
         /// </summary>
         /// <param name="to">Absolute or route-relative navigation target.</param>
         /// <param name="replace">Selects replacement instead of push navigation.</param>
+        /// <param name="events">Event bindings applied to the button, bound ahead of the navigation. A
+        /// <see cref="ClickedEventBinding"/> that calls <see cref="ClickedEvent.PreventDefault"/> keeps the click
+        /// from navigating, as React Router's <c>Link</c> does for an <c>onClick</c> that prevents the default.</param>
         public static ComponentNode Link(
             string to,
             string? text = null,
@@ -2758,12 +3076,13 @@ namespace Velvet
             string? name = null,
             VNode?[]? children = null,
             bool replace = false,
-            string? key = null)
+            string? key = null,
+            FiberEventBinding[]? events = null)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
                 RouteLink.Render,
-                new RouteLink.Props(to, text, className, name, children, replace),
+                new RouteLink.Props(to, text, className, name, children, replace, events),
                 key);
         }
 
@@ -2795,6 +3114,7 @@ namespace Velvet
         /// <param name="end">Restricts active state to an exact path match instead of a segment-prefix match.</param>
         /// <param name="replace">Selects replacement instead of push navigation.</param>
         /// <param name="caseSensitive">Uses ordinal matching instead of the case-insensitive default.</param>
+        /// <param name="events">Event bindings applied to the button, as on <see cref="Link"/>.</param>
         public static ComponentNode NavLink(
             string to,
             string activeClass,
@@ -2805,7 +3125,8 @@ namespace Velvet
             bool end = false,
             bool replace = false,
             bool caseSensitive = false,
-            string? key = null)
+            string? key = null,
+            FiberEventBinding[]? events = null)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
@@ -2821,6 +3142,7 @@ namespace Velvet
                     End = end,
                     Replace = replace,
                     CaseSensitive = caseSensitive,
+                    Events = events,
                 },
                 key);
         }

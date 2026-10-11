@@ -33,7 +33,7 @@ namespace Velvet.Tests
             s_cleanups.Clear();
         }
 
-        private static VNode Body(string initial, string tag)
+        private static VNode UseBody(string initial, string tag)
         {
             var (name, setName) = Hooks.UseState(initial);
             Hooks.UseEffect(() =>
@@ -46,10 +46,10 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode Marked(string initial) => Body(initial, string.Empty);
+        private static VNode Marked(string initial) => UseBody(initial, string.Empty);
 
         [Component]
-        private static VNode Other(string initial) => Body(initial, "B/");
+        private static VNode Other(string initial) => UseBody(initial, "B/");
 
         [Component]
         private static VNode SwapHost()
@@ -92,6 +92,7 @@ namespace Velvet.Tests
         private string HostText() => string.Join("|",
             _root.Q<VisualElement>("host").Children().Select(child => ((Button)child).text));
 
+        // GREEN_ON_BASE(refactor): renaming the shared helper to UseBody leaves every hook this case mounts in place.
         [Test]
         public void Given_TwoDifferentComponentsAmongSiblings_When_TheirOrderSwaps_Then_BothUnmount()
         {
@@ -112,6 +113,7 @@ namespace Velvet.Tests
                 Is.EqualTo(("a1,b1", "a1,b1")));
         }
 
+        // GREEN_ON_BASE(refactor): renaming the shared helper to UseBody leaves every hook this case mounts in place.
         [Test]
         public void Given_TwoDifferentComponentsAmongSiblings_When_TheirOrderSwaps_Then_NeitherKeepsItsFormerState()
         {
@@ -134,6 +136,7 @@ namespace Velvet.Tests
                 Is.EqualTo(("a1-renamed|B/b1-renamed", "B/b1|a1")));
         }
 
+        // GREEN_ON_BASE(refactor): renaming the shared helper to UseBody leaves every hook this case mounts in place.
         [Test]
         public void Given_AFragmentSiblingGainsAChild_When_ItRerenders_Then_TheFollowingSiblingKeepsItsState()
         {
@@ -155,6 +158,7 @@ namespace Velvet.Tests
                 Is.EqualTo(("f1|outer-renamed", "f1|f2|outer-renamed")));
         }
 
+        // GREEN_ON_BASE(refactor): renaming the shared helper to UseBody leaves every hook this case mounts in place.
         [Test]
         public void Given_AComponentInsideSuspenseAndOneBesideIt_When_Mounted_Then_TheyAreSeparateInstances()
         {

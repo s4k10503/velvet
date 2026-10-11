@@ -38,12 +38,17 @@ namespace Velvet
             // (measured and confirmed: a panel stalled 500ms before a second host mounts hands that host a
             // dt of Time.maximumDeltaTime on its very first-ever callback, not a small "just mounted" one).
             internal long? LastTimeMs;
+            // The mount's clock. Off the panel's time the delta is the distance it moved, from a baseline of its
+            // own taken the way LastTimeMs is.
+            internal readonly MotionClock Clock;
+            internal double? LastClockSec;
 
-            internal Subscription(long sequence, int priority, Action<float> callback)
+            internal Subscription(long sequence, int priority, Action<float> callback, MotionClock clock)
             {
                 Sequence = sequence;
                 Priority = priority;
                 Callback = callback;
+                Clock = clock;
                 Active = true;
             }
         }
@@ -77,9 +82,9 @@ namespace Velvet
             return s_perPanel.GetValue(panel, static p => new UseFrameDispatcher(p));
         }
 
-        internal Subscription Subscribe(int priority, Action<float> callback)
+        internal Subscription Subscribe(int priority, Action<float> callback, MotionClock? clock = null)
         {
-            var subscription = new Subscription(_nextSequence++, priority, callback);
+            var subscription = new Subscription(_nextSequence++, priority, callback, clock ?? MotionClock.Realtime);
             _subscriptions.Add(subscription);
             // Every(0): fires once per panel scheduler update (not a wall-clock interval) — the
             // per-update cadence Hooks.UseFrame documents. One shared item drives every subscriber's own
@@ -117,6 +122,23 @@ namespace Velvet
                 _tick?.Pause();
                 _tick = null;
             }
+        }
+
+        // False on the subscription's first pass, which takes its baseline.
+        private static bool TryTakeDelta(Subscription subscription, TimerState ts, out float dt)
+        {
+            if (subscription.Clock.StepsOnPanelTime)
+            {
+                var lastMs = subscription.LastTimeMs;
+                subscription.LastTimeMs = ts.now;
+                dt = lastMs.HasValue ? (ts.now - lastMs.Value) / 1000f : 0f;
+                return lastMs.HasValue;
+            }
+            var now = subscription.Clock.NowSec;
+            var lastSec = subscription.LastClockSec;
+            subscription.LastClockSec = now;
+            dt = lastSec.HasValue ? (float)(now - lastSec.Value) : 0f;
+            return lastSec.HasValue;
         }
 
         private void Tick(TimerState ts)
@@ -185,15 +207,12 @@ namespace Velvet
                     // invoking this pass, matching a freshly-armed engine scheduled item's own zero-delta
                     // first fire — the callback only ever observes a real elapsed span it was actually
                     // present for.
-                    if (subscription.LastTimeMs is not { } lastMs)
+                    if (!TryTakeDelta(subscription, ts, out var dt))
                     {
-                        subscription.LastTimeMs = ts.now;
                         continue;
                     }
-                    var dt = (ts.now - lastMs) / 1000f;
-                    subscription.LastTimeMs = ts.now;
-                    // Per-subscriber cadence guard: a zero delta (same-frame
-                    // flush) is skipped so the callback only ever observes positive, frame-sized seconds,
+                    // Per-subscriber cadence guard: a zero delta (a same-frame flush, or a clock that held
+                    // still) is skipped so the callback only ever observes positive, frame-sized seconds,
                     // and a hitch spike is clamped the way Time.deltaTime clamps its own.
                     if (dt <= 0f) continue;
                     dt = Mathf.Min(dt, Time.maximumDeltaTime);

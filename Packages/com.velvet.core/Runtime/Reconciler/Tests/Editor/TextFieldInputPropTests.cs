@@ -315,6 +315,249 @@ namespace Velvet.Tests
             Assert.That((element.text, element.value), Is.EqualTo(("abc", string.Empty)));
         }
 
+        // The flag comes from a refCallback and the first tree declares no text-input prop, so the render
+        // declaring the limit is the first to reach the field's settings, with the typing already on screen.
+        // One callback instance stands in both trees, as in the refCallback sequence further down.
+        [Test]
+        public void Given_AnEditInAFieldARefCallbackMadeDelayed_When_TheFirstRenderDeclaringMaxLengthArrives_Then_TheEditIsStillShownUncommitted()
+        {
+            // Arrange
+            Func<VisualElement, Action> makeDelayed = el =>
+            {
+                ((TextField)el).isDelayed = true;
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(refCallback: makeDelayed) };
+            var newTree = new VNode[] { V.TextField(maxLength: 3, refCallback: makeDelayed) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "abcd";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the delayed flag is folded in because the case is about a field the callback made
+            // delayed, and the value because the edit has to stay uncommitted.
+            Assert.That(
+                (element.isDelayed, element.text, element.value),
+                Is.EqualTo((true, "abc", string.Empty)));
+        }
+
+        // The value is written from a refCallback through the silent setter, which moves the shown text
+        // without a change event, and the limit then arrives, narrows and widens with no edit pending: read
+        // as typed, what the narrower limit left is held over the wider one.
+        [Test]
+        public void Given_ADelayedFieldWhoseValueARefCallbackWroteSilently_When_MaxLengthArrivesThenWidens_Then_TheFieldShowsTheValue()
+        {
+            // Arrange
+            Func<VisualElement, Action> seed = el =>
+            {
+                ((TextField)el).SetValueWithoutNotify("hello");
+                return () => { };
+            };
+            var mounted = new VNode[] { V.TextField(isDelayed: true, refCallback: seed) };
+            var narrowed = new VNode[] { V.TextField(isDelayed: true, maxLength: 3, refCallback: seed) };
+            var widened = new VNode[] { V.TextField(isDelayed: true, maxLength: 10, refCallback: seed) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            Reconciler.Reconcile(Root, narrowed, widened);
+
+            // Assert
+            Assert.That(element.text, Is.EqualTo("hello"));
+        }
+
+        // A limit a refCallback writes moves the shown text with no record taken, and a zero limit cuts the
+        // value to nothing: that empty text is the value's display, not a deletion.
+        [Test]
+        public void Given_ADelayedFieldARefCallbackLimitedToZero_When_ALaterRenderDeclaresAWiderLimit_Then_TheFieldShowsTheValue()
+        {
+            // Arrange
+            Func<VisualElement, Action> limitToZero = el =>
+            {
+                ((TextField)el).maxLength = 0;
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(value: "abc", isDelayed: true, refCallback: limitToZero) };
+            var newTree = new VNode[]
+            {
+                V.TextField(value: "abc", isDelayed: true, maxLength: 5, refCallback: limitToZero),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var whileZero = element.text;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the reading under the zero limit is folded in because the case is about what it showed.
+            Assert.That((whileZero, element.text), Is.EqualTo((string.Empty, "abc")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads any shown text other than its record as an edit.
+        // It pins that the branch's comparison with the value's display is not asked of an edit it carried:
+        // cut to the narrower limit, the deletion equals the value's display under that limit.
+        [Test]
+        public void Given_ADeletionTheDelayedFieldHasNotCommitted_When_MaxLengthNarrowsToItThenWidens_Then_TheDeletionSurvives()
+        {
+            // Arrange
+            var mounted = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "hel";
+
+            // Act
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            Reconciler.Reconcile(Root, narrowed, widened);
+
+            // Assert — the value is folded in: the deletion stays uncommitted.
+            Assert.That((element.text, element.value), Is.EqualTo(("hel", "hello")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads any shown text other than its record as an edit.
+        // It pins the same hold for typing the narrower limit cuts to the value's display under it.
+        [Test]
+        public void Given_TypingTheDelayedFieldHasNotCommitted_When_MaxLengthCutsItToTheValuesDisplayThenWidens_Then_TheCutEditSurvives()
+        {
+            // Arrange
+            var mounted = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "help";
+
+            // Act
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            Reconciler.Reconcile(Root, narrowed, widened);
+
+            // Assert — the value is folded in: the cut edit stays uncommitted.
+            Assert.That((element.text, element.value), Is.EqualTo(("hel", "hello")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads any shown text other than its record as an edit.
+        // It pins that typing on over a carried edit keeps the hold, here up to the value's display under
+        // the narrower limit.
+        [Test]
+        public void Given_AnEditCarriedAcrossANarrowerLimit_When_TheUserTypesOnToTheValuesDisplayAndTheLimitWidens_Then_TheTypingSurvives()
+        {
+            // Arrange
+            var mounted = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "he";
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            ((TextElement)element.textEdition).text = "hel";
+
+            // Act
+            Reconciler.Reconcile(Root, narrowed, widened);
+
+            // Assert — the value is folded in: the typing stays uncommitted.
+            Assert.That((element.text, element.value), Is.EqualTo(("hel", "hello")));
+        }
+
+        // The user types the carried deletion back to the value, so the field shows what it would with no
+        // edit at all, and the limit changes after that are the engine's.
+        [Test]
+        public void Given_ACarriedDeletionTypedBackToTheValue_When_MaxLengthNarrowsThenWidens_Then_TheFieldShowsTheValue()
+        {
+            // Arrange
+            var mounted = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 4) };
+            var widenedAgain = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "he";
+            Reconciler.Reconcile(Root, mounted, widened);
+            ((TextElement)element.textEdition).text = "hello";
+
+            // Act
+            Reconciler.Reconcile(Root, widened, narrowed);
+            Reconciler.Reconcile(Root, narrowed, widenedAgain);
+
+            // Assert
+            Assert.That((element.text, element.value), Is.EqualTo(("hello", "hello")));
+        }
+
+        // A value written away and back by renders takes a record each time, which ends the hold on the
+        // edit carried before them. Code outside Velvet then turns multiline on, which shows the value cut
+        // with its line break, a form of the value's display the record does not hold.
+        [Test]
+        public void Given_AHeldEditWhoseValueRendersWroteAwayAndBack_When_CodeOutsideVelvetShowsTheValueAndTheLimitWidens_Then_TheFieldShowsTheValueUpToIt()
+        {
+            // Arrange
+            const string value = "a\nbcdef";
+            var mounted = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 5) };
+            var narrowed = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 3) };
+            var away = new VNode[] { V.TextField(value: "zz", isDelayed: true, maxLength: 3) };
+            var back = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: value, isDelayed: true, maxLength: 5) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "xy";
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            Reconciler.Reconcile(Root, narrowed, away);
+            Reconciler.Reconcile(Root, away, back);
+            element.multiline = true;
+            var shownByTheCode = element.text;
+
+            // Act
+            Reconciler.Reconcile(Root, back, widened);
+
+            // Assert — what the code left is folded in because the case is about that form.
+            Assert.That((shownByTheCode, element.text), Is.EqualTo(("a\nb", "a\nbcd")));
+        }
+
+        // The value written silently after the edit was carried replaces what the field shows, so the hold
+        // on the carried edit ends with it. The silent write stands in for an effect's.
+        [Test]
+        public void Given_AnEditCarriedAcrossANarrowerLimit_When_CodeWritesTheValueSilentlyAndTheLimitWidens_Then_TheFieldShowsTheNewValue()
+        {
+            // Arrange
+            var mounted = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            var narrowed = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 3) };
+            var widened = new VNode[] { V.TextField(value: "hello", isDelayed: true, maxLength: 10) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "hel";
+            Reconciler.Reconcile(Root, mounted, narrowed);
+            element.SetValueWithoutNotify("world");
+
+            // Act
+            Reconciler.Reconcile(Root, narrowed, widened);
+
+            // Assert
+            Assert.That(element.text, Is.EqualTo("world"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads any shown text other than its record as an edit.
+        // A single-line field shows a value cut by a later limit with its line break, so a deletion of that
+        // break leaves the record without it; it pins that only multiline coming off is read that way.
+        [Test]
+        public void Given_ASingleLineDelayedFieldShowingALineBreak_When_TheUserDeletesItAndMaxLengthChanges_Then_TheDeletionSurvives()
+        {
+            // Arrange — the value arrives before the limit at mount, which leaves the limit write's form.
+            var oldTree = new VNode[] { V.TextField(value: "a\nbcdef", isDelayed: true, maxLength: 3) };
+            var newTree = new VNode[] { V.TextField(value: "a\nbcdef", isDelayed: true, maxLength: 5) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var beforeTyping = element.text;
+            ((TextElement)element.textEdition).text = "ab";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the reading before the typing is folded in because the case is about that form.
+            Assert.That((beforeTyping, element.text), Is.EqualTo(("a\nb", "ab")));
+        }
+
         // The commit is simulated with SimulateChange: the value and shown text land together and the
         // field's change callbacks run. Without the record following the commit, the deletion reads as the
         // text Velvet last wrote.

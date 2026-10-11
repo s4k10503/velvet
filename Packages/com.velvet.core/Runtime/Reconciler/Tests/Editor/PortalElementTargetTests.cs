@@ -149,5 +149,23 @@ namespace Velvet.Tests
                 (attachedWhileMounted, _reconciler.Context.SamePanelPortalBridges.Count),
                 Is.EqualTo((1, 0)));
         }
+
+        [Test]
+        public void Given_a_mounted_portal_When_it_unmounts_Then_its_container_carries_no_bridge()
+        {
+            // Arrange
+            var container = new VisualElement();
+            var tree = Tree(container, "hello");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            var bridgedWhileMounted = _reconciler.Context.EventManager.IsBridgeAnchor(container);
+
+            // Act
+            _reconciler.Reconcile(_root, tree, Array.Empty<VNode>());
+
+            // Assert — the mounted reading is folded in, as in the bridge-table case above.
+            Assert.That(
+                (bridgedWhileMounted, _reconciler.Context.EventManager.IsBridgeAnchor(container)),
+                Is.EqualTo((true, false)));
+        }
     }
 }

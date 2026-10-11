@@ -242,6 +242,8 @@ namespace Velvet
         // the catch: that error is thrown from this boundary's own render.
         internal static VNode?[] OutputOf(ComponentFiber fiber, VNode?[] bodyOutput)
         {
+            // After the body, which reads what the boundary held before this render as the library's prevState.
+            TakeQueuedReset(fiber);
             if (fiber.CaughtError is not var (error, info)) return bodyOutput;
             var fallback = TryInvokeFactory(fiber, error, info);
             var fallbackTree = fallback == null ? null : new[] { fallback };
@@ -249,6 +251,39 @@ namespace Velvet
             FiberTreeReturn.ReturnRetiredTree(bodyOutput, fiber, alsoLive: fallbackTree);
             if (fallbackTree == null) ExceptionDispatchInfo.Capture(error).Throw();
             return fallbackTree!;
+        }
+
+        // react-error-boundary's setState(initialState), which follows its onReset: queued as a state update is,
+        // on the lane a setter called here would take, and taken by the boundary's next render on that lane
+        // (TakeQueuedReset). Until then the boundary still holds what it caught, so a second reset in the same
+        // handler calls onReset again, as the library's does on reading this.state.error again.
+        internal static void QueueReset(ComponentFiber boundary)
+        {
+            if (!FiberWorkLoop.IsInTransitionScope) boundary.QueuedReset = QueuedErrorBoundaryReset.AnyLane;
+            else if (boundary.QueuedReset == QueuedErrorBoundaryReset.None) boundary.QueuedReset = QueuedErrorBoundaryReset.TransitionLane;
+            FiberWorkLoop.RequestRenderFromHook(boundary);
+        }
+
+        // A render off the Transition lane leaves a reset queued on it for that lane, and asks for the lane again,
+        // as Hooks.ThrowPendingError leaves a transition's error.
+        private static void TakeQueuedReset(ComponentFiber fiber)
+        {
+            switch (fiber.QueuedReset)
+            {
+                case QueuedErrorBoundaryReset.None:
+                    return;
+                case QueuedErrorBoundaryReset.TransitionLane when !FiberWorkLoop.IsRenderingTransitionLane:
+                    FiberWorkLoop.RequestTransitionRerender(fiber);
+                    return;
+            }
+            fiber.QueuedReset = QueuedErrorBoundaryReset.None;
+            fiber.CaughtError = null;
+            // The children mount afresh, as React's do after a reset: what a Suspense among them kept offscreen,
+            // and the fallback recorded for it against this fiber, are not carried into the reset render.
+            var context = fiber.Reconciler?.Context;
+            if (context == null) return;
+            context.ComponentRegistry.DisposeOffscreenInlineChildren(fiber);
+            context.PruneSuspenseBoundaryState(fiber);
         }
 
         // A throw out of the handler would escape the commit delivering the report.
@@ -263,6 +298,13 @@ namespace Velvet
                 Debug.LogException(handlerException);
             }
         }
+    }
+
+    internal enum QueuedErrorBoundaryReset
+    {
+        None,
+        AnyLane,
+        TransitionLane,
     }
 
     // Unwinds from FiberErrorBoundary.TryCatch to the frame of the boundary it names that set CatchesInTheWalk.

@@ -80,7 +80,9 @@ static VNode Hud()
 ```
 
 `Hooks.UseFrame(dt => …)` runs the callback once per frame with the elapsed seconds while
-the component stays mounted, and stops on unmount. Three properties define it:
+the component stays mounted, and stops on unmount. The seconds are measured on the mount's
+`MountOptions.MotionClock` ([motion.md](motion.md#clocks-holding-motion-with-game-time) owns what each
+clock gives). Three properties define it:
 
 - **The latest closure always runs.** A re-render swaps the callback without re-subscribing,
   so captured state is never stale. Under the default compiler memoization hooks always run

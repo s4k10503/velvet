@@ -267,7 +267,7 @@ namespace Velvet
             return StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out width);
         }
 
-        // A color is a palette token (red-500 / white / black) or an arbitrary [#hex] / [rgb(...)].
+        // A color is a palette token (red-500 / white / black) or an arbitrary [<color>].
         private static bool TryParseColorValue(string? suffix, out Color color)
         {
             color = default;

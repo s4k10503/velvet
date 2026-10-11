@@ -304,6 +304,39 @@ namespace Velvet.Tests
             Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("after")));
         }
 
+        // The scope is declared through the props bag, where SingleTabStop is left to its record default,
+        // not through V.FocusScope, which always passes it.
+        [Component]
+        private static VNode DefaultSettingsScopeHost() => V.Div(children: new VNode[]
+        {
+            V.Div(name: "scope", props: new FiberElementProps
+            {
+                FocusScope = new FocusScopeSettings(RestoreFocus: true),
+            }, children: new VNode[]
+            {
+                V.Button(name: "s1"),
+                V.Button(name: "s2"),
+            }),
+            V.Button(name: "after"),
+        });
+
+        // GREEN_ON_BASE(characterization): the base has no single tab stop, so a scope there always lets Tab
+        // walk its members.
+        [Test]
+        public void Given_AScopeDeclaredWithoutNamingSingleTabStop_When_TabDispatchesFromItsFirstMember_Then_FocusMovesToTheNextMember()
+        {
+            // Arrange
+            Mount(DefaultSettingsScopeHost);
+            var s1 = Q("s1");
+            s1.Focus();
+
+            // Act
+            SendMove(s1, NavigationMoveEvent.Direction.Next);
+
+            // Assert — an ordinary scope does not skip its remaining members the way a group does.
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("s2")));
+        }
+
         [Test]
         public void Given_ASingleTabStopScopeLastLeftFromItsSecondMember_When_TabEntersFromOutside_Then_TheSecondMemberRegainsFocus()
         {

@@ -51,7 +51,7 @@ namespace Velvet
         /// <summary>
         /// Reads whether the application is visible, as TanStack's focus manager reads the page's visibility. A
         /// retry that is due while it is not waits until it is, in every <see cref="NetworkMode"/>. When null,
-        /// <see cref="NetworkSignals.IsVisible"/>, which defaults to a reading of the platform's window state.
+        /// <see cref="NetworkSignals.IsVisible"/>, which defaults to <c>Application.isFocused</c>.
         /// Read on the main thread.
         /// </summary>
         public Func<bool>? IsFocused { get; init; }

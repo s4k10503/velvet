@@ -1,4 +1,7 @@
 using System;
+using System.Linq;
+using Mono.Cecil;
+using Mono.Cecil.Cil;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -17,10 +20,11 @@ namespace Velvet.Tests
     /// <item>A body with early returns, one whose conditional or coalescing expression is the return value,
     /// one opening with a loop and one opening with a try/catch each reuse their tree on an equal
     /// parameter.</item>
-    /// <item>A body making a call the weaver cannot see through and one opting out with
-    /// <c>[Component(Compiler = false)]</c> are left unwoven, so each runs whenever a parent render reaches it.
-    /// A body setting <c>Memoize = true</c> is also left unwoven, while its independent reconcile-boundary
-    /// props bail can stop equal props before the body runs.</item>
+    /// <item>A body making an interface call reuses its tree on an equal parameter too. Once such a call runs a
+    /// hook past the gate, the body runs on every render, as an unwoven one does.</item>
+    /// <item>A body opting out with <c>[Component(Compiler = false)]</c> is left unwoven, so it runs whenever a
+    /// parent render reaches it. A body setting <c>Memoize = true</c> is also left unwoven, while its independent
+    /// reconcile-boundary props bail can stop equal props before the body runs.</item>
     /// <item>A generic body, and one of a generic class, reuse their tree on an equal parameter.</item>
     /// <item>A woven body called as a plain method — from another component's render, from its own, from a
     /// <c>V.Memoized</c> factory, or outside any render — runs uncached, as an unwoven one does.</item>
@@ -166,6 +170,25 @@ namespace Velvet.Tests
             return V.Label(name: "leaf", text: s_formatter.Format(p.Text));
         }
 
+        // A hook behind an interface call: the build-time scan cannot see it, so the body is woven.
+        private sealed class SuffixingFormatter : ILeafFormatter
+        {
+            public string Format(string text)
+            {
+                var (suffix, _) = Hooks.UseState("!");
+                return text + suffix;
+            }
+        }
+
+        private static readonly ILeafFormatter s_suffixingFormatter = new SuffixingFormatter();
+
+        [Component]
+        private static VNode SuffixFormattedLeaf(LeafProps p)
+        {
+            s_builds++;
+            return V.Label(name: "leaf", text: s_suffixingFormatter.Format(p.Text));
+        }
+
         [Component(Compiler = false)]
         private static VNode OptedOutLeaf(LeafProps p)
         {
@@ -249,6 +272,18 @@ namespace Velvet.Tests
         }
 
         private string LeafText() => _root.Q<Label>(name: "leaf")?.text;
+
+        // Whether the weaver injected its gate into the named method of this fixture.
+        private static bool IsWoven(string methodName)
+        {
+            using var assembly = AssemblyDefinition.ReadAssembly(typeof(HooklessWovenBehaviorE2ETests).Assembly.Location);
+            var method = assembly.MainModule.GetType(typeof(HooklessWovenBehaviorE2ETests).FullName)
+                .Methods.Single(m => m.Name == methodName);
+            return method.Body.Instructions.Any(instr => instr.OpCode == OpCodes.Call
+                && instr.Operand is MethodReference callee
+                && callee.DeclaringType.FullName == typeof(Hooks).FullName
+                && callee.Name == nameof(Hooks.TryGetMemoizedVNode));
+        }
 
         #region Reuse on an equal parameter
 
@@ -349,6 +384,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_builds, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ABodyMakingAnInterfaceDispatch_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun()
+        {
+            // Arrange
+            var props = new LeafProps("a");
+            s_child = _ => V.Component(FormattedLeaf, props, key: "leaf");
+            using var mounted = MountHost();
+
+            // Act
+            ReRenderHost(mounted);
+
+            // Assert
+            Assert.That(s_builds, Is.EqualTo(1),
+                "The dispatch runs past the entry gate, so an equal parameter reuses the tree");
         }
 
         #endregion
@@ -531,27 +582,26 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Left unwoven
+        #region Left uncached
 
-        // GREEN_ON_BASE(characterization): the base leaves every body without a hook unwoven, this one included.
-        // Two readings bail it: the safety gate, and the hook scan taking the dispatch for a hook call whose
-        // value nothing captures. Measured, cutting either leaves it green and cutting both reddens it: the
-        // `ReachesAnyNonSafeHook` call disabled, and the open-dispatch arm of `CallsHookTransitively` answering false.
         [Test]
-        public void Given_ABodyMakingAnInterfaceDispatch_When_TheHostReRendersWithTheSameProp_Then_TheBodyRuns()
+        public void Given_ABodyWhoseInterfaceDispatchRunsAHook_When_TheHostReRendersWithTheSameProp_Then_TheBodyRuns()
         {
             // Arrange
             var props = new LeafProps("a");
-            s_child = _ => V.Component(FormattedLeaf, props, key: "leaf");
+            s_child = _ => V.Component(SuffixFormattedLeaf, props, key: "leaf");
             using var mounted = MountHost();
 
             // Act
             ReRenderHost(mounted);
 
-            // Assert
-            Assert.That(s_builds, Is.EqualTo(2),
-                "The dispatch's runtime target could call a hook, so the body is unwoven");
+            // Assert — a hit would skip the hook the dispatch runs, so the woven body runs again instead.
+            Assert.That((woven: IsWoven(nameof(SuffixFormattedLeaf)), builds: s_builds), Is.EqualTo((true, 2)));
         }
+
+        #endregion
+
+        #region Left unwoven
 
         // GREEN_ON_BASE(characterization): the base runs this body on every render as well.
         // It pins the opt-out the upgrade note names; `NamedFlag`'s `named.Name == propertyName` flipped to `!=`

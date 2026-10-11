@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using UnityEngine.UIElements;
 
@@ -20,12 +21,20 @@ namespace Velvet
     {
         /// <summary>
         /// Retrieves the currently rendering Fiber from <see cref="FiberAmbientStack"/>; throws when
-        /// null or when called outside of Render().
+        /// null or when called outside of Render(). Counts the call in <see cref="ComponentFiber.HookCallCount"/>.
         /// </summary>
         private static ComponentFiber Resolve(string hookName)
         {
+            var fiber = ResolveUncounted(hookName);
+            fiber.HookCallCount++;
+            return fiber;
+        }
+
+        // For a member that reads the fiber without being a hook, so it does not move HookCallCount.
+        private static ComponentFiber ResolveUncounted(string memberName)
+        {
             var fiber = FiberAmbientStack.Current;
-            HookGuard.ThrowIfNotRendering(fiber, hookName);
+            HookGuard.ThrowIfNotRendering(fiber, memberName);
             return fiber!;
         }
 
@@ -817,11 +826,8 @@ namespace Velvet
         internal static int UseBaseRouteIndex() => UseContext(RouterContext.Depth) - 1;
 
         /// <summary>
-        /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Submitting"/> while
-        /// the <see cref="Router"/> <c>V.RouterProvider</c> publishes above the caller runs a submission's
-        /// guards or action, <see cref="NavigationLifecycle.Loading"/> while it is matching or loading the next
-        /// location, and <see cref="NavigationLifecycle.Idle"/> otherwise. The component re-renders as the
-        /// router's status transitions.
+        /// Returns <see cref="Router.Navigation"/> of the <see cref="Router"/> <c>V.RouterProvider</c> publishes
+        /// above the caller, and re-renders the component as it changes.
         /// </summary>
         public static NavigationState UseNavigation()
         {
@@ -830,53 +836,22 @@ namespace Velvet
             // The state only schedules the re-render: what is returned is read from the router at render, so the
             // render in which the provider's router changes reads the new router rather than the old one's
             // last state.
-            var (_, setState) = UseState(ReadNavigationState(router));
+            var (_, setState) = UseState(router.Navigation);
 
             UseEffect(() =>
             {
-                void Sync() => setState.Invoke(ReadNavigationState(router));
-                void OnStatus(RouterStatus _) => Sync();
-                void OnLocation(RouterLocation _) => Sync();
+                void OnNavigation(NavigationState navigation) => setState.Invoke(navigation);
 
-                router.OnStatusChanged += OnStatus;
-                router.OnLocationChanged += OnLocation;
+                router.OnNavigationChanged += OnNavigation;
                 // Reconcile any transition that happened between render and effect attach.
-                Sync();
+                setState.Invoke(router.Navigation);
                 return () =>
                 {
-                    router.OnStatusChanged -= OnStatus;
-                    router.OnLocationChanged -= OnLocation;
+                    router.OnNavigationChanged -= OnNavigation;
                 };
             }, new object[] { router });
 
-            return ReadNavigationState(router);
-        }
-
-        private static NavigationState ReadNavigationState(Router router)
-        {
-#pragma warning disable CS8524 // no discard arm: a new status has to say which phase it reports
-            var lifecycle = router.Status switch
-            {
-                RouterStatus.Matching or RouterStatus.Loading => NavigationLifecycle.Loading,
-                RouterStatus.Submitting => NavigationLifecycle.Submitting,
-                RouterStatus.Idle or RouterStatus.Ready or RouterStatus.NotFound or RouterStatus.Error =>
-                    NavigationLifecycle.Idle,
-            };
-#pragma warning restore CS8524
-            if (lifecycle == NavigationLifecycle.Idle)
-            {
-                return default;
-            }
-
-            var submission = router.PendingSubmission;
-            return new NavigationState
-            {
-                State = lifecycle,
-                Location = router.PendingLocation,
-                FormMethod = submission?.FormMethod,
-                FormAction = submission?.Action,
-                FormData = submission?.FormData,
-            };
+            return router.Navigation;
         }
 
         /// <summary>
@@ -1000,7 +975,7 @@ namespace Velvet
         {
             _ = Resolve("UseActionData");
             _ = UseRouterOrThrow("UseActionData");
-            var routeId = CurrentRouteId();
+            var routeId = UseCurrentRouteId();
             var data = UseContext(RouterContext.ActionData);
             if (routeId == null)
             {
@@ -1019,12 +994,12 @@ namespace Velvet
         {
             _ = Resolve("UseLoaderData");
             _ = UseRouterOrThrow("UseLoaderData");
-            var routeId = CurrentRouteId();
+            var routeId = UseCurrentRouteId();
+            var data = UseContext(RouterContext.LoaderData);
             if (routeId == null)
             {
                 return default;
             }
-            var data = UseContext(RouterContext.LoaderData);
             return data != null && data.TryGetValue(routeId, out var value) && value is T typed ? typed : default;
         }
 
@@ -1074,7 +1049,7 @@ namespace Velvet
         /// an Outlet sees <see cref="RouterContext.Depth"/> incremented to depth+1, so its own match is
         /// <c>Matches[Depth - 1]</c>. Returns null when there is no enclosing matched route.
         /// </summary>
-        private static string? CurrentRouteId()
+        private static string? UseCurrentRouteId()
         {
             var location = UseContext(RouterContext.Location);
             var depth = UseContext(RouterContext.Depth);
@@ -1091,7 +1066,9 @@ namespace Velvet
 
         /// <summary>
         /// Position-based layout effect. Runs synchronously immediately after Render completes,
-        /// before the frame is painted.
+        /// before the frame is painted, with the committed tree laid out: <c>layout</c>,
+        /// <c>resolvedStyle</c> and <c>worldBound</c> read here reflect this commit. A state update made here
+        /// re-renders before the frame is painted.
         /// </summary>
         /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
         /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
@@ -1197,7 +1174,9 @@ namespace Velvet
         /// is always the one invoked — a re-render swaps the callback without re-subscribing — so
         /// per-frame data flows without touching component state (the escape hatch for
         /// simulation-driven visuals; setting state per frame would re-render the world every tick).
-        /// Frames tick while the component's host is attached to a panel and pause while it is not.
+        /// Frames tick while the component's host is attached to a panel and pause while it is not. The elapsed
+        /// time is measured on the mount's <see cref="MountOptions.MotionClock"/>, and a frame over which that
+        /// clock did not move invokes nothing.
         /// <paramref name="priority"/> orders callbacks within the SAME panel — lower runs earlier,
         /// equal priorities run in subscription (mount) order, and this stays true across a keyed
         /// reorder of the host. A positive priority has no side effect beyond ordering: Unity's
@@ -1289,7 +1268,7 @@ namespace Velvet
                             // the nearest error boundary must receive user-callback failures either way.
                             ComponentBoundarySearch.PropagateException(fiber, ex);
                         }
-                    });
+                    }, fiber.Reconciler?.Context.StyleAnimationScheduler.Clock);
                     subscriptionRef.Set(subscription);
                 }
 
@@ -1350,7 +1329,7 @@ namespace Velvet
         /// list.</param>
         public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay = true, bool loop = false)
-            => PlayAnimationSequence(steps, deps, autoplay, loop ? (int?)null : 1, 0f);
+            => UseAnimationSequenceCore(steps, deps, autoplay, loop ? (int?)null : 1, 0f);
 
         /// <summary>
         /// Plays <paramref name="steps"/> as the overload taking <c>loop</c> does, a fixed number of times: the
@@ -1390,11 +1369,11 @@ namespace Velvet
                 throw new ArgumentOutOfRangeException(nameof(repeatDelaySec), repeatDelaySec,
                     "A gap between passes is a finite number of seconds, zero or more.");
             }
-            return PlayAnimationSequence(steps, deps, autoplay, iterations, repeatDelaySec);
+            return UseAnimationSequenceCore(steps, deps, autoplay, iterations, repeatDelaySec);
         }
 
         // A null iterations plays without end.
-        private static (AnimationSequenceState state, AnimationSequenceControls controls) PlayAnimationSequence(
+        private static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequenceCore(
             IReadOnlyList<AnimationSequenceStep> steps, object?[]? deps, bool autoplay, int? iterations,
             float repeatDelaySec)
         {
@@ -1430,13 +1409,16 @@ namespace Velvet
 
             UseFrame(dt =>
             {
-                if (walker.Current.IsPaused)
+                // A speed of 0 holds the cursor as a pause does: Advance(0) would still cross a step that holds
+                // for no time, and apply a changed iteration count.
+                var speed = walker.Current.Playback.Rate;
+                if (walker.Current.IsPaused || speed == 0f)
                 {
                     return;
                 }
                 var beforeGeneration = walker.Current.Generation;
                 var wasComplete = walker.Current.IsComplete;
-                walker.Current.Advance(dt);
+                walker.Current.Advance(dt * speed);
                 if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete != wasComplete)
                 {
                     Rerender();
@@ -1447,14 +1429,30 @@ namespace Velvet
             // abandons the wait in the walker's own reseed, so this one is for unmount.
             UseEffect(() => walker.Current.AbandonAwait, Array.Empty<object>());
 
+            UseLayoutEffect(() =>
+            {
+                walker.Current.AfterCommit();
+                return (Action?)null;
+            });
+
             var controls = new AnimationSequenceControls(
-                play: () => walker.Current.IsPaused = false,
+                play: () =>
+                {
+                    // Unpaused before the reseed, so a step 0 Call callback that pauses the sequence stays paused.
+                    walker.Current.IsPaused = false;
+                    if (walker.Current.IsCancelled)
+                    {
+                        walker.Current.Reset(latestSteps.Current ?? steps);
+                        Rerender();
+                    }
+                },
                 pause: () => walker.Current.IsPaused = true,
                 restart: () =>
                 {
                     walker.Current.Reset(latestSteps.Current ?? steps);
                     Rerender();
                 },
+                cancel: () => walker.Current.Cancel(),
                 walker: walker.Current!);
 
             // Before the mount effect's first reseed the walker has seen no steps, so it would read a sequence
@@ -1640,7 +1638,7 @@ namespace Velvet
         /// <returns>The forwarded <see cref="Ref{T}"/>, or null when the parent did not forward one or types do not match.</returns>
         public static Ref<T>? ForwardedRef<T>() where T : class
         {
-            var fiber = Resolve("ForwardedRef");
+            var fiber = ResolveUncounted("ForwardedRef");
             return fiber.ExternalRef as Ref<T>;
         }
 
@@ -2016,7 +2014,8 @@ namespace Velvet
         /// <para/>
         /// Once the component has caught, each later render of it invokes the factory again with the error
         /// it caught and renders what it returns in place of its children, until the component remounts —
-        /// give it a new <c>key</c> to render its children again. On those renders a factory that returns
+        /// give it a new <c>key</c> to render its children again — or is reset through
+        /// <see cref="UseErrorBoundaryReset"/>. On those renders a factory that returns
         /// <c>null</c> or throws passes the error to the boundary above, as it does at the catch.
         /// </remarks>
         /// <param name="factory">Factory that receives the caught exception and returns the fallback VNode. Must not be null.</param>
@@ -2042,6 +2041,104 @@ namespace Velvet
             var fiber = Resolve(nameof(UseFallback));
             fiber.FallbackFactory = factory;
         }
+
+        /// <summary>
+        /// Lets an error boundary that has caught render its children again: react-error-boundary's
+        /// <c>resetErrorBoundary</c> as the returned <see cref="ErrorBoundaryReset"/>, its <c>resetKeys</c> as
+        /// <paramref name="resetKeys"/> and its <c>onReset</c> as <paramref name="onReset"/>. Call it inside Render()
+        /// of an `[Component(IsErrorBoundary = true)]` component.
+        /// </summary>
+        /// <remarks>
+        /// Invoking the reset while the boundary shows its fallback calls <paramref name="onReset"/> with
+        /// <see cref="ErrorBoundaryResetReason.ImperativeApi"/> and the arguments it was invoked with, then queues the
+        /// reset as a state update on the lane the call is made on; the boundary's next render on that lane renders
+        /// its children instead. Invoking it while the boundary shows its
+        /// children does nothing. The reset is reference-stable for the boundary's lifetime.
+        /// <para/>
+        /// A render of the boundary, made while it shows a fallback for an error caught before that render, that
+        /// passes <paramref name="resetKeys"/> differing from those its last committed render passed — in length, or
+        /// in any element compared with <c>Object.is</c> semantics, null reading as none — commits that fallback,
+        /// then, where the boundary still holds the error, calls <paramref name="onReset"/> with
+        /// <see cref="ErrorBoundaryResetReason.Keys"/> and both key arrays and queues the reset, as
+        /// react-error-boundary does from <c>componentDidUpdate</c>. Keys that change in the render in which a child
+        /// throws do not undo that catch.
+        /// <para/>
+        /// The children the fallback replaced were unmounted, so they mount again: their state starts over, and
+        /// a <see cref="Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/> among them starts its resource
+        /// again. This is how a failed <c>Use</c> load is retried.
+        /// </remarks>
+        /// <param name="resetKeys">Values whose change resets the boundary.</param>
+        /// <param name="onReset">Called before each reset, with what reset the boundary. The last committed render's is called.</param>
+        /// <returns>The boundary's reset.</returns>
+        /// <exception cref="InvalidOperationException">The calling component is not an error boundary.</exception>
+        public static ErrorBoundaryReset UseErrorBoundaryReset(
+            object?[]? resetKeys = null, Action<ErrorBoundaryResetDetails>? onReset = null)
+        {
+            var fiber = Resolve(nameof(UseErrorBoundaryReset));
+            if (!fiber.IsErrorBoundary)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(UseErrorBoundaryReset)} must be called from an [Component(IsErrorBoundary = true)] component.");
+            }
+            var slotRef = UseMutableRef((HookErrorBoundaryKeysSlot?)null);
+            var slot = slotRef.Current ??= new HookErrorBoundaryKeysSlot(fiber);
+
+            // An error caught before this render is react-error-boundary's prevState.error; one a child throws below
+            // this render is caught after the body has run, so it is not. The StrictMode re-run of a render that has
+            // already been counted would record itself as a render still to come.
+            if (!IsStrictDiagnosticPass(fiber)) slot.Record(resetKeys, onReset, fiber.CaughtError != null);
+            UseLayoutEffect(slot.Commit);
+            return fiber.ResetHandle;
+        }
+
+        /// <summary>
+        /// Gives a component below an error boundary that boundary's reset and a way to make it catch an error —
+        /// react-error-boundary's <c>useErrorBoundary()</c>.
+        /// </summary>
+        /// <remarks>
+        /// The boundary is the nearest `[Component(IsErrorBoundary = true)]` component or <c>V.ErrorBoundary</c>
+        /// above the caller, passing over the boundaries Velvet renders for routing as react-error-boundary's context
+        /// passes over React Router's; a component in a boundary's fallback content finds that boundary.
+        /// <see cref="ErrorBoundaryApi.ShowBoundary"/> makes the caller throw the error on its next render, which
+        /// reaches the boundaries above the caller as any render error does: the first that shows a fallback for it
+        /// catches it, and one that declines passes it up. <see cref="ErrorBoundaryApi.ResetBoundary"/> invokes the
+        /// boundary's reset with no arguments and forgets an error <c>ShowBoundary</c> was handed. Both are
+        /// reference-stable.
+        /// </remarks>
+        /// <returns>The boundary's reset and the error trigger.</returns>
+        /// <exception cref="InvalidOperationException">No such error boundary is above the calling component.</exception>
+        public static ErrorBoundaryApi UseErrorBoundary()
+        {
+            var fiber = Resolve(nameof(UseErrorBoundary));
+            var boundary = fiber.Parent;
+            for (; boundary != null && !(boundary.IsErrorBoundary && !boundary.IsFrameworkErrorBoundary); boundary = boundary.Parent)
+            {
+            }
+            if (boundary == null)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(UseErrorBoundary)} must be called below an [Component(IsErrorBoundary = true)] component.");
+            }
+            var (shown, setShown) = UseState((Exception?)null);
+            var apiRef = UseMutableRef((ErrorBoundaryApi?)null);
+            var api = apiRef.Current ??= CreateErrorBoundaryApi(boundary, setShown);
+            if (shown != null) ExceptionDispatchInfo.Capture(shown).Throw();
+            return api;
+        }
+
+        // Kept out of UseErrorBoundary so that its renders after the first allocate no closure.
+        private static ErrorBoundaryApi CreateErrorBoundaryApi(ComponentFiber boundary, StateUpdater<Exception?> setShown)
+            => new(
+                () =>
+                {
+                    boundary.ResetHandle.Invoke();
+                    setShown.Invoke((Exception?)null);
+                },
+                error =>
+                {
+                    if (error == null) throw new ArgumentNullException(nameof(error));
+                    setShown.Invoke(error);
+                });
 
         #endregion
 
@@ -2430,6 +2527,19 @@ namespace Velvet
         #region UseQuery
 
         /// <summary>
+        /// <see cref="UseQuery{TQueryFnData, TData}"/> for a query whose result holds the data its query function
+        /// returns.
+        /// </summary>
+        /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
+        /// <param name="options">The key, the query function, and the options
+        /// <see cref="QueryOptions{TQueryFnData, TData}"/> lists.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static QueryResult<T> UseQuery<T>(QueryOptions<T> options, QueryClient? client = null)
+            => UseQuery<T, T>(options, client);
+
+        /// <summary>
         /// TanStack Query's <c>useQuery</c>. Reads the entry <paramref name="options"/>' key names in a
         /// <see cref="QueryClient"/>, fetches it with the options' query function when it has no data or its
         /// data is stale, and re-renders the component when a property of the result it reads changes.
@@ -2445,21 +2555,31 @@ namespace Velvet
         /// starts begins there. A change of key moves the subscription to the new key's entry: the result
         /// shows that entry's data, or none, and nothing the old key's request delivers afterwards.
         /// <para/>
-        /// A failed request runs again up to <see cref="QueryOptions{T}.Retry"/> times before the failure is
-        /// the entry's error, and a request that lands is shared structurally with the data the entry held
-        /// (<see cref="QueryOptions{T}.StructuralSharing"/>), as <c>useQuery</c> does.
+        /// A failed request runs again up to <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> times before the
+        /// failure is the entry's error, and a request that lands is shared structurally with the data the entry
+        /// held (<see cref="QueryOptions{TQueryFnData, TData}.StructuralSharing"/>), as <c>useQuery</c> does.
         /// </remarks>
-        /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
-        /// <param name="options">The key, the query function, and optionally the stale and garbage-collection
-        /// times, the retry policy, the structural sharing and the result properties that re-render.</param>
+        /// <typeparam name="TQueryFnData">The entry's data type. Every query sharing a key must use the same
+        /// one.</typeparam>
+        /// <typeparam name="TData">The result's data type, which
+        /// <see cref="QueryOptions{TQueryFnData, TData}.Select"/> makes.</typeparam>
+        /// <param name="options">The key, the query function, and the options
+        /// <see cref="QueryOptions{TQueryFnData, TData}"/> lists.</param>
         /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
         /// provides, and throws when no Provider supplies one.</param>
         /// <returns>The entry's state as this render reads it.</returns>
-        public static QueryResult<T> UseQuery<T>(QueryOptions<T> options, QueryClient? client = null)
+        public static QueryResult<TData> UseQuery<TQueryFnData, TData>(
+            QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (options.QueryKey == null) throw new ArgumentException("QueryOptions.QueryKey must not be null.", nameof(options));
             if (options.QueryFn == null) throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
+            if (options.Select == null && typeof(TQueryFnData) != typeof(TData))
+            {
+                throw new ArgumentException(
+                    $"QueryOptions<{typeof(TQueryFnData).Name}, {typeof(TData).Name}> needs a Select to turn one into the other.",
+                    nameof(options));
+            }
             // Surface "UseQuery" in HookGuard's outside-of-render message instead of "UseContext".
             _ = Resolve("UseQuery");
             var provided = UseContext(QueryClientContext.Ref);
@@ -2467,21 +2587,18 @@ namespace Velvet
                 "UseQuery found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
                 "above the caller, or pass the client to UseQuery.");
             var (_, setVersion) = UseState(0);
-            // MUTANT_SURVIVES(equivalent, arithmetic): any step makes a value the slot does not hold, which is all the re-render asks.
-            var observer = UseMutableRef<QueryObserver<T>>(() => new QueryObserver<T>(() => setVersion.Invoke(v => v + 1))).Current;
-            var staleTime = QueryClient.RequireNonNegative(
-                options.StaleTime ?? queryClient.DefaultStaleTime, nameof(QueryOptions<T>.StaleTime));
-            var gcTime = QueryClient.RequireNonNegative(
-                options.GcTime ?? queryClient.DefaultGcTime, nameof(QueryOptions<T>.GcTime));
+            // MUTANT_SURVIVES(equivalent, arithmetic): a step of one either way gives a value unequal to the one the slot holds, which is all the re-render asks.
+            var observer = UseMutableRef<QueryObserver<TQueryFnData, TData>>(() => new QueryObserver<TQueryFnData, TData>(() => setVersion.Invoke(v => v + 1))).Current;
+            var settings = new QuerySettings<TQueryFnData, TData>(options, queryClient);
 
             UseEffect(observer.UnmountEffect, Array.Empty<object?>());
             UseEffect((Func<Action?>)(() =>
             {
-                observer.Sync(queryClient, options, staleTime, gcTime);
+                observer.Sync(queryClient, settings);
                 return null;
             }));
 
-            return observer.Read(queryClient.Peek<T>(options.QueryKey), staleTime);
+            return observer.Read(queryClient.Peek<TQueryFnData>(options.QueryKey), settings);
         }
 
         #endregion
@@ -2732,10 +2849,12 @@ namespace Velvet
                 fiber.MemoSlots.Add(new HookMemoSlot());
             }
             var slot = fiber.MemoSlots[slotIndex];
+            slot.HookCallCountAtGate = fiber.HookCallCount;
             // Structural value equality would call a fresh-but-content-equal record class prop or context
             // value unchanged and hand back the cached VNode, so the render the reconciler had already
             // decided to make would produce the committed tree instead of the new one.
-            if (slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
+            // MUTANT_SURVIVES(equivalent, clause removed): AreEqualDeps reads a null committed list as unequal to the non-null deps checked above.
+            if (!slot.RunsHooksPastGate && slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
             {
                 // Hit against the committed deps: reuse the committed VNode and stage the committed values so the
                 // render-phase settle keeps them. (On a miss, StoreMemoizedVNode stages the rebuilt result; without
@@ -2765,7 +2884,7 @@ namespace Velvet
         {
             if (slotIndex < 0) return;
             if (deps == null) throw new ArgumentNullException(nameof(deps));
-            var fiber = Resolve("StoreMemoizedVNode");
+            var fiber = ResolveUncounted("StoreMemoizedVNode");
 #if UNITY_EDITOR
             // The StrictMode diagnostic render is isolated from the commit: staging its throwaway
             // output here would first spare that tree from the diagnostic's own retirement sweep
@@ -2781,6 +2900,13 @@ namespace Velvet
                     + " Did you obtain slotIndex from TryGetMemoizedVNode immediately beforehand?");
             }
             var slot = fiber.MemoSlots[slotIndex];
+            // A hook the build-time scan could not see — reached through an interface or virtual call, say — ran
+            // between the gate and here. A hit skips that stretch, so it would skip the hook too; this body is
+            // rebuilt on every render from now on, as an unwoven one is.
+            if (fiber.HookCallCount != slot.HookCallCountAtGate)
+            {
+                slot.RunsHooksPastGate = true;
+            }
             // Stage the freshly computed memo. The committed LastDeps / CachedResult are promoted when the
             // render-phase loop settles, so a discarded intermediate attempt cannot poison the committed baseline.
             slot.NextDeps = deps;

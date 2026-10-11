@@ -16,6 +16,7 @@ namespace Velvet.Tests
         [TestCase("Label")]
         [TestCase("Toggle")]
         [TestCase("Slider")]
+        [TestCase("SliderInt")]
         [TestCase("TextField")]
         public void Given_a_pooled_widget_When_its_reset_helper_runs_Then_its_class_list_is_the_one_a_fresh_instance_carries(string widget)
         {
@@ -38,6 +39,7 @@ namespace Velvet.Tests
             "Label" => new Label(),
             "Toggle" => new Toggle(),
             "Slider" => new Slider(),
+            "SliderInt" => new SliderInt(),
             "TextField" => new TextField(),
             _ => throw new ArgumentOutOfRangeException(nameof(widget), widget, null),
         };
@@ -50,6 +52,7 @@ namespace Velvet.Tests
                 case "Label": FiberLabelPoolHelper.ResetLabelForReuse((Label)element); break;
                 case "Toggle": FiberTogglePoolHelper.ResetToggleForReuse((Toggle)element); break;
                 case "Slider": FiberSliderPoolHelper.ResetSliderForReuse((Slider)element); break;
+                case "SliderInt": FiberSliderPoolHelper.ResetSliderIntForReuse((SliderInt)element); break;
                 case "TextField": FiberTextFieldPoolHelper.ResetTextFieldForReuse((TextField)element); break;
                 default: throw new ArgumentOutOfRangeException(nameof(widget), widget, null);
             }

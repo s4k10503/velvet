@@ -31,7 +31,7 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 | React | Velvet | Semantic Difference |
 |-------|--------|----------------|
 | `useEffect(fn, deps)` | `Hooks.UseEffect(fn, deps)` | Nearly equivalent. Runs asynchronously after paint, at the next frame boundary. 2-pass cleanup → effect ordering |
-| `useLayoutEffect(fn, deps)` | `Hooks.UseLayoutEffect(fn, deps)` | Nearly equivalent. Runs synchronously immediately after reconcile. For DOM measurement and layout adjustment |
+| `useLayoutEffect(fn, deps)` | `Hooks.UseLayoutEffect(fn, deps)` | Runs synchronously immediately after reconcile, with the committed tree laid out: as a layout read in React forces the reflow, `layout`, `resolvedStyle` and `worldBound` read inside it reflect this commit, on mount as on update, in the panel the tree is mounted on and in its `V.Portal(layer:)` and `V.WorldSpace` panels, and a state update it makes re-renders before the frame is painted. The factory of a `Hooks.UseImperativeHandle` built in the same commit, and a `refCallback:` attached in it, read the same laid-out tree, and the commit's `Hooks.UseInsertionEffect`s run before its refs attach. A commit made inside the panel's own layout pass — the rows a `V.VirtualList` renders as its viewport is laid out, once the list holds them, or a tree mounted from a `GeometryChangedEvent` callback — reads its elements laid out as well. The commit computes the layout without sending `GeometryChangedEvent`s; the panel's layout pass sends them afterwards, one dispatch at a time. **Velvet deviation:** what a UI Toolkit control settles from those events settles in that pass, after the commit, so a layout effect inside a `ScrollView` whose content has just come to overflow reads its scrollers as they were. **Velvet deviation:** a commit attaches all of its callback refs before it runs any of its layout effects, where React attaches each host ref as its layout phase reaches that element, between the layout effects of the components around it. For DOM measurement and layout adjustment |
 | `useInsertionEffect(fn, deps)` | `Hooks.UseInsertionEffect(fn, deps)` | Nearly equivalent. Runs synchronously after render, before every `UseLayoutEffect` of the same commit. For style injection; must not read layout or refs |
 | `useOptimistic(state, updateFn)` | `Hooks.UseOptimistic(state, applyOptimistic)` | Returns `(optimisticState, addOptimistic)`. Every render folds the pass-through state through the outstanding entries in the order `addOptimistic` received them, so an entry still outstanding lands on the authoritative state as it now is rather than on the state it was added over. An entry added while a `startTransition` callback runs — an `async` action's up to the point it first suspends — belongs to the innermost transition open there whose `isPending` is lit, and is discarded when that transition settles, or when no `async` action is left in flight (below): whether or not the pass-through state changed, and whether the action succeeded or faulted. An entry added where no such transition is open while an `async` action is in flight — that action's own code past a suspension included — belongs to every action in flight together. As in React, the actions in flight are entangled: a transition that settles while any is in flight hands its entries to them, so they are discarded once none is left, the last completing. An action counts from its start until its task completes, whether or not the component that started it is still mounted, as React's entangled scope waits on the promise: one awaiting a task that never completes holds every later transition's entries, its component's unmount included, until the next Play Mode entry. Before this an unmount gave the action up. The render `addOptimistic` requests is an ordinary one at the priority a setter called there would take outside a transition, so the value shows before the transition commits; an entry whose transition settles before any render showed it — a synchronous callback that queued nothing — is shown by that render and discarded by the component's next Transition-lane render. An entry nothing owns is discarded by the component's next Transition-lane render too; added outside every `startTransition` callback it logs a warning in the editor, and added in a callback whose starter's component has unmounted it does not. A Transition-lane drain that lands the last work a transition queued renders the component it drains, and any component its pass renders, without that transition's entries, so that commit already shows them gone as React's revert lane does. **Velvet deviation:** the work a transition queued commits one component at a time, so where it ends on a component that neither holds the entries nor renders the one that does, the entries are taken down by the render the settle requests, after that commit. The same holds where the work ended on a component and on a descendant its pass subsumes: the components rendered ahead of the descendant still show the entries in that commit, and the descendant leaves them out |
 | `useCallback(fn, deps)` | `Hooks.UseCallback(fn, deps)` | Nearly equivalent. In a C# 9 assembly the type argument is inferred for a parameterless `Action` lambda or method group, and for a lambda with typed parameters that is a `Func` of one to three parameters or an `Action` of two or three. Every other lambda or method group takes it explicitly there, as `Hooks.UseCallback<T>(fn, deps)`: a parameterless `Func`, a one-parameter `Action`, a lambda with untyped parameters, a method group with parameters, and a lambda of any other delegate type. A value that already has a delegate type — a delegate variable, or a cast lambda — takes no type argument either: it binds the overload named for its shape where there is one, and `UseCallback<T>` otherwise. No overload takes one type argument, since beside `UseCallback<T>` it would be a candidate for every such explicit call and take some of them over |
@@ -221,22 +221,12 @@ Velvet holds the mode. Every retry that comes due waits until the application is
 `Always`, a connection. Reading the connection on the application's behalf happens on the main thread, so a
 call started elsewhere under `Online` continues on the main thread.
 
-The readings come from `NetworkSignals`, which an application replaces once for every mutation, and from the
-policy's `IsOnline` / `IsFocused`, which replace them for one. Both are polled once per frame.
-
-- Online: `Application.internetReachability` is not `NotReachable`. It can read a local-network-only server as
-  unreachable, which is what `NetworkSignals.IsOnline` is for.
-- Visible, as v5's focus manager reads `document.visibilityState` rather than focus: Velvet counts a window that
-  has lost focus but is still shown as visible, so alt-tabbing pauses nothing. Velvet asks each platform:
-  a mobile platform for `Application.isFocused`, since a backgrounded app has lost it; Windows whether the
-  main thread's top-level window is minimized; macOS whether NSApplication is hidden or, when it has windows,
-  none is both visible and not miniaturized (no windows reads as visible). Linux and WebGL have no reading and
-  count as visible. The first failure of a native read, or on Windows the absence of a window to ask, logs one
-  warning and is latched: every later read answers visible without asking the platform again, until the
-  scripts reload.
-  No test runs the native readings themselves, so replace them through `NetworkSignals.IsVisible` where the
-  platform's answer matters. The reading gates the retries of every
-  `RetryPolicy`, a `RetryPolicy.RunAsync` around a `Hooks.Use` loader included.
+The readings come from `NetworkSignals`, which an application replaces once for every mutation and every
+query, and from the policy's `IsOnline` / `IsFocused`, which replace them for one. Both are polled once per
+frame. Online is `Application.internetReachability` not being `NotReachable`, which can read a local-network-only
+server as unreachable, and visible is `Application.isFocused` on every platform, as
+[§1-2b](#1-2b-cached-queries--hooksusequery) describes. The reading gates the retries of every `RetryPolicy`, a
+`RetryPolicy.RunAsync` around a `Hooks.Use` loader included.
 
 While a call waits, `MutationResult.IsPaused` is true, and `FailureCount` / `FailureReason` follow v5's reducer:
 zero and null when a call starts or succeeds, one more count and the failure for each failed attempt, the
@@ -266,11 +256,21 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `useQuery({ queryKey: ['todos', id], queryFn })` | `Hooks.UseQuery(new QueryOptions<T>(new QueryKey("todos", id), ct => ...))` |
 | `useQuery(options, queryClient)` | `Hooks.UseQuery(options, client)` |
 | `staleTime` / `gcTime` on one query | `new QueryOptions<T>(...) { StaleTime = ..., GcTime = ... }` |
+| `enabled` | `new QueryOptions<T>(...) { Enabled = ... }` |
+| `select: (data) => ...` | `new QueryOptions<TQueryFnData, TData>(...) { Select = data => ... }` |
+| `placeholderData: keepPreviousData` / `(previousData, previousQuery) => ...` | `new QueryOptions<T>(...) { PlaceholderData = QueryPlaceholder.KeepPreviousData }` / `(previousData, previousKey) => ...` |
+| `refetchInterval` / `refetchIntervalInBackground` as a number and a boolean | `new QueryOptions<T>(...) { RefetchInterval = ..., RefetchIntervalInBackground = ... }` |
+| `refetchInterval: (query) => ...` | `RefetchIntervalFn = info => ...`, handed a `QueryInfo` |
+| `refetchOnWindowFocus` / `refetchOnReconnect` as `false` / `true` / `'always'` | `RefetchOnWindowFocus` / `RefetchOnReconnect` = `QueryRefetchMode.Never` / `IfStale` / `Always`, on one query or on `QueryClientOptions` |
+| `refetchOnWindowFocus: (query) => ...` / `refetchOnReconnect: (query) => ...` | `RefetchOnWindowFocusFn` / `RefetchOnReconnectFn` = `info => QueryRefetchMode...`, on one query or on `QueryClientOptions` |
+| `queryFn: ({ signal }) => ...` | `new QueryOptions<T>(key, token => ...)`; a function taking no token is the one that never reads the signal |
+| `focusManager` / `onlineManager` | `NetworkSignals.IsVisible` / `IsOnline` |
 | `retry` / `retryDelay` as a number and a function | `new QueryOptions<T>(...) { Retry = ..., RetryDelay = ... }`, or `QueryClientOptions.Retry` / `RetryDelay` for every query |
 | `structuralSharing` as a function | `new QueryOptions<T>(...) { StructuralSharing = (held, arrived) => ... }` |
 | `notifyOnChangeProps: ['data']` / `'all'` | `new QueryOptions<T>(...) { NotifyOnChangeProps = QueryProperties.Data }` / `QueryProperties.All` |
-| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` / `failureCount` / `failureReason` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` / `FailureCount` / `FailureReason` |
+| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` / `failureCount` / `failureReason` / `isPlaceholderData` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` / `FailureCount` / `FailureReason` / `IsPlaceholderData` |
 | `refetch()` | `result.Refetch()` |
+| `queryClient.getQueryData(queryKey)` / `setQueryData(queryKey, updater)` | `client.GetQueryData<T>(key)` / `client.SetQueryData(key, data)` or `SetQueryData<T>(key, held => ...)` |
 | `queryClient.invalidateQueries({ queryKey })` | `client.InvalidateQueries(new QueryKey(...))` |
 | `queryClient.clear()` | `client.Clear()` |
 
@@ -331,8 +331,84 @@ of that with a function of the data held, default when there is none, and the da
 throws fails the request.
 
 **Changing the key** moves the component to that key's entry: it renders that entry's data, or none,
-and a result the old key's request delivers afterwards is never shown as the new key's. There is no
-`placeholderData` yet, so a key with nothing cached renders `Pending`.
+and a result the old key's request delivers afterwards is never shown as the new key's. A key with
+nothing cached renders `Pending`, or the placeholder below.
+
+**Turning a query off.** `Enabled = false` fetches nothing on its own: not on mount, not when its key is
+invalidated, not on an interval, focus or reconnect. It reports `IsStale` false and, with nothing cached, `Pending` without `IsFetching`;
+`Refetch` still fetches. Turning it on fetches when the entry's data is stale, joining a request in
+flight, and the render that turns it on already reports the fetch. Invalidating an entry that a
+disabled and an enabled query both read fetches it, since one of its readers is enabled.
+
+**Selecting.** `Select` turns the entry's data into the result's, so a component can read part of an
+entry, or another type through `QueryOptions<TQueryFnData, TData>`, which then needs a `Select`. The entry
+keeps what the query function returned, and `GetQueryData` reads that. Over the entry's data the select
+runs again only when that data's instance or the select's own instance changes, as v5 compares both with
+`===`: a delegate held in a field runs once for each new instance of the data, and one built afresh each
+render runs every render. What it returns is shared structurally with the result's previous data, so an
+equal selection keeps its instance. A select that throws makes the result `Error` with its exception,
+until the data it ran on is gone: a key change to an entry with no data shows that entry's state.
+
+**Placeholder data.** While the entry is pending with no data, `PlaceholderData` stands in: the result is
+`Success` with `IsPlaceholderData` true and `IsFetching` true, and the entry stays without data, so
+`GetQueryData` reads none. A failure with no data shows the error, not the placeholder. The function is
+handed the data and key of the last entry this component read that had data and still has it — default
+and null when there is none — and returns `QueryPlaceholder<T>`, to which a value converts; a null value is no placeholder.
+`QueryPlaceholder.KeepPreviousData` returns the previous data, so paging keeps the old page on screen until
+the new one lands. While the result before showed the placeholder, the function is asked again only when
+its instance changes. A `Select` applies to the placeholder too, and one that throws there makes an error
+that is not flagged `IsPlaceholderData`, as v5's main does.
+
+```csharp
+var page = Hooks.UseQuery(new QueryOptions<Todo[]>(new QueryKey("todos", pageIndex), ct => api.Page(pageIndex, ct))
+{
+    PlaceholderData = QueryPlaceholder.KeepPreviousData,
+});
+// page.Data is the previous page, with page.IsPlaceholderData true, until this page lands.
+```
+
+**Fetching again on its own.** `RefetchInterval` fetches an enabled query again each time the interval
+has passed on the client's `Clock` since its entry last changed — a request starting, landing or failing
+starts it over — or since the interval last came round, whether or not the data is stale, and joins a
+request in flight. A render that changes neither the interval nor `Enabled` leaves it running. By default
+it waits while the application is not visible, and a tick it skipped is not made up when the application
+is shown; `RefetchIntervalInBackground` fetches anyway. When the application becomes visible after being
+hidden, or the device comes back online, a mounted query fetches again under `RefetchOnWindowFocus` /
+`RefetchOnReconnect`: `IfStale`, the default, when its data is stale, `Always` whatever its age, `Never`
+not at all; set them on one query or for every query on `QueryClientOptions`. That refetch joins a request
+in flight. `NetworkSignals` holds both readings: online is `Application.internetReachability`, and visible
+is `Application.isFocused` on every platform, the Editor included.
+`NetworkSignals.IsVisible` / `IsOnline` replace them, for an application that reads its window's state or
+measures being online for itself. A reading that throws is no reading
+to the poll, which then reports no change, and counts as visible or online where one is needed: an interval's
+wait and a client's first reading. Only the first failure of each reading is logged.
+
+**Intervals and refetch modes as functions.** `RefetchIntervalFn`, `RefetchOnWindowFocusFn` and
+`RefetchOnReconnectFn` are v5's function forms of those options. Each is handed a `QueryInfo` — the
+entry's `QueryKey`, `Status`, `Data` (the query function's data, not what `Select` makes of it), `Error`
+and `IsFetching` as they stand at the call — and replaces the value set beside it; the two refetch
+functions can also be set on `QueryClientOptions`, and a query's own setting, in either form, stands
+ahead of the client's. The interval function returns a `TimeSpan?` and is asked when the entry changes and
+at every commit of the component, not every frame; the other two are asked each time their signal comes, for an
+enabled query only. One that throws counts as no interval or as `Never`; a refetch function's failure is logged each time, an interval
+function's once per function instance.
+
+**Cancelling a request.** The `CancellationToken` a query function receives is cancelled when a refetch
+starts that request over, by `Clear`, and when the last query reading the entry leaves while the request is
+in flight; in that last case the entry is put back as it stood before the request, as v5's
+`cancel({ revert: true })` does, so a component mounting again fetches afresh. v5 does this for a function
+that read its `signal`, and lets any other run on; here a function taking the token (`token => ...`) counts as having
+read it, and a function taking none (`() => ...`) runs on and lands its result. StrictMode's extra cleanup
+and setup of a mounting component's effects therefore cancels the first request and starts a second one
+for a function taking the token, as in v5.
+
+**Reading and writing the cache by hand.** `GetQueryData` returns an entry's data, default when it has
+none or has expired unread. `SetQueryData` writes data as a request landing would: the entry is `Success`
+with no error, its data is fresh from that moment, shared structurally with what it held — by the
+`StructuralSharing` of the options the entry was last handed, as for an invalidation below — and clears an
+invalidation, and the components reading it re-render for what changed. A request in flight keeps running
+and lands over it. A key with no entry gets one, which expires after the client's `GcTime` unless a query
+reads it. The updater form is handed the data held; a null data or updater result writes nothing.
 
 **Invalidating after a mutation.** `InvalidateQueries` takes a filter, as v5's non-exact
 `partialMatchKey` does: `new QueryKey("todos")` matches `["todos", 1]` and `["todos"]` alike. A filter part
@@ -341,7 +417,10 @@ holding at least the entries it names, each value matched the same way, and any 
 included, must equal its counterpart whole. A matching entry a
 mounted component reads is fetched again; a request already in flight for it is cancelled and started
 over when the entry holds data, so a result fetched before the write does not land as current. An entry
-nothing reads is only marked stale, and is fetched by the next component that mounts over it.
+no enabled query reads is only marked stale, and is fetched by the next component that mounts over it.
+The refetch runs with the options the entry was last handed — by the last query to commit over it or to
+start a request for it — as v5 refetches a query with its own options: where its readers' query functions
+differ, that one's runs, a disabled reader's included.
 
 ```csharp
 var client = Hooks.UseContext(QueryClientContext.Ref)!;
@@ -353,25 +432,31 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 **Deviations from v5:**
 
 - Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
-  absent from then on, and is removed the next time a query subscribes to the client or
-  `InvalidateQueries` runs; removing it cancels the request it still has in flight.
+  absent from then on, and is removed the next time a query subscribes to the client, `InvalidateQueries`
+  runs or `SetQueryData` writes. As in v5, an entry with a request in flight is kept, and readable, until
+  a whole `GcTime` has passed since the request settled. A request of a query function taking no token
+  that never settles therefore keeps its entry for as long as the client lives, as a fetching query is kept in v5.
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
   share one request; v5's result arrives a microtask later.
 - Structural sharing does not enter the members of a class instance, a record included, where v5 shares
   the equal properties of a changed plain object: such an instance is kept or replaced whole, because
   Velvet does not rebuild one.
-- The `CancellationToken` a query function receives is cancelled when a refetch starts that request
-  over, when the entry is removed, and by `Clear`. v5 also aborts a request whose function read its
-  signal once the last observer unsubscribes; here it runs on, so a component mounting again finds its
-  result. The same holds for the extra cleanup and setup StrictMode runs on a mounting component's
-  effects: the second subscription joins the first one's request, where v5 cancels and refetches a request
-  whose function read its signal.
+- A query function counts as having read v5's `signal` when it takes the `CancellationToken`, whether or not
+  it uses it; v5 tells by the function reading `signal`. A token-taking function that ignores the token is
+  cancelled with its last reader here, where v5 lets it run on.
 - `UseQuery` never suspends: with no data yet it returns `Pending`. There is no `useSuspenseQuery`.
 - A key holds one data type. A query reading it as another throws `InvalidOperationException`.
+- A `StructuralSharing` function is typed for the query function's data, so with a `Select` that changes
+  the type the selected data is not passed through it; the default sharing still applies when none is set.
+- The placeholder function is handed the previous entry's key rather than v5's query object.
+- A client with a mounted query reads `NetworkSignals` once a frame, and a reading that turns true since its
+  previous one stands for the event v5's managers listen to. A change that comes and goes within one frame
+  is not seen.
+- The functions v5 hands its `Query` are handed a `QueryInfo` instead, a read-only view of the entry's
+  key, status, data, error and fetch state; the rest of the query object is not available.
 - Not yet available: `retry` as a function or `true`, retries that pause while the application is
-  unfocused or offline (`networkMode`), `enabled`, `select`, `placeholderData`, `refetchInterval`,
-  `refetchOnWindowFocus` and `refetchOnReconnect`, and `getQueryData` / `setQueryData`.
+  unfocused or offline (`networkMode`).
 
 ### 1-3. State Management (React + Zustand)
 
@@ -386,6 +471,7 @@ Velvet state is organized into two layers — **"component-local state" and "sha
 
 - `Hooks.UseState` / `Hooks.UseReducer` use a positional slot scheme. They must be called in **the same order every time** within the same component function (same as React's Rules of Hooks)
 - A render that calls a slot-keeping hook (`Hooks.UseState`, `Hooks.UseEffect`, `Hooks.UseMemo`, …) more or fewer times than the previous render throws an `InvalidOperationException` that names the component and continues in React's words: `Rendered more hooks than during the previous render` from the extra call, or `Rendered fewer hooks than expected` once the body returns. It is a render error, so an enclosing error boundary catches it. A hook inside a plain helper method belongs to the component calling the helper, so calling the helper on some renders only is the same violation
+- The analyzers report these at edit time, as React's `rules-of-hooks` lint does. VEL102 reports a hook called in a method that is neither a component nor a custom hook named `Use` followed by an uppercase letter or a digit, and a hook in a field or property initializer. VEL101 reports any other hook that sits in a condition, a loop, on the right of `??=` or after `?.`, in a `catch` whose `try` can complete normally, in a `try` that has a `catch` after something that may throw there, after an early return, or in a lambda other than a component's render body that sits inside a component or a custom hook. A hook in an `if` condition, a conditional expression's condition, the left operand of `&&`, `||` or `??`, a `foreach` collection or a `for` initializer runs once, before the branch or the loop, and is not reported. As in React's lint, a call on a member is a hook call only where the receiver is a single name starting with an uppercase letter, as with `Hooks.UseState`, or, in C#, a qualified name that binds to a namespace or a type, as with `Velvet.Hooks.UseState`; a lambda held by a variable of a hook's name is a custom hook. A component is a `[Component]` method, or a method or lambda handed to `V.Component` or `V.Memo` as its render body in the same compilation. Renaming a helper to the custom-hook shape makes each call to it a hook call VEL101 checks. VEL103 reports a component whose declaration calls a hook being called directly as a plain method, since its hooks then run as part of the caller; mount it with `V.Component`. VEL103 reads a call that names the component by a bare name from within its declaring type, or qualified by that type's simple name; a call through `using static`, an alias, a base class or an instance is not reported, and nor is a call that is the whole render body of a lambda handed to `V.Component`. React's lint has no counterpart; React's rules say a component is used only in JSX and never called as a regular function. A test harness calling hooks from a plain method opts out with a `#pragma warning disable` naming VEL102
 - `setValue` / `dispatch` are stable references tied to a slot and remain the same reference across re-renders (no additional memoization equivalent to `useCallback` is needed)
 
 #### Shared State (Zustand-inspired Store)
@@ -544,6 +630,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<textarea>` | `V.TextField(multiline: true)` | A render toggling `multiline:` patches the same element, where React swapping `<input>` for `<textarea>` remounts it. Declaring `isPasswordField:` beside it leaves both flags on, a multi-line password field that HTML has no control for |
 | `<input type="checkbox">` | `V.Toggle()` | |
 | `<input type="range">` | `V.Slider()` | `min` / `max` / `step` are the `lowValue:` / `highValue:` / `step:` parameters. `direction:` (`SliderDirection.Vertical`) and `inverted:` set UI Toolkit's `Slider.direction` and `Slider.inverted` — see below for what null means |
+| `<input type="range" step="1">` | `V.SliderInt()` | A UI Toolkit `SliderInt`: `V.Slider`'s parameters over `int`, with an `Action<int>` change handler. The two paragraphs below on `V.Slider`'s parameters and its input hold for it as well |
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
 | `<>{a}{b}</>` | `V.Fragment(a, b)` | `V.Fragment(children, key: "k")` is `<Fragment key="k">` |
 
@@ -579,6 +666,31 @@ the field hands focus from its input back to itself (Enter, Shift+Enter in multi
 declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
 field; one written from `refCallback:` is not.
 
+`V.TextField` takes `onKeyDown:`, `onKeyUp:`, `onFocus:` and `onBlur:` as an `<input>` does, and
+`onSubmit:` for what Enter in an `<input>` does to its form:
+
+- `onKeyDown:` runs before the field takes the key, and a handler calling `StopPropagation()` on the
+  event keeps the key out of the field, as `preventDefault()` does in React.
+- `onFocus:` and `onBlur:` report focus entering the field from outside it and leaving it for outside
+  it. The step where the field hands focus from its input to itself and back, described above, reports
+  neither.
+- `onSubmit:` receives the field's value on each Enter in a single-line field, after a field holding
+  `isDelayed:` has released the typed text into it. Like the browser's implicit submission:
+  - a read-only field submits;
+  - the input keeps focus and its caret across the submitting Enter, so typing goes on where it was,
+    where UI Toolkit alone hands focus to the field on Enter; an Enter that lands on the field itself
+    (after Escape, say) submits too;
+  - the Enter that arrives while an IME composition is open does not submit;
+  - the soft keyboard's Done submits. This is read from the keyboard's status when it blurs the field,
+    and has not yet been verified on a device.
+
+  Enter with Ctrl held and Alt not held submits nothing, as in Chrome, where that key reaches the input
+  as a line feed rather than the carriage return implicit submission answers. Command is held to the
+  same rule, on every platform. A multi-line field never submits, as a `<textarea>` never submits its
+  form.
+
+`onCreated:` runs once when the field element is created, as on `V.Slider` and `V.ScrollView`.
+
 A field's `className` background, border, radius, padding, shadow and ring utilities paint the box the value
 is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
 is listed with the `[&>*]:` composite notes.
@@ -586,6 +698,69 @@ is listed with the `[&>*]:` composite notes.
 A render changing `maxLength:` while an edit is pending keeps the edit on screen, cut to the new limit,
 and leaves it uncommitted and unreported. When the same render also takes `isDelayed:` off, the cut edit
 is released as above.
+
+### 2-1a. Event props
+
+| React (JSX) | Velvet |
+|-------------|--------|
+| `<div onPointerDown={fn}>` | `V.Div(events: new FiberEventBinding[] { new PointerDownBinding { Handler = fn } })` |
+| `<div onPointerDownCapture={fn}>` | `V.Div(events: new FiberEventBinding[] { new PointerDownBinding { Handler = fn, Capture = true } })` |
+| `<button onClick={a} onKeyDown={b}>` | `V.Button(onClick: a, events: new FiberEventBinding[] { new KeyDownBinding { Handler = b } })` |
+| `<button onClick={e => e.preventDefault()}>` | `new ClickedEventBinding { Handler = e => e.PreventDefault() }` in `events:` |
+| `<Link to="/a" onClick={fn}>` | `V.Link("/a", events: new FiberEventBinding[] { new ClickedEventBinding { Handler = fn } })` |
+
+Every `V.*` factory that returns an element node (`ElementNode` or `MotionNode`), other than the
+class-and-children shorthands below, takes an `events:` array, the way every host element takes every
+event prop in React: `V.Div`, `V.Custom<T>`, `V.Label`, `V.Image`, the controls, `V.ScrollView`,
+`V.ListView`, `V.SceneView`, `V.Particles`, `V.Anchored`, `V.FocusScope`, `V.DndContext`, `V.Draggable`,
+`V.Droppable` and `V.Motion`.
+`ElementFactoryEventsInventoryTests` finds these factories by their return type, so one added later is
+held to the parameter too. The class-and-children shorthands of `V.Div`, `V.Custom<T>`, `V.ScrollView` and
+`V.Button` have a sibling taking the array between the two, as in `V.Div("p-4", events, child)`. A call that
+passes a literal `null` second, with children after it, matches both forms equally and does not compile
+until the `null` is cast to `VNode` or to `FiberEventBinding[]`.
+`V.VirtualList` takes the array for its `ScrollView`, and `V.Link` and `V.NavLink` for their button. `V.Text` returns a text node and takes none, as a React text node takes no props. The
+initializer builders under `Velvet.Experimental` carry the same array as `Events`.
+
+The binding types are declared in `Runtime/Reconciler/FiberEventBinding.cs`. A `ClickedBinding` and a
+`ClickedEventBinding` bind only on a `Button`, and a `ChangeEventBinding<T>` only on an element whose
+value is a `T` of `float`, `bool`, `string` or `int`; on any other element each binds nothing.
+
+A factory's own `onClick:` or `onValueChanged:` is bound ahead of the array, so both run, the factory's
+own first. One delegate is bound on an element once per phase, so a delegate passed both ways runs once,
+and a render passing it both ways again leaves the element's bindings as they were. The array is read
+and never written, so a component may keep one across renders. A render passing different handlers
+rebinds the element, and one passing no array unbinds what an earlier render bound.
+
+The pointer down, up and move, wheel, key, focus in and out, focus and blur bindings derive from
+`FiberDispatchedEventBinding`, whose `Capture = true` is React's `on…Capture`: the handler runs as the
+event travels down to its target, so capture handlers run outermost first and ahead of every bubble
+handler, the target's own included, and bubble handlers innermost first after them. One delegate may be
+bound in both phases and runs in each. A render that moves a delegate from one phase to the other
+rebinds it. `PointerEnterBinding` and `PointerLeaveBinding` take no `Capture`, as React registers
+`onPointerEnter` and `onPointerLeave` without a capture form. `GeometryChangedBinding` takes none either:
+it is UI Toolkit's `GeometryChangedEvent`, which has no React counterpart.
+
+A `ClickedEventBinding`'s handler receives the click as a `ClickedEvent`. The bindings of that kind on one
+button share one `ClickedEvent` per click, in the order they were bound, and `PreventDefault()` is React's
+`event.preventDefault()`: `V.Link` and `V.NavLink` bind their navigation after the caller's `events:` and
+skip it when a handler prevented the click, as React Router's `Link` does with its `onClick`. How a
+binding crosses a portal is [portals.md](portals.md)'s.
+
+```csharp compile
+public static class PointerSurface
+{
+    [Component]
+    public static VNode Render()
+    {
+        var (presses, setPresses) = Hooks.UseState(0);
+        return V.SceneView(null, className: "w-full h-64", events: new FiberEventBinding[]
+        {
+            new PointerDownBinding { Handler = _ => setPresses.Invoke(presses + 1) },
+        });
+    }
+}
+```
 
 ### 2-2. Conditionals and Lists
 
@@ -651,19 +826,33 @@ A container of direct plain elements warns once for each repeated sibling key, o
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<Suspense fallback={<Spinner/>}>` | `V.Suspense(fallback, children)` | Equivalent |
-| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked. Like `use()`, it caches nothing beyond its own component: a cache shared across components is `Hooks.UseQuery` ([§1-2b](#1-2b-cached-queries--hooksusequery)). Like React's `use`, it never retries a loader; wrap one in `RetryPolicy.RunAsync` (`Hooks.Use(ct => policy.RunAsync(load, ct), resourceKey: id)`) to retry inside the same resource, which stays pending until the last attempt settles — the policy's semantics are under [§1-2a](#1-2a-async-mutations--hooksusemutation) |
-| Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. Once a boundary catches, it keeps showing its fallback until it remounts, as React's does: a re-render — its parent's, or its own — renders the fallback again with the error it caught and does not bring its children back. Give the boundary a new `key` to render its children again. The helper suits a use directly under Mount; the functional pattern suits a fallback that reads the boundary's own props or state |
+| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked. Like `use()`, it caches nothing beyond its own component: a cache shared across components is `Hooks.UseQuery` ([§1-2b](#1-2b-cached-queries--hooksusequery)). Like `use()`, it does not retry: a failed load stays failed for as long as its component stays mounted with that `resourceKey`. Reset the error boundary that caught it (`Hooks.UseErrorBoundaryReset`, two rows down) and the component mounts again and loads again. A new `resourceKey` starts the load again only for a component still rendering, one whose error no boundary caught: a boundary that caught it has unmounted the component and keeps its fallback until it is reset or remounts. To retry inside the same resource instead, wrap the load in `RetryPolicy.RunAsync` (`Hooks.Use(ct => policy.RunAsync(load, ct), resourceKey: id)`): the resource stays pending until the last attempt settles, and the policy's semantics are under [§1-2a](#1-2a-async-mutations--hooksusemutation) |
+| Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. Once a boundary catches, it keeps showing its fallback until it remounts, as React's does: a re-render — its parent's, or its own — renders the fallback again with the error it caught and does not bring its children back. Give the boundary a new `key`, or reset it (next rows), to render its children again. The functional pattern suits a fallback that reads the boundary's own state |
+| react-error-boundary's `resetErrorBoundary(...args)`, `resetKeys` and `onReset` | `var reset = Hooks.UseErrorBoundaryReset(resetKeys, onReset)` in a `[Component(IsErrorBoundary = true)]` component, beside `Hooks.UseFallback` | `reset` is an `ErrorBoundaryReset`, reference-stable, which converts to an `Action` for `onClick`. `reset.Invoke(args)` while the boundary shows its fallback calls the last committed render's `onReset` with `ErrorBoundaryResetReason.ImperativeApi` and those `Args`, then queues the reset as a state update on the lane the call is made on, so two calls in one handler both call `onReset`, and a reset made in `startTransition` is taken by the transition's render while an urgent render before it keeps the fallback; while the boundary shows its children it does nothing. A render of the boundary, while it shows a fallback for an error caught before that render, that passes keys differing from those its last committed render passed — in length, or in an element compared with `Object.is` semantics — commits that fallback, then, where the boundary still holds the error, calls `onReset` with `ErrorBoundaryResetReason.Keys`, `Prev` and `Next` and queues the reset, as react-error-boundary does from `componentDidUpdate`; keys that change in the render a child throws in do not undo that catch, and a reset queued beside a key change in one handler is the only one that calls `onReset`. The children the fallback replaced mount again, so their state starts over and a `Hooks.Use` among them loads again |
+| react-error-boundary's `useErrorBoundary()` | `var api = Hooks.UseErrorBoundary()` below a boundary | The boundary is the nearest `[Component(IsErrorBoundary = true)]` component or `V.ErrorBoundary` above the caller, passing over the boundaries Velvet renders for routing as react-error-boundary's context passes over React Router's; a component in a boundary's fallback content finds that boundary. `api.ShowBoundary(error)` — from an event handler or a continuation on the main thread — makes the caller throw `error` on its next render, which reaches the boundaries above the caller as any render error does: the first that shows a fallback for it catches it, and one that declines passes it up. `api.ResetBoundary()` invokes the boundary's reset with no arguments. With no such boundary above, it throws `InvalidOperationException` |
+| react-error-boundary's `<ErrorBoundary fallbackRender={({ error, resetErrorBoundary }) => …} resetKeys onReset>` | `V.ErrorBoundary(fallbackRender: (error, reset) => ..., children, resetKeys, onReset)` | The reset, keys and `onReset` behave as on `Hooks.UseErrorBoundaryReset`. Each render of the parent hands either `V.ErrorBoundary` overload the fallback and children of that call |
 | Class Component + `componentDidCatch` | `Hooks.UseEffect` + try-catch, or logging via an error-notification Store | When you want to log side effects from a functional component, do it inside an effect. What every caught error goes to is the root's `OnCaughtError`, in the next row |
 | `createRoot(container, { onCaughtError })` | `V.Mount(target, tree, new MountOptions(OnCaughtError: (ex, info) => ...))` | Called when a boundary in the tree catches an error, in the commit that shows its fallback: after the fallback's layout effects and before those of the boundary's ancestors, where React calls it. A boundary that an ancestor boundary replaces before that commit reports nothing, as in React. A boundary that a time-sliced transition mounted or re-rendered, catching before the transition completes, reports in the commit that completes it, after its own layout effects. `info` carries the `ComponentStack` and `ErrorBoundary`, the name of the boundary that caught it. Without a handler, the error is logged with `Debug.LogException`: the entry reads as the caught exception itself, and its stack trace goes on to name the boundary and the component stack. An exception the handler throws is logged |
 
 Suspense boundaries in separate host elements or Portals keep independent pending state, including
 Portals sharing one target. Updating a suspended primary keeps its fallback visible until its resource
-resolves. A component whose render suspended keeps its state meanwhile where no host element sits between it
-and the Suspense — one inside such an element is disposed with it — and the layout effects and imperative
-handles of one the boundary had shown are taken down in the commit that shows the fallback until the
-boundary reveals it again, while one first mounted under the fallback runs none of its effects, passive ones
-included, and creates no imperative handle until then, as React
-disconnects and mounts them. Removing the boundary releases that pending state when its displayed children are removed.
+resolves. A boundary that has shown its children and suspends again keeps them in the tree, hidden with an
+inline `display: none` ahead of the fallback, as React hides them: the outermost elements of its children
+are hidden, the children of a Portal among them included, and each gets back the inline `display` it had
+when the boundary reveals them. Their elements are kept rather than created again, and the components in
+them keep their state. A query over the tree finds those hidden elements too. The commit that shows the
+fallback takes down their layout effects, imperative handles and element refs, as React 18 does, and blurs
+a focused element inside them; the commit that reveals them sets the effects, handles and refs up
+again. Their passive effects stay connected throughout, as React's do. The components in the children of a
+`V.Portal` a render adds to the hidden children, whose elements are hidden all the same, and those of a
+`V.VirtualList` row the list mounts outside a render of the boundary are not taken down that way: they set
+their layout effects and refs up as they mount. A `V.Anchored`
+element among the hidden children stays hidden while it tracks its target. A boundary that has not
+shown its children yet discards what the suspended render built: a component whose render suspended keeps
+its state meanwhile only where no host element sits between it and the Suspense — one inside such an element
+is disposed with it — and one first mounted under the fallback runs none of its effects, passive ones
+included, and creates no imperative handle until the reveal, as React mounts it then. Removing the boundary
+releases that pending state when its displayed children are removed.
 
 Where an update's render suspends with no Suspense expansion inside it to catch the signal — the render
 of the component that updated, or of one below it that the render reaches, in any slice of a time-sliced
@@ -677,7 +866,7 @@ previous UI. The boundary is the nearest one above the component whose read susp
 renders its own `V.Suspense` reveals through the boundary above it.
 
 > **Note — Error Boundary mapping**  
-> Velvet uses the same explicit opt-in model as React. The `V.ErrorBoundary(fallback, children)` helper is ideal for a root boundary directly under mount. For cases where the fallback / children values change dynamically, use a static method annotated with `[Component(IsErrorBoundary = true)]` combined with `Hooks.UseFallback(ex => ...)`.<br/>
+> Velvet uses the same explicit opt-in model as React. The `V.ErrorBoundary(fallback, children)` helper wraps children inline; for a boundary whose fallback reads its own state, use a static method annotated with `[Component(IsErrorBoundary = true)]` combined with `Hooks.UseFallback(ex => ...)`.<br/>
 > Velvet's `UseFallback` is equivalent to React's `getDerivedStateFromError` (a pure function that simply returns a fallback VNode). Handle side effects separately inside a `UseEffect`.
 
 ---
@@ -690,7 +879,7 @@ Like React's functional components, Velvet adopts a hook-based lifecycle model (
 |-------|--------|------|
 | `componentDidMount` | `Hooks.UseEffect(fn, Array.Empty<object>())` | Empty deps means it runs once on mount |
 | `componentWillUnmount` | The return value of `Hooks.UseEffect` (a cleanup delegate) | Return the cleanup from the same hook. Equivalent to React |
-| A callback ref, `ref={el => …}` | `refCallback:` on an element factory | Attaches at the end of the reconcile pass rather than where the pass creates or patches the element, so every cleanup a pass owes runs before any setup it owes — including when the pass is spread over several frames. A read taken *during* the pass — another component's render body, an `onCreated:`, a `wrapElement:` — therefore sees what the previous pass left, as React's `ref.current` does during render. A second `refCallback:` setup is not such a read: the pass runs its setups as one uninterrupted sequence, in the order it reached their elements, so each sees what the ones before it just wrote. Layout effects and effects run after the pass, so they find it attached — a frame-budgeted flush defers both to the slice that completes the pass, which is also the slice the setups run in. The returned `Action` is the cleanup, run when the element leaves the tree, when the tree is disposed, or when the callback's identity changes — that last one at the end of the pass with the setups, ahead of all of them, so a pass's own patches still see what the old setup published; the same delegate instance across renders leaves the installed ref untouched, which is what `Ref<T>.SetElement` is for |
+| A callback ref, `ref={el => …}` | `refCallback:` on an element factory | Attaches at the end of the reconcile pass rather than where the pass creates or patches the element, so every cleanup a pass owes runs before any setup it owes — including when the pass is spread over several frames. A read taken *during* the pass — another component's render body, an `onCreated:`, a `wrapElement:` — therefore sees what the previous pass left, as React's `ref.current` does during render. A second `refCallback:` setup is not such a read: the pass runs its setups as one uninterrupted sequence, in the order it reached their elements, so each sees what the ones before it just wrote. Layout effects and effects run after the pass, so they find it attached — a frame-budgeted flush defers both to the slice that completes the pass, which is also the slice the setups run in. The returned `Action` is the cleanup, run when the element leaves the tree, when the tree is disposed, when a `V.Suspense` hides it (the setup runs again when the boundary reveals it, as React 18 detaches and attaches the refs of a tree it hides), or when the callback's identity changes — that last one at the end of the pass with the setups, ahead of all of them, so a pass's own patches still see what the old setup published; the same delegate instance across renders leaves the installed ref untouched, which is what `Ref<T>.SetElement` is for |
 | `componentDidCatch(error, info)` | Catch descendant render errors via the `fallback` callback of `V.ErrorBoundary`, or via `Hooks.UseFallback` inside a boundary component (`[Component(IsErrorBoundary = true)]`) | The intended semantics is catching descendant render exceptions. Log side effects in the boundary's own `Hooks.UseEffect`; a handler for every caught error is the root's `OnCaughtError` ([§2-5](#2-5-suspense--error-boundary)) |
 | `getDerivedStateFromError(error)` | `V.ErrorBoundary(fallback, children)` or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback` | For a root boundary directly under mount, the helper is more concise |
 
@@ -711,7 +900,7 @@ It excludes hand-written UXML/USS from its design and expresses all styles with 
 | cva's slot support | `StyleSlotRecipe` | Variant management for multiple slots |
 | `theme.extend` in `tailwind.config.ts` | `:root` variables in `_tokens.uss` | Design token extension |
 | Tailwind JIT's `w-[120px]` | Same syntax + `StyleArbitraryValueResolver` | Arbitrary values can be used as-is |
-| Fractions (`w-1/2`, `left-1/2`, `-translate-x-1/2`) | Same syntax | Resolved as an inline percent. Sizing (`w-`, `h-`, `size-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `basis-`), position (`top-`, `right-`, `bottom-`, `left-`, `inset-`, `inset-x-`, `inset-y-`) and per-axis translate (`translate-x-`, `translate-y-`) take any `a/b` of whole numbers with a non-zero denominator, as Tailwind does (`left-3/2` is 150%). Position and translate also take the negated form (`-left-1/2`); position also takes `full` / `-full` (`left-full` is 100%, `-left-full` is -100%) and `auto` (`top-auto`, written inline, so it overrides a `top-4` the stylesheet supplies and leaves the element where one with no offset sits; it is not a `V.Motion` length channel). `auto` resets the offset to the engine's unset value, UI Toolkit's initial value for these properties; where the engine places an element whose offsets are all unset is its own layout's rule, and is not claimed to match CSS's static position. Not supported: the logical `inset-s-`, `inset-e-`, `inset-bs-`, `inset-be-` and `1/0` |
+| Fractions (`w-1/2`, `left-1/2`, `-translate-x-1/2`) | Same syntax | Resolved as an inline percent. Sizing (`w-`, `h-`, `size-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `basis-`), position (`top-`, `right-`, `bottom-`, `left-`, `inset-`, `inset-x-`, `inset-y-`) and per-axis translate (`translate-x-`, `translate-y-`) take any `a/b` of whole numbers with a non-zero denominator, as Tailwind does (`left-3/2` is 150%). Position and translate also take the negated form (`-left-1/2`); position also takes `full` / `-full` (`left-full` is 100%, `-left-full` is -100%) and `auto` (`top-auto`, written inline, so it overrides a `top-4` the stylesheet supplies and leaves the element where one with no offset sits; it is not a `V.Motion` length channel). `auto` resets the offset to the engine's unset value, UI Toolkit's initial value for these properties; where the engine places an element whose offsets are all unset is its own layout's rule, and is not claimed to match CSS's static position. The logical `inset-s-`, `inset-e-`, `inset-bs-` and `inset-be-` take the fractions, `full` and `auto` an inset takes ([§4-1a](#4-1a-logical-direction-utilities)). Not supported: `1/0` |
 | `hover:` / `focus:` / `active:` / `checked:` state variants | Same prefixes | Driven by the element's own pointer / focus state (the payload is an ordinary utility) |
 | `dark:` theme variant | Same prefix | Driven by `VelvetTheme.IsDark` |
 | `sm:` / `md:` / `lg:` / `xl:` / `2xl:` responsive variants | Same prefixes | Min-width breakpoints; evaluated against the panel root by default (or a `@container` scope) |
@@ -750,8 +939,37 @@ stylesheet that redefines `--space-4` moves `ml-4` and leaves `ms-4` where it wa
   utilities on one edge still tie as [styling-variants.md](styling-variants.md) describes, and an inline-resolved
   one outranks a stylesheet class: `ml-8 ms-4` gives the edge to `ms-4`, where Tailwind gives it to `ml-8`.
 - **Not resolved.** `scroll-ms-*` and the other `scroll-m*` / `scroll-p*` utilities, because UI Toolkit has no
-  scroll-margin or scroll-padding and the physical `scroll-ml-*` is not resolved either; and
-  `border-s-` followed by a color, as the physical per-side border colors are not.
+  scroll-margin or scroll-padding and the physical `scroll-ml-*` is not resolved either. `border-s-` followed by
+  a color is a per-side border color, in [§4-1b](#4-1b-per-side-border-colors).
+
+### 4-1b. Per-side border colors
+
+| Tailwind | Colors |
+|----------|--------|
+| `border-t-*` `border-r-*` `border-b-*` `border-l-*` | the top, right, bottom and left side |
+| `border-x-*` `border-y-*` | the left and right sides; the top and bottom sides |
+| `border-s-*` `border-e-*` `border-bs-*` `border-be-*` | the left, right, top and bottom side, read as [§4-1a](#4-1a-logical-direction-utilities) reads them |
+
+Each takes a palette name (`border-b-red-500`, `border-x-white`, `border-y-transparent`), a bracketed color
+(`border-t-[#1e293b]`, `border-s-[rgb(255,0,0)]`), and either of them with an opacity modifier
+(`border-b-red-500/40`, `border-e-[#ffffff]/[0.4]`). A bracketed value that is not a color stays the side's
+width, so `border-t-[3px]` is unchanged. Variants and the `!` modifier apply.
+
+- **Ranking.** A side's color wins on that side over a `border-{color}` class of the same variant rank,
+  whichever is written first, as Tailwind's property order has it: `border-2 border-slate-300 border-b-red-500` and
+  `border-b-red-500 border-slate-300` both leave the bottom red and the other sides slate. Two rules of one
+  variant rank order by the property Tailwind sorts each by — `border-color`, then the axis, then the logical
+  side, then the physical side — so `hover:border-l-[#00f] hover:border-s-red-500` leaves the left side `#00f`.
+  A higher rank outranks a lower one as [styling-variants.md](styling-variants.md) describes:
+  `border-b-red-500 hover:border-blue-500` is blue all round while hovered, and `!border-b-red-500` keeps the
+  bottom red under it.
+  Two of these at the base rank order the same way, whichever is written first: `border-b-red-500 border-[#00f]`
+  leaves the bottom red, and `border-s-red-500 border-l-[#00f]` the left `#00f`.
+- **Where it differs.** A palette name is read from a C# copy of the bundled palette rather than from the
+  `--color-*` token, so a custom stylesheet that redefines `--color-red-500` moves `border-red-500` and leaves
+  `border-b-red-500` where it was. A per-side color is not itself one of the `V.Motion` color channels
+  [motion.md](motion.md) lists. `current`, `inherit` and the semantic tokens are not resolved yet, for the
+  sides or for the shorthand.
 
 ### 4-2. Styling Conventions (Important)
 
@@ -931,7 +1149,7 @@ V.Suspense(
 ### 5-6. Error Boundary
 
 ```csharp
-// Velvet — V.ErrorBoundary helper (for a root boundary directly under mount)
+// Velvet — V.ErrorBoundary helper
 V.ErrorBoundary(
     fallback: ex => V.Label(text: $"An error occurred: {ex.Message}"),
     children: new[] { V.Component(SafeViewRender, key: "safe") },
@@ -944,7 +1162,7 @@ private static VNode SafeViewRender()
     return V.Label(text: "ok");
 }
 
-// For cases where you want to vary fallback / children dynamically, or log side effects (equivalent to componentDidCatch), use the functional boundary pattern
+// For a fallback that reads the boundary's own state, or to log side effects (equivalent to componentDidCatch), use the functional boundary pattern
 [Component(IsErrorBoundary = true)]
 private static VNode SafeViewBoundaryRender()
 {

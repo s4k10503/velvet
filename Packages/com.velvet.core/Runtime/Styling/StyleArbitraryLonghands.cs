@@ -89,6 +89,16 @@ namespace Velvet
             Set(sets, ArbitraryProperty.BorderLeftWidth, StyleLonghand.BorderLeftWidth);
             Set(sets, ArbitraryProperty.BorderColor, StyleLonghand.BorderTopColor, StyleLonghand.BorderRightColor,
                 StyleLonghand.BorderBottomColor, StyleLonghand.BorderLeftColor);
+            Set(sets, ArbitraryProperty.BorderTopColor, StyleLonghand.BorderTopColor);
+            Set(sets, ArbitraryProperty.BorderRightColor, StyleLonghand.BorderRightColor);
+            Set(sets, ArbitraryProperty.BorderBottomColor, StyleLonghand.BorderBottomColor);
+            Set(sets, ArbitraryProperty.BorderLeftColor, StyleLonghand.BorderLeftColor);
+            Set(sets, ArbitraryProperty.BorderXColor, StyleLonghand.BorderLeftColor, StyleLonghand.BorderRightColor);
+            Set(sets, ArbitraryProperty.BorderYColor, StyleLonghand.BorderTopColor, StyleLonghand.BorderBottomColor);
+            Set(sets, ArbitraryProperty.BorderInlineStartColor, StyleLonghand.BorderLeftColor);
+            Set(sets, ArbitraryProperty.BorderInlineEndColor, StyleLonghand.BorderRightColor);
+            Set(sets, ArbitraryProperty.BorderBlockStartColor, StyleLonghand.BorderTopColor);
+            Set(sets, ArbitraryProperty.BorderBlockEndColor, StyleLonghand.BorderBottomColor);
 
             Set(sets, ArbitraryProperty.FontSize, StyleLonghand.FontSize);
             Set(sets, ArbitraryProperty.LetterSpacing, StyleLonghand.LetterSpacing);
@@ -108,6 +118,18 @@ namespace Velvet
             Set(sets, ArbitraryProperty.Opacity, StyleLonghand.Opacity);
             Set(sets, ArbitraryProperty.AspectRatio, StyleLonghand.AspectRatio);
             Set(sets, ArbitraryProperty.TransitionDuration, StyleLonghand.TransitionDuration);
+
+            Set(sets, ArbitraryProperty.Slice, StyleLonghand.UnitySliceTop, StyleLonghand.UnitySliceRight,
+                StyleLonghand.UnitySliceBottom, StyleLonghand.UnitySliceLeft);
+            Set(sets, ArbitraryProperty.SliceX, StyleLonghand.UnitySliceLeft, StyleLonghand.UnitySliceRight);
+            Set(sets, ArbitraryProperty.SliceY, StyleLonghand.UnitySliceTop, StyleLonghand.UnitySliceBottom);
+            Set(sets, ArbitraryProperty.SliceTop, StyleLonghand.UnitySliceTop);
+            Set(sets, ArbitraryProperty.SliceRight, StyleLonghand.UnitySliceRight);
+            Set(sets, ArbitraryProperty.SliceBottom, StyleLonghand.UnitySliceBottom);
+            Set(sets, ArbitraryProperty.SliceLeft, StyleLonghand.UnitySliceLeft);
+            Set(sets, ArbitraryProperty.SliceScale, StyleLonghand.UnitySliceScale);
+            Set(sets, ArbitraryProperty.BackgroundRepeat, StyleLonghand.BackgroundRepeat);
+            Set(sets, ArbitraryProperty.SliceType, StyleLonghand.UnitySliceType);
 
             return sets;
         }

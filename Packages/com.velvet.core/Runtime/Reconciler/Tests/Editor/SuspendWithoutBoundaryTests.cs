@@ -118,6 +118,9 @@ namespace Velvet.Tests
                 "React runs a layout effect with empty dependencies once while its tree stays shown");
         }
 
+        // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the handle's and the reader's labels in the tree, hidden.
         [Test]
         public void Given_AHiddenHandleWhoseRefAnotherComponentWroteSince_When_ThePassRendersTheBoundaryStillShowingItsFallback_Then_TheRefKeepsThatHandle()
         {
@@ -135,7 +138,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert — the fallback is read beside the ref, since a boundary that revealed would write it too
-            Assert.That((Texts(), s_sharedHandle.Current), Is.EqualTo(("loading|later", "later")),
+            Assert.That((_root.DisplayedLabelTexts("|"), s_sharedHandle.Current), Is.EqualTo(("loading|later", "later")),
                 "React disconnects a hidden handle once, and leaves the ref to the component that wrote it since");
         }
 
@@ -217,6 +220,9 @@ namespace Velvet.Tests
                 "React creates a reconnected handle again, a component the reveal does not render included");
         }
 
+        // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the sibling's, the handle's and the reader's labels in the tree, hidden.
         [Test]
         public void Given_AHandleAnInnerBoundaryRevealsInThePassItsOuterBoundaryHides_When_ThatPassCommits_Then_TheHandleIsNotSet()
         {
@@ -233,7 +239,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Texts(), s_nestedHandle.Current), Is.EqualTo(("outer-loading", (string)null)),
+            Assert.That((_root.DisplayedLabelTexts("|"), s_nestedHandle.Current), Is.EqualTo(("outer-loading", (string)null)),
                 "A handle revealed and hidden again in one pass is hidden, as React reconnects nothing it hides");
         }
 
@@ -291,6 +297,9 @@ namespace Velvet.Tests
                 "An imperative handle is a layout effect, which React disconnects while hidden and creates again on reveal");
         }
 
+        // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the sibling's and the reader's labels in the tree, hidden.
         [Test]
         public void Given_AShownSiblingWhoseLayoutEffectDepsChangeInTheUpdateThatSuspendsTheBoundary_When_ItCommits_Then_TheChangedEffectWaits()
         {
@@ -303,10 +312,13 @@ namespace Velvet.Tests
 
             // Assert — the cleanup is read beside the setups, since a render that never reached the sibling sets
             // nothing up either
-            Assert.That((s_siblingSetups, s_siblingCleanups, Texts()), Is.EqualTo((1, 1, "loading")),
+            Assert.That((s_siblingSetups, s_siblingCleanups, _root.DisplayedLabelTexts("|")), Is.EqualTo((1, 1, "loading")),
                 "React commits nothing of the render a Suspense hides, the sibling's changed layout effect included");
         }
 
+        // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the reader's label in the tree, hidden.
         [Test]
         public void Given_AComponentTheBoundaryShowedWhoseOwnUpdateSuspends_When_TheBoundaryShowsItsFallback_Then_ItsLayoutEffectIsCleanedUp()
         {
@@ -319,7 +331,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert — the setup count is folded in, since a mount that ran no layout effect cleans up none
-            Assert.That((s_layoutSetups, s_layoutCleanups, Texts()), Is.EqualTo((1, 1, "loading")),
+            Assert.That((s_layoutSetups, s_layoutCleanups, _root.DisplayedLabelTexts("|")), Is.EqualTo((1, 1, "loading")),
                 "React disconnects the layout effects of a tree a Suspense hides once it has shown it");
         }
 
@@ -540,12 +552,15 @@ namespace Velvet.Tests
                 "Every pass that suspended on the resource is retried, a memoized inner one included");
         }
 
+        // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the child's label in the tree, hidden.
         [Test]
         public void Given_AResolvedBoundaryWhoseChildsOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheBoundaryShowsItsFallback()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(BoundaryHostRender, key: "boundary-host"));
-            var beforeTheUpdate = Texts();
+            var beforeTheUpdate = _root.DisplayedLabelTexts("|");
             s_setOwn.Invoke(1);
             mounted.FlushStateForTest();
 
@@ -553,10 +568,13 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That((beforeTheUpdate, Texts()), Is.EqualTo(("host|child:0", "host|loading")),
+            Assert.That((beforeTheUpdate, _root.DisplayedLabelTexts("|")), Is.EqualTo(("host|child:0", "host|loading")),
                 "The boundary above a component whose own update suspends renders again and shows its fallback");
         }
 
+        // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
+        // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
+        // the child's label in the tree, hidden.
         [Test]
         public void Given_ACompilerMemoizedBoundaryWhoseChildsOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheBoundaryShowsItsFallback()
         {
@@ -569,7 +587,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(Texts(), Is.EqualTo("host|loading"),
+            Assert.That(_root.DisplayedLabelTexts("|"), Is.EqualTo("host|loading"),
                 "A boundary whose inputs are unchanged still renders again and shows its fallback");
         }
 

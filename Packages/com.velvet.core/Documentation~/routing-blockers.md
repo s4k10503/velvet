@@ -29,8 +29,8 @@ flight, if any, goes on. `Location` is what a dialog names the destination from.
 `Proceed` sends the blocked navigation through again as the caller made it — its path, its mode, so a
 Back or Forward goes again as the same history step, and its submission, if it was one. That navigation does not consult the Blocker that
 released it — that is what `Proceeding` is for — so a predicate that still answers "block" does not have
-to disarm itself. It hands nothing back; the navigation's outcome arrives through
-`Router.OnLocationChanged` and `Router.Status`.
+to disarm itself. It hands nothing back: `Router.Navigation` reports the navigation while it is in
+flight, and `Router.OnLocationChanged` announces it if it commits.
 
 `Reset` abandons the navigation instead. The router is already where it was by the time any UI can call
 it, so this returns the Blocker to `Idle` and nothing else.
@@ -64,8 +64,8 @@ change keeps its place in the order rather than moving to the end.
 ## Where the router puts the Blocker in the sequence
 
 The Blocker is consulted before the path is matched, as React Router consults its blocker before it
-starts the navigation: a path no route matches is put to it, and nothing of the attempt — no
-`Router.PendingLocation`, no `RouterStatus.Matching` — is published while it decides.
+starts the navigation: a path no route matches is put to it, and nothing of the attempt is published
+in `Router.Navigation` while it decides.
 
 Route Guards run after it, so a Guard is not asked about an attempt the Blocker stopped. A Guard's
 redirect is not put to the Blocker, as React Router does not put a redirect a loader returns to its

@@ -56,7 +56,7 @@ namespace Velvet
         // for the context's whole lifetime. A genuine poolable leaf is also reclaimed to the pool:
         // a Button or a Label only when childless, since either can be given children — V.Button's own DSL,
         // or V.Custom<T> for both — which CreateElement inline-expands into the element itself, while this
-        // branch releases resources for the orphan alone. Toggle / Slider / TextField are reclaimed
+        // branch releases resources for the orphan alone. Toggle / Slider / SliderInt / TextField are reclaimed
         // unconditionally: each already holds its own constructed sub-element, so a count cannot separate
         // that from a V.Custom child — their reset detaches one by exclusion instead
         // (FiberElementPoolReset.DetachForeignChildren), on this path and on ordinary unmount alike. A
@@ -80,6 +80,7 @@ namespace Velvet
 
             var exactType = element.GetType();
             if (exactType == typeof(Toggle) || exactType == typeof(Slider) || exactType == typeof(TextField)
+                || exactType == typeof(SliderInt)
                 || ((exactType == typeof(Button) || exactType == typeof(Label)) && element.childCount == 0))
             {
                 CleanupElementResources(element);
@@ -121,6 +122,10 @@ namespace Velvet
             else if (type == typeof(Slider))
             {
                 VNodePool.ReturnSlider((Slider)element);
+            }
+            else if (type == typeof(SliderInt))
+            {
+                VNodePool.ReturnSliderInt((SliderInt)element);
             }
             else if (type == typeof(Button))
             {
@@ -199,6 +204,7 @@ namespace Velvet
             // speculative orphan rolled back — still owes the setup the walk queued for it. Cancelling it
             // is what keeps the drain from installing a ref on an element no tree holds.
             _ctx.DropPendingRefAttach(element);
+            _ctx.ForgetRefDetachedWhileHidden(element);
             if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
                 _ctx.RefCallbacks.Remove(element);
@@ -275,6 +281,7 @@ namespace Velvet
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);
+            StyleArbitraryValueResolver.ReleaseShownImageWatch(element);
             // Same reason for the per-frame drivers' transition suspension: a driver whose release this teardown
             // pre-empted would otherwise stay recorded as an owner, and the reused element's next play would read
             // that stale owner as "another driver is still live" and never hand transitions back to the cascade.

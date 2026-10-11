@@ -1,14 +1,16 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 
 namespace Velvet
 {
     // Frame-driven state machine walking an AnimationSequenceStep[] for Hooks.UseAnimationSequence. Owns no
-    // VisualElement/VNode/scheduler state of its own — Advance is driven by UseFrame's own per-frame delta
-    // (see Hooks.UseAnimationSequence), and every observable effect is read back out through ToState() so the
+    // VisualElement/VNode state of its own, and reaches the plays its steps start only through Playback — Advance
+    // is driven by UseFrame's own per-frame delta (see Hooks.UseAnimationSequence), and the label and transition
+    // a step commits are read back out through ToState() so the
     // caller can feed it straight into a coordinating V.Motion(animate:, transition:) prop. A step's effect
     // (a To step's label/transition, or a Call step's callback) commits the moment the walker ARRIVES at that
     // step, not once its hold elapses — "holds on this step" means the effect already happened and the cursor
@@ -43,9 +45,43 @@ namespace Velvet
         // DetachAwait clears both.
         private AwaitHold? _await;
 
-        // Frozen by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is simply never called while
-        // true (the caller gates it), so there is nothing more for this flag to do here.
-        public bool IsPaused { get; set; }
+        // The plays the To steps start step by this, through the transition ToState hands out.
+        public MotionPlayback Playback { get; } = new();
+
+        // The copy of _currentTransition ToState hands out, kept while _currentTransition stays the same.
+        private StyleTransitionConfig? _handedTransition;
+
+        // Set by Hooks.UseAnimationSequence's controls.Pause()/Play(); Advance is never called while true (the
+        // caller gates it), and the Spring and Bezier plays the steps started hold with it.
+        public bool IsPaused
+        {
+            get => Playback.IsPaused;
+            set => Playback.IsPaused = value;
+        }
+
+        // True from Cancel until the next reseed.
+        public bool IsCancelled { get; private set; }
+
+        private bool _releaseHeldAfterCommit;
+
+        // Called after every commit of the hook's component.
+        public void AfterCommit()
+        {
+            if (_releaseHeldAfterCommit)
+            {
+                _releaseHeldAfterCommit = false;
+                Playback.ReleaseHeldPlays();
+            }
+        }
+
+        // Framer Motion's cancel() over the sequence: the cursor stops where it is, and each Spring or Bezier play
+        // its steps started returns to its starting values and stops there (MotionPlayback.CancelPlays).
+        public void Cancel()
+        {
+            IsPaused = true;
+            IsCancelled = true;
+            Playback.CancelPlays();
+        }
 
         public bool IsComplete => _isComplete;
 
@@ -208,7 +244,7 @@ namespace Velvet
                 if (_steps[i].Kind == AnimationSequenceStepKind.To)
                 {
                     label = _steps[i].Label;
-                    carry = _steps[i].Transition ?? carry ?? StyleTransition.Fade;
+                    carry = SegmentTransition(_steps[i].Transition ?? carry ?? StyleTransition.Fade);
                 }
                 passSec += HoldOf(_steps[i], carry);
             }
@@ -236,7 +272,22 @@ namespace Velvet
             ArriveAtStart(0);
         }
 
-        public AnimationSequenceState ToState() => new(_currentLabel, _currentTransition, _stepIndex, _isComplete);
+        public AnimationSequenceState ToState() => new(_currentLabel, HandedTransition(), _stepIndex, _isComplete);
+
+        // The coordinator Motion is handed a copy carrying Playback, which is how the plays its label starts find
+        // the sequence; the fold above keeps the authored configs.
+        private StyleTransitionConfig? HandedTransition()
+        {
+            if (_currentTransition == null)
+            {
+                return null;
+            }
+            if (!ReferenceEquals(_handedTransition?.PlaybackOrigin, _currentTransition))
+            {
+                _handedTransition = _currentTransition.WithPlayback(Playback);
+            }
+            return _handedTransition;
+        }
 
         // The wait a reseed leaves is abandoned only after the reseed has arrived, here and in ArriveAtStart's
         // drain: its token's callbacks are user code, so one that throws must find the walker reseeded rather
@@ -283,6 +334,11 @@ namespace Velvet
             _stepIndex = 0;
             _passesCompleted = 0;
             HasReseeded = true;
+            // A cancel holds its plays at their starting values. The reseed's own plays start from them on the
+            // elements whose label it changes, which they can do only in the commit that renders the reseed, so
+            // the rest are released after it (AfterCommit).
+            _releaseHeldAfterCommit |= IsCancelled;
+            IsCancelled = false;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
             _timeBeforeStepSec = 0f;
@@ -395,7 +451,7 @@ namespace Velvet
             {
                 case AnimationSequenceStepKind.To:
                     _currentLabel = step.Label;
-                    _currentTransition = step.Transition ?? _currentTransition ?? StyleTransition.Fade;
+                    _currentTransition = SegmentTransition(step.Transition ?? _currentTransition ?? StyleTransition.Fade);
                     _currentHoldSec = HoldOf(step, _currentTransition);
                     break;
                 case AnimationSequenceStepKind.Wait:
@@ -525,21 +581,24 @@ namespace Velvet
         // governs is mid-tween.
         private static float ResolveHoldFromTransition(StyleTransitionConfig transition)
         {
+            // Framer Motion's sequence lengthens a segment by its repeats and the waits between them, as its own
+            // animation of the segment takes (SegmentTransition leaves only a repeat it plays).
+            var repeat = MotionRepeat.Of(transition);
             if (transition.Type == TransitionType.Spring)
             {
                 return transition.DelaySec
-                    + SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass);
+                    + (float)repeat.TotalSec(SpringDurationSec(transition.Stiffness, transition.Damping, transition.Mass));
             }
 
             var hold = transition.DurationSec + transition.DelaySec;
 
             // Bezier playback drives every channel with the SAME curve and never reads PropertyOverrides (like a
-            // spring's single stiffness/damping/mass), so its real span is the fixed DurationSec + DelaySec.
+            // spring's single stiffness/damping/mass), so its real span is its passes plus DelaySec.
             // Factoring a longer per-property override in here would park the walker on the step past the moment
             // the tween it describes has actually finished.
             if (transition.Type == TransitionType.Bezier)
             {
-                return hold;
+                return transition.DelaySec + (float)repeat.TotalSec(transition.DurationSec);
             }
 
             var overrides = transition.PropertyOverrides;
@@ -558,40 +617,32 @@ namespace Velvet
             return hold;
         }
 
-        // Framer Motion's sequence gives a spring segment the duration its generator reports done at: sampled
-        // every 50ms, travelling 0→100 when the keyframes carry no distance of their own — as a label carries
-        // none — resting within 0.5 of the target at a speed of at most 2 per second, and at most 20 seconds.
-        private const double SpringTravel = 100.0;
-        private const double SpringRestDelta = 0.5;
-        private const double SpringRestSpeed = 2.0;
-        private const int SpringSampleMs = 50;
-        private const int MaxSpringDurationMs = 20000;
-
-        // Zero for parameters a play refuses to tick, since that play completes at once.
+        // Framer Motion's sequence gives a spring segment the duration its generator reports done at, travelling
+        // 0→100 when the keyframes carry no distance of their own — as a label carries none — and at most 20
+        // seconds. Zero for parameters a play refuses to tick, since that play completes at once.
         private static float SpringDurationSec(float stiffness, float damping, float mass)
-        {
-            if (!SpringIntegrator.AreValidParameters(stiffness, damping, mass))
-            {
-                return 0f;
-            }
-            // MUTANT_SURVIVES(equivalent): a sample at the ceiling that rests returns the ceiling, as one that does
-            // not rest falls through to it, so `<=` changes nothing.
-            for (var ms = 0; ms < MaxSpringDurationMs; ms += SpringSampleMs)
-            {
-                if (SpringRestsAt(ms / 1000.0, stiffness, damping, mass))
-                {
-                    return ms / 1000f;
-                }
-            }
-            return MaxSpringDurationMs / 1000f;
-        }
+            => SpringIntegrator.AreValidParameters(stiffness, damping, mass)
+                ? Math.Min(MotionSpringDriver.PassDurationSec(100f, stiffness, damping, mass), 20f)
+                : 0f;
 
-        private static bool SpringRestsAt(double t, float stiffness, float damping, float mass)
+        // Framer Motion's sequence ignores a segment's repeat of 20 or more, warning that it does, and plays the
+        // segment once.
+        private const float MaxSegmentRepeat = 20f;
+        private static readonly ConditionalWeakTable<StyleTransitionConfig, StyleTransitionConfig> s_segmentOnce = new();
+
+        private static StyleTransitionConfig SegmentTransition(StyleTransitionConfig transition)
         {
-            var (displacement, velocity) = SpringIntegrator.Solve(SpringTravel, 0.0, t, (stiffness, damping, mass));
-            // MUTANT_SURVIVES(equivalent): `<` differs only on a sample landing exactly on 0.5 or on 2, and no
-            // sample of the springs the sequence cases time lands on either.
-            return Math.Abs(displacement) <= SpringRestDelta && Math.Abs(velocity) <= SpringRestSpeed;
+            if (transition.Repeat < MaxSegmentRepeat)
+            {
+                return transition;
+            }
+            return s_segmentOnce.GetValue(transition, static repeating =>
+            {
+                FiberLogger.LogWarning("AnimationSequence",
+                    $"A To step's transition repeats {repeating.Repeat} times; a sequence step plays a repeat below "
+                    + $"{MaxSegmentRepeat} only, so this step plays its transition once.");
+                return repeating.WithoutRepeat();
+            });
         }
     }
 }

@@ -98,13 +98,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ViewportHeightClass_When_Parsed_Then_DeclinesAsUnsupportedUnit()
+        public void Given_ViewportHeightClass_When_Parsed_Then_ItIsClaimedAsAHeight()
         {
-            // Act — vh/vw need the panel viewport and are not yet supported, so the class stays unrecognized.
-            var ok = StyleArbitraryValueResolver.TryParse("h-[50vh]", out _);
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("h-[50vh]", out var s);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That((ok, s.Property), Is.EqualTo((true, ArbitraryProperty.Height)));
         }
 
         #endregion
@@ -156,13 +156,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AlphaHexBaseWithOpacityModifier_When_Parsed_Then_ModifierReplacesBaseAlpha()
+        public void Given_AlphaHexBaseWithOpacityModifier_When_Parsed_Then_ModifierMultipliesBaseAlpha()
         {
-            // Act — base alpha 0x80 (~0.5); the /20 modifier is authoritative and replaces it.
+            // Act — base alpha 0x80 (~0.5); /20 multiplies it, as Tailwind v4's color-mix with transparent does.
             var ok = StyleArbitraryValueResolver.TryParse("bg-[#ef444480]/20", out var s);
 
             // Assert
-            Assert.That((ok, s.Color.a), Is.EqualTo((true, 0.2f)));
+            Assert.That(ok ? s.Color.a : float.NaN, Is.EqualTo(128f / 255f * 0.2f).Within(1e-6f));
         }
 
         [Test]
@@ -3463,6 +3463,17 @@ namespace Velvet.Tests
             // Act — a ratio has no unit, and the float setters read only the value: accepting this would
             // make grow-[50%] a factor of fifty.
             var ok = StyleArbitraryValueResolver.TryParse("grow-[50%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a flex factor never took a percentage, and the border decline leaves it so.
+        [Test]
+        public void Given_ShrinkArbitraryWithAPercent_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("shrink-[50%]", out _);
 
             // Assert
             Assert.That(ok, Is.False);

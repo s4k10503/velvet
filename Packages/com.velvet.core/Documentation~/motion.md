@@ -4,7 +4,7 @@
 declarative animation API on Unity UI Toolkit. This guide covers the variant-driven feature set:
 labels and inheritance, mount enters, exits and `PopLayout`, orchestration
 (`staggerChildren` / `delayChildren` / `when`), per-property transition overrides, spring physics,
-and exact cubic-bezier easing — plus the transition semantics that tie them together: **the node's
+exact cubic-bezier easing and repeating a play — plus the transition semantics that tie them together: **the node's
 own config as the default a pose overrides** (and the instant opt-out; see the last section).
 
 The `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …) and
@@ -34,6 +34,17 @@ V.Motion(key: "card", className: "w-24 h-24 rounded-xl bg-sky-500",
 
 A pose is a *class delta*: classes present in the resting variant and absent from another are
 removed/added on swap, and anything not mentioned falls back to the element's base `className`.
+
+A tween temporarily replaces the element's inline transition duration and easing, and its transition
+delay only where that tween sets one. When it finishes or is interrupted, it restores the element's
+own lists, including a `duration-[...]` value; an exit interrupted on a panel hands its timing on to
+the reversal that plays it back, and the restore waits until that reversal ends. When Velvet next writes or
+releases a tween's timing, a slot whose keyword or list entries differ from the value the tween timing
+last wrote there is taken as code's: it becomes the element's own, and the tweens already playing stop
+supplying that slot until one of them writes it again. An identical reassignment, or a change undone
+before that observation, is not taken. If tween plays overlap on one element, each slot holds the value
+of the latest one still playing that wrote it, and the end of the last restores the element's own
+lists.
 
 **Label inheritance (Framer's variant propagation):** a Motion naming none of `animate`, `initial` and
 `exit` follows the nearest ancestor Motion's active label and takes that ancestor's `initial` label with
@@ -187,8 +198,12 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
 ```
 
 - `When = Together` (default): children start at `DelayChildrenSec` + their stagger slot.
-- `When = BeforeChildren`: children additionally wait out the parent's own
-  `DelaySec + DurationSec` span.
+- `When = BeforeChildren`: children additionally wait out the parent's own delay and play: its
+  `DurationSec` for a tween or a bezier, the time its slowest channel takes to rest for a spring
+  (measured as *Repeating a play* gives), and every repeat of either (see *Repeating a play*). A
+  spring's wait is measured from the pose classes at rest, so a spring that interrupts a running
+  one, starting where that one stood and with its velocity, can end before or after its children
+  start, where Framer's children wait for the animation itself.
 - `When = AfterChildren` is not orchestratable under label propagation; it warns once and falls
   back to `Together`.
 - Each Motion numbers its own inheriting children, as Framer numbers each variant parent's: a child
@@ -248,13 +263,15 @@ new StyleTransitionConfig
 }
 ```
 
-- Springs drive the channels of a variant delta (see *Driven channels* below) with a
-  velocity-preserving integrator: **interrupting a spring retargets from the current value *and
-  velocity***, Framer's signature interruptible feel. An exit whose delta resolves no channel at
-  all completes immediately.
-- `DurationSec` is ignored for springs — settling time comes from the physics.
-- Springs drive mount enters, presence exits, and runtime `animate` label swaps alike — flipping
-  a label mid-spring retargets from the current value and velocity.
+- Springs drive the channels of a variant delta (see *Driven channels* below), each sampled from
+  Framer Motion's spring by the time since the play started. **Interrupting a running spring — a
+  label change mid-spring, or an exit cancelled mid-flight — releases a new one from the current
+  value *and velocity***, as Framer starts an interrupted value's next animation. A spring that
+  interrupts a bezier play starts at rest, since a bezier play keeps no velocity. An exit whose delta resolves no channel at all completes immediately.
+- `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
+  slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
+  so a frame that arrives late moves the spring as far as the time it covers.
+- Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
 
@@ -365,8 +382,8 @@ resolved start described above.
   Motion**, which takes over only the values it animates and leaves the element's other CSS
   transitions running. Two overlapping plays each hold
   their own claim, so the first to finish cannot un-suspend the second, and the suspension lifts as
-  soon as the last one settles or is cancelled. Reach for `Tween` when you want the class's own
-  transition to do the work instead.
+  soon as the last one settles or is cancelled. Reach for `Tween` on the default clock when you want the
+  class's own transition to do the work instead; on any other, a `Tween` is driven too (*Clocks* below).
 
 ## Cubic-bezier easing
 
@@ -383,6 +400,69 @@ function is a function of time and so must be monotone; a value outside that ran
 falls back to the default curve with a one-shot console warning instead of being silently clamped.
 `BezierY1` / `BezierY2` are left unclamped, so an overshoot/anticipate curve genuinely passes its
 target mid-tween.
+
+## Repeating a play (`Repeat` / `RepeatType` / `RepeatDelaySec`)
+
+Framer Motion's `repeat`, `repeatType` and `repeatDelay`, on `StyleTransitionConfig`, played by
+`TransitionType.Bezier` and `TransitionType.Spring`:
+
+```csharp
+// A down-arrow that bobs for as long as it is on screen.
+var bob = new StyleTransitionConfig
+{
+    Type = TransitionType.Bezier, DurationSec = 0.6f,
+    Repeat = float.PositiveInfinity, RepeatType = TransitionRepeatType.Reverse,
+};
+V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
+```
+
+- `Repeat` counts the passes after the first, as Framer's `repeat` does: `Repeat = 2` plays three.
+  `float.PositiveInfinity` repeats until a later play, an exit or an unmount replaces the play. A
+  negative, NaN or fractional value throws `ArgumentOutOfRangeException`; Framer accepts a fraction.
+- `RepeatType = Loop` (the default) starts every pass at the from-pose. `Reverse` plays every second
+  pass backwards in time: a bezier's easing comes back reversed, so an ease-out pass returns as an
+  ease-in one, as CSS's `animation-direction: alternate` does, and a spring retraces its own path,
+  overshoot included. `Mirror` plays every second pass from the to-pose back to the from-pose: a bezier
+  on the same easing, a spring released from the to-pose.
+- `RepeatDelaySec` waits that many seconds after each pass but the last before the next one starts.
+  A bezier holds the value its pass ended on; a spring keeps being sampled past its pass, as Framer's
+  is, so it shows whatever small motion its spring still has. A negative or non-finite value throws
+  `ArgumentOutOfRangeException`.
+- A spring's pass is the duration Framer measures for it, which also ends a play that does not
+  repeat: the first 50 ms sample at which the spring rests, within 0.5 of its target and moving at
+  no more than 2 per second over a travel of 5 or more, within 0.005 and at 0.01 per second under it.
+  Framer hands an opacity and a background color to the browser unless the repeat mirrors or waits
+  between passes. There the spring becomes an easing over a travel of 100, cut at 20 s, onto which
+  the value's velocity is carried unscaled, so an opacity on the default spring ends at 1.05 s. Any
+  other channel — a translate, scale or rotate among them, since Framer's `x`, `y`, `scale` and
+  `rotate` are values of their own that it keeps on its main thread — and any channel under a
+  mirrored or waiting repeat, runs on Framer's main thread over its own travel, a color's being 100,
+  an interrupted color's too: one that has not rested by 20 s never ends, and under a repeat plays
+  its first pass on. Framer animates each value on its own, so the channels can fall out of step;
+  the play ends when its slowest channel does.
+- A play of an odd `Repeat` under `Reverse` or `Mirror` ends on its from-pose, as Framer's does, and
+  holds it there although the element's classes are the to-pose's, until a later play, an exit or a
+  teardown cancels it; a pose that lands at once takes over only the properties it names. Every other
+  finished play hands its values back to the to-pose's classes, as a play that does not repeat does.
+- The repeat covers enters, label changes and exits alike. An exit repeating without end never
+  completes, so its `AnimatePresence` keeps the element.
+- A cancelled exit's reversal plays once, whatever the exit repeated.
+- A `layoutId` move on a spring springs a progress over Framer's travel of 1000, on its main thread,
+  and ends when that spring's duration has run.
+- `When = BeforeChildren` waits for every pass and every wait between them. A parent repeating without
+  end never finishes, so its children's plays never start, as Framer's never do: they hold the pose
+  they were at.
+- A `Hooks.UseAnimationSequence` `To` step deriving its hold counts a repeat below 20. Framer's
+  sequence ignores a segment's repeat of 20 or more, an endless one included, and so does a `To`
+  step: it hands out its transition without the repeat, holds for one pass and logs a warning, once
+  per transition. A spring step's pass is Framer's sequence duration over a travel of 100, which is
+  also the play's for a channel Framer hands to the browser; under a mirrored or waiting repeat, or
+  for a channel on Framer's main thread, the play can run longer or shorter, since a label tells the
+  sequence nothing of the classes it plays between.
+
+A `Tween` does not play a repeat yet: a play on one with `Repeat` above zero plays once, and the first
+such play in a mounted tree logs a warning. A `layoutId` move plays once whatever its transition
+repeats.
 
 ## Shared-element layout animation (`layoutId`)
 
@@ -530,6 +610,47 @@ swap driving the same slot as the mode is shadowed too. While such a swap is run
 inline `transition-property` is the swap's: the suspension is neither taken nor handed back for the
 swap's length, and the swap's own completion puts back whichever of the two the element still needs.
 
+## Clocks (holding motion with game time)
+
+A mount chooses the clock its motion advances on, through `MountOptions.MotionClock`:
+
+```csharp
+V.Mount(root, tree, new MountOptions { MotionClock = MotionClock.GameTime });
+```
+
+- `MotionClock.Realtime`, the default: a `Tween` runs on UI Toolkit's own transitions, spring and bezier
+  plays, `layoutId` moves and `Hooks.UseFrame` step by the panel scheduler's own interval, and the
+  `animate-*` loops and `filter-*` transitions read `Time.realtimeSinceStartupAsDouble`.
+- `MotionClock.GameTime` reads `Time.timeAsDouble`, Unity's scaled game time.
+- A class deriving from `MotionClock` and overriding `NowSec` is a clock the application drives itself,
+  such as one a frame-step capture advances by a fixed step.
+
+On any other clock the tree's motion steps by the distance `MotionClock.NowSec` moved since its previous
+frame, so a clock that holds still holds it where it is, and one that moves a frame's worth moves it a
+frame's worth:
+
+- **Every `V.Motion` play** — a mount enter, an exit, a label change — whatever its `Type`, including the
+  wait for its `DelaySec` and stagger slot; a step that passes the delay carries what it passed it by into
+  the play. A `Tween` is played by the per-frame driver a `Bezier` plays on, rather than by UI Toolkit's
+  transition, which would run on the panel's time: on the tween's own duration, delay and
+  `PropertyOverrides`, eased by the curve UI Toolkit eases that transition by for each `Easing`. So it
+  animates the channels *Driven channels* lists, a `StyleTransition` preset's opacity, translate and scale
+  among them. A property outside them lands with the swap where the play suspends the element's own
+  transitions, which it does while they name a property one of its channels writes (`transition-all` does);
+  transitions naming no such property, `transition-filter` among them, are left running. The play
+  completes once its slowest `PropertyOverrides` entry has run, whether or not a channel plays that entry's property, and an exit cancelled part-way
+  reverses over the shortened timing UI Toolkit gives a reversed transition.
+- **A `layoutId` move**, and the opacity a crossfade hands back as it ends.
+- **A `filter-*` transition**, including one UI Toolkit would animate itself on the default clock
+  ([styling-filters.md](styling-filters.md#transitions)).
+- **The `animate-*` loops**, which show the phase of the distance since they started.
+- **`Hooks.UseFrame`**, whose delta is the distance the clock moved; a frame over which it did not move
+  invokes nothing. `Hooks.UseAnimationSequence` walks its steps on that delta, so its holds wait for the
+  clock too.
+
+Any other transition an element's own utility classes declare (`transition-colors` under a `hover:`
+colour, say) is UI Toolkit's, and runs on the panel's time on any clock.
+
 ## Timelines (`Hooks.UseAnimationSequence`)
 
 Framer Motion's `useAnimate` parity target: `UseAnimationSequence` owns the clock (it is itself built
@@ -544,7 +665,8 @@ A step is exactly one of:
   elapses) -- "holds on this step" means the label is already active and the cursor is waiting before
   moving to the next one. `transition` reuses the most recent non-null transition earlier in the
   sequence when omitted (falling back to `StyleTransition.Fade` if none has been set yet); `holdSec`
-  defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step holds for its
+  defaults to that transition's `DurationSec + DelaySec` for a tween or a bezier, lengthened by a
+  `Bezier` or `Spring` repeat (see *Repeating a play*). A `Spring`-typed step holds for its
   `DelaySec` plus the duration Framer Motion's sequence gives the same spring (clamped to zero when
   the negative delay consumes the hold): a travel of 100,
   sampled every 50ms until it is within 0.5 of its target and moving at no more than 2 per second, and
@@ -585,9 +707,42 @@ restarts it on every render, so a sequence that plays once per mount passes `Arr
 `useEffect(fn, [])` would. `controls.Restart()` returns to step 0 and re-commits its effect (including
 firing a `Call` step 0's callback again) without implicitly resuming a paused sequence.
 
-`controls` drive the sequence's own timeline -- its step cursor and its clock -- and not a Motion play a
-step's label has already started: `controls.Pause()` freezes the cursor, and the transition the current
-step handed out runs on to its end. The handle also carries `controls.TimeSec`, the Web Animations API's
+`controls` carry part of Framer Motion's sequence playback controls: `play`, `pause`, `speed`, `cancel` and
+a read-only `time`. Framer's `stop`, `complete`, `duration` and `then` (its `finished` promise) are not
+offered. They drive the sequence's own timeline -- its step cursor and its clock -- and the `Spring` and
+`Bezier` plays its steps' labels start, as Framer Motion's controls reach every animation of a sequence. A
+play is the sequence's when it starts on a Motion handed `state.CurrentTransition`, or on a descendant
+taking its label from that Motion (see "Label inheritance" above), whichever transition the swap itself
+plays -- a descendant's mount enter, and a presence child's enter, included when it mounts part-way through.
+`state.CurrentTransition` is a copy of the step's transition for that reason: equal to it in every setting,
+but not the same instance.
+
+- `controls.Pause()` freezes the cursor and holds those plays where they are, their delays included;
+  `controls.Play()` resumes both. A play a step starts while the sequence is paused, such as step 0's under
+  `autoplay: false`, holds at its start until `Play()`.
+- `controls.Speed` is Framer Motion's `speed` (the Web Animations API's `playbackRate`): 1 by default,
+  2 plays the timeline and those plays twice as fast, 0.5 half as fast, and 0 holds both as a pause does.
+  Setting it re-times the plays already running from the next frame, delays included. A negative, NaN or
+  infinite value throws `ArgumentOutOfRangeException`: reverse is not offered (see below).
+- `controls.Cancel()` is Framer Motion's `cancel()`: the cursor stops where it is, and each of those plays
+  returns to the values it started from and stops there, without its completion running, as a cancelled
+  Framer animation leaves its value at its start; the label stays the step's. A `Spring` or `Bezier` play
+  the element starts from outside the sequence, an exit included, starts from those values on the channels
+  its classes name, as Framer's next animation starts from where the value sits, and the held values on the
+  other channels stay where they are, through that play's end too. Translate is one style for both axes: a
+  play naming one axis leaves the other held. A play of no duration, a `Tween` on the panel's clock or a teardown takes
+  the held values off instead; a `Tween` the mount's own clock drives starts from them as a `Bezier` does. Inside the sequence, `controls.Play()` after a cancel starts it again from step 0 and
+  `controls.Restart()` reseeds it at step 0 still paused: the plays the reseed starts begin from the held
+  values on the channels they name, and every value the cancel held that is still on, whatever its channel,
+  comes off once the reseed commits.
+
+A `Tween` play -- the default `Type`, and that of `StyleTransition.Fade`, which a sequence takes until a step
+names a transition -- follows the controls only on a mount whose clock is not the panel's, where the per-frame
+driver plays it ([Clocks](#clocks-holding-motion-with-game-time)). On the default `MotionClock.Realtime` it is
+UI Toolkit's own transition, and none of the controls reaches it: it runs on to its end. Give the steps a
+`Spring` or `Bezier` transition where the plays have to follow the controls on any clock.
+
+The handle also carries `controls.TimeSec`, the Web Animations API's
 `currentTime` and Framer Motion's `time`, read-only: seconds into the timeline, counting each hold at its
 authored length. As `currentTime` does, it keeps growing across a loop's passes rather than starting from 0
 on each; a completed sequence reads its full length, and a reseed reads 0. Under `iterations` it counts a
@@ -595,13 +750,10 @@ on each; a completed sequence reads its full length, and a reseed reads 0. Under
 of length `L` ends at `n * L + (n - 1) * repeatDelaySec`, with no gap after the last pass. It is read live from
 the handle, where `state` is a per-render snapshot.
 
-A cancel, a playback rate (`playbackRate`, Framer Motion's `speed`), seek (a settable `time`) and reverse
-(`reverse()`, a negative `playbackRate`) are not offered. Each acts on the animation already running, and the
-sequence only hands a label's Motion its transition: it holds no handle on the play that starts, so none of
-them could reach it, as `Pause` cannot. A timeline of labels also cannot sample the interpolated motion
-between two of them, and running it backwards across a `Call` step has no settled answer to whether the
-callback fires again. To reverse a transition a label started, flip that Motion's `animate` label back: see
-"Springs" for what an interrupted spring keeps.
+Seek (a settable `time`) and reverse (`reverse()`, a negative `speed`) are not offered. A timeline of labels
+cannot yet sample the interpolated motion between two of them, and running it backwards across a `Call`
+step has no settled answer to whether the callback fires again. To reverse a transition a label started,
+flip that Motion's `animate` label back: see "Springs" for what an interrupted spring keeps.
 
 Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
 outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`
@@ -632,9 +784,11 @@ A finished sequence keeps its last step current, as `animation-fill-mode: forwar
 commits nothing, as the default `animation-fill-mode: none` would. Where this differs from the Web Animations API
 and CSS: the count is a whole number, where both accept a fraction such as `2.5`.
 
-An alternate direction (CSS's `animation-direction: alternate`, Framer Motion's `repeatType: "reverse"`)
-is not offered: playing a `Call` step backwards has no settled answer to whether its callback fires
-again, and a `To` step played backwards would need the label before it rather than its own.
+An alternate direction for the sequence as a whole (CSS's `animation-direction: alternate`, Framer
+Motion's `repeatType: "reverse"` on a sequence) is not offered: playing a `Call` step backwards has no
+settled answer to whether its callback fires again, and a `To` step played backwards would need the label
+before it rather than its own. A single label swap that goes there and back is a `To` step whose
+`Bezier` or `Spring` transition repeats (see *Repeating a play*).
 
 ## Transition semantics: a node default a pose overrides
 
@@ -690,7 +844,7 @@ Three consequences worth knowing:
 - **A pose's transition carries the child-orchestration knobs too.** `StaggerChildrenSec`,
   `DelayChildrenSec` and `When` are read off whichever config drives the swap, so a coordinator's
   pose can orchestrate its inheriting descendants — and a `When = BeforeChildren` wait is measured
-  from that pose's own `DelaySec + DurationSec` span.
+  from that pose's own delay and play (see *Orchestration*).
 - **`transition-*` utilities are optional for variant swaps.** They still govern property
   changes outside the variant system (a `hover:` state flipping, an arbitrary class toggle); a
   variant swap's inline transition simply takes precedence while it plays and is released

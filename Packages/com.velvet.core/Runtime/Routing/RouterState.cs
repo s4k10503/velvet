@@ -2,19 +2,6 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    public enum RouterStatus
-    {
-        Idle,
-        /// <summary>The path has matched, and the matched routes' guards are running.</summary>
-        Matching,
-        Loading,
-        Ready,
-        NotFound,
-        Error,
-        /// <summary>A submission other than <c>get</c> has matched, and its guards or its action are running.</summary>
-        Submitting,
-    }
-
     /// <summary>Controls how a successful navigation changes history.</summary>
     public enum NavigationMode
     {
@@ -56,23 +43,36 @@ namespace Velvet
         public IReadOnlyList<RouteMatch>? Matches { get; init; }
     }
 
-    /// <summary><c>Hooks.UseNavigation</c> reports these phases: React Router's <c>navigation.state</c>.</summary>
+    /// <summary>The phase of the navigation in flight: React Router's <c>navigation.state</c>.</summary>
     public enum NavigationLifecycle
     {
+        /// <summary>No navigation is in flight.</summary>
         Idle,
+        /// <summary>
+        /// A navigation has matched a route, and its guards or its loaders are running. A submission reports
+        /// this too unless it is one <see cref="Submitting"/> names.
+        /// </summary>
         Loading,
-        /// <summary>A submission's guards or action are running.</summary>
+        /// <summary>
+        /// A <c>post</c>, <c>put</c>, <c>patch</c> or <c>delete</c> submission, the method compared without
+        /// regard to case, has matched a route, and its guards or its action are running. A <c>get</c>
+        /// submission and one whose method no form takes, <c>head</c> say, report
+        /// <see cref="Loading"/> instead.
+        /// </summary>
         Submitting,
     }
 
-    /// <summary>Snapshot of the active navigation exposed by <c>Hooks.UseNavigation</c>.</summary>
+    /// <summary>
+    /// The navigation in flight, as <see cref="Router.Navigation"/> holds it and <c>Hooks.UseNavigation</c>
+    /// returns it: React Router's <c>navigation</c>.
+    /// </summary>
     public readonly struct NavigationState
     {
         public NavigationLifecycle State { get; init; }
         /// <summary>
-        /// While <see cref="State"/> is <see cref="NavigationLifecycle.Loading"/>, the location being
-        /// navigated to; null while it is <see cref="NavigationLifecycle.Idle"/>, as React Router's
-        /// <c>navigation.location</c> is <c>undefined</c> then.
+        /// While <see cref="State"/> is not <see cref="NavigationLifecycle.Idle"/>, the location being
+        /// navigated to; null while it is, as React Router's <c>navigation.location</c> is <c>undefined</c>
+        /// then.
         /// </summary>
         public RouterLocation? Location { get; init; }
 

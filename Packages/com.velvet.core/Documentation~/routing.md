@@ -216,14 +216,34 @@ does. A pathless layout, whose path is empty too, is not an index route.
 - A mutation submitted to the location already committed replaces that history entry, unless its action
   fails or `Replace` says otherwise, as React Router's does.
 
+## Router state
+
+A `Router` keeps the location it has committed apart from the navigation in flight, as React Router's
+`router.state` does:
+
+- **The committed location** — `Router.CurrentLocation`, `Router.CurrentLoaderData`,
+  `Router.CurrentLoaderErrors` — is React Router's `location`, `loaderData` and `errors`. An attempt
+  that does not commit — blocked, matching no route, cancelled or superseded, or thrown out of — leaves
+  it as it was. Within a committed location, a `Suspend` loader settling is what changes it.
+  `Hooks.UseLocation`, `Hooks.UseLoaderData` and `Hooks.UseRouteError` read it. `Router.CurrentActionData`
+  is the exception the route actions section gives: an action's result is published before the
+  loaders run.
+- **The navigation in flight** — `Router.Navigation`, raised through `Router.OnNavigationChanged` — is
+  React Router's `navigation`. It describes one attempt, from the moment its path has matched a route
+  until it commits or gives up, and is `Idle` the rest of the time.
+
+How an attempt ended is not router state: `Router.NavigateAsync` and `Router.SubmitAsync` hand it to
+their caller, as a `NavigationResult` or as the exception the attempt threw.
+
 ## Pending UI
 
-`Hooks.UseNavigation()` is `useNavigation()`, returning `NavigationState`:
+`Hooks.UseNavigation()` is `useNavigation()`, returning the `NavigationState` `Router.Navigation` holds:
 
-- `State` is `NavigationLifecycle.Submitting` from the moment a submission other than `get` has matched
-  a route until its action returns, `NavigationLifecycle.Loading` from the moment a navigation has
-  matched a route until it commits or gives up, and `NavigationLifecycle.Idle` otherwise. A path that
-  matches none never reports either.
+- `State` is `NavigationLifecycle.Submitting` from the moment a `post`, `put`, `patch` or `delete`
+  submission has matched a route until its action returns, `NavigationLifecycle.Loading` from the moment
+  a navigation has matched a route until it commits or gives up, and `NavigationLifecycle.Idle`
+  otherwise. A `get` submission, and one whose method no form takes, report `Loading` throughout. A
+  path that matches none never reports either.
 - `Location` is the location being navigated **to** while `State` is not `Idle` — resolved, so it
   carries the destination's `Params` and `Matches`, not just its path — and null while `State` is
   `Idle`, as `navigation.location` is `undefined` then.
@@ -231,8 +251,7 @@ does. A pathless layout, whose path is empty too, is not an index route.
   submission in flight, a `get` one included, and are null while `State` is `Idle` or the navigation in
   flight is not a submission.
 
-`Router.PendingLocation` is the same destination read imperatively, for a host object that has no
-component to hook from.
+A host object with no component to hook from reads `Router.Navigation` directly.
 
 ## Where this deviates from React Router
 
