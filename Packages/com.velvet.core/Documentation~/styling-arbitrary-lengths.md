@@ -112,7 +112,8 @@ canonical decimal form is that many 4px steps, so `p-13` is 52px, `gap-4.5` 18px
 `4.50`, `05` and `4.1` are not steps and leave the class unresolved. The utilities are padding, margin
 (`m-*`, `mx-*`, `ps-*`, …), `gap-*`, `space-x-*` / `space-y-*`, `w-*`, `h-*`, `size-*`, `min-*` / `max-*`
 width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-x-*` / `translate-y-*`,
-and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). A minus
+and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). A margin,
+size, `basis-*` or inset also takes `[auto]` (`mx-[auto]`), as it does `auto` unbracketed. A minus
 sign negates the margin, inset, translate and `space-*` utilities (`-mt-13`, `-top-4.5`), as in Tailwind;
 padding, sizing, `basis-*` and `gap-*` take none.
 
@@ -129,15 +130,32 @@ not (`.w-100`, `.p-30`) is shadowed by the inline value.
 
 ### A shorthand and its longhand
 
-Where two utilities of one family meet on an element, the longhand holds its side whichever comes first in
-`className`, as in Tailwind, which emits `padding` ahead of `padding-top`: `p-13 pt-2` and `pt-2 p-13` both
+Where a shorthand and a longhand of one family meet in one `className`, the longhand holds its side whichever
+comes first, as in Tailwind, which emits `padding` ahead of `padding-top`: `p-13 pt-2` and `pt-2 p-13` both
 leave the top at 8px and the other sides at 52px. The order is Tailwind's property order: the all-sides
 shorthand, then the axis (`px-*` / `py-*`, `inset-x-*` / `inset-y-*`), then a single side, and `size-*` ahead
-of `w-*` and `h-*`. It applies to padding, margin, the insets and `size-*` / `w-*` / `h-*`, at one priority —
-a variant or `!` outranks the plain utility as it does anywhere. A bracket value takes part the same way
-(`p-[52px] pt-2`). When an inline utility of the family stands beside a stylesheet class that is the
-narrower of the two, Velvet writes that class inline too, as its bracket form (`pt-2` as `pt-[8px]`), because
-an inline value would otherwise outrank it. That rewrite is made where a `className` string is split, so a
-class list assembled elsewhere is not rewritten.
+of `w-*` and `h-*`. It covers padding, margin, the insets and `size-*` / `w-*` / `h-*`, at one priority: a
+variant or `!` outranks the plain utility as it does anywhere, and a bracket value takes part the same way
+(`p-[52px] pt-2`). Variants are compared as a set, so `hover:focus:` and `focus:hover:` are one group.
+
+An inline value outranks every class on its element, so a stylesheet class that is the narrower of such a pair
+is written inline too when an inline utility of an overlapping family stands beside it: `pt-2` becomes
+`pt-[8px]`, `mx-auto` becomes `mx-[auto]` (an auto bracket, which every family but padding reads) and `w-full`
+becomes `w-[100%]`. Two things follow. The rewritten class is no longer in the element's class list, so a
+selector on it (`.pt-2 > .x`) and `ClassListContains("pt-2")` stop seeing it, though the unrewritten classes of
+the list are unchanged. And the rewrite writes the pixel value of the step as Velvet's scale gives it, so a
+stylesheet that redefines `--space-2` moves `pt-2` and leaves `pt-[8px]` where it was, the same limit as
+the logical utilities have ([react-migration.md](react-migration.md)).
+
+The rule holds only where the tokens meet in one `className` string:
+- A logical utility (`ps-*`, `ms-*`, `start-*`, the block forms) beside the physical utility of its own side
+  gives way to it, since Tailwind sorts `padding-inline-start` ahead of `padding-left`: `ps-13 pl-2` and
+  `pl-2 ps-13` leave the left at 8px, and the logical one is dropped from the list.
+- A `V.Motion` pose overrides the node's own spacing, as Framer Motion's `animate` overrides `style`: a base
+  `pt-[8px]` beside a pose `p-[52px]` leaves the top at 52px, the base token being left out while that pose
+  applies. A base class beside an inline pose needs no such step, the inline value outranking it already.
+- A class list assembled outside a `className` string is not rewritten.
+- Border radii are not ordered this way: `rounded-r-*` and `rounded-t-*` on one corner are left to whichever is
+  written last.
 
 `z-<n>` takes any whole number the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).
