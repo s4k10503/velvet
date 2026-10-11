@@ -22,6 +22,7 @@ namespace Velvet
             ApplyProps(element, node.Props);
             ApplyStyles(element, node.Styles);
             ApplyEvents(element, node.Events);
+            StyleTextInputColors.Track(element);
             return element;
         }
 
@@ -39,6 +40,7 @@ namespace Velvet
             ApplyClassNames(element, appliedClasses);
             ApplyProps(element, node.Props);
             ApplyEvents(element, node.Events);
+            StyleTextInputColors.Track(element);
             return element;
         }
 
