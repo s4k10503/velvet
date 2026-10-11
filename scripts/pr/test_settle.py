@@ -1201,6 +1201,8 @@ class ReusedVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, ["its mutation.yml run on 0000000 does not stand: it " + why])
 
+    # GREEN_ON_BASE(characterization): the base reads no backing, so a pass that owes none merges there too.
+    # It is the side the refusal above must not take, which a rule holding every reuse would.
     def test_Given_ABackedReuse_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange -- the control: the pass is the same, and nothing is owed for it.
         states = {1: fabricate(1, labels=(AUTOMERGE,), runs=CAMPAIGN_PASSED)}
@@ -1212,6 +1214,8 @@ class ReusedVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [])
 
+    # GREEN_ON_BASE(characterization): the base reads no backing, so it asks for none of a failed run either.
+    # What it pins is that the new reading is not made for a campaign that did not pass.
     def test_Given_ACampaignThatFailed_When_TheMergeIsDecided_Then_ItsArtifactsAreNotRead(self):
         # Arrange -- a verdict that did not pass has nothing to be backed.
         states = {1: fabricate(1, labels=(AUTOMERGE,), runs=[campaign_run(1, "failure")])}
@@ -1801,7 +1805,7 @@ class RedBaseMergeTests(unittest.TestCase):
         self.assertEqual(decided, [RED_REASON])
 
     # GREEN_ON_BASE(characterization): an unlabelled head behind a green base still merges.
-    # The `checks` double now accepts the optional display-status argument; its arranged verdict is unchanged.
+    # This change only adds a `campaign_backing` double to the stack; the arranged verdict is unchanged.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.

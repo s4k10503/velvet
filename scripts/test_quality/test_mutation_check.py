@@ -2929,6 +2929,8 @@ class OnePerLineTests(unittest.TestCase):
                           for line in listed],
                          [("5", "boundary)"), ("6", "arithmetic)")])
 
+    # GREEN_ON_BASE(characterization): the base answers a declaration naming another operator than the survivor's with this complaint too.
+    # It is the side the allowance for a stood-for operator must not take.
     def test_Given_ADeclarationNamingADroppedOperator_When_TheRepresentativeSurvives_Then_ItIsUnanswered(self):
         # Arrange -- a survivor of another operator is owed its own answer.
         kept = survivor(Path("probe.cs"), 12, operator="boundary")
@@ -2967,6 +2969,7 @@ class OnePerLineTests(unittest.TestCase):
         # Assert
         self.assertEqual(unanswered, ["the declaration above answers for 'arithmetic', not for this"])
 
+    # GREEN_ON_BASE(characterization): the base answers an unnamed declaration over a survivor, which is what the name says.
     def test_Given_AnUnnamedDeclarationOverASurvivingThinnedLine_When_Decided_Then_ItAnswersAsBefore(self):
         # Arrange
         kept = survivor(Path("probe.cs"), 12, operator="boundary")
@@ -2979,6 +2982,8 @@ class OnePerLineTests(unittest.TestCase):
         # Assert
         self.assertEqual((unanswered, stale), ([], []))
 
+    # GREEN_ON_BASE(characterization): the base refuses a declaration naming another operator than the survivor's.
+    # Its comment names it as the control for the allowance the cases around it add.
     def test_Given_ADeclarationNamingAnOperatorTheLineNeverCarried_When_TheRepresentativeSurvives_Then_ItIsUnanswered(self):
         # Arrange -- the control: naming is still checked, only what the cap dropped is let through.
         kept = survivor(Path("probe.cs"), 12, operator="boundary")
@@ -3003,6 +3008,8 @@ class OnePerLineTests(unittest.TestCase):
         # Assert
         self.assertEqual(stale, [])
 
+    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale.
+    # It is the control for the case above it, where a dropped operator is let through.
     def test_Given_ANamedDeclarationWhoseOperatorWasNotDropped_When_TheRepresentativeDies_Then_ItIsStale(self):
         # Arrange -- the control for the case above.
         kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
@@ -3028,6 +3035,8 @@ class OnePerLineTests(unittest.TestCase):
         # Assert
         self.assertEqual(stale, [])
 
+    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale.
+    # It is the control for the case above it, where a dropped operator is let through.
     def test_Given_AnUnnamedDeclarationOverALineWithNothingDropped_When_TheMutantDies_Then_ItIsStale(self):
         # Arrange -- the control for the case above, and the base's own reading.
         kept = survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED, operator="boundary")
@@ -4328,7 +4337,8 @@ class InapplicableFallbackTests(unittest.TestCase):
 
         # Assert
         record = campaign.stood()
-        self.assertEqual((record["verdict"], record["stood"]), (mutation_check.SURVIVED, "clause removed"))
+        self.assertEqual((record["verdict"], record.get("stood", "no such field")),
+                         (mutation_check.SURVIVED, "clause removed"))
 
     def test_Given_AJoinTheCompilerRejects_When_TheNextMutantIsKilled_Then_TheLineIsKilledAndPasses(self):
         # Arrange
@@ -4350,7 +4360,7 @@ class InapplicableFallbackTests(unittest.TestCase):
 
         # Assert -- the record is the kept mutant's, so the verdict job reading the plan's list finds it.
         record = campaign.stood()
-        self.assertEqual((record["mutant"].endswith("+ -> - (arithmetic)"), record["stood"]),
+        self.assertEqual((record["mutant"].endswith("+ -> - (arithmetic)"), record.get("stood", "no such field")),
                          (True, "clause removed"))
 
     def test_Given_NoOtherMutantOnTheLine_When_TheKeptOneIsRejected_Then_TheLineIsInapplicable(self):
@@ -4361,7 +4371,7 @@ class InapplicableFallbackTests(unittest.TestCase):
         campaign.run_over_diff("--max", "40")
 
         # Assert
-        self.assertEqual((campaign.stood()["verdict"], campaign.stood()["stood"]),
+        self.assertEqual((campaign.stood()["verdict"], campaign.stood().get("stood", "no such field")),
                          (mutation_check.INAPPLICABLE, None))
 
 
@@ -6211,8 +6221,9 @@ class CampaignKeyTests(unittest.TestCase):
         # Act
         keys = (first.key()[0], second.key()[0])
 
-        # Assert
-        self.assertEqual((keys[0] == keys[1], first.project != second.project), (True, True))
+        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
+        self.assertEqual((keys[0] == keys[1], first.project != second.project, len(keys[0] or "")),
+                         (True, True, 64))
 
     def test_Given_ProseScriptsAndOtherWorkflowsEdited_When_ItIsKeyed_Then_TheKeyIsTheSame(self):
         # Arrange
@@ -6227,8 +6238,8 @@ class CampaignKeyTests(unittest.TestCase):
         # Act
         after = project.key()[0]
 
-        # Assert
-        self.assertEqual(after, before)
+        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
+        self.assertEqual((after == before, len(before or "")), (True, 64))
 
     def test_Given_ASourceUnderADirectoryUnityDoesNotImport_When_ItIsEdited_Then_TheKeyIsTheSame(self):
         # Arrange -- the generators' solution is built by dotnet, and nothing under a `~` directory
@@ -6240,8 +6251,8 @@ class CampaignKeyTests(unittest.TestCase):
         # Act
         after = project.key()[0]
 
-        # Assert
-        self.assertEqual(after, before)
+        # Assert -- the key is a 64-digit hash, so two Nones cannot satisfy it.
+        self.assertEqual((after == before, len(before or "")), (True, 64))
 
     def test_Given_AnEditToTheMutatedFile_When_ItIsKeyed_Then_TheMutantsAndTheFileMoveTheKey(self):
         # Arrange
@@ -6474,7 +6485,8 @@ class MutantListHandOffTests(unittest.TestCase):
         code = project.run_over_diff("--list", "--mutants", str(listing))
 
         # Assert -- the list is not empty, so a plan that wrote nothing cannot satisfy it.
-        self.assertEqual((code, len(json.loads(listing.read_text())) > 0), (0, True))
+        written = json.loads(listing.read_text() if listing.is_file() else "[]")
+        self.assertEqual((code, len(written) > 0), (0, True))
 
     def test_Given_APlanThatWroteItsList_When_AnotherTreeIsHandedIt_Then_TheRunIsRefused(self):
         # Arrange
@@ -6558,6 +6570,8 @@ class UnreportedShardTests(unittest.TestCase):
                           "shard 1 of 2 was dealt 6 mutant(s)" in campaign.printed),
                          (1, True, True))
 
+    # GREEN_ON_BASE(characterization): the base prints no not-measured heading for any run, so a complete one passes there.
+    # The dead-shard case above is the one that separates the two.
     def test_Given_EveryShardRecorded_When_TheRunIsCollected_Then_NoShardIsNamedNotMeasured(self):
         # Arrange -- the control: the heading is the dead shard's, not every collect's.
         campaign = ManyMutantsCampaign()
@@ -6570,6 +6584,8 @@ class UnreportedShardTests(unittest.TestCase):
         # Assert
         self.assertEqual((code, "not measured:" in campaign.printed), (0, False))
 
+    # GREEN_ON_BASE(characterization): the base prints no not-measured heading for any run, so a complete one passes there.
+    # The dead-shard case above is the one that separates the two.
     def test_Given_ADeadShardAndTheOtherRerun_When_TheRunIsCollected_Then_ThePassIsComplete(self):
         # Arrange -- only the failed shard is run again, into the directory its first attempt left.
         campaign = ManyMutantsCampaign()
@@ -6598,6 +6614,8 @@ class UnreportedShardTests(unittest.TestCase):
         # Assert
         self.assertEqual("STALE" in campaign.printed, False)
 
+    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale.
+    # It is the control for the case that leaves a dead shard's declaration alone.
     def test_Given_ADeclarationOverAKilledMutantTheShardRecorded_When_TheRunIsCollected_Then_ItIsStale(self):
         # Arrange -- the control: the same declaration over a mutant that was measured and died.
         body = ManyMutantsCampaign.BODY.replace(
@@ -6639,6 +6657,8 @@ class UnreportedShardTests(unittest.TestCase):
         # Assert
         self.assertEqual([held.line for _, _, held in stale], [])
 
+    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale.
+    # It is the control for the case that leaves an unrecorded mutant's declaration alone.
     def test_Given_AKilledMutantUnderADeclaration_When_Decided_Then_TheDeclarationIsStale(self):
         # Arrange -- the control for the case above.
         mutants = [survivor(Path("probe.cs"), 12, verdict=mutation_check.KILLED)]
@@ -6746,7 +6766,8 @@ class DeadShardReportingTests(unittest.TestCase):
         campaign.collect_both(["edit0"], ["play"])
 
         # Assert
-        self.assertEqual("PlayMode shard(s) recorded nothing" in campaign.printed, False)
+        self.assertEqual((self.HEADING.format(1, 2, "EditMode") in campaign.printed,
+                          "PlayMode shard(s) recorded nothing" in campaign.printed), (True, False))
 
     def test_Given_EveryEditModeShardAndNoPlayModeShard_When_BothPassesAreCollected_Then_ThePlayModeShardsAreNamed(self):
         # Arrange -- the control: the PlayMode pass was owed, and none of its six shards reported.

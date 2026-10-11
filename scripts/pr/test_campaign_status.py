@@ -495,8 +495,10 @@ class ReconciliationTests(unittest.TestCase):
         # The budget decision: a sweep of MAX_SWEEP_PULLS heads may spend two reads of its own, six
         # per head (the citation check's read included) and one status write per head.
         budget = 2 + (6 + 1) * status.MAX_SWEEP_PULLS
-        self.assertEqual((len(posted), len(wakes), len(paths) + len(posted) <= budget, error),
-                         (status.MAX_SWEEP_PULLS, status.MAX_SWEEP_PULLS, True, None))
+        self.assertEqual((len(posted), len(wakes), sum("/artifacts" in p for p in paths),
+                          len(paths) + len(posted) <= budget, error),
+                         (status.MAX_SWEEP_PULLS, status.MAX_SWEEP_PULLS, status.MAX_SWEEP_PULLS,
+                          True, None))
 
     def test_Given_ASelectedManualRecoveryAboveSweepCapacity_When_Dispatched_Then_OnlyTheSelectedHeadUsesTheSamePublisher(self):
         # Arrange
