@@ -33,18 +33,22 @@ def passed(number):
 class Reader:
     """A stand-in for the API: workflow runs by listing, and each run's key artifacts."""
 
-    def __init__(self, runs, keys, failing=False):
+    def __init__(self, runs, keys, failing=False, expired=(), raising=None):
         self.runs, self.keys, self.failing, self.asked = runs, keys, failing, []
+        self.expired, self.raising = set(expired), raising
 
     def __call__(self, path):
         self.asked.append(path)
         if self.failing:
             raise RuntimeError("gh api failed: HTTP 502")
+        if self.raising is not None:
+            raise self.raising
         if "/workflows/mutation.yml/runs" in path:
             return {"workflow_runs": self.runs}
         run_id = int(path.split("/runs/")[1].split("/")[0])
         names = self.keys.get(run_id, [])
-        return {"total_count": len(names), "artifacts": [{"name": name} for name in names]}
+        return {"total_count": len(names),
+                "artifacts": [{"name": name, "expired": run_id in self.expired} for name in names]}
 
 
 def reused_by(reader, *arguments, environ=ENVIRONMENT):
@@ -105,6 +109,57 @@ class ReuseTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, printed), (0, "reused="))
+
+    def test_Given_AReadingThatIsNotJson_When_Asked_Then_NothingIsReused(self):
+        # Arrange -- json.loads raises a ValueError, which is not a RuntimeError.
+        reader = Reader([passed(1)], {}, raising=ValueError("Expecting value"))
+
+        # Act
+        code, printed = reused_by(reader, "--key", KEY)
+
+        # Assert
+        self.assertEqual((code, printed), (0, "reused="))
+
+    def test_Given_AListingOfTheWrongShape_When_Asked_Then_NothingIsReused(self):
+        # Arrange
+        reader = Reader([passed(1)], {}, raising=AttributeError("'list' object has no attribute 'get'"))
+
+        # Act
+        code, printed = reused_by(reader, "--key", KEY)
+
+        # Assert
+        self.assertEqual((code, printed), (0, "reused="))
+
+    def test_Given_OnlyAReuseOfTheKeyOnTheBranch_When_Asked_Then_TheHeadIsMeasured(self):
+        # Arrange -- the run that measured it has aged out of the listing, and its reuse remains.
+        reader = Reader([passed(4)], {9004: [campaign.key_artifact_name(KEY, 9001)]})
+
+        # Act
+        _, printed = reused_by(reader, "--key", KEY)
+
+        # Assert
+        self.assertEqual(printed, "reused=")
+
+    def test_Given_TheMeasuringRunsArtifactsExpired_When_Asked_Then_TheHeadIsMeasured(self):
+        # Arrange
+        reader = Reader([passed(1)], {9001: [campaign.key_artifact_name(KEY)]}, expired=[9001])
+
+        # Act
+        _, printed = reused_by(reader, "--key", KEY)
+
+        # Assert
+        self.assertEqual(printed, "reused=")
+
+    def test_Given_TheMeasuringRunAndALaterReuse_When_Asked_Then_TheMeasuringRunIsNamed(self):
+        # Arrange
+        reader = Reader([passed(1), passed(4)], {9001: [campaign.key_artifact_name(KEY)],
+                                                9004: [campaign.key_artifact_name(KEY, 9001)]})
+
+        # Act
+        _, printed = reused_by(reader, "--key", KEY)
+
+        # Assert
+        self.assertEqual(printed, "reused=9001")
 
     def test_Given_TheBranchOfTheHead_When_Asked_Then_OnlyItsRunsAreListed(self):
         # Arrange

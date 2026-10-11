@@ -173,13 +173,14 @@ def passed_run(run):
 def reusable(key, candidates):
     """The run that measured `key`, from `candidates` -- (run, artifacts listing) pairs, newest first.
 
-    A run that reused the key is a candidate like one that measured it, and names the run it cites:
-    the chain stops at the measuring run, so a verdict is never reused from a reuse.
+    Only a run whose own key artifact says it measured the key is a source. One that reused the key
+    is skipped, so a chain of reuses never forms and a verdict outlives only the artifacts of the
+    run that measured it: once those lapse, nothing is found and the head is measured.
     """
     for run, payload in candidates:
         found = keyed(payload)
-        if passed_run(run) and found is not None and found[0] == key:
-            return found[1] or run.get("id")
+        if passed_run(run) and found is not None and found == (key, None):
+            return run.get("id")
     return None
 
 
@@ -187,15 +188,21 @@ def unbacked(payload, source_run, source_payload):
     """Why the verdict a run reused does not stand, or None where it was measured or stands.
 
     `payload` is the run's own artifacts listing, and `source_run` with `source_payload` the run it
-    cites and that run's: they have to be a pass of `WORKFLOW` that measured this very key.
+    cites and that run's, each None where it could not be read. The cited run has to be a pass of
+    `WORKFLOW` whose own key artifact says it measured this very key.
     """
     found = keyed(payload)
     if found is None or found[1] is None:
         return None
     key, cited = found
-    if not passed_run(source_run) or (source_run.get("id") != cited):
-        return f"cites run {cited}, which is not a pass of {WORKFLOW} that can be read"
-    if keyed(source_payload) != (key, None):
+    if source_run is None:
+        return f"cites run {cited}, which could not be read"
+    if not passed_run(source_run) or source_run.get("id") != cited:
+        return f"cites run {cited}, which is not a pass of {WORKFLOW}"
+    measuring = keyed(source_payload)
+    if measuring is None:
+        return f"cites run {cited}, whose key artifact is missing, expired or ambiguous"
+    if measuring != (key, None):
         return f"cites run {cited}, which did not itself measure this key"
     return None
 

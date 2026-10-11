@@ -302,7 +302,8 @@ def campaign_backing(project, runs):
     """`campaign.unbacked` for the head's newest campaign: why a verdict it reused does not stand.
 
     A run that measured is answered from its own artifacts alone. One that reused is checked against
-    the run it cites, read here; a cited run that cannot be read is a verdict nobody can show.
+    the run it cites, read here; a cited run or key artifact that cannot be read is a verdict nobody
+    can show.
     """
     newest = campaign.newest(runs)
     if newest is None:
@@ -314,9 +315,12 @@ def campaign_backing(project, runs):
         return None
     try:
         source = rest_json(campaign.run_path(slug, found[1]))
-        listing = rest_json(campaign.artifacts_path(slug, found[1]))
     except RuntimeError:
         return campaign.unbacked(own, None, None)
+    try:
+        listing = rest_json(campaign.artifacts_path(slug, found[1]))
+    except RuntimeError:
+        listing = None
     return campaign.unbacked(own, source, listing)
 
 

@@ -161,15 +161,36 @@ class ReusableTests(unittest.TestCase):
         # Assert
         self.assertIsNone(found)
 
-    def test_Given_ACampaignThatReusedTheKey_When_Looked_For_Then_TheRunThatMeasuredItIsNamed(self):
-        # Arrange -- the chain stops at the measuring run.
+    def test_Given_OnlyACampaignThatReusedTheKey_When_Looked_For_Then_NothingIsReused(self):
+        # Arrange -- the run that measured it is not among the candidates, as when its artifacts lapsed.
         candidates = [(run(4), listing(campaign.key_artifact_name(KEY, 9001)))]
 
         # Act
         found = campaign.reusable(KEY, candidates)
 
         # Assert
+        self.assertIsNone(found)
+
+    def test_Given_AReuseNewerThanTheMeasuringRun_When_Looked_For_Then_TheMeasuringRunIsTaken(self):
+        # Arrange
+        candidates = [(run(4), listing(campaign.key_artifact_name(KEY, 9001))), (run(1), measured())]
+
+        # Act
+        found = campaign.reusable(KEY, candidates)
+
+        # Assert
         self.assertEqual(found, 9001)
+
+    def test_Given_ACampaignWhoseKeyArtifactExpired_When_Looked_For_Then_NothingIsReused(self):
+        # Arrange
+        expired = campaign.key_artifact_name(KEY)
+        candidates = [(run(3), listing(expired, expired=(expired,)))]
+
+        # Act
+        found = campaign.reusable(KEY, candidates)
+
+        # Assert
+        self.assertIsNone(found)
 
     def test_Given_TwoCampaignsOfTheKey_When_Looked_For_Then_TheFirstListedIsTaken(self):
         # Arrange -- the caller lists newest first.
@@ -211,7 +232,7 @@ class UnbackedTests(unittest.TestCase):
         why = campaign.unbacked(own, run(1, "failure"), measured())
 
         # Assert
-        self.assertEqual(why, "cites run 9001, which is not a pass of mutation.yml that can be read")
+        self.assertEqual(why, "cites run 9001, which is not a pass of mutation.yml")
 
     def test_Given_ARunCitingARunThatCannotBeRead_When_Checked_Then_ItIsUnbacked(self):
         # Arrange
@@ -221,7 +242,7 @@ class UnbackedTests(unittest.TestCase):
         why = campaign.unbacked(own, None, None)
 
         # Assert
-        self.assertEqual(why, "cites run 9001, which is not a pass of mutation.yml that can be read")
+        self.assertEqual(why, "cites run 9001, which could not be read")
 
     def test_Given_ARunCitingAnotherRunThanTheOneRead_When_Checked_Then_ItIsUnbacked(self):
         # Arrange
@@ -231,7 +252,7 @@ class UnbackedTests(unittest.TestCase):
         why = campaign.unbacked(own, run(2), measured())
 
         # Assert
-        self.assertEqual(why, "cites run 9001, which is not a pass of mutation.yml that can be read")
+        self.assertEqual(why, "cites run 9001, which is not a pass of mutation.yml")
 
     def test_Given_ARunCitingAPassOfAnotherKey_When_Checked_Then_ItIsUnbacked(self):
         # Arrange
@@ -242,6 +263,17 @@ class UnbackedTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(why, "cites run 9001, which did not itself measure this key")
+
+    def test_Given_ARunCitingAPassWhoseKeyArtifactExpired_When_Checked_Then_ItIsUnbackedAsUnreadable(self):
+        # Arrange
+        own = listing(campaign.key_artifact_name(KEY, 9001))
+        expired = campaign.key_artifact_name(KEY)
+
+        # Act
+        why = campaign.unbacked(own, run(1), listing(expired, expired=(expired,)))
+
+        # Assert
+        self.assertEqual(why, "cites run 9001, whose key artifact is missing, expired or ambiguous")
 
     def test_Given_ARunCitingARunThatReusedInTurn_When_Checked_Then_ItIsUnbacked(self):
         # Arrange -- a chain is never followed: the cited run has to have measured.

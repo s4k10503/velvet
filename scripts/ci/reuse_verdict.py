@@ -66,10 +66,10 @@ def main(argv, environ=os.environ, read=gh_json):
         found = campaign.reusable(args.key, candidates(
             environ["GITHUB_REPOSITORY"], environ["GITHUB_REF_NAME"], environ.get("GITHUB_RUN_ID", ""),
             read))
-    except RuntimeError as failure:
-        # Nothing is reused on a reading that failed: the campaign measures, which costs a run and
-        # claims nothing.
-        print("no verdict is reused: {}".format(failure), file=sys.stderr)
+    except Exception as failure:  # noqa: BLE001 -- a reading of any shape that fails, a malformed
+        # answer or a missing variable included, reuses nothing: the campaign then measures, which
+        # costs a run and claims nothing.
+        print("no verdict is reused: {}: {}".format(type(failure).__name__, failure), file=sys.stderr)
         found = None
     print("reused={}".format(found or ""))
     return 0

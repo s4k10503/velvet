@@ -1122,14 +1122,39 @@ class ReusedVerdictTests(unittest.TestCase):
         why = self.reading(self.reuses(), cited, measured)
 
         # Assert
-        self.assertEqual(why, "cites run 9500, which is not a pass of mutation.yml that can be read")
+        self.assertEqual(why, "cites run 9500, which is not a pass of mutation.yml")
 
     def test_Given_AReusedVerdictWhoseCitedRunCannotBeRead_When_Backed_Then_ItIsUnbacked(self):
         # Act
         why = self.reading(self.reuses(), fails=True)
 
         # Assert
-        self.assertEqual(why, "cites run 9500, which is not a pass of mutation.yml that can be read")
+        self.assertEqual(why, "cites run 9500, which could not be read")
+
+    def test_Given_AReusedVerdictWhoseCitedRunHasNoReadableKeyArtifact_When_Backed_Then_TheMessageNamesThat(self):
+        # Arrange -- the cited run is a pass, and its artifacts listing is what lapsed.
+        cited = campaign_run(1, "success")
+        cited["id"] = 9500
+        lapsed = self.artifacts(settle.campaign.key_artifact_name(self.KEY))
+        lapsed["artifacts"][0]["expired"] = True
+
+        # Act
+        why = self.reading(self.reuses(), cited, lapsed)
+
+        # Assert
+        self.assertEqual(why, "cites run 9500, whose key artifact is missing, expired or ambiguous")
+
+    def test_Given_AReusedVerdictWhoseCitedRunItselfReused_When_Backed_Then_TheMessageNamesThat(self):
+        # Arrange
+        cited = campaign_run(1, "success")
+        cited["id"] = 9500
+        chained = self.artifacts(settle.campaign.key_artifact_name(self.KEY, 9400))
+
+        # Act
+        why = self.reading(self.reuses(), cited, chained)
+
+        # Assert
+        self.assertEqual(why, "cites run 9500, which did not itself measure this key")
 
     def test_Given_AUnbackedReuse_When_TheMergeIsDecided_Then_TheHeadIsRefused(self):
         # Arrange
