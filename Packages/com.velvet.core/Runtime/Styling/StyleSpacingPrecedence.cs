@@ -121,7 +121,8 @@ namespace Velvet
         // baseClasses without the inline spacing tokens a pose of the same Motion overrides: a pose is Framer
         // Motion's animate, which overrides the node's own style, so a base pt-[8px] must not outrank a pose's
         // p-[52px] on the top edge as it would in one class list. A base token goes when the pose token's property
-        // contains everything it writes; baseClasses itself when none does.
+        // contains everything it writes, which includes the same property (a logical pose and the physical base of
+        // its side share one layer slot); baseClasses itself when none does.
         internal static string[] WithoutOverriddenBase(string[] baseClasses, string[] pose)
         {
             if (baseClasses.Length == 0 || pose.Length == 0)
@@ -156,9 +157,36 @@ namespace Velvet
             return kept.ToArray();
         }
 
+        // pose with each stylesheet-backed spacing class that is the narrower of a pair with an inline base token
+        // written inline (pt-2 as pt-[8px]), because a pose class would otherwise lose its side to the base's
+        // inline shorthand; pose itself when none is.
+        internal static string[] InlineNarrowerPose(string[] baseClasses, string[] pose)
+        {
+            if (baseClasses.Length == 0 || pose.Length == 0)
+            {
+                return pose;
+            }
+            var posed = ReadAll(pose);
+            if (!posed.Exists(reading => reading.Backed))
+            {
+                return pose;
+            }
+            var own = ReadAll(baseClasses);
+            string[]? rewritten = null;
+            foreach (var reading in posed)
+            {
+                if (reading.Backed && own.Exists(inlineBase => !inlineBase.Backed && Narrows(reading, inlineBase)))
+                {
+                    rewritten ??= (string[])pose.Clone();
+                    rewritten[reading.Index] = Inlined(reading);
+                }
+            }
+            return rewritten ?? pose;
+        }
+
         private static bool Overrides(Reading posed, Reading own)
         {
-            if (posed.Property == own.Property || posed.Important != own.Important || posed.VariantSet != own.VariantSet)
+            if (posed.Important != own.Important || posed.VariantSet != own.VariantSet)
             {
                 return false;
             }

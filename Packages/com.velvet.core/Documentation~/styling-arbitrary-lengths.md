@@ -153,7 +153,7 @@ The rule holds only where the tokens meet in one `className` string:
   `pl-2 ps-13` leave the left at 8px, and the logical one is dropped from the list.
 - A `V.Motion` pose overrides the node's own spacing, as Framer Motion's `animate` overrides `style`: a base
   `pt-[8px]` beside a pose `p-[52px]` leaves the top at 52px, the base token being left out while that pose
-  applies. A base class beside an inline pose needs no such step, the inline value outranking it already.
+  applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-13` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.
 - A class list assembled outside a `className` string is not rewritten.
 - Border radii are not ordered this way: `rounded-r-*` and `rounded-t-*` on one corner are left to whichever is
   written last.

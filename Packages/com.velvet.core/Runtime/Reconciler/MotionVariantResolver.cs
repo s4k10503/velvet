@@ -72,6 +72,7 @@ namespace Velvet
                 return baseClasses;
             }
 
+            parsed = StyleSpacingPrecedence.InlineNarrowerPose(baseClasses, parsed);
             variantClasses = parsed;
             if (baseClasses.Length == 0)
             {

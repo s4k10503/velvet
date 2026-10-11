@@ -529,7 +529,7 @@ namespace Velvet.Tests
         [TestCase("pt-[8px] pb-[8px]", "py-[52px]", "")]
         [TestCase("ps-1", "p-13", "")]
         [TestCase("p-[52px]", "pt-[8px]", "p-[52px]")]
-        [TestCase("pt-[8px]", "pt-[10px]", "pt-[8px]")]
+        [TestCase("pt-[8px]", "pt-[10px]", "")]
         [TestCase("pt-[8px]", "hover:p-[52px]", "pt-[8px]")]
         [TestCase("!pt-[8px]", "p-[52px]", "!pt-[8px]")]
         [TestCase("pt-[8px]", "flex", "pt-[8px]")]
@@ -543,6 +543,82 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", kept), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AnInlineBaseShorthandAndAPoseClassLonghand_When_TheMotionMerges_Then_ThePoseHoldsTheTop()
+        {
+            // Arrange
+            var root = new VisualElement();
+            var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "pt-2" };
+
+            // Act
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "p-13", variants: variants, animate: "on"));
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("leaf").style.paddingTop.value.value, Is.EqualTo(8f));
+        }
+
+        [Test]
+        public void Given_AnInlineBaseShorthandAndAPoseClassLonghand_When_TheMotionMerges_Then_TheBaseKeepsTheOtherSides()
+        {
+            // Arrange
+            var root = new VisualElement();
+            var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "pt-2" };
+
+            // Act
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "p-13", variants: variants, animate: "on"));
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("leaf").style.paddingLeft.value.value, Is.EqualTo(52f));
+        }
+
+        [Test]
+        public void Given_AnInlineBaseShorthandAndNoPoseNaming_When_TheMotionMerges_Then_TheBaseHoldsTheTop()
+        {
+            // Arrange
+            var root = new VisualElement();
+            var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "pt-2" };
+
+            // Act
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "p-13", variants: variants, animate: "off"));
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("leaf").style.paddingTop.value.value, Is.EqualTo(52f));
+        }
+
+        [Test]
+        public void Given_AnInlinePhysicalBaseAndALogicalPose_When_TheMotionMerges_Then_ThePoseHoldsTheLeft()
+        {
+            // Arrange
+            var root = new VisualElement();
+            var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "ps-13" };
+
+            // Act
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "pl-[8px]", variants: variants, animate: "on"));
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("leaf").style.paddingLeft.value.value, Is.EqualTo(52f));
+        }
+
+        [TestCase("p-13", "pt-2", "pt-[8px]")]
+        [TestCase("p-13", "mx-auto", "mx-auto")]
+        [TestCase("m-13", "mx-auto", "mx-[auto]")]
+        [TestCase("size-13", "w-full", "w-[100%]")]
+        [TestCase("p-13", "pt-2 flex", "pt-[8px] flex")]
+        [TestCase("p-4", "pt-2", "pt-2")]
+        [TestCase("pt-[8px]", "p-4", "p-4")]
+        [TestCase("p-13", "hover:pt-2", "hover:pt-2")]
+        [TestCase("!p-13", "pt-2", "pt-2")]
+        public void Given_BaseAndPoseClasses_When_TheNarrowerPoseClassIsInlined_Then_OnlyAClassBesideAnInlineBaseChanges(
+            string baseClasses, string pose, string expected)
+        {
+            // Act
+            var inlined = StyleSpacingPrecedence.InlineNarrowerPose(
+                V.ParseClassNames(baseClasses), V.ParseClassNames(pose));
+
+            // Assert
+            Assert.That(string.Join(" ", inlined), Is.EqualTo(expected));
         }
     }
 }
