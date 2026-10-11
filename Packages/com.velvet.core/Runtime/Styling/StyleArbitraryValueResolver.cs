@@ -231,8 +231,9 @@ namespace Velvet
 
         #region Static-scale utility names (no bracket)
 
-        // The preset spacing scale, mirroring --space-* in _tokens.uss (1 unit = 4px; the suffix
-        // uses '-' where CSS writes '.', e.g. mt-2-5 -> 10px). Negative margins (-mt-2) and negative
+        // The spacing steps the bundled stylesheets declare, mirroring --space-* in _tokens.uss (1 unit = 4px; the
+        // suffix uses '-' where CSS writes '.', e.g. mt-2-5 -> 10px). Any other multiple of 0.25 is
+        // StyleSpacingMultiplier's, through TryGetSpacingPx. Negative margins (-mt-2) and negative
         // px translates (-translate-x-6) route here because a USS selector cannot start with '-'.
         private static readonly Dictionary<string, float> s_spacingScale = new()
         {
@@ -307,15 +308,53 @@ namespace Velvet
             ("inset-", ArbitraryProperty.Inset, true),
         };
 
+        // The families' properties, to tell a spacing utility from another inline one.
+        private static readonly HashSet<ArbitraryProperty> s_spacingProperties = BuildSpacingProperties();
+
+        private static HashSet<ArbitraryProperty> BuildSpacingProperties()
+        {
+            var properties = new HashSet<ArbitraryProperty>();
+            foreach (var (_, property, _) in s_spacingFamilies)
+            {
+                properties.Add(property);
+            }
+            return properties;
+        }
+
+        internal static bool IsSpacingProperty(ArbitraryProperty property) => s_spacingProperties.Contains(property);
+
+        // The prefix (with its trailing '-') whose utility writes property.
+        internal static bool TryGetSpacingPrefix(ArbitraryProperty property, out string prefix)
+        {
+            foreach (var (familyPrefix, familyProperty, _) in s_spacingFamilies)
+            {
+                if (familyProperty == property)
+                {
+                    prefix = familyPrefix;
+                    return true;
+                }
+            }
+            prefix = string.Empty;
+            return false;
+        }
+
+        // A step the bundled stylesheets declare no rule for, which resolves inline.
         private static bool TryParseSpacingStep(string cls, out ArbitraryStyle result)
+            => TryReadSpacingStep(cls, out result, out var stylesheetBacked) && !stylesheetBacked;
+
+        // Any step of a spacing family, and whether the stylesheets declare a class for it: only a positive
+        // step on the --space-* table is one.
+        internal static bool TryReadSpacingStep(string cls, out ArbitraryStyle result, out bool stylesheetBacked)
         {
             result = default;
-            // A step ends in a digit, or in the x of px, which turns most class names away before any prefix is
-            // compared.
+            stylesheetBacked = false;
+            // MUTANT_SURVIVES(equivalent, boundary): the shortest step is a two-character prefix and a digit, so a bound of 2 admits only strings no prefix and step fit.
             if (cls.Length < 3)
             {
                 return false;
             }
+            // A step ends in a digit, or in the x of px, which turns most class names away before any prefix is
+            // compared.
             var last = cls[cls.Length - 1];
             if (last != 'x' && (last < '0' || last > '9'))
             {
@@ -330,10 +369,11 @@ namespace Velvet
                     continue;
                 }
                 var suffix = body.Slice(prefix.Length);
-                if (!TryGetSpacingPx(suffix, out var px) || (!negate && SuffixInKeys(suffix, s_spacingScale)))
+                if (!TryGetSpacingPx(suffix, out var px))
                 {
                     continue;
                 }
+                stylesheetBacked = !negate && SuffixInKeys(suffix, s_spacingScale);
                 result = new ArbitraryStyle(property, negate ? -px : px, LengthUnit.Pixel);
                 return true;
             }
@@ -403,7 +443,7 @@ namespace Velvet
                 {
                     return false; // -skew-x-6 is owned by StyleSkewClass, not this resolver.
                 }
-                return body.StartsWith("m") || body.StartsWith("rotate-") || body.StartsWith("translate-");
+                return IsMarginName(body) || body.StartsWith("rotate-") || body.StartsWith("translate-");
             }
             // Positive per-axis translate presets (translate-x-4, translate-y-2, translate-x-1/2, translate-x-full)
             // have no USS class: a .translate-x-N rule writes the whole `translate: x y` shorthand and clobbers
@@ -428,6 +468,12 @@ namespace Velvet
             }
             return TryGetFlexFactorPreset(cls, out _, out _);
         }
+
+        // The physical margin utilities, whose negated names no selector can spell. -max-w-4 and -min-h-4 start
+        // with the same letter and are not margins.
+        private static bool IsMarginName(ReadOnlySpan<char> body)
+            => body.StartsWith("m-") || body.StartsWith("mx-") || body.StartsWith("my-") || body.StartsWith("mt-")
+                || body.StartsWith("mr-") || body.StartsWith("mb-") || body.StartsWith("ml-");
 
         // grow-<N> / shrink-<N>: Tailwind's bare factor, a whole number spelled without a sign or a leading
         // zero. grow-0 and shrink-0 are USS classes, so zero is left to the class list.
@@ -1705,7 +1751,7 @@ namespace Velvet
                 var arrival = map.ArrivalOf(writer, priority);
                 // MUTANT_SURVIVES(equivalent, boundary): live arrivals are positive and unique, including after compaction; distinct writers cannot tie each other or the initial MinValue sentinel.
                 var isNewerArrival = arrival > latest;
-                var byCascade = found ? StyleBorderSideColor.CompareCascade(writer, winner.Property) : 0;
+                var byCascade = found ? StyleSpacingPrecedence.CompareCascade(writer, winner.Property) : 0;
                 if (priority > best || priority == best && (byCascade > 0 || byCascade == 0 && isNewerArrival))
                 {
                     winner = style;
@@ -2165,7 +2211,7 @@ namespace Velvet
                 {
                     return byKey;
                 }
-                var byCascade = StyleBorderSideColor.CompareCascade(a.Style.Property, z.Style.Property);
+                var byCascade = StyleSpacingPrecedence.CompareCascade(a.Style.Property, z.Style.Property);
                 return byCascade != 0 ? byCascade : map.ArrivalOf(a.Style.Property, a.Key)
                     .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
             });

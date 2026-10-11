@@ -104,6 +104,8 @@ namespace Velvet.Tests
             new object[] { "ps-13", ArbitraryProperty.PaddingLeft, 52f },
             new object[] { "start-13", ArbitraryProperty.Left, 52f },
             new object[] { "inset-be-4.5", ArbitraryProperty.Bottom, 18f },
+            new object[] { "p-30", ArbitraryProperty.Padding, 120f },
+            new object[] { "w-19", ArbitraryProperty.Width, 76f },
         };
 
         private static string[] StepClassNames()
@@ -148,8 +150,21 @@ namespace Velvet.Tests
         [TestCase("-w-13")]
         [TestCase("-size-13")]
         [TestCase("-basis-13")]
-        [TestCase("-max-w-13")]
         public void Given_AClassTheScaleDoesNotTake_When_ParsedAndGated_Then_NeitherClaimsIt(string className)
+        {
+            // Act
+            var claimed = StyleArbitraryValueResolver.IsInlineResolved(className);
+            var parsed = StyleArbitraryValueResolver.TryParse(className, out _);
+
+            // Assert
+            Assert.That((claimed, parsed), Is.EqualTo((false, false)));
+        }
+
+        [TestCase("-max-w-13")]
+        [TestCase("-min-w-4")]
+        [TestCase("-max-h-0.5")]
+        [TestCase("-min-h-px")]
+        public void Given_ANegatedMinOrMaxSize_When_ParsedAndGated_Then_NeitherClaimsIt(string className)
         {
             // Act
             var claimed = StyleArbitraryValueResolver.IsInlineResolved(className);
@@ -257,6 +272,130 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(root.ElementAt(0).style.width.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        private static float Side(VisualElement element, string side) => side switch
+        {
+            "paddingTop" => element.style.paddingTop.value.value,
+            "paddingLeft" => element.style.paddingLeft.value.value,
+            "marginTop" => element.style.marginTop.value.value,
+            "top" => element.style.top.value.value,
+            "width" => element.style.width.value.value,
+            _ => throw new System.ArgumentOutOfRangeException(nameof(side), side, null),
+        };
+
+        // Tailwind emits a shorthand ahead of the longhands it contains, so the longhand holds its side whichever
+        // is written first and whichever resolves inline (a stylesheet class is rewritten to join an inline one).
+        // A shorthand written after, or a stylesheet class beside an inline value, would hold 52 instead.
+        [TestCase("p-13 pt-2", "paddingTop", 8f)]
+        [TestCase("pt-2 p-13", "paddingTop", 8f)]
+        [TestCase("pt-1.5 p-13", "paddingTop", 6f)]
+        [TestCase("p-[52px] pt-2", "paddingTop", 8f)]
+        [TestCase("pt-2 p-[52px]", "paddingTop", 8f)]
+        [TestCase("m-13 mt-2", "marginTop", 8f)]
+        [TestCase("inset-13 top-2", "top", 8f)]
+        [TestCase("px-13 pl-2", "paddingLeft", 8f)]
+        [TestCase("!p-13 !pt-2", "paddingTop", 8f)]
+        [TestCase("!pt-2 !p-13", "paddingTop", 8f)]
+        [TestCase("w-4 size-13", "width", 16f)]
+        public void Given_AShorthandAndALonghandOfOneFamily_When_Reconciled_Then_TheLonghandHoldsItsSide(
+            string className, string side, float expected)
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var tree = new VNode[] { V.Div(className) };
+
+            // Act
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(Side(root.ElementAt(0), side), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AShorthandStepAndAnotherSideOfItsLonghand_When_Reconciled_Then_TheShorthandKeepsTheRest()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var tree = new VNode[] { V.Div("pt-2 p-13") };
+
+            // Act
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(root.ElementAt(0).style.paddingBottom.value.value, Is.EqualTo(52f));
+        }
+
+        [Test]
+        public void Given_ALonghandRemovedBesideAnInlineShorthand_When_Reconciled_Then_TheShorthandReturnsToTheSide()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var oldTree = new VNode[] { V.Div("p-13 pt-2") };
+            var newTree = new VNode[] { V.Div("p-13") };
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), oldTree);
+
+            // Act
+            reconciler.Reconcile(root, oldTree, newTree);
+
+            // Assert
+            Assert.That(root.ElementAt(0).style.paddingTop.value.value, Is.EqualTo(52f));
+        }
+
+        [Test]
+        public void Given_EqualLayerVariantPayloadsOfAShorthandStepAndALonghand_When_Enabled_Then_TheLonghandHoldsTheSide()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act
+            StyleVariantPayload.Apply(element, new[] { "pt-[8px]", "p-13" }, true, StyleLayerPriority.Hover);
+
+            // Assert
+            Assert.That(element.style.paddingTop.value.value, Is.EqualTo(8f));
+        }
+
+        [TestCase("p-13 pt-2", "p-13 pt-[8px]")]
+        [TestCase("pt-2 p-13", "pt-[8px] p-13")]
+        [TestCase("hover:p-13 hover:pt-2", "hover:p-13 hover:pt-[8px]")]
+        [TestCase("sm:hover:p-13 sm:hover:pt-2", "sm:hover:p-13 sm:hover:pt-[8px]")]
+        [TestCase("!p-13 !pt-2", "!p-13 !pt-[8px]")]
+        [TestCase("!p-13 pt-2!", "!p-13 pt-[8px]!")]
+        [TestCase("px-13 pl-2", "px-13 pl-[8px]")]
+        [TestCase("p-13 py-1.5 pt-2", "p-13 py-1.5 pt-[8px]")]
+        [TestCase("size-13 w-4", "size-13 w-[16px]")]
+        [TestCase("p-[52px] pt-2 flex", "p-[52px] pt-[8px] flex")]
+        public void Given_AStylesheetClassBesideAnInlineShorthandOfItsFamily_When_ClassNamesAreParsed_Then_TheClassIsWrittenInline(
+            string className, string expected)
+        {
+            // Act
+            var tokens = V.ParseClassNames(className);
+
+            // Assert
+            Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rewrites no class, so each list below reaches the reconciler as written.
+        // Each is a pair where leaving the class alone gives Tailwind's answer already or the two do not
+        // contend, so a rewrite of every stylesheet class beside an inline one reddens it.
+        [TestCase("p-4 pt-[2px]")]
+        [TestCase("p-4 pt-13")]
+        [TestCase("px-4 py-13")]
+        [TestCase("p-13 p-4")]
+        [TestCase("p-13 hover:pt-2")]
+        [TestCase("!p-13 pt-2")]
+        [TestCase("p-4 pt-2")]
+        [TestCase("size-4 w-13")]
+        public void Given_AClassListThatNeedsNoRewrite_When_ClassNamesAreParsed_Then_TheyAreAsWritten(string className)
+        {
+            // Act
+            var tokens = V.ParseClassNames(className);
+
+            // Assert
+            Assert.That(string.Join(" ", tokens), Is.EqualTo(className));
         }
     }
 }

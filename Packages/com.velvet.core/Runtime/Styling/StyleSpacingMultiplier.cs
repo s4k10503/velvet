@@ -22,6 +22,7 @@ namespace Velvet
                 return false;
             }
             var quarters = 0;
+            // MUTANT_SURVIVES(equivalent, boundary): a dot at index 0 leaves an empty whole part, which TryParseWhole declined above.
             if (dot >= 0)
             {
                 quarters = QuartersOf(text.Slice(dot + 1));

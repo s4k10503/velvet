@@ -421,7 +421,8 @@ namespace Velvet
             return true;
         }
 
-        // leading-<n> reads the --space-* scale, as Tailwind's bare-number line height is n spacing units.
+        // leading-<n> reads the spacing scale (StyleArbitraryValueResolver.TryGetSpacingPx), as Tailwind's bare-number
+        // line height is n spacing units.
         private static bool TryParseLeadingSpacing(string cls, out float px)
         {
             px = 0f;

@@ -1085,7 +1085,7 @@ namespace Velvet.Tests
 
         [TestCase(StyleLayerPriority.Base)]
         [TestCase(StyleLayerPriority.Important)]
-        public void Given_ALonghandBeforeAShorthandOnOneLayer_When_Applied_Then_TheLaterShorthandHoldsEveryEdge(long priority)
+        public void Given_ALonghandBeforeAShorthandOnOneLayer_When_Applied_Then_TheLonghandStillHoldsItsEdge(long priority)
         {
             // Arrange
             var element = new VisualElement();
@@ -1099,7 +1099,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((before, element.style.paddingTop.value.value, element.style.paddingBottom.value.value),
-                Is.EqualTo((2f, 8f, 8f)));
+                Is.EqualTo((2f, 2f, 8f)));
         }
 
         [TestCase(false, false, "leading")]
@@ -1137,8 +1137,10 @@ namespace Velvet.Tests
             var root = new VisualElement();
             var bang = important ? "!" : "";
             var extra = largeList ? " flex relative items-start justify-start overflow-hidden opacity-50 bg-red-500" : "";
-            var padding = bang + "p-[8px]";
-            var top = bang + "pt-[2px]";
+            // rounded-r and rounded-t share the top-right corner and Tailwind orders neither ahead of the other, so
+            // arrival decides it; a padding pair would not do, as its shorthand sorts ahead of its longhand.
+            var padding = bang + "rounded-r-[8px]";
+            var top = bang + "rounded-t-[2px]";
             var (oldClasses, newClasses, oldValue, newValue) = change switch
             {
                 "leading" => ($"w-[20px] {padding} {top}", $"w-[20px] {top} {padding}", 2f, 8f),
@@ -1174,7 +1176,7 @@ namespace Velvet.Tests
             var corners = change == "corner-chain";
             var before = corners
                 ? root.ElementAt(0).style.borderBottomRightRadius.value.value
-                : root.ElementAt(0).style.paddingTop.value.value;
+                : root.ElementAt(0).style.borderTopRightRadius.value.value;
             root.ElementAt(0).style.width = 99f;
 
             // Act
@@ -1182,15 +1184,15 @@ namespace Velvet.Tests
 
             // Assert
             var element = root.ElementAt(0);
-            var after = corners ? element.style.borderBottomRightRadius.value.value : element.style.paddingTop.value.value;
-            var companion = corners ? element.style.borderTopLeftRadius.value.value : element.style.paddingBottom.value.value;
+            var after = corners ? element.style.borderBottomRightRadius.value.value : element.style.borderTopRightRadius.value.value;
+            var companion = corners ? element.style.borderTopLeftRadius.value.value : element.style.borderBottomRightRadius.value.value;
             Assert.That((before, after, companion, element.style.width.value.value, historyConsistent),
                 Is.EqualTo((oldValue, newValue, corners ? 2f : 8f, 99f, true)));
         }
 
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_ASurvivingInlineShorthand_When_ALonghandIsInsertedBeforeIt_Then_TheSurvivingShorthandStillHoldsTheTop(bool important)
+        public void Given_ASurvivingInlineShorthand_When_ALonghandIsInsertedBeforeIt_Then_TheLonghandTakesTheTop(bool important)
         {
             // Arrange
             using var reconciler = new Reconciler();
@@ -1205,12 +1207,12 @@ namespace Velvet.Tests
             reconciler.Reconcile(root, oldTree, newTree);
 
             // Assert
-            Assert.That((before, root.ElementAt(0).style.paddingTop.value.value), Is.EqualTo((8f, 8f)));
+            Assert.That((before, root.ElementAt(0).style.paddingTop.value.value), Is.EqualTo((8f, 2f)));
         }
 
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_EqualLayerInlineVariantPayloads_When_Enabled_Then_TheLaterShorthandHoldsTheTop(bool important)
+        public void Given_EqualLayerInlineVariantPayloads_When_Enabled_Then_TheLonghandHoldsTheTop(bool important)
         {
             // Arrange
             var element = new VisualElement();
@@ -1224,7 +1226,7 @@ namespace Velvet.Tests
             StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.Padding, priority);
 
             // Assert
-            Assert.That((settled, element.style.paddingTop.value.value), Is.EqualTo((8f, 2f)));
+            Assert.That((settled, element.style.paddingTop.value.value), Is.EqualTo((2f, 2f)));
         }
 
         [Test]
