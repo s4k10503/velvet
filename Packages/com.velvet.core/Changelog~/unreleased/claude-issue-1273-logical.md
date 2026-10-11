@@ -6,5 +6,4 @@
   `border-bs`, `border-be`; and `rounded-s-*`, `rounded-e-*`, `rounded-ss-*`, `rounded-se-*`, `rounded-es-*`,
   `rounded-ee-*`. They take the spacing scale, bracket values, `auto` on a margin or an inset, `full` and fractions on
   an inset, and a minus sign on a margin or an inset, under variants and `!`. They were left in the class list and
-  resolved nothing. `scroll-ms-*` and the other scroll margin and padding utilities, and `border-s-` with a color,
-  still resolve nothing.
+  resolved nothing. `scroll-ms-*` and the other scroll margin and padding utilities still resolve nothing.

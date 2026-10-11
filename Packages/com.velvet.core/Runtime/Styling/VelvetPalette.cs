@@ -18,7 +18,8 @@ namespace Velvet
         private const string Black = "#000000";
 
         // name -> hex. Generated from Styles/_palette.uss (:root --color-* tokens). Kept in sync with
-        // that file; if a hue/shade is added there, regenerate this map.
+        // that file; if a hue/shade is added there, regenerate this map. PaletteStyleSheetMirrorTests fails
+        // when a token the sheet declares is missing here or differs.
         private static readonly Dictionary<string, string> Hex = new()
         {
             ["white"] = White,

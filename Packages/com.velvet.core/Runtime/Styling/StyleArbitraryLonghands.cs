@@ -89,6 +89,16 @@ namespace Velvet
             Set(sets, ArbitraryProperty.BorderLeftWidth, StyleLonghand.BorderLeftWidth);
             Set(sets, ArbitraryProperty.BorderColor, StyleLonghand.BorderTopColor, StyleLonghand.BorderRightColor,
                 StyleLonghand.BorderBottomColor, StyleLonghand.BorderLeftColor);
+            Set(sets, ArbitraryProperty.BorderTopColor, StyleLonghand.BorderTopColor);
+            Set(sets, ArbitraryProperty.BorderRightColor, StyleLonghand.BorderRightColor);
+            Set(sets, ArbitraryProperty.BorderBottomColor, StyleLonghand.BorderBottomColor);
+            Set(sets, ArbitraryProperty.BorderLeftColor, StyleLonghand.BorderLeftColor);
+            Set(sets, ArbitraryProperty.BorderXColor, StyleLonghand.BorderLeftColor, StyleLonghand.BorderRightColor);
+            Set(sets, ArbitraryProperty.BorderYColor, StyleLonghand.BorderTopColor, StyleLonghand.BorderBottomColor);
+            Set(sets, ArbitraryProperty.BorderInlineStartColor, StyleLonghand.BorderLeftColor);
+            Set(sets, ArbitraryProperty.BorderInlineEndColor, StyleLonghand.BorderRightColor);
+            Set(sets, ArbitraryProperty.BorderBlockStartColor, StyleLonghand.BorderTopColor);
+            Set(sets, ArbitraryProperty.BorderBlockEndColor, StyleLonghand.BorderBottomColor);
 
             Set(sets, ArbitraryProperty.FontSize, StyleLonghand.FontSize);
             Set(sets, ArbitraryProperty.LetterSpacing, StyleLonghand.LetterSpacing);
