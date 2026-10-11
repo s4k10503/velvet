@@ -265,6 +265,11 @@ namespace Velvet
             catch (FiberSuspendSignal)
             {
                 RegisterFiber(in site, identity, fiber);
+                // A Suspense keeping its committed primary takes a VirtualList row's suspend here, as
+                // GeneralPathReconciler.ExpandComponentInline takes an inline one's: the row mounts with no output.
+                // Its resolve asks for its render, which GeneralPathReconciler.SetPrimaryHidden asks for again when it
+                // reveals the row, as for any dirty fiber.
+                if (!isInline && _ctx.HoldSuspendInPrimary()) return fiber;
                 // A pass the signal abandons has committed nothing of this fiber, so the next pass reaching it
                 // renders it rather than bailing on the props this mount was given. Under a Suspense that catches
                 // the signal, the boundary's reveal renders it instead — see ReconcileExistingFiber.
@@ -509,6 +514,33 @@ namespace Velvet
             return false;
         }
 
+        // The fibers DisposeFibersUnder selects for roots, appended to into, which the first match creates. A
+        // disposed fiber is still registered while a disposal cascade runs, and DisposeFibersUnder skips it.
+        internal void CollectFibersUnder(HashSet<VisualElement> roots, ref List<ComponentFiber>? into)
+        {
+            foreach (var entry in _inlineFiberToKey)
+            {
+                var fiber = entry.Key;
+                if (!IsInsideAny(fiber.MountPoint, roots)) continue;
+                (into ??= new List<ComponentFiber>()).Add(fiber);
+            }
+            CollectWrapperFibersUnder(roots, ref into);
+        }
+
+        // MUTANT_SURVIVES(equivalent): a caller reading true over an empty table collects nothing from it.
+        internal bool HasWrapperMountedFibers => _wrapperFiberInfo.Count > 0;
+
+        // The wrapper-mounted part of CollectFibersUnder.
+        internal void CollectWrapperFibersUnder(HashSet<VisualElement> roots, ref List<ComponentFiber>? into)
+        {
+            foreach (var entry in _wrapperFiberInfo)
+            {
+                var fiber = entry.Key;
+                if (!IsInsideAny(entry.Value.wrapper, roots)) continue;
+                (into ??= new List<ComponentFiber>()).Add(fiber);
+            }
+        }
+
         // Disposes every fiber — inline-mounted or wrapper-mounted — whose anchor VE sits inside one of
         // orphanRoots (the root counts as inside itself). For inline fibers the anchor
         // is ComponentFiber.MountPoint; for wrapper-mounted fibers it is the wrapper VE
@@ -524,29 +556,10 @@ namespace Velvet
         // FiberRenderer.Dispose mutates the registry through child cleanup cascades.
         internal void DisposeFibersUnder(HashSet<VisualElement> orphanRoots)
         {
-            if (orphanRoots == null || orphanRoots.Count == 0) return;
-            if (_inlineFiberToKey.Count == 0 && _wrapperFiberInfo.Count == 0) return;
-            ComponentFiber[]? snapshot = null;
-            var snapshotCount = 0;
-            var capacity = _inlineFiberToKey.Count + _wrapperFiberInfo.Count;
-            foreach (var entry in _inlineFiberToKey)
-            {
-                var fiber = entry.Key;
-                if (fiber == null || fiber.IsDisposed) continue;
-                if (!IsInsideAny(fiber.MountPoint, orphanRoots)) continue;
-                snapshot ??= new ComponentFiber[capacity];
-                snapshot[snapshotCount++] = fiber;
-            }
-            foreach (var entry in _wrapperFiberInfo)
-            {
-                var fiber = entry.Key;
-                if (fiber == null || fiber.IsDisposed) continue;
-                if (!IsInsideAny(entry.Value.wrapper, orphanRoots)) continue;
-                snapshot ??= new ComponentFiber[capacity];
-                snapshot[snapshotCount++] = fiber;
-            }
+            List<ComponentFiber>? snapshot = null;
+            CollectFibersUnder(orphanRoots, ref snapshot);
             if (snapshot == null) return;
-            for (var i = 0; i < snapshotCount; i++)
+            for (var i = 0; i < snapshot.Count; i++)
             {
                 var fiber = snapshot[i];
                 if (fiber.IsDisposed) continue;

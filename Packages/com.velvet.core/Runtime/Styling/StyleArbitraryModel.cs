@@ -309,7 +309,7 @@ namespace Velvet
     }
 
     // A parsed arbitrary-value result: the target Property plus its length payload
-    // (Value + Unit), its Color, or (FilterCustom only) its Custom payload.
+    // (Value + Unit) or its Expression, its Color, or (FilterCustom only) its Custom payload.
     internal readonly struct ArbitraryStyle
     {
         public ArbitraryProperty Property { get; }
@@ -331,6 +331,9 @@ namespace Velvet
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
         // null for every other property.
         public CustomFilterValue? Custom { get; }
+        // A length an element has to measure (em, a viewport unit, a percentage beside a pixel length), for a
+        // property PropertySetters writes; Value and Unit then carry nothing. Null for every other result.
+        public StyleLengthExpression? Expression { get; }
         // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
         public bool Auto { get; }
         // A StyleOverrides member's keyword value (Initial, None, …), written as the keyword in place of the
@@ -369,6 +372,7 @@ namespace Velvet
             Value4 = 0f;
             Color = default;
             Custom = null;
+            Expression = null;
         }
 
         // Creates a length/angle result.
@@ -386,6 +390,7 @@ namespace Velvet
             Value4 = 0f;
             Color = default;
             Custom = null;
+            Expression = null;
         }
 
         // Creates a pair-valued length result.
@@ -404,6 +409,7 @@ namespace Velvet
             Value4 = 0f;
             Color = default;
             Custom = null;
+            Expression = null;
         }
 
         // Creates a four-edge result (Slice, or one edge in top), with the edges percentEdges marks as percentages.
@@ -433,6 +439,7 @@ namespace Velvet
             Value3 = 0f;
             Value4 = 0f;
             Custom = null;
+            Expression = null;
         }
 
         // Creates a FilterCustom result.
@@ -443,6 +450,7 @@ namespace Velvet
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
             Custom = custom;
+            Expression = null;
             Value = 0f;
             Unit = LengthUnit.Pixel;
             Value2 = 0f;
@@ -450,6 +458,13 @@ namespace Velvet
             Value3 = 0f;
             Value4 = 0f;
             Color = default;
+        }
+
+        // Creates a length result only the element it is written to can measure (see ApplyInline).
+        public ArbitraryStyle(ArbitraryProperty property, StyleLengthExpression expression)
+            : this(property, 0f, LengthUnit.Pixel)
+        {
+            Expression = expression;
         }
     }
 

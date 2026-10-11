@@ -2,7 +2,7 @@
 
 A bracketed value such as `w-[120px]`, `top-[1in]` or `translate-x-[25%]` is resolved by Velvet rather
 than by a USS rule, because no stylesheet can declare every value a bracket can hold. This guide owns which
-lengths a bracket reads.
+lengths a bracket reads, which utilities read which of them, and what each is measured against.
 
 ## What every length bracket reads
 
@@ -35,12 +35,71 @@ it supports.
 So `top-[calc(1rem+4px)]`, `gap-[min(2rem,24px)]`, `blur-[calc(2px*3)]`,
 `shadow-[calc(1rem+4px)_4px_8px_#101820]` and `w-[calc(100%/3)]` resolve as the plain length would.
 
-## Where they are not read
+## Lengths only an element can measure
 
-- A math function that mixes a percentage with a pixel length (`w-[calc(50%-1rem)]`) is declined everywhere,
-  and leaves the class inert.
-- The units only an element or the panel can measure (`em`, `ex`, `ch`, `vw`, `vh`, …) are declined
-  everywhere. `leading-[…]` reads `em` itself ([fonts.md](fonts.md)).
+| Written | Measured against |
+|---------|------------------|
+| `2em` | the element's computed font size; on `text-[…]`, its parent's |
+| `50vw`, `50vh`, `50vmin`, `50vmax` | the panel — in an editor window, the window's content: its width, its height, the smaller and the larger of the two |
+| `50svw`, `50lvh`, `50dvmin`, … | the same as the unprefixed unit: a panel has no browser chrome to show or hide, which is where CSS makes the small, large and dynamic viewports equal |
+| a math function mixing a percentage with a length, or reading an `em` or a viewport unit | each term against its own basis, as CSS evaluates it |
+
+These are read by the utilities that write a length-percentage inline:
+
+- sizing: `w-`, `h-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `size-`, `basis-`;
+- position: `inset-`, `inset-x-`, `inset-y-`, `top-`, `right-`, `bottom-`, `left-`, `start-`, `end-`;
+- spacing: the `p*-` and `m*-` utilities, the logical `ps-` / `pe-` / `ms-` / `me-` among them, and their
+  negated forms (`-mt-[1em]`);
+- type: `text-[…]` as a font size, and `tracking-[…]`.
+
+A percentage inside one of them is taken where CSS takes it for the longhand written: `w-`, `min-w-`,
+`max-w-`, `left-` and `right-` of the parent's width, and so is every padding and margin edge, `pt-` and
+`mt-` included; `h-`, `min-h-`, `max-h-`, `top-` and `bottom-` of the parent's height; `basis-` of the
+parent's size along its flex direction; `text-[…]` of the parent's font size; and `tracking-[…]` of the
+element's own font size. The parent's size is its content box, and its padding box for an `absolute`
+element, as CSS and UI Toolkit both take it. On an element with a `clip-path-*`, every longhand — padding included — is measured against the parent the clip wrapper
+sits in, not the wrapper.
+
+A percentage of a parent size the parent takes from its content is not measured, since the parent's size
+would then follow the length measured from it. The parent's size on an axis is definite when the parent
+declares a length for it, or a percentage of a size that is itself definite (`h-full` under a parent of
+declared height); when, `absolute`, it declares a percentage, or is pinned by an inset on both sides
+(`inset-0`); or when, in flow, it is stretched across a parent's cross axis, or grown along a parent's main
+axis, while that parent's size is definite. A parent that wraps (`flex-wrap`) still counts as stretched: UI
+Toolkit takes its own percentage of the stretched size there, where CSS would take none. `auto` (`h-auto`) declares no size, and
+only inline values and the bundled utility classes count as declarations: a size another stylesheet gives the
+parent reads as none. A variant (`hover:h-auto`) counts while it is on.
+
+Against an indefinite size, `w-`, `h-`, `top-`, `basis-` and the other position and size longhands are written
+as `auto`, and `max-w-` / `max-h-` as `none`. A minimum, a padding and a margin take the percentage as zero
+and keep the rest of the length, so `pt-[calc(5%+8px)]` is 8px. On a height this is CSS's own rule. On the
+width axis CSS goes on to take the percentage of the parent's final width once that is known, which Velvet
+does not. An `absolute` element's percentages are always taken.
+
+### When they change
+
+The length is written in pixels once the element is on a panel and has been laid out; until then the longhand
+keeps what the cascade gives it. It is measured again on a 16 ms tick of the panel's scheduler after any of
+these moves:
+
+- whether the element has been laid out, its own font size, and its `position`;
+- the parent's font size, size, border widths, padding and flex direction;
+- whether the parent's width and height are definite (above);
+- the panel's size.
+
+Unlike CSS, where the value is part of layout, the new value lands a tick after the change. A re-measure is
+written with the transitions of the element and of its clip wrapper held at zero duration and delay, so it
+lands at once rather than animating.
+
+### Where they are not read
+
+- Font-relative units other than `em` (`ex`, `ch`, `lh`, `rlh`, `cap`, `ic`) are declined everywhere.
+- Elsewhere a length only an element can measure is declined and leaves the class inert: border widths,
+  `rounded-*`, `translate-*`, `origin-[…]`, `blur-*`, `shadow-*`, `gap-*` / `space-*` / `divide-*` /
+  `ring-*`, `clip-path-[…]` and gradient positions among them. A math function those read has to come to
+  pixels or to a percentage. `leading-[…]` reads `em` and percentages itself ([fonts.md](fonts.md)), but no
+  viewport unit, and no math function reading `em` or mixing a percentage with a length.
 - A gradient stop list, a shadow and a `clip-path-[…]` split their bracket into words on `_`, so a math
   function inside one is written without spaces: `bg-linear-[to_right,#000000_0px,#ffffff_calc(1rem+4px)]`.
-
+- A spring or bezier `V.Motion` does not interpolate a length only an element can measure: the class still
+  applies, uninterpolated, as `w-auto` does.

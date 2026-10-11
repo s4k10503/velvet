@@ -107,14 +107,23 @@ namespace Velvet
     /// <summary>What one bundled utility class sets, under what condition, and where its rule sits in the cascade.</summary>
     internal readonly struct StyleUtilityRule
     {
-        internal StyleUtilityRule(StyleLonghandSet properties, StyleUtilityGate gate, int cascadePosition = -1)
+        internal StyleUtilityRule(StyleLonghandSet properties, StyleUtilityGate gate, int cascadePosition = -1,
+            StyleLonghandSet percentages = default, StyleLonghandSet keywords = default)
         {
             Properties = properties;
             Gate = gate;
             CascadePosition = cascadePosition;
+            Percentages = percentages;
+            Keywords = keywords;
         }
 
         public StyleLonghandSet Properties { get; }
+
+        /// <summary>The longhands among <see cref=""Properties""/> the rule declares as a percentage.</summary>
+        public StyleLonghandSet Percentages { get; }
+
+        /// <summary>The longhands among <see cref=""Properties""/> the rule declares as a keyword, such as auto.</summary>
+        public StyleLonghandSet Keywords { get; }
 
         public StyleUtilityGate Gate { get; }
 
@@ -171,7 +180,7 @@ namespace Velvet
             if (className != null && ByClassName.TryGetValue(className, out var entry))
             {
                 var shape = Rules[entry.Rule];
-                rule = new StyleUtilityRule(shape.Properties, shape.Gate, entry.Position);
+                rule = new StyleUtilityRule(shape.Properties, shape.Gate, entry.Position, shape.Percentages, shape.Keywords);
                 return true;
             }
             rule = default;
@@ -283,10 +292,10 @@ namespace Velvet
         private static void IndexDistinctRules(
             StyleUtilityTable table, List<StyleUtilityTableEntry> rules, List<int> ruleOfEntry)
         {
-            var seen = new Dictionary<(ulong, ulong, UssGate), int>();
+            var seen = new Dictionary<(ulong, ulong, UssGate, (ulong, ulong), (ulong, ulong)), int>();
             foreach (var entry in table.Entries)
             {
-                var key = (entry.Word0, entry.Word1, entry.Gate);
+                var key = (entry.Word0, entry.Word1, entry.Gate, entry.Percentages, entry.Keywords);
                 if (!seen.TryGetValue(key, out var index))
                 {
                     index = rules.Count;
@@ -332,9 +341,25 @@ namespace Velvet
                     .Append("UL, 0x")
                     .Append(rule.Word1.ToString("X16", CultureInfo.InvariantCulture))
                     .Append("UL), StyleUtilityGate.")
-                    .Append(rule.Gate)
-                    .Append("),\n");
+                    .Append(rule.Gate);
+                AppendNamedSet(sb, "percentages", rule.Percentages);
+                AppendNamedSet(sb, "keywords", rule.Keywords);
+                sb.Append("),\n");
             }
+        }
+
+        // Written only where the rule has one, so a rule declaring lengths alone reads as it always did.
+        private static void AppendNamedSet(StringBuilder sb, string name, (ulong Word0, ulong Word1) set)
+        {
+            if (set.Word0 == 0 && set.Word1 == 0)
+            {
+                return;
+            }
+            sb.Append(", ").Append(name).Append(": new StyleLonghandSet(0x")
+                .Append(set.Word0.ToString("X16", CultureInfo.InvariantCulture))
+                .Append("UL, 0x")
+                .Append(set.Word1.ToString("X16", CultureInfo.InvariantCulture))
+                .Append("UL)");
         }
 
         private static void AppendClassMap(StringBuilder sb, StyleUtilityTable table, List<int> ruleOfEntry)

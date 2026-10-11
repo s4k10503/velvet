@@ -394,6 +394,9 @@ namespace Velvet
         public VNode? CachedResult { get; set; }
         public object?[]? NextDeps { get; set; }
         public VNode? NextCachedResult { get; set; }
+        public int HookCallCountAtGate { get; set; }
+        // Set once and never cleared: no hit is served after a hook has run past the gate.
+        public bool RunsHooksPastGate { get; set; }
     }
 
     internal abstract class HookMutationSlot : IDisposable

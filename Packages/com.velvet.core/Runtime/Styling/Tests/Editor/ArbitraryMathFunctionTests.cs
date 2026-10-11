@@ -6,7 +6,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies the bracketed <c>calc()</c> / <c>min()</c> / <c>max()</c> / <c>clamp()</c> that
     /// <c>StyleArbitraryValueResolver.TryParseValue</c> reads when the function comes to one pixel length or one
-    /// percentage, across the utility families that read a length through it.
+    /// percentage, across the utility families that read a length through it, and the bracketed lengths only an
+    /// element can measure that the inline length properties claim.
     /// </summary>
     internal sealed class ArbitraryMathFunctionTests
     {
@@ -324,6 +325,17 @@ namespace Velvet.Tests
             Assert.That((ok, s.Value, s.Unit), Is.EqualTo((true, 20f, LengthUnit.Pixel)));
         }
 
+        // GREEN_ON_BASE(characterization): a blur reads pixels alone, so an em was never read there and still is not.
+        [Test]
+        public void Given_AnEmBlur_When_Parsed_Then_TheClassIsDeclined()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("blur-[1em]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
         // GREEN_ON_BASE(characterization): a gap mixing a percentage with pixels was never read, nor is it now.
         [Test]
         public void Given_AMixedPercentageGap_When_Parsed_Then_TheClassIsDeclined()
@@ -335,12 +347,70 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        [TestCase("w-[2em]", ArbitraryProperty.Width)]
+        [TestCase("h-[50vh]", ArbitraryProperty.Height)]
+        [TestCase("top-[calc(50%-1rem)]", ArbitraryProperty.Top)]
+        [TestCase("p-[min(5%,1em)]", ArbitraryProperty.Padding)]
+        [TestCase("text-[1.5em]", ArbitraryProperty.FontSize)]
+        [TestCase("tracking-[0.1em]", ArbitraryProperty.LetterSpacing)]
+        [TestCase("basis-[clamp(10px,20vw,50%)]", ArbitraryProperty.FlexBasis)]
+        [TestCase("size-[10vmin]", ArbitraryProperty.Size)]
+        [TestCase("ms-[1em]", ArbitraryProperty.MarginLeft)]
+        public void Given_ALengthOnlyAnElementCanMeasure_When_ParsedForAnInlineLength_Then_ItIsClaimed(
+            string cls, ArbitraryProperty property)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
+
+            // Assert
+            Assert.That((ok, s.Property), Is.EqualTo((true, property)));
+        }
+
+        [TestCase("vw")]
+        [TestCase("vh")]
+        [TestCase("vmin")]
+        [TestCase("vmax")]
+        [TestCase("svw")]
+        [TestCase("lvh")]
+        [TestCase("dvmin")]
+        [TestCase("svmax")]
+        public void Given_AViewportUnitWidth_When_Parsed_Then_ItIsClaimed(string unit)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("w-[50" + unit + "]", out _);
+
+            // Assert
+            Assert.That(ok, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): a translate taking the less of a percentage and pixels was never read.
         [Test]
         public void Given_AMinOfAPercentageAndPixels_When_ParsedAsATranslate_Then_TheClassIsDeclined()
         {
             // Act
             var ok = StyleArbitraryValueResolver.TryParse("translate-x-[min(10%,4px)]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): an em beside an overflowing length was never read, and still is not.
+        [Test]
+        public void Given_AnEmBesideAnOverflowingLength_When_ParsedAsAWidth_Then_TheClassIsDeclined()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("w-[calc(1e38px*10+1em)]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): an em divided by zero was never read as a width, and still is not.
+        [Test]
+        public void Given_AnEmDividedByZero_When_ParsedAsAWidth_Then_TheClassIsDeclined()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("w-[calc(1em/0)]", out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -399,6 +469,51 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): an em border width was never read, and still is not.
+        [Test]
+        public void Given_AnEmBorderWidth_When_Parsed_Then_TheClassIsDeclined()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("border-[1em]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a viewport unit under a prefix CSS lacks was never read, nor is it now.
+        [Test]
+        public void Given_AnUnknownViewportPrefix_When_Parsed_Then_TheClassIsDeclined()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("w-[50xvw]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): an em width was never interpolated by a motion, and still is not.
+        [Test]
+        public void Given_AnEmWidth_When_ParsedForAMotionChannel_Then_ItIsNotDriven()
+        {
+            // Act
+            var ok = MotionPropertyClassParser.TryParse("w-[2em]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): two em widths the base did not parse were keyed apart by their text.
+        [Test]
+        public void Given_TwoEmWidths_When_Keyed_Then_TheirKeysDiffer()
+        {
+            // Act
+            var two = FiberNodePatcher.ValueKey("w-[2em]");
+            var three = FiberNodePatcher.ValueKey("w-[3em]");
+
+            // Assert
+            Assert.That(two, Is.Not.EqualTo(three));
         }
     }
 }

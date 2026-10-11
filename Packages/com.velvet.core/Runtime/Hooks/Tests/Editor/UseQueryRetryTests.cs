@@ -23,7 +23,7 @@ namespace Velvet.Tests
     /// <item>While a retry waits, the query stays pending and fetching and reports the failure beside its
     /// <c>FailureCount</c>; a retry that succeeds leaves no failure behind. A query function that throws
     /// before returning is retried like one returning a faulted task.</item>
-    /// <item>With its last reader gone a request in flight is not retried and stops waiting out its delay, and
+    /// <item>With its last reader gone a request in flight of a function taking no token is not retried and stops waiting out its delay, and
     /// a reader mounting before the wait is over lets it be. A delay function that throws fails the
     /// request.</item>
     /// </list>
@@ -47,6 +47,7 @@ namespace Velvet.Tests
         private static int? s_retry;
         private static Func<int, Exception, TimeSpan>? s_retryDelay;
         private static bool s_throwsSynchronously;
+        private static bool s_takesToken;
         private static int s_calls;
         private static int s_clockReads;
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
@@ -61,6 +62,7 @@ namespace Velvet.Tests
             s_retry = null;
             s_retryDelay = null;
             s_throwsSynchronously = false;
+            s_takesToken = true;
             s_calls = 0;
             s_clockReads = 0;
             s_client = NewClient(retry: 3);
@@ -335,6 +337,7 @@ namespace Velvet.Tests
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
+            s_takesToken = false;
             using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
             mounted.FlushEffectsForTest();
             Fail(0);
@@ -352,6 +355,7 @@ namespace Velvet.Tests
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
+            s_takesToken = false;
             using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
             mounted.FlushEffectsForTest();
             Fail(0);
@@ -365,6 +369,42 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_clockReads, Is.EqualTo(readsAfterTheFirstFrames),
                 "The wait is over once nothing will retry, whatever is left of its delay");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailedRequestWaitingToRetry_When_ItsOnlyReaderLeaves_Then_TheFailureCountIsBackToZero()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+            await Pass(TimeSpan.Zero);
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(new QueryKey("todos"))!.FailureCount, Is.EqualTo(0),
+                "Cancelling during the wait puts back the count the request started from");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailedRequestWaitingToRetry_When_ItsOnlyReaderLeaves_Then_NoFailureReasonIsHeld()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+            await Pass(TimeSpan.Zero);
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.Peek<int>(new QueryKey("todos"))!.FailureReason, Is.Null,
+                "Cancelling during the wait puts back the reason the request started from");
         });
 
         [Test]
@@ -390,6 +430,7 @@ namespace Velvet.Tests
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
+            s_takesToken = false;
             using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
             mounted.FlushEffectsForTest();
             Fail(0);
@@ -453,8 +494,12 @@ namespace Velvet.Tests
         [Component]
         private static VNode Reader()
         {
+            var key = new QueryKey("todos");
+            var options = s_takesToken
+                ? new QueryOptions<int>(key, Fetch)
+                : new QueryOptions<int>(key, () => Fetch(default));
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("todos"), Fetch)
+                options with
                 {
                     Retry = s_retry,
                     RetryDelay = s_retryDelay,
