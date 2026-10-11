@@ -3963,7 +3963,8 @@ def fixture_hashes(project, case, index):
     from, or None where the case cannot be traced into the tree.
 
     A case whose method none of those files declares is untraceable too, which is how a killing case
-    that was renamed or deleted reads. An untraceable case is never reused.
+    that was renamed or deleted reads. An untraceable case is never reused. Hashed in the form
+    `digestible` gives, so a comment edit moves nothing and a code edit, a new case included, does.
     """
     classes, texts = index
     owner, _, method = CASE_NAME.match(case).group(1).rpartition(".")
@@ -3981,7 +3982,47 @@ def fixture_hashes(project, case, index):
             pending.extend(bases)
     if not any(re.search(r"\b{}\s*\(".format(re.escape(method)), texts[relative]) for relative in files):
         return None
-    return {relative: sha(project / relative) for relative in sorted(files)}
+    return {relative: hashlib.sha256(texts[relative].encode()).hexdigest() for relative in sorted(files)}
+
+
+TEST_ATTRIBUTE = re.compile(r"\[\s*(?:Test|TestCase|TestCaseSource|UnityTest|Theory|Property)\b")
+
+
+def is_test_support(relative, text):
+    """Whether a test-side file supports fixtures rather than being one: the shared helpers, every
+    assembly definition and reference, data, and a `.cs` that declares no test or sets up a fixture."""
+    if relative.startswith(PACKAGE + "/TestUtilities/") or not relative.endswith(".cs"):
+        return True
+    return not TEST_ATTRIBUTE.search(text) or "SetUpFixture" in text
+
+
+def context_digests(project):
+    """What a kill can depend on that no record hashes: {part: digest}.
+
+    `build-inputs` is the campaign key's component over every non-test file the editor compiles or
+    imports, the mutated files included -- a kill reached through a production file other than the
+    mutated one, a stylesheet, a project setting or a merged-in base moves it. `test-support` is
+    every test-side file that is not a fixture. A ledger written under other digests is read as
+    holding no reusable kill.
+    """
+    tests, rest = key_inputs(project)
+    support = [relative for relative in tests
+               if is_test_support(relative, (project / relative).read_text(encoding="utf-8",
+                                                                           errors="replace")
+                                  if relative.endswith(".cs") else "")]
+    return {"build-inputs": files_digest(project, rest), "test-support": files_digest(project, support)}
+
+
+def context_moved(recorded, current):
+    """The parts of the context that differ, or all of them where the ledger recorded none."""
+    held = recorded if isinstance(recorded, dict) else {}
+    return sorted(name for name in current if held.get(name) != current[name])
+
+
+def context_reason(moved, run):
+    return "run {} was measured under other {}".format(run, " and ".join(
+        {"build-inputs": "production code or project files", "test-support": "test support files"}[name]
+        for name in moved))
 
 
 def ledger_record(mutant, project, index, text_readers, run):
@@ -4078,7 +4119,7 @@ def decide_reuse(mutants, ledgers, project):
     if not ledgers:
         return reused, {number: "no earlier campaign on the branch left a ledger that could be read"
                         for number in range(1, len(mutants) + 1)}
-    tool, index = tool_digest(project), test_index(project)
+    tool, index, context = tool_digest(project), test_index(project), context_digests(project)
     for number, mutant in enumerate(mutants, start=1):
         identity = json.dumps(mutant_record(mutant, project), sort_keys=True)
         path = relative_to(mutant.path, project).as_posix()
@@ -4086,6 +4127,10 @@ def decide_reuse(mutants, ledgers, project):
         for ledger in ledgers:
             if ledger["tool"] != tool:
                 why = "run {} was measured by another version of the tool".format(ledger["run"])
+                continue
+            moved = context_moved(ledger.get("context"), context)
+            if moved:
+                why = context_reason(moved, ledger["run"])
                 continue
             records = [record for record in ledger["records"] if isinstance(record, dict)]
             found = next((record for record in records if record_identity(record) == identity), None)
@@ -4107,10 +4152,11 @@ def decide_reuse(mutants, ledgers, project):
 
 
 def load_reuse(path, mutants, project):
-    """({index: record}, {index: why}) from the file `--emit-reuse` wrote, refused unless each reused
-    record is of the mutant at its index in this tree's list."""
+    """({index: record}, {index: why}, the context the plan decided under) from the file `--emit-reuse`
+    wrote, refused unless each reused record is of the mutant at its index in this tree's list."""
     try:
         held = json.loads(Path(path).read_text())
+        context = held["context"]
         reused = {int(number): record for number, record in held["reused"].items()}
         reasons = {int(number): text for number, text in held["reasons"].items()}
         if held["schema"] != LEDGER_SCHEMA:
@@ -4123,7 +4169,7 @@ def load_reuse(path, mutants, project):
             raise SystemExit("{} reuses a kill at mutant {} that is not that mutant in this tree's "
                              "list, so no verdict here would be about the mutants the plan counted"
                              .format(path, number))
-    return reused, reasons
+    return reused, reasons, context
 
 
 def reuse_detail(record):
@@ -4160,7 +4206,7 @@ def write_ledger(path, mutants, reused, project):
             records.append(ledger_record(mutant, project, index, text_readers, run))
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps({"schema": LEDGER_SCHEMA, "run": run, "tool": tool_digest(project),
-                                      "records": records}, indent=1))
+                                      "context": context_digests(project), "records": records}, indent=1))
 
 
 def list_mismatch(expected, mutants, project):
@@ -5028,10 +5074,10 @@ def main():
         reused, reasons = decide_reuse(mutants, ledgers, project)
         if args.emit_reuse is not None:
             Path(args.emit_reuse).write_text(json.dumps({
-                "schema": LEDGER_SCHEMA, "reused": {str(number): record for number, record in reused.items()},
+                "schema": LEDGER_SCHEMA, "context": context_digests(project), "reused": {str(number): record for number, record in reused.items()},
                 "reasons": {str(number): text for number, text in reasons.items()}}, indent=1))
     elif args.reuse is not None:
-        reused, reasons = load_reuse(args.reuse, mutants, project)
+        reused, reasons, planned_under = load_reuse(args.reuse, mutants, project)
 
     if args.plan and args.survivors_of is None:
         owed = len(mutants) - len(reused)
@@ -5123,8 +5169,10 @@ def main():
         # runner of its own, and a kill that does not stand here is not a pass.
         if reused:
             index = test_index(project)
+            moved = context_moved(planned_under, context_digests(project))
             for number, record in reused.items():
-                problem = kill_problem(record, mutants[number - 1], project, index)
+                problem = (context_reason(moved, record.get("reused_from")) if moved
+                           else kill_problem(record, mutants[number - 1], project, index))
                 if problem is not None:
                     mutants[number - 1].verdict = REUSE_LAPSED
                     mutants[number - 1].detail = problem
