@@ -298,27 +298,28 @@ def campaign_reason(labels, runs, jobs, now, head, unbacked=None):
                            expected_checks.stuck_exit(newest) if newest else "", unbacked)
 
 
-def campaign_backing(project, runs):
+def campaign_backing(project, runs, read=None, slug=None):
     """`campaign.unbacked` for the head's newest campaign: why a verdict it reused does not stand.
 
     A run that measured is answered from its own artifacts alone. One that reused is checked against
     the run it cites, read here; a cited run or key artifact that cannot be read is a verdict nobody
-    can show.
+    can show. `read` and `slug` default to `rest_json` and the project's repository.
     """
     newest = campaign.newest(runs)
     if newest is None:
         return None
-    slug = repository(project)
-    own = rest_json(campaign.artifacts_path(slug, newest.get("id")))
+    read = read or rest_json
+    slug = slug or repository(project)
+    own = read(campaign.artifacts_path(slug, newest.get("id")))
     found = campaign.keyed(own)
     if found is None or found[1] is None:
         return None
     try:
-        source = rest_json(campaign.run_path(slug, found[1]))
+        source = read(campaign.run_path(slug, found[1]))
     except RuntimeError:
         return campaign.unbacked(own, None, None)
     try:
-        listing = rest_json(campaign.artifacts_path(slug, found[1]))
+        listing = read(campaign.artifacts_path(slug, found[1]))
     except RuntimeError:
         listing = None
     return campaign.unbacked(own, source, listing)
