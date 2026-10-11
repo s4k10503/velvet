@@ -288,7 +288,7 @@ kill of the ledger. `test-support` hashes every test-side file that is not a fix
 `Packages/com.velvet.core/TestUtilities/`, every assembly definition and reference with its `.meta`,
 every other non-C# file under a `Tests/` directory except a `.meta` (a guid only, which a new fixture
 file brings along), and every C# file there that declares no test attribute or declares a
-`SetUpFixture`. A test attribute is read anywhere in an attribute list, in the file with its comments
+NUnit set-up fixture (the SetUpFixture attribute). A test attribute is read anywhere in an attribute list, in the file with its comments
 removed; a C# file is hashed that way too, so a comment edited in a helper moves nothing. Any other
 change to it lapses every kill of the ledger, and the plan's summary says which of the two moved.
 What stays reusable across a change is therefore a fixture file's: an edit
