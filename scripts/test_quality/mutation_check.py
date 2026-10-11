@@ -39,6 +39,7 @@ already touching, and two of them reached a commit that way.
 
 import argparse
 import bisect
+import collections
 import fcntl
 import functools
 import hashlib
@@ -176,7 +177,7 @@ UNREADABLE = object()
 CARRIED_REFUSAL = 3
 
 # Include generation semantics in verdict identity.
-MUTATION_MODEL_VERSION = 9
+MUTATION_MODEL_VERSION = 10
 
 
 class Mutant:
@@ -192,6 +193,15 @@ class Mutant:
         # The operators of the mutants `one_per_line` dropped from this one's line, so a declaration
         # naming one of them still answers for the representative.
         self.shadowed = frozenset()
+        # The mutants of that line `one_per_line` dropped, in the order it would have kept them: the
+        # next one is tried when this one is not a program at all (`INAPPLICABLE`).
+        self.alternates = ()
+        # The operator of the alternate that stood for the line where this one did not compile, and
+        # None where this one was measured.
+        self.stood = None
+
+    def effective_operator(self):
+        return self.stood or self.operator
 
     def describe(self, project):
         try:
@@ -502,8 +512,10 @@ def one_per_line(mutants):
     """At most one mutant for each (file, line), chosen by `LINE_PRIORITY` and then by column.
 
     Deterministic in the mutants alone, so every shard and every later run reads the same list. The
-    ones dropped are named on the survivor as `shadowed`: the cap generates no mutant for them, and a
-    declaration that names one of them has to keep answering for the line.
+    ones dropped are named on the survivor as `shadowed`, and kept in order as `alternates`: the cap
+    lists no mutant for them, a declaration naming one is not stale over the line, and the next of
+    them is measured in place of a kept mutant the compiler rejects. The alternates are as
+    deterministic as the list, so every shard regenerates the same ones.
     """
     by_line = {}
     for mutant in mutants:
@@ -513,6 +525,7 @@ def one_per_line(mutants):
         group.sort(key=lambda mutant: (LINE_PRIORITY.index(mutant.operator), mutant.column))
         chosen = group[0]
         chosen.shadowed = frozenset(other.operator for other in group[1:])
+        chosen.alternates = tuple(group[1:])
         kept.append(chosen)
     return kept
 
@@ -3805,10 +3818,11 @@ def scope_digest(base, targets, project, platform):
 
 
 # The directories whose files the editor compiles or imports for a campaign's suites, relative to the
-# project. A directory ending in `~` is not imported, so nothing under one is read.
+# project. A directory ending in `~` is not imported, so nothing under one is read. `Library`, `Temp`
+# and `Logs` sit at the project root, outside these roots, and no directory is skipped by its name
+# at depth: a `Logs` or `obj` folder inside a root holds sources the editor compiles.
 KEY_ROOTS = (PACKAGE, "Assets", "ProjectSettings")
 KEY_FILES = ("Packages/manifest.json", "Packages/packages-lock.json")
-KEY_SKIPPED_DIRECTORIES = ("Library", "Temp", "Logs", "obj")
 
 
 def is_test_source(relative):
@@ -3829,7 +3843,7 @@ def key_inputs(project):
     for root_name in KEY_ROOTS:
         for root, directories, files in os.walk(str(project / root_name)):
             directories[:] = sorted(name for name in directories
-                                    if not name.endswith("~") and name not in KEY_SKIPPED_DIRECTORIES)
+                                    if not name.endswith("~"))
             candidates.extend(relative_to(Path(root) / name, project).as_posix()
                               for name in files if not name.endswith((".md", ".md.meta")))
     for relative in sorted(set(candidates)):
@@ -3937,7 +3951,7 @@ def write_verdict(output, index, digest, mutant, project, killers=(), scope=()):
     verdict_path(output, index).write_text(json.dumps({
         "digest": digest, "scope": list(scope), "index": index, "mutant": mutant.describe(project),
         "column": mutant.column,
-        "verdict": mutant.verdict, "detail": mutant.detail,
+        "verdict": mutant.verdict, "detail": mutant.detail, "stood": mutant.stood,
         # Every case that failed in the run that decided the verdict, not the three the detail names:
         # for a kill the narrowed run took, the area's cases alone, since the whole suite never ran.
         # Which cases kill which mutant is a reading the decision does not carry, and it is on disk
@@ -3968,6 +3982,7 @@ def read_verdict(output, index, digest, mutant, project, scope=()):
     held = recorded(output, index, digest, mutant, project, scope)
     if held is None or held.get("verdict") != KILLED:
         return None
+    mutant.stood = held.get("stood")
     return held.get("verdict"), held.get("detail")
 
 
@@ -3994,6 +4009,7 @@ def collected(directories, index, digest, mutant, project, scope=()):
     for directory in directories:
         held = recorded(Path(directory), index, digest, mutant, project, scope)
         if held is not None:
+            mutant.stood = held.get("stood")
             return held.get("verdict"), held.get("detail") or ""
     return UNRECORDED, "no shard's output holds a verdict for it"
 
@@ -4097,10 +4113,10 @@ def answered(mutants, deferred, declared):
         if mutant.verdict not in SURVIVING:
             continue
         declaration = declared.get((mutant.path, mutant.line))
-        if (declaration is not None and declaration.operator not in (None, mutant.operator)
-                and declaration.operator not in mutant.shadowed):
-            # Named for a different mutant on this line, so it says nothing about this one. One the
-            # cap dropped from the line is not different: this mutant stands for the line.
+        if declaration is not None and declaration.operator not in (None, mutant.effective_operator()):
+            # Named for a different mutant on this line, so it says nothing about this one. That
+            # includes one the cap dropped: it covers a line whose representative was killed or is
+            # absent, and a survivor of another operator is still owed its own answer.
             unanswered.append((mutant, "the declaration above answers for '{}', not for this".format(
                 declaration.operator)))
             continue
@@ -4118,7 +4134,7 @@ def answered(mutants, deferred, declared):
     # A named declaration is settled by a survivor of its own operator rather than by any survivor on
     # the line: without that, a sibling still surviving would keep a stale one from being reported,
     # which is the widening this naming exists to close read from the other side.
-    named = {(mutant.path, mutant.line, mutant.operator)
+    named = {(mutant.path, mutant.line, mutant.effective_operator())
              for mutant in mutants if mutant.verdict in SURVIVING}
     # What the cap dropped, over every mutant including the killed: a declaration written for a mutant
     # the cap no longer generates has nothing to be measured against, which is not what stale means.
@@ -4234,16 +4250,23 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     started = time.time()
     resumed = measured = 0
     try:
-        for index, mutant in enumerate(mutants, start=1):
-            if index not in selected:
-                continue
-            print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
-            if index in in_session:
+        # (index, the mutant to measure, the alternates still to try for its line). A kept mutant the
+        # compiler rejects is replaced at the front by the next alternate of its line.
+        queue = collections.deque((index, mutant, mutant.alternates)
+                                  for index, mutant in enumerate(mutants, start=1) if index in selected)
+        while queue:
+            index, mutant, rest = queue.popleft()
+            owner = mutants[index - 1]
+            first_try = mutant is owner
+            print("[{}/{}] {}{}".format(index, len(mutants), mutant.describe(project),
+                                        "" if first_try else " (stands in for the one above)"),
+                  flush=True)
+            if first_try and index in in_session:
                 mutant.verdict, mutant.detail = in_session[index]
                 measured += 1
                 print("      {} ({}) in the session".format(mutant.verdict, mutant.detail or "-"))
                 continue
-            kept = read_verdict(output, index, campaign, mutant, project, scope)
+            kept = read_verdict(output, index, campaign, mutant, project, scope) if first_try else None
             if kept is not None:
                 mutant.verdict, mutant.detail = kept
                 resumed += 1
@@ -4388,7 +4411,21 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             if neighbours:
                 mutant.detail = "{}; {} other editor(s) were up".format(
                     mutant.detail or "-", neighbours)
-            write_verdict(output, index, campaign, mutant, project, killers, scope)
+            if mutant.verdict == INAPPLICABLE and rest:
+                print("      {} ({}); trying {}".format(mutant.verdict, mutant.detail or "-",
+                                                         rest[0].operator))
+                queue.appendleft((index, rest[0], rest[1:]))
+                continue
+            if not first_try:
+                owner.verdict = mutant.verdict
+                if mutant.verdict == INAPPLICABLE:
+                    owner.detail = "no mutant of the line compiled; the last: {}".format(
+                        mutant.detail or "-")
+                else:
+                    owner.detail = "{} stood for the line, {} did not compile: {}".format(
+                        mutant.operator, owner.operator, mutant.detail or "-")
+                    owner.stood = mutant.operator
+            write_verdict(output, index, campaign, owner, project, killers, scope)
             measured += 1
             average = (time.time() - started) / measured
             left = sum(1 for later in selected if later > index)

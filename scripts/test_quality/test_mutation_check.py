@@ -2929,11 +2929,49 @@ class OnePerLineTests(unittest.TestCase):
                           for line in listed],
                          [("5", "boundary)"), ("6", "arithmetic)")])
 
-    def test_Given_ADeclarationNamingADroppedOperator_When_TheRepresentativeSurvives_Then_ItIsAnswered(self):
-        # Arrange
+    def test_Given_ADeclarationNamingADroppedOperator_When_TheRepresentativeSurvives_Then_ItIsUnanswered(self):
+        # Arrange -- a survivor of another operator is owed its own answer.
         kept = survivor(Path("probe.cs"), 12, operator="boundary")
         kept.shadowed = frozenset({"logic"})
         declared = {(Path("probe.cs"), 12): declaration(12, operator="logic")}
+
+        # Act
+        unanswered, _ = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(unanswered, ["the declaration above answers for 'logic', not for this"])
+
+    def test_Given_ADeclarationNamingTheOperatorThatStoodForTheLine_When_ItSurvives_Then_ItIsAnswered(self):
+        # Arrange -- the kept mutant did not compile and the dropped logic flip was measured in its place.
+        kept = survivor(Path("probe.cs"), 12, operator="arithmetic")
+        kept.shadowed = frozenset({"logic"})
+        kept.stood = "logic"
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="logic")}
+
+        # Act
+        unanswered, stale = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual((unanswered, stale), ([], []))
+
+    def test_Given_ADeclarationNamingTheKeptOperatorThatDidNotCompile_When_AnAlternateSurvives_Then_ItIsUnanswered(self):
+        # Arrange -- the kept arithmetic mutant was no program; the survivor is the logic flip.
+        kept = survivor(Path("probe.cs"), 12, operator="arithmetic")
+        kept.shadowed = frozenset({"logic"})
+        kept.stood = "logic"
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="arithmetic")}
+
+        # Act
+        unanswered, _ = self.decide([kept], declared)
+
+        # Assert
+        self.assertEqual(unanswered, ["the declaration above answers for 'arithmetic', not for this"])
+
+    def test_Given_AnUnnamedDeclarationOverASurvivingThinnedLine_When_Decided_Then_ItAnswersAsBefore(self):
+        # Arrange
+        kept = survivor(Path("probe.cs"), 12, operator="boundary")
+        kept.shadowed = frozenset({"logic"})
+        declared = {(Path("probe.cs"), 12): declaration(12)}
 
         # Act
         unanswered, stale = self.decide([kept], declared)
@@ -4246,6 +4284,86 @@ class InapplicableOperatorTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, mutation_check.UNCOMPILABLE in campaign.printed), (1, True))
+
+class RejectingJoinCampaign(StubbedCampaign):
+    """`Log(a + b, ok && other);` on one line: the cap keeps the `+ -> -` rewrite, which the compiler
+    rejects for strings, and drops a clause removal and a logic flip behind it. The editor is replaced
+    by a function of the text on disk: CS0019 where the join was rewritten, a failing suite where the
+    text holds `kills_when`, a green one otherwise."""
+
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static void Run(string a, string b, bool ok, bool other) { Log(a + b, ok && other); }
+            }
+        }
+        """)
+    kills_when = None
+
+    def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
+        mutant = Path(results).name != "baseline.xml"
+        text = self.source.read_text()
+        Path(log).write_text(
+            "Packages/com.velvet.core/Runtime/Probe.cs(5,80): error CS0019: Operator '-' cannot be "
+            "applied to operands of type 'string' and 'string'\n" if mutant and "a - b" in text else "")
+        Path(results).write_text(FAILING_RESULTS if mutant and self.kills_when and self.kills_when in text
+                                 else GREEN_RESULTS)
+        return 0.0, False, 0
+
+    def stood(self):
+        return json.loads((self.project / "out" / "mutant-001.json").read_text())
+
+
+class InapplicableFallbackTests(unittest.TestCase):
+    """A line whose kept mutant is no program is asked about through the next one the cap dropped."""
+
+    def test_Given_AJoinTheCompilerRejects_When_TheLineHoldsAnotherMutant_Then_ThatOneIsMeasured(self):
+        # Arrange
+        campaign = RejectingJoinCampaign()
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert
+        record = campaign.stood()
+        self.assertEqual((record["verdict"], record["stood"]), (mutation_check.SURVIVED, "clause removed"))
+
+    def test_Given_AJoinTheCompilerRejects_When_TheNextMutantIsKilled_Then_TheLineIsKilledAndPasses(self):
+        # Arrange
+        campaign = RejectingJoinCampaign()
+        campaign.kills_when = "Log(a + b, ok);"
+
+        # Act
+        code = campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual((code, campaign.stood()["verdict"]), (0, mutation_check.KILLED))
+
+    def test_Given_TheFallbackStood_When_TheVerdictIsRecorded_Then_TheKeptMutantIsTheRecordsKey(self):
+        # Arrange
+        campaign = RejectingJoinCampaign()
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert -- the record is the kept mutant's, so the verdict job reading the plan's list finds it.
+        record = campaign.stood()
+        self.assertEqual((record["mutant"].endswith("+ -> - (arithmetic)"), record["stood"]),
+                         (True, "clause removed"))
+
+    def test_Given_NoOtherMutantOnTheLine_When_TheKeptOneIsRejected_Then_TheLineIsInapplicable(self):
+        # Arrange -- the control: nothing to fall back to is today's verdict.
+        campaign = RejectingJoinCampaign(RejectingJoinCampaign.BODY.replace(" ok && other", " 0"))
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual((campaign.stood()["verdict"], campaign.stood()["stood"]),
+                         (mutation_check.INAPPLICABLE, None))
+
 
 class HoldOrderingTests(unittest.TestCase):
     """The record is written before the mutation, which is the whole of the interruption mechanism.
@@ -6271,6 +6389,21 @@ class CampaignKeyTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(left_out, [])
+
+    def test_Given_ASourceInANestedFolderNamedLogs_When_ItIsEdited_Then_TheBuildInputsMoveTheKey(self):
+        # Arrange -- only a folder at the project root is generated; one inside a root holds sources.
+        project = KeyedProject()
+        for name in ("Logs", "obj", "Temp", "Library"):
+            project.write("Packages/com.velvet.core/Runtime/Foo/{}/X.cs".format(name), "class X { }\n")
+        _, before = project.key()
+        for name in ("Logs", "obj", "Temp", "Library"):
+            project.append("Packages/com.velvet.core/Runtime/Foo/{}/X.cs".format(name), "// edited\n")
+
+        # Act
+        moved = project.moved(before)
+
+        # Assert
+        self.assertEqual(moved, ["build-inputs"])
 
     def test_Given_TheCampaignWorkflowEdited_When_ItIsKeyed_Then_OnlyTheToolMovesTheKey(self):
         # Arrange

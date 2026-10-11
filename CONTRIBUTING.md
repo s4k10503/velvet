@@ -196,12 +196,21 @@ on nothing else, so every shard and every later run reads the same list.
 
 What the cap leaves out is not measured, and a survivor count is a statement about the mutants kept.
 `--list` prints the kept ones. A declaration that names an operator the cap dropped from its line
-(`MUTANT_SURVIVES(equivalent, logic)` over a line whose boundary flip was kept) keeps answering for
-the line's kept mutant and is not stale when that mutant dies, because the mutant it described is no
-longer generated and there is nothing to measure it against; an unnamed declaration is not stale
-over a line with dropped mutants either. A declaration naming an operator the line never carried
-is still refused. Where a branch needs the dropped operator measured, it writes the line so that
-operator is the one kept — split the expression over lines.
+(`MUTANT_SURVIVES(equivalent, logic)` over a line whose boundary flip was kept) is not stale when the
+kept mutant dies or is absent, because the mutant it described is no longer generated and there is
+nothing to measure it against; an unnamed declaration is not stale over a line with dropped mutants
+either. It does not answer a kept mutant of another operator that survives: that survivor stays
+`UNANSWERED` ("answers for 'logic', not for this") until the line is written so that its own
+operator is the one kept — split the expression over lines. A declaration naming an operator the
+line never carried is refused.
+
+A kept mutant the compiler rejects as no program is replaced by the next dropped mutant of its line
+in the same order, until one compiles or none remain; the line is then reported as rejected, as
+before. Only an arithmetic `+` rewritten to `-` over operands that turn out to be strings is ever
+rejected that way, so that is the only case the fallback has. The verdict record stays the kept
+mutant's, which is what the plan's list names, and carries the operator that stood; a declaration
+then answers for that operator. Every shard regenerates the dropped mutants from the tree, so the
+fallback needs nothing beyond the shared list.
 
 The run also fails or stops rather than pass over a mutant nobody asked about, and
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
@@ -258,7 +267,7 @@ a campaign key: one hash over six components, each printed beside it so a miss c
 | --- | --- | --- |
 | `mutants` | the capped mutant list: file, line, column, operator and both texts of each | the question asked |
 | `mutated-files` | the full bytes of every file holding a mutant, comments included | a comment moves the lines the mutants sit on, and a reused pass is a stronger claim than a resumed kill, so it takes no comment-stripped form |
-| `test-sources` | every file under a `Tests/` directory of the package, and `TestUtilities/` | what is asked of the mutants |
+| `test-sources` | every file whose path has a `Tests/` directory at any depth under the hashed roots (the package, `Assets/`, `ProjectSettings/`), and every file under `Packages/com.velvet.core/TestUtilities/` | what is asked of the mutants |
 | `build-inputs` | every other file the editor compiles or imports, outside a `~` directory and not markdown: the package's remaining sources, `.asmdef`s and plugins, `Assets/`, `ProjectSettings/`, `Packages/manifest.json` and `packages-lock.json` | a test that kills a mutant in one file can reach it through another, and an editor or analyzer change moves what compiles |
 | `declarations` | each `MUTANT_SURVIVES` the mutated files hold, with whether this branch wrote it | the declarations' `written_here` moves with the merge base |
 | `tool` | `mutation_check.py`, its operator tables and priority order, `mutation.yml`, and the scripts the shards run or import: `ci_mutation_shard.py`, `unity_running.py`, `schemata_tool.py`, `schemata/MutantSchemata.cs`, `ci/licensed_editor.py` and `ci/change_base.py` (`TOOL_FILES`) | a verdict is the tool's |
@@ -266,12 +275,13 @@ a campaign key: one hash over six components, each printed beside it so a miss c
 The key is conservative on purpose: it hashes the mutated files, the test sources and the rest of
 what the editor compiles or imports, so an equal key means none of those files differs. It does not
 hash markdown (also inside the package), a directory ending in `~` (so `Generators~` sources, though
-the DLLs committed under `Runtime/Plugins/` are in), `Library`, `Temp`, `Logs` or `obj`, a workflow
+the DLLs committed under `Runtime/Plugins/` are in), the root-level `Library`, `Temp` and `Logs`, which
+lie outside the hashed roots (a folder of those names inside a root is hashed), a workflow
 other than `mutation.yml`, a script outside `TOOL_FILES`, or what the registry serves behind the
 editor image's tag (the tag itself is written in `mutation.yml`). The fixtures that read
-the repository's text are the ones no launch runs, and nothing a campaign runs imports another
-script; `CampaignKeyTests` holds `TOOL_FILES` to the modules `mutation_check.py` and
-`ci_mutation_shard.py` import. The price is that a rebase onto a base that changed another production file measures again; narrowing `build-inputs`
+the repository's text are the ones no launch runs. `CampaignKeyTests` holds `TOOL_FILES` to the
+modules `mutation_check.py` and `ci_mutation_shard.py` import directly; a module those import in
+turn is not checked; the listed ones import nothing outside the list. The price is that a rebase onto a base that changed another production file measures again; narrowing `build-inputs`
 to the mutated files and the tests is a one-line change in `campaign_key`, and takes on the risk that
 an unmutated file alters what kills a mutant.
 
@@ -286,8 +296,8 @@ chain of reuses forms and a verdict outlives only the artifacts of the run that 
 reusing run uploads the key too, citing the run that measured it. A reading that fails for any reason,
 a malformed answer included, reuses nothing. `scripts/pr/settle.py` checks the citation
 before a merge: a reused pass whose cited run is not a pass of the workflow that measured this very
-key holds the head, as does a run whose own key artifact has expired or is doubled (a run with none
-at all predates the key and is accepted), and it says which: the cited run could not be read, is not a pass, holds no readable
+key holds the head, as does a run whose own key artifact has expired or is doubled (a run with no key artifact at all
+predates the key and is accepted as measured), and it says which: the cited run could not be read, is not a pass, holds no readable
 key artifact, or did not measure the key. `scripts/pr/campaign_status.py` asks the same check before
 it displays a pass. `scripts/pr/automerge.py` reads only whether the head's newest run concluded, as
 for any campaign, and the merge run it dispatches is settle's. `refuse/merge_unproven_head.py` does
