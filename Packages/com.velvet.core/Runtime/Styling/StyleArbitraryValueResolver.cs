@@ -320,12 +320,11 @@ namespace Velvet
 
         internal static bool IsSpacingProperty(ArbitraryProperty property) => s_spacingProperties.Contains(property);
 
-        // The families whose longhand takes `auto`: CSS gives padding none, and a minimum or maximum none either (a
-        // maximum's unbounded value is none, which the setters write as StyleKeyword.None).
+        // The families whose longhand takes `auto`: CSS gives padding none, and a maximum's unbounded value is none,
+        // which the setters write as StyleKeyword.None.
         private static bool TakesAuto(ArbitraryProperty property)
             => IsSpacingProperty(property) && !IsPaddingProperty(property)
-                && property is not (ArbitraryProperty.MinWidth or ArbitraryProperty.MinHeight
-                    or ArbitraryProperty.MaxWidth or ArbitraryProperty.MaxHeight);
+                && property is not (ArbitraryProperty.MaxWidth or ArbitraryProperty.MaxHeight);
 
         private static bool IsPaddingProperty(ArbitraryProperty property)
             => property is ArbitraryProperty.Padding or ArbitraryProperty.PaddingX or ArbitraryProperty.PaddingY
@@ -350,8 +349,7 @@ namespace Velvet
         // A stylesheet class of a spacing family and the inline token that resolves to the same thing: a step
         // becomes its pixel bracket, `auto` the bracket keyword and `full` a hundred percent. Whether the sheets
         // declare the class is read from StyleUtilityProperties, which is generated from them, so only a name
-        // with a rule counts: the sheets declare `-auto` for margins, size, width, height and basis and `-full`
-        // for sizes and basis, and nothing else in these families.
+        // with a rule counts.
         internal static bool TryReadStylesheetClass(string cls, out ArbitraryProperty property, out string inlineForm)
         {
             property = default;
@@ -374,7 +372,7 @@ namespace Velvet
                     continue;
                 }
                 var name = cls.AsSpan(prefix.Length);
-                // MUTANT_SURVIVES(unreachable, clause removed): the guard above admits only a class the sheets declare, and they declare no padding, minimum or maximum `-auto` class, which SpacingPrecedenceTests pins.
+                // MUTANT_SURVIVES(unreachable, clause removed): the guard above admits only a class the sheets declare, and they declare no padding or maximum `-auto` class, which SpacingPrecedenceTests pins.
                 if (name.SequenceEqual("auto".AsSpan()) && TakesAuto(familyProperty))
                 {
                     property = familyProperty;
