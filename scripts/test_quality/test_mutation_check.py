@@ -8636,6 +8636,8 @@ class DeclinedMutantBesideASessionTests(SixOrSevenMutantsBase):
 
     campaign_class = SevenMutantCampaign
 
+    # GREEN_ON_BASE(characterization): the base runs no reach run; dropping the `len(placed) == len(pending)`
+    # test from `reaching` in `measure_in_session` reddens it.
     def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
         # Arrange — six placed meet the threshold, but a seventh needs a launch of its own.
 
@@ -8645,6 +8647,8 @@ class DeclinedMutantBesideASessionTests(SixOrSevenMutantsBase):
         # Assert
         self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
 
+    # GREEN_ON_BASE(characterization): the base takes the area's baseline for a launch of its own; making
+    # `measure` skip the areas of its own launches beside a session reddens it.
     def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_TheDeclinedOneIsPrecededByItsAreasBaseline(self):
         # Arrange
 
