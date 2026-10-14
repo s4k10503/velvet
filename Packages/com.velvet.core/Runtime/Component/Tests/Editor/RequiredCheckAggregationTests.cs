@@ -369,6 +369,7 @@ namespace Velvet.Tests
             ("push (filtered)", "push (filtered)"),
             ("push to `main`", "push"),
             ("every PR", "pull_request"),
+            ("a labelled PR", "pull_request"),
             ("merge group", "merge_group"),
         };
 

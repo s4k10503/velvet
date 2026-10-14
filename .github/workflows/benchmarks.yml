@@ -62,7 +62,7 @@ jobs:
     # A labeled event for another label than `benchmarks` starts nothing, even where that one is already on.
     if: >-
       needs.license-check.outputs.has_license == 'true'
-      && (github.event_name != 'pull_request'
+      && (!github.event.pull_request
           || (contains(github.event.pull_request.labels.*.name, 'benchmarks')
               && (github.event.action != 'labeled' || github.event.label.name == 'benchmarks')))
     # A newer head of a labelled pull request cancels the run still measuring an older one. Only a run
@@ -136,7 +136,7 @@ jobs:
   trend-main:
     name: Benchmark history
     needs: benchmarks
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

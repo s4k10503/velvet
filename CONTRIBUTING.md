@@ -1046,8 +1046,9 @@ on every platform.
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
-| `Benchmarks ▸ benchmarks` (PlayMode) | push to `main` (filtered) / a PR carrying the `benchmarks` label / manual | **required** (skipped if absent) | no |
-| `Benchmarks ▸ trend-main`, `trend-pull-request` | after `benchmarks`, on `main` / on a labelled PR | not required | no |
+| `Benchmarks ▸ benchmarks` (PlayMode) | push (filtered) to `main` / a labelled PR (`benchmarks`) / manual | **required** (skipped if absent) | no |
+| `Benchmarks ▸ trend-main` | push (filtered) to `main`, after `benchmarks` | not required | no |
+| `Benchmarks ▸ trend-pull-request` | a labelled PR (`benchmarks`), after `benchmarks` | not required | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages; also carries the benchmark chart, as of its last deployment) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
@@ -1138,7 +1139,7 @@ and uploads them as `Benchmark medians`, in the JSON shape `benchmark-action/git
 reads (`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
 benchmark that throws fails the run like any other test. The history is not gated on a number:
 
-- `trend-main` appends the run to the `benchmark-data` branch under `dev/bench`, one entry per commit
+- `trend-main` appends a push's run to the `benchmark-data` branch under `dev/bench`, one entry per commit
   and at most 200 in the chart. It first creates the branch as an orphan commit holding a README when
   the remote has none, which the action does not do itself, and it is the only job holding
   `contents: write`. The `Docs` workflow copies that directory into the
