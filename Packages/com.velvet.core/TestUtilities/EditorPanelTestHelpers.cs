@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Reflection;
 using UnityEngine.UIElements;
 
@@ -19,6 +20,7 @@ namespace Velvet.TestUtilities
         /// </summary>
         public static void ForcePanelUpdate(IPanel panel)
         {
+            var clock = Stopwatch.StartNew();
             var t = panel.GetType();
             foreach (var name in new[] { "UpdateForRepaint", "ValidateLayout", "ApplyStyles" })
             {
@@ -28,6 +30,7 @@ namespace Velvet.TestUtilities
                     m.Invoke(panel, null);
                 }
             }
+            PanelPhaseTimings.Record(PanelPhaseTimings.Layout, clock.Elapsed.TotalMilliseconds);
         }
 
         /// <summary>

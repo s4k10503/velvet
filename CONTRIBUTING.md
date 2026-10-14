@@ -1111,6 +1111,30 @@ The source-generator tests and the `upm`-branch split run with no Unity license,
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
 unless a license secret is configured.
 
+### Panel fixture timing
+
+Every fixture built on `PanelTestBase` creates, shows and closes an editor window per case. Each such
+case records how long that took, apart from its body, through `PanelPhaseTimings` in `TestUtilities`:
+the window's creation and `Show` (`create_show`), its `Close` and `DestroyImmediate` (`teardown`), each
+forced layout/styles pass made while the case is open (`layout`) and the whole span from the base
+`SetUp` to the end of the base `TearDown` (`case`). A `layout` row falls inside the body or the setup,
+so it is not added to the others, and `teardown` leaves out the unmount before it, which only `case`
+holds. A layout pass in a derived `TearDown` before it calls the base one falls inside the `case` span;
+one after it is not recorded. A further window a fixture opens itself is not measured, and a case
+ignored for want of a graphics device records nothing.
+
+A run whose editor was given `-testResults` writes the rows to `panel-phase-timings.csv` in the
+directory of the file that argument names, one flush per fixture, with no flag to pass; a run without it
+writes nothing, and no directory is created for the file. A failure to record or to write is swallowed,
+not reported as a failed case. The EditMode job of `Test ▸ unity-tests` uploads the directory as
+`Test results (EditMode)`, so the CSV is in that artifact, and runs `scripts/ci/panel_phase_timings.py`
+over it. The script prints the count, total and mean per phase, the window cost as a share of the panel
+cases and of the suite, and the fixtures with the largest window cost, to the log and the job summary.
+A run that wrote no CSV is a `::warning::` and a summary line, not a failure, and a run with no results
+XML reports the suite share as unknown. The suite share takes the panel cases from the `case` rows,
+which hold their setup and teardown, and the rest from the results XML, so that part follows whatever the
+runner's per-case duration covers for cases that are not panel cases.
+
 ### Benchmarks
 
 The PlayMode fixtures in the `Velvet.Tests.Performance` namespace measure with Unity Performance
