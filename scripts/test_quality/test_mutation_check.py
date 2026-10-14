@@ -7840,6 +7840,8 @@ class ShardCeilingTests(unittest.TestCase):
         # Assert
         self.assertTrue(fits)
 
+    # GREEN_ON_BASE(characterization): the base fits without any reach charge; raising `REACH_RUN` to
+    # `2 * 2000` reddens it.
     def test_Given_AFullEditModeShardWhoseReachRunNeverFinishes_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the run is stopped at REACH_BOUND times the baseline, which REACH_RUN charges; no covered
         # set is then run, and every mutant takes the whole suite at the same measured figure. The areas'
@@ -7961,10 +7963,10 @@ class SessionCampaign(StubbedCampaign):
             name = directory / "item-{}.json".format(mutation_check.cs_id(number))
             xml = directory / "mutant-{}.xml".format(mutation_check.cs_id(number))
             planned = {stage["name"]: stage for stage in item["stages"]}
-            if number == 0 and any(mutation_check.is_covered(stage_name) for stage_name in planned):
+            if number == 0 and any(stage_name.startswith("covered:") for stage_name in planned):
                 name.write_text(json.dumps({"id": 0, "stages": self.gate_stages(item, directory, assembly)}))
                 continue
-            if any(mutation_check.is_covered(stage_name) for stage_name in planned) and not item.get("confirm"):
+            if any(stage_name.startswith("covered:") for stage_name in planned) and not item.get("confirm"):
                 name.write_text(json.dumps({"id": number, "stages": self.covered_stages(item, xml, assembly)}))
                 continue
             if item.get("confirm"):
@@ -7994,7 +7996,7 @@ class SessionCampaign(StubbedCampaign):
             total = len(planned["testNames"]) or 1
             xml = directory / "mutant-000-{}.xml".format(planned["name"].replace(":", "-"))
             xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0" />'.format(total))
-            red = mutation_check.is_covered(planned["name"]) and not self.gate_green
+            red = planned["name"].startswith("covered:") and not self.gate_green
             stages.append({"name": planned["name"], "finished": True, "xml": str(xml), "passed": total,
                            "failures": ["N.C.A"] if red else [], "armed": ["{}:0".format(assembly)]})
         return stages
@@ -8740,8 +8742,6 @@ class CoveredVerdictTests(unittest.TestCase):
         self.assertEqual(reading, (mutation_check.KILLED, "1 failed among the 2 case(s) that ran the site: Kills",
                                    ["N.C.Kills"]))
 
-    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
-    # `last["name"] != "whole"` test in `session_verdict` reddens it.
     def test_Given_AKillInACoveredStageWhoseSameCasesFailedUnmutated_When_Read_Then_ItIsNoVerdict(self):
         # Arrange — an order-dependent failure: the cases fail in that sequence whatever the mutation does.
         stages = [{"name": "covered:0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
@@ -8754,6 +8754,8 @@ class CoveredVerdictTests(unittest.TestCase):
         # Assert
         self.assertIsNone(reading)
 
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # `last["name"] != "whole"` test in `session_verdict` reddens it.
     def test_Given_ACoveredStageThatSurvivedAndNoWholeStage_When_Read_Then_ItIsNoVerdict(self):
         # Arrange — a narrowed survivor is never a verdict.
         stages = [self.stage("covered:0", 2)]
