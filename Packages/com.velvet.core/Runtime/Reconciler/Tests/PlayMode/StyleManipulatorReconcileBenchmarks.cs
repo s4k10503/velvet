@@ -64,6 +64,11 @@ namespace Velvet.Tests.Performance
                 .WarmupCount(k_WarmupCount)
                 .MeasurementCount(k_MeasurementCount)
                 .Run();
+
+            // The first unmount is what fills the label and button pools, so a mount renting from them
+            // starts at the second iteration; one more cycle keeps that path in a one-iteration run.
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), rows);
+            _reconciler.Reconcile(_root, rows, Array.Empty<VNode>());
         }
 
         // Distinct VNode instances carrying the same tokens in freshly parsed arrays: the reference

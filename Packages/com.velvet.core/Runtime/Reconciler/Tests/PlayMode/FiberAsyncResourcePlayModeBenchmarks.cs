@@ -43,6 +43,10 @@ namespace Velvet.Tests.Performance
                 Measure.Custom(groupTime, measurement.ElapsedMs);
                 Measure.Custom(groupGC, measurement.AllocBlocks);
             }
+
+            // One round trip that starts after a measured one has finished, so a one-iteration run also
+            // covers a round trip following another.
+            yield return RunHooksUseSuspendResumeRoundTrip(_root);
         }
 
         [Component]

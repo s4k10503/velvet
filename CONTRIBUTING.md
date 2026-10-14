@@ -1117,11 +1117,12 @@ Testing and assert nothing about their numbers, so they run in two modes. `Bench
 `TestUtilities` picks the mode: by default a benchmark takes one measured iteration and no warmup, and the editor flag `-velvetBenchmarkFull` restores the counts
 each one declares. `Test ▸ unity-tests`, the base-red reading and the mutation campaign pass no flag, so
 the required PlayMode run carries only the one-iteration form. A new benchmark takes its counts from
-`BenchmarkRun.Warmup` and `BenchmarkRun.Measurements` rather than from literals. A path that only a later iteration
-reaches would go unexercised in the one-iteration form: the one such path in these fixtures was the
-end-to-end mount benchmark's unmount, which now runs once after its loops whatever the counts. A local
-run that wants real numbers passes the flag itself, and the flag is necessary for them rather than
-sufficient.
+`BenchmarkRun.Warmup` and `BenchmarkRun.Measurements` rather than from literals. A path that only a later
+iteration reaches (an unmount that follows a mount, a mount that rents what an earlier unmount pooled)
+goes unexercised in the one-iteration form, so a benchmark whose body has one runs it once more
+unconditionally after its loops. Each fixture's body was read for such a path when this was written;
+a new benchmark is held to the same reading. A local run that wants real numbers passes the flag
+itself, and the flag is necessary for them rather than sufficient.
 
 `.github/workflows/benchmarks.yml` runs the full counts, as its own workflow and not a required one:
 

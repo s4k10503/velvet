@@ -144,8 +144,9 @@ jobs:
           site=$(python3 docs/build.py --site-path)
           echo "path=$site" >> "$GITHUB_OUTPUT"
 
-      # trend-main in benchmarks.yml creates the data branch on its first run on main, so before that a failed checkout here
-      # leaves the site without the page rather than failing the build.
+      # trend-main in benchmarks.yml creates the data branch on its first run on main, so before that
+      # the checkout fails, and until the action has pushed a chart the branch holds no dev/bench:
+      # either way the site goes without the page rather than failing the build.
       - name: Fetch the benchmark history
         id: bench
         continue-on-error: true
@@ -160,8 +161,10 @@ jobs:
         env:
           SITE: ${{ steps.site.outputs.path }}
         run: |
-          mkdir -p "$SITE/dev/bench"
-          cp -r benchmark-data/dev/bench/. "$SITE/dev/bench/"
+          if [ -d benchmark-data/dev/bench ]; then
+            mkdir -p "$SITE/dev/bench"
+            cp -r benchmark-data/dev/bench/. "$SITE/dev/bench/"
+          fi
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
