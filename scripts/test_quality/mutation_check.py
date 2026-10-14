@@ -130,14 +130,19 @@ NARROWED_PLATFORMS = ("EditMode",)
 # session that runs the reach run places every mutant it was assigned, so it takes no area's own baseline
 # in its opening; a placed mutant whose reading does not stand launches on its own afterwards, as on main.
 REACH_SHARE = 10
-# The reach run is made only for a session that places at least this many mutants and places every
-# mutant it was assigned, so that no mutant is launched on its own beside it. Any other session takes the
-# path it took before the reach run existed: the areas' own baselines in its opening, then each mutant's
-# area, then the whole suite, and a mutant launched on its own keeps its area-first launches. The figure
-# is a decision, not a measured break-even. A plan of at most MAX_SHARDS * SHARD_SIZE mutants assigns at
-# most SHARD_SIZE to a shard, so the reach run fires for a full, fully placed shard and for the larger
-# shards of a larger plan.
+# The reach run is made only for a session that places between this many and REACH_MAX_MUTANTS mutants and
+# places every mutant it was assigned, so that no mutant is launched on its own beside it. Any other
+# session takes the path it took before the reach run existed: the areas' own baselines in its opening,
+# then each mutant's area, then the whole suite, and a mutant launched on its own keeps its area-first
+# launches. The minimum is a decision, not a measured break-even. A plan of at most
+# MAX_SHARDS * SHARD_SIZE mutants assigns at most SHARD_SIZE to a shard, so the reach run fires for a full
+# shard whose every mutant is placed, and for the larger shards of a larger plan up to the maximum.
 REACH_MIN_MUTANTS = 6
+# The most mutants a session may place and still make the reach run: a placed mutant whose reading does
+# not stand launches on its own afterwards and takes its area's baseline, which the reach run's charge does
+# not hold, so the shard has to absorb one in every area it touches. `ShardCeilingTests` derives this
+# figure from the job timeout and holds it to the largest that fits.
+REACH_MAX_MUTANTS = 13
 # The reach run is stopped at this many times the baseline's wall clock, or --timeout if that is less,
 # so a run that does not finish costs what `ShardCeilingTests` charges it.
 REACH_BOUND = 2
@@ -3921,7 +3926,8 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
             path.write_text(text)
         # The reach run comes first and its plan second: which mutants are measured, and against what, is
         # read off it.
-        reaching = (args.platform in NARROWED_PLATFORMS and len(placed) >= REACH_MIN_MUTANTS
+        reaching = (args.platform in NARROWED_PLATFORMS
+                    and REACH_MIN_MUTANTS <= len(placed) <= REACH_MAX_MUTANTS
                     and len(placed) == len(pending))
         standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder,
                                  REACH_BOUND * baseline_wall) if reaching else None
