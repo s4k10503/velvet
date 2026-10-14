@@ -192,6 +192,12 @@ namespace Velvet
                 return false;
             }
 
+            if (!negate && valueSpan.SequenceEqual("auto".AsSpan()) && TakesAuto(property))
+            {
+                result = ArbitraryStyle.AutoLength(property);
+                return true;
+            }
+
             if (!TryParseValue(valueSpan, out var value, out var unit))
             {
                 return TryParseRelativeLength(property, valueSpan, negate, out result);
@@ -248,6 +254,187 @@ namespace Velvet
         // (StyleGapClass) resolves the same preset table as mt-* / p-* here, instead of holding a second copy
         // that could drift.
         internal static bool TryGetSpacingPx(string suffix, out float px) => s_spacingScale.TryGetValue(suffix, out px);
+
+        // TryGetSpacingPx over a slice, for the per-class gates that must not allocate.
+        private static bool TryGetSpacingPx(ReadOnlySpan<char> suffix, out float px)
+        {
+            foreach (var step in s_spacingScale)
+            {
+                if (suffix.SequenceEqual(step.Key.AsSpan()))
+                {
+                    px = step.Value;
+                    return true;
+                }
+            }
+            px = 0f;
+            return false;
+        }
+
+        // The utilities that take a spacing step. A prefix that could be taken for a longer one (inset- for
+        // inset-x-) is not told apart by order: TryReadSpacingStep skips a row whose suffix is not a step.
+        private static readonly (string Prefix, ArbitraryProperty Property)[] s_spacingFamilies =
+        {
+            ("p-", ArbitraryProperty.Padding),
+            ("px-", ArbitraryProperty.PaddingX),
+            ("py-", ArbitraryProperty.PaddingY),
+            ("pt-", ArbitraryProperty.PaddingTop),
+            ("pr-", ArbitraryProperty.PaddingRight),
+            ("pb-", ArbitraryProperty.PaddingBottom),
+            ("pl-", ArbitraryProperty.PaddingLeft),
+            ("m-", ArbitraryProperty.Margin),
+            ("mx-", ArbitraryProperty.MarginX),
+            ("my-", ArbitraryProperty.MarginY),
+            ("mt-", ArbitraryProperty.MarginTop),
+            ("mr-", ArbitraryProperty.MarginRight),
+            ("mb-", ArbitraryProperty.MarginBottom),
+            ("ml-", ArbitraryProperty.MarginLeft),
+            ("w-", ArbitraryProperty.Width),
+            ("h-", ArbitraryProperty.Height),
+            ("size-", ArbitraryProperty.Size),
+            ("min-w-", ArbitraryProperty.MinWidth),
+            ("min-h-", ArbitraryProperty.MinHeight),
+            ("max-w-", ArbitraryProperty.MaxWidth),
+            ("max-h-", ArbitraryProperty.MaxHeight),
+            ("basis-", ArbitraryProperty.FlexBasis),
+            ("top-", ArbitraryProperty.Top),
+            ("right-", ArbitraryProperty.Right),
+            ("bottom-", ArbitraryProperty.Bottom),
+            ("left-", ArbitraryProperty.Left),
+            ("inset-x-", ArbitraryProperty.InsetX),
+            ("inset-y-", ArbitraryProperty.InsetY),
+            ("inset-", ArbitraryProperty.Inset),
+        };
+
+        // The families' properties, to tell a spacing utility from another inline one.
+        private static readonly HashSet<ArbitraryProperty> s_spacingProperties = BuildSpacingProperties();
+
+        private static HashSet<ArbitraryProperty> BuildSpacingProperties()
+        {
+            var properties = new HashSet<ArbitraryProperty>();
+            foreach (var (_, property) in s_spacingFamilies)
+            {
+                properties.Add(property);
+            }
+            return properties;
+        }
+
+        internal static bool IsSpacingProperty(ArbitraryProperty property) => s_spacingProperties.Contains(property);
+
+        // The families whose longhand takes `auto`: CSS gives padding none, and a minimum or maximum none either (a
+        // maximum's unbounded value is none, which the setters write as StyleKeyword.None).
+        private static bool TakesAuto(ArbitraryProperty property)
+            => IsSpacingProperty(property) && !IsPaddingProperty(property)
+                && property is not (ArbitraryProperty.MinWidth or ArbitraryProperty.MinHeight
+                    or ArbitraryProperty.MaxWidth or ArbitraryProperty.MaxHeight);
+
+        private static bool IsPaddingProperty(ArbitraryProperty property)
+            => property is ArbitraryProperty.Padding or ArbitraryProperty.PaddingX or ArbitraryProperty.PaddingY
+                or ArbitraryProperty.PaddingTop or ArbitraryProperty.PaddingRight
+                or ArbitraryProperty.PaddingBottom or ArbitraryProperty.PaddingLeft;
+
+        // True when text begins with the prefix of a spacing family, ignoring a leading minus: the cheap test that
+        // a token can be a spacing utility, which allocates nothing.
+        internal static bool StartsWithSpacingPrefix(string text)
+        {
+            var body = text.AsSpan(text.Length > 0 && text[0] == '-' ? 1 : 0);
+            foreach (var (prefix, _) in s_spacingFamilies)
+            {
+                if (body.StartsWith(prefix.AsSpan()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // A stylesheet class of a spacing family and the inline token that resolves to the same thing: a step
+        // becomes its pixel bracket, `auto` the bracket keyword and `full` a hundred percent. Whether the sheets
+        // declare the class is read from StyleUtilityProperties, which is generated from them, so only a name
+        // with a rule counts: the sheets declare `-auto` for margins, size, width, height and basis and `-full`
+        // for sizes and basis, and nothing else in these families.
+        internal static bool TryReadStylesheetClass(string cls, out ArbitraryProperty property, out string inlineForm)
+        {
+            property = default;
+            inlineForm = string.Empty;
+            if (TryReadSpacingStep(cls, out var step))
+            {
+                property = step.Property;
+                TryGetSpacingPrefix(property, out var stepPrefix);
+                inlineForm = stepPrefix + "[" + step.Value.ToString("R", CultureInfo.InvariantCulture) + "px]";
+                return true;
+            }
+            // MUTANT_SURVIVES(equivalent, boundary): the shortest name read here is a family prefix of two characters and `auto` or `full`, six in all, so a bound of 4 turns away only names none of the loop's rows match.
+            if (cls.Length < 4 || cls[0] == '-' || !StyleUtilityProperties.TryGet(cls, out _))
+            {
+                return false;
+            }
+            foreach (var (prefix, familyProperty) in s_spacingFamilies)
+            {
+                if (!cls.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                var name = cls.AsSpan(prefix.Length);
+                if (name.SequenceEqual("auto".AsSpan()) && TakesAuto(familyProperty))
+                {
+                    property = familyProperty;
+                    inlineForm = prefix + "[auto]";
+                    return true;
+                }
+                if (name.SequenceEqual("full".AsSpan()))
+                {
+                    property = familyProperty;
+                    inlineForm = prefix + "[100%]";
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The prefix (with its trailing '-') whose utility writes property.
+        internal static bool TryGetSpacingPrefix(ArbitraryProperty property, out string prefix)
+        {
+            foreach (var (familyPrefix, familyProperty) in s_spacingFamilies)
+            {
+                if (familyProperty == property)
+                {
+                    prefix = familyPrefix;
+                    return true;
+                }
+            }
+            prefix = string.Empty;
+            return false;
+        }
+
+        // A step of a spacing family the bundled stylesheets declare a rule for: only a positive step on the
+        // --space-* table is one.
+        internal static bool TryReadSpacingStep(string cls, out ArbitraryStyle result)
+        {
+            result = default;
+            // MUTANT_SURVIVES(equivalent, boundary): the shortest step is a two-character prefix and a digit, so a bound of 2 admits only strings no prefix and step fit.
+            if (cls.Length < 3)
+            {
+                return false;
+            }
+            // A step ends in a digit, or in the x of px, which turns most class names away before any prefix is
+            // compared.
+            var last = cls[cls.Length - 1];
+            if (last != 'x' && (last < '0' || last > '9'))
+            {
+                return false;
+            }
+            var body = cls.AsSpan();
+            foreach (var (prefix, property) in s_spacingFamilies)
+            {
+                if (!body.StartsWith(prefix.AsSpan()) || !TryGetSpacingPx(body.Slice(prefix.Length), out var px))
+                {
+                    continue;
+                }
+                result = new ArbitraryStyle(property, px, LengthUnit.Pixel);
+                return true;
+            }
+            return false;
+        }
 
         // The rotate preset (degrees). Only the NEGATIVE form routes here: positive rotate-N has a
         // static USS class, while the -rotate-N name has none (USS spells negatives as .rotate-nN).
@@ -1638,7 +1825,7 @@ namespace Velvet
                 var arrival = map.ArrivalOf(writer, priority);
                 // MUTANT_SURVIVES(equivalent, boundary): live arrivals are positive and unique, including after compaction; distinct writers cannot tie each other or the initial MinValue sentinel.
                 var isNewerArrival = arrival > latest;
-                var byCascade = found ? StyleBorderSideColor.CompareCascade(writer, winner.Property) : 0;
+                var byCascade = found ? StyleSpacingPrecedence.CompareCascade(writer, winner.Property) : 0;
                 if (priority > best || priority == best && (byCascade > 0 || byCascade == 0 && isNewerArrival))
                 {
                     winner = style;
@@ -2098,7 +2285,7 @@ namespace Velvet
                 {
                     return byKey;
                 }
-                var byCascade = StyleBorderSideColor.CompareCascade(a.Style.Property, z.Style.Property);
+                var byCascade = StyleSpacingPrecedence.CompareCascade(a.Style.Property, z.Style.Property);
                 return byCascade != 0 ? byCascade : map.ArrivalOf(a.Style.Property, a.Key)
                     .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
             });
