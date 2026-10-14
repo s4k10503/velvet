@@ -7,14 +7,18 @@
 beside the run's results XML. `layout` runs inside the case body or its setup, so it is a share of the
 time around it and is not added to the others.
 
-The panel share needs no assumption about whether the results XML's per-case duration includes setup
-and teardown: panel cases are taken from the `case` rows, the rest of the suite from the XML.
+The suite share takes the panel cases from the `case` rows, which hold their setup and teardown, and
+the rest of the suite from the results XML, so that part follows whatever the XML's per-case duration
+covers for cases that are not panel cases. With no results XML to read the share is reported as unknown.
+A missing or empty CSV is reported as a GitHub warning and a job-summary line, and exits 0.
 
 Usage: panel_phase_timings.py RESULTS_DIRECTORY_OR_CSV [--results XML_OR_DIRECTORY]
 """
 
 import argparse
 import csv
+import io
+import os
 import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -28,7 +32,7 @@ PHASES = ["create_show", "layout", "teardown", "case"]
 def read_rows(csv_text):
     """(fixture, case, phase, milliseconds) per row; a header line anywhere in the text is skipped."""
     rows = []
-    for record in csv.reader(csv_text.splitlines(keepends=True)):
+    for record in csv.reader(io.StringIO(csv_text, newline="")):
         if not record or record == HEADER:
             continue
         fixture, case, phase, milliseconds = record
@@ -67,7 +71,7 @@ def overhead_by_fixture(rows):
     return sorted(per_fixture.items(), key=lambda item: -item[1])
 
 
-def report(rows, non_panel_ms=None, top=10):
+def report(rows, non_panel_ms=None, share_unknown=None, top=10):
     totals = totals_by_phase(rows)
     cases = len(panel_cases(rows))
     lines = [f"{cases} panel cases", "", f"{'phase':<12}{'rows':>8}{'total ms':>14}{'mean ms':>12}"]
@@ -85,9 +89,29 @@ def report(rows, non_panel_ms=None, top=10):
         if suite_ms:
             lines.append(f"panel cases: {case_ms:.1f} ms of {suite_ms:.1f} ms suite ({100 * case_ms / suite_ms:.1f}%)")
             lines.append(f"window creation + teardown: {100 * window_ms / suite_ms:.1f}% of the suite")
+    if share_unknown is not None:
+        lines.append(f"suite share: unknown ({share_unknown})")
     lines += ["", f"fixtures by window creation + teardown (top {top}):"]
     lines += [f"  {milliseconds:>10.1f} ms  {fixture}" for fixture, milliseconds in overhead_by_fixture(rows)[:top]]
     return "\n".join(lines) + "\n"
+
+
+def announce(message):
+    """A GitHub warning on stdout, and the same line in the job summary where there is one."""
+    print(f"::warning::{message}")
+    append_to_summary(f"### Panel fixture timings\n\n{message}\n")
+
+
+def append_to_summary(text):
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if path:
+        with open(path, "a", encoding="utf-8") as summary:
+            summary.write(text)
+
+
+def read_text(path):
+    with path.open(encoding="utf-8", newline="") as handle:
+        return handle.read()
 
 
 def main(argv):
@@ -97,20 +121,26 @@ def main(argv):
     args = parser.parse_args(argv)
 
     csv_path = args.timings / FILE_NAME if args.timings.is_dir() else args.timings
-    if not csv_path.is_file():
-        print(f"{csv_path} does not exist: the run recorded no panel timings", file=sys.stderr)
-        return 1
-    rows = read_rows(csv_path.read_text(encoding="utf-8"))
+    rows = read_rows(read_text(csv_path)) if csv_path.is_file() else []
     if not rows:
-        print(f"{csv_path} holds no rows", file=sys.stderr)
-        return 1
+        announce(f"{csv_path} is missing or holds no rows: the run recorded no panel timings")
+        return 0
 
     non_panel = None
+    share_unknown = None
     if args.results is not None:
-        documents = sorted(args.results.glob("*.xml")) if args.results.is_dir() else [args.results]
-        panel = panel_cases(rows)
-        non_panel = sum(non_panel_milliseconds(path.read_text(encoding="utf-8"), panel) for path in documents)
-    sys.stdout.write(report(rows, non_panel))
+        if args.results.is_dir():
+            documents = sorted(args.results.glob("*.xml"))
+        else:
+            documents = [args.results] if args.results.is_file() else []
+        if documents:
+            panel = panel_cases(rows)
+            non_panel = sum(non_panel_milliseconds(read_text(path), panel) for path in documents)
+        else:
+            share_unknown = f"no results XML at {args.results}"
+    text = report(rows, non_panel, share_unknown)
+    sys.stdout.write(text)
+    append_to_summary(f"### Panel fixture timings\n\n```\n{text}```\n")
     return 0
 
 

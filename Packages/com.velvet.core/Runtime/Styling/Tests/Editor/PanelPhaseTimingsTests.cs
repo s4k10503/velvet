@@ -1,4 +1,6 @@
 #if UNITY_EDITOR
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
@@ -20,30 +22,111 @@ namespace Velvet.Tests
             var self = TestContext.CurrentContext.Test;
 
             // Act
-            probe.SetUp();
-            probe.Layout();
-            probe.TearDown();
-            var phases = PanelPhaseTimings.Rows
-                .Where(row => row.Fixture == self.ClassName && row.CaseName == self.Name)
-                .Select(row => row.Phase);
+            List<string> phases;
+            try
+            {
+                probe.SetUp();
+                probe.Layout();
+            }
+            finally
+            {
+                probe.TearDown();
+                phases = PanelPhaseTimings.Rows
+                    .Where(row => row.Fixture == self.ClassName && row.CaseName == self.Name)
+                    .Select(row => row.Phase)
+                    .ToList();
+                PanelPhaseTimings.Discard(self.ClassName, self.Name);
+            }
 
             // Assert
             Assert.That(string.Join(",", phases), Is.EqualTo("create_show,layout,teardown,case"));
         }
 
         // GREEN_ON_BASE(construction): the base run carries the branch's TestUtilities, so both sides here are this change's own text.
-        // Replacing `if (s_fixture == null || s_caseName == null)` in `Record` with `if (false)` is what reddens it.
+        // Replacing `if (_fixture == null || _caseName == null)` in `Recorder.Record` with `if (false)` is what reddens it.
         [Test]
         public void Given_NoCaseIsOpen_When_APhaseIsRecorded_Then_NoRowIsAdded()
         {
             // Arrange
-            var before = PanelPhaseTimings.Rows.Count;
+            var recorder = new PanelPhaseTimings.Recorder();
 
             // Act
-            PanelPhaseTimings.Record(PanelPhaseTimings.Layout, 1.0);
+            recorder.Record(PanelPhaseTimings.Layout, 1.0);
 
             // Assert
-            Assert.That(PanelPhaseTimings.Rows.Count, Is.EqualTo(before));
+            Assert.That(recorder.Rows.Count, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(construction): the base run carries the branch's TestUtilities, so both sides here are this change's own text.
+        // Replacing `catch (Exception)` in `Recorder.BeginCase` with `catch (ArgumentNullException)` is what reddens it.
+        [Test]
+        public void Given_ACaseIsOpen_When_TheNextCaseCannotBeNamed_Then_PhasesAfterwardsAreNotAttributedToTheEarlierOne()
+        {
+            // Arrange
+            var recorder = new PanelPhaseTimings.Recorder();
+            recorder.BeginCase(() => ("F", "Earlier"));
+
+            // Act
+            recorder.BeginCase(() => throw new InvalidOperationException("no test context"));
+            recorder.Record(PanelPhaseTimings.Layout, 1.0);
+
+            // Assert
+            Assert.That(recorder.Rows.Count, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(construction): the base run carries the branch's TestUtilities, so both sides here are this change's own text.
+        // Replacing `_flushed = _rows.Count;` in `Recorder.Flush` with `_flushed = 0;` is what reddens it.
+        [Test]
+        public void Given_RowsAlreadyFlushed_When_FlushedAgain_Then_NothingIsAppended()
+        {
+            // Arrange
+            var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName()));
+            try
+            {
+                var args = new[] { "-testResults", Path.Combine(directory.FullName, "r.xml") };
+                var recorder = new PanelPhaseTimings.Recorder();
+                recorder.BeginCase(() => ("F", "C"));
+                recorder.Record(PanelPhaseTimings.Layout, 1.0);
+                recorder.Flush(args);
+
+                // Act
+                recorder.Flush(args);
+                var lines = File.ReadAllLines(Path.Combine(directory.FullName, PanelPhaseTimings.FileName));
+
+                // Assert
+                Assert.That(lines.Length, Is.EqualTo(2));
+            }
+            finally
+            {
+                directory.Delete(true);
+            }
+        }
+
+        // GREEN_ON_BASE(construction): the base run carries the branch's TestUtilities, so both sides here are this change's own text.
+        // Replacing `catch (Exception)` in `Recorder.Flush` with `catch (ArgumentNullException)` is what reddens it.
+        [Test]
+        public void Given_ACsvPathThatCannotBeWritten_When_Flushed_Then_NothingIsThrown()
+        {
+            // Arrange
+            var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName()));
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(directory.FullName, PanelPhaseTimings.FileName));
+                var args = new[] { "-testResults", Path.Combine(directory.FullName, "r.xml") };
+                var recorder = new PanelPhaseTimings.Recorder();
+                recorder.BeginCase(() => ("F", "C"));
+                recorder.Record(PanelPhaseTimings.Layout, 1.0);
+
+                // Act
+                void Flush() => recorder.Flush(args);
+
+                // Assert
+                Assert.That(Flush, Throws.Nothing);
+            }
+            finally
+            {
+                directory.Delete(true);
+            }
         }
 
         // GREEN_ON_BASE(construction): the base run carries the branch's TestUtilities, so both sides here are this change's own text.

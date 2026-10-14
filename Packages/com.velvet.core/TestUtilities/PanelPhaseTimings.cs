@@ -15,12 +15,16 @@ namespace Velvet.TestUtilities
     /// <remarks>
     /// Phases: <see cref="CreateShow"/> (window creation and <c>Show</c>) and <see cref="Teardown"/> (window
     /// <c>Close</c> and <c>DestroyImmediate</c>, not the unmount before it) once per case; <see cref="Layout"/>
-    /// once per forced layout/styles pass, which runs inside the case body or its setup, so its time is also
-    /// part of whichever of those it ran in; <see cref="Case"/> the whole span from the start of
-    /// <c>PanelTestBase.SetUp</c> to the end of <c>PanelTestBase.TearDown</c>, which spans the other phases
-    /// and does not depend on whether the runner's own duration includes setup and teardown.
-    /// A failure to read the test context or to write the file is swallowed rather than failing a case, and
-    /// <see cref="Flush()"/> writes only into the directory the <c>-testResults</c> argument names. Test-only. Must not be used from production code.
+    /// once per forced layout/styles pass made while a case is open, which runs inside the case body or its
+    /// setup, so its time is also part of whichever of those it ran in; <see cref="Case"/> the whole span from
+    /// the start of <c>PanelTestBase.SetUp</c> to the end of <c>PanelTestBase.TearDown</c>, which spans the
+    /// other phases and does not depend on whether the runner's own duration includes setup and teardown.
+    /// A layout pass in a derived <c>TearDown</c> before it calls <c>base.TearDown</c> falls inside that span;
+    /// one after it finds no case open and is dropped. Only the window <c>PanelTestBase</c> creates is
+    /// measured, not a further window a fixture opens itself, and a case ignored for want of a graphics
+    /// device records nothing. A failure to read the test context or to write the file is swallowed rather
+    /// than failing a case. <see cref="Flush()"/> writes into the directory of the file <c>-testResults</c>
+    /// names. Test-only. Must not be used from production code.
     /// </remarks>
     public static class PanelPhaseTimings
     {
@@ -50,71 +54,110 @@ namespace Velvet.TestUtilities
             public double Milliseconds { get; }
         }
 
-        private static readonly List<Row> s_rows = new();
-        private static int s_flushed;
-        private static string? s_fixture;
-        private static string? s_caseName;
-
-        /// <summary>Every row recorded in this domain, flushed or not.</summary>
-        public static IReadOnlyList<Row> Rows => s_rows;
-
         /// <summary>
-        /// Starts attributing phases to the test the runner is executing. Phases recorded while no case is
-        /// open are dropped, so a layout pass from a fixture that is not a panel fixture adds no row.
+        /// One buffer of rows with the case they are attributed to and a cursor over what has been written.
+        /// The static members below act on <see cref="Shared"/>; a fixture that needs a buffer of its own
+        /// takes an instance, so it neither adds to nor flushes the run's rows.
         /// </summary>
-        public static void BeginCase()
+        public sealed class Recorder
         {
-            try
+            private readonly List<Row> _rows = new();
+            private int _flushed;
+            private string? _fixture;
+            private string? _caseName;
+
+            public IReadOnlyList<Row> Rows => _rows;
+
+            /// <summary>
+            /// Starts attributing phases to the test the runner is executing. Phases recorded while no case is
+            /// open are dropped, so a layout pass from a fixture that is not a panel fixture adds no row.
+            /// </summary>
+            public void BeginCase() => BeginCase(() =>
             {
                 var test = TestContext.CurrentContext.Test;
-                s_fixture = test.ClassName ?? "";
-                s_caseName = test.Name ?? "";
-            }
-            catch (Exception)
+                return (test.ClassName ?? "", test.Name ?? "");
+            });
+
+            /// <summary>As <see cref="BeginCase()"/>, naming the case through <paramref name="identify"/>; a throw leaves no case open.</summary>
+            public void BeginCase(Func<(string Fixture, string CaseName)> identify)
             {
-                s_fixture = null;
-                s_caseName = null;
+                try
+                {
+                    (_fixture, _caseName) = identify();
+                }
+                catch (Exception)
+                {
+                    _fixture = null;
+                    _caseName = null;
+                }
             }
-        }
 
-        public static void EndCase()
-        {
-            s_fixture = null;
-            s_caseName = null;
-        }
-
-        public static void Record(string phase, double milliseconds)
-        {
-            if (s_fixture == null || s_caseName == null)
+            public void EndCase()
             {
-                return;
+                _fixture = null;
+                _caseName = null;
             }
-            s_rows.Add(new Row(s_fixture, s_caseName, phase, milliseconds));
-        }
 
-        /// <summary>
-        /// Appends the rows not yet written to the CSV in the results directory, writing the header when the
-        /// file does not exist. Does nothing when the editor was not given <c>-testResults</c> (an interactive
-        /// run) or the directory it names is absent, and swallows any I/O failure: timing must not fail a test.
-        /// </summary>
-        public static void Flush() => Flush(Environment.GetCommandLineArgs());
-
-        public static void Flush(string[] commandLineArgs)
-        {
-            try
+            public void Record(string phase, double milliseconds)
             {
-                var directory = ResultsDirectory(commandLineArgs);
-                if (directory == null || s_flushed >= s_rows.Count)
+                if (_fixture == null || _caseName == null)
                 {
                     return;
                 }
-                Append(directory, s_rows.GetRange(s_flushed, s_rows.Count - s_flushed));
-                s_flushed = s_rows.Count;
+                _rows.Add(new Row(_fixture, _caseName, phase, milliseconds));
             }
-            catch (Exception)
+
+            /// <summary>Removes the rows of one case that have not been written yet.</summary>
+            public void Discard(string fixture, string caseName)
             {
+                for (var i = _rows.Count - 1; i >= _flushed; i--)
+                {
+                    if (_rows[i].Fixture == fixture && _rows[i].CaseName == caseName)
+                    {
+                        _rows.RemoveAt(i);
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Appends the rows not yet written to the CSV in the results directory, writing the header when
+            /// the file does not exist. Does nothing when <paramref name="commandLineArgs"/> carries no
+            /// <c>-testResults</c> (an interactive run) or the directory it names is absent, and swallows any
+            /// I/O failure: timing must not fail a test.
+            /// </summary>
+            public void Flush(string[] commandLineArgs)
+            {
+                try
+                {
+                    var directory = ResultsDirectory(commandLineArgs);
+                    if (directory == null || _flushed >= _rows.Count)
+                    {
+                        return;
+                    }
+                    Append(directory, _rows.GetRange(_flushed, _rows.Count - _flushed));
+                    _flushed = _rows.Count;
+                }
+                catch (Exception)
+                {
+                }
             }
         }
+
+        public static Recorder Shared { get; } = new();
+
+        /// <summary>Every row recorded in this domain, flushed or not.</summary>
+        public static IReadOnlyList<Row> Rows => Shared.Rows;
+
+        public static void BeginCase() => Shared.BeginCase();
+
+        public static void EndCase() => Shared.EndCase();
+
+        public static void Record(string phase, double milliseconds) => Shared.Record(phase, milliseconds);
+
+        public static void Discard(string fixture, string caseName) => Shared.Discard(fixture, caseName);
+
+        /// <summary>Writes the run's rows not yet written; see <see cref="Recorder.Flush"/>.</summary>
+        public static void Flush() => Shared.Flush(Environment.GetCommandLineArgs());
 
         /// <summary>Appends the rows to the CSV in the directory, writing the header when the file is absent.</summary>
         public static void Append(string directory, IReadOnlyList<Row> rows)

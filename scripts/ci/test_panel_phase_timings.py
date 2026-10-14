@@ -4,9 +4,13 @@
 Run: python3 scripts/ci/test_panel_phase_timings.py
 """
 
+import contextlib
 import importlib.util
+import io
+import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -111,15 +115,80 @@ class PanelPhaseTimingsTests(unittest.TestCase):
         # Assert
         self.assertEqual(ranked, [("N.A", 14.0), ("N.B", 8.0)])
 
-    def test_Given_ADirectoryWithNoCsv_When_MainRuns_Then_ItFails(self):
+    def run_main(self, argv, summary=None):
+        out = io.StringIO()
+        env = {"GITHUB_STEP_SUMMARY": str(summary)} if summary else {}
+        with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(out):
+            code = panel_phase_timings.main(argv)
+        return code, out.getvalue()
+
+    def test_Given_ADirectoryWithNoCsv_When_MainRuns_Then_ItWarnsAndExitsZero(self):
         # Arrange
         with tempfile.TemporaryDirectory() as directory:
 
             # Act
-            code = panel_phase_timings.main([directory])
+            code, out = self.run_main([directory])
 
         # Assert
-        self.assertEqual(code, 1)
+        self.assertEqual((code, out.startswith("::warning::")), (0, True))
+
+    def test_Given_ADirectoryWithNoCsv_When_MainRunsUnderActions_Then_TheJobSummaryNamesIt(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory, "summary.md")
+
+            # Act
+            self.run_main([directory], summary)
+            written = summary.read_text(encoding="utf-8")
+
+        # Assert
+        self.assertIn("recorded no panel timings", written)
+
+    def test_Given_ACsvAndAResultsXml_When_MainRuns_Then_TheSuiteShareIsReported(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, panel_phase_timings.FILE_NAME).write_text(CSV, encoding="utf-8")
+            Path(directory, "r.xml").write_text(results_xml(("N.C", "Three", "0.15")), encoding="utf-8")
+
+            # Act
+            code, out = self.run_main([directory, "--results", directory])
+
+        # Assert
+        self.assertIn("panel cases: 50.0 ms of 200.0 ms suite (25.0%)", out)
+
+    def test_Given_ACsvAndNoResultsXml_When_MainRuns_Then_TheSuiteShareIsUnknownAndNoSuiteFigureIsPrinted(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, panel_phase_timings.FILE_NAME).write_text(CSV, encoding="utf-8")
+
+            # Act
+            code, out = self.run_main([directory, "--results", directory])
+
+        # Assert
+        self.assertEqual(("suite share: unknown" in out, "ms suite" in out), (True, False))
+
+    def test_Given_ACsvRun_When_MainRunsUnderActions_Then_TheReportIsInTheJobSummary(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, panel_phase_timings.FILE_NAME).write_text(CSV, encoding="utf-8")
+            summary = Path(directory, "summary.md")
+
+            # Act
+            self.run_main([directory], summary)
+            written = summary.read_text(encoding="utf-8")
+
+        # Assert
+        self.assertIn("window creation + teardown: 22.0 ms", written)
+
+    def test_Given_ACaseNameWithALineSeparatorCharacter_When_TheCsvIsRead_Then_TheRecordIsNotSplit(self):
+        # Arrange
+        text = "fixture,case,phase,milliseconds\nN.A,One\u2028Two,case,5.000\nN.A,Three\x1cFour,case,6.000\n"
+
+        # Act
+        rows = panel_phase_timings.read_rows(text)
+
+        # Assert
+        self.assertEqual([row[1] for row in rows], ["One\u2028Two", "Three\x1cFour"])
 
     def test_Given_ADirectoryHoldingTheCsv_When_MainRuns_Then_ItSucceeds(self):
         # Arrange
@@ -127,7 +196,7 @@ class PanelPhaseTimingsTests(unittest.TestCase):
             Path(directory, panel_phase_timings.FILE_NAME).write_text(CSV, encoding="utf-8")
 
             # Act
-            code = panel_phase_timings.main([directory])
+            code, _ = self.run_main([directory])
 
         # Assert
         self.assertEqual(code, 0)

@@ -160,10 +160,9 @@ jobs:
           path: ${{ matrix.testMode }}-results
 
       # PanelTestBase writes panel-phase-timings.csv into the results directory uploaded above. The
-      # summary is read from the log; a missing file is reported without failing the job.
+      # report goes to the log and the job summary; a missing file is a warning there, not a failure.
       - name: Summarise panel fixture timings
         if: always() && matrix.testMode == 'EditMode'
-        continue-on-error: true
         run: python3 scripts/ci/panel_phase_timings.py EditMode-results --results EditMode-results
 
       # game-ci passes -enableCodeCoverage on every run whatever this workflow asks for, so the
