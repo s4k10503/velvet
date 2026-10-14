@@ -13,7 +13,7 @@ lengths a bracket reads, which utilities read which of them, and what each is me
 | `1.5rem` | pixels, at 1rem = 16px: UI Toolkit has no root font size to take a rem from |
 | `1in`, `2.54cm`, `25.4mm`, `72pt`, `6pc`, `101.6Q` | pixels, at CSS's fixed ratio of 96px to the inch |
 | `25%` | a percentage, where the utility takes one; a border width takes none, as in CSS |
-| `auto` | the keyword, where the utility takes one: margin (a negated one, `-mt-[auto]`, is declined), `w-*`, `h-*`, `size-*`, `min-w-*`, `min-h-*`, `basis-*` and the insets; padding and the maximum sizes take none |
+| `auto` | the keyword, where the utility takes one: margin (a negated one, `-mt-[auto]`, is declined), `w-*`, `h-*`, `size-*`, `basis-*` and the insets; padding and the minimum and maximum sizes take none |
 | `calc()`, `min()`, `max()`, `clamp()` whose terms all come to pixels, or all to percentages | that pixel length or that percentage |
 
 Unit names match case-sensitively, so `Q` is upper case and the rest lower.
