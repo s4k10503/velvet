@@ -22,7 +22,7 @@ benchmark_results = load_module()
 
 
 def result(name, groups):
-    return benchmark_results.RESULT_PREFIX + json.dumps({"Name": name, "SampleGroups": groups})
+    return "##performancetestresult2:" + json.dumps({"Name": name, "SampleGroups": groups})
 
 
 def results_xml(*lines):
@@ -39,9 +39,9 @@ THROUGHPUT = {"Name": "Frames", "Unit": 3, "IncreaseIsBetter": True, "Median": 6
 
 class BenchmarkResultsTests(unittest.TestCase):
 
-    # GREEN_ON_BASE(construction): benchmark_results.py is this change's own file, so no base run can
-    # build the case. What shows it can fail is changing RESULT_PREFIX's last character: measured, no
-    # line is read and the list is empty.
+    # GREEN_ON_BASE(construction): benchmark_results.py is this change's own file, so a base run takes
+    # its copy. What shows the case can fail is changing `RESULT_PREFIX` to `##performancetestresult3:`:
+    # measured, this case fails and no other.
     def test_Given_TwoCasesWithOutput_When_TheDocumentIsRead_Then_EachResultLineIsOneResult(self):
         # Arrange
         xml = results_xml(result("A.One", [TIME]), result("A.Two", [TIME]))
@@ -52,8 +52,8 @@ class BenchmarkResultsTests(unittest.TestCase):
         # Assert
         self.assertEqual(names, ["A.One", "A.Two"])
 
-    # GREEN_ON_BASE(construction): same reason as above. Deleting the IncreaseIsBetter test in
-    # entries() puts the Frames group in the list.
+    # GREEN_ON_BASE(construction): same reason as above. What shows the case can fail is replacing
+    # `if group.get("IncreaseIsBetter"):` with `if False:`: measured, this case fails and no other.
     def test_Given_AGroupWhereMoreIsBetter_When_EntriesAreTaken_Then_OnlySmallerIsBetterGroupsRemain(self):
         # Arrange
         results = [{"Name": "A.One", "SampleGroups": [TIME, THROUGHPUT, BLOCKS]}]
@@ -64,7 +64,8 @@ class BenchmarkResultsTests(unittest.TestCase):
         # Assert
         self.assertEqual(rows, [("A.One / Time", "ms", 1.5), ("A.One / GC.Alloc", "B", 0)])
 
-    # GREEN_ON_BASE(construction): same reason as above. Renaming the "value" key fails it.
+    # GREEN_ON_BASE(construction): same reason as above. What shows the case can fail is renaming the
+    # key in `"value": value}` to `"val"`: measured, this case fails and no other.
     def test_Given_Rows_When_ConvertedToBenchmarkJson_Then_EachCarriesNameUnitAndValue(self):
         # Arrange
         rows = [("A.One / Time", "ms", 1.5)]
@@ -75,7 +76,8 @@ class BenchmarkResultsTests(unittest.TestCase):
         # Assert
         self.assertEqual(converted, [{"name": "A.One / Time", "unit": "ms", "value": 1.5}])
 
-    # GREEN_ON_BASE(construction): same reason as above. Dropping the unit column fails it.
+    # GREEN_ON_BASE(construction): same reason as above. What shows the case can fail is cutting
+    # `| {unit} |` from the row format in `to_markdown`: measured, this case fails and no other.
     def test_Given_Rows_When_RenderedAsMarkdown_Then_ATableRowFollowsTheHeader(self):
         # Arrange
         rows = [("A.One / Time", "ms", 1.5)]
@@ -86,8 +88,8 @@ class BenchmarkResultsTests(unittest.TestCase):
         # Assert
         self.assertEqual(lines[2], "| A.One / Time | 1.5 | ms |")
 
-    # GREEN_ON_BASE(construction): same reason as above. Deleting the failure return makes main write
-    # an empty trend entry instead of refusing.
+    # GREEN_ON_BASE(construction): same reason as above. What shows the case can fail is changing
+    # `return 1` to `return 0` in `main`: measured, this case fails and no other.
     def test_Given_ResultsWithNoPerformanceLine_When_MainRuns_Then_ItFails(self):
         # Arrange
         with tempfile.TemporaryDirectory() as directory:
