@@ -7835,6 +7835,11 @@ class SessionCampaign(StubbedCampaign):
     lost = False
     unarmed = False
     short = False
+    # The cases the reach run reports, each with the mutant ids it ran: None is a reach run that did not
+    # come out green, which is what a stub that knows nothing of it reports.
+    reach = None
+    reach_cases = ("N.C.A", "N.C.B", "N.C.C", "N.C.D")
+    reach_green = True
 
     def __init__(self):
         super().__init__()
@@ -7842,6 +7847,20 @@ class SessionCampaign(StubbedCampaign):
         self.rewrites = []
         self.launched = []
         self.during = None
+        self.plans = []
+        self.environments = []
+
+    def reach_session(self, plan, directory):
+        xml = directory / "mutant-000.xml"
+        xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0">{1}</test-run>'.format(
+            len(self.reach_cases), "".join('<test-case fullname="{}" result="Passed" />'.format(name)
+                                           for name in self.reach_cases)))
+        stage = {"name": "coverage", "finished": True, "xml": str(xml), "passed": len(self.reach_cases),
+                 "failures": [] if self.reach_green else ["N.C.A"], "armed": ["Probe:0"]}
+        (directory / "item-000.json").write_text(json.dumps({"id": 0, "stages": [stage]}))
+        (directory / "reach.jsonl").write_text("".join(
+            json.dumps({"name": name, "ids": sorted(ids)}) + "\n" for name, ids in self.reach.items()))
+        return {0: {"launch": 1, "peak": 0}}, set(), None
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         self.launched.append(Path(results).name)
@@ -7855,11 +7874,18 @@ class SessionCampaign(StubbedCampaign):
 
     def session(self, _args, _project, plan, directory, _holder):
         self.during = self.source.read_text()
+        self.plans.append(plan)
+        if plan.get("reach") and self.reach is not None:
+            return self.reach_session(plan, directory)
         assembly = mutation_check.assembly_of(self.source)
         for item in plan["items"]:
             number = item["id"]
             name = directory / "item-{}.json".format(mutation_check.cs_id(number))
             xml = directory / "mutant-{}.xml".format(mutation_check.cs_id(number))
+            planned = {stage["name"]: stage for stage in item["stages"]}
+            if "covered" in planned and not item.get("confirm"):
+                name.write_text(json.dumps({"id": number, "stages": self.covered_stages(item, xml, assembly)}))
+                continue
             if item.get("confirm"):
                 result = "Failed" if self.unconfirmed else "Passed"
                 xml.write_text('<test-run total="1"><test-case fullname="N.C.Kills" result="{}" />'
@@ -7880,11 +7906,27 @@ class SessionCampaign(StubbedCampaign):
         return {position: {"launch": 1, "peak": 0} for position in range(len(plan["items"]))
                 if position not in lost}, lost, None
 
+    def covered_stages(self, item, xml, assembly):
+        """What the runner records for an item that starts with a covered stage: a kill stops there, and
+        a survivor runs it out and goes on to the whole suite."""
+        armed = [] if self.unarmed else ["{}:{}".format(assembly, item["id"])]
+        if self.outcome == "killed":
+            return [{"name": "covered", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
+                     "ran": 1, "armed": armed}]
+        covered = item["stages"][0]
+        xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0" />'.format(
+            len(covered["testNames"])))
+        whole = Path(str(xml).replace(".xml", "-whole.xml"))
+        whole.write_text(self.baseline_text)
+        return [{"name": "covered", "finished": True, "xml": str(xml), "failures": [], "armed": armed,
+                 "ran": len(covered["testNames"])},
+                {"name": "whole", "finished": True, "xml": str(whole), "failures": [], "armed": armed}]
+
     def recorded(self):
         return json.loads((self.project / "out" / "mutant-001.json").read_text())["verdict"]
 
 
-class SessionRoutingTests(unittest.TestCase):
+class SessionRoutingBase(unittest.TestCase):
     def setUp(self):
         self.campaign = SessionCampaign()
         saved = (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file)
@@ -7901,6 +7943,8 @@ class SessionRoutingTests(unittest.TestCase):
         (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file,
          mutation_check.il_reading_assemblies) = saved
 
+
+class SessionRoutingTests(SessionRoutingBase):
     def test_Given_AMutantTheSessionKilled_When_TheCampaignRuns_Then_ItTakesNoLaunchOfItsOwn(self):
         # Arrange
         campaign = self.campaign
@@ -8038,6 +8082,277 @@ class SessionRoutingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(campaign.rewrites, [])
+
+
+class SessionReachTests(SessionRoutingBase):
+    """What the reach run decides about a mutant's launch: against which cases it runs, whether it runs at
+    all, and what a survivor of the narrowed run is owed."""
+
+    def setUp(self):
+        super().setUp()
+        self.campaign.baseline_text = '<test-run total="4" passed="4" failed="0" inconclusive="0" />'
+        self.campaign.reach = {"N.C.A": {1}}
+
+    def stages(self, key="name"):
+        plan = self.campaign.plans[-1]
+        item = next(item for item in plan["items"] if item["id"] == 1)
+        return [stage[key] for stage in item["stages"]]
+
+    def test_Given_AMutantOneCaseRan_When_TheCampaignRuns_Then_ItsFirstLaunchHoldsThatCaseAlone(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages("testNames")[0], ["N.C.A"])
+
+    def test_Given_AMutantOneCaseRan_When_TheCampaignRuns_Then_ItsKillIsTheSessionsAndNoLaunchIsItsOwn(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert — the kill stands as a covered stage's, with the baseline the only launch.
+        self.assertEqual((self.campaign.recorded(), self.campaign.launched),
+                         (mutation_check.KILLED, ["baseline.xml"]))
+
+    def test_Given_AMutantOneCaseRanThatSurvivesIt_When_TheCampaignRuns_Then_TheWholeSuiteRunsBeforeTheVerdict(self):
+        # Arrange
+        self.campaign.outcome = "survived"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["covered", "whole"])
+
+    def test_Given_AMutantNoCaseRan_When_TheCampaignRuns_Then_ItIsRecordedUncovered(self):
+        # Arrange — the only site anything reached is mutant 99's.
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.campaign.recorded(), mutation_check.UNCOVERED)
+
+    def test_Given_AMutantNoCaseRan_When_TheCampaignRuns_Then_NoItemIsPlannedForIt(self):
+        # Arrange
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert — the reach run's opening item is the only one any plan held.
+        self.assertEqual([item["id"] for plan in self.campaign.plans for item in plan["items"]], [0])
+
+    def test_Given_AMutantNoCaseRanInAnAssemblyAFixtureReadsTheILOf_When_TheCampaignRuns_Then_ItTakesItsOwnLaunch(self):
+        # Arrange — that fixture sees the guards of every mutant, whatever the cases ran.
+        self.campaign.reach = {"N.C.A": {99}}
+        self.il_read = {mutation_check.assembly_of(self.campaign.source)}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AMutantRunBeforeAnyCaseStarted_When_TheCampaignRuns_Then_ItTakesTheWholeSuite(self):
+        # Arrange — its site ran with the domain, so any case may read what it left.
+        self.campaign.reach = {"N.C.A": {99}, mutation_check.SETUP_CASE: {1}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    def test_Given_AMutantMostOfTheSuiteRan_When_TheCampaignRuns_Then_ItTakesTheWholeSuite(self):
+        # Arrange — three of four cases: the narrowed run would save a quarter and cost a survivor a second run.
+        self.campaign.reach = {"N.C.A": {1}, "N.C.B": {1}, "N.C.C": {1}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    def test_Given_AReachRunThatWasNotGreen_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — a red run says nothing about what the cases reached.
+        self.campaign.reach = {"N.C.A": {99}}
+        self.campaign.reach_green = False
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    def test_Given_AReachRunThatRecordedNothing_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — tables never turned on look the same as a suite that ran no site.
+        self.campaign.reach = {}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    def test_Given_APlayModePass_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
+        # Arrange — the pass measures what the EditMode suite left, against the whole PlayMode suite.
+
+        # Act
+        self.campaign.run("--max", "1", "--platform", "PlayMode")
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+    def test_Given_AMutantTheSessionKilled_When_TheSummaryPrints_Then_ItNamesHowManyCasesItsLaunchRan(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertIn("[killed] covered 1", self.campaign.printed)
+
+    def test_Given_AnUncoveredMutant_When_TheSummaryPrints_Then_ItRanNoCases(self):
+        # Arrange
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertIn("[{}] uncovered 0".format(mutation_check.UNCOVERED), self.campaign.printed)
+
+    def test_Given_AnUncoveredMutantAndNoDeclaration_When_TheCampaignDecides_Then_ItFailsTheRun(self):
+        # Arrange — a survivor needs an answer, and a site no case ran is not exempt from asking for one.
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        code = self.campaign.run_over_diff("--max", "1")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+
+class SessionReachSelectionTests(unittest.TestCase):
+    PASSED = {"N.C.A", "N.C.B", "N.C.C", "N.C.D"}
+
+    def select(self, reached, setup=(), passed=PASSED, total=10):
+        return mutation_check.select_by_reach([1, 2], {case: set(ids) for case, ids in reached.items()},
+                                              set(setup), set(passed), total)
+
+    def test_Given_ACaseThatRanOneMutantsSite_When_Selected_Then_ThatMutantTakesTheCase(self):
+        # Arrange / Act
+        selection, _ = self.select({"N.C.A": {1}, "N.C.B": {2}})
+
+        # Assert
+        self.assertEqual(selection, {1: ["N.C.A"], 2: ["N.C.B"]})
+
+    def test_Given_NoCaseThatRanAMutantsSite_When_Selected_Then_ItIsUncovered(self):
+        # Arrange / Act
+        _, uncovered = self.select({"N.C.A": {1}})
+
+        # Assert
+        self.assertEqual(uncovered, [2])
+
+    def test_Given_ASiteRunBeforeAnyCase_When_Selected_Then_ItIsNeitherSelectedNorUncovered(self):
+        # Arrange / Act
+        result = self.select({"N.C.A": {1}, "N.C.B": {2}}, setup={2})
+
+        # Assert
+        self.assertEqual(result, ({1: ["N.C.A"]}, []))
+
+    def test_Given_ASiteOnlyACaseThatDidNotPassRan_When_Selected_Then_ItIsNeitherSelectedNorUncovered(self):
+        # Arrange / Act — the case is no candidate killer, and it did run the site, so the site is not unreached.
+        result = self.select({"N.C.A": {1}, "N.C.X": {2}})
+
+        # Assert
+        self.assertEqual(result, ({1: ["N.C.A"]}, []))
+
+    def test_Given_CasesMoreThanTheShareOfTheSuite_When_Selected_Then_TheMutantTakesTheWholeSuite(self):
+        # Arrange / Act — three of four, at the 1/REACH_SHARE the constant names.
+        result = self.select({"N.C.A": {1}, "N.C.B": {1}, "N.C.C": {1}, "N.C.D": {2}}, total=4)
+
+        # Assert
+        self.assertEqual(result, ({2: ["N.C.D"]}, []))
+
+    def test_Given_CasesExactlyTheShareOfTheSuite_When_Selected_Then_TheMutantTakesThem(self):
+        # Arrange / Act
+        selection, _ = self.select({"N.C.A": {1}, "N.C.B": {1}, "N.C.D": {2}}, total=4)
+
+        # Assert
+        self.assertEqual(selection[1], ["N.C.A", "N.C.B"])
+
+
+class ReachRecordTests(unittest.TestCase):
+    def read(self, text):
+        path = Path(tempfile.mkdtemp(prefix="reach-")) / mutation_check.REACH_FILE
+        path.write_text(text)
+        return mutation_check.read_reached(path)
+
+    def test_Given_LinesOfCasesAndOfTheSetup_When_Read_Then_TheSetupIdsAreKeptApart(self):
+        # Arrange
+        text = ('{"name": "<setup>", "ids": [3]}\n{"name": "N.C.A", "ids": [1, 2]}\n'
+                '{"name": "N.C.A", "ids": [2, 5]}\n')
+
+        # Act
+        reached, setup = self.read(text)
+
+        # Assert
+        self.assertEqual((reached, setup), ({"N.C.A": {1, 2, 5}}, {3}))
+
+    def test_Given_ALineTheEditorPartWrote_When_Read_Then_ItIsSkipped(self):
+        # Arrange
+        text = '{"name": "N.C.A", "ids": [1]}\n{"name": "N.C.B", "ids": [2'
+
+        # Act
+        reached, _ = self.read(text)
+
+        # Assert
+        self.assertEqual(reached, {"N.C.A": {1}})
+
+    def test_Given_NoFile_When_Read_Then_NothingWasReached(self):
+        # Arrange / Act
+        result = mutation_check.read_reached(Path(tempfile.mkdtemp(prefix="reach-")) / "absent.jsonl")
+
+        # Assert
+        self.assertEqual(result, ({}, set()))
+
+
+class ReachMirrorTests(unittest.TestCase):
+    def test_Given_TheRewritersReachVariable_When_ComparedWithTheCampaigns_Then_TheyAreTheSameSuffix(self):
+        # Arrange
+        source = (Path(mutation_check.__file__).parent / "schemata" / "MutantSchemata.cs").read_text()
+
+        # Act
+        spelled = re.search(r'ReachSuffix = "([^"]+)"', source)
+
+        # Assert
+        self.assertEqual(spelled and spelled.group(1), mutation_check.REACH_SUFFIX)
+
+    def test_Given_TheRunnersReachFile_When_ComparedWithTheCampaigns_Then_TheyAreTheSameName(self):
+        # Arrange
+        source = (REPO_ROOT / "Assets" / "MutantSchemata" / "Editor" / "SchemataRunner.cs").read_text()
+
+        # Act
+        spelled = re.search(r'"(reach\.jsonl)"', source)
+
+        # Assert
+        self.assertEqual(spelled and spelled.group(1), mutation_check.REACH_FILE)
+
+    def test_Given_TheRunnersSetupCase_When_ComparedWithTheCampaigns_Then_TheyAreTheSameName(self):
+        # Arrange
+        source = (REPO_ROOT / "Assets" / "MutantSchemata" / "Editor" / "SchemataRunner.cs").read_text()
+
+        # Act
+        spelled = re.search(r'SetupCase = "([^"]+)"', source)
+
+        # Assert
+        self.assertEqual(spelled and spelled.group(1), mutation_check.SETUP_CASE)
 
 
 class ILReadingAssemblyTests(unittest.TestCase):
@@ -8251,6 +8566,7 @@ class SessionLaunchTests(unittest.TestCase):
         self.args = argparse.Namespace(unity=mutation_check.DEFAULT_UNITY, timeout=900, busy_timeout=0,
                                        editor_arg=[])
         self.commands, self.answers, self.busy = [], [], []
+        self.environments = []
         self.scripts = []
         saved = (mutation_check.launch, mutation_check.unity_busy, mutation_check.wait_for_release,
                  mutation_check.wait_for_quiet)
@@ -8274,6 +8590,7 @@ class SessionLaunchTests(unittest.TestCase):
 
     def launch(self, command, _timeout, _holder, _env, expired):
         self.commands.append(command)
+        self.environments.append(_env)
         self.log = Path(command[command.index("-logFile") + 1])
         # A script returns (timed out, what the editor printed) where the launch was not a plain one.
         timed_out, printed = self.scripts.pop(0)(expired) or (False, "")
@@ -8288,6 +8605,29 @@ class SessionLaunchTests(unittest.TestCase):
 
     def session(self):
         return mutation_check.run_session(self.args, Path("/p"), self.plan, self.directory, None)
+
+    def test_Given_AReachPlan_When_Launched_Then_TheReachVariableIsSet(self):
+        # Arrange
+        self.plan["reach"] = True
+        self.scripts = [self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.environments[0].get(mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX), "1")
+
+    def test_Given_AnOrdinaryPlanBesideAnInheritedReachVariable_When_Launched_Then_TheLaunchDoesNotCarryIt(self):
+        # Arrange — a campaign started from a shell that had it set.
+        os.environ[mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX] = "1"
+        self.addCleanup(os.environ.pop, mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX, None)
+        self.scripts = [self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertNotIn(mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX, self.environments[0])
 
     def test_Given_AnItemWhoseEditorDied_When_TheSessionGoesOn_Then_ItIsLostAndTheRestRunInANewLaunch(self):
         # Arrange — the first launch dies in the second mutant's item.
