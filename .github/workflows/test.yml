@@ -160,7 +160,8 @@ jobs:
           path: ${{ matrix.testMode }}-results
 
       # PanelTestBase writes panel-phase-timings.csv into the results directory uploaded above. The
-      # report goes to the log and the job summary; a missing file is a warning there, not a failure.
+      # report goes to the log, the job summary and a check-run annotation; a missing file is a warning
+      # there, not a failure.
       - name: Summarise panel fixture timings
         if: always() && matrix.testMode == 'EditMode'
         run: python3 scripts/ci/panel_phase_timings.py EditMode-results --results EditMode-results

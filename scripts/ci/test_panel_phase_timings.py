@@ -180,6 +180,25 @@ class PanelPhaseTimingsTests(unittest.TestCase):
         # Assert
         self.assertIn("window creation + teardown: 22.0 ms", written)
 
+    def test_Given_ACsvRun_When_MainRuns_Then_TheReportIsOneAnnotationOnTheCheckRun(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, panel_phase_timings.FILE_NAME).write_text(CSV, encoding="utf-8")
+
+            # Act
+            _, out = self.run_main([directory])
+
+        # Assert
+        notice = [line for line in out.splitlines() if line.startswith("::notice title=Panel fixture timings::")]
+        self.assertEqual((len(notice), "window creation + teardown: 22.0 ms%0A" in notice[0] if notice else False), (1, True))
+
+    def test_Given_TextWithAPercentAndNewlines_When_EscapedForAWorkflowCommand_Then_ItIsOneLine(self):
+        # Act
+        escaped = panel_phase_timings.workflow_command_data("25.0%\r\nnext\n")
+
+        # Assert
+        self.assertEqual(escaped, "25.0%25%0D%0Anext%0A")
+
     def test_Given_ACaseNameWithALineSeparatorCharacter_When_TheCsvIsRead_Then_TheRecordIsNotSplit(self):
         # Arrange
         text = "fixture,case,phase,milliseconds\nN.A,One\u2028Two,case,5.000\nN.A,Three\x1cFour,case,6.000\n"

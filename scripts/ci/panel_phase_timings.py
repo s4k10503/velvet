@@ -109,6 +109,11 @@ def append_to_summary(text):
             summary.write(text)
 
 
+def workflow_command_data(text):
+    """Text escaped for the data part of a workflow command, so its lines survive as one annotation."""
+    return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
 def read_text(path):
     with path.open(encoding="utf-8", newline="") as handle:
         return handle.read()
@@ -141,6 +146,8 @@ def main(argv):
     text = report(rows, non_panel, share_unknown)
     sys.stdout.write(text)
     append_to_summary(f"### Panel fixture timings\n\n```\n{text}```\n")
+    # The job summary is not served by the API; an annotation on the check run is.
+    print(f"::notice title=Panel fixture timings::{workflow_command_data(text)}")
     return 0
 
 
