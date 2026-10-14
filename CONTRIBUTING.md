@@ -1046,9 +1046,9 @@ on every platform.
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
-| `Benchmarks ▸ benchmarks` (PlayMode) | push (filtered) to `main` / a labelled PR (`benchmarks`) / manual | **required** (skipped if absent) | no |
+| `Benchmarks ▸ benchmarks` (PlayMode) | push (filtered) to `main` / every PR labelled `benchmarks` / manual | **required** (skipped if absent) | no |
 | `Benchmarks ▸ trend-main` | push (filtered) to `main`, after `benchmarks` | not required | no |
-| `Benchmarks ▸ trend-pull-request` | a labelled PR (`benchmarks`), after `benchmarks` | not required | no |
+| `Benchmarks ▸ trend-pull-request` | every PR labelled `benchmarks`, after `benchmarks` | not required | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages; also carries the benchmark chart, as of its last deployment) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
