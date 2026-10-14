@@ -122,8 +122,8 @@ NARROW_SHARE = 3
 NARROWED_PLATFORMS = ("EditMode",)
 # A placed mutant is first run against the cases that ran its site in the unmutated session, and a kill
 # there is its verdict; a mutant surviving that run is measured on the whole suite before it is called
-# a survivor. Where those cases are more than 1/REACH_SHARE of the suite the narrowed run would save
-# less than the whole-suite run it precedes costs a survivor, so the mutant takes the whole suite.
+# a survivor. A mutant those cases are more than 1/REACH_SHARE of the suite for takes the whole suite
+# alone.
 REACH_SHARE = 2
 # A mutant's narrowed launch is killed, and the whole suite decides instead, once it has taken this
 # many times its area's own launch on the unmutated tree -- which runs on the tree the whole baseline
@@ -3861,19 +3861,19 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
             path.write_text(text)
         # The reach run comes first and its plan second: which mutants are measured, and against what, is
         # read off it.
-        reading = measure_reach(args, project, directory, whole_scope, baseline["total"], holder) \
+        standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder) \
             if args.platform in NARROWED_PLATFORMS else None
-        if reading is not None:
-            reached, setup, passed = reading
+        if standing is not None:
+            reached, setup, passed = standing
             selection, uncovered = select_by_reach(placed, reached, setup, passed, baseline["total"])
             print("reach: {} of {} mutant(s) take the cases that ran their site, {} are run by none, {} take "
                   "the whole suite".format(len(selection), len(placed), len(uncovered),
                                            len(placed) - len(selection) - len(uncovered)))
+        # Where the reach run stands a mutant is covered, uncovered or takes the whole suite, so the areas'
+        # own baselines are taken only when it does not.
         attempts = {}
-        if not scope and args.platform in NARROWED_PLATFORMS:
-            attempts = area_attempts(baseline_results, mutants,
-                                     [index for index in placed if index not in selection and index not in uncovered],
-                                     project, text_readers)
+        if standing is None and not scope and args.platform in NARROWED_PLATFORMS:
+            attempts = area_attempts(baseline_results, mutants, placed, project, text_readers)
         launched = [index for index in placed if index not in uncovered]
         plan, segments = session_plan(project, mutants, launched, attempts, whole_scope, args.platform, ceiling,
                                       args.timeout, directory, selection)

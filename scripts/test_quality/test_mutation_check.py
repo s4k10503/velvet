@@ -4710,6 +4710,18 @@ class KeptVerdictTests(unittest.TestCase):
         self.assertEqual(json.loads((self.output / "mutant-008.json").read_text())["killers"],
                          ["N.C.a", "N.C.b", "N.C.c", "N.C.d"])
 
+    def test_Given_AMutantWhoseLaunchesRanCases_When_ItsRecordIsCollected_Then_TheMutantCarriesTheCounts(self):
+        # Arrange
+        self.mutant.ran = (("covered", 3), ("whole", 9624))
+        mutation_check.write_verdict(self.output, 9, "digest-1", self.mutant, self.project)
+        self.mutant.ran = ()
+
+        # Act
+        mutation_check.collected([self.output], 9, "digest-1", self.mutant, self.project)
+
+        # Assert
+        self.assertEqual(self.mutant.ran, (("covered", 3), ("whole", 9624)))
+
     # GREEN_ON_BASE(characterization): the base keeps every verdict, a kill among them.
     def test_Given_AVerdictThisCampaignWrote_When_TheSameMutantIsReached_Then_ItIsAnswered(self):
         # Act / Assert
@@ -6738,6 +6750,23 @@ class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
                                   "--collect", *(str(self.project / name) for name in play_directories))
 
 
+class UncoveredSecondPassTests(unittest.TestCase):
+    def test_Given_AnEditModeMutantNoCaseRan_When_ThePlayModePassIsPlanned_Then_ItIsMeasuredThere(self):
+        # Arrange — a site no EditMode case ran is one a PlayMode case may.
+        campaign = StubbedCampaign()
+        campaign.run_over_diff("--shard", "0/1", "--output", str(campaign.project / "edit"))
+        record = campaign.project / "edit" / "mutant-001.json"
+        held = json.loads(record.read_text())
+        held["verdict"] = mutation_check.UNCOVERED
+        record.write_text(json.dumps(held))
+
+        # Act
+        campaign.run_over_diff("--platform", "PlayMode", "--survivors-of", str(campaign.project / "edit"), "--plan")
+
+        # Assert
+        self.assertIn("mutants=1", campaign.printed)
+
+
 class DeadShardReportingTests(unittest.TestCase):
     """The verdict job's shape: a PlayMode pass over the EditMode shards' survivors, collected."""
 
@@ -7722,6 +7751,24 @@ class NarrowableAreaTests(unittest.TestCase):
         self.assertEqual([(stage["name"], stage["assemblyNames"]) for stage in stages],
                          [("narrowed:Reconciler", ["Velvet.Tests.A"]), ("whole", [])])
 
+    def test_Given_AMutantWithCasesThatRanItsSite_When_TheSessionIsPlanned_Then_TheyPrecedeTheWholeStageInPlaceOfItsArea(self):
+        # Arrange — the area is narrowed too, and the cases are the narrower of the two.
+        self.area = self.root / mutation_check.PACKAGE / "Runtime" / "Reconciler"
+        (self.area / "Tests" / "Editor").mkdir(parents=True)
+        (self.area / "Tests" / "Editor" / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.A"}))
+        attempts = {area: ["-assemblyNames", ";".join(names)]
+                    for area, names in self.narrowed(27.0).items()}
+        mutant = mutation_check.Mutant(self.area / "Probe.cs", 1, 0, "<", "<=", "boundary")
+
+        # Act
+        plan, _ = mutation_check.session_plan(self.root, [mutant], [1], attempts, [], "EditMode",
+                                              100, 900, self.root / "session", {1: ["N.C.A", "N.C.B"]})
+        stages = next(item["stages"] for item in plan["items"] if item["id"] == 1)
+
+        # Assert
+        self.assertEqual([(stage["name"], stage["testNames"]) for stage in stages],
+                         [("covered", ["N.C.A", "N.C.B"]), ("whole", [])])
+
     def test_Given_AnAssemblyTheBaselineDidNotRun_When_Read_Then_ItIsNotTaken(self):
         # Arrange — an assembly of the other platform sits under the same area.
         (self.area / "Tests" / "PlayMode").mkdir()
@@ -7749,24 +7796,27 @@ class AreaOfTests(unittest.TestCase):
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
-    # Charged at most once for each area a narrowed platform's shard holds; the slowest measured.
-    AREA_LAUNCH = 145
+    # What a narrowed platform's session spends before its first mutant: the reach run, which is the
+    # whole suite once under the unmutated program with the switches recording. Charged at twice the
+    # 375 s the slowest EditMode baseline took -- an allowance, since no recording run has been timed --
+    # in place of each area's own baseline, which a session whose reach run stands no longer takes.
+    REACH_RUN = 2 * 375
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
     # baseline, of its baseline and after its last verdict, added together. A charge is built on the
     # slowest shard's seconds per mutant, which hold that shard's narrowed runs, so no narrowed launch
-    # is added to it. CONTRIBUTING.md ▸ Checking that the tests can fail has the measurements.
+    # is added to it; that figure was taken before a mutant's first launch was its covered cases, so it
+    # charges a mutant more than the cases it now runs, and is kept until one is measured.
+    # CONTRIBUTING.md ▸ Checking that the tests can fail has the measurements.
     def fits(self, job, platform, mutant, setup):
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
                           re.MULTILINE)
         per = mutation_check.SHARD_CEILING.get(platform)
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
-        area = self.AREA_LAUNCH if narrowed else 0
-        areas = len({asmdef.parents[2] for asmdef in (REPO_ROOT / mutation_check.PACKAGE / "Runtime").glob(
-            "*/Tests/Editor/*.asmdef")})
+        reach = self.REACH_RUN if narrowed else 0
         return (per is not None and found is not None
-                and setup + areas * area + per * mutant <= int(found.group(1)) * 60)
+                and setup + reach + per * mutant <= int(found.group(1)) * 60)
 
     def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — that shard was cut short by the timeout, so the launches it had not finished are
@@ -7927,8 +7977,10 @@ class SessionCampaign(StubbedCampaign):
 
 
 class SessionRoutingBase(unittest.TestCase):
+    campaign_class = SessionCampaign
+
     def setUp(self):
-        self.campaign = SessionCampaign()
+        self.campaign = self.campaign_class()
         saved = (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file)
         mutation_check.rewrite_schemata = self.campaign.rewrite
         mutation_check.run_session = self.campaign.session
@@ -8098,6 +8150,18 @@ class SessionReachTests(SessionRoutingBase):
         item = next(item for item in plan["items"] if item["id"] == 1)
         return [stage[key] for stage in item["stages"]]
 
+    def test_Given_AnEditModeSession_When_ItOpens_Then_ItsOnlyOpeningWorkIsOneRunOfTheWholeSuite(self):
+        # Arrange — `ShardCeilingTests.REACH_RUN` charges exactly that, in place of the areas' baselines.
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        opening = self.campaign.plans[0]
+        self.assertEqual((opening["reach"], [(stage["name"], stage["assemblyNames"], stage["testNames"])
+                                             for item in opening["items"] for stage in item["stages"]]),
+                         (True, [("coverage", [], [])]))
+
     def test_Given_AMutantOneCaseRan_When_TheCampaignRuns_Then_ItsFirstLaunchHoldsThatCaseAlone(self):
         # Arrange
 
@@ -8107,15 +8171,28 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages("testNames")[0], ["N.C.A"])
 
-    def test_Given_AMutantOneCaseRan_When_TheCampaignRuns_Then_ItsKillIsTheSessionsAndNoLaunchIsItsOwn(self):
+    def test_Given_AMutantKilledInItsCoveredStage_When_ItsVerdictIsRecorded_Then_TheRecordCarriesTheCasesItRan(self):
         # Arrange
 
         # Act
         self.campaign.run("--max", "1")
 
-        # Assert — the kill stands as a covered stage's, with the baseline the only launch.
-        self.assertEqual((self.campaign.recorded(), self.campaign.launched),
-                         (mutation_check.KILLED, ["baseline.xml"]))
+        # Assert
+        record = json.loads((self.campaign.project / "out" / "mutant-001.json").read_text())
+        self.assertEqual(record["ran"], [["covered", 1]])
+
+    # GREEN_ON_BASE(characterization): the base records a kill's failing cases too; this holds that a kill
+    # the covered stage took reaches the ledger by the same record. Dropping `killers` from the tuple
+    # `session_verdict` returns for a covered kill reddens it.
+    def test_Given_AMutantKilledInItsCoveredStage_When_ItsVerdictIsRecorded_Then_TheRecordNamesTheKillingCase(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        record = json.loads((self.campaign.project / "out" / "mutant-001.json").read_text())
+        self.assertEqual(record["killers"], ["N.C.Kills"])
 
     def test_Given_AMutantOneCaseRanThatSurvivesIt_When_TheCampaignRuns_Then_TheWholeSuiteRunsBeforeTheVerdict(self):
         # Arrange
@@ -8168,16 +8245,8 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages(), ["whole"])
 
-    def test_Given_AMutantMostOfTheSuiteRan_When_TheCampaignRuns_Then_ItTakesTheWholeSuite(self):
-        # Arrange — three of four cases: the narrowed run would save a quarter and cost a survivor a second run.
-        self.campaign.reach = {"N.C.A": {1}, "N.C.B": {1}, "N.C.C": {1}}
-
-        # Act
-        self.campaign.run("--max", "1")
-
-        # Assert
-        self.assertEqual(self.stages(), ["whole"])
-
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite, so a red reach run
+    # changes nothing there; cutting the `clean_stage` test in `measure_reach` reddens it.
     def test_Given_AReachRunThatWasNotGreen_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
         # Arrange — a red run says nothing about what the cases reached.
         self.campaign.reach = {"N.C.A": {99}}
@@ -8189,6 +8258,8 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages(), ["whole"])
 
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite whatever a table holds;
+    # cutting the recorded-something test in `measure_reach` reddens it.
     def test_Given_AReachRunThatRecordedNothing_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
         # Arrange — tables never turned on look the same as a suite that ran no site.
         self.campaign.reach = {}
@@ -8199,6 +8270,8 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages(), ["whole"])
 
+    # GREEN_ON_BASE(characterization): the base never reads reach; cutting the platform test around the
+    # reach run in `measure_in_session` reddens it.
     def test_Given_APlayModePass_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
         # Arrange — the pass measures what the EditMode suite left, against the whole PlayMode suite.
 
@@ -8236,6 +8309,51 @@ class SessionReachTests(SessionRoutingBase):
 
         # Assert
         self.assertEqual(code, 1)
+
+
+class StylingSessionCampaign(SessionCampaign):
+    """A session campaign whose mutant sits under an area with an assembly the baseline ran in a second."""
+
+    SOURCE = "Packages/com.velvet.core/Runtime/Styling/Probe.cs"
+
+
+class SessionReachAreaTests(SessionRoutingBase):
+    campaign_class = StylingSessionCampaign
+
+    def setUp(self):
+        super().setUp()
+        tests = self.campaign.source.parent / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.Styling.A"}))
+        self.campaign.baseline_text = ('<test-run total="4" passed="4" failed="0" inconclusive="0" duration="9">'
+                                       '<test-suite type="Assembly" name="Velvet.Tests.Styling.A.dll" '
+                                       'duration="1" /></test-run>')
+        self.campaign.reach = {"N.C.A": {1}}
+
+    def items(self):
+        return [item["id"] for item in self.campaign.plans[-1]["items"]]
+
+    def test_Given_AReachRunThatStands_When_TheSessionIsPlanned_Then_NoAreaBaselineOpensIt(self):
+        # Arrange — the mutant's area is narrowable, and its cases are the narrower choice.
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert — the mutant, then the confirmation closing its segment.
+        self.assertEqual(self.items(), [1, -1])
+
+    # GREEN_ON_BASE(characterization): the base opens every narrowable area's baseline; cutting the
+    # `standing is None` test where `attempts` is filled in `measure_in_session` makes the case above red
+    # and leaves this one as it is.
+    def test_Given_AReachRunThatDoesNotStand_When_TheSessionIsPlanned_Then_TheAreaBaselineOpensIt(self):
+        # Arrange
+        self.campaign.reach_green = False
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.items(), [0, 1, -1])
 
 
 class SessionReachSelectionTests(unittest.TestCase):
@@ -8436,6 +8554,88 @@ class SessionVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertIsNone(reading)
+
+
+class CoveredVerdictTests(unittest.TestCase):
+    """A covered stage read directly: the campaign stub writes the stages and these write their cases."""
+
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp(prefix="covered-"))
+        self.addCleanup(shutil.rmtree, self.directory, ignore_errors=True)
+        self.planned = {"id": 7, "stages": [{"name": "covered", "testNames": ["N.C.A", "N.C.B"]},
+                                            {"name": "whole", "testNames": []}]}
+
+    def stage(self, name, total, failures=(), omitted=False):
+        xml = self.directory / "{}.xml".format(name)
+        xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0" />'.format(total))
+        return {"name": name, "finished": True, "xml": str(xml), "failures": list(failures),
+                "armed": ["Velvet:7"], "omitted": omitted}
+
+    def read(self, stages):
+        return mutation_check.session_verdict({"id": 7, "stages": stages}, self.planned, 7, "Velvet",
+                                              {"whole": 9}, {}, {"N.C.Kills": True}, set())
+
+    def test_Given_AKillInTheCoveredStage_When_Read_Then_ItNamesHowManyCasesRanTheSite(self):
+        # Arrange — no area baseline stands behind it: the cases were passing in the reach run.
+        stages = [{"name": "covered", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
+                   "armed": ["Velvet:7"]}]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertEqual(reading, (mutation_check.KILLED, "1 failed among the 2 case(s) that ran the site: Kills",
+                                   ["N.C.Kills"]))
+
+    def test_Given_ACoveredStageThatSurvivedAndNoWholeStage_When_Read_Then_ItIsNoVerdict(self):
+        # Arrange — a narrowed survivor is never a verdict.
+        stages = [self.stage("covered", 2)]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertIsNone(reading)
+
+    def test_Given_ACoveredStageThatSurvivedAndAGreenWholeStage_When_Read_Then_ItSurvived(self):
+        # Arrange
+        stages = [self.stage("covered", 2), self.stage("whole", 9)]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertEqual(reading, (mutation_check.SURVIVED, "", ()))
+
+    def test_Given_ACoveredStageShortOfTheCasesItWasHanded_When_Read_Then_ItIsNoVerdict(self):
+        # Arrange — one of the two cases was not found, so the run asked another question.
+        stages = [self.stage("covered", 1), self.stage("whole", 9)]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertIsNone(reading)
+
+    def test_Given_ACoveredStageAndAWholeStage_When_TheCasesAreCounted_Then_BothAreNamed(self):
+        # Arrange
+        stages = [dict(self.stage("covered", 2), ran=2), self.stage("whole", 9)]
+
+        # Act
+        ran = mutation_check.cases_run({"id": 7, "stages": stages})
+
+        # Assert
+        self.assertEqual(ran, (("covered", 2), ("whole", 9)))
+
+    def test_Given_AStageTheRunnerCancelledAtItsFirstFailure_When_TheCasesAreCounted_Then_TheCasesItFinishedAreCounted(self):
+        # Arrange
+        stages = [{"name": "covered", "finished": True, "cancelled": True, "failures": ["N.C.Kills"], "ran": 1}]
+
+        # Act
+        ran = mutation_check.cases_run({"id": 7, "stages": stages})
+
+        # Assert
+        self.assertEqual(ran, (("covered", 1),))
 
 
 class SessionPlanTests(unittest.TestCase):

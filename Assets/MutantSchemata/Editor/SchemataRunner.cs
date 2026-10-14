@@ -353,7 +353,7 @@ namespace Velvet.MutantSchemata.Editor
             return found;
         }
 
-        // Appended as each case ends, so a reload inside a run loses only the case in flight.
+        // Appended as each case ends, so a reload inside a run costs the hits of the case in flight and not those already written.
         private static void RecordReached(string name)
         {
             var ids = TakeReached();

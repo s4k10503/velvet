@@ -150,7 +150,7 @@ noticed gets written, or the line says why nothing could have, above itself:
 ```
 
 `equivalent` says the mutated program cannot behave differently; `unreachable` says the state where it
-would is not reachable from any entry point. A mutant whose run came back inconclusive counts as
+would is not reachable from any entry point, which is also the answer for a mutant the verdict calls **uncovered**: no case of the EditMode suite ran its site. A mutant whose run came back inconclusive counts as
 surviving and needs the same answer: an `Assume` that stopped holding measured nothing either. A declaration answers for the change written under it and
 is read the three ways the base-red one below is: one over a statement whose mutants all died is stale
 and fails, one whose category or reason the script refuses fails, and one the branch did not itself
@@ -413,7 +413,7 @@ PlayMode, where 84 of the 115 mutants those shards held took a launch of their o
 PlayMode shard that finished spent 934 s a mutant, over two. The slowest EditMode shard spent 493 s a
 mutant over sixteen: the job's timeout cancelled it, so each launch it had not finished is taken at the
 mean of those it had; its session's confirmation under the unmutated program failed, and 15 of its
-16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these.
+16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these, and charges an EditMode session one run of the whole suite at twice the baseline's figure before its first mutant, for the reach run that chooses each mutant's cases, in place of an area's own launch; no recording run has been timed, so that factor is an allowance.
 
 `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
 be generated at all, and that every declaration in the package is one the script would accept rather
