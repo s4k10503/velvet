@@ -150,7 +150,7 @@ noticed gets written, or the line says why nothing could have, above itself:
 ```
 
 `equivalent` says the mutated program cannot behave differently; `unreachable` says the state where it
-would is not reachable from any entry point. A mutant whose run came back inconclusive counts as
+would is not reachable from any entry point, and neither category answers a mutant the verdict calls **uncovered** merely because no case of the EditMode suite ran its site: that is code with no test, and the answer is the test, a declaration being right only where the state really is unreachable or the mutation really equivalent. A mutant whose run came back inconclusive counts as
 surviving and needs the same answer: an `Assume` that stopped holding measured nothing either. A declaration answers for the change written under it and
 is read the three ways the base-red one below is: one over a statement whose mutants all died is stale
 and fails, one whose category or reason the script refuses fails, and one the branch did not itself
@@ -413,7 +413,7 @@ PlayMode, where 84 of the 115 mutants those shards held took a launch of their o
 PlayMode shard that finished spent 934 s a mutant, over two. The slowest EditMode shard spent 493 s a
 mutant over sixteen: the job's timeout cancelled it, so each launch it had not finished is taken at the
 mean of those it had; its session's confirmation under the unmutated program failed, and 15 of its
-16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these.
+16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these, and charges an EditMode session, before its first mutant, one reach run at twice the baseline's figure (the bound a run that never finishes is stopped at) and the opening runs of each mutant's covered cases at a tenth of the baseline's seconds each, in place of an area's own launch, which a session that runs the reach run does not take; a session that places fewer than `REACH_MIN_MUTANTS` or more than `REACH_MAX_MUTANTS` mutants, or declines one, runs none and takes the areas' launches, as before, which the small arm charges for the whole shard; a placed mutant whose reading does not stand launches on its own afterwards and takes its area's baseline, which the reach arm charges once for every area the shard touches, up to all of them, and `REACH_MAX_MUTANTS` is the most mutants for which that fits; no recording run has been timed, so those factors are allowances. A shard whose reach run never finishes is charged as one without the opening runs.
 
 `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
 be generated at all, and that every declaration in the package is one the script would accept rather

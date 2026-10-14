@@ -4710,6 +4710,18 @@ class KeptVerdictTests(unittest.TestCase):
         self.assertEqual(json.loads((self.output / "mutant-008.json").read_text())["killers"],
                          ["N.C.a", "N.C.b", "N.C.c", "N.C.d"])
 
+    def test_Given_AMutantWhoseLaunchesRanCases_When_ItsRecordIsCollected_Then_TheMutantCarriesTheCounts(self):
+        # Arrange
+        self.mutant.ran = (("covered", 3), ("whole", 9624))
+        mutation_check.write_verdict(self.output, 9, "digest-1", self.mutant, self.project)
+        self.mutant.ran = ()
+
+        # Act
+        mutation_check.collected([self.output], 9, "digest-1", self.mutant, self.project)
+
+        # Assert
+        self.assertEqual(self.mutant.ran, (("covered", 3), ("whole", 9624)))
+
     # GREEN_ON_BASE(characterization): the base keeps every verdict, a kill among them.
     def test_Given_AVerdictThisCampaignWrote_When_TheSameMutantIsReached_Then_ItIsAnswered(self):
         # Act / Assert
@@ -6738,6 +6750,23 @@ class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
                                   "--collect", *(str(self.project / name) for name in play_directories))
 
 
+class UncoveredSecondPassTests(unittest.TestCase):
+    def test_Given_AnEditModeMutantNoCaseRan_When_ThePlayModePassIsPlanned_Then_ItIsMeasuredThere(self):
+        # Arrange — a site no EditMode case ran is one a PlayMode case may.
+        campaign = StubbedCampaign()
+        campaign.run_over_diff("--shard", "0/1", "--output", str(campaign.project / "edit"))
+        record = campaign.project / "edit" / "mutant-001.json"
+        held = json.loads(record.read_text())
+        held["verdict"] = mutation_check.UNCOVERED
+        record.write_text(json.dumps(held))
+
+        # Act
+        campaign.run_over_diff("--platform", "PlayMode", "--survivors-of", str(campaign.project / "edit"), "--plan")
+
+        # Assert
+        self.assertIn("mutants=1", campaign.printed)
+
+
 class DeadShardReportingTests(unittest.TestCase):
     """The verdict job's shape: a PlayMode pass over the EditMode shards' survivors, collected."""
 
@@ -7722,6 +7751,26 @@ class NarrowableAreaTests(unittest.TestCase):
         self.assertEqual([(stage["name"], stage["assemblyNames"]) for stage in stages],
                          [("narrowed:Reconciler", ["Velvet.Tests.A"]), ("whole", [])])
 
+    def test_Given_AMutantWithCasesThatRanItsSite_When_TheSessionIsPlanned_Then_TheyPrecedeTheWholeStageInPlaceOfItsArea(self):
+        # Arrange — the area is narrowed too, and the cases are the narrower of the two.
+        self.area = self.root / mutation_check.PACKAGE / "Runtime" / "Reconciler"
+        (self.area / "Tests" / "Editor").mkdir(parents=True)
+        (self.area / "Tests" / "Editor" / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.A"}))
+        attempts = {area: ["-assemblyNames", ";".join(names)]
+                    for area, names in self.narrowed(27.0).items()}
+        mutant = mutation_check.Mutant(self.area / "Probe.cs", 1, 0, "<", "<=", "boundary")
+        covered = mutation_check.COVERED_STAGE
+
+        # Act
+        plan, _ = mutation_check.session_plan(self.root, [mutant], [1], attempts, [], "EditMode",
+                                              100, 900, self.root / "session",
+                                              selection={1: ["N.C.A", "N.C.B"]})
+        stages = next(item["stages"] for item in plan["items"] if item["id"] == 1)
+
+        # Assert
+        self.assertEqual([(stage["name"], stage["testNames"]) for stage in stages],
+                         [(covered + ":0", ["N.C.A", "N.C.B"]), ("whole", [])])
+
     def test_Given_AnAssemblyTheBaselineDidNotRun_When_Read_Then_ItIsNotTaken(self):
         # Arrange — an assembly of the other platform sits under the same area.
         (self.area / "Tests" / "PlayMode").mkdir()
@@ -7749,35 +7798,113 @@ class AreaOfTests(unittest.TestCase):
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
-    # Charged at most once for each area a narrowed platform's shard holds; the slowest measured.
+    # What a narrowed platform's shard spends before its first mutant when it makes the reach run: the whole
+    # suite once under the unmutated program with the switches recording. Charged at twice the 375 s the
+    # slowest EditMode baseline took -- an allowance, since no recording run has been timed -- in place of
+    # each area's own baseline, which a shard that makes the reach run does not take in its opening.
+    REACH_RUN = 2 * 375
+
+    # What the opening runs of the covered sets add: each of a shard's mutants gets one, of at most
+    # 1/REACH_SHARE of the 375 s baseline in seconds, and none is shared in the worst case.
+    GATE_SUITE_SECONDS = 375
+
+    # What a launch of its own spends on its area's baseline, charged once for each area the launches
+    # touch; the slowest measured. A shard takes it in its opening when it takes main's path -- it places
+    # fewer than `REACH_MIN_MUTANTS` or more than `REACH_MAX_MUTANTS`, or was assigned one it declined --
+    # and afterwards for a placed mutant whose reading does not stand.
     AREA_LAUNCH = 145
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
-    # baseline, of its baseline and after its last verdict, added together. A charge is built on the
-    # slowest shard's seconds per mutant, which hold that shard's narrowed runs, so no narrowed launch
-    # is added to it. CONTRIBUTING.md ▸ Checking that the tests can fail has the measurements.
-    def fits(self, job, platform, mutant, setup):
+    # baseline, of its baseline and after its last verdict, added together. The 493 s is the slowest
+    # shard's seconds per mutant, from its baseline's end to its last verdict "less its areas' own
+    # launches" in CONTRIBUTING.md, so the areas' baselines are charged apart from it. It was measured on
+    # launches that took their area first, which is the path a launch of its own still takes, and before a
+    # placed mutant's first launch was its covered cases; it is kept until one is measured. Three arms, by
+    # `arm`: "reach" is a shard that makes the reach run, for `count` placed mutants, charged for the reach
+    # run, a gate for each mutant, and `fallback_areas` area baselines for placed mutants whose reading
+    # does not stand and which launch on their own afterwards; "failed" the same with a reach run that
+    # never finishes, every mutant taking the whole suite; "small" a shard that takes main's path, which
+    # is main's charge: every area's baseline and the whole shard.
+    def fits(self, job, platform, mutant, setup, arm="reach", count=None, fallback_areas=0):
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
                           re.MULTILINE)
         per = mutation_check.SHARD_CEILING.get(platform)
+        count = per if count is None else count
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
-        area = self.AREA_LAUNCH if narrowed else 0
-        areas = len({asmdef.parents[2] for asmdef in (REPO_ROOT / mutation_check.PACKAGE / "Runtime").glob(
-            "*/Tests/Editor/*.asmdef")})
+        opening = self.REACH_RUN if narrowed else 0
+        if narrowed and arm == "reach" and per is not None:
+            opening += self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * count
+            opening += fallback_areas * self.AREA_LAUNCH
+        if arm == "small":
+            opening = self.areas() * self.AREA_LAUNCH
         return (per is not None and found is not None
-                and setup + areas * area + per * mutant <= int(found.group(1)) * 60)
+                and setup + opening + count * mutant <= int(found.group(1)) * 60)
 
-    def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange — that shard was cut short by the timeout, so the launches it had not finished are
-        # filled at the mean of those it had; and one mutant hanging at --timeout's 900 s besides.
+    @staticmethod
+    def areas():
+        """How many areas `narrowable` would take: it is asked, over a results file that lists the package's
+        EditMode test assemblies (the ones under a `Tests/Editor` directory) as taking a second each in a
+        suite of a thousand, so what counts as an area's assemblies is its rule and not a copy of it."""
+        runtime = REPO_ROOT / mutation_check.PACKAGE / "Runtime"
+        ran = sorted(json.loads(asmdef.read_text())["name"] for asmdef in runtime.rglob("*.asmdef")
+                     if asmdef.parent.parts[-2:] == ("Tests", "Editor"))
+        results = Path(tempfile.mkdtemp(prefix="areas-")) / "results.xml"
+        results.write_text('<test-run duration="1000">{}</test-run>'.format("".join(
+            '<test-suite type="Assembly" name="{}.dll" duration="1" />'.format(name) for name in ran)))
+        return len(mutation_check.narrowable(results, [path for path in runtime.iterdir() if path.is_dir()]))
+
+    def test_Given_TheMostPlacedMutantsWhoseReachRunNeverFinishes_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange — the run is stopped at REACH_BOUND times the baseline, which REACH_RUN charges; no covered
+        # set is then run, and every mutant takes the whole suite at the same measured figure.
         mutant, setup = 493, 201 + 375 + 12 + 900
 
         # Act
-        fits = self.fits("mutation-shard", "EditMode", mutant, setup)
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="failed",
+                         count=mutation_check.REACH_MAX_MUTANTS)
 
         # Assert
         self.assertTrue(fits)
+
+    def test_Given_EveryCountOfPlacedMutantsTheReachRunIsMadeFor_When_AFallbackLaunchesInEveryTouchedArea_Then_EveryOneFits(self):
+        # Arrange — n placed mutants touching min(n, all) areas, each with a fallback launch that takes its
+        # area's baseline: 1488 + 750 + 37.5 n + 145 min(n, 8) + 493 n, which is 10294.5 at n = 13.
+        mutant, setup = 493, 201 + 375 + 12 + 900
+        counts = range(mutation_check.REACH_MIN_MUTANTS, mutation_check.REACH_MAX_MUTANTS + 1)
+
+        # Act
+        fitting = [placed for placed in counts
+                   if self.fits("mutation-shard", "EditMode", mutant, setup, count=placed,
+                                fallback_areas=min(placed, self.areas()))]
+
+        # Assert
+        self.assertEqual(fitting, list(counts))
+
+    def test_Given_TheMostPlacedMutantsTheReachRunIsMadeFor_When_OneMoreIsAdded_Then_AFallbackInEveryAreaNoLongerFits(self):
+        # Arrange — the maximum is derived here from the job timeout rather than read back from the constant:
+        # it is the largest count whose charge fits, and at one more the shard could overrun.
+        mutant, setup = 493, 201 + 375 + 12 + 900
+        largest = max(placed for placed in range(1, mutation_check.SHARD_CEILING["EditMode"] + 1)
+                      if self.fits("mutation-shard", "EditMode", mutant, setup, count=placed,
+                                   fallback_areas=min(placed, self.areas())))
+
+        # Act
+        stated = mutation_check.REACH_MAX_MUTANTS
+
+        # Assert
+        self.assertEqual(stated, largest)
+
+    def test_Given_AnEditModeShardOnMainsPath_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange — a shard below the minimum or above the maximum, or assigned a declined mutant: every area's
+        # baseline, then every mutant the shard was assigned.
+        mutant, setup = 493, 201 + 375 + 12 + 900
+
+        # Act
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small")
+
+        # Assert — and the threshold sits inside what a shard can hold, or the arm would never be taken.
+        self.assertEqual((fits, mutation_check.REACH_MIN_MUTANTS <= mutation_check.SHARD_CEILING["EditMode"]),
+                         (True, True))
 
     def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the 100 s are what its five bounded cases spend where a mutant stops the frame
@@ -7835,6 +7962,21 @@ class SessionCampaign(StubbedCampaign):
     lost = False
     unarmed = False
     short = False
+    # The cases the reach run reports, each with the mutant ids it ran: None is a reach run that did not
+    # come out green, which is what a stub that knows nothing of it reports.
+    reach = None
+    reach_cases = ("N.C.A", "N.C.B", "N.C.C", "N.C.D") + tuple("N.C.F{}".format(number) for number in range(36))
+    # A case the reach run reports as failed, and whether it reports one case fewer than the baseline held.
+    failing_case = None
+    missing_case = False
+    # Whether the opening run of a covered set comes out green.
+    gate_green = True
+    # How long each case of the reach run took (seconds), by name; the rest take `case_seconds`.
+    case_seconds = 0.1
+    slow_cases = {}
+    # A case the reach run reports as inconclusive, and the switches it reports armed.
+    inconclusive_case = None
+    reach_armed = ("Probe:0",)
 
     def __init__(self):
         super().__init__()
@@ -7842,6 +7984,23 @@ class SessionCampaign(StubbedCampaign):
         self.rewrites = []
         self.launched = []
         self.during = None
+        self.plans = []
+        self.environments = []
+
+    def reach_session(self, plan, directory):
+        xml = directory / "mutant-000.xml"
+        cases = self.reach_cases[1:] if self.missing_case else self.reach_cases
+        xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0">{1}</test-run>'.format(
+            len(cases), "".join('<test-case fullname="{}" result="{}" duration="{}" />'.format(
+                name, "Failed" if name == self.failing_case else
+                "Inconclusive" if name == self.inconclusive_case else "Passed",
+                self.slow_cases.get(name, self.case_seconds)) for name in cases)))
+        stage = {"name": "coverage", "finished": True, "xml": str(xml), "passed": len(cases),
+                 "failures": [self.failing_case] if self.failing_case else [], "armed": list(self.reach_armed)}
+        (directory / "item-000.json").write_text(json.dumps({"id": 0, "stages": [stage]}))
+        (directory / "reach.jsonl").write_text("".join(
+            json.dumps({"name": name, "ids": sorted(ids)}) + "\n" for name, ids in self.reach.items()))
+        return {0: {"launch": 1, "peak": 0}}, set(), None
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         self.launched.append(Path(results).name)
@@ -7855,11 +8014,21 @@ class SessionCampaign(StubbedCampaign):
 
     def session(self, _args, _project, plan, directory, _holder):
         self.during = self.source.read_text()
+        self.plans.append(plan)
+        if plan.get("reach") and self.reach is not None:
+            return self.reach_session(plan, directory)
         assembly = mutation_check.assembly_of(self.source)
         for item in plan["items"]:
             number = item["id"]
             name = directory / "item-{}.json".format(mutation_check.cs_id(number))
             xml = directory / "mutant-{}.xml".format(mutation_check.cs_id(number))
+            planned = {stage["name"]: stage for stage in item["stages"]}
+            if number == 0 and any(stage_name.startswith("covered:") for stage_name in planned):
+                name.write_text(json.dumps({"id": 0, "stages": self.gate_stages(item, directory, assembly)}))
+                continue
+            if any(stage_name.startswith("covered:") for stage_name in planned) and not item.get("confirm"):
+                name.write_text(json.dumps({"id": number, "stages": self.covered_stages(item, xml, assembly)}))
+                continue
             if item.get("confirm"):
                 result = "Failed" if self.unconfirmed else "Passed"
                 xml.write_text('<test-run total="1"><test-case fullname="N.C.Kills" result="{}" />'
@@ -7880,13 +8049,45 @@ class SessionCampaign(StubbedCampaign):
         return {position: {"launch": 1, "peak": 0} for position in range(len(plan["items"]))
                 if position not in lost}, lost, None
 
+    def gate_stages(self, item, directory, assembly):
+        """The opening run of each covered set, unmutated, and of each area."""
+        stages = []
+        for planned in item["stages"]:
+            total = len(planned["testNames"]) or 1
+            xml = directory / "mutant-000-{}.xml".format(planned["name"].replace(":", "-"))
+            xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0" />'.format(total))
+            red = planned["name"].startswith("covered:") and not self.gate_green
+            stages.append({"name": planned["name"], "finished": True, "xml": str(xml), "passed": total,
+                           "failures": ["N.C.A"] if red else [], "armed": ["{}:0".format(assembly)]})
+        return stages
+
+    def covered_stages(self, item, xml, assembly):
+        """What the runner records for an item that starts with a covered stage: a kill stops there, and
+        a survivor runs it out and goes on to the whole suite."""
+        armed = [] if self.unarmed else ["{}:{}".format(assembly, item["id"])]
+        if self.outcome == "killed":
+            return [{"name": item["stages"][0]["name"], "finished": True, "cancelled": True,
+                     "failures": ["N.C.Kills"], "ran": 1, "armed": armed}]
+        covered = item["stages"][0]
+        xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0" />'.format(
+            len(covered["testNames"])))
+        whole = Path(str(xml).replace(".xml", "-whole.xml"))
+        whole.write_text(self.baseline_text)
+        return [{"name": covered["name"], "finished": True, "xml": str(xml), "failures": [], "armed": armed,
+                 "ran": len(covered["testNames"])},
+                {"name": "whole", "finished": True, "xml": str(whole), "failures": [], "armed": armed}]
+
     def recorded(self):
         return json.loads((self.project / "out" / "mutant-001.json").read_text())["verdict"]
 
 
-class SessionRoutingTests(unittest.TestCase):
+class SessionRoutingBase(unittest.TestCase):
+    campaign_class = SessionCampaign
+    # What `REACH_MIN_MUTANTS` is held at: a campaign here places one mutant.
+    reach_from = None
+
     def setUp(self):
-        self.campaign = SessionCampaign()
+        self.campaign = self.campaign_class()
         saved = (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file)
         mutation_check.rewrite_schemata = self.campaign.rewrite
         mutation_check.run_session = self.campaign.session
@@ -7895,12 +8096,17 @@ class SessionRoutingTests(unittest.TestCase):
         mutation_check.il_reading_assemblies = lambda _project, ran=None: (
             self.il_asked.append(ran), self.il_read)[1]
         self.addCleanup(self.restore, saved + (READ_IL,))
+        if self.reach_from is not None:
+            self.addCleanup(setattr, mutation_check, "REACH_MIN_MUTANTS", mutation_check.REACH_MIN_MUTANTS)
+            mutation_check.REACH_MIN_MUTANTS = self.reach_from
 
     @staticmethod
     def restore(saved):
         (mutation_check.rewrite_schemata, mutation_check.run_session, mutation_check.response_file,
          mutation_check.il_reading_assemblies) = saved
 
+
+class SessionRoutingTests(SessionRoutingBase):
     def test_Given_AMutantTheSessionKilled_When_TheCampaignRuns_Then_ItTakesNoLaunchOfItsOwn(self):
         # Arrange
         campaign = self.campaign
@@ -8040,6 +8246,709 @@ class SessionRoutingTests(unittest.TestCase):
         self.assertEqual(campaign.rewrites, [])
 
 
+class SessionReachTests(SessionRoutingBase):
+    """What the reach run decides about a mutant's launch: against which cases it runs, whether it runs at
+    all, and what a survivor of the narrowed run is owed."""
+
+    reach_from = 1
+
+    def setUp(self):
+        super().setUp()
+        self.campaign.baseline_text = '<test-run total="40" passed="40" failed="0" inconclusive="0" />'
+        self.campaign.reach = {"N.C.A": {1}}
+        # A tenth of this is what a mutant's cases may take together.
+        self.campaign.baseline_seconds = 100.0
+
+    def stages(self, key="name"):
+        plan = self.campaign.plans[-1]
+        item = next(item for item in plan["items"] if item["id"] == 1)
+        return [stage[key] for stage in item["stages"]]
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite; replacing the seconds test in `select_by_reach` with `if chosen:` reddens it.
+    def test_Given_AMutantWhoseCasesTakeMoreThanATenthOfTheBaseline_When_TheCampaignRuns_Then_ItTakesTheWholeSuite(self):
+        # Arrange — one case, but twenty seconds against a ten-second budget: a count would have taken it.
+        self.campaign.slow_cases = {"N.C.A": 20}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite; reading an unreadable
+    # duration as `0.0` instead of infinity in `read_cases` reddens it.
+    def test_Given_APassedCaseWithNoReadableDuration_When_TheCampaignRuns_Then_ItsMutantTakesTheWholeSuite(self):
+        # Arrange — a duration that cannot be read must not weigh as nothing.
+        self.campaign.slow_cases = {"N.C.A": "n/a"}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base reads no site as uncovered; making `select_by_reach` call every
+    # unrun site uncovered whatever `unsure` says reddens it.
+    def test_Given_AReachRunWithAnInconclusiveCase_When_TheCampaignRuns_Then_NoSiteIsReadAsUncovered(self):
+        # Arrange — that case stopped where its Assume failed, so the sites after it are unrecorded, not unreached.
+        self.campaign.reach = {"N.C.B": {99}}
+        self.campaign.inconclusive_case = "N.C.A"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base reads no site as uncovered; cutting the `not stage.get("armed")` test in `measure_reach` reddens it.
+    def test_Given_AReachRunWithNoSwitchArmed_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — the editor kept a build without the guards.
+        self.campaign.reach = {"N.C.B": {99}}
+        self.campaign.reach_armed = ()
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base reads no site as uncovered; cutting the `endswith(":0")` test in `measure_reach` reddens it.
+    def test_Given_AReachRunArmedOnAMutant_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — a switch that read an id is not the unmutated program.
+        self.campaign.reach = {"N.C.B": {99}}
+        self.campaign.reach_armed = ("Probe:0", "Probe:7")
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    def test_Given_ATimeoutShorterThanTwiceTheBaseline_When_TheReachRunIsPlanned_Then_TheTimeoutBoundsIt(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1", "--timeout", "50")
+
+        # Assert
+        self.assertEqual([stage["bound"] for item in self.campaign.plans[0]["items"] for stage in item["stages"]],
+                         [50])
+
+    def test_Given_AReachRunToCharge_When_ItIsPlanned_Then_ItIsStoppedAtTwiceTheBaselinesTime(self):
+        # Arrange — `ShardCeilingTests.REACH_RUN` charges that much for a run that never finishes.
+        self.campaign.baseline_seconds = 100.0
+        bound = mutation_check.REACH_BOUND * 100
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual([stage["bound"] for item in self.campaign.plans[0]["items"] for stage in item["stages"]],
+                         [bound])
+
+    def test_Given_AGateThatFailsUnmutated_When_TheMutantIsKilledInItsCoveredStage_Then_ItTakesItsOwnLaunch(self):
+        # Arrange — the cases fail in that order without any mutation, so their failure is no kill.
+        self.campaign.gate_green = False
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AMutantWithCoveredCases_When_TheSessionIsPlanned_Then_TheSameCasesRunUnmutatedFirst(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        opening = self.campaign.plans[-1]["items"][0]
+        self.assertEqual((opening["id"], [(stage["name"], stage["testNames"]) for stage in opening["stages"]]),
+                         (0, [(mutation_check.covered_name(0), ["N.C.A"])]))
+
+    def test_Given_AnEditModeSession_When_ItOpens_Then_ItsOnlyOpeningWorkIsOneRunOfTheWholeSuite(self):
+        # Arrange — `ShardCeilingTests.REACH_RUN` charges exactly that, in place of the areas' baselines.
+        reach_stage = mutation_check.REACH_STAGE
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        opening = self.campaign.plans[0]
+        self.assertEqual((opening["reach"], [(stage["name"], stage["assemblyNames"], stage["testNames"])
+                                             for item in opening["items"] for stage in item["stages"]]),
+                         (True, [(reach_stage, [], [])]))
+
+    def test_Given_AMutantOneCaseRan_When_TheCampaignRuns_Then_ItsFirstLaunchHoldsThatCaseAlone(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages("testNames")[0], ["N.C.A"])
+
+    def test_Given_AMutantKilledInItsCoveredStage_When_ItsVerdictIsRecorded_Then_TheRecordCarriesTheCasesItRan(self):
+        # Arrange
+        covered = mutation_check.COVERED_STAGE
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        record = json.loads((self.campaign.project / "out" / "mutant-001.json").read_text())
+        self.assertEqual(record["ran"], [[covered + ":0", 1]])
+
+    # GREEN_ON_BASE(characterization): the base records a kill's failing cases too; this holds that a kill
+    # the covered stage took reaches the ledger by the same record. Dropping `killers` from the tuple
+    # `session_verdict` returns for a covered kill reddens it.
+    def test_Given_AMutantKilledInItsCoveredStage_When_ItsVerdictIsRecorded_Then_TheRecordNamesTheKillingCase(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        record = json.loads((self.campaign.project / "out" / "mutant-001.json").read_text())
+        self.assertEqual(record["killers"], ["N.C.Kills"])
+
+    def test_Given_AMutantOneCaseRanThatSurvivesIt_When_TheCampaignRuns_Then_TheWholeSuiteRunsBeforeTheVerdict(self):
+        # Arrange
+        self.campaign.outcome = "survived"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), [mutation_check.covered_name(0), "whole"])
+
+    def test_Given_AMutantNoCaseRan_When_TheCampaignRuns_Then_ItIsRecordedUncovered(self):
+        # Arrange — the only site anything reached is mutant 99's.
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.campaign.recorded(), mutation_check.UNCOVERED)
+
+    def test_Given_AMutantNoCaseRan_When_TheCampaignRuns_Then_NoItemIsPlannedForIt(self):
+        # Arrange
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert — the reach run's opening item is the only one any plan held.
+        self.assertEqual([item["id"] for plan in self.campaign.plans for item in plan["items"]], [0])
+
+    def test_Given_AMutantNoCaseRanInAnAssemblyAFixtureReadsTheILOf_When_TheCampaignRuns_Then_ItTakesItsOwnLaunch(self):
+        # Arrange — that fixture sees the guards of every mutant, whatever the cases ran.
+        self.campaign.reach = {"N.C.A": {99}}
+        self.il_read = {mutation_check.assembly_of(self.campaign.source)}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.campaign.launched, ["baseline.xml", "mutant-001.xml"])
+
+    def test_Given_AMutantRunBeforeAnyCaseStarted_When_TheCampaignRuns_Then_ItTakesTheWholeSuite(self):
+        # Arrange — its site ran with the domain, so any case may read what it left.
+        self.campaign.reach = {"N.C.A": {99}, mutation_check.SETUP_CASE: {1}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite, so a reach run missing
+    # a case changes nothing there; cutting the `counts["total"] != total` test in `measure_reach` reddens it.
+    def test_Given_AReachRunMissingACase_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — which sites the missing case ran is unknown, so none can be called unreached.
+        self.campaign.reach = {"N.C.A": {99}}
+        self.campaign.missing_case = True
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite; replacing the passed-case
+    # filter in `select_by_reach` with the cases that ran the site reddens it.
+    def test_Given_AReachRunWithAFailingCase_When_TheCampaignRuns_Then_ASiteOnlyThatCaseRanTakesTheWholeSuite(self):
+        # Arrange
+        self.campaign.failing_case = "N.C.A"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    def test_Given_AReachRunWithAFailingCase_When_TheCampaignRuns_Then_NoSiteIsReadAsUncovered(self):
+        # Arrange — the failed case stopped where it failed, so the sites after that point are unrecorded.
+        self.campaign.reach = {"N.C.B": {99}}
+        self.campaign.failing_case = "N.C.A"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite whatever a table holds;
+    # cutting the recorded-something test in `measure_reach` reddens it.
+    def test_Given_AReachRunThatRecordedNothing_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
+        # Arrange — tables never turned on look the same as a suite that ran no site.
+        self.campaign.reach = {}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
+    # GREEN_ON_BASE(characterization): the base never reads reach; cutting the platform test around the
+    # reach run in `measure_in_session` reddens it.
+    def test_Given_APlayModePass_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
+        # Arrange — the pass measures what the EditMode suite left, against the whole PlayMode suite.
+
+        # Act
+        self.campaign.run("--max", "1", "--platform", "PlayMode")
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+    def test_Given_AMutantTheSessionKilled_When_TheSummaryPrints_Then_ItNamesHowManyCasesItsLaunchRan(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertIn("[killed] {} 1".format(mutation_check.covered_name(0)), self.campaign.printed)
+
+    def test_Given_AnUncoveredMutant_When_TheSummaryPrints_Then_ItRanNoCases(self):
+        # Arrange
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertIn("[{}] uncovered 0".format(mutation_check.UNCOVERED), self.campaign.printed)
+
+    def test_Given_AnUncoveredMutantAndNoDeclaration_When_TheCampaignDecides_Then_ItFailsTheRun(self):
+        # Arrange — a survivor needs an answer, and a site no case ran is not exempt from asking for one.
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        code = self.campaign.run_over_diff("--max", "1")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+
+class StylingSessionCampaign(SessionCampaign):
+    """A session campaign whose mutant sits under an area with an assembly the baseline ran in a second."""
+
+    SOURCE = "Packages/com.velvet.core/Runtime/Styling/Probe.cs"
+
+
+class SessionReachAreaTests(SessionRoutingBase):
+    """A mutant under an area the baseline could narrow: no session takes the area's own baseline, so the
+    opening holds the covered sets and nothing else."""
+
+    campaign_class = StylingSessionCampaign
+    reach_from = 1
+
+    def setUp(self):
+        super().setUp()
+        tests = self.campaign.source.parent / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.Styling.A"}))
+        self.campaign.baseline_text = ('<test-run total="40" passed="40" failed="0" inconclusive="0" duration="9">'
+                                       '<test-suite type="Assembly" name="Velvet.Tests.Styling.A.dll" '
+                                       'duration="1" /></test-run>')
+        self.campaign.baseline_seconds = 100.0
+        self.campaign.reach = {"N.C.A": {1}}
+
+    def plan_items(self):
+        return [item["id"] for item in self.campaign.plans[-1]["items"]]
+
+    def stages(self):
+        item = next(item for item in self.campaign.plans[-1]["items"] if item["id"] == 1)
+        return [stage["name"] for stage in item["stages"]]
+
+    def test_Given_ACoveredMutantUnderANarrowableArea_When_TheSessionIsPlanned_Then_OnlyItsCoveredSetOpensIt(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        opening = self.campaign.plans[-1]["items"][0]
+        self.assertEqual([stage["name"] for stage in opening["stages"]], [mutation_check.covered_name(0)])
+
+    def test_Given_AWideMutantUnderANarrowableArea_When_TheSessionIsPlanned_Then_ItTakesTheWholeSuiteAlone(self):
+        # Arrange — its cases take longer than the budget; the ceiling charges no area baseline for it.
+        self.campaign.slow_cases = {"N.C.A": 20}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.plan_items(), self.stages()), ([1, -1], ["whole"]))
+
+    def test_Given_FewerMutantsThanTheThreshold_When_TheSessionIsPlanned_Then_NoReachRunIsMade(self):
+        # Arrange
+        mutation_check.REACH_MIN_MUTANTS = 2
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+    def test_Given_FewerMutantsThanTheThreshold_When_TheSessionIsPlanned_Then_TheAreaOpensItAndPrecedesTheWholeSuite(self):
+        # Arrange — main's path, kept for the shard too small for a reach run to pay.
+        mutation_check.REACH_MIN_MUTANTS = 2
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.plan_items(), self.stages()), ([0, 1, -1], ["narrowed:Styling", "whole"]))
+
+    def test_Given_AReachRunThatDoesNotStand_When_TheSessionIsPlanned_Then_TheMutantTakesTheWholeSuiteAlone(self):
+        # Arrange
+        self.campaign.missing_case = True
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.plan_items(), self.stages()), ([1, -1], ["whole"]))
+
+
+def probe_body(methods):
+    lines = "\n".join("        internal static bool M{0}(int a, int b) => a <= b;".format(number)
+                      for number in range(methods))
+    return "namespace Velvet\n{\n    internal static class Probe\n    {\n" + lines + "\n    }\n}\n"
+
+
+class SevenMutantCampaign(StylingSessionCampaign):
+    """Seven mutants under a narrowable area, of which the session places six and declines the last."""
+
+    BODY = probe_body(7)
+    DECLINES = 1
+
+    def rewrite(self, _unity, project, request, _scratch):
+        self.rewrites.append(request)
+        ids = [mutant["id"] for entry in request["files"] for mutant in entry["mutants"]]
+        relative = request["files"][0]["path"]
+        return {"placed": ids[:len(ids) - self.DECLINES],
+                "declined": {str(number): "declined for the case" for number in ids[len(ids) - self.DECLINES:]},
+                "files": {relative: self.REWRITTEN}, "fatal": []}
+
+
+class SixMutantCampaign(SevenMutantCampaign):
+    """Six mutants, all placed."""
+
+    BODY = probe_body(6)
+    DECLINES = 0
+
+
+class SixOrSevenMutantsBase(SessionRoutingBase):
+    def setUp(self):
+        super().setUp()
+        tests = self.campaign.source.parent / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.Styling.A"}))
+        self.campaign.baseline_text = ('<test-run total="40" passed="40" failed="0" inconclusive="0" duration="9">'
+                                       '<test-suite type="Assembly" name="Velvet.Tests.Styling.A.dll" '
+                                       'duration="1" /></test-run>')
+        self.campaign.baseline_seconds = 100.0
+        self.campaign.reach = {"N.C.A": {1}}
+
+
+class DeclinedMutantBesideASessionTests(SixOrSevenMutantsBase):
+    """A mutant launched on its own keeps main's area-first path, so a session with one runs no reach run."""
+
+    campaign_class = SevenMutantCampaign
+
+    # GREEN_ON_BASE(characterization): the base runs no reach run; dropping the `len(placed) == len(pending)`
+    # test from `reaching` in `measure_in_session` reddens it.
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
+        # Arrange — six placed meet the threshold, but a seventh needs a launch of its own.
+
+        # Act
+        self.campaign.run("--max", "7")
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+    # GREEN_ON_BASE(characterization): the base takes the area's baseline for a launch of its own; making
+    # `measure` skip the areas of its own launches beside a session reddens it.
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_TheDeclinedOneIsPrecededByItsAreasBaseline(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "7")
+
+        # Assert
+        self.assertEqual([name for name in self.campaign.launched if name.startswith("baseline-")],
+                         ["baseline-Styling.xml"])
+
+
+class FourteenMutantCampaign(SixMutantCampaign):
+    """Fourteen mutants, all placed: one more than the reach run is made for."""
+
+    BODY = probe_body(14)
+
+
+class TooLargeShardTests(SixOrSevenMutantsBase):
+    campaign_class = FourteenMutantCampaign
+
+    def test_Given_OneMorePlacedMutantThanTheReachRunIsMadeFor_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
+        # Arrange — a fallback in every area it touches would no longer fit the job.
+        limit = mutation_check.REACH_MAX_MUTANTS
+
+        # Act
+        self.campaign.run("--max", str(limit + 1))
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+
+class FullyPlacedShardTests(SixOrSevenMutantsBase):
+    campaign_class = SixMutantCampaign
+
+    def test_Given_SixMutantsAllPlaced_When_TheCampaignRuns_Then_TheReachRunIsMade(self):
+        # Arrange — the control for the pair above: the same threshold with nothing left for a launch of its own.
+
+        # Act
+        self.campaign.run("--max", "6")
+
+        # Assert
+        self.assertEqual(self.campaign.plans[0].get("reach"), True)
+
+
+class SessionReachSelectionTests(unittest.TestCase):
+    SECONDS = {"N.C.A": 1.0, "N.C.B": 1.0, "N.C.C": 1.0, "N.C.D": 1.0}
+
+    def select(self, reached, setup=(), seconds=SECONDS, budget=10.0, unsure=False):
+        return mutation_check.select_by_reach([1, 2], {case: set(ids) for case, ids in reached.items()},
+                                              set(setup), dict(seconds), budget, unsure)
+
+    def test_Given_ACaseThatRanOneMutantsSite_When_Selected_Then_ThatMutantTakesTheCase(self):
+        # Arrange / Act
+        selection, _ = self.select({"N.C.A": {1}, "N.C.B": {2}})
+
+        # Assert
+        self.assertEqual(selection, {1: ["N.C.A"], 2: ["N.C.B"]})
+
+    def test_Given_NoCaseThatRanAMutantsSite_When_Selected_Then_ItIsUncovered(self):
+        # Arrange / Act
+        _, uncovered = self.select({"N.C.A": {1}})
+
+        # Assert
+        self.assertEqual(uncovered, [2])
+
+    def test_Given_NoCaseThatRanAMutantsSiteAndACaseThatStoppedShort_When_Selected_Then_ItIsNotUncovered(self):
+        # Arrange / Act
+        result = self.select({"N.C.A": {1}}, unsure=True)
+
+        # Assert
+        self.assertEqual(result, ({1: ["N.C.A"]}, []))
+
+    def test_Given_ASiteRunBeforeAnyCase_When_Selected_Then_ItIsNeitherSelectedNorUncovered(self):
+        # Arrange / Act
+        result = self.select({"N.C.A": {1}, "N.C.B": {2}}, setup={2})
+
+        # Assert
+        self.assertEqual(result, ({1: ["N.C.A"]}, []))
+
+    def test_Given_ASiteOnlyACaseThatDidNotPassRan_When_Selected_Then_ItIsNeitherSelectedNorUncovered(self):
+        # Arrange / Act — the case is no candidate killer, and it did run the site, so the site is not unreached.
+        result = self.select({"N.C.A": {1}, "N.C.X": {2}})
+
+        # Assert
+        self.assertEqual(result, ({1: ["N.C.A"]}, []))
+
+    def test_Given_CasesTakingMoreSecondsThanTheBudget_When_Selected_Then_TheMutantTakesTheWholeSuite(self):
+        # Arrange / Act — two cases against a budget of one and a half seconds, though a count of two would pass.
+        result = self.select({"N.C.A": {1}, "N.C.B": {1}, "N.C.C": {2}}, budget=1.5)
+
+        # Assert
+        self.assertEqual(result, ({2: ["N.C.C"]}, []))
+
+    def test_Given_ASlowCaseAmongFew_When_Selected_Then_ItsSecondsAndNotItsCountDecide(self):
+        # Arrange / Act
+        result = self.select({"N.C.A": {1}}, seconds={"N.C.A": 11.0}, budget=10.0)
+
+        # Assert
+        self.assertEqual(result, ({}, [2]))
+
+    def test_Given_CasesTakingExactlyTheBudget_When_Selected_Then_TheMutantTakesThem(self):
+        # Arrange / Act
+        selection, _ = self.select({"N.C.A": {1}, "N.C.B": {1}}, budget=2.0)
+
+        # Assert
+        self.assertEqual(selection, {1: ["N.C.A", "N.C.B"]})
+
+
+class ReachRecordTests(unittest.TestCase):
+    def read(self, text):
+        path = Path(tempfile.mkdtemp(prefix="reach-")) / mutation_check.REACH_FILE
+        path.write_text(text)
+        return mutation_check.read_reached(path)
+
+    def test_Given_LinesOfCasesAndOfTheSetup_When_Read_Then_TheSetupIdsAreKeptApart(self):
+        # Arrange
+        text = ('{"name": "<setup>", "ids": [3]}\n{"name": "N.C.A", "ids": [1, 2]}\n'
+                '{"name": "N.C.A", "ids": [2, 5]}\n')
+
+        # Act
+        reached, setup = self.read(text)
+
+        # Assert
+        self.assertEqual((reached, setup), ({"N.C.A": {1, 2, 5}}, {3}))
+
+    def test_Given_SetupHitsRecordedAfterTheLastCase_When_Read_Then_TheyAreStillTheSetups(self):
+        # Arrange — what ran after the last case ended is filed under the same name as what ran before the first.
+        text = '{"name": "N.C.A", "ids": [1]}\n{"name": "<setup>", "ids": [1]}\n'
+
+        # Act
+        reached, setup = self.read(text)
+
+        # Assert
+        self.assertEqual((reached, setup), ({"N.C.A": {1}}, {1}))
+
+    def test_Given_TheRunnersClose_When_TheStageEnds_Then_ItFilesWhatRanAfterTheLastCaseUnderSetup(self):
+        # Arrange — the runner is not compiled here; this holds its source to the one call that routes the tail.
+        source = (REPO_ROOT / "Assets" / "MutantSchemata" / "Editor" / "SchemataRunner.cs").read_text()
+        close = source.partition("private static void Close(")[2].partition("private static void AwaitDrain")[0]
+
+        # Act
+        filed = "if (plan.reach) RecordReached(SetupCase);" in close
+
+        # Assert
+        self.assertTrue(filed)
+
+    def test_Given_ALineTheEditorPartWrote_When_Read_Then_ItIsSkipped(self):
+        # Arrange
+        text = '{"name": "N.C.A", "ids": [1]}\n{"name": "N.C.B", "ids": [2'
+
+        # Act
+        reached, _ = self.read(text)
+
+        # Assert
+        self.assertEqual(reached, {"N.C.A": {1}})
+
+    def test_Given_NoFile_When_Read_Then_NothingWasReached(self):
+        # Arrange / Act
+        result = mutation_check.read_reached(Path(tempfile.mkdtemp(prefix="reach-")) / "absent.jsonl")
+
+        # Assert
+        self.assertEqual(result, ({}, set()))
+
+
+class ReadCasesTests(unittest.TestCase):
+    def read(self, body):
+        path = Path(tempfile.mkdtemp(prefix="cases-")) / "r.xml"
+        path.write_text("<test-run>{}</test-run>".format(body))
+        return mutation_check.read_cases(path)
+
+    def test_Given_PassedAndFailedCases_When_Read_Then_OnlyThePassingOnesCarrySeconds(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" duration="1.5" />'
+                               '<test-case fullname="B" result="Failed" duration="2" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": 1.5})
+
+    def test_Given_AnInconclusiveCase_When_Read_Then_TheReadingIsUnsure(self):
+        # Arrange / Act
+        _, unsure = self.read('<test-case fullname="A" result="Inconclusive" duration="1" />')
+
+        # Assert
+        self.assertTrue(unsure)
+
+    def test_Given_AFailedCase_When_Read_Then_TheReadingIsUnsure(self):
+        # Arrange / Act
+        _, unsure = self.read('<test-case fullname="A" result="Passed" duration="1" />'
+                              '<test-case fullname="B" result="Failed" duration="1" />')
+
+        # Assert
+        self.assertTrue(unsure)
+
+    def test_Given_OnlyPassedCases_When_Read_Then_TheReadingIsSure(self):
+        # Arrange / Act
+        _, unsure = self.read('<test-case fullname="A" result="Passed" duration="1" />')
+
+        # Assert
+        self.assertFalse(unsure)
+
+    def test_Given_APassedCaseWithNoDuration_When_Read_Then_ItIsInfinitelyLong(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": float("inf")})
+
+    def test_Given_APassedCaseWithAnUnreadableDuration_When_Read_Then_ItIsInfinitelyLong(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" duration="n/a" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": float("inf")})
+
+    def test_Given_ANameThatOccursTwice_When_Read_Then_ItsDurationsAreAdded(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" duration="1" />'
+                               '<test-case fullname="A" result="Passed" duration="2" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": 3.0})
+
+
+class ReachMirrorTests(unittest.TestCase):
+    def test_Given_TheRewritersReachVariable_When_ComparedWithTheCampaigns_Then_TheyAreTheSameSuffix(self):
+        # Arrange
+        source = (Path(mutation_check.__file__).parent / "schemata" / "MutantSchemata.cs").read_text()
+
+        # Act
+        spelled = re.search(r'ReachSuffix = "([^"]+)"', source)
+
+        # Assert
+        self.assertEqual(spelled and spelled.group(1), mutation_check.REACH_SUFFIX)
+
+    def test_Given_TheRunnersReachFile_When_ComparedWithTheCampaigns_Then_TheyAreTheSameName(self):
+        # Arrange
+        source = (REPO_ROOT / "Assets" / "MutantSchemata" / "Editor" / "SchemataRunner.cs").read_text()
+
+        # Act
+        spelled = re.search(r'"(reach\.jsonl)"', source)
+
+        # Assert
+        self.assertEqual(spelled and spelled.group(1), mutation_check.REACH_FILE)
+
+    def test_Given_TheRunnersSetupCase_When_ComparedWithTheCampaigns_Then_TheyAreTheSameName(self):
+        # Arrange
+        source = (REPO_ROOT / "Assets" / "MutantSchemata" / "Editor" / "SchemataRunner.cs").read_text()
+
+        # Act
+        spelled = re.search(r'SetupCase = "([^"]+)"', source)
+
+        # Assert
+        self.assertEqual(spelled and spelled.group(1), mutation_check.SETUP_CASE)
+
+
 class ILReadingAssemblyTests(unittest.TestCase):
     def test_Given_AFixtureReadingTheModuleOfAType_When_Derived_Then_TheTypesAssemblyIsRead(self):
         # Arrange — one assembly a fixture reads by a type, one it never names.
@@ -8121,6 +9030,110 @@ class SessionVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertIsNone(reading)
+
+
+class CoveredVerdictTests(unittest.TestCase):
+    """A covered stage read directly: the campaign stub writes the stages and these write their cases."""
+
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp(prefix="covered-"))
+        self.addCleanup(shutil.rmtree, self.directory, ignore_errors=True)
+        self.planned = {"id": 7, "stages": [{"name": "covered:0", "testNames": ["N.C.A", "N.C.B"]},
+                                            {"name": "whole", "testNames": []}]}
+        self.green_gate = {"covered:0": {"name": "covered:0", "finished": True, "passed": 2, "failed": 0,
+                                         "failures": []}}
+
+    def stage(self, name, total, failures=(), omitted=False):
+        xml = self.directory / "{}.xml".format(name)
+        xml.write_text('<test-run total="{0}" passed="{0}" failed="0" inconclusive="0" />'.format(total))
+        return {"name": name, "finished": True, "xml": str(xml), "failures": list(failures),
+                "armed": ["Velvet:7"], "omitted": omitted}
+
+    def read(self, stages, opening=None):
+        return mutation_check.session_verdict({"id": 7, "stages": stages}, self.planned, 7, "Velvet",
+                                              {"whole": 9}, self.green_gate if opening is None else opening,
+                                              {"N.C.Kills": True}, set())
+
+    def test_Given_AKillInTheCoveredStage_When_Read_Then_ItNamesHowManyCasesRanTheSite(self):
+        # Arrange
+        covered = mutation_check.COVERED_STAGE
+        stages = [{"name": covered + ":0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
+                   "armed": ["Velvet:7"]}]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertEqual(reading, (mutation_check.KILLED, "1 failed among the 2 case(s) that ran the site: Kills",
+                                   ["N.C.Kills"]))
+
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # opening-run test in `session_verdict` (`clean_stage(opening.get(...))`) for covered stages reddens it.
+    def test_Given_AKillInACoveredStageWhoseSameCasesFailedUnmutated_When_Read_Then_ItIsNoVerdict(self):
+        # Arrange — an order-dependent failure: the cases fail in that sequence whatever the mutation does.
+        stages = [{"name": "covered:0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
+                   "armed": ["Velvet:7"]}]
+        red = {"covered:0": dict(self.green_gate["covered:0"], failed=1, failures=["N.C.Kills"])}
+
+        # Act
+        reading = self.read(stages, red)
+
+        # Assert
+        self.assertIsNone(reading)
+
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # `last["name"] != "whole"` test in `session_verdict` reddens it.
+    def test_Given_ACoveredStageThatSurvivedAndNoWholeStage_When_Read_Then_ItIsNoVerdict(self):
+        # Arrange — a narrowed survivor is never a verdict.
+        stages = [self.stage("covered:0", 2)]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertIsNone(reading)
+
+    def test_Given_ACoveredStageThatSurvivedAndAGreenWholeStage_When_Read_Then_ItSurvived(self):
+        # Arrange
+        stages = [self.stage("covered:0", 2), self.stage("whole", 9)]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertEqual(reading, (mutation_check.SURVIVED, "", ()))
+
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # `stage_expectation` comparison in `session_verdict` reddens it.
+    def test_Given_ACoveredStageShortOfTheCasesItWasHanded_When_Read_Then_ItIsNoVerdict(self):
+        # Arrange — one of the two cases was not found, so the run asked another question.
+        stages = [self.stage("covered:0", 1), self.stage("whole", 9)]
+
+        # Act
+        reading = self.read(stages)
+
+        # Assert
+        self.assertIsNone(reading)
+
+    def test_Given_ACoveredStageAndAWholeStage_When_TheCasesAreCounted_Then_BothAreNamed(self):
+        # Arrange
+        stages = [dict(self.stage("covered:0", 2), ran=2), self.stage("whole", 9)]
+
+        # Act
+        ran = mutation_check.cases_run({"id": 7, "stages": stages})
+
+        # Assert
+        self.assertEqual(ran, (("covered:0", 2), ("whole", 9)))
+
+    def test_Given_AStageTheRunnerCancelledAtItsFirstFailure_When_TheCasesAreCounted_Then_TheCasesItFinishedAreCounted(self):
+        # Arrange
+        stages = [{"name": "covered:0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"], "ran": 1}]
+
+        # Act
+        ran = mutation_check.cases_run({"id": 7, "stages": stages})
+
+        # Assert
+        self.assertEqual(ran, (("covered:0", 1),))
 
 
 class SessionPlanTests(unittest.TestCase):
@@ -8251,6 +9264,7 @@ class SessionLaunchTests(unittest.TestCase):
         self.args = argparse.Namespace(unity=mutation_check.DEFAULT_UNITY, timeout=900, busy_timeout=0,
                                        editor_arg=[])
         self.commands, self.answers, self.busy = [], [], []
+        self.environments = []
         self.scripts = []
         saved = (mutation_check.launch, mutation_check.unity_busy, mutation_check.wait_for_release,
                  mutation_check.wait_for_quiet)
@@ -8274,6 +9288,7 @@ class SessionLaunchTests(unittest.TestCase):
 
     def launch(self, command, _timeout, _holder, _env, expired):
         self.commands.append(command)
+        self.environments.append(_env)
         self.log = Path(command[command.index("-logFile") + 1])
         # A script returns (timed out, what the editor printed) where the launch was not a plain one.
         timed_out, printed = self.scripts.pop(0)(expired) or (False, "")
@@ -8288,6 +9303,29 @@ class SessionLaunchTests(unittest.TestCase):
 
     def session(self):
         return mutation_check.run_session(self.args, Path("/p"), self.plan, self.directory, None)
+
+    def test_Given_AReachPlan_When_Launched_Then_TheReachVariableIsSet(self):
+        # Arrange
+        self.plan["reach"] = True
+        self.scripts = [self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.environments[0].get(mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX), "1")
+
+    def test_Given_AnOrdinaryPlanBesideAnInheritedReachVariable_When_Launched_Then_TheLaunchDoesNotCarryIt(self):
+        # Arrange — a campaign started from a shell that had it set.
+        os.environ[mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX] = "1"
+        self.addCleanup(os.environ.pop, mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX, None)
+        self.scripts = [self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertNotIn(mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX, self.environments[0])
 
     def test_Given_AnItemWhoseEditorDied_When_TheSessionGoesOn_Then_ItIsLostAndTheRestRunInANewLaunch(self):
         # Arrange — the first launch dies in the second mutant's item.
