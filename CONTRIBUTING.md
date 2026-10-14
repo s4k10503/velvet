@@ -413,7 +413,7 @@ PlayMode, where 84 of the 115 mutants those shards held took a launch of their o
 PlayMode shard that finished spent 934 s a mutant, over two. The slowest EditMode shard spent 493 s a
 mutant over sixteen: the job's timeout cancelled it, so each launch it had not finished is taken at the
 mean of those it had; its session's confirmation under the unmutated program failed, and 15 of its
-16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these, and charges an EditMode session, before its first mutant, one reach run at twice the baseline's figure (the bound a run that never finishes is stopped at) and the opening runs of each mutant's covered cases at a tenth of the suite each, in place of an area's own launch; no recording run has been timed, so those factors are allowances. A shard whose reach run never finishes is charged as one without the opening runs.
+16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these, and charges an EditMode session, before its first mutant, one reach run at twice the baseline's figure (the bound a run that never finishes is stopped at) and the opening runs of each mutant's covered cases at a tenth of the baseline's seconds each, in place of an area's own launch, none of which a session now takes; no recording run has been timed, so those factors are allowances. A shard whose reach run never finishes is charged as one without the opening runs.
 
 `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
 be generated at all, and that every declaration in the package is one the script would accept rather
