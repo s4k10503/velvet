@@ -6653,7 +6653,7 @@ class UnreportedShardTests(unittest.TestCase):
                                            (7, mutation_check.UNRECORDED))]
 
         # Act
-        named, count = mutation_check.unreported_shards(list(range(1, 8)), "EditMode", mutants)
+        named, count = mutation_check.unreported_shards(list(range(1, 8)), "EditMode", mutants, project=Path("/p"))
 
         # Assert -- shard 0 holds a recorded mutant (indices 1, 3, 5, 7), so only shard 1 is dead.
         self.assertEqual((sorted(named), count), ([1], 2))
@@ -7795,6 +7795,131 @@ class AreaOfTests(unittest.TestCase):
         self.assertEqual(areas, [runtime / "Reconciler", None, None])
 
 
+class CostDealtShardTests(unittest.TestCase):
+    """`deal` gives every shard about the same expected seconds rather than the same number of mutants."""
+
+    PROJECT = Path("/p")
+    RUNTIME = PROJECT / "Packages/com.velvet.core/Runtime"
+
+    def mutants(self, kinds):
+        """One mutant per letter: "n" under an area, so its first launch is narrowed, "w" outside every area."""
+        return [survivor(self.RUNTIME / ("Reconciler/N.cs" if kind == "n" else "W.cs"), number)
+                for number, kind in enumerate(kinds, start=1)]
+
+    def totals(self, kinds, count, platform="EditMode"):
+        mutants = self.mutants(kinds)
+        dealt = mutation_check.deal(list(range(1, len(mutants) + 1)), mutants, self.PROJECT, platform, count)
+        return [sum(mutation_check.mutant_cost(mutants[index - 1], self.PROJECT, platform) for index in indices)
+                for indices in dealt]
+
+    def test_Given_AreaAndWholeSuiteMutantsOnEditMode_When_Costed_Then_OnlyTheAreaOnesAreNarrowed(self):
+        # Arrange
+        mutants = self.mutants("nw")
+
+        # Act
+        costs = [mutation_check.mutant_cost(mutant, self.PROJECT, "EditMode") for mutant in mutants]
+
+        # Assert
+        self.assertEqual(costs, [mutation_check.NARROWED_COST, mutation_check.WHOLE_COST["EditMode"]])
+
+    def test_Given_AnAreaMutantOnPlayMode_When_Costed_Then_ItIsChargedTheWholeSuite(self):
+        # Arrange
+        mutant = self.mutants("n")[0]
+
+        # Act
+        cost = mutation_check.mutant_cost(mutant, self.PROJECT, "PlayMode")
+
+        # Assert
+        self.assertEqual(cost, mutation_check.WHOLE_COST["PlayMode"])
+
+    def test_Given_WholeSuiteMutantsAtEveryOtherPosition_When_Dealt_Then_TheShardsCostTheSame(self):
+        # Arrange — dealt by position, the second shard would hold every narrowed mutant and the first every dear one.
+        kinds = "wnwnwnwn"
+
+        # Act
+        totals = self.totals(kinds, 2)
+
+        # Assert
+        self.assertEqual(max(totals) - min(totals), 0)
+
+    def test_Given_TheCheapMutantsFirstInTheList_When_Dealt_Then_TheDearOnesAreStillPlacedFirst(self):
+        # Arrange — placed in list order the spread is 348 s; longest first it is 58 s.
+        kinds = "nnnwww"
+
+        # Act
+        totals = self.totals(kinds, 2)
+
+        # Assert
+        self.assertEqual(max(totals) - min(totals), 58)
+
+    def test_Given_ThreeMutantsOfOneCost_When_DealtToTwoShards_Then_TheTieGoesToTheLowerShardAndIndex(self):
+        # Arrange
+        mutants = self.mutants("www")
+
+        # Act
+        dealt = mutation_check.deal([1, 2, 3], mutants, self.PROJECT, "EditMode", 2)
+
+        # Assert
+        self.assertEqual(dealt, [[1, 3], [2]])
+
+    def test_Given_FewDearMutantsAndManyCheapOnes_When_DealtToTheMostShards_Then_NoShardHoldsMoreThanTheCeiling(self):
+        # Arrange — 3 dear and 157 cheap fill ten shards of 16 exactly; balanced on cost alone the six shards
+        # without a dear mutant would each take 17 cheap ones.
+        kinds = "w" * 3 + "n" * 157
+        mutants = self.mutants(kinds)
+
+        # Act
+        dealt = mutation_check.deal(list(range(1, 161)), mutants, self.PROJECT, "EditMode", mutation_check.MAX_SHARDS)
+
+        # Assert
+        self.assertLessEqual(max(len(indices) for indices in dealt), mutation_check.SHARD_CEILING["EditMode"])
+
+    def test_Given_AMixedPlan_When_EveryShardIsRead_Then_EachMutantIsInExactlyOne(self):
+        # Arrange
+        mutants = self.mutants("nwnnwnwnnnwn")
+        chosen = [1, 2, 3, 5, 6, 7, 9, 10, 11, 12]
+
+        # Act
+        taken = sorted(index for shard in range(3)
+                       for index in mutation_check.sharded(chosen, (shard, 3), mutants=mutants, project=self.PROJECT,
+                                                       platform="EditMode"))
+
+        # Assert
+        self.assertEqual(taken, chosen)
+
+    def test_Given_PlayModeMutants_When_Dealt_Then_ShardsDifferByAtMostOneMutant(self):
+        # Arrange — nothing is narrowed there, so every mutant costs the same.
+        mutants = self.mutants("nwnwnnw")
+
+        # Act
+        dealt = mutation_check.deal(list(range(1, 8)), mutants, self.PROJECT, "PlayMode", 3)
+
+        # Assert
+        self.assertEqual(sorted(len(indices) for indices in dealt), [2, 2, 3])
+
+    def test_Given_AShardWithNoShardRequested_When_Sharded_Then_EveryChosenMutantIsReturned(self):
+        # Arrange
+        mutants = self.mutants("nw")
+
+        # Act
+        taken = mutation_check.sharded([1, 2], None, mutants=mutants, project=self.PROJECT, platform="EditMode")
+
+        # Assert
+        self.assertEqual(taken, [1, 2])
+
+    def test_Given_AManyMutantsPlan_When_Planned_Then_EachShardsCostAndTheSpreadArePrinted(self):
+        # Arrange — twelve mutants outside every area, each charged the EditMode whole-suite figure.
+        campaign = ManyMutantsCampaign()
+
+        # Act
+        campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual(re.findall(r"^(?:shard \d+:.*|expected cost:.*)$", campaign.printed, re.MULTILINE),
+                         ["shard 0: 6 mutant(s), expected 2958 s", "shard 1: 6 mutant(s), expected 2958 s",
+                          "expected cost: cheapest shard 2958 s, dearest 2958 s, spread 0 s"])
+
+
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
@@ -7905,6 +8030,35 @@ class ShardCeilingTests(unittest.TestCase):
         # Assert — and the threshold sits inside what a shard can hold, or the arm would never be taken.
         self.assertEqual((fits, mutation_check.REACH_MIN_MUTANTS <= mutation_check.SHARD_CEILING["EditMode"]),
                          (True, True))
+
+    def test_Given_ThePlanWhoseCostDealingWouldPileCheapMutantsOnOneShard_When_TheDearestShardIsCharged_Then_ItFitsTheJobTimeout(self):
+        # Arrange — 3 whole-suite and 157 narrowed mutants fill ten shards of the ceiling exactly. Charged at
+        # the 493 s a mutant the ceiling uses, the dearest shard is taken on main's path, as a shard above
+        # `REACH_MAX_MUTANTS` is.
+        runtime = REPO_ROOT / mutation_check.PACKAGE / "Runtime"
+        mutants = [survivor(runtime / ("Reconciler/N.cs" if number > 3 else "W.cs"), number)
+                   for number in range(1, 161)]
+        dealt = mutation_check.deal(list(range(1, 161)), mutants, REPO_ROOT, "EditMode", mutation_check.MAX_SHARDS)
+        mutant, setup = 493, 201 + 375 + 12 + 900
+
+        # Act
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small",
+                         count=max(len(indices) for indices in dealt))
+
+        # Assert
+        self.assertTrue(fits)
+
+    def test_Given_TheDealsCostFigures_When_ComparedWithWhatTheCeilingCharges_Then_NoMutantIsDealtDearer(self):
+        # Arrange — the ceiling charges 493 s an EditMode mutant and 934 + 100 s a PlayMode one, so a mutant the
+        # plan deals as narrowed that `narrowable` then declines is still within the charge.
+        edit, play = 493, 934 + 100
+
+        # Act
+        within = (max(mutation_check.NARROWED_COST, mutation_check.WHOLE_COST["EditMode"]) <= edit,
+                  mutation_check.WHOLE_COST["PlayMode"] <= play)
+
+        # Assert
+        self.assertEqual(within, (True, True))
 
     def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the 100 s are what its five bounded cases spend where a mutant stops the frame
