@@ -360,17 +360,13 @@ namespace Velvet.Tests
         }
 
         // The probe counts nothing if the instrument is stuck, so this is the case that asserts a count above zero.
-        // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation.
+        // GREEN_ON_BASE(refactor): the probe already counts a 16-byte array allocation on the base, which is all this case asserts.
         [Test]
         [Category("Performance")]
         public void Given_ADelegateAllocatingAKnownArray_When_Probed_Then_TheProbeCountsIt()
         {
-            // Arrange
-            System.Action canary = () => System.GC.KeepAlive(new byte[16]);
-            canary();
-
             // Act
-            var blocks = GCAllocationProbe.MedianBlocksDuring(canary);
+            var blocks = GCAllocationCanary.BlocksForKnownArray();
 
             // Assert
             Assert.That(blocks, Is.GreaterThan(0));
