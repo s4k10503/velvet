@@ -17,7 +17,7 @@ from pathlib import Path
 RESULT_PREFIX = "##performancetestresult2:"
 
 # Unity.PerformanceTesting's SampleUnit, by the integer a result carries.
-UNITS = ["ns", "us", "ms", "s", "B", "KB", "MB", "GB"]
+UNITS = ["ns", "μs", "ms", "s", "b", "kb", "mb", "gb"]
 
 
 def unit_name(unit):

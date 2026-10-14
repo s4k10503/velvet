@@ -27,6 +27,11 @@ on:
       - '.github/workflows/docs.yml'
   release:
     types: [published]
+  # The benchmark history is published with the site, so a finished run of Benchmarks on main rebuilds it.
+  workflow_run:
+    workflows: [Benchmarks]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -49,6 +54,8 @@ env:
 jobs:
   license-check:
     name: Check Unity license secret
+    # A Benchmarks run that failed recorded nothing new, so it rebuilds nothing; the jobs below need this one's output.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       has_license: ${{ steps.check.outputs.has_license }}
@@ -143,6 +150,25 @@ jobs:
           # while the step reports success, and the upload then dies naming itself rather than this.
           site=$(python3 docs/build.py --site-path)
           echo "path=$site" >> "$GITHUB_OUTPUT"
+
+      # The data branch does not exist until Benchmarks has run on main once, so a failed checkout here
+      # leaves the site without the page rather than failing the build.
+      - name: Fetch the benchmark history
+        id: bench
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: benchmark-data
+          path: benchmark-data
+          persist-credentials: false
+
+      - name: Add the benchmark history page
+        if: steps.bench.outcome == 'success'
+        env:
+          SITE: ${{ steps.site.outputs.path }}
+        run: |
+          mkdir -p "$SITE/dev/bench"
+          cp -r benchmark-data/dev/bench/. "$SITE/dev/bench/"
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

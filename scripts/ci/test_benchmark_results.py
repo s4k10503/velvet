@@ -62,7 +62,7 @@ class BenchmarkResultsTests(unittest.TestCase):
         rows = benchmark_results.entries(results)
 
         # Assert
-        self.assertEqual(rows, [("A.One / Time", "ms", 1.5), ("A.One / GC.Alloc", "B", 0)])
+        self.assertEqual(rows, [("A.One / Time", "ms", 1.5), ("A.One / GC.Alloc", "b", 0)])
 
     # GREEN_ON_BASE(construction): same reason as above. What shows the case can fail is renaming the
     # key in `"value": value}` to `"val"`: measured, this case fails and no other.
