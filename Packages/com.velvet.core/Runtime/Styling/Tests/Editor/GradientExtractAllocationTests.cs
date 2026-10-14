@@ -25,16 +25,12 @@ namespace Velvet.Tests
 
         // A probe stuck at zero satisfies both guards below without measuring anything; this canary is
         // what makes their zeros mean something.
-        // GREEN_ON_BASE(characterization): the probe counts this canary's allocation on the base as well.
+        // GREEN_ON_BASE(refactor): the probe already counts a 16-byte array allocation on the base, which is all this case asserts.
         [Test]
         public void Given_ADelegateAllocatingAKnownArray_When_Probed_Then_TheProbeCountsIt()
         {
-            // Arrange
-            Action canary = () => GC.KeepAlive(new byte[16]);
-            canary();
-
             // Act
-            var blocks = GCAllocationProbe.MedianBlocksDuring(canary);
+            var blocks = GCAllocationCanary.BlocksForKnownArray();
 
             // Assert
             Assert.That(blocks, Is.GreaterThan(0));

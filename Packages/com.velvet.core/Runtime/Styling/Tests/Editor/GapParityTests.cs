@@ -1622,12 +1622,14 @@ namespace Velvet.Tests
             Assert.That(container[0].style.marginRight.value.value, Is.EqualTo(-Space4));
         }
 
-        [Test]
-        public void Given_ASpaceYWithoutASpaceX_When_Reconciled_Then_TheEndMarginIsBottom()
+        // GREEN_ON_BASE(refactor): the base already puts the bottom margin on the first child for each of these containers, one method per container.
+        [TestCase("flex flex-row space-y-4", TestName = "Given_ASpaceYWithoutASpaceX_When_Reconciled_Then_TheEndMarginIsBottom")]
+        [TestCase("grid grid-cols-2 space-y-4", TestName = "Given_AGridWithASpaceY_When_Reconciled_Then_TheFirstChildCarriesTheBottomMargin")]
+        public void Given_ASpaceYContainer_When_Reconciled_Then_TheFirstChildCarriesTheBottomMargin(string classes)
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row space-y-4", 3) };
+            var tree = new VNode[] { Row(classes, 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
@@ -1772,21 +1774,6 @@ namespace Velvet.Tests
             // Assert — child 1 opens the second column, so a column gap would sit on its left.
             Assert.That((container[1].style.marginLeft.value.value, container[0].style.marginRight.value.value),
                 Is.EqualTo((0f, Space4)));
-        }
-
-        [Test]
-        public void Given_AGridWithASpaceY_When_Reconciled_Then_TheFirstChildCarriesTheBottomMargin()
-        {
-            // Arrange
-            using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("grid grid-cols-2 space-y-4", 3) };
-
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
-            var container = Container(scope.Root);
-
-            // Assert
-            Assert.That(container[0].style.marginBottom.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
