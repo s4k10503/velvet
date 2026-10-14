@@ -591,12 +591,14 @@ namespace Velvet.MutantSchemata
         }
 
         // `Is` is every guard's condition. `Reached` is written only when the variable `<env>_REACH` is "1", and
-        // the runner reads it back after each case, which is how a campaign learns which cases ran a site.
+        // the runner takes it with `Take`, which swaps in a fresh table so a read never races a write into the
+        // table being read; that is how a campaign learns which cases ran a site.
         private static string SwitchDeclaration(string assembly, string env, int highest) =>
             "\ninternal static class " + SwitchPrefix + Sanitize(assembly) + "\n{\n" +
             "    internal static int Active = Read();\n" +
             "    internal static bool Reaching = System.Environment.GetEnvironmentVariable(\"" + env + ReachSuffix + "\") == \"1\";\n" +
             "    internal static bool[] Reached = new bool[" + (highest + 1) + "];\n" +
+            "    internal static bool[] Take() => System.Threading.Interlocked.Exchange(ref Reached, new bool[" + (highest + 1) + "]);\n" +
             "    internal static bool Is(int id)\n    {\n        if (Reaching) Reached[id] = true;\n        return Active == id;\n    }\n" +
             "    private static int Read() => int.TryParse(System.Environment.GetEnvironmentVariable(\"" + env +
             "\"), out var id) ? id : 0;\n}\n";

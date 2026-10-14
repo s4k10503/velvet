@@ -224,9 +224,37 @@ namespace Velvet.MutantSchemata.Tests
         // The rewritten file compiled and run: whether the switch's `Reached` holds the mutant's id after `call`
         // ran, with the reach variable set to `reaching`. Loaded into a context of its own so the switch's
         // static initializer reads the variable afresh.
-        private static bool Reached(string call, string? reaching) => Reached(Operator(Reaching, 3, "*", "+"), call, reaching);
+        private static bool Reached(string call, string? reaching, bool taken = false) =>
+            Reached(Operator(Reaching, 3, "*", "+"), call, reaching, taken);
 
-        private static bool Reached(Rewritten rewritten, string call, string? reaching)
+        private static bool ReachedAfterTake(string call)
+        {
+            var rewritten = Operator(Reaching, 3, "*", "+");
+            var trees = new[] { CSharpSyntaxTree.ParseText(rewritten.Result.Files["Probe.cs"]) };
+            var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+                .Split(Path.PathSeparator).Select(path => (MetadataReference)MetadataReference.CreateFromFile(path));
+            using var image = new MemoryStream();
+            Assert.True(CSharpCompilation.Create("Probe", trees, references,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)).Emit(image).Success);
+            image.Position = 0;
+            var context = new AssemblyLoadContext("take", isCollectible: true);
+            Environment.SetEnvironmentVariable("VELVET_MUTANT_REACH", "1");
+            try
+            {
+                var assembly = context.LoadFromStream(image);
+                assembly.GetType("P")!.GetMethod(call)!.Invoke(null, new object[] { 1, 2 });
+                var type = assembly.GetTypes().Single(t => t.Name.StartsWith("__VelvetMutantSwitch_", StringComparison.Ordinal));
+                type.GetMethod("Take", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, null);
+                return ((bool[])type.GetField("Reached", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!)[Id];
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("VELVET_MUTANT_REACH", null);
+                context.Unload();
+            }
+        }
+
+        private static bool Reached(Rewritten rewritten, string call, string? reaching, bool taken = false)
         {
             var trees = new[] { CSharpSyntaxTree.ParseText(rewritten.Result.Files["Probe.cs"]) };
             var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
@@ -243,7 +271,10 @@ namespace Velvet.MutantSchemata.Tests
                 var assembly = context.LoadFromStream(image);
                 assembly.GetType("P")!.GetMethod(call)!.Invoke(null, call == "F" ? new object[] { 1, 2 } : call == "H" ? new object[] { new List<int>() } : new object[] { 1 });
                 var type = assembly.GetTypes().Single(t => t.Name.StartsWith("__VelvetMutantSwitch_", StringComparison.Ordinal));
-                return ((bool[])type.GetField("Reached", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!)[Id];
+                var table = taken
+                    ? (bool[])type.GetMethod("Take", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, null)!
+                    : (bool[])type.GetField("Reached", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+                return table[Id];
             }
             finally
             {
@@ -260,6 +291,26 @@ namespace Velvet.MutantSchemata.Tests
 
             // Assert
             Assert.True(reached);
+        }
+
+        [Fact]
+        public void Given_ASiteTheProgramRuns_When_TheTableIsTaken_Then_TheTakenTableHoldsItsId()
+        {
+            // Arrange / Act
+            var reached = Reached("F", "1", taken: true);
+
+            // Assert
+            Assert.True(reached);
+        }
+
+        [Fact]
+        public void Given_ASiteTheProgramRuns_When_TheTableIsTaken_Then_TheTableLeftBehindIsFresh()
+        {
+            // Arrange / Act -- the read swaps the table out, so a later case is not credited with this one's sites.
+            var left = ReachedAfterTake("F");
+
+            // Assert
+            Assert.False(left);
         }
 
         [Fact]

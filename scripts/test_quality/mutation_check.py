@@ -85,9 +85,9 @@ LOCKED = "not measured (the project lock was held)"
 BUILD_SYSTEM = "not measured (the build system failed)"
 
 # No case of the suite ran the mutated site, so no launch was made for it. It stands where a survivor
-# does -- a declaration answers for it, the other platform's pass measures it -- because a site no
-# EditMode case runs is one a PlayMode case may, and one no case runs at all is the kind a declaration
-# of `unreachable` is written for.
+# does -- the other platform's pass measures it, and the run fails until it is answered -- because a site
+# no EditMode case runs is one a PlayMode case may. It is code with no test, so the answer is a test; a
+# declaration fits only where the state is in fact unreachable or the mutation equivalent.
 UNCOVERED = "uncovered (no case runs the site)"
 
 SURVIVING = (SURVIVED, INCONCLUSIVE, UNCOVERED)
@@ -122,9 +122,14 @@ NARROW_SHARE = 3
 NARROWED_PLATFORMS = ("EditMode",)
 # A placed mutant is first run against the cases that ran its site in the unmutated session, and a kill
 # there is its verdict; a mutant surviving that run is measured on the whole suite before it is called
-# a survivor. A mutant those cases are more than 1/REACH_SHARE of the suite for takes the whole suite
-# alone.
-REACH_SHARE = 2
+# a survivor. Each distinct set of those cases is also run once, unmutated, before any mutant, so a kill
+# stands only over a set that passes unmutated in that order: the gate runs sum to at most
+# SHARD_CEILING / REACH_SHARE of the suite, which is why the share is small. A mutant whose cases are
+# more than 1/REACH_SHARE of the suite, or more than its narrowable area holds, takes the area path.
+REACH_SHARE = 10
+# The reach run is stopped at this many times the baseline's wall clock, or --timeout if that is less,
+# so a run that does not finish costs what `ShardCeilingTests` charges it.
+REACH_BOUND = 2
 # A mutant's narrowed launch is killed, and the whole suite decides instead, once it has taken this
 # many times its area's own launch on the unmutated tree -- which runs on the tree the whole baseline
 # built, where a mutant's launch compiles its mutation first. Never later than the whole baseline took,
@@ -3328,6 +3333,16 @@ SESSION_MUTANTS = 16
 # sites it runs, and the stage a mutant runs against the cases that ran its site.
 REACH_STAGE = "coverage"
 COVERED_STAGE = "covered"
+
+
+def covered_name(number):
+    """The stage a mutant runs its covered cases in, and the opening stage that runs the same cases
+    unmutated: one name per distinct set."""
+    return "{}:{}".format(COVERED_STAGE, number)
+
+
+def is_covered(name):
+    return name.startswith(COVERED_STAGE + ":")
 # Appended to SESSION_SWITCH for the variable that turns recording on; `ReachSuffix` in
 # schemata/MutantSchemata.cs spells it, and `ReachMirrorTests` fails when the two part.
 REACH_SUFFIX = "_REACH"
@@ -3446,8 +3461,8 @@ def planned_stage(planned, name):
 def stage_expectation(stage, planned, expected):
     """The cases a whole run of a stage the session ran holds: the ones a covered stage was handed, and
     for every other stage what `expected` records for its name."""
-    if stage["name"] == COVERED_STAGE:
-        return len(planned_stage(planned, COVERED_STAGE)["testNames"])
+    if is_covered(stage["name"]):
+        return len(planned_stage(planned, stage["name"])["testNames"])
     return expected.get(stage["name"])
 
 
@@ -3490,8 +3505,9 @@ def session_verdict(item, planned, index, assembly, expected, opening, confirmed
             continue
         # A kill stands only where the stage's own baseline was green, and its first case passed again
         # under the unmutated program: a case failing there failed on what the session carried, not on
-        # this mutant. A covered stage's baseline is the reach run, whose passing cases it was handed.
-        if stage["name"] not in ("whole", COVERED_STAGE) and not clean_stage(opening.get(stage["name"])):
+        # this mutant. A covered stage's baseline is the opening run of the same cases in the same order,
+        # since a case can fail only after the one before it without the mutation being the reason.
+        if stage["name"] != "whole" and not clean_stage(opening.get(stage["name"])):
             return None
         names = stage["failures"]
         if confirmed.get(names[0]) is not True:
@@ -3502,9 +3518,9 @@ def session_verdict(item, planned, index, assembly, expected, opening, confirmed
         if stage["name"] == "whole":
             detail = "{} failed: {}".format(len(behavioural), ", ".join(
                 name.split(".")[-1] for name in behavioural[:3]))
-        elif stage["name"] == COVERED_STAGE:
+        elif is_covered(stage["name"]):
             detail = "{} failed among the {} case(s) that ran the site: {}".format(
-                len(behavioural), len(planned_stage(planned, COVERED_STAGE)["testNames"]),
+                len(behavioural), len(planned_stage(planned, stage["name"])["testNames"]),
                 ", ".join(name.split(".")[-1] for name in behavioural[:3]))
         else:
             names_of = {planned_stage["name"]: planned_stage for planned_stage in planned["stages"]}
@@ -3533,7 +3549,8 @@ def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceil
 
     A mutant runs the stages its own launches would: its area's assemblies first where the area is
     narrowed, stopping at a kill there, then the whole suite. A mutant in `selection` runs the cases it
-    maps to in place of its area, and then the whole suite. An EditMode stage is cancelled at its first
+    maps to in place of its area, after the same cases have run once unmutated in the opening, and then
+    the whole suite. An EditMode stage is cancelled at its first
     failing case rather than run out, since the verdict is decided there, so `killers` is the cases that
     failed before the stop; a PlayMode stage runs out.
     """
@@ -3542,13 +3559,22 @@ def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceil
     opening = []
     for area in sorted(attempts):
         opening.append(session_stage("narrowed:" + area.name, attempts[area], False, ceiling))
+    names = {}
+    for index in placed:
+        if index in selection:
+            names.setdefault(tuple(selection[index]), covered_name(len(names)))
+    for cases, name in names.items():
+        gate = session_stage(name, [], False, ceiling)
+        gate["testNames"] = list(cases)
+        opening.append(gate)
     items = [{"id": SESSION_OPENING, "stages": opening}] if opening else []
     segments = []
     for number, index in enumerate(placed):
         area = area_of(mutants[index - 1].path, project)
         stages = []
         if index in selection:
-            covered = session_stage(COVERED_STAGE, [], stop, ceiling)
+            name = names[tuple(selection[index])]
+            covered = session_stage(name, [], stop, ceiling, gate=name)
             covered["testNames"] = list(selection[index])
             stages.append(covered)
         elif area in attempts:
@@ -3719,10 +3745,10 @@ def confirmed_for(plan, position, runs, found):
     return found.get(closing, {})
 
 
-def reach_plan(directory, platform, whole_scope, timeout):
+def reach_plan(directory, platform, whole_scope, bound):
     """The plan of the run that reads which cases run each guarded site: the whole suite once, under the
     unmutated program, with the switches recording."""
-    stage = session_stage(REACH_STAGE, whole_scope, False, timeout)
+    stage = session_stage(REACH_STAGE, whole_scope, False, bound)
     return {"output": str(directory), "platform": platform, "env": SESSION_SWITCH, "reach": True,
             "items": [{"id": SESSION_OPENING, "stages": [stage]}], "start": 0, "end": 1, "segments": [1]}
 
@@ -3757,14 +3783,18 @@ def passed_cases(results):
             if case.get("result") == "Passed"}
 
 
-def select_by_reach(placed, reached, setup, passed, total):
+def select_by_reach(placed, reached, setup, passed, total, ceilings=None):
     """(mutant -> the passing cases that ran its site, the mutants no case ran).
 
-    A mutant whose site ran before the first case started has no cases to name -- static state it
-    initialised is read by any case -- and one whose cases are more than 1/REACH_SHARE of the suite or
-    none of them passed has nothing worth narrowing to; both are left out of both results and take the
-    whole suite.
+    A mutant whose site ran outside every case -- before the first started or after the last ended --
+    has no cases to name; one whose cases are more than 1/REACH_SHARE of the suite, or more than
+    `ceilings` gives for it (the cases of its narrowable area), or none of whose cases passed, has
+    nothing worth narrowing to. Those are left out of both results and take the area path or the
+    whole suite. A site is filed under the case during which it ran; a later case that only reads state
+    that case left is missed here, and the whole stage a survivor of the covered one runs is what
+    catches it.
     """
+    ceilings = ceilings or {}
     selection, uncovered = {}, []
     for index in placed:
         if index in setup:
@@ -3774,25 +3804,26 @@ def select_by_reach(placed, reached, setup, passed, total):
             uncovered.append(index)
             continue
         chosen = [case for case in runners if case in passed]
-        if chosen and len(chosen) * REACH_SHARE <= total:
+        if chosen and len(chosen) * REACH_SHARE <= total and len(chosen) <= ceilings.get(index, total):
             selection[index] = chosen
     return selection, uncovered
 
 
-def measure_reach(args, project, directory, whole_scope, total, holder):
-    """(case -> mutant ids it ran, ids run before any case, the cases that passed) from one run of the
-    whole suite under the unmutated guarded program, or None where that run does not stand.
+def measure_reach(args, project, directory, whole_scope, total, holder, bound):
+    """(case -> mutant ids it ran, ids run outside every case, the cases that passed) from one run of
+    the whole suite under the unmutated guarded program, or None where that run does not stand.
 
-    It stands when the stage finished green over every case the baseline held, with each switch armed on
-    no mutant, and recorded something: a table that recorded nothing is one that was never turned on,
-    and reading it would call every mutant uncovered.
+    It stands when the stage finished over every case the baseline held, with each switch armed on no
+    mutant, and recorded something: a table that recorded nothing is one that was never turned on, and
+    reading it would call every mutant uncovered. A case that did not pass is read, but is not handed
+    to a mutant: a site only such cases ran takes the whole suite.
     """
     reach = directory / "reach"
     reach.mkdir(exist_ok=True)
     for stale in list(reach.glob("item-*.json")) + list(reach.glob("mutant-*.xml")) + [reach / REACH_FILE]:
         if stale.exists():
             stale.unlink()
-    plan = reach_plan(reach, args.platform, whole_scope, args.timeout)
+    plan = reach_plan(reach, args.platform, whole_scope, min(args.timeout, bound))
     plan["watch"] = library_files(project)
     runs, lost, stopped = run_session(args, project, plan, reach, holder)
     stage = ((read_item(reach, SESSION_OPENING) or {}).get("stages") or [None])[0]
@@ -3800,8 +3831,8 @@ def measure_reach(args, project, directory, whole_scope, total, holder):
     why = None
     if stopped or lost or 0 not in runs:
         why = stopped or "the editor did not finish the run"
-    elif not clean_stage(stage) or counts is None or counts["total"] != total:
-        why = "the run was not green over all {} cases".format(total)
+    elif not stage.get("finished") or stage.get("omitted") or counts is None or counts["total"] != total:
+        why = "the run did not report all {} cases".format(total)
     elif not stage.get("armed") or any(not entry.endswith(":0") for entry in stage["armed"]):
         why = "a switch was not armed on the unmutated program"
     else:
@@ -3813,6 +3844,23 @@ def measure_reach(args, project, directory, whole_scope, total, holder):
     print("the reach run does not stand ({}), so no mutant is read as uncovered or given a covered "
           "stage".format(why))
     return None
+
+
+def area_case_counts(baseline_results, mutants, indices, project):
+    """Mutant -> the cases in the narrowable area it sits under, for each of `indices` under one."""
+    areas = {area_of(mutants[index - 1].path, project) for index in indices} - {None}
+    narrowed = narrowable(baseline_results, areas)
+    held = {}
+    for suite in ET.parse(str(baseline_results)).getroot().iter("test-suite"):
+        if suite.get("type") == "Assembly":
+            name = suite.get("name", "")
+            held[name[:-len(".dll")] if name.endswith(".dll") else name] = len(list(suite.iter("test-case")))
+    counts = {}
+    for index in indices:
+        area = area_of(mutants[index - 1].path, project)
+        if area in narrowed:
+            counts[index] = sum(held.get(name, 0) for name in narrowed[area])
+    return counts
 
 
 def area_attempts(baseline_results, mutants, indices, project, text_readers):
@@ -3861,19 +3909,23 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
             path.write_text(text)
         # The reach run comes first and its plan second: which mutants are measured, and against what, is
         # read off it.
-        standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder) \
-            if args.platform in NARROWED_PLATFORMS else None
+        standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder,
+                                 REACH_BOUND * baseline_wall) if args.platform in NARROWED_PLATFORMS else None
+        attempts = {}
         if standing is not None:
             reached, setup, passed = standing
-            selection, uncovered = select_by_reach(placed, reached, setup, passed, baseline["total"])
+            selection, uncovered = select_by_reach(
+                placed, reached, setup, passed, baseline["total"],
+                area_case_counts(baseline_results, mutants, placed, project) if not scope else None)
             print("reach: {} of {} mutant(s) take the cases that ran their site, {} are run by none, {} take "
-                  "the whole suite".format(len(selection), len(placed), len(uncovered),
-                                           len(placed) - len(selection) - len(uncovered)))
-        # Where the reach run stands a mutant is covered, uncovered or takes the whole suite, so the areas'
-        # own baselines are taken only when it does not.
-        attempts = {}
-        if standing is None and not scope and args.platform in NARROWED_PLATFORMS:
-            attempts = area_attempts(baseline_results, mutants, placed, project, text_readers)
+                  "the area or the whole suite".format(len(selection), len(placed), len(uncovered),
+                                                       len(placed) - len(selection) - len(uncovered)))
+            # The areas' own baselines are taken only for the mutants the cases do not narrow, and not at
+            # all where the reach run does not stand: those take the whole suite.
+            if not scope:
+                attempts = area_attempts(baseline_results, mutants,
+                                         [i for i in placed if i not in selection and i not in uncovered],
+                                         project, text_readers)
         launched = [index for index in placed if index not in uncovered]
         plan, segments = session_plan(project, mutants, launched, attempts, whole_scope, args.platform, ceiling,
                                       args.timeout, directory, selection)

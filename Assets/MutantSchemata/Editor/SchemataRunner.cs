@@ -132,7 +132,10 @@ namespace Velvet.MutantSchemata.Editor
 
         private static Plan plan = null!;
         private static Callbacks? callbacks;
-        private static List<FieldInfo>? reachTables;
+        private static List<MethodInfo>? reachTakes;
+        // The table each switch handed over last time, read once more at the next call for a write that was
+        // already under way when it was swapped out.
+        private static readonly Dictionary<MethodInfo, bool[]> lagging = new Dictionary<MethodInfo, bool[]>();
         private static bool setupTaken;
         private static int finishedCases;
 
@@ -317,28 +320,36 @@ namespace Velvet.MutantSchemata.Editor
             return found.ToArray();
         }
 
-        // The sites run since the last call, cleared as they are read. What ran before the first case starts --
-        // the domain's static initializers among it -- is read under SetupCase, since no case owns it.
+        // The sites run since the last call. What ran before the first case starts, and what runs after the
+        // last case ends, is read under SetupCase, since no case owns it.
         private static List<int> TakeReached()
         {
-            reachTables ??= ReachTables();
+            reachTakes ??= ReachTakes();
             var ids = new List<int>();
-            foreach (var table in reachTables)
+            foreach (var take in reachTakes)
             {
-                if (table.GetValue(null) is not bool[] reached) continue;
-                for (var id = 0; id < reached.Length; id++)
-                {
-                    if (!reached[id]) continue;
-                    ids.Add(id);
-                    reached[id] = false;
-                }
+                if (lagging.TryGetValue(take, out var earlier)) Collect(earlier, ids);
+                var fresh = take.Invoke(null, null) as bool[];
+                if (fresh == null) continue;
+                Collect(fresh, ids);
+                lagging[take] = fresh;
             }
             return ids;
         }
 
-        private static List<FieldInfo> ReachTables()
+        private static void Collect(bool[] reached, List<int> into)
         {
-            var found = new List<FieldInfo>();
+            for (var id = 0; id < reached.Length; id++)
+            {
+                if (!reached[id]) continue;
+                into.Add(id);
+                reached[id] = false;
+            }
+        }
+
+        private static List<MethodInfo> ReachTakes()
+        {
+            var found = new List<MethodInfo>();
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 Type[] types;
@@ -346,8 +357,8 @@ namespace Velvet.MutantSchemata.Editor
                 catch (ReflectionTypeLoadException failure) { types = failure.Types.Where(t => t != null).ToArray(); }
                 foreach (var type in types.Where(t => t.Name.StartsWith("__VelvetMutantSwitch_", StringComparison.Ordinal)))
                 {
-                    var field = type.GetField("Reached", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
-                    if (field != null) found.Add(field);
+                    var take = type.GetMethod("Take", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                    if (take != null) found.Add(take);
                 }
             }
             return found;
@@ -455,6 +466,9 @@ namespace Velvet.MutantSchemata.Editor
                 recorded.inconclusive = run.InconclusiveCount;
                 recorded.skipped = run.SkipCount;
             }
+            // Hits after the last case ended -- a fixture's one-time teardown, work a case left scheduled --
+            // belong to no case, so a mutant they reached takes the whole suite.
+            if (plan.reach) RecordReached(SetupCase);
             recorded.finished = true;
             recorded.ran = finishedCases;
             recorded.seconds = Now - state.started;
