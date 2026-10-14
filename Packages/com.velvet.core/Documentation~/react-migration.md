@@ -106,6 +106,7 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
 | `mutate(variables, { onSuccess, onError, onSettled })` | `mutation.Mutate(variables, new MutateOptions<TVariables, TData> { OnSuccess = ..., OnError = ..., OnSettled = ... })`; `MutateAsync` takes the same second argument |
+| `useMutation({ mutationFn, retry: 3, retryDelay })` | `new MutationOptions<TVariables, TData>(MutationFn: ...) { Retry = new RetryPolicy { Retry = 3, RetryDelay = ... } }` |
 
 **Lifecycle callbacks.** `OnMutate` runs when the call starts — after the handle has turned `Pending`
 with the call's `Variables`, before `MutationFn` — and what it returns is the context that call's
@@ -190,6 +191,48 @@ same rule: `Reset` clears it and a later call overwrites it, so a superseded cal
 newer call's variables and a reset one's reads none. Each outcome is written whole: `Data`
 is what one call produced and `Error` is how one call failed, so `Data` stands only under
 `Status == Success` and `Error` only under `Status == Error` — a pending or reset handle has neither.
+
+**Retries.** Off unless `Retry` is set, as v5's mutations default to `retry: 0`. A `RetryPolicy` runs
+`MutationFn` again inside the same call, so between attempts the call stays pending, `OnMutate` runs once
+when the call starts and before any pause, `OnSuccess` / `OnError` / `OnSettled` run once for the last
+attempt's outcome, as do the per-call callbacks of a call the handle still follows, and a call a newer one has superseded writes nothing
+to the handle when its retry lands, as under **Concurrent calls** above. Each attempt calls the latest
+render's `MutationFn`, as v5's retryer reads `mutationFn` on every run, and gets the call's
+`CancellationToken`, so an unmount ends the retries along with the attempt. The policy itself:
+
+| v5 | `RetryPolicy` |
+|----|---------------|
+| `retry: 3` | `Retry = 3` (the default once a policy is given) |
+| `retry: true` / `retry: false` | `Retry = true` retries every failure without end; `Retry = false` retries none |
+| `retry: (failureCount, error) => …` | `Retry = RetryRule.When((failureCount, error) => …)`, which replaces the count: the function alone ends the retries |
+| `retryDelay: (failureCount, error) => ms` / `retryDelay: ms` | `RetryDelay = RetryDelayRule.By((failureCount, error) => TimeSpan)` / `RetryDelay = TimeSpan`, defaulting to v5's 1 s doubled per retry and capped at 30 s |
+| `networkMode: 'online' \| 'always' \| 'offlineFirst'` | `NetworkMode = NetworkMode.Online` (the default) `\| Always \| OfflineFirst` |
+
+`retryDelay` is asked before `retry` at every failure, the last one included, as the retryer asks them. An
+`OperationCanceledException` the attempt throws is a failure like any other, retried while the call's own
+token is live; once that token is cancelled, by an unmount or by the caller, no further attempt starts.
+
+Pausing follows the retryer and applies to **every** mutation, one without a `Retry` included, as v5 runs every
+mutation under `networkMode: 'online'`. Under `Online` a call started offline waits for a connection before its
+first attempt, with `IsPaused` true and `MutationFn` not yet called; under `OfflineFirst` it does not wait; under
+`Always` nothing waits for a connection. A mutation that needs `Always` and no retries sets
+`Retry = new RetryPolicy { Retry = false, NetworkMode = NetworkMode.Always }`, since the policy is where
+Velvet holds the mode. Every retry that comes due waits until the application is visible and, outside
+`Always`, a connection. Reading the connection on the application's behalf happens on the main thread, so a
+call started elsewhere under `Online` continues on the main thread.
+
+The readings come from `NetworkSignals`, which an application replaces once for every mutation and every
+query, and from the policy's `IsOnline` / `IsFocused`, which replace them for one. Both are polled once per
+frame. Online is `Application.internetReachability` not being `NotReachable`, which can read a local-network-only
+server as unreachable, and visible is the rule [§1-2b](#1-2b-cached-queries--hooksusequery) states. The reading gates the retries of every `RetryPolicy`, a
+`RetryPolicy.RunAsync` around a `Hooks.Use` loader included.
+
+While a call waits, `MutationResult.IsPaused` is true, and `FailureCount` / `FailureReason` follow v5's reducer:
+zero and null when a call starts or succeeds, one more count and the failure for each failed attempt, the
+final failure included.
+
+The default wait is wall-clock time on the main thread, checked once per frame and lasting at least one frame as
+v5's zero-delay timer does, unaffected by `Time.timeScale`; supply `Wait` to wait on game time.
 
 **Callback error semantics** (TanStack Query v5 parity):
 
@@ -333,7 +376,15 @@ hidden, or the device comes back online, a mounted query fetches again under `Re
 `RefetchOnReconnect`: `IfStale`, the default, when its data is stale, `Always` whatever its age, `Never`
 not at all; set them on one query or for every query on `QueryClientOptions`. That refetch joins a request
 in flight. `NetworkSignals` holds both readings: online is `Application.internetReachability`, and visible
-is `Application.isFocused` on every platform, the Editor included.
+is as v5's focus manager reads `document.visibilityState` rather than focus: a window that has lost focus but
+is still shown is visible, so alt-tabbing pauses and refetches nothing. Velvet asks each platform:
+a mobile platform for `Application.isFocused`, since a backgrounded app has lost it; Windows whether the
+main thread's top-level window is minimized; macOS whether NSApplication is hidden or, when it has windows,
+none is both visible and not miniaturized (no windows reads as visible). Linux and WebGL have no reading and
+count as visible. The first failure of a native read, or on Windows the absence of a window to ask, logs one
+warning and is latched: every later read answers visible without asking the platform again, until the
+scripts reload. No test runs the native readings themselves, so replace them through
+`NetworkSignals.IsVisible` where the platform's answer matters.
 `NetworkSignals.IsVisible` / `IsOnline` replace them, for an application that reads its window's state or
 measures being online for itself. A reading that throws is no reading
 to the poll, which then reports no change, and counts as visible or online where one is needed: an interval's
@@ -782,7 +833,7 @@ A container of direct plain elements warns once for each repeated sibling key, o
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<Suspense fallback={<Spinner/>}>` | `V.Suspense(fallback, children)` | Equivalent |
-| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked. Like `use()`, it caches nothing beyond its own component: a cache shared across components is `Hooks.UseQuery` ([§1-2b](#1-2b-cached-queries--hooksusequery)). Like `use()`, it does not retry: a failed load stays failed for as long as its component stays mounted with that `resourceKey`. Reset the error boundary that caught it (`Hooks.UseErrorBoundaryReset`, two rows down) and the component mounts again and loads again. A new `resourceKey` starts the load again only for a component still rendering, one whose error no boundary caught: a boundary that caught it has unmounted the component and keeps its fallback until it is reset or remounts |
+| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead. Without a `resourceKey` the loader delegate is the key, so a delegate built afresh each render — a lambda that captures that render's values, or a method group on an instance — is a new resource on every render: the resource restarts each time and a loader that has to wait never delivers, as React's `use()` starts over on a promise created during render once the render that suspended on it has unwound, and the Editor logs a warning naming `resourceKey`. The StrictMode re-run of a render keeps the resource that render read, as React's second invocation keeps the thenable the first one tracked. Like `use()`, it caches nothing beyond its own component: a cache shared across components is `Hooks.UseQuery` ([§1-2b](#1-2b-cached-queries--hooksusequery)). Like `use()`, it does not retry: a failed load stays failed for as long as its component stays mounted with that `resourceKey`. Reset the error boundary that caught it (`Hooks.UseErrorBoundaryReset`, two rows down) and the component mounts again and loads again. A new `resourceKey` starts the load again only for a component still rendering, one whose error no boundary caught: a boundary that caught it has unmounted the component and keeps its fallback until it is reset or remounts. To retry inside the same resource instead, wrap the load in `RetryPolicy.RunAsync` (`Hooks.Use(ct => policy.RunAsync(load, ct), resourceKey: id)`): the resource stays pending until the last attempt settles, and the policy's semantics are under [§1-2a](#1-2a-async-mutations--hooksusemutation) |
 | Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. Once a boundary catches, it keeps showing its fallback until it remounts, as React's does: a re-render — its parent's, or its own — renders the fallback again with the error it caught and does not bring its children back. Give the boundary a new `key`, or reset it (next rows), to render its children again. The functional pattern suits a fallback that reads the boundary's own state |
 | react-error-boundary's `resetErrorBoundary(...args)`, `resetKeys` and `onReset` | `var reset = Hooks.UseErrorBoundaryReset(resetKeys, onReset)` in a `[Component(IsErrorBoundary = true)]` component, beside `Hooks.UseFallback` | `reset` is an `ErrorBoundaryReset`, reference-stable, which converts to an `Action` for `onClick`. `reset.Invoke(args)` while the boundary shows its fallback calls the last committed render's `onReset` with `ErrorBoundaryResetReason.ImperativeApi` and those `Args`, then queues the reset as a state update on the lane the call is made on, so two calls in one handler both call `onReset`, and a reset made in `startTransition` is taken by the transition's render while an urgent render before it keeps the fallback; while the boundary shows its children it does nothing. A render of the boundary, while it shows a fallback for an error caught before that render, that passes keys differing from those its last committed render passed — in length, or in an element compared with `Object.is` semantics — commits that fallback, then, where the boundary still holds the error, calls `onReset` with `ErrorBoundaryResetReason.Keys`, `Prev` and `Next` and queues the reset, as react-error-boundary does from `componentDidUpdate`; keys that change in the render a child throws in do not undo that catch, and a reset queued beside a key change in one handler is the only one that calls `onReset`. The children the fallback replaced mount again, so their state starts over and a `Hooks.Use` among them loads again |
 | react-error-boundary's `useErrorBoundary()` | `var api = Hooks.UseErrorBoundary()` below a boundary | The boundary is the nearest `[Component(IsErrorBoundary = true)]` component or `V.ErrorBoundary` above the caller, passing over the boundaries Velvet renders for routing as react-error-boundary's context passes over React Router's; a component in a boundary's fallback content finds that boundary. `api.ShowBoundary(error)` — from an event handler or a continuation on the main thread — makes the caller throw `error` on its next render, which reaches the boundaries above the caller as any render error does: the first that shows a fallback for it catches it, and one that declines passes it up. `api.ResetBoundary()` invokes the boundary's reset with no arguments. With no such boundary above, it throws `InvalidOperationException` |

@@ -419,6 +419,7 @@ namespace Velvet
 
         public long Generation { get; set; }
 
+        public abstract RetryPolicy? Retry { get; }
         public abstract VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token);
         public abstract TContext InvokeOnMutate(TVariables variables);
         // What a per-call callback receives as the context, which the context-free slot declines to box.
@@ -457,6 +458,8 @@ namespace Velvet
     {
         public MutationOptions<TVariables, TData> Options { get; set; } = null!;
 
+        public override RetryPolicy? Retry => Options.Retry;
+
         public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
             Options.MutationFn(variables, token);
 
@@ -478,6 +481,8 @@ namespace Velvet
         : HookMutationSlot<TVariables, TData, TContext>
     {
         public MutationOptions<TVariables, TData, TContext> Options { get; set; } = null!;
+
+        public override RetryPolicy? Retry => Options.Retry;
 
         public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
             Options.MutationFn(variables, token);
