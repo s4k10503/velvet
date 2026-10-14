@@ -63,6 +63,7 @@ namespace Velvet.MutantSchemata
     internal static class Program
     {
         private const string SwitchPrefix = "__VelvetMutantSwitch_";
+        private const string ReachSuffix = "_REACH";
         private static readonly HashSet<string> PostProcessorAssemblies = new() { "Unity.Velvet.CodeGen" };
         private const string Prologue = "#pragma warning disable VEL500, VEL501, VEL502\n#line 1\n";
 
@@ -227,7 +228,7 @@ namespace Velvet.MutantSchemata
                         switchName = SwitchName(target.text, parseOptions, assembly);
                     }
                     rewritten[full] = Rewrite(target.text, parseOptions, mine, switchName!,
-                                              host == full ? SwitchDeclaration(assembly, input.env) : null, input.shapeRulesOff);
+                                              host == full ? SwitchDeclaration(assembly, input.env, targets.SelectMany(t => t.mutants).Max(m => m.id)) : null, input.shapeRulesOff);
                 }
                 if (rewritten.Count == 0)
                 {
@@ -524,8 +525,8 @@ namespace Velvet.MutantSchemata
                 foreach (var site in byNode[original].OrderBy(s => s.Mutant.id))
                 {
                     inner = site.Statement
-                        ? "{ if (" + switchName + ".Active != " + site.Mutant.id + ") " + inner + " }"
-                        : "(" + switchName + ".Active == " + site.Mutant.id + " ? (" + site.Mutated + ") : (" + inner + "))";
+                        ? "{ if (!" + switchName + ".Is(" + site.Mutant.id + ")) " + inner + " }"
+                        : "(" + switchName + ".Is(" + site.Mutant.id + ") ? (" + site.Mutated + ") : (" + inner + "))";
                 }
                 var replacement = site0Statement(byNode[original])
                     ? (SyntaxNode)SyntaxFactory.ParseStatement(inner, 0, options)
@@ -557,16 +558,15 @@ namespace Velvet.MutantSchemata
                 if (site.Statement)
                 {
                     var guard = root.DescendantNodes().OfType<IfStatementSyntax>().FirstOrDefault(i =>
-                        i.Condition is BinaryExpressionSyntax b && b.IsKind(SyntaxKind.NotEqualsExpression)
-                        && b.Left.ToString() == switchName + ".Active" && b.Right.ToString() == id.ToString());
+                        i.Condition is PrefixUnaryExpressionSyntax not && not.IsKind(SyntaxKind.LogicalNotExpression)
+                        && IsGuardCall(not.Operand, switchName, id));
                     wrap = guard?.Parent;
                     mutated = guard == null ? default : new TextSpan(guard.SpanStart, 0);
                 }
                 else
                 {
                     var conditional = root.DescendantNodes().OfType<ConditionalExpressionSyntax>().FirstOrDefault(c =>
-                        c.Condition is BinaryExpressionSyntax b && b.IsKind(SyntaxKind.EqualsExpression)
-                        && b.Left.ToString() == switchName + ".Active" && b.Right.ToString() == id.ToString());
+                        IsGuardCall(c.Condition, switchName, id));
                     wrap = conditional?.Parent;
                     mutated = conditional?.WhenTrue.Span ?? default;
                 }
@@ -578,6 +578,10 @@ namespace Velvet.MutantSchemata
             return found;
         }
 
+        private static bool IsGuardCall(ExpressionSyntax condition, string switchName, int id) =>
+            condition is InvocationExpressionSyntax call && call.Expression.ToString() == switchName + ".Is"
+            && call.ArgumentList.Arguments.Count == 1 && call.ArgumentList.Arguments[0].ToString() == id.ToString();
+
         private static string SwitchName(string text, CSharpParseOptions options, string assembly)
         {
             var root = CSharpSyntaxTree.ParseText(text, options).GetRoot();
@@ -586,9 +590,14 @@ namespace Velvet.MutantSchemata
             return scoped == null ? "global::" + type : "global::" + scoped.Name + "." + type;
         }
 
-        private static string SwitchDeclaration(string assembly, string env) =>
+        // `Is` is every guard's condition. `Reached` is written only when the variable `<env>_REACH` is "1", and
+        // the runner reads it back after each case, which is how a campaign learns which cases ran a site.
+        private static string SwitchDeclaration(string assembly, string env, int highest) =>
             "\ninternal static class " + SwitchPrefix + Sanitize(assembly) + "\n{\n" +
             "    internal static int Active = Read();\n" +
+            "    internal static bool Reaching = System.Environment.GetEnvironmentVariable(\"" + env + ReachSuffix + "\") == \"1\";\n" +
+            "    internal static bool[] Reached = new bool[" + (highest + 1) + "];\n" +
+            "    internal static bool Is(int id)\n    {\n        if (Reaching) Reached[id] = true;\n        return Active == id;\n    }\n" +
             "    private static int Read() => int.TryParse(System.Environment.GetEnvironmentVariable(\"" + env +
             "\"), out var id) ? id : 0;\n}\n";
 

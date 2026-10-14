@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -65,8 +67,8 @@ namespace Velvet.MutantSchemata.Tests
         {
             var root = CSharpSyntaxTree.ParseText(rewritten.Result.Files["Probe.cs"]).GetRoot();
             var guard = root.DescendantNodes().OfType<ConditionalExpressionSyntax>()
-                .First(c => c.Condition is BinaryExpressionSyntax b && b.Left.ToString().EndsWith(".Active", StringComparison.Ordinal)
-                            && b.Right.ToString() == Id.ToString());
+                .First(c => c.Condition is InvocationExpressionSyntax call && call.Expression.ToString().EndsWith(".Is", StringComparison.Ordinal)
+                            && call.ArgumentList.Arguments.Single().ToString() == Id.ToString());
             var chosen = root.ReplaceNode(guard, armed ? guard.WhenTrue : guard.WhenFalse);
             return Program.Canonical(chosen.DescendantNodes().OfType<MethodDeclarationSyntax>().First(m => m.Identifier.Text == "F"));
         }
@@ -214,6 +216,86 @@ namespace Velvet.MutantSchemata.Tests
 
             // Assert
             Assert.Empty(rewritten.Declined);
+        }
+
+        private const string Reaching = "class P\n{\n    public static int F(int a, int b) => a - b * 2;\n" +
+                                        "    public static int G(int a) => a + 1;\n}\n";
+
+        // The rewritten file compiled and run: whether the switch's `Reached` holds the mutant's id after `call`
+        // ran, with the reach variable set to `reaching`. Loaded into a context of its own so the switch's
+        // static initializer reads the variable afresh.
+        private static bool Reached(string call, string? reaching) => Reached(Operator(Reaching, 3, "*", "+"), call, reaching);
+
+        private static bool Reached(Rewritten rewritten, string call, string? reaching)
+        {
+            var trees = new[] { CSharpSyntaxTree.ParseText(rewritten.Result.Files["Probe.cs"]) };
+            var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+                .Split(Path.PathSeparator).Select(path => (MetadataReference)MetadataReference.CreateFromFile(path));
+            var compilation = CSharpCompilation.Create("Probe", trees, references,
+                                                       new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            using var image = new MemoryStream();
+            Assert.True(compilation.Emit(image).Success);
+            image.Position = 0;
+            var context = new AssemblyLoadContext("reach", isCollectible: true);
+            Environment.SetEnvironmentVariable("VELVET_MUTANT_REACH", reaching);
+            try
+            {
+                var assembly = context.LoadFromStream(image);
+                assembly.GetType("P")!.GetMethod(call)!.Invoke(null, call == "F" ? new object[] { 1, 2 } : call == "H" ? new object[] { new List<int>() } : new object[] { 1 });
+                var type = assembly.GetTypes().Single(t => t.Name.StartsWith("__VelvetMutantSwitch_", StringComparison.Ordinal));
+                return ((bool[])type.GetField("Reached", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!)[Id];
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("VELVET_MUTANT_REACH", null);
+                context.Unload();
+            }
+        }
+
+        [Fact]
+        public void Given_ASiteTheProgramRuns_When_ReachIsRecorded_Then_ItsIdIsMarked()
+        {
+            // Arrange / Act
+            var reached = Reached("F", "1");
+
+            // Assert
+            Assert.True(reached);
+        }
+
+        [Fact]
+        public void Given_AStatementSiteTheProgramRuns_When_ReachIsRecorded_Then_ItsIdIsMarked()
+        {
+            // Arrange — a removed statement is guarded by a different form than an expression is.
+            const string text = "using System.Collections.Generic;\nclass P\n{\n" +
+                                "    public static void H(List<int> a) { a.Add(1); }\n}\n";
+            var column = text.Split('\n')[3].IndexOf("a.Add(1);", StringComparison.Ordinal);
+            var rewritten = Rewrite(text, 4, "a.Add(1);", ";", "line removed", column);
+
+            // Act
+            var reached = Reached(rewritten, "H", "1");
+
+            // Assert
+            Assert.True(reached);
+        }
+
+        [Fact]
+        public void Given_AMethodOtherThanTheSitesRuns_When_ReachIsRecorded_Then_ItsIdIsNotMarked()
+        {
+            // Arrange / Act -- the control for the case above: the recorder marks the site, not the program.
+            var reached = Reached("G", "1");
+
+            // Assert
+            Assert.False(reached);
+        }
+
+        [Fact]
+        public void Given_ReachIsNotAskedFor_When_TheSiteRuns_Then_ItsIdIsNotMarked()
+        {
+            // Arrange / Act
+            var reached = Reached("F", null);
+
+            // Assert
+            Assert.False(reached);
         }
     }
 }
