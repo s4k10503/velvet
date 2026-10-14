@@ -364,7 +364,7 @@ namespace Velvet
                 return true;
             }
             // MUTANT_SURVIVES(equivalent, boundary): the shortest name read here is a family prefix of two characters and `auto` or `full`, six in all, so a bound of 4 turns away only names none of the loop's rows match.
-            if (cls.Length < 4 || cls[0] == '-' || !StyleUtilityProperties.TryGet(cls, out _))
+            if (cls.Length < 4 || !StyleUtilityProperties.TryGet(cls, out _))
             {
                 return false;
             }
@@ -411,7 +411,6 @@ namespace Velvet
         internal static bool TryReadSpacingStep(string cls, out ArbitraryStyle result)
         {
             result = default;
-            // MUTANT_SURVIVES(equivalent, boundary): the shortest step is a two-character prefix and a digit, so a bound of 2 admits only strings no prefix and step fit.
             if (cls.Length < 3)
             {
                 return false;

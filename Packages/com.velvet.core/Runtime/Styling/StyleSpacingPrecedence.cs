@@ -80,8 +80,6 @@ namespace Velvet
             {
                 return tokens;
             }
-            // Almost every class list that reaches here has no stylesheet-backed spacing class and no logical
-            // utility, so the cheap reading of those goes first.
             if (!Array.Exists(tokens, IsStylesheetClassOrLogical))
             {
                 return tokens;
@@ -97,18 +95,28 @@ namespace Velvet
                 {
                     continue;
                 }
-                var physical = readings.FindIndex(other => !other.Logical && SameSlot(reading, other));
-                if (physical < 0)
+                var physical = readings.FindAll(other => !other.Logical && SameSlot(reading, other));
+                if (physical.Count == 0)
                 {
                     continue;
                 }
                 (dropped ??= new List<int>()).Add(reading.Index);
                 // The physical class stays, and is written inline like the pair it would otherwise be one of: a
-                // sheet rule is the one layer the logical token's removal would leave unable to hold the side.
-                if (readings[physical].Backed)
+                // sheet rule is the one layer the logical token's removal would leave unable to hold the side. Of
+                // several classes on the side only the one the stylesheet cascade lets win is written inline, so the
+                // others still lose to it as they did before; an inline one on the side already outranks them all.
+                if (!physical.Exists(match => !match.Backed))
                 {
+                    var winner = physical[0];
+                    foreach (var match in physical)
+                    {
+                        if (CascadePositionOf(match.Class) > CascadePositionOf(winner.Class))
+                        {
+                            winner = match;
+                        }
+                    }
                     rewritten ??= (string[])tokens.Clone();
-                    rewritten[readings[physical].Index] = Inlined(readings[physical]);
+                    rewritten[winner.Index] = Inlined(winner);
                 }
             }
             foreach (var candidate in readings)
@@ -178,8 +186,8 @@ namespace Velvet
             return kept.ToArray();
         }
 
-        // Whether any token can be a spacing utility, read without allocating for the many class lists that hold
-        // none: the Motion paths ask it of every pose on every render.
+        // Whether any token can be a spacing utility: the Motion paths ask it of every pose on every render, and
+        // build the readings only where it holds.
         private static bool MayHoldSpacing(string[] tokens)
         {
             // MUTANT_SURVIVES(equivalent, literal): a list holding no spacing token reads as no readings, so each caller returns its input on this path as it does on the early return; the gate only spares the readings' allocation.
@@ -250,6 +258,9 @@ namespace Velvet
             return readings;
         }
 
+        private static int CascadePositionOf(string cls)
+            => StyleUtilityProperties.TryGet(cls, out var rule) ? rule.CascadePosition : -1;
+
         private static bool IsStylesheetClassOrLogical(string token)
         {
             var core = StyleArbitraryValueResolver.StripImportant(token, out _);
@@ -271,6 +282,8 @@ namespace Velvet
             // The inline token a stylesheet-backed class resolves to when it is rewritten.
             public string InlineForm { get; init; }
             public bool Backed { get; init; }
+            // The stylesheet class a Backed reading is, without its variants or importance.
+            public string Class { get; init; }
             public bool Logical { get; init; }
         }
 
@@ -291,7 +304,7 @@ namespace Velvet
                 reading = new Reading
                 {
                     Index = index, Variants = variants, VariantSet = VariantSetOf(variants), Important = important,
-                    TrailingBang = trailingBang, Property = property, InlineForm = form, Backed = true,
+                    TrailingBang = trailingBang, Property = property, InlineForm = form, Backed = true, Class = payload,
                 };
                 return true;
             }
@@ -302,7 +315,7 @@ namespace Velvet
                 reading = new Reading
                 {
                     Index = index, Variants = variants, VariantSet = VariantSetOf(variants), Important = important,
-                    TrailingBang = trailingBang, Property = style.Property, InlineForm = string.Empty,
+                    TrailingBang = trailingBang, Property = style.Property, InlineForm = string.Empty, Class = string.Empty,
                     Logical = StyleLogicalUtilities.SortPropertiesOf(payload) != null,
                 };
                 return true;

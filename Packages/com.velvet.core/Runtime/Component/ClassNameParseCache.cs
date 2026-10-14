@@ -62,10 +62,7 @@ namespace Velvet
             // Reached through a delegate on purpose. The build-time weaver follows every call below each V.* factory
             // and reads an open virtual dispatch anywhere under one as opaque, which leaves a component that calls a
             // factory ahead of its hooks unmemoized; the spacing normalizer parses lengths and so reaches one.
-            // CompilerILPostProcessorE2ETests pins that such a component stays woven. The delegate is made here, at
-            // the first parse, where the direct call used to first reach the normalizer, and not in a static
-            // initializer: made there, it left the ordering and spacing utilities resolving as they did without
-            // this change.
+            // CompilerILPostProcessorE2ETests pins that such a component stays woven.
             _normalize ??= StyleSpacingPrecedence.Normalize;
             tokens = _normalize(classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries));
             var hash = classNames.GetHashCode();

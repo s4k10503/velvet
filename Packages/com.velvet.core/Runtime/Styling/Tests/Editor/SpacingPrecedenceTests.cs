@@ -128,6 +128,8 @@ namespace Velvet.Tests
         [TestCase("size-[52px] w-9", "size-[52px] w-[36px]")]
         [TestCase("[&>*]:p-[52px] [&>*]:pt-2", "[&>*]:p-[52px] [&>*]:pt-[8px]")]
         [TestCase("pt-[1px] ps-[52px] pl-2", "pt-[1px] pl-[8px]")]
+        [TestCase("pl-2 pl-4 ps-[1px]", "pl-2 pl-[16px]")]
+        [TestCase("pl-4 pl-2 ps-[1px]", "pl-[16px] pl-2")]
         public void Given_AStylesheetClassBesideAnInlineShorthandOfItsFamily_When_ClassNamesAreParsed_Then_TheClassIsWrittenInline(
             string className, string expected)
         {
