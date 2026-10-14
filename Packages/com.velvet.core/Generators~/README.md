@@ -88,7 +88,7 @@ Each placed mutant then takes one of four courses:
 - No case ran its site: it is recorded **uncovered** and takes no launch. Where a fixture reads the IL of its assembly it takes its own launches instead, since that fixture sees the guards whatever the cases ran.
 - Its site ran before the first case started: it takes the whole suite, since any case may read what a static initializer left.
 - Cases ran it but more than `1/REACH_SHARE` of the suite did, or none of them passed in the reach run: it takes the whole suite.
-- Otherwise its first stage, `covered`, runs exactly the passing cases that ran its site, named by full name rather than by the regex `-testFilter` takes. A kill there stands under the confirmation every session kill stands under, and names those cases as its killers. A mutant that survives it runs the whole suite before it is called a survivor, because a case that did not run the site can still fail through static state the mutation changed.
+- Otherwise its first stage, `covered`, runs exactly the passing cases that ran its site, named by full name rather than by the regex `-testFilter` takes. A kill there stands under the confirmation every session kill stands under, and names the cases that failed as its killers. A mutant that survives it runs the whole suite before it is called a survivor, because a case that did not run the site can still fail through static state the mutation changed.
 
 For each mutant a session measured, the campaign prints how many cases each stage of its launches ran, and the verdict record carries them. The PlayMode pass runs no reach run: it measures the EditMode survivors, an uncovered one among them, against the whole PlayMode suite.
 

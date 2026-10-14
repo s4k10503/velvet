@@ -7767,7 +7767,7 @@ class NarrowableAreaTests(unittest.TestCase):
 
         # Assert
         self.assertEqual([(stage["name"], stage["testNames"]) for stage in stages],
-                         [("covered", ["N.C.A", "N.C.B"]), ("whole", [])])
+                         [(mutation_check.COVERED_STAGE, ["N.C.A", "N.C.B"]), ("whole", [])])
 
     def test_Given_AnAssemblyTheBaselineDidNotRun_When_Read_Then_ItIsNotTaken(self):
         # Arrange — an assembly of the other platform sits under the same area.
@@ -8160,7 +8160,7 @@ class SessionReachTests(SessionRoutingBase):
         opening = self.campaign.plans[0]
         self.assertEqual((opening["reach"], [(stage["name"], stage["assemblyNames"], stage["testNames"])
                                              for item in opening["items"] for stage in item["stages"]]),
-                         (True, [("coverage", [], [])]))
+                         (True, [(mutation_check.REACH_STAGE, [], [])]))
 
     def test_Given_AMutantOneCaseRan_When_TheCampaignRuns_Then_ItsFirstLaunchHoldsThatCaseAlone(self):
         # Arrange
@@ -8179,7 +8179,7 @@ class SessionReachTests(SessionRoutingBase):
 
         # Assert
         record = json.loads((self.campaign.project / "out" / "mutant-001.json").read_text())
-        self.assertEqual(record["ran"], [["covered", 1]])
+        self.assertEqual(record["ran"], [[mutation_check.COVERED_STAGE, 1]])
 
     # GREEN_ON_BASE(characterization): the base records a kill's failing cases too; this holds that a kill
     # the covered stage took reaches the ledger by the same record. Dropping `killers` from the tuple
@@ -8587,6 +8587,8 @@ class CoveredVerdictTests(unittest.TestCase):
         self.assertEqual(reading, (mutation_check.KILLED, "1 failed among the 2 case(s) that ran the site: Kills",
                                    ["N.C.Kills"]))
 
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # `last["name"] != "whole"` test in `session_verdict` reddens it.
     def test_Given_ACoveredStageThatSurvivedAndNoWholeStage_When_Read_Then_ItIsNoVerdict(self):
         # Arrange — a narrowed survivor is never a verdict.
         stages = [self.stage("covered", 2)]
@@ -8607,6 +8609,8 @@ class CoveredVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(reading, (mutation_check.SURVIVED, "", ()))
 
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # `stage_expectation` comparison in `session_verdict` reddens it.
     def test_Given_ACoveredStageShortOfTheCasesItWasHanded_When_Read_Then_ItIsNoVerdict(self):
         # Arrange — one of the two cases was not found, so the run asked another question.
         stages = [self.stage("covered", 1), self.stage("whole", 9)]
