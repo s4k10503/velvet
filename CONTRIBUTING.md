@@ -1129,7 +1129,8 @@ writes nothing, and no directory is created for the file. A failure to record or
 not reported as a failed case. The EditMode job of `Test ▸ unity-tests` uploads the directory as
 `Test results (EditMode)`, so the CSV is in that artifact, and runs `scripts/ci/panel_phase_timings.py`
 over it. The script prints the count, total and mean per phase, the window cost as a share of the panel
-cases and of the suite, and the fixtures with the largest window cost, to the log and the job summary.
+cases and of the suite, and the fixtures with the largest window cost, to the log, the job summary and
+a `::notice` annotation on the job's check run, which the REST API serves where the summary is not.
 A run that wrote no CSV is a `::warning::` and a summary line, not a failure, and a run with no results
 XML reports the suite share as unknown. The suite share takes the panel cases from the `case` rows,
 which hold their setup and teardown, and the rest from the results XML, so that part follows whatever the
