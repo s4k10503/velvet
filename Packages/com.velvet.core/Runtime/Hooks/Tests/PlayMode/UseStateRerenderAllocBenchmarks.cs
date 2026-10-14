@@ -46,6 +46,8 @@ namespace Velvet.Tests.Performance
             return V.Label(text: lastValue.ToString());
         }
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void UseState_RerenderClosureAlloc()
         {

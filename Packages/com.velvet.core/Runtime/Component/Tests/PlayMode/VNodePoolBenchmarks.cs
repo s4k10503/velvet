@@ -14,6 +14,8 @@ namespace Velvet.Tests.Performance
     {
         #region B-2-a: Allocation measurement for V.Label / V.Div / V.Button
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void VLabel_Allocation()
         {
@@ -30,6 +32,8 @@ namespace Velvet.Tests.Performance
             .Run();
         }
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void VDiv_Allocation()
         {
@@ -46,6 +50,8 @@ namespace Velvet.Tests.Performance
             .Run();
         }
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void VButton_Allocation()
         {
@@ -66,6 +72,8 @@ namespace Velvet.Tests.Performance
 
         #region B-2-b: RentProps / ReturnProps cycle cost
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void RentReturnProps_Cycle()
         {

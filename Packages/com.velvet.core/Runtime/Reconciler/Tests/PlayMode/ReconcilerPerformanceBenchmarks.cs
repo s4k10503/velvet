@@ -179,6 +179,8 @@ namespace Velvet.Tests.Performance
 
         #region B-1-b: Re-reconcile — no changes
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void Reconcile_NoChange_100Elements()
         {
@@ -199,6 +201,8 @@ namespace Velvet.Tests.Performance
 
         #region B-1-c: Re-reconcile — text change for all elements
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void Reconcile_AllChange_100Elements()
         {
@@ -224,6 +228,8 @@ namespace Velvet.Tests.Performance
         // a flat host-leaf array routes to the Indexed/Keyed fast path, so the expansion walk early-outs
         // before its first recursion. The allocation column is the load-bearing one — the walk's own
         // per-call state is pooled, so a steady-state re-reconcile must not allocate for it.
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void Reconcile_Expansion_NoChange_100Nodes()
         {
@@ -242,6 +248,8 @@ namespace Velvet.Tests.Performance
 
         // Same walk with every emitted leaf changing, so each recursion also runs the commit
         // (CommitLeaf -> PatchNode) rather than only the structural descent.
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void Reconcile_Expansion_AllChange_100Nodes()
         {
@@ -267,6 +275,8 @@ namespace Velvet.Tests.Performance
         // Every other benchmark passes a zero frame budget, which routes the indexed diff straight
         // through its non-budgeted path and never parks state. These two force a yield per element so
         // the parked-state save/restore and the ContinueIndexed resume entry are what gets measured.
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void Reconcile_BudgetedIndexed_AllChange_200Elements()
         {
@@ -287,6 +297,8 @@ namespace Velvet.Tests.Performance
 
         // Grow then shrink, so the Remove and Add phases are entered through both the phase fall-through
         // and the resume entry — the Common phase alone would leave two thirds of the machine unmeasured.
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void Reconcile_BudgetedIndexed_GrowShrink_100To200Elements()
         {
@@ -314,7 +326,7 @@ namespace Velvet.Tests.Performance
         // patch, AllChange patches every slot there, and Reverse leaves the prefix at once and resolves
         // every slot through the old-key map.
 
-        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting
+        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting This change takes its counts from BenchmarkRun.
         // on it, and a run on the base is the arm the branch's run is compared against.
         [Test, Performance]
         public void Reconcile_Keyed_NoChange_100Elements()
@@ -332,7 +344,7 @@ namespace Velvet.Tests.Performance
             .Run();
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting
+        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting This change takes its counts from BenchmarkRun.
         // on it, and a run on the base is the arm the branch's run is compared against.
         [Test, Performance]
         public void Reconcile_Keyed_AllChange_100Elements()
@@ -352,7 +364,7 @@ namespace Velvet.Tests.Performance
             .Run();
         }
 
-        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting
+        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting This change takes its counts from BenchmarkRun.
         // on it, and a run on the base is the arm the branch's run is compared against.
         [Test, Performance]
         public void Reconcile_Keyed_Reverse_100Elements()
@@ -376,7 +388,7 @@ namespace Velvet.Tests.Performance
         // The keyed counterpart of the budgeted indexed pair above, so the parked keyed state and its
         // resume entry are what gets measured.
 
-        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting
+        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting This change takes its counts from BenchmarkRun.
         // on it, and a run on the base is the arm the branch's run is compared against.
         [Test, Performance]
         public void Reconcile_BudgetedKeyed_AllChange_200Elements()
@@ -409,6 +421,8 @@ namespace Velvet.Tests.Performance
         // Held at 10 of each (well under
         // either pool's own 32-instance cap) so every element genuinely round-trips through
         // Rent/Return across the measured region instead of being dropped uncounted by a full pool.
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void PooledWidgetRecycle_LabelsAndButtons_10Elements()
         {

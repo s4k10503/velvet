@@ -55,6 +55,8 @@ namespace Velvet.Tests.Performance
                 .Run();
         }
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [UnityTest, Performance]
         public IEnumerator RunLoadersSync_SuspendDeferredCompletion()
         {

@@ -24,6 +24,8 @@ namespace Velvet.Tests.Performance
         [SetUp]
         public void SetUp() => _root = new VisualElement();
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [UnityTest, Performance]
         public IEnumerator HooksUse_SuspendResumeRoundTrip()
         {

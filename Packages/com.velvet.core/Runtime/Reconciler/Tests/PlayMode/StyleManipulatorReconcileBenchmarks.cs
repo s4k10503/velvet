@@ -49,7 +49,7 @@ namespace Velvet.Tests.Performance
         }
 
         // Element creation runs the create branch of every family.
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives. This change takes its counts from BenchmarkRun.
         [Test, Performance]
         public void Mount_100StyledRows()
         {
