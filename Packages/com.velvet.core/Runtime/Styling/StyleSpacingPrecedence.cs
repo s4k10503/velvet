@@ -107,14 +107,7 @@ namespace Velvet
                 // others still lose to it as they did before; an inline one on the side already outranks them all.
                 if (!physical.Exists(match => !match.Backed))
                 {
-                    var winner = physical[0];
-                    foreach (var match in physical)
-                    {
-                        if (CascadePositionOf(match.Class) > CascadePositionOf(winner.Class))
-                        {
-                            winner = match;
-                        }
-                    }
+                    var winner = CascadeWinner(physical);
                     rewritten ??= (string[])tokens.Clone();
                     rewritten[winner.Index] = Inlined(winner);
                 }
@@ -256,6 +249,20 @@ namespace Velvet
                 }
             }
             return readings;
+        }
+
+        // The first of the highest-positioned stylesheet classes in matches, which is non-empty.
+        private static Reading CascadeWinner(List<Reading> matches)
+        {
+            var winner = matches[0];
+            foreach (var match in matches)
+            {
+                if (CascadePositionOf(match.Class) > CascadePositionOf(winner.Class))
+                {
+                    winner = match;
+                }
+            }
+            return winner;
         }
 
         private static int CascadePositionOf(string cls)
