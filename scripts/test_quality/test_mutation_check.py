@@ -7819,7 +7819,7 @@ class ShardCeilingTests(unittest.TestCase):
     # shard's seconds per mutant, from its baseline's end to its last verdict "less its areas' own
     # launches" in CONTRIBUTING.md, so the areas' baselines are charged apart from it. It was measured on
     # launches that took their area first, which is the path a launch of its own still takes, and before a
-    # placed mutant's first launch was its covered cases; it is kept until one is measured. Four arms, by
+    # placed mutant's first launch was its covered cases; it is kept until one is measured. Three arms, by
     # `arm`: "reach" is a shard that makes the reach run, for `count` placed mutants, charged for the reach
     # run, a gate for each mutant, and `fallback_areas` area baselines for placed mutants whose reading
     # does not stand and which launch on their own afterwards; "failed" the same with a reach run that
@@ -7843,16 +7843,25 @@ class ShardCeilingTests(unittest.TestCase):
 
     @staticmethod
     def areas():
-        return len({asmdef.parents[2] for asmdef in (REPO_ROOT / mutation_check.PACKAGE / "Runtime").glob(
-            "*/Tests/Editor/*.asmdef")})
+        """How many areas `narrowable` would take: it is asked, over a results file that lists the package's
+        EditMode test assemblies (the ones under a `Tests/Editor` directory) as taking a second each in a
+        suite of a thousand, so what counts as an area's assemblies is its rule and not a copy of it."""
+        runtime = REPO_ROOT / mutation_check.PACKAGE / "Runtime"
+        ran = sorted(json.loads(asmdef.read_text())["name"] for asmdef in runtime.rglob("*.asmdef")
+                     if asmdef.parent.parts[-2:] == ("Tests", "Editor"))
+        results = Path(tempfile.mkdtemp(prefix="areas-")) / "results.xml"
+        results.write_text('<test-run duration="1000">{}</test-run>'.format("".join(
+            '<test-suite type="Assembly" name="{}.dll" duration="1" />'.format(name) for name in ran)))
+        return len(mutation_check.narrowable(results, [path for path in runtime.iterdir() if path.is_dir()]))
 
-    def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange — that shard was cut short by the timeout, so the launches it had not finished are
-        # filled at the mean of those it had; and one mutant hanging at --timeout's 900 s besides.
+    def test_Given_TheMostPlacedMutantsWhoseReachRunNeverFinishes_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange — the run is stopped at REACH_BOUND times the baseline, which REACH_RUN charges; no covered
+        # set is then run, and every mutant takes the whole suite at the same measured figure.
         mutant, setup = 493, 201 + 375 + 12 + 900
 
         # Act
-        fits = self.fits("mutation-shard", "EditMode", mutant, setup)
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="failed",
+                         count=mutation_check.REACH_MAX_MUTANTS)
 
         # Assert
         self.assertTrue(fits)
@@ -7885,8 +7894,9 @@ class ShardCeilingTests(unittest.TestCase):
         # Assert
         self.assertEqual(stated, largest)
 
-    def test_Given_AnEditModeShardBelowTheReachThreshold_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange — the path main takes: every area's baseline, then every mutant the shard was assigned.
+    def test_Given_AnEditModeShardOnMainsPath_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange — a shard below the minimum or above the maximum, or assigned a declined mutant: every area's
+        # baseline, then every mutant the shard was assigned.
         mutant, setup = 493, 201 + 375 + 12 + 900
 
         # Act
