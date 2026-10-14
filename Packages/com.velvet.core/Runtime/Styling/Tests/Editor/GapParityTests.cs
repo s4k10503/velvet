@@ -1027,6 +1027,8 @@ namespace Velvet.Tests
             Assert.That(has, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base declines a suffix off its table, and so must a suffix that is no multiple of 0.25.
+        // Reading every decimal as a step reddens it.
         [Test]
         public void Given_UnknownSpaceSuffix_When_Parsed_Then_DeclinesToParse()
         {

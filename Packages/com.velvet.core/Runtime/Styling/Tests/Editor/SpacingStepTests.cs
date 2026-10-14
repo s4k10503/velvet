@@ -257,6 +257,8 @@ namespace Velvet.Tests
             Assert.That(root.ElementAt(0).style.top.value.value, Is.EqualTo(-16f));
         }
 
+        // GREEN_ON_BASE(characterization): the base never wrote the class inline, so a removed one leaves the width unset there too.
+        // Leaving the inline layer behind on removal reddens it.
         [Test]
         public void Given_AStepClassRemoved_When_Reconciled_Then_ClearsTheInlineStyle()
         {
@@ -354,6 +356,8 @@ namespace Velvet.Tests
             Assert.That(root.ElementAt(0).style.paddingTop.value.value, Is.EqualTo(52f));
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves p-13 a class, so the inline pt-[8px] holds the top there too.
+        // Ranking nothing, so that the later inline p-13 holds the top, reddens it.
         [Test]
         public void Given_EqualLayerVariantPayloadsOfAShorthandStepAndALonghand_When_Enabled_Then_TheLonghandHoldsTheSide()
         {
@@ -529,8 +533,6 @@ namespace Velvet.Tests
             Assert.That(root.Q<VisualElement>("leaf").style.paddingTop.value.value, Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(characterization): an inline pose shorthand already outranks a base class longhand, as the base has no rank.
-        // Rewriting the base class inline too, as the narrower of a pair, would hand the top to its longhand and redden it.
         [Test]
         public void Given_AClassBaseLonghandAndAnInlinePoseShorthand_When_TheMotionMerges_Then_ThePoseHoldsTheTop()
         {
@@ -593,8 +595,6 @@ namespace Velvet.Tests
             Assert.That(root.Q<VisualElement>("leaf").style.paddingLeft.value.value, Is.EqualTo(52f));
         }
 
-        // GREEN_ON_BASE(characterization): a label that names no pose leaves the base as written, which the base does too.
-        // A merge that dropped the base without a pose to override it would redden this.
         [Test]
         public void Given_AnInlineBaseShorthandAndNoPoseNaming_When_TheMotionMerges_Then_TheBaseHoldsTheTop()
         {

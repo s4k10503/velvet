@@ -1102,6 +1102,8 @@ namespace Velvet.Tests
                 Is.EqualTo((2f, 2f, 8f)));
         }
 
+        // GREEN_ON_BASE(characterization): the radii are ordered by arrival on the base as here, so the last writers hold their slots there too.
+        // Letting an earlier arrival win the shared corner reddens every case.
         [TestCase(false, false, "leading")]
         [TestCase(false, true, "leading")]
         [TestCase(true, false, "leading")]
@@ -2330,6 +2332,8 @@ namespace Velvet.Tests
             Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("translate-y-2"), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): a translate suffix that is no multiple of 0.25 is not claimed on the base either.
+        // Claiming any numeric translate suffix reddens it.
         [Test]
         public void Given_UnknownTranslatePreset_When_DispatchGateChecked_Then_NotClaimed()
         {
