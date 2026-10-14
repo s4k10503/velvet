@@ -7813,33 +7813,31 @@ class ShardCeilingTests(unittest.TestCase):
     GATE_SUITE_SECONDS = 375
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
-    # baseline, of its baseline and after its last verdict, added together. A charge is built on the
-    # slowest shard's seconds per mutant, which hold that shard's narrowed runs, so no narrowed launch
-    # is added to it. The text of CONTRIBUTING.md does not say whether 493 holds the areas' own baselines;
-    # the charge this replaces added them on top of it, which is why they are charged apart from it. The
-    # figure was taken before a mutant's first launch was its covered cases, so it charges a mutant more
-    # than the cases it now runs, and is kept until one is measured. Three arms, by `arm`: "reach" is a
-    # session whose reach run stands, charged for the reach run and a gate for each of `placed` mutants,
-    # the rest of the shard's mutants being launched on their own at the same figure; "failed" a reach run
-    # that never finishes, every mutant taking the whole suite; "small" a session below
-    # `REACH_MIN_MUTANTS`, which takes every area's baseline and no reach run, for the whole shard.
-    # CONTRIBUTING.md ▸ Checking that the tests can fail has the measurements.
-    def fits(self, job, platform, mutant, setup, arm="reach", placed=None):
+    # baseline, of its baseline and after its last verdict, added together. The 493 s is the slowest
+    # shard's seconds per mutant, from its baseline's end to its last verdict "less its areas' own
+    # launches" in CONTRIBUTING.md, so the areas' baselines are charged apart from it. It was measured on
+    # launches that took their area first, which is the path a launch of its own still takes, and before a
+    # placed mutant's first launch was its covered cases; it is kept until one is measured. Three arms, by
+    # `arm`: "reach" is a session that places every mutant it was assigned and whose reach run stands,
+    # charged for the reach run and a gate for each of the shard's mutants, with no area baseline and no
+    # launch of its own; "failed" the same with a reach run that never finishes, every mutant taking the
+    # whole suite; "small" a session that takes main's path, which is main's charge: every area's
+    # baseline and the whole shard.
+    def fits(self, job, platform, mutant, setup, arm="reach"):
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
                           re.MULTILINE)
         per = mutation_check.SHARD_CEILING.get(platform)
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
-        count = per
-        reach = self.REACH_RUN if narrowed else 0
-        gates = (self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * (per if placed is None else placed)
-                 if narrowed and arm == "reach" and per is not None else 0)
+        opening = self.REACH_RUN if narrowed else 0
+        if narrowed and arm == "reach" and per is not None:
+            opening += self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * per
         if arm == "small":
             areas = len({asmdef.parents[2] for asmdef in (REPO_ROOT / mutation_check.PACKAGE / "Runtime").glob(
                 "*/Tests/Editor/*.asmdef")})
-            reach = areas * self.AREA_LAUNCH
+            opening = areas * self.AREA_LAUNCH
         return (per is not None and found is not None
-                and setup + reach + gates + count * mutant <= int(found.group(1)) * 60)
+                and setup + opening + per * mutant <= int(found.group(1)) * 60)
 
     def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — that shard was cut short by the timeout, so the launches it had not finished are
@@ -7852,23 +7850,8 @@ class ShardCeilingTests(unittest.TestCase):
         # Assert
         self.assertTrue(fits)
 
-    def test_Given_EveryCountOfPlacedMutantsFromTheThreshold_When_TheRestAreLaunchedOnTheirOwn_Then_EveryMixFitsTheJobTimeout(self):
-        # Arrange — p placed, 16 - p declined; the declined take no area baseline beside a reach run, so the
-        # charge is 1488 + 750 + 37.5 * p + 16 * 493 for every p. With the 145 s baseline of one area added it
-        # was 10833 at p = 15, and 11586 with eight areas at p = 8.
-        mutant, setup = 493, 201 + 375 + 12 + 900
-        counts = range(mutation_check.REACH_MIN_MUTANTS, mutation_check.SHARD_CEILING["EditMode"] + 1)
-
-        # Act
-        fitting = [placed for placed in counts
-                   if self.fits("mutation-shard", "EditMode", mutant, setup, placed=placed)]
-
-        # Assert
-        self.assertEqual(fitting, list(counts))
-
     def test_Given_AnEditModeShardBelowTheReachThreshold_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange — the path main takes: every area's baseline, then every mutant the shard was assigned, the
-        # few it placed and the rest launched on their own.
+        # Arrange — the path main takes: every area's baseline, then every mutant the shard was assigned.
         mutant, setup = 493, 201 + 375 + 12 + 900
 
         # Act
@@ -8607,31 +8590,35 @@ class SessionReachAreaTests(SessionRoutingBase):
         self.assertEqual((self.plan_items(), self.stages()), ([1, -1], ["whole"]))
 
 
-class TwoMutantSessionCampaign(StylingSessionCampaign):
-    """Two mutants under a narrowable area, of which the session places the first and declines the second."""
+def probe_body(methods):
+    lines = "\n".join("        internal static bool M{0}(int a, int b) => a <= b;".format(number)
+                      for number in range(methods))
+    return "namespace Velvet\n{\n    internal static class Probe\n    {\n" + lines + "\n    }\n}\n"
 
-    BODY = textwrap.dedent("""\
-        namespace Velvet
-        {
-            internal static class Probe
-            {
-                internal static bool Ready(int a, int b) => a <= b;
-                internal static bool Other(int a, int b) => a >= b;
-            }
-        }
-        """)
+
+class SevenMutantCampaign(StylingSessionCampaign):
+    """Seven mutants under a narrowable area, of which the session places six and declines the last."""
+
+    BODY = probe_body(7)
+    DECLINES = 1
 
     def rewrite(self, _unity, project, request, _scratch):
         self.rewrites.append(request)
+        ids = [mutant["id"] for entry in request["files"] for mutant in entry["mutants"]]
         relative = request["files"][0]["path"]
-        return {"placed": [1], "declined": {"2": "declined for the case"}, "files": {relative: self.REWRITTEN},
-                "fatal": []}
+        return {"placed": ids[:len(ids) - self.DECLINES],
+                "declined": {str(number): "declined for the case" for number in ids[len(ids) - self.DECLINES:]},
+                "files": {relative: self.REWRITTEN}, "fatal": []}
 
 
-class DeclinedMutantBesideAReachRunTests(SessionRoutingBase):
-    campaign_class = TwoMutantSessionCampaign
-    reach_from = 1
+class SixMutantCampaign(SevenMutantCampaign):
+    """Six mutants, all placed."""
 
+    BODY = probe_body(6)
+    DECLINES = 0
+
+
+class SixOrSevenMutantsBase(SessionRoutingBase):
     def setUp(self):
         super().setUp()
         tests = self.campaign.source.parent / "Tests" / "Editor"
@@ -8643,27 +8630,43 @@ class DeclinedMutantBesideAReachRunTests(SessionRoutingBase):
         self.campaign.baseline_seconds = 100.0
         self.campaign.reach = {"N.C.A": {1}}
 
-    def test_Given_AReachRunAndADeclinedMutant_When_TheCampaignRuns_Then_ItsLaunchIsNotPrecededByAnAreaBaseline(self):
-        # Arrange — the shard's charge holds no area baseline once the reach run is paid for.
+
+class DeclinedMutantBesideASessionTests(SixOrSevenMutantsBase):
+    """A mutant launched on its own keeps main's area-first path, so a session with one runs no reach run."""
+
+    campaign_class = SevenMutantCampaign
+
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
+        # Arrange — six placed meet the threshold, but a seventh needs a launch of its own.
 
         # Act
-        self.campaign.run("--max", "2")
+        self.campaign.run("--max", "7")
 
         # Assert
-        self.assertEqual([name for name in self.campaign.launched if name.startswith("baseline-")], [])
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
 
-    # GREEN_ON_BASE(characterization): the base takes the area's baseline beside any session; cutting the
-    # `reached` test where `measure` fills `attempts` makes the case above red and leaves this as it is.
-    def test_Given_NoReachRunAndADeclinedMutant_When_TheCampaignRuns_Then_ItsLaunchIsPrecededByTheAreasBaseline(self):
-        # Arrange — a shard below the threshold, which takes main's path.
-        mutation_check.REACH_MIN_MUTANTS = 2
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_TheDeclinedOneIsPrecededByItsAreasBaseline(self):
+        # Arrange
 
         # Act
-        self.campaign.run("--max", "2")
+        self.campaign.run("--max", "7")
 
         # Assert
         self.assertEqual([name for name in self.campaign.launched if name.startswith("baseline-")],
                          ["baseline-Styling.xml"])
+
+
+class FullyPlacedShardTests(SixOrSevenMutantsBase):
+    campaign_class = SixMutantCampaign
+
+    def test_Given_SixMutantsAllPlaced_When_TheCampaignRuns_Then_TheReachRunIsMade(self):
+        # Arrange — the control for the pair above: the same threshold with nothing left for a launch of its own.
+
+        # Act
+        self.campaign.run("--max", "6")
+
+        # Assert
+        self.assertEqual(self.campaign.plans[0].get("reach"), True)
 
 
 class SessionReachSelectionTests(unittest.TestCase):
