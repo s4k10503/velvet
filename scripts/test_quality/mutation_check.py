@@ -108,11 +108,12 @@ MAX_SHARDS = 10
 # job, and the mutants it had not reached are then recorded by no shard.
 SHARD_CEILING = {"EditMode": 16, "PlayMode": 10}
 # What `deal` charges a mutant, in seconds, so that every shard is given about the same total. Only the
-# ratio of the figures matters to the deal, and the narrowed one is a proxy for that ratio rather than a
-# measurement: the repo pins no per-mutant figure for a narrowed launch alone, and 145 is the median
-# seconds a mutant over every EditMode mutant, the same number as `ShardCeilingTests.AREA_LAUNCH`, the
-# slowest area's own baseline. The whole-suite figures are the slowest shard's seconds a mutant, from
-# CONTRIBUTING.md ▸ Checking that the tests can fail, which is what the ceiling charges every mutant.
+# ratio of the figures matters to the deal. The narrowed figure is 145, the median over shards of a shard's
+# seconds a mutant on EditMode, which already includes the mutants that took the whole suite; the whole-suite
+# figures are the single slowest shard's seconds a mutant, 493 on EditMode, which the job's timeout cut
+# and which was estimated, and 934 on PlayMode (CONTRIBUTING.md ▸ Checking that the tests can fail
+# defines both). They are different statistics, so the ratio is rough, and 145 is a proxy for a narrowed
+# launch rather than a measurement of one. The ceiling charges every mutant the whole-suite figure.
 # The plan has no baseline, so it cannot know which areas `narrowable` will take, and a mutant it deals as
 # narrowed may take the whole suite; neither figure exceeds the ceiling's charge, so the ceiling holds.
 # A previous campaign's timings are not in the ledger, which keeps verdicts and no seconds.
@@ -145,9 +146,9 @@ REACH_SHARE = 10
 # places every mutant it was assigned, so that no mutant is launched on its own beside it. Any other
 # session takes the path it took before the reach run existed: the areas' own baselines in its opening,
 # then each mutant's area, then the whole suite, and a mutant launched on its own keeps its area-first
-# launches. The minimum is a decision, not a measured break-even. A plan of at most
-# MAX_SHARDS * SHARD_SIZE mutants assigns at most SHARD_SIZE to a shard, so the reach run fires for a full
-# shard whose every mutant is placed, and for the larger shards of a larger plan up to the maximum.
+# launches. The minimum is a decision, not a measured break-even. `deal` sizes a shard by its mutants'
+# costs, up to SHARD_CEILING, so the reach run fires for a shard that lands between the two bounds with
+# every mutant placed, and a shard of more than the maximum or fewer than the minimum takes the other path.
 REACH_MIN_MUTANTS = 6
 # The most mutants a session may place and still make the reach run: a placed mutant whose reading does
 # not stand launches on its own afterwards and takes its area's baseline, which the reach run's charge does
@@ -5187,8 +5188,8 @@ def main():
                         help="refuse unless this tree generates the mutant list --emit-mutants "
                              "wrote to FILE")
     parser.add_argument("--shard", type=parse_shard, metavar="K/N",
-                        help="measure only every Nth mutant from the (K+1)th and record their "
-                             "verdicts, leaving the decision to --collect")
+                        help="measure only the mutants dealt to shard K of N, by expected cost, "
+                             "and record their verdicts, leaving the decision to --collect")
     parser.add_argument("--collect", nargs="+", metavar="DIR",
                         help="decide the campaign from the verdicts --shard runs recorded in these "
                              "directories, without an editor")

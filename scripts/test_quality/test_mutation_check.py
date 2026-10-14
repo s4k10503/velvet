@@ -6551,7 +6551,7 @@ class MutantListHandOffTests(unittest.TestCase):
 
 
 class ManyMutantsCampaign(StubbedCampaign):
-    """Twelve lines of one boundary mutant each, which the plan deals to two shards of six, every
+    """Twelve lines of one boundary mutant each, which the plan deals to two shards, every
     mutant killed."""
 
     BODY = "namespace Velvet\n{\n    internal static class Probe\n    {\n" + "".join(
@@ -6727,7 +6727,7 @@ class TwoPlatformCampaign(StubbedCampaign):
 
 class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
     """Twelve mutants the EditMode suite never kills and the PlayMode suite always does, dealt to two
-    EditMode shards of six and six PlayMode shards of two: the shape the workflow's verdict job
+    EditMode shards and six PlayMode shards: the shape the workflow's verdict job
     collects."""
 
     def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
@@ -6773,7 +6773,7 @@ class DeadShardReportingTests(unittest.TestCase):
     HEADING = "--- not measured: {} of {} {} shard(s) recorded nothing ---"
 
     def test_Given_ADeadEditModeShard_When_BothPassesAreCollected_Then_TheEditModeShardIsNamed(self):
-        # Arrange -- shard 1 of 2 never reported, so its six mutants are in no pass's list.
+        # Arrange -- shard 1 of 2 never reported, so its mutants are in no pass's list.
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
 
@@ -6904,9 +6904,8 @@ class TwoPassCampaignTests(unittest.TestCase):
                                              ("PlayMode", "mutant-004.xml")])
 
     def test_Given_SurvivorsOnIndicesOneShardWouldTakeByIndex_When_ThePlayModePassIsSplit_Then_EachShardTakesOne(self):
-        # Arrange — survivors 2 and 4 share an index parity, so dealt by index both go to shard 1 of 2.
-        # Held against the unsplit pass rather than against named mutants, so which mutants the pass
-        # chooses is left to the case above.
+        # Arrange — survivors 2 and 4 share an index parity. Held against the unsplit pass
+        # rather than against named mutants, so which mutants the pass chooses is left to the case above.
         campaign = TwoPlatformCampaign()
         campaign.edit_pass()
 
@@ -7822,15 +7821,15 @@ class CostDealtShardTests(unittest.TestCase):
         # Assert
         self.assertEqual(costs, [mutation_check.NARROWED_COST, mutation_check.WHOLE_COST["EditMode"]])
 
-    def test_Given_AnAreaMutantOnPlayMode_When_Costed_Then_ItIsChargedTheWholeSuite(self):
-        # Arrange
-        mutant = self.mutants("n")[0]
+    def test_Given_AnAreaMutantAndAnotherOnPlayMode_When_Costed_Then_TheyCostTheSame(self):
+        # Arrange — nothing is narrowed on PlayMode, so where a mutant sits changes no charge.
+        area, other = self.mutants("nw")
 
         # Act
-        cost = mutation_check.mutant_cost(mutant, self.PROJECT, "PlayMode")
+        costs = [mutation_check.mutant_cost(mutant, self.PROJECT, "PlayMode") for mutant in (area, other)]
 
         # Assert
-        self.assertEqual(cost, mutation_check.WHOLE_COST["PlayMode"])
+        self.assertEqual(costs[0], costs[1])
 
     def test_Given_WholeSuiteMutantsAtEveryOtherPosition_When_Dealt_Then_TheShardsCostTheSame(self):
         # Arrange — dealt by position, the second shard would hold every narrowed mutant and the first every dear one.
