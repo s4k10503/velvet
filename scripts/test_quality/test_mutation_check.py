@@ -7844,10 +7844,11 @@ class ShardCeilingTests(unittest.TestCase):
         # Arrange — the reach run stands and no mutant is narrowed: all sixteen take the whole suite, with
         # no covered gate and, as in every arm, no area baseline. Eight areas at 145 s on top of the
         # success arm would have come to 1488 + 750 + 8 * 145 + 7888 = 11286 s.
+        mutation_check.REACH_SHARE  # branch-only; a base without it cannot be asked
         mutant, setup = 493, 201 + 375 + 12 + 900
         plan = mutation_check.session_plan(Path("/p"), [mutation_check.Mutant(
             Path("/p/Packages/com.velvet.core/Runtime/Styling/A.cs"), 1, 0, "<", "<=", "boundary")] * 16,
-            list(range(1, 17)), {}, [], "EditMode", 100, 900, Path("/s"), {})[0]
+            list(range(1, 17)), {}, [], "EditMode", 100, 900, Path("/s"), selection={})[0]
 
         # Act
         opening = [item for item in plan["items"] if item["id"] == mutation_check.SESSION_OPENING]
@@ -8220,6 +8221,7 @@ class SessionReachTests(SessionRoutingBase):
         item = next(item for item in plan["items"] if item["id"] == 1)
         return [stage[key] for stage in item["stages"]]
 
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite; replacing the seconds test in `select_by_reach` with `if chosen:` reddens it.
     def test_Given_AMutantWhoseCasesTakeMoreThanATenthOfTheBaseline_When_TheCampaignRuns_Then_ItTakesTheWholeSuite(self):
         # Arrange — one case, but twenty seconds against a ten-second budget: a count would have taken it.
         self.campaign.slow_cases = {"N.C.A": 20}
@@ -8230,6 +8232,7 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages(), ["whole"])
 
+    # GREEN_ON_BASE(characterization): the base reads no site as uncovered; making `select_by_reach` call every unrun site uncovered whatever `unsure` says reddens it.
     def test_Given_AReachRunWithAnInconclusiveCase_When_TheCampaignRuns_Then_NoSiteIsReadAsUncovered(self):
         # Arrange — that case stopped where its Assume failed, so the sites after it are unrecorded, not unreached.
         self.campaign.reach = {"N.C.B": {99}}
@@ -8241,6 +8244,7 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages(), ["whole"])
 
+    # GREEN_ON_BASE(characterization): the base reads no site as uncovered; cutting the `not stage.get("armed")` test in `measure_reach` reddens it.
     def test_Given_AReachRunWithNoSwitchArmed_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
         # Arrange — the editor kept a build without the guards.
         self.campaign.reach = {"N.C.B": {99}}
@@ -8252,6 +8256,7 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages(), ["whole"])
 
+    # GREEN_ON_BASE(characterization): the base reads no site as uncovered; cutting the `endswith(":0")` test in `measure_reach` reddens it.
     def test_Given_AReachRunArmedOnAMutant_When_TheCampaignRuns_Then_NoMutantIsReadAsUncovered(self):
         # Arrange — a switch that read an id is not the unmutated program.
         self.campaign.reach = {"N.C.B": {99}}
