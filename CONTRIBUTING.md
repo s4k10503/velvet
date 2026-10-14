@@ -1046,6 +1046,8 @@ on every platform.
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
+| `Benchmarks ▸ benchmarks` (PlayMode) | push to `main` (filtered) / a PR carrying the `benchmarks` label / manual | **required** (skipped if absent) | no |
+| `Benchmarks ▸ trend-main`, `trend-pull-request` | after `benchmarks`, on `main` / on a labelled PR | not required | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
@@ -1107,6 +1109,41 @@ section says how a line lands.
 The source-generator tests and the `upm`-branch split run with no Unity license, so the pipeline
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
 unless a license secret is configured.
+
+### Benchmarks
+
+The PlayMode fixtures in the `Velvet.Tests.Performance` namespace measure with Unity Performance
+Testing and assert nothing about their numbers, so they run in two modes. `BenchmarkRun` in
+`TestUtilities` picks the mode: by default a benchmark takes one measured iteration and no warmup, which
+still throws wherever a full run would, and the editor flag `-velvetBenchmarkFull` restores the counts
+each one declares. `Test ▸ unity-tests`, the base-red reading and the mutation campaign pass no flag, so
+the required PlayMode run carries only the one-iteration form. A new benchmark takes its counts from
+`BenchmarkRun.Warmup` and `BenchmarkRun.Measurements` rather than from literals. A local run that wants
+real numbers passes the flag itself.
+
+`.github/workflows/benchmarks.yml` runs the full counts, as its own workflow and not a required one:
+
+- on every push to `main` that changes the package (documentation and generator sources excluded), and
+  on a manual dispatch;
+- on a pull request carrying the **`benchmarks`** label, at the label being added and at every push
+  after. The label has to exist in the repository; nothing in the workflow creates it.
+
+A run uploads the results XML as `Benchmark results`, writes the medians as a table to the job summary
+and uploads them as `Benchmark medians`, in the JSON shape `benchmark-action/github-action-benchmark`
+reads (`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
+benchmark that throws fails the run like any other test. The history is not gated on a number:
+
+- `trend-main` appends the run to the `benchmark-data` branch under `dev/bench`, one entry per commit,
+  and is the only job holding `contents: write`. The branch is separate from the documentation site,
+  which the `Docs` workflow deploys to Pages whole, so the `index.html` chart there is read from a
+  checkout of the branch rather than from the site.
+- `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
+  writes nothing.
+
+Both flag a median above 150% of the previous entry in the summary and neither fails: CI runners'
+timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for the head
+like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled pull
+request, and a failed newest run blocks its merge.
 
 ### Merging a pull request
 

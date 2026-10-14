@@ -18,8 +18,8 @@ namespace Velvet.Tests.Performance
     {
         private const int HooksPerRender = 16;
         private const int RerenderIterations = 100;
-        private const int WarmUp = 3;
-        private const int Measurements = 10;
+        private static readonly int WarmUp = BenchmarkRun.Warmup(3);
+        private static readonly int Measurements = BenchmarkRun.Measurements(10);
 
         private static Action<int> s_anchorSetter;
 

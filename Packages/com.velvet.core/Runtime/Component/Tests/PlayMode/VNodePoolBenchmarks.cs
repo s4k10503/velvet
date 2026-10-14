@@ -1,6 +1,7 @@
 using System;
 using NUnit.Framework;
 using Unity.PerformanceTesting;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests.Performance
 {
@@ -24,8 +25,8 @@ namespace Velvet.Tests.Performance
                 ReturnNodeProps(node);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(30)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(30))
             .Run();
         }
 
@@ -40,8 +41,8 @@ namespace Velvet.Tests.Performance
                 ReturnNodeProps(node);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(30)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(30))
             .Run();
         }
 
@@ -56,8 +57,8 @@ namespace Velvet.Tests.Performance
                 ReturnNodeProps(node);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(30)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(30))
             .Run();
         }
 
@@ -80,8 +81,8 @@ namespace Velvet.Tests.Performance
                 VNodePool.ReturnProps(props);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(30)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(30))
             .Run();
         }
 

@@ -20,8 +20,8 @@ namespace Velvet.Tests.Performance
     internal sealed class StyleManipulatorReconcileBenchmarks
     {
         private const int k_Rows = 100;
-        private const int k_WarmupCount = 5;
-        private const int k_MeasurementCount = 20;
+        private static readonly int k_WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(20);
 
         // grid-cols-* suppresses the gap manipulator (the grid owns the child margins), so the gap
         // family is exercised on the row containers and its suppression path on the grid containers.
@@ -198,8 +198,8 @@ namespace Velvet.Tests.Performance
     internal sealed class PaintPassReconcileBenchmarks
     {
         private const int k_Rows = 100;
-        private const int k_WarmupCount = 5;
-        private const int k_MeasurementCount = 20;
+        private static readonly int k_WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(20);
 
         // One live token of every paint family. Skew owns the face, so the shadow paints only its quad, the
         // gradient rides the sheared mesh and the dashed layer defers — the fully-contended shape, which is
@@ -289,8 +289,8 @@ namespace Velvet.Tests.Performance
     internal sealed class VisibleToggleProjectionBenchmarks
     {
         private const int k_Rows = 200;
-        private const int k_WarmupCount = 5;
-        private const int k_MeasurementCount = 20;
+        private static readonly int k_WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(20);
 
         // Thirty utilities, the upper end of what a real row carries. None displaces another, and `hidden`
         // covers only part of what `flex` writes, so the verdict reconciliation stays on its early-out.

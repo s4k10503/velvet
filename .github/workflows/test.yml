@@ -431,6 +431,8 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_platform_base_red.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_benchmark_results.py
+
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 

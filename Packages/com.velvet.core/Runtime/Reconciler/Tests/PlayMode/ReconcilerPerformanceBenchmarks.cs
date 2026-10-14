@@ -19,8 +19,8 @@ namespace Velvet.Tests.Performance
     [TestFixture]
     public class E2EBenchmarks
     {
-        private const int k_WarmupCount = 3;
-        private const int k_MeasurementCount = 10;
+        private static readonly int k_WarmupCount = BenchmarkRun.Warmup(3);
+        private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(10);
 
         private GameObject _gameObject;
         private UIDocument _uiDocument;
@@ -181,8 +181,8 @@ namespace Velvet.Tests.Performance
                 _reconciler.Reconcile(_root, nodes, nodes);
             })
             .GC()
-            .WarmupCount(20)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(20))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -202,8 +202,8 @@ namespace Velvet.Tests.Performance
                 _reconciler.Reconcile(_root, oldNodes, newNodes);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -226,8 +226,8 @@ namespace Velvet.Tests.Performance
                 _reconciler.Reconcile(_root, nodes, nodes);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -246,8 +246,8 @@ namespace Velvet.Tests.Performance
                 _reconciler.Reconcile(_root, newNodes, oldNodes);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -271,8 +271,8 @@ namespace Velvet.Tests.Performance
                 ReconcileToCompletionUnderBudget(newNodes, oldNodes);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -291,8 +291,8 @@ namespace Velvet.Tests.Performance
                 ReconcileToCompletionUnderBudget(largeNodes, smallNodes);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -318,8 +318,8 @@ namespace Velvet.Tests.Performance
                 _reconciler.Reconcile(_root, nodes, nodes);
             })
             .GC()
-            .WarmupCount(20)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(20))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -338,8 +338,8 @@ namespace Velvet.Tests.Performance
                 _reconciler.Reconcile(_root, newNodes, oldNodes);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -359,8 +359,8 @@ namespace Velvet.Tests.Performance
                 _reconciler.Reconcile(_root, reversed, forward);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -382,8 +382,8 @@ namespace Velvet.Tests.Performance
                 ReconcileToCompletionUnderBudget(newNodes, oldNodes);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -417,8 +417,8 @@ namespace Velvet.Tests.Performance
                 _reconciler.Reconcile(_root, nodes, empty);
             })
             .GC()
-            .WarmupCount(5)
-            .MeasurementCount(20)
+            .WarmupCount(BenchmarkRun.Warmup(5))
+            .MeasurementCount(BenchmarkRun.Measurements(20))
             .Run();
         }
 
@@ -456,8 +456,8 @@ namespace Velvet.Tests.Performance
                 _reconciler.Reconcile(root, Array.Empty<VNode>(), nodes);
             })
             .GC()
-            .WarmupCount(warmup)
-            .MeasurementCount(measurements)
+            .WarmupCount(BenchmarkRun.Warmup(warmup))
+            .MeasurementCount(BenchmarkRun.Measurements(measurements))
             .Run();
         }
 
@@ -488,8 +488,8 @@ namespace Velvet.Tests.Performance
     public class InitialMountAllocBreakdown
     {
         private const int Count = 1000;
-        private const int WarmUp = 3;
-        private const int Measurements = 10;
+        private static readonly int WarmUp = BenchmarkRun.Warmup(3);
+        private static readonly int Measurements = BenchmarkRun.Measurements(10);
 
         [Test, Performance]
         public void Bench_A_NewLabelAlone()

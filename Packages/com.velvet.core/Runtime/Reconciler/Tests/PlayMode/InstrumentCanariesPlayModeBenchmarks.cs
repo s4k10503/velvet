@@ -8,8 +8,8 @@ namespace Velvet.Tests.Performance
     [TestFixture]
     internal sealed class InstrumentCanariesPlayModeBenchmarks
     {
-        private const int WarmupCount = 5;
-        private const int MeasurementCount = 20;
+        private static readonly int WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int MeasurementCount = BenchmarkRun.Measurements(20);
         private const int TimingCanaryIterations = 10000;
 
         // GREEN_ON_BASE(characterization): a canary that moved with this change would not be a canary.

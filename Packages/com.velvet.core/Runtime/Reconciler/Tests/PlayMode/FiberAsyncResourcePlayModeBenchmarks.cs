@@ -13,8 +13,8 @@ namespace Velvet.Tests.Performance
     [TestFixture]
     internal sealed class FiberAsyncResourcePlayModeBenchmarks
     {
-        private const int WarmupCount = 5;
-        private const int MeasurementCount = 20;
+        private static readonly int WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int MeasurementCount = BenchmarkRun.Measurements(20);
 
         private static readonly object ResourceKey = new();
         private static Func<CancellationToken, VelvetTask<int>> s_factory;
