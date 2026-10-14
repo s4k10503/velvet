@@ -14,7 +14,7 @@ namespace Velvet.Tests
     {
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_AnInlineLonghandBeforeAShorthand_When_Mounted_Then_TheMotionTargetMatchesTheLaterShorthand(bool important)
+        public void Given_AnInlineLonghandBeforeAShorthand_When_Mounted_Then_TheMotionTargetMatchesTheLonghand(bool important)
         {
             // Arrange
             var bang = important ? "!" : "";
@@ -31,7 +31,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((Lengths(plan), top, element.style.paddingTop.value.value), Is.EqualTo((
-                "PaddingBottom:0->8 PaddingLeft:0->8 PaddingRight:0->8 PaddingTop:0->8", 8f, 2f)));
+                "PaddingBottom:0->8 PaddingLeft:0->8 PaddingRight:0->8 PaddingTop:0->2", 2f, 2f)));
         }
 
         [Test]

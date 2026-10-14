@@ -642,6 +642,11 @@ namespace Velvet
             public bool Inline { get; init; }
         }
 
+        // Two inline spacing utilities tie as the resolver orders them, shorthand before longhand, whichever is
+        // written last (StyleSpacingPrecedence); a class list holds far fewer tokens than the shift leaves room for.
+        private static long SpacingOrder(ArbitraryProperty property)
+            => (StyleSpacingPrecedence.RankOf(property) + 1L) << 20;
+
         private static bool TryRank(string className, int index, out RankedToken token)
         {
             var core = StyleArbitraryValueResolver.StripImportant(className, out var important);
@@ -650,7 +655,8 @@ namespace Velvet
                 var perAxisScale = inline.Property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY;
                 token = new RankedToken
                 {
-                    Precedence = (perAxisScale ? AxisScaleRank : InlineRank) + (important ? ImportantRank : 0) + index,
+                    Precedence = (perAxisScale ? AxisScaleRank : InlineRank) + (important ? ImportantRank : 0)
+                        + SpacingOrder(inline.Property) + index,
                     Written = StyleArbitraryLonghands.Of(inline.Property),
                     TranslateAxis = inline.Property is ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY
                         ? inline.Property : null,

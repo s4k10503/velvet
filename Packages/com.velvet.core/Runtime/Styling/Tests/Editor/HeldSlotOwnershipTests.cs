@@ -26,16 +26,16 @@ namespace Velvet.Tests
             }
         }
 
-        [TestCase(true, false, 8f, "ordinary")]
+        [TestCase(true, false, 2f, "ordinary")]
         [TestCase(false, false, 2f, "ordinary")]
         [TestCase(true, true, 2f, "ordinary")]
         [TestCase(false, false, 2f, "last-safe")]
         [TestCase(false, false, 2f, "crossing")]
-        [TestCase(true, false, 8f, "crossing")]
+        [TestCase(true, false, 2f, "crossing")]
         [TestCase(false, false, 2f, "empty")]
-        [TestCase(false, false, 8f, "reapply")]
+        [TestCase(false, false, 2f, "reapply")]
         [TestCase(true, false, 2f, "lower-layer")]
-        public void Given_OverlappingLayersBehindAHold_When_TheSlotIsHandedBack_Then_PriorityAndArrivalChooseTheRestoredValue(bool longhandFirst, bool importantLonghand, float restored, string boundary)
+        public void Given_OverlappingLayersBehindAHold_When_TheSlotIsHandedBack_Then_PriorityAndTheCascadeOrderChooseTheRestoredValue(bool longhandFirst, bool importantLonghand, float restored, string boundary)
         {
             // Arrange
             var element = new VisualElement();

@@ -347,14 +347,16 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABaseMlClassAndABaseMsClass_When_Mounted_Then_TheInlineMsHoldsTheEdge()
+        public void Given_ABaseMlClassAndABaseMsClass_When_Mounted_Then_TheMlHoldsTheEdgeInline()
         {
-            // Act — two base utilities on one edge tie, and an inline value outranks a stylesheet class.
+            // Act — Tailwind sorts margin-inline-start ahead of margin-left, so ml-8 holds the edge whichever is
+            // written first; it is written inline, since a rule of the sheet would not be there to outrank an
+            // inline ms-4.
             var leaf = MountLeaf("ml-8 ms-4");
 
             // Assert
             Assert.That((leaf.style.marginLeft.value.value, leaf.ClassListContains("ml-8")),
-                Is.EqualTo((16f, true)));
+                Is.EqualTo((32f, false)));
         }
 
         // GREEN_ON_BASE(characterization): the base resolves no ms- class, so ml-8 holds the edge there too.

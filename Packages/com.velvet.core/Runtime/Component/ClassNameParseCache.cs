@@ -35,6 +35,7 @@ namespace Velvet
         internal const int FirstSightingsPerWindow = 2048;
         private const int InitialCacheCapacity = 256;
 
+        private Func<string[], string[]>? _normalize;
         private Dictionary<string, string[]> _current = new(InitialCacheCapacity);
         private Dictionary<string, string[]> _previous = new(InitialCacheCapacity);
         private Dictionary<string, string[]> _probationCurrent = new(ProbationGenerationSize);
@@ -58,7 +59,12 @@ namespace Velvet
                 return tokens;
             }
 
-            tokens = classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // Reached through a delegate on purpose. The build-time weaver follows every call below each V.* factory
+            // and reads an open virtual dispatch anywhere under one as opaque, which leaves a component that calls a
+            // factory ahead of its hooks unmemoized; the spacing normalizer parses lengths and so reaches one.
+            // CompilerILPostProcessorE2ETests pins that such a component stays woven.
+            _normalize ??= StyleSpacingPrecedence.Normalize;
+            tokens = _normalize(classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries));
             var hash = classNames.GetHashCode();
             if (_seenRecent.Contains(hash) || _seenOlder.Contains(hash))
             {
