@@ -7806,7 +7806,7 @@ class ShardCeilingTests(unittest.TestCase):
 
     # What the opening runs of the covered sets add: each of a shard's mutants gets one, of at most
     # 1/REACH_SHARE of the 375 s suite, and none is shared in the worst case.
-    GATES = 375 / mutation_check.REACH_SHARE
+    GATE_SUITE_SECONDS = 375
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
     # baseline, of its baseline and after its last verdict, added together. A charge is built on the
@@ -7824,7 +7824,8 @@ class ShardCeilingTests(unittest.TestCase):
         per = mutation_check.SHARD_CEILING.get(platform)
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
         reach = self.REACH_RUN if narrowed else 0
-        gates = self.GATES * per if narrowed and gated and per is not None else 0
+        gates = (self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * per
+                 if narrowed and gated and per is not None else 0)
         return (per is not None and found is not None
                 and setup + reach + gates + per * mutant <= int(found.group(1)) * 60)
 
