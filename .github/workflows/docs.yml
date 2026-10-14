@@ -144,7 +144,7 @@ jobs:
           site=$(python3 docs/build.py --site-path)
           echo "path=$site" >> "$GITHUB_OUTPUT"
 
-      # The data branch does not exist until Benchmarks has run on main once, so a failed checkout here
+      # trend-main in benchmarks.yml creates the data branch on its first run on main, so before that a failed checkout here
       # leaves the site without the page rather than failing the build.
       - name: Fetch the benchmark history
         id: bench

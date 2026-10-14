@@ -26,12 +26,6 @@ on:
     types: [labeled, synchronize]
   workflow_dispatch:
 
-# A newer head of a labelled pull request cancels the run still measuring an older one. A run on main
-# is a data point in the history and is never cancelled by a later push.
-concurrency:
-  group: benchmarks-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 # Least privilege: the Unity job runs the pull request's own code, so it holds read access only.
 # checks:write lets game-ci publish the test-result check run. The one job that pushes history raises
 # contents itself.
@@ -71,6 +65,16 @@ jobs:
       && (github.event_name != 'pull_request'
           || (contains(github.event.pull_request.labels.*.name, 'benchmarks')
               && (github.event.action != 'labeled' || github.event.label.name == 'benchmarks')))
+    # A newer head of a labelled pull request cancels the run still measuring an older one. Only a run
+    # that can benchmark joins the pull request's group: any other event (another label being added, a
+    # push to main, a dispatch) takes a group of its own by run id, so it neither cancels a measuring
+    # run nor is cancelled into skipping everything. A run on main is a data point and is never cancelled.
+    concurrency:
+      group: >-
+        benchmarks-${{ github.event_name == 'pull_request'
+        && (github.event.action != 'labeled' || github.event.label.name == 'benchmarks')
+        && github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -144,6 +148,20 @@ jobs:
         with:
           name: Benchmark medians
 
+      # The action fetches the data branch and switches to it, and never creates it. An empty orphan commit
+      # holding a README starts the history; a push that loses a race to another creator is fine so long
+      # as the branch exists afterwards.
+      - name: Create the data branch when absent
+        run: |
+          if [ -z "$(git ls-remote --heads origin benchmark-data)" ]; then
+            blob=$(echo 'Benchmark history written by .github/workflows/benchmarks.yml.' | git hash-object -w --stdin)
+            tree=$(printf '100644 blob %s\tREADME.txt\n' "$blob" | git mktree)
+            commit=$(git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com \
+              commit-tree "$tree" -m 'Start the benchmark history')
+            git push origin "$commit:refs/heads/benchmark-data" \
+              || test -n "$(git ls-remote --heads origin benchmark-data)"
+          fi
+
       - uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
         with:
           name: Velvet benchmarks
@@ -153,6 +171,7 @@ jobs:
           benchmark-data-dir-path: dev/bench
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
+          max-items-in-chart: 200
           summary-always: true
           alert-threshold: '150%'
           comment-on-alert: false

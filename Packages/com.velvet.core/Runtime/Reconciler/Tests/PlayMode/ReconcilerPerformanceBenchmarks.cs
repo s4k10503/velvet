@@ -131,6 +131,15 @@ namespace Velvet.Tests.Performance
 
                 yield return null;
             }
+
+            // Unmount, re-mount and unmount again, whatever the counts. With no warmup and one measurement
+            // (BenchmarkRun's default) the loops above mount once and never unmount, so the live panel's
+            // unmount and a re-mount into pooled elements would go unexercised.
+            _reconciler.Reconcile(_root, nodes, Array.Empty<VNode>());
+            yield return null;
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), nodes);
+            yield return null;
+            _reconciler.Reconcile(_root, nodes, Array.Empty<VNode>());
         }
 
         #endregion

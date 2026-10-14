@@ -1114,32 +1114,43 @@ unless a license secret is configured.
 
 The PlayMode fixtures in the `Velvet.Tests.Performance` namespace measure with Unity Performance
 Testing and assert nothing about their numbers, so they run in two modes. `BenchmarkRun` in
-`TestUtilities` picks the mode: by default a benchmark takes one measured iteration and no warmup, which
-still throws wherever a full run would, and the editor flag `-velvetBenchmarkFull` restores the counts
+`TestUtilities` picks the mode: by default a benchmark takes one measured iteration and no warmup, and the editor flag `-velvetBenchmarkFull` restores the counts
 each one declares. `Test ▸ unity-tests`, the base-red reading and the mutation campaign pass no flag, so
 the required PlayMode run carries only the one-iteration form. A new benchmark takes its counts from
-`BenchmarkRun.Warmup` and `BenchmarkRun.Measurements` rather than from literals. A local run that wants
-real numbers passes the flag itself.
+`BenchmarkRun.Warmup` and `BenchmarkRun.Measurements` rather than from literals. A path that only a later iteration
+reaches would go unexercised in the one-iteration form: the one such path in these fixtures was the
+end-to-end mount benchmark's unmount, which now runs once after its loops whatever the counts. A local
+run that wants real numbers passes the flag itself, and the flag is necessary for them rather than
+sufficient.
 
 `.github/workflows/benchmarks.yml` runs the full counts, as its own workflow and not a required one:
 
 - on every push to `main` that changes the package (documentation and generator sources excluded), and
   on a manual dispatch;
 - on a pull request carrying the **`benchmarks`** label, at the label being added and at every push
-  after. The label has to exist in the repository; nothing in the workflow creates it.
+  after. The label has to exist in the repository; nothing in the workflow creates it. A newer push
+  cancels the run still measuring an older head, and a run for any other event (another label being
+  added, say) is in a group of its own, so it cancels nothing.
 
 A run uploads the results XML as `Benchmark results`, writes the medians as a table to the job summary
 and uploads them as `Benchmark medians`, in the JSON shape `benchmark-action/github-action-benchmark`
 reads (`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
 benchmark that throws fails the run like any other test. The history is not gated on a number:
 
-- `trend-main` appends the run to the `benchmark-data` branch under `dev/bench`, one entry per commit,
-  and is the only job holding `contents: write`. The `Docs` workflow copies that directory into the
+- `trend-main` appends the run to the `benchmark-data` branch under `dev/bench`, one entry per commit
+  and at most 200 in the chart. It first creates the branch as an orphan commit holding a README when
+  the remote has none, which the action does not do itself, and it is the only job holding
+  `contents: write`. The `Docs` workflow copies that directory into the
   site it deploys, so the trend chart is at <https://s4k10503.github.io/velvet/dev/bench/>; it
   refreshes with the next docs deployment, so it can trail the newest entry by a merge, and the site
   lacks the page until `main` has recorded a first entry and a docs deployment has followed.
 - `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
   writes nothing.
+
+The numbers are one consistent CI series, not absolute ones: the editor runs them with
+`-debugCodeOptimization` and the code-coverage recorder on, because game-ci passes both whatever the
+workflow asks for (`test.yml` says so beside its coverage options), so the history is for comparing runs
+with each other.
 
 Both flag a median above 150% of the previous entry in the summary and neither fails: CI runners'
 timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for the head

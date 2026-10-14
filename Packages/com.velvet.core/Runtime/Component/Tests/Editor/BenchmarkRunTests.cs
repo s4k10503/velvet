@@ -21,6 +21,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEditorRunWithoutTheFlag_When_WarmupIsAsked_Then_ItIsZero()
+        {
+            // Act
+            var warmup = BenchmarkRun.Warmup(5);
+
+            // Assert
+            Assert.That(warmup, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AnEditorRunWithoutTheFlag_When_MeasurementsAreAsked_Then_ItIsOne()
+        {
+            // Act
+            var measurements = BenchmarkRun.Measurements(20);
+
+            // Assert
+            Assert.That(measurements, Is.EqualTo(1));
+        }
+
+        [Test]
         public void Given_TheFullFlag_When_CountsAreAsked_Then_ABenchmarkKeepsTheCountsItDeclares()
         {
             // Arrange
