@@ -27,11 +27,6 @@ on:
       - '.github/workflows/docs.yml'
   release:
     types: [published]
-  # The benchmark history is published with the site, so a finished run of Benchmarks on main rebuilds it.
-  workflow_run:
-    workflows: [Benchmarks]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -54,8 +49,6 @@ env:
 jobs:
   license-check:
     name: Check Unity license secret
-    # A Benchmarks run that failed recorded nothing new, so it rebuilds nothing; the jobs below need this one's output.
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       has_license: ${{ steps.check.outputs.has_license }}

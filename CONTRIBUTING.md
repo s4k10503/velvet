@@ -1049,7 +1049,7 @@ on every platform.
 | `Benchmarks ▸ benchmarks` (PlayMode) | push to `main` (filtered) / a PR carrying the `benchmarks` label / manual | **required** (skipped if absent) | no |
 | `Benchmarks ▸ trend-main`, `trend-pull-request` | after `benchmarks`, on `main` / on a labelled PR | not required | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
-| `Docs` (DocFX → GitHub Pages) | push (filtered) / release / after a successful `Benchmarks` run on `main` / manual | **required** (skipped if absent) | no |
+| `Docs` (DocFX → GitHub Pages; also carries the benchmark chart, as of its last deployment) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
@@ -1136,8 +1136,8 @@ benchmark that throws fails the run like any other test. The history is not gate
 - `trend-main` appends the run to the `benchmark-data` branch under `dev/bench`, one entry per commit,
   and is the only job holding `contents: write`. The `Docs` workflow copies that directory into the
   site it deploys, so the trend chart is at <https://s4k10503.github.io/velvet/dev/bench/>; it
-  rebuilds after each successful `Benchmarks` run on `main`, and the site simply lacks the page until
-  `main` has recorded a first one.
+  refreshes with the next docs deployment, so it can trail the newest entry by a merge, and the site
+  lacks the page until `main` has recorded a first entry and a docs deployment has followed.
 - `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
   writes nothing.
 
