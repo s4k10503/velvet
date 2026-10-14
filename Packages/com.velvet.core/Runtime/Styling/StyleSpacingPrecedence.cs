@@ -71,8 +71,8 @@ namespace Velvet
         // beside rewritten to its inline form (pt-2 as pt-[8px], mx-auto as mx-[auto], w-full as w-[100%]), and
         // each logical utility dropped for the physical one of its own side (ps-13 beside pl-2: Tailwind sorts
         // padding-inline-start ahead of padding-left, so the physical one holds the side whichever is written
-        // first), the physical one written inline when it is a stylesheet class so that it is not left to a rule
-        // the logical token's removal no longer has anything to outrank; tokens itself when neither applies. Tokens are grouped by importance and by the set of their
+        // first), of the physical classes on the side, the one the stylesheet cascade lets win is written inline when all
+        // are stylesheet classes, so that it is not left to a rule the logical token's removal no longer has anything to outrank; tokens itself when neither applies. Tokens are grouped by importance and by the set of their
         // variants, so `sm:p-[52px] sm:pt-2` is judged apart from `p-[52px] pt-2`, and `hover:focus:` is `focus:hover:`.
         internal static string[] Normalize(string[] tokens)
         {
