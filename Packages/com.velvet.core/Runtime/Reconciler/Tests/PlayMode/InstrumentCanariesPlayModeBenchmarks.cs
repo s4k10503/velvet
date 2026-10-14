@@ -8,11 +8,11 @@ namespace Velvet.Tests.Performance
     [TestFixture]
     internal sealed class InstrumentCanariesPlayModeBenchmarks
     {
-        private const int WarmupCount = 5;
-        private const int MeasurementCount = 20;
+        private static readonly int WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int MeasurementCount = BenchmarkRun.Measurements(20);
         private const int TimingCanaryIterations = 10000;
 
-        // GREEN_ON_BASE(characterization): a canary that moved with this change would not be a canary.
+        // GREEN_ON_BASE(characterization): a canary that moved with this change would not be a canary. This change takes its counts from BenchmarkRun.
         // It charges Unity.PerformanceTesting's GC measurement with a known 16-byte array, answering for the
         // recorder the async allocation benchmarks beside it read, never for the async paths themselves.
         [Test, Performance]
@@ -25,7 +25,7 @@ namespace Velvet.Tests.Performance
                 .Run();
         }
 
-        // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation.
+        // GREEN_ON_BASE(characterization): the probe already counts this canary's allocation. This change takes its counts from BenchmarkRun.
         // This change reads it over three windows.
         [Test, Performance]
         public void InstrumentCanary_AllocationProbeCountsKnownArray()
@@ -41,7 +41,7 @@ namespace Velvet.Tests.Performance
             Assert.That(blocks, Is.GreaterThan(0));
         }
 
-        // GREEN_ON_BASE(characterization): a canary that moved with this change would not be a canary.
+        // GREEN_ON_BASE(characterization): a canary that moved with this change would not be a canary. This change takes its counts from BenchmarkRun.
         // It times an arithmetic loop that calls nothing this branch touched, so it answers for the timing
         // harness the async benchmarks beside it read, never for the async paths themselves.
         [Test, Performance]

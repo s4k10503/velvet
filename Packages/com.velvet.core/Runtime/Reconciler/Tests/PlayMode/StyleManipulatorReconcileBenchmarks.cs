@@ -20,8 +20,8 @@ namespace Velvet.Tests.Performance
     internal sealed class StyleManipulatorReconcileBenchmarks
     {
         private const int k_Rows = 100;
-        private const int k_WarmupCount = 5;
-        private const int k_MeasurementCount = 20;
+        private static readonly int k_WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(20);
 
         // grid-cols-* suppresses the gap manipulator (the grid owns the child margins), so the gap
         // family is exercised on the row containers and its suppression path on the grid containers.
@@ -49,7 +49,7 @@ namespace Velvet.Tests.Performance
         }
 
         // Element creation runs the create branch of every family.
-        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives.
+        // GREEN_ON_BASE(characterization): a benchmark asserts nothing, so the base runs it green; this change swaps the row-class tokens it drives. This change takes its counts from BenchmarkRun.
         [Test, Performance]
         public void Mount_100StyledRows()
         {
@@ -64,6 +64,11 @@ namespace Velvet.Tests.Performance
                 .WarmupCount(k_WarmupCount)
                 .MeasurementCount(k_MeasurementCount)
                 .Run();
+
+            // The first unmount is what fills the label and button pools, so a mount renting from them
+            // starts at the second iteration; one more cycle keeps that path in a one-iteration run.
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), rows);
+            _reconciler.Reconcile(_root, rows, Array.Empty<VNode>());
         }
 
         // Distinct VNode instances carrying the same tokens in freshly parsed arrays: the reference
@@ -198,8 +203,8 @@ namespace Velvet.Tests.Performance
     internal sealed class PaintPassReconcileBenchmarks
     {
         private const int k_Rows = 100;
-        private const int k_WarmupCount = 5;
-        private const int k_MeasurementCount = 20;
+        private static readonly int k_WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(20);
 
         // One live token of every paint family. Skew owns the face, so the shadow paints only its quad, the
         // gradient rides the sheared mesh and the dashed layer defers — the fully-contended shape, which is
@@ -289,8 +294,8 @@ namespace Velvet.Tests.Performance
     internal sealed class VisibleToggleProjectionBenchmarks
     {
         private const int k_Rows = 200;
-        private const int k_WarmupCount = 5;
-        private const int k_MeasurementCount = 20;
+        private static readonly int k_WarmupCount = BenchmarkRun.Warmup(5);
+        private static readonly int k_MeasurementCount = BenchmarkRun.Measurements(20);
 
         // Thirty utilities, the upper end of what a real row carries. None displaces another, and `hidden`
         // covers only part of what `flex` writes, so the verdict reconciliation stays on its early-out.

@@ -1046,8 +1046,11 @@ on every platform.
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
+| `Benchmarks ▸ benchmarks` (PlayMode) | push (filtered) to `main` / every PR labelled `benchmarks` / manual | **required** (skipped if absent) | no |
+| `Benchmarks ▸ trend-main` | push (filtered) to `main`, after `benchmarks` | not required | no |
+| `Benchmarks ▸ trend-pull-request` | every PR labelled `benchmarks`, after `benchmarks` | not required | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
-| `Docs` (DocFX → GitHub Pages) | push (filtered) / release / manual | **required** (skipped if absent) | no |
+| `Docs` (DocFX → GitHub Pages; also carries the benchmark chart, as of its last deployment) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
@@ -1107,6 +1110,54 @@ section says how a line lands.
 The source-generator tests and the `upm`-branch split run with no Unity license, so the pipeline
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
 unless a license secret is configured.
+
+### Benchmarks
+
+The PlayMode fixtures in the `Velvet.Tests.Performance` namespace measure with Unity Performance
+Testing and assert nothing about their numbers, so they run in two modes. `BenchmarkRun` in
+`TestUtilities` picks the mode: by default a benchmark takes one measured iteration and no warmup, and the editor flag `-velvetBenchmarkFull` restores the counts
+each one declares. `Test ▸ unity-tests`, the base-red reading and the mutation campaign pass no flag, so
+the required PlayMode run carries only the one-iteration form. A new benchmark takes its counts from
+`BenchmarkRun.Warmup` and `BenchmarkRun.Measurements` rather than from literals. A path that only a later
+iteration reaches (an unmount that follows a mount, a mount that rents what an earlier unmount pooled)
+goes unexercised in the one-iteration form, so a benchmark whose body has one runs it once more
+unconditionally after its loops. Each fixture's body was read for such a path when this was written;
+a new benchmark is held to the same reading. A local run that wants real numbers passes the flag
+itself, and the flag is necessary for them rather than sufficient.
+
+`.github/workflows/benchmarks.yml` runs the full counts, as its own workflow and not a required one:
+
+- on every push to `main` that changes the package (documentation and generator sources excluded), and
+  on a manual dispatch;
+- on a pull request carrying the **`benchmarks`** label, at the label being added and at every push
+  after. The label has to exist in the repository; nothing in the workflow creates it. A newer push
+  cancels the run still measuring an older head, and a run for any other event (another label being
+  added, say) is in a group of its own, so it cancels nothing.
+
+A run uploads the results XML as `Benchmark results`, writes the medians as a table to the job summary
+and uploads them as `Benchmark medians`, in the JSON shape `benchmark-action/github-action-benchmark`
+reads (`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
+benchmark that throws fails the run like any other test. The history is not gated on a number:
+
+- `trend-main` appends a push's run to the `benchmark-data` branch under `dev/bench`, one entry per commit
+  and at most 200 in the chart. It first creates the branch as an orphan commit holding a README when
+  the remote has none, which the action does not do itself, and it is the only job holding
+  `contents: write`. The `Docs` workflow copies that directory into the
+  site it deploys, so the trend chart is at <https://s4k10503.github.io/velvet/dev/bench/>; it
+  refreshes with the next docs deployment, so it can trail the newest entry by a merge, and the site
+  lacks the page until `main` has recorded a first entry and a docs deployment has followed.
+- `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
+  writes nothing.
+
+The numbers are one consistent CI series, not absolute ones: the editor runs them with
+`-debugCodeOptimization` and the code-coverage recorder on, because game-ci passes both whatever the
+workflow asks for (`test.yml` says so beside its coverage options), so the history is for comparing runs
+with each other.
+
+Both flag a median above 150% of the previous entry in the summary and neither fails: CI runners'
+timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for the head
+like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled pull
+request, and a failed newest run blocks its merge.
 
 ### Merging a pull request
 
