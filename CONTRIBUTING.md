@@ -1111,6 +1111,25 @@ The source-generator tests and the `upm`-branch split run with no Unity license,
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
 unless a license secret is configured.
 
+### Panel fixture timing
+
+Every fixture built on `PanelTestBase` creates, shows and closes an editor window per case. Each such
+case records how long that took, apart from its body, through `PanelPhaseTimings` in `TestUtilities`:
+the window's creation and `Show` (`create_show`), its `Close` and `DestroyImmediate` (`teardown`), each
+forced layout/styles pass (`layout`) and the whole span from the base `SetUp` to the end of the base
+`TearDown` (`case`). A `layout` row falls inside the body or the setup, so it is not added to the
+others, and `teardown` leaves out the unmount before it, which only `case` holds.
+
+A run whose editor was given `-testResults` writes the rows to `panel-phase-timings.csv` in that file's
+directory, one flush per fixture, with no flag to pass; a run without it writes nothing, and no directory is
+created for the file. A failure to record or to write is swallowed, not reported as a failed case. The EditMode job of
+`Test ▸ unity-tests` uploads the directory as `Test results (EditMode)`, so the CSV is in that artifact,
+and runs `scripts/ci/panel_phase_timings.py` over it (`continue-on-error`, so a run that wrote none is
+reported, not failed). The script prints the count, total and mean per phase, the window cost as a share
+of the panel cases and of the suite, and the fixtures with the largest window cost. The suite share
+takes the panel cases from the `case` rows and the rest from the results XML, so it does not depend on
+whether the runner's per-case duration includes setup and teardown.
+
 ### Benchmarks
 
 The PlayMode fixtures in the `Velvet.Tests.Performance` namespace measure with Unity Performance
