@@ -300,6 +300,8 @@ namespace Velvet.Tests
         [TestCase("pt-2", "p-[52px]", "pt-2")]
         [TestCase("pt-[8px] ab", "p-[52px] cd", "ab")]
         [TestCase("pt-[8px]", "hover:", "pt-[8px]")]
+        [TestCase("flex ab pt-[8px]", "p-[52px] cd", "flex ab")]
+        [TestCase("flex pt-[8px]", "grid p-[52px]", "flex")]
         public void Given_BaseAndPoseClasses_When_TheBaseIsFilteredForThePose_Then_OnlyTheOverriddenSpacingGoes(
             string baseClasses, string pose, string expected)
         {
@@ -365,6 +367,7 @@ namespace Velvet.Tests
         [TestCase("pt-[8px]", "p-4", "p-4")]
         [TestCase("p-[52px]", "hover:pt-2", "hover:pt-2")]
         [TestCase("!p-[52px]", "pt-2", "pt-2")]
+        [TestCase("hover:p-[52px]", "hover:pt-2", "hover:pt-[8px]")]
         public void Given_BaseAndPoseClasses_When_TheNarrowerPoseClassIsInlined_Then_OnlyAClassBesideAnInlineBaseChanges(
             string baseClasses, string pose, string expected)
         {
@@ -391,6 +394,63 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", composed), Is.EqualTo(expected));
+        }
+
+        [TestCase("w-1/2")]
+        [TestCase("p-")]
+        [TestCase("")]
+        public void Given_ANameThatIsNotASpacingStep_When_ReadAsAStep_Then_ItIsDeclined(string className)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryReadSpacingStep(className, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [TestCase("flex")]
+        [TestCase("grid")]
+        public void Given_ADeclaredClassOutsideTheSpacingFamilies_When_ReadAsAStylesheetClass_Then_ItIsDeclined(string className)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryReadStylesheetClass(className, out _, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [TestCase("pt-2", true)]
+        [TestCase("-mt-2", true)]
+        [TestCase("flex", false)]
+        public void Given_AToken_When_AskedWhetherItCanBeASpacingUtility_Then_OnlyAFamilyPrefixAnswersYes(string token, bool expected)
+        {
+            // Act
+            var startsWithPrefix = StyleArbitraryValueResolver.StartsWithSpacingPrefix(token);
+
+            // Assert
+            Assert.That(startsWithPrefix, Is.EqualTo(expected));
+        }
+
+        // TryReadStylesheetClass tests TakesAuto only for a name the sheets declare, so while none of these is
+        // declared that test is never what turns a class away. Declaring one makes it matter and needs a case of its own.
+        [TestCase("p-auto")]
+        [TestCase("px-auto")]
+        [TestCase("py-auto")]
+        [TestCase("pt-auto")]
+        [TestCase("pr-auto")]
+        [TestCase("pb-auto")]
+        [TestCase("pl-auto")]
+        [TestCase("min-w-auto")]
+        [TestCase("min-h-auto")]
+        [TestCase("max-w-auto")]
+        [TestCase("max-h-auto")]
+        public void Given_AFamilyThatTakesNoAuto_When_TheSheetsAreAskedForItsAutoClass_Then_NoneIsDeclared(string className)
+        {
+            // Act
+            var declared = StyleUtilityProperties.TryGet(className, out _);
+
+            // Assert
+            Assert.That(declared, Is.False);
         }
 
         [TestCase(ArbitraryProperty.Padding, ArbitraryProperty.PaddingX)]

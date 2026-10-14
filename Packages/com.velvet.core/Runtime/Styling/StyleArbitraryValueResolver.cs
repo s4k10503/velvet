@@ -359,8 +359,7 @@ namespace Velvet
             if (TryReadSpacingStep(cls, out var step))
             {
                 property = step.Property;
-                TryGetSpacingPrefix(property, out var stepPrefix);
-                inlineForm = stepPrefix + "[" + step.Value.ToString("R", CultureInfo.InvariantCulture) + "px]";
+                inlineForm = SpacingPrefixOf(property) + "[" + step.Value.ToString("R", CultureInfo.InvariantCulture) + "px]";
                 return true;
             }
             // MUTANT_SURVIVES(equivalent, boundary): the shortest name read here is a family prefix of two characters and `auto` or `full`, six in all, so a bound of 4 turns away only names none of the loop's rows match.
@@ -375,6 +374,7 @@ namespace Velvet
                     continue;
                 }
                 var name = cls.AsSpan(prefix.Length);
+                // MUTANT_SURVIVES(unreachable, clause removed): the guard above admits only a class the sheets declare, and they declare no padding, minimum or maximum `-auto` class, which SpacingPrecedenceTests pins.
                 if (name.SequenceEqual("auto".AsSpan()) && TakesAuto(familyProperty))
                 {
                     property = familyProperty;
@@ -392,18 +392,16 @@ namespace Velvet
         }
 
         // The prefix (with its trailing '-') whose utility writes property.
-        internal static bool TryGetSpacingPrefix(ArbitraryProperty property, out string prefix)
+        private static string SpacingPrefixOf(ArbitraryProperty property)
         {
             foreach (var (familyPrefix, familyProperty) in s_spacingFamilies)
             {
                 if (familyProperty == property)
                 {
-                    prefix = familyPrefix;
-                    return true;
+                    return familyPrefix;
                 }
             }
-            prefix = string.Empty;
-            return false;
+            return string.Empty;
         }
 
         // A step of a spacing family the bundled stylesheets declare a rule for: only a positive step on the
