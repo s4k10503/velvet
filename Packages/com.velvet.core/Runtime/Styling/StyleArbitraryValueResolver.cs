@@ -237,8 +237,9 @@ namespace Velvet
 
         #region Static-scale utility names (no bracket)
 
-        // The preset spacing scale, mirroring --space-* in _tokens.uss (1 unit = 4px; the suffix
-        // uses '-' where CSS writes '.', e.g. mt-2-5 -> 10px). Negative margins (-mt-2) and negative
+        // The spacing steps the bundled stylesheets declare, mirroring --space-* in _tokens.uss (1 unit = 4px; the
+        // suffix uses '-' where CSS writes '.', e.g. mt-2-5 -> 10px). Any other multiple of 0.25 is
+        // StyleSpacingMultiplier's, through TryGetSpacingPx. Negative margins (-mt-2) and negative
         // px translates (-translate-x-6) route here because a USS selector cannot start with '-'.
         private static readonly Dictionary<string, float> s_spacingScale = new()
         {
@@ -250,14 +251,19 @@ namespace Velvet
             ["72"] = 288f, ["80"] = 320f, ["96"] = 384f,
         };
 
-        // Single source for the --space-* spacing scale (1 unit = 4px). Shared so gap-* / space-* parsing
-        // (StyleGapClass) resolves the same preset table as mt-* / p-* here, instead of holding a second copy
-        // that could drift.
-        internal static bool TryGetSpacingPx(string suffix, out float px) => s_spacingScale.TryGetValue(suffix, out px);
+        // Single source for the spacing scale: the --space-* steps above, then any other canonical multiple of
+        // 0.25 (StyleSpacingMultiplier). Shared so gap-* / space-* parsing (StyleGapClass) resolves the same
+        // values as mt-* / p-* here, instead of holding a second copy that could drift.
+        internal static bool TryGetSpacingPx(string suffix, out float px)
+            => s_spacingScale.TryGetValue(suffix, out px) || StyleSpacingMultiplier.TryParse(suffix.AsSpan(), out px);
 
         // TryGetSpacingPx over a slice, for the per-class gates that must not allocate.
         private static bool TryGetSpacingPx(ReadOnlySpan<char> suffix, out float px)
         {
+            if (StyleSpacingMultiplier.TryParse(suffix, out px))
+            {
+                return true;
+            }
             foreach (var step in s_spacingScale)
             {
                 if (suffix.SequenceEqual(step.Key.AsSpan()))
@@ -270,39 +276,42 @@ namespace Velvet
             return false;
         }
 
-        // The utilities that take a spacing step. A prefix that could be taken for a longer one (inset- for
-        // inset-x-) is not told apart by order: TryReadSpacingStep skips a row whose suffix is not a step.
-        private static readonly (string Prefix, ArbitraryProperty Property)[] s_spacingFamilies =
+        // The utilities that take a spacing step. A step with a USS rule (mt-2, w-4, mt-1-5) stays a class, so
+        // only the others resolve inline here: mt-13, p-4.5, and every negated one, which no selector can spell.
+        // Of these families Tailwind negates the margin and position ones. A prefix that could be taken for a
+        // longer one (inset- for inset-x-) is not told apart by order: TryParseSpacingStep skips a row whose
+        // suffix is not a step.
+        private static readonly (string Prefix, ArbitraryProperty Property, bool Negatable)[] s_spacingFamilies =
         {
-            ("p-", ArbitraryProperty.Padding),
-            ("px-", ArbitraryProperty.PaddingX),
-            ("py-", ArbitraryProperty.PaddingY),
-            ("pt-", ArbitraryProperty.PaddingTop),
-            ("pr-", ArbitraryProperty.PaddingRight),
-            ("pb-", ArbitraryProperty.PaddingBottom),
-            ("pl-", ArbitraryProperty.PaddingLeft),
-            ("m-", ArbitraryProperty.Margin),
-            ("mx-", ArbitraryProperty.MarginX),
-            ("my-", ArbitraryProperty.MarginY),
-            ("mt-", ArbitraryProperty.MarginTop),
-            ("mr-", ArbitraryProperty.MarginRight),
-            ("mb-", ArbitraryProperty.MarginBottom),
-            ("ml-", ArbitraryProperty.MarginLeft),
-            ("w-", ArbitraryProperty.Width),
-            ("h-", ArbitraryProperty.Height),
-            ("size-", ArbitraryProperty.Size),
-            ("min-w-", ArbitraryProperty.MinWidth),
-            ("min-h-", ArbitraryProperty.MinHeight),
-            ("max-w-", ArbitraryProperty.MaxWidth),
-            ("max-h-", ArbitraryProperty.MaxHeight),
-            ("basis-", ArbitraryProperty.FlexBasis),
-            ("top-", ArbitraryProperty.Top),
-            ("right-", ArbitraryProperty.Right),
-            ("bottom-", ArbitraryProperty.Bottom),
-            ("left-", ArbitraryProperty.Left),
-            ("inset-x-", ArbitraryProperty.InsetX),
-            ("inset-y-", ArbitraryProperty.InsetY),
-            ("inset-", ArbitraryProperty.Inset),
+            ("p-", ArbitraryProperty.Padding, false),
+            ("px-", ArbitraryProperty.PaddingX, false),
+            ("py-", ArbitraryProperty.PaddingY, false),
+            ("pt-", ArbitraryProperty.PaddingTop, false),
+            ("pr-", ArbitraryProperty.PaddingRight, false),
+            ("pb-", ArbitraryProperty.PaddingBottom, false),
+            ("pl-", ArbitraryProperty.PaddingLeft, false),
+            ("m-", ArbitraryProperty.Margin, true),
+            ("mx-", ArbitraryProperty.MarginX, true),
+            ("my-", ArbitraryProperty.MarginY, true),
+            ("mt-", ArbitraryProperty.MarginTop, true),
+            ("mr-", ArbitraryProperty.MarginRight, true),
+            ("mb-", ArbitraryProperty.MarginBottom, true),
+            ("ml-", ArbitraryProperty.MarginLeft, true),
+            ("w-", ArbitraryProperty.Width, false),
+            ("h-", ArbitraryProperty.Height, false),
+            ("size-", ArbitraryProperty.Size, false),
+            ("min-w-", ArbitraryProperty.MinWidth, false),
+            ("min-h-", ArbitraryProperty.MinHeight, false),
+            ("max-w-", ArbitraryProperty.MaxWidth, false),
+            ("max-h-", ArbitraryProperty.MaxHeight, false),
+            ("basis-", ArbitraryProperty.FlexBasis, false),
+            ("top-", ArbitraryProperty.Top, true),
+            ("right-", ArbitraryProperty.Right, true),
+            ("bottom-", ArbitraryProperty.Bottom, true),
+            ("left-", ArbitraryProperty.Left, true),
+            ("inset-x-", ArbitraryProperty.InsetX, true),
+            ("inset-y-", ArbitraryProperty.InsetY, true),
+            ("inset-", ArbitraryProperty.Inset, true),
         };
 
         // The families' properties, to tell a spacing utility from another inline one.
@@ -311,7 +320,7 @@ namespace Velvet
         private static HashSet<ArbitraryProperty> BuildSpacingProperties()
         {
             var properties = new HashSet<ArbitraryProperty>();
-            foreach (var (_, property) in s_spacingFamilies)
+            foreach (var (_, property, _) in s_spacingFamilies)
             {
                 properties.Add(property);
             }
@@ -337,7 +346,7 @@ namespace Velvet
         internal static bool StartsWithSpacingPrefix(string text)
         {
             var body = text.AsSpan(text.Length > 0 && text[0] == '-' ? 1 : 0);
-            foreach (var (prefix, _) in s_spacingFamilies)
+            foreach (var (prefix, _, _) in s_spacingFamilies)
             {
                 if (body.StartsWith(prefix.AsSpan()))
                 {
@@ -356,7 +365,7 @@ namespace Velvet
         {
             property = default;
             inlineForm = string.Empty;
-            if (TryReadSpacingStep(cls, out var step))
+            if (TryReadSpacingStep(cls, out var step, out var backed) && backed)
             {
                 property = step.Property;
                 TryGetSpacingPrefix(property, out var stepPrefix);
@@ -368,7 +377,7 @@ namespace Velvet
             {
                 return false;
             }
-            foreach (var (prefix, familyProperty) in s_spacingFamilies)
+            foreach (var (prefix, familyProperty, _) in s_spacingFamilies)
             {
                 if (!cls.StartsWith(prefix, StringComparison.Ordinal))
                 {
@@ -394,7 +403,7 @@ namespace Velvet
         // The prefix (with its trailing '-') whose utility writes property.
         internal static bool TryGetSpacingPrefix(ArbitraryProperty property, out string prefix)
         {
-            foreach (var (familyPrefix, familyProperty) in s_spacingFamilies)
+            foreach (var (familyPrefix, familyProperty, _) in s_spacingFamilies)
             {
                 if (familyProperty == property)
                 {
@@ -406,11 +415,16 @@ namespace Velvet
             return false;
         }
 
-        // A step of a spacing family the bundled stylesheets declare a rule for: only a positive step on the
-        // --space-* table is one.
-        internal static bool TryReadSpacingStep(string cls, out ArbitraryStyle result)
+        // A step the bundled stylesheets declare no rule for, which resolves inline.
+        private static bool TryParseSpacingStep(string cls, out ArbitraryStyle result)
+            => TryReadSpacingStep(cls, out result, out var stylesheetBacked) && !stylesheetBacked;
+
+        // Any step of a spacing family, and whether the stylesheets declare a class for it: only a positive
+        // step on the --space-* table is one.
+        internal static bool TryReadSpacingStep(string cls, out ArbitraryStyle result, out bool stylesheetBacked)
         {
             result = default;
+            stylesheetBacked = false;
             // MUTANT_SURVIVES(equivalent, boundary): the shortest step is a two-character prefix and a digit, so a bound of 2 admits only strings no prefix and step fit.
             if (cls.Length < 3)
             {
@@ -423,14 +437,21 @@ namespace Velvet
             {
                 return false;
             }
-            var body = cls.AsSpan();
-            foreach (var (prefix, property) in s_spacingFamilies)
+            var negate = cls[0] == '-';
+            var body = cls.AsSpan(negate ? 1 : 0);
+            foreach (var (prefix, property, negatable) in s_spacingFamilies)
             {
-                if (!body.StartsWith(prefix.AsSpan()) || !TryGetSpacingPx(body.Slice(prefix.Length), out var px))
+                if (!body.StartsWith(prefix.AsSpan()) || (negate && !negatable))
                 {
                     continue;
                 }
-                result = new ArbitraryStyle(property, px, LengthUnit.Pixel);
+                var suffix = body.Slice(prefix.Length);
+                if (!TryGetSpacingPx(suffix, out var px))
+                {
+                    continue;
+                }
+                stylesheetBacked = !negate && SuffixInKeys(suffix, s_spacingScale);
+                result = new ArbitraryStyle(property, negate ? -px : px, LengthUnit.Pixel);
                 return true;
             }
             return false;
@@ -466,23 +487,12 @@ namespace Velvet
         // result itself for the "-n"-suffixed (negative) form.
         internal static bool TryGetRotateScale(string suffix, out float degrees) => s_rotateScale.TryGetValue(suffix, out degrees);
 
-        // Maps a margin utility prefix (without the leading '-') to its shorthand ArbitraryProperty.
-        private static readonly Dictionary<string, ArbitraryProperty> s_marginPrefix = new()
-        {
-            ["m-"] = ArbitraryProperty.Margin,
-            ["mx-"] = ArbitraryProperty.MarginX,
-            ["my-"] = ArbitraryProperty.MarginY,
-            ["mt-"] = ArbitraryProperty.MarginTop,
-            ["mr-"] = ArbitraryProperty.MarginRight,
-            ["mb-"] = ArbitraryProperty.MarginBottom,
-            ["ml-"] = ArbitraryProperty.MarginLeft,
-        };
-
         // Cheap dispatch gate: true when cls is a static-scale utility with NO static USS class, so
         // the reconciler must route it to TryParseStaticScale instead of the class list. That set is exactly
         // the names a USS selector cannot spell — any '-'-prefixed margin/rotate/translate name, the
-        // '/'-bearing translate, sizing and position fractions, and the positive per-axis translate/scale
-        // presets (no USS class — a per-axis rule would clobber the other axis via the shorthand). Other
+        // '/'-bearing translate, sizing and position fractions, the positive per-axis translate/scale
+        // presets (no USS class — a per-axis rule would clobber the other axis via the shorthand), and a
+        // spacing step the bundled sheets declare no rule for (mt-13, p-4.5, -top-4). Other
         // positive non-slash names (mt-2, rotate-6) keep their USS classes and are intentionally NOT claimed here.
         internal static bool MayBeStaticScale(string cls)
         {
@@ -499,7 +509,7 @@ namespace Velvet
             // Logical-direction utilities (ms-4, start-1/2, rounded-ss-lg) and per-side border colors
             // (border-b-red-500) have no USS class at all.
             if (IsFractionToken(cls) || StyleLogicalUtilities.TryParse(cls, out _)
-                || StyleBorderSideColor.TryParse(cls, out _))
+                || StyleBorderSideColor.TryParse(cls, out _) || TryParseSpacingStep(cls, out _))
             {
                 return true;
             }
@@ -510,7 +520,7 @@ namespace Velvet
                 {
                     return false; // -skew-x-6 is owned by StyleSkewClass, not this resolver.
                 }
-                return body.StartsWith("m") || body.StartsWith("rotate-") || body.StartsWith("translate-");
+                return IsMarginName(body) || body.StartsWith("rotate-") || body.StartsWith("translate-");
             }
             // Positive per-axis translate presets (translate-x-4, translate-y-2, translate-x-1/2, translate-x-full)
             // have no USS class: a .translate-x-N rule writes the whole `translate: x y` shorthand and clobbers
@@ -524,7 +534,7 @@ namespace Velvet
                     return true;
                 }
                 var suffix = cls.AsSpan("translate-x-".Length); // the x and y prefixes share a length
-                return suffix.SequenceEqual("full".AsSpan()) || SuffixInKeys(suffix, s_spacingScale);
+                return suffix.SequenceEqual("full".AsSpan()) || TryGetSpacingPx(suffix, out _);
             }
             // Per-axis scale presets (scale-x-50 / scale-y-110) have no USS class; route them to the merge path.
             // The bracket form (scale-x-[..]) is claimed by the dispatch's '[' check, not here. Span-based to
@@ -535,6 +545,12 @@ namespace Velvet
             }
             return TryGetFlexFactorPreset(cls, out _, out _);
         }
+
+        // The physical margin utilities, whose negated names no selector can spell. -max-w-4 and -min-h-4 start
+        // with the same letter and are not margins.
+        private static bool IsMarginName(ReadOnlySpan<char> body)
+            => body.StartsWith("m-") || body.StartsWith("mx-") || body.StartsWith("my-") || body.StartsWith("mt-")
+                || body.StartsWith("mr-") || body.StartsWith("mb-") || body.StartsWith("ml-");
 
         // grow-<N> / shrink-<N>: Tailwind's bare factor, a whole number spelled without a sign or a leading
         // zero. grow-0 and shrink-0 are USS classes, so zero is left to the class list.
@@ -565,16 +581,13 @@ namespace Velvet
             return whole != 0;
         }
 
-        // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero.
-        private static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
+        // A whole number spelled as Tailwind's bare values are: digits only, no sign, no leading zero. Shared by
+        // the flex factors and z-<n>.
+        internal static bool TryParseWhole(ReadOnlySpan<char> digits, out int whole)
         {
             whole = 0;
-            // MUTANT_SURVIVES(equivalent): the boundary moves only a lone "0", whose whole of 0 the factor
-            // preset declines with `whole != 0` either way.
             if (digits.Length > 1 && digits[0] == '0')
             {
-                // MUTANT_SURVIVES(equivalent): a leading zero leaves whole at 0, which the factor preset
-                // declines with `whole != 0` whatever this returns.
                 return false;
             }
             return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out whole);
@@ -616,6 +629,10 @@ namespace Velvet
                 result = new ArbitraryStyle(factorProperty, factor, LengthUnit.Pixel);
                 return true;
             }
+            if (TryParseSpacingStep(className, out result))
+            {
+                return true;
+            }
             var negate = className[0] == '-';
             var body = negate ? className.Substring(1) : className;
 
@@ -637,25 +654,11 @@ namespace Velvet
             return TryParseTranslatePreset(body, negate, out result);
         }
 
-        // The margin and rotate presets, whose tables carry the magnitude and take their sign from the name
-        // (see s_rotateScale for why only the negated name routes here). Null when body names neither family.
+        // The negated rotate preset, whose table carries the magnitude and takes its sign from the name (see
+        // s_rotateScale for why only the negated name routes here). Null when body is not a rotate.
         private static bool? TryParseNegatedPreset(string body, out ArbitraryStyle result)
         {
             result = default;
-            foreach (var kvp in s_marginPrefix)
-            {
-                if (!body.StartsWith(kvp.Key, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-                if (!s_spacingScale.TryGetValue(body.Substring(kvp.Key.Length), out var px))
-                {
-                    return false;
-                }
-                result = new ArbitraryStyle(kvp.Value, -px, LengthUnit.Pixel);
-                return true;
-            }
-
             if (body.StartsWith("rotate-", StringComparison.Ordinal))
             {
                 if (!s_rotateScale.TryGetValue(body.Substring("rotate-".Length), out var deg))
@@ -719,7 +722,7 @@ namespace Velvet
             }
             // Both signs route here now: a positive .translate-x-N USS class would write the whole
             // `translate` shorthand and clobber the other axis, so positives merge through TranslateX/Y too.
-            if (s_spacingScale.TryGetValue(suffix, out var px))
+            if (TryGetSpacingPx(suffix, out var px))
             {
                 result = new ArbitraryStyle(property, negate ? -px : px, LengthUnit.Pixel);
                 return true;

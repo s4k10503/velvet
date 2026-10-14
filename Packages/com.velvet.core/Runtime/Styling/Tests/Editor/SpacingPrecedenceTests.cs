@@ -12,7 +12,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class SpacingPrecedenceTests
     {
-        private static float Side(VisualElement element, string side) => side switch
+        internal static float Side(VisualElement element, string side) => side switch
         {
             "paddingTop" => element.style.paddingTop.value.value,
             "paddingLeft" => element.style.paddingLeft.value.value,

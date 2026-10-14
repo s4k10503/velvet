@@ -1,9 +1,9 @@
-# Bracketed lengths
+# Bracketed lengths and bare spacing steps
 
 A bracketed value such as `w-[120px]`, `top-[1in]` or `translate-x-[25%]` is resolved by Velvet rather
 than by a USS rule, because no stylesheet can declare every value a bracket can hold. This guide owns which
 lengths a bracket reads, which utilities read which of them, and what each is measured against. The
-[last section](#a-shorthand-and-its-longhand) owns the order of a shorthand and a longhand of one spacing family.
+[last section](#bare-spacing-steps) owns the bare number a spacing utility takes without a bracket.
 
 ## What every length bracket reads
 
@@ -105,18 +105,42 @@ lands at once rather than animating.
 - A spring or bezier `V.Motion` does not interpolate a length only an element can measure: the class still
   applies, uninterpolated, as `w-auto` does.
 
-## A shorthand and its longhand
+## Bare spacing steps
+
+A spacing utility takes a bare number as Tailwind v4 does: any non-negative multiple of 0.25 written in
+canonical decimal form is that many 4px steps, so `p-13` is 52px, `gap-4.5` 18px and `w-0.25` 1px. `.5`,
+`4.50`, `05` and `4.1` are not steps and leave the class unresolved. The utilities are padding, margin
+(`m-*`, `mx-*`, `ps-*`, …), `gap-*`, `space-x-*` / `space-y-*`, `w-*`, `h-*`, `size-*`, `min-*` / `max-*`
+width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-x-*` / `translate-y-*`,
+and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). A margin,
+size, `basis-*` or inset also takes `[auto]` (`mx-[auto]`); padding and the minimum and maximum sizes take none. A minus
+sign negates the margin, inset, translate and `space-*` utilities (`-mt-13`, `-top-4.5`), as in Tailwind;
+padding, sizing, `basis-*` and `gap-*` take none.
+
+What a step becomes depends on the utility. Padding, margin, sizing, `basis-*`, the insets and `translate-*`
+write an inline style, as a bracket value does, so they take part in variants, the `!` modifier and the
+cascade as `p-[52px]` does, and never enter the class list. `gap-*` and `space-*` are applied by the gap
+manipulator as inter-child margins ([styling-flexbox-and-gap.md](styling-flexbox-and-gap.md)), and
+`leading-*` becomes a line-height tag in the text ([fonts.md](fonts.md)).
+
+The steps the bundled stylesheets declare — `0`, `px`, `0-5` … `3-5`, `4` … `12` and the larger ones up to
+`96`, written with `-` for `.` — stay USS classes in the box utilities above. `p-1.5` is therefore the inline
+twin of the `p-1-5` class, both 6px. A stylesheet of your own that declares a class named like a step it does
+not (`.w-100`, `.p-30`) is shadowed by the inline value.
+
+### A shorthand and its longhand
 
 Where a shorthand and a longhand of one family meet in one `className`, the longhand holds its side whichever
-comes first, as in Tailwind, which emits `padding` ahead of `padding-top`: `p-[52px] pt-2` and `pt-2 p-[52px]` both
+comes first, as in Tailwind, which emits `padding` ahead of `padding-top`: `p-13 pt-2` and `pt-2 p-13` both
 leave the top at 8px and the other sides at 52px. The order is Tailwind's property order: the all-sides
 shorthand, then the axis (`px-*` / `py-*`, `inset-x-*` / `inset-y-*`), then a single side, and `size-*` ahead
 of `w-*` and `h-*`. It covers padding, margin, the insets and `size-*` / `w-*` / `h-*`, at one priority: a
-variant or `!` outranks the plain utility as it does anywhere. Variants are compared as a set, so `hover:focus:` and `focus:hover:` are one group.
+variant or `!` outranks the plain utility as it does anywhere, and a bracket value takes part the same way
+(`p-[52px] pt-2`). Variants are compared as a set, so `hover:focus:` and `focus:hover:` are one group.
 
 An inline value outranks every class on its element, so a stylesheet class that is the narrower of such a pair
 is written inline too when an inline utility of an overlapping family stands beside it: `pt-2` becomes
-`pt-[8px]`, `mx-auto` becomes `mx-[auto]` (an auto bracket, which margin, `w-*`, `h-*`, `size-*`, `basis-*` and the insets read; padding and the minimum and maximum sizes take none) and `w-full`
+`pt-[8px]`, `mx-auto` becomes `mx-[auto]` (an auto bracket, which every family but padding reads) and `w-full`
 becomes `w-[100%]`. Two things follow. The rewritten class is no longer in the element's class list, so a
 selector on it (`.pt-2 > .x`) and `ClassListContains("pt-2")` stop seeing it, though the unrewritten classes of
 the list are unchanged. And the rewrite writes the pixel value of the step as Velvet's scale gives it, so a
@@ -125,12 +149,14 @@ the logical utilities have ([react-migration.md](react-migration.md)).
 
 The rule is made where a shorthand and a longhand meet in one `className` string; these differ:
 - A logical utility (`ps-*`, `ms-*`, `start-*`, the block forms) beside the physical utility of its own side
-  gives way to it, since Tailwind sorts `padding-inline-start` ahead of `padding-left`: `ps-[52px] pl-2` and
-  `pl-2 ps-[52px]` leave the left at 8px, and the logical one is dropped from the list and the physical class
+  gives way to it, since Tailwind sorts `padding-inline-start` ahead of `padding-left`: `ps-13 pl-2` and
+  `pl-2 ps-13` leave the left at 8px, and the logical one is dropped from the list and the physical class
   written inline. Behind a variant the rule keys already give the physical one the side.
 - A `V.Motion` pose overrides the node's own spacing, as Framer Motion's `animate` overrides `style`: a base
   `pt-[8px]` beside a pose `p-[52px]` leaves the top at 52px, the base token being left out while that pose
-  applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-[52px]` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.
+  applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-13` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.
 - A class list assembled outside a `className` string, or beside a class list of another element, is not ordered this way.
 - Border radii are not ordered this way: `rounded-r-*` and `rounded-t-*` on one corner are left to whichever is
   written last.
+
+`z-<n>` takes any whole number the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).

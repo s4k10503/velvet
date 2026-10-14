@@ -115,7 +115,7 @@ namespace Velvet.Tests
             "ms-1/2",        // a margin takes no fraction
             "ps-full",
             "rounded-s-1/2",
-            "ms-13",         // not on the spacing scale
+            "ms-4.1",        // not a multiple of 0.25
             "-start-auto",   // Tailwind has no negative auto
             "-ms-auto",
             "start-1/0",     // no percent stands for a zero denominator

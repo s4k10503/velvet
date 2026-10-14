@@ -3,11 +3,11 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the <c>z-*</c> utility parser (StyleZIndexClass): the fixed named scale
-    /// (<c>z-0</c>…<c>z-50</c>), its negated form (<c>-z-10</c>), the arbitrary bracket form
+    /// Specifies the <c>z-*</c> utility parser (StyleZIndexClass): any whole number
+    /// (<c>z-0</c>, <c>z-15</c>), its negated form (<c>-z-10</c>), the arbitrary bracket form
     /// (<c>z-[999]</c>, <c>z-[-5]</c>), the cascade (last-wins), and rejection of anything that only
-    /// looks like a z-* token (an unrecognized named level, a non-integer bracket, a bare "z-"
-    /// prefix). GWT, one assert per case.
+    /// looks like a z-* token (a number spelled with a leading zero or a fraction, a non-integer bracket,
+    /// a bare "z-" prefix). GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class StyleZIndexClassTests
@@ -122,11 +122,36 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
-        [Test]
-        public void Given_AnUnrecognizedNamedLevel_When_Parsed_Then_ItIsRejected()
+        [TestCase("z-15", 15)]
+        [TestCase("z-1", 1)]
+        [TestCase("z-999", 999)]
+        [TestCase("-z-15", -15)]
+        [TestCase("-z-0", 0)]
+        public void Given_AWholeNumberOffTheOldNamedScale_When_Parsed_Then_ItResolvesToThatNumber(string cls, int expected)
         {
-            // Arrange — z-15 is not on the fixed scale; only z-[15] would express it.
-            var ok = StyleZIndexClass.TryParse("z-15", out _);
+            // Act
+            var ok = StyleZIndexClass.TryParse(cls, out var z);
+
+            // Assert
+            Assert.That((ok, z), Is.EqualTo((true, (int?)expected)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base declines each of these spellings too, and a bare number spelled any other way stays declined.
+        // Reading the suffix with int.TryParse reddens `z-05`, `z-+5` and `z-5.0`, and a missing leading-zero
+        // test in `TryParseWhole` reddens `z-05` and `z-00`.
+        [TestCase("z-05")]
+        [TestCase("z-00")]
+        [TestCase("z-+5")]
+        [TestCase("z-5.0")]
+        [TestCase("z-1.5")]
+        [TestCase("z-10px")]
+        [TestCase("z-99999999999")]
+        [TestCase("-z-auto")]
+        [TestCase("z-")]
+        public void Given_ASuffixThatIsNotACanonicalWholeNumber_When_Parsed_Then_ItIsRejected(string cls)
+        {
+            // Act
+            var ok = StyleZIndexClass.TryParse(cls, out _);
 
             // Assert
             Assert.That(ok, Is.False);

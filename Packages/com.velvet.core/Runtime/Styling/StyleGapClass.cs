@@ -46,9 +46,8 @@ namespace Velvet
 
     // Parses Velvet's gap-* / gap-x-* / gap-y-* utility classes (and the space-x-* /
     // space-y-* family, and the gap-[..] / gap-x-[..] JIT arbitrary form) into a pixel gap value
-    // and the axis they space along, for StyleGapManipulator. The numeric scale mirrors the
-    // --space-* tokens in _tokens.uss (1 unit = 4px), keeping gap-* spacing visually consistent
-    // with the padding/margin scale elsewhere in the utility set.
+    // and the axis they space along, for StyleGapManipulator. The numeric scale is the one padding and margin
+    // read (StyleArbitraryValueResolver.TryGetSpacingPx), keeping gap-* spacing consistent with it.
     internal static class StyleGapClass
     {
         // Returns true and the parsed gap / axis when
@@ -105,8 +104,7 @@ namespace Velvet
             // inter-child margin, so a percentage value is rejected (only px / unitless is meaningful).
             // TryParseArbitraryPixels already verifies the bracket shape itself, so a non-bracket suffix falls
             // straight through to the preset scale below without needing its own duplicate guard here.
-            // The numeric scale is the shared --space-* preset table (1 unit = 4px), so gap-* resolves the same
-            // values as mt-* / p-*; single-sourced in StyleArbitraryValueResolver to avoid a divergent copy.
+            // The numeric scale is TryGetSpacingPx's, so gap-* resolves the same values as mt-* / p-*.
             if (!StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out gap)
                 && !StyleArbitraryValueResolver.TryGetSpacingPx(suffix, out gap))
             {

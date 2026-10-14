@@ -1027,11 +1027,13 @@ namespace Velvet.Tests
             Assert.That(has, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base declines a suffix off its table, and so must a suffix that is no multiple of 0.25.
+        // Reading every decimal as a step reddens it.
         [Test]
         public void Given_UnknownSpaceSuffix_When_Parsed_Then_DeclinesToParse()
         {
-            // Act — a suffix outside the --space-* scale is not a recognized gap utility.
-            var ok = StyleGapClass.TryParse("space-x-999", out _, out _);
+            // Act — a suffix that is no multiple of 0.25 is not a recognized gap utility.
+            var ok = StyleGapClass.TryParse("space-x-9.9", out _, out _);
 
             // Assert
             Assert.That(ok, Is.False);

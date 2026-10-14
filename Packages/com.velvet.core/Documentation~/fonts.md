@@ -219,10 +219,11 @@ unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percent
 `mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. A math function is read where it
 comes to one of those pixel lengths or one percentage
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A negative value, any other unit, or a
-malformed value is ignored. A bare spacing step (`leading-6`, `leading-3-5`, `leading-px`) emits
-`<line-height=Npx>` at the px value the `--space-*` scale gives that step, as Tailwind's
+malformed value is ignored. A bare spacing step (`leading-6`, `leading-13`, `leading-4.5`, `leading-px`) emits
+`<line-height=Npx>` at the px value the spacing scale gives that step, as Tailwind's
 spacing-based `leading-*` does (`leading-6` is 24px, as `p-6` is, and `leading-px` is 1px); its steps
-are that scale's, written with `-` for `.`.
+are that scale's ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps)), and a
+named preset is read before a step.
 
 A preset and a unitless value are numbers, as in CSS: they emit an em tag, which the **text engine
 itself** resolves against whichever font size is in effect at that point in the string, so every

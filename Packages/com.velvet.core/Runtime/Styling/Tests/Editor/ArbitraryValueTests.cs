@@ -2332,11 +2332,13 @@ namespace Velvet.Tests
             Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("translate-y-2"), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): a translate suffix that is no multiple of 0.25 is not claimed on the base either.
+        // Claiming any numeric translate suffix reddens it.
         [Test]
         public void Given_UnknownTranslatePreset_When_DispatchGateChecked_Then_NotClaimed()
         {
-            // 37 is not on the spacing scale, so translate-x-37 is not claimed (falls through; not a utility).
-            Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("translate-x-37"), Is.False);
+            // 37.3 is not a multiple of 0.25, so translate-x-37.3 is not claimed (falls through; not a utility).
+            Assert.That(StyleArbitraryValueResolver.MayBeStaticScale("translate-x-37.3"), Is.False);
         }
 
         [Test]
