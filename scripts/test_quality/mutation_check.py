@@ -103,8 +103,8 @@ SHARD_SIZE = {"EditMode": 6, "PlayMode": 2}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest measured setup and, where the platform is narrowed,
-# the reach run, fit that platform's shard job's timeout in mutation.yml, and that
-# case holds each pair together. The charge is not a worst case, so a full shard can still outrun the
+# the reach run, fit that platform's shard job's timeout in mutation.yml; `ShardCeilingTests` holds
+# each pair together. The charge is not a worst case, so a full shard can still outrun the
 # job, and the mutants it had not reached are then recorded by no shard.
 SHARD_CEILING = {"EditMode": 16, "PlayMode": 10}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
@@ -127,11 +127,14 @@ NARROWED_PLATFORMS = ("EditMode",)
 # SHARD_CEILING / REACH_SHARE of the baseline's wall clock, which is why the share is small. It bounds
 # seconds, read off the reach run's cases, and not their number. A mutant whose cases would take more
 # than that takes the whole suite, as does every mutant of a session whose reach run does not stand:
-# the areas' own baselines are not taken in a session that runs the reach run, so none is left to charge.
+# a session that runs the reach run takes no area's own baseline, for a placed mutant or for one launched
+# on its own, so none is left to charge.
 REACH_SHARE = 10
 # A session of fewer placed mutants than this runs no reach run and takes the path it took before one
 # existed: the areas' own baselines in its opening, then each mutant's area, then the whole suite. The
-# figure is a decision, not a measured break-even.
+# figure is a decision, not a measured break-even. It counts the mutants a shard places, not those it
+# is assigned, and a plan of at most MAX_SHARDS * SHARD_SIZE mutants assigns at most SHARD_SIZE to a
+# shard, so the reach run fires for a full, fully placed shard and for the larger shards of a larger plan.
 REACH_MIN_MUTANTS = 6
 # The reach run is stopped at this many times the baseline's wall clock, or --timeout if that is less,
 # so a run that does not finish costs what `ShardCeilingTests` charges it.
@@ -3878,6 +3881,13 @@ def area_attempts(baseline_results, mutants, indices, project, text_readers):
             for area, names in narrowable(baseline_results, areas).items()}
 
 
+class SessionReadings(dict):
+    """index -> (verdict, detail) for the mutants a session measured, and whether that session ran the reach
+    run, since a mutant launched on its own beside it then takes no area baseline either."""
+
+    reached = False
+
+
 def measure_in_session(args, project, holder, output, mutants, pending, baseline_results, baseline,
                        baseline_wall, text_readers, whole_scope, campaign, scope):
     """Measures in one editor every mutant of `pending` the rewriter can place, and returns index ->
@@ -3890,7 +3900,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     request, declined = schemata_request(project, mutants, pending)
     answer = rewrite_schemata(args.unity, project, request, directory) if request["files"] else None
     if answer is None:
-        return {}
+        return SessionReadings()
     placed = [index for index in answer["placed"] if index in pending and index not in declined]
     declined.update({int(key): value for key, value in answer["declined"].items()})
     for index in sorted(declined):
@@ -3898,7 +3908,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     if answer["fatal"]:
         print("the rewriter stopped: {}".format("; ".join(answer["fatal"])))
     if not placed:
-        return {}
+        return SessionReadings()
 
     ceiling = min(args.timeout, baseline_wall)
     expected = {"whole": baseline["total"]}
@@ -3910,6 +3920,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                       "{} mutant(s) guarded for one session".format(len(placed)))
     started = time.time()
     selection, uncovered = {}, []
+    reaching = False
     plan, runs, lost, stopped = {"items": []}, {}, set(), None
     try:
         for path, text in rewritten.items():
@@ -3943,7 +3954,9 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     print("session: {} mutant(s) in {:.0f}s{}".format(len(placed), time.time() - started,
                                                       "; " + stopped if stopped else ""))
     if not runs and not uncovered:
-        return {}
+        readings = SessionReadings()
+        readings.reached = reaching
+        return readings
 
     opening = {stage["name"]: stage for stage in (read_item(directory, SESSION_OPENING) or {}).get("stages", [])}
     for name, stage in opening.items():
@@ -3951,7 +3964,8 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
         expected[name] = counts["total"] if counts else None
     found = confirmations(plan, directory)
     il_read = il_reading_assemblies(project, set(assembly_seconds(baseline_results)[1]))
-    measured = {}
+    measured = SessionReadings()
+    measured.reached = reaching
     for index in uncovered:
         mutant = mutants[index - 1]
         if assembly_of(mutant.path) in il_read:
@@ -4816,11 +4830,11 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
 
     # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
     # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
-    # built. Not
-    # taken under a scope the caller chose, which already asks a question of its own.
+    # built. Not taken under a scope the caller chose, which already asks a question of its own, nor
+    # beside a session that ran the reach run, whose charge holds no area's baseline.
     attempts = {}
     ceiling = min(args.timeout, baseline_wall)
-    if not scope and args.platform in NARROWED_PLATFORMS:
+    if not scope and args.platform in NARROWED_PLATFORMS and not getattr(in_session, "reached", False):
         areas = {area_of(mutants[index - 1].path, project) for index in own} - {None}
         for area, names in narrowable(baseline_results, areas).items():
             attempt = excluding(["-assemblyNames", ";".join(names)], text_readers) + args.editor_arg
