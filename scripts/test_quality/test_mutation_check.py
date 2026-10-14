@@ -8338,6 +8338,8 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages(), ["whole"])
 
+    # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite; replacing the passed-case
+    # filter in `select_by_reach` with the cases that ran the site reddens it.
     def test_Given_AReachRunWithAFailingCase_When_TheCampaignRuns_Then_ASiteOnlyThatCaseRanTakesTheWholeSuite(self):
         # Arrange
         self.campaign.failing_case = "N.C.A"
@@ -8454,6 +8456,8 @@ class SessionReachAreaTests(SessionRoutingBase):
         opening = self.campaign.plans[-1]["items"][0]
         self.assertEqual([stage["name"] for stage in opening["stages"]], [mutation_check.covered_name(0)])
 
+    # GREEN_ON_BASE(characterization): the base runs a narrowable area first and the whole suite after; cutting
+    # the `ceilings` test in `select_by_reach` reddens it.
     def test_Given_MoreCasesThanTheAreaHolds_When_TheSessionIsPlanned_Then_TheMutantTakesTheAreaThenTheWholeSuite(self):
         # Arrange — a survivor would otherwise pay for more cases than its area, as it did before reach.
         self.campaign.reach = {"N.C.A": {1}, "N.C.B": {1}}
@@ -8732,7 +8736,8 @@ class CoveredVerdictTests(unittest.TestCase):
 
     def test_Given_AKillInTheCoveredStage_When_Read_Then_ItNamesHowManyCasesRanTheSite(self):
         # Arrange
-        stages = [{"name": "covered:0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
+        covered = mutation_check.COVERED_STAGE
+        stages = [{"name": covered + ":0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
                    "armed": ["Velvet:7"]}]
 
         # Act
@@ -8742,6 +8747,8 @@ class CoveredVerdictTests(unittest.TestCase):
         self.assertEqual(reading, (mutation_check.KILLED, "1 failed among the 2 case(s) that ran the site: Kills",
                                    ["N.C.Kills"]))
 
+    # GREEN_ON_BASE(characterization): the base reads a stage it does not know as no verdict; cutting the
+    # opening-run test in `session_verdict` (`clean_stage(opening.get(...))`) for covered stages reddens it.
     def test_Given_AKillInACoveredStageWhoseSameCasesFailedUnmutated_When_Read_Then_ItIsNoVerdict(self):
         # Arrange — an order-dependent failure: the cases fail in that sequence whatever the mutation does.
         stages = [{"name": "covered:0", "finished": True, "cancelled": True, "failures": ["N.C.Kills"],
