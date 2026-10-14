@@ -7801,8 +7801,12 @@ class ShardCeilingTests(unittest.TestCase):
     # What a narrowed platform's session spends before its first mutant: the reach run, which is the
     # whole suite once under the unmutated program with the switches recording. Charged at twice the
     # 375 s the slowest EditMode baseline took -- an allowance, since no recording run has been timed --
-    # in place of each area's own baseline, which a session whose reach run stands no longer takes.
+    # in place of each area's own baseline, which a session that runs the reach run does not take.
     REACH_RUN = 2 * 375
+
+    # What a session below `REACH_MIN_MUTANTS` spends on each area's own baseline, charged once for each
+    # area; the slowest measured.
+    AREA_LAUNCH = 145
 
     # What the opening runs of the covered sets add: each of a shard's mutants gets one, of at most
     # 1/REACH_SHARE of the 375 s baseline in seconds, and none is shared in the worst case.
@@ -7812,22 +7816,30 @@ class ShardCeilingTests(unittest.TestCase):
     # baseline, of its baseline and after its last verdict, added together. A charge is built on the
     # slowest shard's seconds per mutant, which hold that shard's narrowed runs, so no narrowed launch
     # is added to it. The text of CONTRIBUTING.md does not say whether 493 holds the areas' own baselines;
-    # the charge this replaces added them on top of it, which is why they are kept out here. The figure was
-    # taken before a mutant's first launch was its covered cases, so it charges a mutant more than the cases
-    # it now runs, and is kept until one is measured. No session takes an area's own baseline, so none is
-    # charged in any arm: a mutant the covered cases do not narrow takes the whole suite at that figure.
-    # CONTRIBUTING.md ▸ Checking that the tests can fail has the measurements.
-    def fits(self, job, platform, mutant, setup, gated=True):
+    # the charge this replaces added them on top of it, which is why they are charged apart from it. The
+    # figure was taken before a mutant's first launch was its covered cases, so it charges a mutant more
+    # than the cases it now runs, and is kept until one is measured. Four arms, by `arm`: "reach" is a
+    # session whose reach run stands, charged for the reach run and each mutant's gate; "wide" the same
+    # with no mutant narrowed, so no gate; "failed" a reach run that never finishes, every mutant taking
+    # the whole suite; "small" a session below `REACH_MIN_MUTANTS`, which takes the areas' baselines and
+    # no reach run, for as many mutants as it can hold. CONTRIBUTING.md ▸ Checking that the tests can fail
+    # has the measurements.
+    def fits(self, job, platform, mutant, setup, arm="reach"):
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
                           re.MULTILINE)
         per = mutation_check.SHARD_CEILING.get(platform)
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
+        count = per
         reach = self.REACH_RUN if narrowed else 0
         gates = (self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * per
-                 if narrowed and gated and per is not None else 0)
+                 if narrowed and arm == "reach" and per is not None else 0)
+        if arm == "small":
+            areas = len({asmdef.parents[2] for asmdef in (REPO_ROOT / mutation_check.PACKAGE / "Runtime").glob(
+                "*/Tests/Editor/*.asmdef")})
+            reach, count = areas * self.AREA_LAUNCH, mutation_check.REACH_MIN_MUTANTS - 1
         return (per is not None and found is not None
-                and setup + reach + gates + per * mutant <= int(found.group(1)) * 60)
+                and setup + reach + gates + count * mutant <= int(found.group(1)) * 60)
 
     def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — that shard was cut short by the timeout, so the launches it had not finished are
@@ -7854,7 +7866,7 @@ class ShardCeilingTests(unittest.TestCase):
         opening = [item for item in plan["items"] if item["id"] == mutation_check.SESSION_OPENING]
 
         # Assert
-        self.assertEqual((opening, self.fits("mutation-shard", "EditMode", mutant, setup, gated=False)), ([], True))
+        self.assertEqual((opening, self.fits("mutation-shard", "EditMode", mutant, setup, arm="wide")), ([], True))
 
     # GREEN_ON_BASE(characterization): the base fits without any reach charge; raising `REACH_RUN` to
     # `2 * 2000` reddens it.
@@ -7865,7 +7877,17 @@ class ShardCeilingTests(unittest.TestCase):
         mutant, setup = 493, 201 + 375 + 12 + 900
 
         # Act
-        fits = self.fits("mutation-shard", "EditMode", mutant, setup, gated=False)
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="failed")
+
+        # Assert
+        self.assertTrue(fits)
+
+    def test_Given_AnEditModeShardBelowTheReachThreshold_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange — the path main takes: every area's baseline, then the mutants one short of the threshold.
+        mutant, setup = 493, 201 + 375 + 12 + 900
+
+        # Act
+        fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small")
 
         # Assert
         self.assertTrue(fits)
@@ -8047,6 +8069,8 @@ class SessionCampaign(StubbedCampaign):
 
 class SessionRoutingBase(unittest.TestCase):
     campaign_class = SessionCampaign
+    # What `REACH_MIN_MUTANTS` is held at: a campaign here places one mutant.
+    reach_from = None
 
     def setUp(self):
         self.campaign = self.campaign_class()
@@ -8058,6 +8082,9 @@ class SessionRoutingBase(unittest.TestCase):
         mutation_check.il_reading_assemblies = lambda _project, ran=None: (
             self.il_asked.append(ran), self.il_read)[1]
         self.addCleanup(self.restore, saved + (READ_IL,))
+        if self.reach_from is not None:
+            self.addCleanup(setattr, mutation_check, "REACH_MIN_MUTANTS", mutation_check.REACH_MIN_MUTANTS)
+            mutation_check.REACH_MIN_MUTANTS = self.reach_from
 
     @staticmethod
     def restore(saved):
@@ -8209,6 +8236,8 @@ class SessionReachTests(SessionRoutingBase):
     """What the reach run decides about a mutant's launch: against which cases it runs, whether it runs at
     all, and what a survivor of the narrowed run is owed."""
 
+    reach_from = 1
+
     def setUp(self):
         super().setUp()
         self.campaign.baseline_text = '<test-run total="40" passed="40" failed="0" inconclusive="0" />'
@@ -8233,6 +8262,16 @@ class SessionReachTests(SessionRoutingBase):
         self.assertEqual(self.stages(), ["whole"])
 
     # GREEN_ON_BASE(characterization): the base reads no site as uncovered; making `select_by_reach` call every unrun site uncovered whatever `unsure` says reddens it.
+    def test_Given_APassedCaseWithNoReadableDuration_When_TheCampaignRuns_Then_ItsMutantTakesTheWholeSuite(self):
+        # Arrange — a duration that cannot be read must not weigh as nothing.
+        self.campaign.slow_cases = {"N.C.A": "n/a"}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.stages(), ["whole"])
+
     def test_Given_AReachRunWithAnInconclusiveCase_When_TheCampaignRuns_Then_NoSiteIsReadAsUncovered(self):
         # Arrange — that case stopped where its Assume failed, so the sites after it are unrecorded, not unreached.
         self.campaign.reach = {"N.C.B": {99}}
@@ -8433,8 +8472,8 @@ class SessionReachTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages(), ["whole"])
 
-    def test_Given_AReachRunWithAFailingCase_When_TheCampaignRuns_Then_ASiteNoCaseRanIsStillUncovered(self):
-        # Arrange — one case that did not pass does not take the narrowing from the rest.
+    def test_Given_AReachRunWithAFailingCase_When_TheCampaignRuns_Then_NoSiteIsReadAsUncovered(self):
+        # Arrange — the failed case stopped where it failed, so the sites after that point are unrecorded.
         self.campaign.reach = {"N.C.B": {99}}
         self.campaign.failing_case = "N.C.A"
 
@@ -8442,7 +8481,7 @@ class SessionReachTests(SessionRoutingBase):
         self.campaign.run("--max", "1")
 
         # Assert
-        self.assertEqual(self.campaign.recorded(), mutation_check.UNCOVERED)
+        self.assertEqual(self.stages(), ["whole"])
 
     # GREEN_ON_BASE(characterization): the base gives every mutant the whole suite whatever a table holds;
     # cutting the recorded-something test in `measure_reach` reddens it.
@@ -8508,6 +8547,7 @@ class SessionReachAreaTests(SessionRoutingBase):
     opening holds the covered sets and nothing else."""
 
     campaign_class = StylingSessionCampaign
+    reach_from = 1
 
     def setUp(self):
         super().setUp()
@@ -8546,6 +8586,26 @@ class SessionReachAreaTests(SessionRoutingBase):
 
         # Assert
         self.assertEqual((self.plan_items(), self.stages()), ([1, -1], ["whole"]))
+
+    def test_Given_FewerMutantsThanTheThreshold_When_TheSessionIsPlanned_Then_NoReachRunIsMade(self):
+        # Arrange
+        mutation_check.REACH_MIN_MUTANTS = 2
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+    def test_Given_FewerMutantsThanTheThreshold_When_TheSessionIsPlanned_Then_TheAreaOpensItAndPrecedesTheWholeSuite(self):
+        # Arrange — main's path, kept for the shard too small for a reach run to pay.
+        mutation_check.REACH_MIN_MUTANTS = 2
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.plan_items(), self.stages()), ([0, 1, -1], ["narrowed:Styling", "whole"]))
 
     def test_Given_AReachRunThatDoesNotStand_When_TheSessionIsPlanned_Then_TheMutantTakesTheWholeSuiteAlone(self):
         # Arrange
@@ -8699,13 +8759,42 @@ class ReadCasesTests(unittest.TestCase):
         # Assert
         self.assertTrue(unsure)
 
-    def test_Given_OnlyPassedAndFailedCases_When_Read_Then_TheReadingIsSure(self):
+    def test_Given_AFailedCase_When_Read_Then_TheReadingIsUnsure(self):
         # Arrange / Act
         _, unsure = self.read('<test-case fullname="A" result="Passed" duration="1" />'
                               '<test-case fullname="B" result="Failed" duration="1" />')
 
         # Assert
+        self.assertTrue(unsure)
+
+    def test_Given_OnlyPassedCases_When_Read_Then_TheReadingIsSure(self):
+        # Arrange / Act
+        _, unsure = self.read('<test-case fullname="A" result="Passed" duration="1" />')
+
+        # Assert
         self.assertFalse(unsure)
+
+    def test_Given_APassedCaseWithNoDuration_When_Read_Then_ItIsInfinitelyLong(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": float("inf")})
+
+    def test_Given_APassedCaseWithAnUnreadableDuration_When_Read_Then_ItIsInfinitelyLong(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" duration="n/a" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": float("inf")})
+
+    def test_Given_ANameThatOccursTwice_When_Read_Then_ItsDurationsAreAdded(self):
+        # Arrange / Act
+        seconds, _ = self.read('<test-case fullname="A" result="Passed" duration="1" />'
+                               '<test-case fullname="A" result="Passed" duration="2" />')
+
+        # Assert
+        self.assertEqual(seconds, {"A": 3.0})
 
 
 class ReachMirrorTests(unittest.TestCase):

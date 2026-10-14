@@ -103,7 +103,7 @@ SHARD_SIZE = {"EditMode": 6, "PlayMode": 2}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest measured setup and, where the platform is narrowed,
-# an area's own launch for each area, fit that platform's shard job's timeout in mutation.yml, and that
+# the reach run, fit that platform's shard job's timeout in mutation.yml, and that
 # case holds each pair together. The charge is not a worst case, so a full shard can still outrun the
 # job, and the mutants it had not reached are then recorded by no shard.
 SHARD_CEILING = {"EditMode": 16, "PlayMode": 10}
@@ -127,8 +127,12 @@ NARROWED_PLATFORMS = ("EditMode",)
 # SHARD_CEILING / REACH_SHARE of the baseline's wall clock, which is why the share is small. It bounds
 # seconds, read off the reach run's cases, and not their number. A mutant whose cases would take more
 # than that takes the whole suite, as does every mutant of a session whose reach run does not stand:
-# the areas' own baselines are not taken in a session, so none is left to charge.
+# the areas' own baselines are not taken in a session that runs the reach run, so none is left to charge.
 REACH_SHARE = 10
+# A session of fewer placed mutants than this runs no reach run and takes the path it took before one
+# existed: the areas' own baselines in its opening, then each mutant's area, then the whole suite. The
+# figure is a decision, not a measured break-even.
+REACH_MIN_MUTANTS = 6
 # The reach run is stopped at this many times the baseline's wall clock, or --timeout if that is less,
 # so a run that does not finish costs what `ShardCeilingTests` charges it.
 REACH_BOUND = 2
@@ -3328,7 +3332,8 @@ SESSION_STAGE_SLACK = 120
 # A reload asked for and not finished within this ends the session: every stage asks for one, so the rest
 # would each wait out their bound.
 SESSION_RELOAD_BOUND = 180
-# The unmutated program the areas' own baselines run under.
+# The item that runs under the unmutated program before any mutant: the areas' own baselines, and the
+# covered sets' gates.
 SESSION_OPENING = 0
 SESSION_MUTANTS = 16
 # The stage that runs the whole suite once under the unmutated program with every switch recording the
@@ -3492,7 +3497,7 @@ def session_verdict(item, planned, index, assembly, expected, opening, confirmed
     does not stand as a reading -- the mutant then takes its own launch, whose reading does.
 
     `planned` is the plan's item for it; `expected` maps each of its stages to the cases a whole run of
-    that stage holds; `opening` is the areas' baselines under the unmutated program; `confirmed` says,
+    that stage holds; `opening` is the opening item's stages under the unmutated program; `confirmed` says,
     per killing case, whether it passed again under the unmutated program once the segment was done.
     """
     if not item:
@@ -3546,15 +3551,16 @@ def session_verdict(item, planned, index, assembly, expected, opening, confirmed
 
 def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceiling, timeout, directory,
                  selection=None):
-    """The plan a session runs: the areas' baselines under the unmutated program, then each placed
+    """The plan a session runs: the opening item's stages under the unmutated program -- the areas'
+    baselines for `attempts`, and the gate of each distinct set in `selection` -- then each placed
     mutant's stages, with a confirmation after every SESSION_MUTANTS of them.
 
-    A mutant runs the stages its own launches would: its area's assemblies first where the area is
-    narrowed, stopping at a kill there, then the whole suite. A mutant in `selection` runs the cases it
-    maps to in place of its area, after the same cases have run once unmutated in the opening, and then
-    the whole suite. An EditMode stage is cancelled at its first
-    failing case rather than run out, since the verdict is decided there, so `killers` is the cases that
-    failed before the stop; a PlayMode stage runs out.
+    A mutant runs the stages its own launches would: its area's assemblies first where the area is in
+    `attempts`, stopping at a kill there, then the whole suite. A mutant in `selection` runs the cases
+    it maps to in place of its area, after the same cases have run once unmutated in the opening, and
+    then the whole suite. An EditMode stage is cancelled at its first failing case rather than run out,
+    since the verdict is decided there, so `killers` is the cases that failed before the stop; a
+    PlayMode stage runs out.
     """
     selection = selection or {}
     stop = platform == "EditMode"
@@ -3714,7 +3720,7 @@ def run_session(args, project, plan, directory, holder):
             # The item it died in takes its own launch; the next launch starts past it.
             lost.add(reached)
             if items[reached]["id"] == SESSION_OPENING:
-                return runs, lost, "the session died in the areas' own baselines; read {}".format(log)
+                return runs, lost, "the session died in its opening item; read {}".format(log)
             position = reached + 1
     return runs, lost, None
 
@@ -3781,18 +3787,23 @@ def read_reached(path):
 
 
 def read_cases(results):
-    """(passing case -> the seconds it took, whether any case ended neither passed nor failed).
+    """(passing case -> the seconds it took, whether any case did not pass).
 
-    A case that ended inconclusive or skipped stopped short, so the sites it would have run after the
-    point it stopped are unrecorded; `select_by_reach` reads that as not knowing, not as not reached.
+    A case that failed, ended inconclusive or was skipped stopped short, so the sites it would have
+    run after the point it stopped are unrecorded; `select_by_reach` reads that as not knowing, not
+    as not reached. A passing case with no readable duration is infinitely long, so no covered set
+    holding it is chosen, and a name that occurs twice has its durations added.
     """
     seconds, unsure = {}, False
     for case in ET.parse(str(results)).getroot().iter("test-case"):
-        result = case.get("result")
-        if result == "Passed":
-            seconds[case.get("fullname")] = float(case.get("duration") or 0)
-        elif result != "Failed":
+        if case.get("result") != "Passed":
             unsure = True
+            continue
+        try:
+            took = float(case.get("duration"))
+        except (TypeError, ValueError):
+            took = float("inf")
+        seconds[case.get("fullname")] = seconds.get(case.get("fullname"), 0.0) + took
     return seconds, unsure
 
 
@@ -3859,6 +3870,14 @@ def measure_reach(args, project, directory, whole_scope, total, holder, bound):
     return None
 
 
+def area_attempts(baseline_results, mutants, indices, project, text_readers):
+    """Area -> the scope its mutants run against first, for each area `narrowable` takes among those of
+    `indices`."""
+    areas = {area_of(mutants[index - 1].path, project) for index in indices} - {None}
+    return {area: excluding(["-assemblyNames", ";".join(names)], text_readers)
+            for area, names in narrowable(baseline_results, areas).items()}
+
+
 def measure_in_session(args, project, holder, output, mutants, pending, baseline_results, baseline,
                        baseline_wall, text_readers, whole_scope, campaign, scope):
     """Measures in one editor every mutant of `pending` the rewriter can place, and returns index ->
@@ -3897,8 +3916,12 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
             path.write_text(text)
         # The reach run comes first and its plan second: which mutants are measured, and against what, is
         # read off it.
+        reaching = args.platform in NARROWED_PLATFORMS and len(placed) >= REACH_MIN_MUTANTS
         standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder,
-                                 REACH_BOUND * baseline_wall) if args.platform in NARROWED_PLATFORMS else None
+                                 REACH_BOUND * baseline_wall) if reaching else None
+        attempts = {}
+        if not reaching and not scope and args.platform in NARROWED_PLATFORMS:
+            attempts = area_attempts(baseline_results, mutants, placed, project, text_readers)
         if standing is not None:
             reached, setup, seconds, unsure = standing
             selection, uncovered = select_by_reach(placed, reached, setup, seconds,
@@ -3907,7 +3930,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                   "the whole suite".format(len(selection), len(placed), len(uncovered),
                                            len(placed) - len(selection) - len(uncovered)))
         launched = [index for index in placed if index not in uncovered]
-        plan, segments = session_plan(project, mutants, launched, {}, whole_scope, args.platform, ceiling,
+        plan, segments = session_plan(project, mutants, launched, attempts, whole_scope, args.platform, ceiling,
                                       args.timeout, directory, selection)
         plan["segments"] = segments
         plan["watch"] = library_files(project)
