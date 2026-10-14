@@ -7874,8 +7874,9 @@ class ShardCeilingTests(unittest.TestCase):
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small")
 
-        # Assert
-        self.assertTrue(fits)
+        # Assert — and the threshold sits inside what a shard can hold, or the arm would never be taken.
+        self.assertEqual((fits, mutation_check.REACH_MIN_MUTANTS <= mutation_check.SHARD_CEILING["EditMode"]),
+                         (True, True))
 
     def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the 100 s are what its five bounded cases spend where a mutant stops the frame
