@@ -257,7 +257,7 @@ namespace Velvet
             var winner = matches[0];
             foreach (var match in matches)
             {
-                // MUTANT_SURVIVES(equivalent, boundary): a class holds one position of its own among the declared ones, so a tie is two spellings of one class (a repeat, or its variants in another order), and writing either inline sets the same value.
+                // MUTANT_SURVIVES(equivalent, boundary): a class holds one position of its own among the declared ones, so a tie is a repeated class or its two importance spellings, and writing either inline sets the same value.
                 if (CascadePositionOf(match.Class) > CascadePositionOf(winner.Class))
                 {
                     winner = match;
