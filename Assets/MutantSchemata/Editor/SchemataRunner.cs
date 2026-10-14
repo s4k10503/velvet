@@ -54,6 +54,9 @@ namespace Velvet.MutantSchemata.Editor
             // Files the package's sources name directly under Library, where git reports nothing; read with
             // what git does report after every stage.
             public string[] watch = Array.Empty<string>();
+            // Reads which guarded sites each case ran, from the tables the switches fill when the harness has
+            // turned them on.
+            public bool reach;
         }
 
         [Serializable]
@@ -96,6 +99,16 @@ namespace Velvet.MutantSchemata.Editor
             public double seconds;
             public double reloadSeconds;
             public string[] armed = Array.Empty<string>();
+            // Cases the stage finished before it ended or was cancelled.
+            public int ran;
+        }
+
+        // One line of the reach file: a case and the ids of the sites it ran since the previous case ended.
+        [Serializable]
+        private sealed class Reach
+        {
+            public string name = "";
+            public int[] ids = Array.Empty<int>();
         }
 
         [Serializable]
@@ -115,8 +128,13 @@ namespace Velvet.MutantSchemata.Editor
             public double since;
         }
 
+        private const string SetupCase = "<setup>";
+
         private static Plan plan = null!;
         private static Callbacks? callbacks;
+        private static List<FieldInfo>? reachTables;
+        private static bool setupTaken;
+        private static int finishedCases;
 
         static SchemataRunner()
         {
@@ -230,6 +248,8 @@ namespace Velvet.MutantSchemata.Editor
                 return;
             }
             WriteResult(result);
+            setupTaken = false;
+            finishedCases = 0;
             state.phase = "running";
             state.requested = 0;
             state.started = Now;
@@ -295,6 +315,51 @@ namespace Velvet.MutantSchemata.Editor
                 }
             }
             return found.ToArray();
+        }
+
+        // The sites run since the last call, cleared as they are read. What ran before the first case starts --
+        // the domain's static initializers among it -- is read under SetupCase, since no case owns it.
+        private static List<int> TakeReached()
+        {
+            reachTables ??= ReachTables();
+            var ids = new List<int>();
+            foreach (var table in reachTables)
+            {
+                if (table.GetValue(null) is not bool[] reached) continue;
+                for (var id = 0; id < reached.Length; id++)
+                {
+                    if (!reached[id]) continue;
+                    ids.Add(id);
+                    reached[id] = false;
+                }
+            }
+            return ids;
+        }
+
+        private static List<FieldInfo> ReachTables()
+        {
+            var found = new List<FieldInfo>();
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type[] types;
+                try { types = assembly.GetTypes(); }
+                catch (ReflectionTypeLoadException failure) { types = failure.Types.Where(t => t != null).ToArray(); }
+                foreach (var type in types.Where(t => t.Name.StartsWith("__VelvetMutantSwitch_", StringComparison.Ordinal)))
+                {
+                    var field = type.GetField("Reached", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                    if (field != null) found.Add(field);
+                }
+            }
+            return found;
+        }
+
+        // Appended as each case ends, so a reload inside a run loses only the case in flight.
+        private static void RecordReached(string name)
+        {
+            var ids = TakeReached();
+            if (ids.Count == 0) return;
+            File.AppendAllText(Path.Combine(plan.output, "reach.jsonl"),
+                               JsonUtility.ToJson(new Reach { name = name, ids = ids.ToArray() }) + "\n");
         }
 
         private static string Name(int id) => id.ToString("000");
@@ -391,6 +456,7 @@ namespace Velvet.MutantSchemata.Editor
                 recorded.skipped = run.SkipCount;
             }
             recorded.finished = true;
+            recorded.ran = finishedCases;
             recorded.seconds = Now - state.started;
             WriteResult(result);
             state.phase = "draining";
@@ -515,11 +581,19 @@ namespace Velvet.MutantSchemata.Editor
 
             public void RunFinished(ITestResultAdaptor result) => Finished(result);
 
-            public void TestStarted(ITestAdaptor test) { }
+            public void TestStarted(ITestAdaptor test)
+            {
+                if (!plan.reach || test.HasChildren || setupTaken) return;
+                setupTaken = true;
+                RecordReached(SetupCase);
+            }
 
             public void TestFinished(ITestResultAdaptor result)
             {
-                if (!result.HasChildren && result.TestStatus == TestStatus.Failed) Failed(result.FullName);
+                if (result.HasChildren) return;
+                finishedCases++;
+                if (plan.reach) RecordReached(result.FullName);
+                if (result.TestStatus == TestStatus.Failed) Failed(result.FullName);
             }
         }
     }
