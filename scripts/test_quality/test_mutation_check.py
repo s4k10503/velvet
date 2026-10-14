@@ -8469,9 +8469,6 @@ class SessionReachAreaTests(SessionRoutingBase):
         # Assert
         self.assertEqual(self.stages(), ["narrowed:Styling", "whole"])
 
-    # GREEN_ON_BASE(characterization): the base opens an area baseline for a narrowable area, which a plan
-    # with no standing reach run no longer does; cutting the `counts["total"] != total` test in
-    # `measure_reach` reddens it.
     def test_Given_AReachRunThatDoesNotStand_When_TheSessionIsPlanned_Then_TheMutantTakesTheWholeSuiteAlone(self):
         # Arrange
         self.campaign.missing_case = True
