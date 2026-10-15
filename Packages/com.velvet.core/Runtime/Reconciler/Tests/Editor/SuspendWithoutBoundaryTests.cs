@@ -279,8 +279,8 @@ namespace Velvet.Tests
                 "React mounts nothing of a tree a Suspense shows its fallback for, and mounts it on reveal");
         }
 
-        // GREEN_ON_BASE(characterization): the base runs a hidden fiber's insertion effects only at the reveal.
-        // What this pins is that running them for a hidden update does not also run them for a first mount.
+        // GREEN_ON_BASE(characterization): the base runs the insertion effect of a first mount only at the reveal.
+        // What this pins is that the hold added for later renders leaves that alone.
         [Test]
         public void Given_AComponentFirstMountedBesideAReaderThatSuspends_When_TheBoundaryShowsItsFallbackAndThenReveals_Then_ItsInsertionEffectRunsOnlyOnReveal()
         {
@@ -296,7 +296,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((whileHidden, s_mountInsertionSetups), Is.EqualTo((0, 1)),
-                "React mounts nothing of a tree a Suspense shows its fallback for, so its insertion effect runs on reveal");
+                "A tree a Suspense shows its fallback for commits nothing until the reveal, which runs its insertion effect once");
         }
 
         [Test]

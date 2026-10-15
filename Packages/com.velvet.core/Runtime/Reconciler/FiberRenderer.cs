@@ -492,6 +492,7 @@ namespace Velvet
                 // synchronously in the layout-effect commit right after this returns, so the list is empty again
                 // before the next RenderAndReconcile.
                 fiber.PendingLayoutEffects?.Clear();
+                if (fiber.LayoutEffectsHidden) FiberEffects.HoldInsertionEffects(fiber);
                 fiber.PendingInsertionEffects?.Clear();
                 // Cleared here rather than where it is read, so a fallback swapped over this fiber's tree
                 // before this render began is not read as this one's.

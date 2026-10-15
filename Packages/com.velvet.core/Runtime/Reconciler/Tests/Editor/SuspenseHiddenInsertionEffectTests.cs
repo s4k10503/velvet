@@ -6,8 +6,10 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins which effects of a component a <c>V.Suspense</c> keeps hidden still run when its host renders it
-    /// again, as React does: the insertion effects run, while the layout effects wait for the reveal.
+    /// Pins what happens to the effects of a component a <c>V.Suspense</c> keeps hidden when its host renders it
+    /// while the fallback shows. None of its insertion, layout or passive effects runs meanwhile, and the commit
+    /// that reveals it runs every effect whose deps changed since the fiber's last committed render, once: the
+    /// effects of a tree that never showed included, and those of a render that left the deps unchanged.
     /// </summary>
     [TestFixture]
     internal sealed class SuspenseHiddenInsertionEffectTests
@@ -23,102 +25,135 @@ namespace Velvet.Tests
             s_setTick = default;
             s_setMounted = default;
             s_setExtra = default;
-            s_lateInsertionSetups = 0;
-            s_probeDepsFollowTick = true;
             s_source = null;
             s_insertionSetups = 0;
             s_layoutSetups = 0;
             s_layoutCleanups = 0;
+            s_passiveSetups = 0;
+            s_lateInsertionSetups = 0;
+            s_depsOf = static tick => tick;
         }
 
         [Test]
-        public void Given_AHiddenPrimary_When_ItsHostRendersItWithChangedDeps_Then_ItsInsertionEffectRuns()
+        public void Given_AShownProbeHiddenAndRenderedTwice_When_TheBoundaryReveals_Then_ItsInsertionEffectRunsOnlyThen()
         {
-            // Arrange
+            // Arrange — the second render leaves the deps as the first promoted them
+            s_depsOf = static tick => tick > 0 ? 1 : 0;
             using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
             SetBlocked(mounted);
-
-            // Act
-            SetTick(mounted);
-
-            // Assert
-            Assert.That(s_insertionSetups, Is.EqualTo(2),
-                "React runs the insertion effects of a tree a Suspense hides, as its mutation phase does not skip it");
-        }
-
-        // GREEN_ON_BASE(characterization): the base drops a hidden fiber's whole commit, so it runs no layout work.
-        // What this pins is that the fix runs the insertion effects without running the layout ones beside them.
-        [Test]
-        public void Given_AHiddenPrimary_When_ItsHostRendersItWithChangedDeps_Then_ItsLayoutEffectStaysDown()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
-            SetBlocked(mounted);
-
-            // Act
-            SetTick(mounted);
-
-            // Assert
-            Assert.That($"{s_layoutSetups}/{s_layoutCleanups}", Is.EqualTo("1/1"),
-                "React disconnects the layout effects of a tree a Suspense hides: one setup at mount, one cleanup at the hide");
-        }
-
-        // GREEN_ON_BASE(characterization): the base runs a hidden fiber's insertion effects only at the reveal.
-        // What this pins is that running them for a hidden update does not run them for a tree never shown.
-        [Test]
-        public void Given_APrimaryFirstMountedUnderTheFallback_When_ItsHostRendersItAgainWithChangedDepsBeforeTheReveal_Then_ItsInsertionEffectRunsOnlyOnReveal()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(NeverShownHostRender, key: "never-shown-host"));
-            s_setMounted.Invoke(true);
-            mounted.FlushStateForTest();
-            SetTick(mounted);
+            SetTick(mounted, 1);
+            SetTick(mounted, 2);
             var whileHidden = s_insertionSetups;
 
             // Act
-            s_source.TrySetResult(5);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Reveal(mounted);
 
             // Assert
-            Assert.That((whileHidden, s_insertionSetups), Is.EqualTo((0, 1)),
-                "React commits nothing of a tree that never showed, so its insertion effect runs once, on reveal");
+            Assert.That((whileHidden, s_insertionSetups), Is.EqualTo((1, 2)),
+                "A Suspense showing its fallback commits nothing of its hidden children, and the reveal commits the change");
         }
 
+        // GREEN_ON_BASE(characterization): the base holds the passive effects of a hidden fiber and queues them at
+        // the reveal. What this pins is that the hold added for insertion effects leaves them alone.
         [Test]
-        public void Given_APrimaryFirstMountedUnderTheFallback_When_ItsHostRendersItAgainWithUnchangedDepsBeforeTheReveal_Then_ItsInsertionEffectRunsOnReveal()
+        public void Given_AShownProbeHiddenAndRenderedTwice_When_TheBoundaryReveals_Then_ItsPassiveEffectRunsOnlyThen()
         {
             // Arrange
-            s_probeDepsFollowTick = false;
-            using var mounted = V.Mount(_root, V.Component(NeverShownHostRender, key: "never-shown-host"));
-            s_setMounted.Invoke(true);
-            mounted.FlushStateForTest();
-            SetTick(mounted);
-            var whileHidden = s_insertionSetups;
+            s_depsOf = static tick => tick > 0 ? 1 : 0;
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            mounted.FlushEffectsForTest();
+            SetBlocked(mounted);
+            SetTick(mounted, 1);
+            SetTick(mounted, 2);
+            mounted.FlushEffectsForTest();
+            var whileHidden = s_passiveSetups;
 
             // Act
-            s_source.TrySetResult(5);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Reveal(mounted);
+            mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That((whileHidden, s_insertionSetups), Is.EqualTo((0, 1)),
-                "React commits nothing of a tree that never showed, so its insertion effect runs once, on reveal");
+            Assert.That((whileHidden, s_passiveSetups), Is.EqualTo((1, 2)),
+                "A Suspense showing its fallback commits nothing of its hidden children, and the reveal commits the change");
         }
 
+        // GREEN_ON_BASE(characterization): the base cleans the layout effects up at the hide and queues them all at
+        // the reveal. What this pins is that the hold added for insertion effects leaves them alone.
         [Test]
-        public void Given_AHiddenPrimaryTheBoundaryHadShown_When_ItsHostMountsAChildInIt_Then_TheChildsInsertionEffectRuns()
+        public void Given_AShownProbeHiddenAndRendered_When_TheBoundaryReveals_Then_ItsLayoutEffectRunsOnlyThen()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
             SetBlocked(mounted);
+            SetTick(mounted, 1);
+            var whileHidden = $"{s_layoutSetups}/{s_layoutCleanups}";
 
             // Act
+            Reveal(mounted);
+
+            // Assert
+            Assert.That((whileHidden, $"{s_layoutSetups}/{s_layoutCleanups}"), Is.EqualTo(("1/1", "2/1")),
+                "The hide cleans the layout effect up and nothing sets it up again before the reveal");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves the effect pending when no render follows the mount.
+        // What this pins is that the hold does not run it early or twice.
+        [Test]
+        public void Given_AChildMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_ItsInsertionEffectRunsOnlyThen()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            SetBlocked(mounted);
             s_setExtra.Invoke(true);
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var whileHidden = s_lateInsertionSetups;
+
+            // Act
+            Reveal(mounted);
 
             // Assert
-            Assert.That(s_lateInsertionSetups, Is.EqualTo(1),
-                "React commits a child mounted in a primary tree the boundary had shown, hidden as it is");
+            Assert.That((whileHidden, s_lateInsertionSetups), Is.EqualTo((0, 1)),
+                "A child mounted into a primary the Suspense hides is committed with the reveal");
+        }
+
+        // GREEN_ON_BASE(characterization): the render with changed deps queues the effect again on the base.
+        // What this pins is that the hold does not queue it twice.
+        [Test]
+        public void Given_APrimaryFirstMountedUnderTheFallback_When_ItsHostRendersItAgainWithChangedDeps_Then_ItsInsertionEffectRunsOnlyOnReveal()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(NeverShownHostRender, key: "never-shown-host"));
+            s_setMounted.Invoke(true);
+            mounted.FlushStateForTest();
+            SetTick(mounted, 1);
+            var whileHidden = s_insertionSetups;
+
+            // Act
+            Reveal(mounted);
+
+            // Assert
+            Assert.That((whileHidden, s_insertionSetups), Is.EqualTo((0, 1)),
+                "A tree that never showed commits nothing until the reveal, which runs its effect once");
+        }
+
+        [Test]
+        public void Given_APrimaryFirstMountedUnderTheFallback_When_ItsHostRendersItAgainWithUnchangedDeps_Then_ItsInsertionEffectRunsOnReveal()
+        {
+            // Arrange
+            s_depsOf = static _ => 0;
+            using var mounted = V.Mount(_root, V.Component(NeverShownHostRender, key: "never-shown-host"));
+            s_setMounted.Invoke(true);
+            mounted.FlushStateForTest();
+            SetTick(mounted, 1);
+            var whileHidden = s_insertionSetups;
+
+            // Act
+            Reveal(mounted);
+
+            // Assert
+            Assert.That((whileHidden, s_insertionSetups), Is.EqualTo((0, 1)),
+                "A tree that never showed commits nothing until the reveal, which runs its effect once");
         }
 
         private static void SetBlocked(MountedTree mounted)
@@ -128,10 +163,16 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
-        private static void SetTick(MountedTree mounted)
+        private static void SetTick(MountedTree mounted, int tick)
         {
-            s_setTick.Invoke(1);
+            s_setTick.Invoke(tick);
             mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+        }
+
+        private static void Reveal(MountedTree mounted)
+        {
+            s_source.TrySetResult(5);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
@@ -139,12 +180,13 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setTick;
         private static StateUpdater<bool> s_setMounted;
         private static StateUpdater<bool> s_setExtra;
-        private static int s_lateInsertionSetups;
-        private static bool s_probeDepsFollowTick;
         private static VelvetTaskCompletionSource<int> s_source;
+        private static Func<int, int> s_depsOf;
         private static int s_insertionSetups;
         private static int s_layoutSetups;
         private static int s_layoutCleanups;
+        private static int s_passiveSetups;
+        private static int s_lateInsertionSetups;
 
         [Component]
         private static VNode HostRender()
@@ -183,16 +225,19 @@ namespace Velvet.Tests
                         ? new VNode[]
                         {
                             V.Component(ProbeRender, tick, key: "probe"),
-                            V.Component(PendingReaderRender, key: "reader"),
+                            V.Component(ReaderRender, true, key: "reader"),
                         }
                         : Array.Empty<VNode>()),
             });
         }
 
+        // Pending for good until s_source resolves, once blocked.
         [Component]
-        private static VNode PendingReaderRender()
+        private static VNode ReaderRender(bool blocked)
         {
-            var value = Hooks.Use<int>(_ => (s_source = new VelvetTaskCompletionSource<int>()).Task, "pending-reader");
+            var value = Hooks.Use<int>(_ => blocked
+                ? (s_source = new VelvetTaskCompletionSource<int>()).Task
+                : VelvetTask.FromResult(0), blocked);
             return V.Label(text: "reader:" + value);
         }
 
@@ -207,16 +252,6 @@ namespace Velvet.Tests
             return V.Label(text: "late");
         }
 
-        // Pending for good once blocked.
-        [Component]
-        private static VNode ReaderRender(bool blocked)
-        {
-            var value = Hooks.Use<int>(_ => blocked
-                ? new VelvetTaskCompletionSource<int>().Task
-                : VelvetTask.FromResult(0), blocked);
-            return V.Label(text: "reader:" + value);
-        }
-
         [Component]
         private static VNode ProbeRender(int tick)
         {
@@ -224,12 +259,17 @@ namespace Velvet.Tests
             {
                 s_insertionSetups++;
                 return (Action)null;
-            }, new object[] { s_probeDepsFollowTick ? tick : 0 });
+            }, new object[] { s_depsOf(tick) });
             Hooks.UseLayoutEffect(() =>
             {
                 s_layoutSetups++;
                 return (Action)(() => s_layoutCleanups++);
             }, new object[] { tick });
+            Hooks.UseEffect(() =>
+            {
+                s_passiveSetups++;
+                return (Action)null;
+            }, new object[] { s_depsOf(tick) });
             return V.Label(text: "probe:" + tick);
         }
     }
