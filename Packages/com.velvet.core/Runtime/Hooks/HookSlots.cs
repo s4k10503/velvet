@@ -399,9 +399,12 @@ namespace Velvet
         public bool RunsHooksPastGate { get; set; }
     }
 
-    internal abstract class HookMutationSlot : IDisposable
+    internal abstract class HookMutationSlot
     {
-        public abstract void Dispose();
+        // Set when the mount that created this slot unmounts. A remount of the same fiber builds new
+        // slots, so a call still in flight from the earlier mount matches none of them, which the fiber's
+        // IsDisposed cannot say once the remount has cleared it.
+        public bool Retired { get; set; }
     }
 
     // TContext is Unit for the options records that carry no context. The callbacks are read through the
@@ -410,13 +413,10 @@ namespace Velvet
     internal abstract class HookMutationSlot<TVariables, TData, TContext> : HookMutationSlot
     {
         public MutationResult<TVariables, TData> Result { get; } = new();
-        // Every call in flight, not just the newest: two Mutate calls run side by side, so unmounting has
-        // more than one token to cancel. Who may write the observed Status / Data is Generation's to say
-        // instead: a call writes only while it still holds the current value, and Reset advances that too,
-        // so every call then in flight has lost it. The hook options' callbacks are every call's own either
-        // way; a call's per-call callbacks are delivered only while it holds the current value.
-        public List<CancellationTokenSource> Live { get; } = new();
-
+        // Who may write the observed Status / Data is Generation's to say: a call writes only while it
+        // still holds the current value, and Reset advances that too, so every call then in flight has lost
+        // it. The hook options' callbacks are every call's own either way; a call's per-call callbacks are
+        // delivered only while it holds the current value.
         public long Generation { get; set; }
 
         public abstract VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token);
@@ -426,31 +426,6 @@ namespace Velvet
         public abstract void InvokeOnSuccess(TData data, TVariables variables, TContext context);
         public abstract void InvokeOnError(Exception error, TVariables variables, TContext context);
         public abstract void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context);
-
-        public override void Dispose()
-        {
-            // Snapshot and clear before cancelling: a registration-based cancellation runs its
-            // continuations inside Cancel(), so a mutation's own finally reaches back into Live while
-            // this walks it. Clearing first is also what makes that finally's Remove return false, which
-            // is how it knows not to dispose a source this loop still has to cancel.
-            var live = Live.ToArray();
-            Live.Clear();
-            foreach (var callSource in live)
-            {
-                // Contained on RouteLoaderRunner.Retire's terms: this source is the slot's own and
-                // its token goes to the mutation function, so a callback firing here can be the
-                // application's.
-                try
-                {
-                    callSource.Cancel();
-                }
-                catch (Exception cancellationFailure)
-                {
-                    FiberLogger.LogException(nameof(HookMutationSlot<TVariables, TData, TContext>), cancellationFailure);
-                }
-                callSource.Dispose();
-            }
-        }
     }
 
     internal sealed class HookMutationSlot<TVariables, TData> : HookMutationSlot<TVariables, TData, Unit>

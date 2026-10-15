@@ -36,6 +36,7 @@ namespace Velvet.Tests
     internal sealed class UseMutationLifecycleTests
     {
         private const string None = "none";
+        private static int s_renderCount;
 
         private VisualElement _root = null!;
 
@@ -54,6 +55,7 @@ namespace Velvet.Tests
             s_settledThrowsOnSuccess = null;
             s_settledThrowsOnFailure = null;
             s_callSuccessThrows = null;
+            s_renderCount = 0;
         }
 
         [UnityTest]
@@ -328,60 +330,115 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_AContextMutationHonouringItsToken_When_TheComponentUnmounts_Then_OnErrorAndOnSettledRunWithTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AContextMutationHonouringItsToken_When_TheComponentUnmountsAndItThenSucceeds_Then_OnSuccessAndOnSettledRun() => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — the unmount cancels the call's token, and the mutation function honours it, so the
-            // call ends in the cancellation rather than in a result.
+            // Arrange — the function honours the token it is handed, so a call the unmount cancelled would end
+            // in the cancellation instead of its result.
             var gate = new VelvetTaskCompletionSource<int>();
             s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
-            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-cancel"));
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-honours-token"));
             var inFlight = s_captured!.MutateAsync(7);
 
             // Act
             mounted.Dispose();
-            try { await inFlight; } catch (OperationCanceledException) { }
+            gate.TrySetResult(42);
+            await inFlight;
 
             // Assert
-            Assert.That(Read(e => e.Kind is "error" or "settled", e => $"{e.Kind} {e.Cancelled} {e.Context}"),
-                Is.EqualTo("error True ctx7,settled True ctx7"),
-                "A call the unmount cancelled hands OnError and OnSettled the cancellation and its context, so a " +
-                "write OnMutate made can be rolled back");
+            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
+                "An unmount cancels nothing, so a call whose function honours its token still ends in its result");
         });
 
         [UnityTest]
-        public IEnumerator Given_AMutationHonouringItsToken_When_TheComponentUnmounts_Then_MutateAsyncRejectsWithTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AMutationHonouringItsToken_When_TheComponentUnmounts_Then_MutateAsyncResolvesWithTheResult() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var gate = new VelvetTaskCompletionSource<int>();
             s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
-            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-rejects"));
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-resolves"));
             var inFlight = s_captured!.MutateAsync(7);
-            Exception? rejection = null;
 
             // Act
             mounted.Dispose();
-            try { await inFlight; } catch (Exception caught) { rejection = caught; }
+            gate.TrySetResult(42);
+            var resolved = await inFlight;
 
             // Assert
-            Assert.That(rejection, Is.InstanceOf<OperationCanceledException>(),
-                "A call the unmount cancelled rejects its MutateAsync, as a failure does, rather than resolving default data");
+            Assert.That(resolved, Is.EqualTo(42),
+                "A call in flight at the unmount resolves its MutateAsync with the function's own result");
         });
 
         [UnityTest]
-        public IEnumerator Given_AnUnmountedComponent_When_MutateAsyncIsCalled_Then_ItRejectsWithTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AnUnmountedComponent_When_MutateAsyncIsCalled_Then_ItRunsAndResolvesWithTheResult() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "late-call-rejects"));
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "late-call-runs"));
             var handle = s_captured!;
             mounted.Dispose();
-            Exception? rejection = null;
 
             // Act
-            try { await handle.MutateAsync(7); } catch (Exception caught) { rejection = caught; }
+            var resolved = await handle.MutateAsync(7);
+
+            // Assert — the default function doubles its variable
+            Assert.That(resolved, Is.EqualTo(14),
+                "A call made after the unmount runs, as TanStack's mutate does once the observer is gone");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnUnmountedComponent_When_MutateAsyncIsCalled_Then_TheHandleIsNotWritten() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "late-call-no-write"));
+            var handle = s_captured!;
+            mounted.Dispose();
+
+            // Act
+            await handle.MutateAsync(7);
+
+            // Assert — a handle written for a fiber that is gone would read Pending or Success here
+            Assert.That(handle.Status, Is.EqualTo(MutationStatus.Idle),
+                "A call made after the unmount runs without writing the handle");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallWithACancellationTokenOnItsOptions_When_TheMutationFunctionRuns_Then_ItReceivesThatToken() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var source = new CancellationTokenSource();
+            CancellationToken received = default;
+            s_mutationFn = (v, ct) =>
+            {
+                received = ct;
+                return VelvetTask.FromResult(v);
+            };
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "caller-token"));
+
+            // Act
+            await s_captured!.MutateAsync(1, new MutateOptions<int, int> { CancellationToken = source.Token });
 
             // Assert
-            Assert.That(rejection, Is.InstanceOf<OperationCanceledException>(),
-                "A call made after the unmount never runs, and its MutateAsync says so rather than resolving default data");
+            Assert.That(received, Is.EqualTo(source.Token),
+                "The token a caller puts on the call's options is the one the function receives");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallWhoseCallerCancelsItsToken_When_TheFunctionHonoursIt_Then_TheHandleShowsTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var source = new CancellationTokenSource();
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "caller-cancels"));
+            var inFlight = s_captured!.MutateAsync(1, new MutateOptions<int, int> { CancellationToken = source.Token });
+
+            // Act
+            source.Cancel();
+            try { await inFlight; } catch (OperationCanceledException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_captured.Error, Is.InstanceOf<OperationCanceledException>(),
+                "A call its caller cancelled is a failure like any other: the handle shows the cancellation");
         });
 
         [UnityTest]
@@ -529,6 +586,139 @@ namespace Velvet.Tests
                 "A call whose component unmounted delivers the options' callbacks and drops its per-call ones, " +
                 "as TanStack skips them once the observer has no listener");
         });
+
+        [UnityTest]
+        public IEnumerator Given_ACallWithPerCallCallbacksHonouringItsToken_When_TheComponentUnmountsBeforeItSettles_Then_OnlyTheOptionsCallbacksRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the function honours its token, so a call the unmount cancelled would end in an error
+            // and run the options' error callbacks, not the success ones read here.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-unmount-honours"));
+            var inFlight = s_captured!.MutateAsync(1, CallOptions());
+
+            // Act
+            mounted.Dispose();
+            gate.TrySetResult(10);
+            await inFlight;
+
+            // Assert
+            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
+                "The options' callbacks run with the call's real outcome and its per-call ones are dropped");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallInFlightFromAnEarlierMount_When_TheSameFiberIsMountedAgainAndTheCallSettles_Then_ItsPerCallCallbacksDoNotRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — Unmount then Mount reuses one fiber and clears its IsDisposed, so the call from the
+            // first mount settles against a fiber that reads as live.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            var fiber = FiberRenderer.CreateRoot(ContextMutationRender);
+            try
+            {
+                FiberRenderer.Mount(fiber, _root);
+                var inFlight = s_captured!.MutateAsync(1, CallOptions());
+                FiberRenderer.Unmount(fiber);
+                FiberRenderer.Mount(fiber, _root);
+
+                // Act
+                gate.TrySetResult(10);
+                await inFlight;
+
+                // Assert — the options' callbacks are the earlier call's own and still run; the per-call ones
+                // belong to the mount it was made in.
+                Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
+                    "A call outliving its mount delivers the options' callbacks and drops its per-call ones");
+            }
+            finally
+            {
+                FiberRenderer.Dispose(fiber);
+            }
+        });
+
+        // GREEN_ON_BASE(characterization): the base clears its mutation slots on unmount too, so a remount's first call
+        // works there; the cut that leaves the retired slot in the list is what reddens this case.
+        [UnityTest]
+        public IEnumerator Given_AFiberUnmounted_When_MountedAgainAndTheNewHandleMutates_Then_TheHandleShowsTheNewCallsOutcome() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — Unmount then Mount reuses one fiber, so the slot list the unmount leaves behind is what
+            // the remount's first render reads at index 0.
+            var fiber = FiberRenderer.CreateRoot(ContextMutationRender);
+            try
+            {
+                FiberRenderer.Mount(fiber, _root);
+                FiberRenderer.Unmount(fiber);
+                FiberRenderer.Mount(fiber, _root);
+
+                // Act
+                await s_captured!.MutateAsync(3);
+
+                // Assert
+                Assert.That((s_captured.Status, s_captured.Data), Is.EqualTo((MutationStatus.Success, 6)),
+                    "A remount builds its own mutation slot, so its handle follows the calls it makes");
+            }
+            finally
+            {
+                FiberRenderer.Dispose(fiber);
+            }
+        });
+
+        // GREEN_ON_BASE(characterization): the base also refuses a call started while the fiber is being disposed; the cut that drops the
+        // IsDisposed clause from the owner check is what reddens this case, since the cleanup runs before the slots are retired.
+        [Test]
+        public void Given_AnEffectCleanupThatMutates_When_TheRootFiberIsDisposed_Then_TheHandleIsNotWritten()
+        {
+            // Arrange — a root fiber: Dispose sets IsDisposed and then Unmount runs the effect cleanups, ahead of
+            // the point where it retires the mutation slots, so only the fiber's flag can refuse this call.
+            // A child fiber under V.Mount is cleaned up before it is itself marked disposed.
+            var fiber = FiberRenderer.CreateRoot(CleanupMutatesRender);
+            try
+            {
+                FiberRenderer.Mount(fiber, _root);
+                var handle = s_captured!;
+                FiberEffects.FlushPendingPassiveEffects(fiber);
+
+                // Act
+                FiberRenderer.Dispose(fiber);
+
+                // Assert
+                Assert.That(handle.Status, Is.EqualTo(MutationStatus.Idle),
+                    "A call a cleanup starts while the fiber is being disposed runs without writing the handle");
+            }
+            finally
+            {
+                FiberRenderer.Dispose(fiber);
+            }
+        }
+
+        [Test]
+        public void Given_AStaleHandleFromAnEarlierMount_When_ItIsResetAfterTheRemount_Then_TheNewMountDoesNotRender()
+        {
+            // Arrange — the first handle belongs to the slot the unmount retired; the remount renders a new one
+            var fiber = FiberRenderer.CreateRoot(ContextMutationRender);
+            try
+            {
+                FiberRenderer.Mount(fiber, _root);
+                var stale = s_captured!;
+                FiberRenderer.Unmount(fiber);
+                FiberRenderer.Mount(fiber, _root);
+                FiberWorkLoop.FlushState(fiber);
+                var rendersBefore = s_renderCount;
+
+                // Act
+                stale.Reset();
+                FiberWorkLoop.FlushState(fiber);
+
+                // Assert
+                Assert.That(s_renderCount, Is.EqualTo(rendersBefore),
+                    "A handle from a mount that has gone cannot ask the live mount to render");
+            }
+            finally
+            {
+                FiberRenderer.Dispose(fiber);
+            }
+        }
 
         [UnityTest]
         public IEnumerator Given_APerCallOnSuccessThatThrows_When_TheCallSucceeds_Then_OnSettledStillRunsAndTheCallStaysASuccess() => VelvetTask.ToCoroutine(async () =>
@@ -693,8 +883,17 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode CleanupMutatesRender()
+        {
+            var handle = Hooks.UseMutation(new MutationOptions<int, int, string>(MutationFn: s_mutationFn));
+            s_captured = handle;
+            Hooks.UseEffect((Func<Action?>)(() => () => handle.Mutate(1)), Array.Empty<object?>());
+            return V.Label(text: "ok");
+        }
+
         public static VNode ContextMutationRender()
         {
+            s_renderCount++;
             s_captured = Hooks.UseMutation(new MutationOptions<int, int, string>(
                 MutationFn: s_mutationFn,
                 OnMutate: v =>
@@ -767,7 +966,6 @@ namespace Velvet.Tests
                 Kind = kind,
                 Data = data,
                 Error = error?.Message ?? None,
-                Cancelled = error is OperationCanceledException,
                 Variables = variables,
                 Context = context ?? None,
                 Status = s_captured?.Status ?? MutationStatus.Idle,
@@ -782,7 +980,6 @@ namespace Velvet.Tests
             public string Kind { get; init; } = None;
             public int Data { get; init; }
             public string Error { get; init; } = None;
-            public bool Cancelled { get; init; }
             public int Variables { get; init; }
             public string Context { get; init; } = None;
             public MutationStatus Status { get; init; }

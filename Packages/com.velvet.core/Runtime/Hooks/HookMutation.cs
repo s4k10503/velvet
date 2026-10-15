@@ -85,9 +85,9 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Callbacks passed to one <see cref="MutationResult{TVariables, TData}.Mutate(TVariables, MutateOptions{TVariables, TData})"/>
+    /// The cancellation token and callbacks passed to one <see cref="MutationResult{TVariables, TData}.Mutate(TVariables, MutateOptions{TVariables, TData})"/>
     /// or <see cref="MutationResult{TVariables, TData}.MutateAsync(TVariables, MutateOptions{TVariables, TData})"/>
-    /// call: TanStack Query's <c>mutate(variables, { onSuccess, onError, onSettled })</c>. They run after the
+    /// call: TanStack Query's <c>mutate(variables, { onSuccess, onError, onSettled })</c>. The callbacks run after the
     /// hook options' own callbacks, once the call's outcome is on the handle, and only while the component is
     /// mounted and the call is still the one the handle follows: the component unmounting, a newer call
     /// starting and <see cref="MutationResult{TVariables, TData}.Reset"/> each drop them. Every context
@@ -95,6 +95,14 @@ namespace Velvet
     /// </summary>
     public sealed record MutateOptions<TVariables, TData>
     {
+        /// <summary>
+        /// The token the call's mutation function receives. Nothing but the caller cancels it: unmounting the
+        /// component, a newer call and <see cref="MutationResult{TVariables, TData}.Reset"/> leave a call
+        /// running, as TanStack Query v5's mutation never cancels. A function that honours a cancelled token
+        /// ends in the exception, which fails the call like any other.
+        /// </summary>
+        public CancellationToken CancellationToken { get; init; }
+
         /// <summary>Runs when the call succeeds.</summary>
         public Action<TData, TVariables, object?>? OnSuccess { get; init; }
 
@@ -213,10 +221,8 @@ namespace Velvet
 
         /// <summary>
         /// Awaitable mutation. Rethrows the underlying exception on failure so callers can <c>try</c> /
-        /// <c>catch</c>; <see cref="Error"/> is also populated. Rejects with an
-        /// <see cref="OperationCanceledException"/> when the component unmounts while the call is in flight and
-        /// the mutation function honours its token, and when the call is made after the unmount; a function that
-        /// ignores the token completes with its own result.
+        /// <c>catch</c>; <see cref="Error"/> is also populated. The call settles the same whether or not the
+        /// component is still mounted, since unmounting cancels nothing and a call made after the unmount runs.
         /// </summary>
         public VelvetTask<TData> MutateAsync(TVariables variables) => MutateAsync(variables, null);
 

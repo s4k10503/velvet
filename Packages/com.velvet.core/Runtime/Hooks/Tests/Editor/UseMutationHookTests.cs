@@ -32,8 +32,7 @@ namespace Velvet.Tests
     /// <item>If the component unmounts while a mutation is in flight, the caller's await still observes the function
     /// result but the disposed fiber does not receive a Success or an Error state transition.</item>
     /// <item>Committing an outcome re-renders the component.</item>
-    /// <item>A cancellation callback that throws while the unmount walks the live sources is reported rather than
-    /// raised, and the walk goes on to the sources after it.</item>
+    /// <item>Unmounting cancels no call in flight: the token each call's mutation function holds stays live.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -47,14 +46,6 @@ namespace Velvet.Tests
         private VisualElement _root = null!;
         private static MutationResult<int, int>? s_captured;
         private static Func<int, CancellationToken, VelvetTask<int>> s_mutationFn = (v, _) => VelvetTask.FromResult(v * 2);
-
-        // The unmount cancels each call's token, so a call whose function honours it rejects with the
-        // cancellation; these cases read the unmount itself and only need the call to have settled.
-        private static async VelvetTask Settled(VelvetTask<int> call)
-        {
-            try { await call; }
-            catch (OperationCanceledException) { }
-        }
 
         [SetUp]
         public void SetUp()
@@ -409,104 +400,62 @@ namespace Velvet.Tests
                 "Every call delivers its own success, whether or not a later one has already settled");
         });
 
-        // GREEN_ON_BASE(characterization): the base unmounts two calls in flight without throwing too; the change only has the trailing awaits tolerate the cancellation they now reject with.
         [UnityTest]
-        public IEnumerator Given_TwoMutationsInFlight_When_TheComponentUnmounts_Then_TheUnmountCompletes() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_TwoMutationsInFlight_When_TheComponentUnmounts_Then_NeitherTokenIsCancelled() => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — two live sources, where cancelling the first settles the second. Unmount clears the
-            // list before cancelling, so the second's own finally finds nothing to remove; disposing there
-            // anyway would leave the loop cancelling a source it had already disposed. One call cannot
-            // reach that, since disposing an already-disposed source returns without complaint.
+            // Arrange
             var first = new VelvetTaskCompletionSource<int>();
             var second = new VelvetTaskCompletionSource<int>();
-            var callIndex = 0;
+            var tokens = new System.Collections.Generic.List<CancellationToken>();
             s_mutationFn = (v, ct) =>
             {
-                var mine = callIndex++ == 0 ? first.Task : second.Task;
-                ct.Register(() => second.TrySetResult(0));
-                return mine.AttachExternalCancellation(ct);
+                tokens.Add(ct);
+                return (tokens.Count == 1 ? first.Task : second.Task).AttachExternalCancellation(ct);
             };
             var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "two-in-flight"));
             var firstCall = s_captured!.MutateAsync(1);
             var secondCall = s_captured.MutateAsync(2);
             await VelvetTask.Yield();
-            var bothStarted = callIndex;
 
             // Act
-            Exception? thrown = null;
-            try { mounted.Dispose(); } catch (Exception ex) { thrown = ex; }
+            mounted.Dispose();
 
-            // Assert — the first term keeps the reading load-bearing: with fewer than two calls in flight
-            // the disposal order this pins is never exercised.
-            Assert.That((bothStarted, thrown), Is.EqualTo((2, (Exception?)null)));
-            await Settled(firstCall);
-            await Settled(secondCall);
+            // Assert — the count keeps the reading load-bearing: fewer than two started calls would leave
+            // the cancelled-token term vacuous.
+            Assert.That((tokens.Count, tokens.Exists(t => t.IsCancellationRequested)),
+                Is.EqualTo((2, false)),
+                "Unmounting leaves every call in flight uncancelled, as TanStack's observer only unsubscribes");
+            first.TrySetResult(0);
+            second.TrySetResult(0);
+            await firstCall;
+            await secondCall;
         });
 
-        // GREEN_ON_BASE(characterization): the base cancels and releases the second source after a throwing callback too; the change only has the trailing awaits tolerate the cancellation they now reject with.
         [UnityTest]
-        public IEnumerator Given_TwoMutationsInFlight_When_TheFirstTokensCallbackThrows_Then_TheSecondSourceIsCancelledAndReleased() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AMutationInFlight_When_TheComponentUnmounts_Then_ItsTokenIsNotCancelled() => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — the throw sits on the first call's token, so the loop reaches the second source
-            // only by surviving it. The sibling above arranges the same two calls with no throw and
-            // reads whether the unmount completed; what this reads is the state the second source was
-            // left in.
-            var first = new VelvetTaskCompletionSource<int>();
-            var second = new VelvetTaskCompletionSource<int>();
-            var callIndex = 0;
-            CancellationToken secondToken = default;
+            // Arrange
+            var pending = new VelvetTaskCompletionSource<int>();
+            var cancelledAfterUnmount = false;
+            CancellationToken seen = default;
             s_mutationFn = (v, ct) =>
             {
-                if (callIndex++ == 0)
-                {
-                    ct.Register(() => throw new InvalidOperationException("mutation-cancellation-threw"));
-                    return first.Task.AttachExternalCancellation(ct);
-                }
-                secondToken = ct;
-                return second.Task.AttachExternalCancellation(ct);
+                seen = ct;
+                return pending.Task.AttachExternalCancellation(ct);
             };
-            var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "throwing-cancellation"));
-            var firstCall = s_captured!.MutateAsync(1);
-            var secondCall = s_captured.MutateAsync(2);
-            await VelvetTask.Yield();
-            ContainedFailureLog.Expect<InvalidOperationException>("HookMutationSlot", "mutation-cancellation-threw");
-
-            // Act
-            Exception? escaped = null;
-            try { mounted.Dispose(); } catch (Exception unmountFailure) { escaped = unmountFailure; }
-
-            // Assert
-            Assert.That(
-                $"{escaped?.GetType().Name ?? "none"} {secondToken.IsCancellationRequested} {CancellationTokenStateProbe.ReadTokenState(secondToken)}",
-                Is.EqualTo("none True released"),
-                "A cancellation callback belonging to one call must not cost the next call its cancellation or its release");
-            await Settled(firstCall);
-            await Settled(secondCall);
-        });
-
-        // GREEN_ON_BASE(characterization): the base unmounts a call in flight without throwing too; the change only has the trailing await tolerate the cancellation it now rejects with.
-        [UnityTest]
-        public IEnumerator Given_AMutationInFlight_When_TheComponentUnmounts_Then_TheUnmountCompletes() => VelvetTask.ToCoroutine(async () =>
-        {
-            // Arrange — a token honoured by the mutation resumes its continuation inside Cancel(), and the
-            // continuation's finally reaches back into the list Dispose is walking.
-            var pending = new VelvetTaskCompletionSource<int>();
-            s_mutationFn = (v, ct) => pending.Task.AttachExternalCancellation(ct);
-            var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "unmount-reentrancy"));
+            var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "unmount-token"));
             var inFlight = s_captured!.MutateAsync(1);
             await VelvetTask.Yield();
-            var startedPending = s_captured.Status;
 
             // Act
-            Exception? thrown = null;
-            try { mounted.Dispose(); } catch (Exception ex) { thrown = ex; }
+            mounted.Dispose();
+            cancelledAfterUnmount = seen.IsCancellationRequested;
 
-            // Assert — the first term keeps the reading load-bearing: an unmount with nothing in flight
-            // cannot throw, so a call that never started would pass on the second term alone. An
-            // exception out of here aborts the enclosing reconcile, not just this hook.
-            Assert.That((startedPending, thrown),
-                Is.EqualTo((MutationStatus.Pending, (Exception?)null)));
-            await Settled(inFlight);
+            // Assert
+            Assert.That(cancelledAfterUnmount, Is.False,
+                "The unmount does not cancel the token the function was handed");
+            pending.TrySetResult(1);
+            await inFlight;
         });
 
         [UnityTest]

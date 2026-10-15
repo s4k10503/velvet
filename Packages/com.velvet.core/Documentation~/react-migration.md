@@ -134,7 +134,7 @@ var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
     },
     OnError: (error, _, previous) =>
     {
-        // An unmount cancelled the request: the server may have applied it, so reload rather than guess.
+        // The caller cancelled the request: the server may have applied it, so reload rather than guess.
         if (error is OperationCanceledException) { inventory.Reload(); return; }
         if (previous != null) inventory.RestoreLoadout(previous);   // null when OnMutate threw
     },
@@ -149,17 +149,16 @@ options' callbacks still run. A throwing per-call callback is logged and costs n
 outcome. Each receives the call's `OnMutate` result as an `object?`, null for the context-free option
 records, since the handle's type does not carry `TContext`.
 
-**Unmounting.** The callbacks of a call in flight still run after its component unmounts, as v5's
-option callbacks outlive the observer; only the handle is no longer written and the component no longer
-re-rendered. Unlike v5, which never cancels, Velvet cancels the call's `CancellationToken` on unmount. A
-`MutationFn` that honours it ends in the `OperationCanceledException`, which `OnError` and then
-`OnSettled` receive with the call's context, and `MutateAsync` rejects with that exception. One that
-ignores it completes as usual and runs `OnSuccess` or `OnError`, then `OnSettled`. A `MutateAsync`
-called after the unmount never starts and rejects with an `OperationCanceledException` too.
-A cancelled request may already have reached the server and been applied, so a cancellation does not say
-the write failed: rolling the optimistic value back on it can undo a write the server kept. Branch on
-`error is OperationCanceledException` in `OnError`, as the sample does, and reload the authoritative state
-there instead of restoring the snapshot.
+**Unmounting.** Nothing is cancelled: as in v5, where unmounting
+only detaches the observer, a call in flight runs to completion and its `OnMutate`, `OnSuccess`, `OnError`
+and `OnSettled` run with its real outcome. They are the hook options' callbacks, which outlive the observer
+in v5 too; the handle is no longer written and the component no longer re-rendered. A `MutateAsync` in
+flight resolves or rejects with the function's own result, and one called after the unmount runs rather than
+rejecting, writing no handle. Per-call callbacks passed to `Mutate` / `MutateAsync` are the exception, as in
+v5: they are dropped once the component has unmounted.
+
+A write that reached the server is therefore never reported as failed because its screen went away, so an
+optimistic rollback in `OnError` only sees failures the function itself raised.
 
 `OnMutate` returns the context itself where v5 awaits a returned promise, as every callback here is
 synchronous.
@@ -173,8 +172,11 @@ shows the previous one's result. Not cancelling on re-entry, following the newes
 
 The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
 its variables and a context of the query client, the mutation's `meta` and its `mutationKey`, with no
-cancellation signal. It is cancelled when the component unmounts (see **Unmounting** above), which is what
-a Unity web request wants, and it is never cancelled by a later call.
+cancellation signal. It is `default` unless the caller sets `MutateOptions.CancellationToken` on that call,
+and only the caller cancels it: an unmount, a later call and `Reset` leave it alone. A function that
+honours a token its caller cancelled ends in the `OperationCanceledException`, which fails the call like
+any other, so `OnError` receives it and a rollback there can tell it by type, since the request may already
+have reached the server.
 
 **`Reset`.** Puts the handle back to `Idle` and abandons whatever is in flight, as v5's `reset()`
 detaches the observer from the mutation. The abandoned call is not cancelled: it runs to completion
