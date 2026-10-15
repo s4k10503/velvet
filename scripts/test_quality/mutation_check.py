@@ -107,6 +107,18 @@ MAX_SHARDS = 10
 # each pair together. The charge is not a worst case, so a full shard can still outrun the
 # job, and the mutants it had not reached are then recorded by no shard.
 SHARD_CEILING = {"EditMode": 16, "PlayMode": 10}
+# What `deal` charges a mutant, in seconds, so that every shard is given about the same total. Only the
+# ratio of the figures matters to the deal. The narrowed figure is 145, the median over shards of a shard's
+# seconds a mutant on EditMode, which already includes the mutants that took the whole suite; the whole-suite
+# figures are the single slowest shard's seconds a mutant, 493 on EditMode, which the job's timeout cut
+# and which was estimated, and 934 on PlayMode (CONTRIBUTING.md ▸ Checking that the tests can fail
+# defines both). They are different statistics, so the ratio is rough, and 145 is a proxy for a narrowed
+# launch rather than a measurement of one. The ceiling charges every mutant the whole-suite figure.
+# The plan has no baseline, so it cannot know which areas `narrowable` will take, and a mutant it deals as
+# narrowed may take the whole suite; neither figure exceeds the ceiling's charge, so the ceiling holds.
+# A previous campaign's timings are not in the ledger, which keeps verdicts and no seconds.
+NARROWED_COST = 145
+WHOLE_COST = {"EditMode": 493, "PlayMode": 934}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
 # no licence means no shard would run.
 CEILING_REFUSAL = 4
@@ -134,9 +146,9 @@ REACH_SHARE = 10
 # places every mutant it was assigned, so that no mutant is launched on its own beside it. Any other
 # session takes the path it took before the reach run existed: the areas' own baselines in its opening,
 # then each mutant's area, then the whole suite, and a mutant launched on its own keeps its area-first
-# launches. The minimum is a decision, not a measured break-even. A plan of at most
-# MAX_SHARDS * SHARD_SIZE mutants assigns at most SHARD_SIZE to a shard, so the reach run fires for a full
-# shard whose every mutant is placed, and for the larger shards of a larger plan up to the maximum.
+# launches. The minimum is a decision, not a measured break-even. `deal` sizes a shard by its mutants'
+# costs, up to SHARD_CEILING, so the reach run fires for a shard that lands between the two bounds with
+# every mutant placed, and a shard of more than the maximum or fewer than the minimum takes the other path.
 REACH_MIN_MUTANTS = 6
 # The most mutants a session may place and still make the reach run: a placed mutant whose reading does
 # not stand launches on its own afterwards and takes its area's baseline, which the reach run's charge does
@@ -4529,7 +4541,7 @@ def list_mismatch(expected, mutants, project):
     return "the plan's list holds {} mutants and this tree generates {}".format(len(expected), len(mine))
 
 
-def unreported_shards(chosen, platform, mutants):
+def unreported_shards(chosen, platform, mutants, project):
     """{shard K: the mutant indices it was dealt} for the shards `--collect` found no record from.
 
     A shard that died, was cancelled, or timed its baseline out writes nothing for any of its
@@ -4539,7 +4551,7 @@ def unreported_shards(chosen, platform, mutants):
     count = shard_count(len(chosen), platform)
     named = {}
     for shard in range(count):
-        dealt = sharded(chosen, (shard, count))
+        dealt = sharded(chosen, (shard, count), mutants, project, platform)
         if dealt and all(mutants[index - 1].verdict == UNRECORDED for index in dealt):
             named[shard] = dealt
     return named, count
@@ -4629,20 +4641,58 @@ def parse_shard(text):
     return int(match.group(1)), int(match.group(2))
 
 
-def in_shard(position, shard):
-    """Whether the 1-based `position` is this shard's to run."""
-    return shard is None or (position - 1) % shard[1] == shard[0]
-
-
 def shard_count(mutants, platform="EditMode"):
     return min(MAX_SHARDS, -(-mutants // SHARD_SIZE[platform]))
 
 
-def sharded(chosen, shard):
-    """The indices in `chosen` that `shard` measures, dealt by position in `chosen` rather than by
-    index: a second pass chooses the first pass's survivors, and dealt by index, two survivors at
-    indices 2 and 4 both go to the second of two shards."""
-    return [index for position, index in enumerate(chosen, start=1) if in_shard(position, shard)]
+def mutant_cost(mutant, project, platform):
+    """What `deal` charges `mutant`, in seconds: `NARROWED_COST` where its first launch could be narrowed
+    to an area, the platform's whole-suite figure otherwise. Read off the path and the platform alone, so
+    every job computes the same figure."""
+    if platform in NARROWED_PLATFORMS and area_of(mutant.path, project) is not None:
+        return NARROWED_COST
+    return WHOLE_COST[platform]
+
+
+def deal(chosen, mutants, project, platform, count):
+    """`count` lists of mutant indices, each ascending: `chosen` longest first, each into the shard that
+    has been charged least so far.
+
+    No shard is given more than `SHARD_CEILING` mutants however cheap they are, since the ceiling is
+    charged per mutant. Ties on the charge go to the lowest shard and equal costs to the lowest index, so
+    every job given one plan deals the same shards. Dealt over `chosen` rather than over all indices, since
+    a second pass chooses the first pass's survivors.
+    """
+    held = [[] for _ in range(count)]
+    totals = [0] * count
+    cost = {index: mutant_cost(mutants[index - 1], project, platform) for index in chosen}
+    for index in sorted(chosen, key=lambda index: (-cost[index], index)):
+        shard = min((shard for shard in range(count) if len(held[shard]) < SHARD_CEILING[platform]),
+                    key=lambda shard: (totals[shard], shard))
+        held[shard].append(index)
+        totals[shard] += cost[index]
+    return [sorted(indices) for indices in held]
+
+
+def sharded(chosen, shard, mutants, project, platform):
+    """The indices in `chosen` that `shard` (K, N) measures, or all of them where there is none."""
+    if shard is None:
+        return list(chosen)
+    return deal(chosen, mutants, project, platform, shard[1])[shard[0]]
+
+
+def spread_report(chosen, mutants, project, platform, count):
+    """Each shard's mutant count and expected cost, then the cheapest and dearest shard and the gap."""
+    if not count:
+        return ""
+    dealt = deal(chosen, mutants, project, platform, count)
+    costs = [sum(mutant_cost(mutants[index - 1], project, platform) for index in indices)
+             for indices in dealt]
+    lines = ["shard {}: {} mutant(s), expected {} s".format(shard, len(indices), cost)
+             for shard, (indices, cost) in enumerate(zip(dealt, costs))]
+    lines.append("expected cost: cheapest shard {} s, dearest {} s, spread {} s".format(
+        min(costs), max(costs), max(costs) - min(costs)))
+    return "\n".join(lines)
 
 
 def listed(label, lines_by_path, project):
@@ -5053,7 +5103,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
               flush=True)
 
 
-def plan_survivors(args, coverage, mutants, chosen, first):
+def plan_survivors(args, coverage, mutants, chosen, first, project):
     """The second pass's plan: the shards its platform needs for the first pass's survivors."""
     print(coverage)
     per = SHARD_CEILING[args.platform]
@@ -5064,8 +5114,10 @@ def plan_survivors(args, coverage, mutants, chosen, first):
         return CEILING_REFUSAL
     print("{} of {} mutant(s) survived the {} suite and are measured on {}".format(
         len(chosen), len(mutants), first, args.platform))
+    count = shard_count(len(chosen), args.platform)
+    print(spread_report(chosen, mutants, project, args.platform, count))
     print("mutants={}".format(len(chosen)))
-    print("shards={}".format(json.dumps(list(range(shard_count(len(chosen), args.platform))))))
+    print("shards={}".format(json.dumps(list(range(count)))))
     return 0
 
 
@@ -5136,8 +5188,8 @@ def main():
                         help="refuse unless this tree generates the mutant list --emit-mutants "
                              "wrote to FILE")
     parser.add_argument("--shard", type=parse_shard, metavar="K/N",
-                        help="measure only every Nth mutant from the (K+1)th and record their "
-                             "verdicts, leaving the decision to --collect")
+                        help="measure only the mutants dealt to shard K of N, by expected cost, "
+                             "and record their verdicts, leaving the decision to --collect")
     parser.add_argument("--collect", nargs="+", metavar="DIR",
                         help="decide the campaign from the verdicts --shard runs recorded in these "
                              "directories, without an editor")
@@ -5407,7 +5459,10 @@ def main():
         print("mutants={}".format(len(mutants)))
         if reading:
             print("reusing={}".format(len(reused)))
-        print("shards={}".format(json.dumps(list(range(shard_count(owed, args.platform))))))
+        count = shard_count(owed, args.platform)
+        dealt = [number for number in range(1, len(mutants) + 1) if number not in reused]
+        print(spread_report(dealt, mutants, project, args.platform, count))
+        print("shards={}".format(json.dumps(list(range(count)))))
         return 0
 
     if not mutants:
@@ -5461,11 +5516,11 @@ def main():
             mutant.platform = first
         chosen = [index for index in first_chosen if mutants[index - 1].verdict in SURVIVING]
         if args.plan:
-            return plan_survivors(args, coverage, mutants, chosen, first)
+            return plan_survivors(args, coverage, mutants, chosen, first, project)
         firsts = {index: mutant.verdict for index, mutant in enumerate(mutants, start=1)}
         # Read here, before the collect below overwrites the verdicts: a first-pass shard that died
         # left its mutants UNRECORDED, and they are in no pass's `chosen`.
-        dead_first, first_count = unreported_shards(first_chosen, first, mutants)
+        dead_first, first_count = unreported_shards(first_chosen, first, mutants, project)
     if args.collect is not None:
         print(coverage)
         for index in chosen:
@@ -5485,7 +5540,7 @@ def main():
                     mutants[number - 1].verdict = REUSE_LAPSED
                     mutants[number - 1].detail = problem
     else:
-        selected = sharded(chosen, args.shard)
+        selected = sharded(chosen, args.shard, mutants, project, args.platform)
         if selected:
             try:
                 measure(args, project, holder, output, targets, mutants, scope, campaign, coverage,
@@ -5550,7 +5605,7 @@ def main():
                                                                              args.platform))
         print("Re-run only the failed jobs; the verdict job then decides again over every record.")
     elif args.collect is not None:
-        named, count = unreported_shards(chosen, args.platform, mutants)
+        named, count = unreported_shards(chosen, args.platform, mutants, project)
         if named:
             # Not a survivor and not a stale declaration: the shard never reached the mutants, so
             # nothing is known about them. Re-running the failed jobs of the run records them.
