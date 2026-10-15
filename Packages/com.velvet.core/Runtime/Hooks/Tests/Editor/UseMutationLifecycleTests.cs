@@ -666,23 +666,31 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base also refuses a call started while the fiber is being disposed; the cut that drops the
         // IsDisposed clause from the owner check is what reddens this case, since the cleanup runs before the slots are retired.
-        [UnityTest]
-        public IEnumerator Given_AnEffectCleanupThatMutates_When_TheFiberIsDisposed_Then_TheHandleIsNotWritten() => VelvetTask.ToCoroutine(async () =>
+        [Test]
+        public void Given_AnEffectCleanupThatMutates_When_TheRootFiberIsDisposed_Then_TheHandleIsNotWritten()
         {
-            // Arrange — Dispose sets IsDisposed and then runs the effect cleanups, ahead of the point where the
-            // unmount retires the mutation slots, so only the fiber's flag can refuse this call.
-            var mounted = V.Mount(_root, V.Component(CleanupMutatesRender, key: "dispose-cleanup-mutates"));
-            var handle = s_captured!;
-            mounted.FlushEffectsForTest();
+            // Arrange — a root fiber: Dispose sets IsDisposed and then Unmount runs the effect cleanups, ahead of
+            // the point where it retires the mutation slots, so only the fiber's flag can refuse this call.
+            // A child fiber under V.Mount is cleaned up before it is itself marked disposed.
+            var fiber = FiberRenderer.CreateRoot(CleanupMutatesRender);
+            try
+            {
+                FiberRenderer.Mount(fiber, _root);
+                var handle = s_captured!;
+                FiberEffects.FlushPendingPassiveEffects(fiber);
 
-            // Act
-            mounted.Dispose();
-            await VelvetTask.Yield();
+                // Act
+                FiberRenderer.Dispose(fiber);
 
-            // Assert
-            Assert.That(handle.Status, Is.EqualTo(MutationStatus.Idle),
-                "A call a cleanup starts while the fiber is being disposed runs without writing the handle");
-        });
+                // Assert
+                Assert.That(handle.Status, Is.EqualTo(MutationStatus.Idle),
+                    "A call a cleanup starts while the fiber is being disposed runs without writing the handle");
+            }
+            finally
+            {
+                FiberRenderer.Dispose(fiber);
+            }
+        }
 
         [Test]
         public void Given_AStaleHandleFromAnEarlierMount_When_ItIsResetAfterTheRemount_Then_TheNewMountDoesNotRender()
