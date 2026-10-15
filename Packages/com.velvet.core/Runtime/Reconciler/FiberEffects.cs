@@ -27,12 +27,34 @@ namespace Velvet
         {
             for (var fiber = owner; fiber != null; fiber = fiber.Parent)
             {
+                // A hidden fiber commits none of its render's effects: they wait for the commit that reveals it.
+                if (fiber.LayoutEffectsHidden) continue;
                 HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects);
             }
         }
 
         internal static void CleanupAllInsertionEffects(ComponentFiber fiber)
-            => HookEffectExecutor.CleanupAll(fiber, fiber.InsertionEffects, fiber.PendingInsertionEffects);
+        {
+            HookEffectExecutor.CleanupAll(fiber, fiber.InsertionEffects, fiber.PendingInsertionEffects);
+            fiber.HeldInsertionEffects?.Clear();
+        }
+
+        // A tree a Suspense hides commits none of what its render queued, and the next render clears the pending
+        // list, having already promoted the deps those effects were queued against: an effect left in it would not
+        // be queued again. Moved here before that clear, it waits for the commit that reveals the fiber
+        // (ShowLayoutEffects).
+        internal static void HoldInsertionEffects(ComponentFiber fiber)
+        {
+            var pending = fiber.PendingInsertionEffects;
+            if (pending == null || pending.Count == 0) return;
+            var held = fiber.HeldInsertionEffects ??= new List<HookEffectSlot>();
+            for (var i = 0; i < pending.Count; i++)
+            {
+                if (!held.Contains(pending[i])) held.Add(pending[i]);
+            }
+            // MUTANT_SURVIVES(equivalent, line removed): the one caller clears this same list on the next line.
+            pending.Clear();
+        }
 
         // Single-source-of-truth commit sequence invoked by every top-level commit entry
         // (Mount, FlushState, ContinueReconcile).
@@ -126,7 +148,7 @@ namespace Velvet
         // Queues every layout effect of a hidden fiber for the commit that reveals it, whatever its deps, has that
         // commit create every imperative handle again — from the last committed factory where the reveal does not
         // render the fiber — as React calls create() on reconnect. The passive work held while hidden is scheduled
-        // with them.
+        // with them, and the insertion effects held while hidden run in the same commit.
         internal static void ShowLayoutEffects(ComponentFiber fiber, ReconcilerContext ctx)
         {
             if (!fiber.LayoutEffectsHidden) return;
@@ -150,6 +172,17 @@ namespace Velvet
                     }
                     slot.NextNeedsRecompute = true;
                 }
+            }
+            // MUTANT_SURVIVES(equivalent, boundary): an empty held list adds nothing, and every reader of the pending
+            // list reads a null one and an empty one the same.
+            if (fiber.HeldInsertionEffects is { Count: > 0 } held)
+            {
+                var pending = fiber.PendingInsertionEffects ??= new List<HookEffectSlot>();
+                foreach (var slot in held)
+                {
+                    if (!pending.Contains(slot)) pending.Add(slot);
+                }
+                held.Clear();
             }
             ctx.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, ctx.CurrentPass));
             ScheduleRunEffects(fiber);

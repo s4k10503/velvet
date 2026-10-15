@@ -76,6 +76,7 @@ namespace Velvet.Tests
             s_otherHostSetTick = default;
             s_otherSource = null;
             s_mountEffectSetups = 0;
+            s_mountInsertionSetups = 0;
             s_mountHostSetShown = default;
             s_mountPassiveSetups = 0;
             s_memoMountPassiveSetups = 0;
@@ -276,6 +277,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That((whileHidden, s_mountEffectSetups, Texts()), Is.EqualTo((0, 1, "mounted|reader:5")),
                 "React mounts nothing of a tree a Suspense shows its fallback for, and mounts it on reveal");
+        }
+
+        [Test]
+        public void Given_AComponentFirstMountedBesideAReaderThatSuspends_When_TheBoundaryShowsItsFallbackAndThenReveals_Then_ItsInsertionEffectRunsOnlyOnReveal()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(MountInSuspenseHostRender, key: "mount-host"));
+            s_mountHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            var whileHidden = s_mountInsertionSetups;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((whileHidden, s_mountInsertionSetups), Is.EqualTo((0, 1)),
+                "A tree a Suspense shows its fallback for commits nothing until the reveal, which runs its insertion effect once");
         }
 
         [Test]
@@ -964,6 +983,7 @@ namespace Velvet.Tests
         private static int s_handleCreates;
         private static StateUpdater<int> s_otherHostSetTick;
         private static int s_mountEffectSetups;
+        private static int s_mountInsertionSetups;
         private static int s_mountPassiveSetups;
         private static StateUpdater<int> s_shownSetTick;
         private static int s_shownLayoutSetups;
@@ -1200,6 +1220,11 @@ namespace Velvet.Tests
         [Component]
         private static VNode MountEffectRender()
         {
+            Hooks.UseInsertionEffect(() =>
+            {
+                s_mountInsertionSetups++;
+                return (Action)null;
+            }, Array.Empty<object>());
             Hooks.UseLayoutEffect(() =>
             {
                 s_mountEffectSetups++;

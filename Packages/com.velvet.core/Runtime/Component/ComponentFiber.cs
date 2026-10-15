@@ -218,6 +218,10 @@ namespace Velvet
         // FiberEffects.HideLayoutEffects.
         internal bool LayoutEffectsHidden { get; set; }
 
+        // The insertion effects a render queued while a Suspense hid this fiber, which no commit ran — see
+        // FiberEffects.HoldInsertionEffects.
+        internal List<HookEffectSlot>? HeldInsertionEffects;
+
         internal List<ContextDependency> Dependencies { get; private set; } = new();
 
         // Staging list for the render in progress: context reads land here and are swapped into
