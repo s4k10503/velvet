@@ -6727,7 +6727,7 @@ class TwoPlatformCampaign(StubbedCampaign):
 
 class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
     """Twelve mutants the EditMode suite never kills and the PlayMode suite always does, dealt to two
-    EditMode shards and six PlayMode shards: the shape the workflow's verdict job
+    EditMode shards and ten PlayMode shards: the shape the workflow's verdict job
     collects."""
 
     def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
@@ -6742,7 +6742,7 @@ class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
     def play_shard(self, number, edit_directories, directory):
         return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
                                   *(str(self.project / name) for name in edit_directories),
-                                  "--shard", "{}/6".format(number), "--output", str(self.project / directory))
+                                  "--shard", "{}/10".format(number), "--output", str(self.project / directory))
 
     def collect_both(self, edit_directories, play_directories):
         return self.run_over_diff("--platform", "PlayMode", "--survivors-of",
@@ -6799,7 +6799,7 @@ class DeadShardReportingTests(unittest.TestCase):
                           "PlayMode shard(s) recorded nothing" in campaign.printed), (True, False))
 
     def test_Given_EveryEditModeShardAndNoPlayModeShard_When_BothPassesAreCollected_Then_ThePlayModeShardsAreNamed(self):
-        # Arrange -- the control: the PlayMode pass was owed, and none of its six shards reported.
+        # Arrange -- the control: the PlayMode pass was owed, and none of its ten shards reported.
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
         campaign.edit_shard("1/2", "edit1")
@@ -6808,7 +6808,7 @@ class DeadShardReportingTests(unittest.TestCase):
         campaign.collect_both(["edit0", "edit1"], ["play"])
 
         # Assert
-        self.assertEqual((self.HEADING.format(6, 6, "PlayMode") in campaign.printed,
+        self.assertEqual((self.HEADING.format(10, 10, "PlayMode") in campaign.printed,
                           "EditMode shard(s) recorded nothing" in campaign.printed), (True, False))
 
     def test_Given_EveryEditModeShardAndOneDeadPlayModeShard_When_BothPassesAreCollected_Then_OnlyThatShardIsNamed(self):
@@ -6816,15 +6816,15 @@ class DeadShardReportingTests(unittest.TestCase):
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
         campaign.edit_shard("1/2", "edit1")
-        for number in range(5):
+        for number in range(9):
             campaign.play_shard(number, ["edit0", "edit1"], "play{}".format(number))
 
         # Act
-        campaign.collect_both(["edit0", "edit1"], ["play{}".format(number) for number in range(5)])
+        campaign.collect_both(["edit0", "edit1"], ["play{}".format(number) for number in range(9)])
 
         # Assert
-        self.assertEqual((self.HEADING.format(1, 6, "PlayMode") in campaign.printed,
-                          "shard 5 of 6 was dealt 2 mutant(s)" in campaign.printed), (True, True))
+        self.assertEqual((self.HEADING.format(1, 10, "PlayMode") in campaign.printed,
+                          "shard 9 of 10 was dealt 1 mutant(s)" in campaign.printed), (True, True))
 
 
 class HangingTwoPlatformCampaign(TwoPlatformCampaign):
@@ -7146,6 +7146,18 @@ class CampaignPlanTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(shards, [0, 1, 1, 2, cap])
+
+    def test_Given_PlayModeSurvivorsUpToTheCap_When_Sharded_Then_EachTakesAJobOfItsOwn(self):
+        # Arrange — a PlayMode job's setup is paid once whatever it holds, and the pass waits on its
+        # slowest job, so a job holding one survivor ends one mutant's run sooner than one holding two.
+        cap = mutation_check.MAX_SHARDS
+        counts = [1, 2, cap, cap + 1]
+
+        # Act
+        shards = [mutation_check.shard_count(count, "PlayMode") for count in counts]
+
+        # Assert
+        self.assertEqual(shards, [1, 2, cap, cap])
 
     def test_Given_AShardOutsideItsCount_When_Parsed_Then_ItIsRefused(self):
         # Act / Assert
