@@ -58,14 +58,64 @@ namespace Velvet.Tests
             Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Pixel, 24f)));
         }
 
-        [Test]
-        public void Given_AnImportantTextSizeAndAPlainLeading_When_Parsed_Then_TheImportantSizesPairWins()
+        // GREEN_ON_BASE(characterization): the base reads no size class, so the leading is all it holds.
+        [TestCase("!text-base", "leading-6", LeadingUnit.Pixel, 24f)]
+        [TestCase("leading-loose", "!text-lg", LeadingUnit.Em, 2f)]
+        public void Given_AnImportantBareTextSizeAndALeading_When_Parsed_Then_TheLeadingWinsAtAnyImportance(
+            string first, string second, LeadingUnit unit, float amount)
         {
             // Act
-            var effect = StyleTextEffectClass.Parse(new[] { "!text-base", "leading-6" });
+            var effect = StyleTextEffectClass.Parse(new[] { first, second });
 
             // Assert
-            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Em, 1.5f)));
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(unit, amount)));
+        }
+
+        [TestCase("!text-sm/6", "leading-loose")]
+        [TestCase("leading-loose", "!text-sm/6")]
+        public void Given_AnImportantSlashTextSizeAndAPlainLeading_When_Parsed_Then_TheSlashValueWins(
+            string first, string second)
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { first, second });
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Pixel, 24f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no size class, so the leading is all it holds.
+        [TestCase("text-sm/6", "!leading-loose")]
+        [TestCase("!text-sm/6", "!leading-loose")]
+        [TestCase("text-sm/6", "leading-loose")]
+        public void Given_ASlashTextSizeAndALeadingOfTheSameOrHigherImportance_When_Parsed_Then_TheLeadingWins(
+            string first, string second)
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { first, second });
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Em, 2f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no size class, so the leading is all it holds.
+        [Test]
+        public void Given_ASlashTextSizeAndALeadingBesideAnUnrelatedImportantClass_When_Parsed_Then_TheLeadingStillWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "text-sm/6", "leading-loose", "!uppercase" });
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Em, 2f)));
+        }
+
+        [Test]
+        public void Given_APlainTextSizeAndAnImportantOne_When_Parsed_Then_TheImportantOnesPairWins()
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { "text-base", "!text-xs" });
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Em, 1f / 0.75f)));
         }
 
         // GREEN_ON_BASE(characterization): the base reads no size class, so the leading is all it holds.
@@ -90,14 +140,52 @@ namespace Velvet.Tests
             Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Pixel, 24f)));
         }
 
-        [Test]
-        public void Given_TwoTextSizes_When_Parsed_Then_TheLastOnesPairWins()
+        [TestCase("text-sm")]
+        [TestCase("text-sm/6")]
+        [TestCase("text-[14px]/6")]
+        public void Given_ATextSizeToken_When_AskedWhetherItIsATextEffectToken_Then_ItIs(string className)
         {
             // Act
-            var effect = StyleTextEffectClass.Parse(new[] { "text-xs", "text-base" });
+            var recognised = StyleTextEffectClass.IsTextEffectToken(className);
+
+            // Assert
+            Assert.That(recognised, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no size class, so it recognises neither of these.
+        [TestCase("p-4")]
+        [TestCase("text-red-500")]
+        public void Given_ATokenThatIsNoTextEffect_When_AskedWhetherItIsATextEffectToken_Then_ItIsNot(string className)
+        {
+            // Act
+            var recognised = StyleTextEffectClass.IsTextEffectToken(className);
+
+            // Assert
+            Assert.That(recognised, Is.False);
+        }
+
+        [TestCase("text-base", "text-xs")]
+        [TestCase("text-xs", "text-base")]
+        public void Given_TwoTextSizes_When_Parsed_Then_ThePairIsTheOneWhoseRuleComesLaterInTheSheet(
+            string first, string second)
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { first, second });
 
             // Assert
             Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Em, 1.5f)));
+        }
+
+        [TestCase("text-base", "text-xs/4")]
+        [TestCase("text-xs/4", "text-base")]
+        [TestCase("text-sm/6", "text-xs/4")]
+        public void Given_ASlashTextSizeAmongSizes_When_Parsed_Then_TheLastSlashOneWins(string first, string second)
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { first, second });
+
+            // Assert
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Pixel, 16f)));
         }
 
         [TestCase("text-sm/6", LeadingUnit.Pixel, 24f)]
@@ -213,6 +301,81 @@ namespace Velvet.Tests
             // Assert
             Assert.That((before, hovered, label.text),
                 Is.EqualTo(("hi", "<line-height=24px>hi</line-height>", "hi")));
+        }
+
+        [Test]
+        public void Given_AHoverGatedBareTextSize_When_TheElementIsHoveredAndLeft_Then_ThePairAppliesOnlyWhileHovered()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Label(className: "hover:text-base", text: "hi", name: "label") });
+            var label = scope.Root.Q<Label>("label");
+            var before = label.text;
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                label.SimulateEvent(over);
+            }
+            var hovered = label.text;
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                label.SimulateEvent(leave);
+            }
+
+            // Assert
+            Assert.That((before, hovered, label.text),
+                Is.EqualTo(("hi", "<line-height=1.5em>hi</line-height>", "hi")));
+        }
+
+        [Test]
+        public void Given_ALabelWithATextSize_When_ItsSizeClassIsPatchedToAnother_Then_TheTextCarriesTheNewPair()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.Label(className: "text-base", text: "hi", name: "label") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first,
+                new VNode[] { V.Label(className: "text-5xl", text: "hi", name: "label") });
+
+            // Assert
+            Assert.That(scope.Root.Q<Label>("label").text, Is.EqualTo("<line-height=1em>hi</line-height>"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no size class, so the text is plain before and after.
+        [Test]
+        public void Given_ALabelWithATextSize_When_ItsSizeClassIsPatchedAway_Then_TheTextIsPlainAgain()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var first = new VNode[] { V.Label(className: "text-base", text: "hi", name: "label") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first,
+                new VNode[] { V.Label(className: "p-1", text: "hi", name: "label") });
+
+            // Assert
+            Assert.That(scope.Root.Q<Label>("label").text, Is.EqualTo("hi"));
+        }
+
+        [Test]
+        public void Given_ATextSizeOnAContainer_When_AClasslessLabelIsUnderIt_Then_TheLabelCarriesThePair()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(className: "text-base", children: new VNode[] { V.Label(text: "hi", name: "label") }),
+            });
+
+            // Assert
+            Assert.That(scope.Root.Q<Label>("label").text, Is.EqualTo("<line-height=1.5em>hi</line-height>"));
         }
 
         [Test]

@@ -216,6 +216,12 @@ namespace Velvet
             var facets = new TextEffectFacets();
             WhitespaceCollapseKind? whitespace = null;
             WhiteSpace? whiteSpaceClass = null;
+            LeadingValue? explicitPlain = null;
+            LeadingValue? explicitImportant = null;
+            LeadingValue? size = null;
+            // MUTANT_SURVIVES(equivalent, literal): ResolveLeading reads this only beside a non-null size, and every
+            // assignment of size sets it.
+            var sizeBeatsPlain = false;
             // Same two-pass importance rule as StyleFontClass.TryExtract. The white-space axis is settled within
             // each pass and the important pass's answer, when it has one, replaces the plain pass's: an important
             // whitespace-pre-line beats a plain whitespace-nowrap, and an important whitespace-nowrap beats a plain
@@ -227,6 +233,7 @@ namespace Velvet
                 facets.WhiteSpaceRank = -1;
                 facets.ExplicitLeading = null;
                 facets.SizeLeading = null;
+                facets.SizeRank = -1;
                 foreach (var cls in classNames)
                 {
                     var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
@@ -235,9 +242,19 @@ namespace Velvet
                         ParseToken(core, ref facets);
                     }
                 }
-                // A leading-* class beats the line height a text-<size> class pairs with its size, whichever comes
-                // first, and a later pass's answer replaces an earlier one's the way white-space's does.
-                facets.Leading = facets.ExplicitLeading ?? facets.SizeLeading ?? facets.Leading;
+                if (pass == 0)
+                {
+                    explicitPlain = facets.ExplicitLeading;
+                }
+                else
+                {
+                    explicitImportant = facets.ExplicitLeading;
+                }
+                if (facets.SizeLeading != null)
+                {
+                    size = facets.SizeLeading;
+                    sizeBeatsPlain = pass == 1 && facets.SizeRank == StyleNamedTextSize.SlashRank;
+                }
                 // An explicit whitespace-{normal,nowrap,pre,pre-wrap} or truncate class on the SAME element wins
                 // over that element's own whitespace-pre-line token of the same importance, whichever appears
                 // earlier/later in the class list — order-dependent "last wins" (the rule every other case in
@@ -260,8 +277,22 @@ namespace Velvet
                     whiteSpaceClass = null;
                 }
             }
-            return new TextEffect(facets.Transform, facets.Decoration, whitespace, facets.Leading,
-                whiteSpaceClass, new TextWrapSetting(facets.Wraps, facets.WrapStyle));
+            return new TextEffect(facets.Transform, facets.Decoration, whitespace,
+                ResolveLeading(explicitPlain, explicitImportant, size, sizeBeatsPlain), whiteSpaceClass, new TextWrapSetting(facets.Wraps, facets.WrapStyle));
+        }
+
+        // A bare text-<size> writes line-height: var(--tw-leading, <pair>) and every leading-* sets
+        // --tw-leading, so a leading-* beats it at any importance. The slash form is a direct line-height: an
+        // important one beats a plain leading-*, and at equal importance leading-* wins. Which text-<size> token
+        // the pair comes from is decided where the size tokens are ranked (StyleNamedTextSize).
+        private static LeadingValue? ResolveLeading(
+            LeadingValue? explicitPlain, LeadingValue? explicitImportant, LeadingValue? size, bool sizeBeatsPlain)
+        {
+            if (size != null && sizeBeatsPlain)
+            {
+                return explicitImportant ?? size;
+            }
+            return explicitImportant ?? explicitPlain ?? size;
         }
 
         // The axes Parse folds a class array into, bundled so the
@@ -271,10 +302,10 @@ namespace Velvet
             public TextTransformKind? Transform;
             public TextDecorationKind? Decoration;
             public WhitespaceCollapseKind? Whitespace;
-            public LeadingValue? Leading;
-            // One pass's leading-* and text-<size> answers, folded into Leading when the pass ends.
+            // One pass's leading-* answer, and its text-<size> answer with that token's rank.
             public LeadingValue? ExplicitLeading;
             public LeadingValue? SizeLeading;
+            public int SizeRank;
             // The latest-declared white-space class seen, and its index in WhiteSpaceClassesInSheetOrder.
             public WhiteSpace? WhiteSpaceClass;
             public int WhiteSpaceRank;
@@ -350,12 +381,23 @@ namespace Velvet
                 facets.ExplicitLeading = leading;
                 return true;
             }
-            if (StyleNamedTextSize.TryParseLineHeight(core, out var sizeLeading))
+            return FoldTextSize(core, ref facets);
+        }
+
+        // Of the text-<size> tokens of one importance, the one that ranks highest keeps its pair, and at an equal
+        // rank the later token does.
+        private static bool FoldTextSize(string core, ref TextEffectFacets facets)
+        {
+            if (!StyleNamedTextSize.TryParseLineHeight(core, out var sizeLeading, out var sizeRank))
             {
-                facets.SizeLeading = sizeLeading;
-                return true;
+                return false;
             }
-            return false;
+            if (sizeRank >= facets.SizeRank)
+            {
+                facets.SizeRank = sizeRank;
+                facets.SizeLeading = sizeLeading;
+            }
+            return true;
         }
 
         internal static bool TryParseLeading(string cls, out LeadingValue leading)
@@ -586,9 +628,32 @@ namespace Velvet
                 return text;
             }
             var value = leading.Value;
+            if (!s_pairedOpenTags.TryGetValue(value, out var open))
+            {
+                open = OpenLineHeightTag(value);
+            }
+            return string.Concat(open, text, "</line-height>");
+        }
+
+        private static string OpenLineHeightTag(LeadingValue value)
+        {
             var unit = value.Unit == LeadingUnit.Pixel ? "px" : "em";
-            var amount = value.Value.ToString(CultureInfo.InvariantCulture);
-            return "<line-height=" + amount + unit + ">" + text + "</line-height>";
+            return "<line-height=" + value.Value.ToString(CultureInfo.InvariantCulture) + unit + ">";
+        }
+
+        // The opening tag of each text-<size> pair, formatted once: they are the values most texts carry.
+        private static readonly Dictionary<LeadingValue, string> s_pairedOpenTags = BuildPairedOpenTags();
+
+        private static Dictionary<LeadingValue, string> BuildPairedOpenTags()
+        {
+            var tags = new Dictionary<LeadingValue, string>();
+            foreach (var pair in StyleNamedTextSize.PairedLineHeights())
+            {
+                // MUTANT_SURVIVES(equivalent): a pair missing here is formatted by the same function when it is
+                // met, so the cache changes what is allocated and not what is returned.
+                tags[pair] = OpenLineHeightTag(pair);
+            }
+            return tags;
         }
 
         // CSS pre-line's own text mutation: runs of spaces/tabs fold to a single space and newlines are kept

@@ -147,7 +147,7 @@ utility UI Toolkit can express; the rest are omitted because UI Toolkit has **no
 them.
 
 **Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` /
-`text-xs`…`text-9xl` (font-size) / `text-left|center|right|start|end` (`-unity-text-align`) /
+`text-xs`…`text-9xl` (font-size and line-height) / `text-left|center|right|start|end` (`-unity-text-align`) /
 `tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
 `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
 `text-wrap` / `text-nowrap` / `text-balance` / `text-pretty` / `truncate` / `text-ellipsis` / `text-clip`
@@ -226,10 +226,11 @@ are that scale's ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#ba
 named preset is read before a step.
 
 A preset and a unitless value are numbers, as in CSS: they emit an em tag, which the **text engine
-itself** resolves against whichever font size is in effect at that point in the string, so every
-text under the class multiplies its own size. An `em` or percentage value is a length CSS computes on
-the element that declares it, from that element's computed font size, and every text under it gets
-that length in pixels: `V.Div("text-[20px] leading-[150%]", V.Label("text-[40px]", …))` emits
+itself** resolves against whichever font size is in effect at that point in the string, so a text
+under the class multiplies the size it displays at, unless a nearer element sets a line height of its own
+(a `leading-*` or a `text-<size>`). An `em` or percentage value is a length CSS computes on
+the element that declares it, from that element's computed font size, and a text under it gets
+that length in pixels unless a nearer element sets its own line height: `V.Div("text-[20px] leading-[150%]", V.Label("text-[40px]", …))` emits
 `<line-height=30px>`, whether the declaring element's size is inline, inherited or a `text-*` scale
 class. Velvet reads the size UI Toolkit resolves for the declaring element
 (`LeadingLengthProbe`, which the bundled stylesheet's `velvet-leading-length` rule arms) and
@@ -246,12 +247,17 @@ multiplier of 1 included — is already a real value, so there is nothing to res
 **`text-<size>` pairs a line height with its font size**, as Tailwind v4's `--text-<size>--line-height` does,
 and emits it as the same em tag a preset does: `text-xs` 1.3333 · `text-sm` 1.4286 · `text-base` 1.5 ·
 `text-lg` 1.5556 · `text-xl` 1.4 · `text-2xl` 1.3333 · `text-3xl` 1.2 · `text-4xl` 1.1111 · `text-5xl`…`text-9xl` 1.
-The pair is the size class's own line height, so it replaces one an ancestor's `leading-*` set, and a
-`leading-*` on the same element wins over it whichever class comes first. `text-<size>/<leading>` takes
-the suffix of the matching `leading-*` utility, so `text-sm/6` is a 14px font with `leading-6`'s 24px line
-height, and `text-sm/loose` the 2 multiplier; a suffix that is no `leading-*` value leaves the class inert. A
-bracket size takes the slash too (`text-[14px]/6`, `text-[length:14px]/6`) and pairs nothing without it, as
-in Tailwind. The slash form works behind a variant (`hover:text-sm/6`).
+The pair is the size class's own line height, so it replaces one an ancestor's `leading-*` set, and it
+inherits like any other leading (it shares the cascade-freshness caveat above). A bare size writes
+`line-height: var(--tw-leading, <pair>)` in Tailwind, so a `leading-*` on the same element beats it whichever
+class comes first and whether either carries `!`. When an element holds several sizes, the pair is the one of
+the size whose font size shows, which is the rule declared last in `_typography.uss`, or a slash form over any
+of them. `text-<size>/<leading>` takes the suffix of the matching `leading-*` utility, so `text-sm/6` is a 14px
+font with `leading-6`'s 24px line height, and `text-sm/loose` the 2 multiplier. The slash form is a
+direct `line-height`: an `!` one beats a plain `leading-*`, and otherwise the `leading-*` wins. A suffix that is
+no `leading-*` value leaves the class inert. A bracket size takes the slash too (`text-[14px]/6`,
+`text-[length:14px]/6`) and pairs nothing without it, as in Tailwind. The slash form works behind a variant
+(`hover:text-sm/6`).
 
 **`text-balance` and `text-pretty`** realise CSS `text-wrap: balance` and `text-wrap: pretty` by writing
 line breaks into the text a leaf *displays*, the way text-transform rewrites it. A box the cascade

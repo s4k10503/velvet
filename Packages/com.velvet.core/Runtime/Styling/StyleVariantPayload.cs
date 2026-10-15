@@ -158,7 +158,7 @@ namespace Velvet
                 }
                 // text-<size>/<leading> also sets a line height, which the text-effect cascade reads back out of
                 // the composed class source.
-                return StyleNamedTextSize.TryParseLineHeight(core, out _)
+                return StyleNamedTextSize.TryParseLineHeight(core, out _, out _)
                     && TrackVariantGate(ctx, target, payload, key, declaration, on);
             }
 
