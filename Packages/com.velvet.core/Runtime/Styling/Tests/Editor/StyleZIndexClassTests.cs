@@ -125,6 +125,7 @@ namespace Velvet.Tests
         [TestCase("z-15", 15)]
         [TestCase("z-1", 1)]
         [TestCase("z-999", 999)]
+        [TestCase("z-2147483647", int.MaxValue)]
         [TestCase("-z-15", -15)]
         [TestCase("-z-0", 0)]
         public void Given_AWholeNumberOffTheOldNamedScale_When_Parsed_Then_ItResolvesToThatNumber(string cls, int expected)
@@ -145,6 +146,7 @@ namespace Velvet.Tests
         [TestCase("z-5.0")]
         [TestCase("z-1.5")]
         [TestCase("z-10px")]
+        [TestCase("z-2147483648")]
         [TestCase("z-99999999999")]
         [TestCase("-z-auto")]
         [TestCase("z-")]

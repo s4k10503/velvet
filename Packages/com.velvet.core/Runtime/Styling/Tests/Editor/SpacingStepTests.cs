@@ -8,7 +8,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies Tailwind v4's bare spacing value: every utility on the spacing scale takes any non-negative
-    /// multiple of 0.25 written in canonical decimal form whose whole part an int holds (<c>p-13</c>, <c>gap-4.5</c>, <c>w-0.25</c>) and
+    /// multiple of 0.25 written in canonical decimal form (<c>p-13</c>, <c>gap-4.5</c>, <c>w-0.25</c>) and
     /// resolves it to that many 4px steps. A step the bundled stylesheets declare a rule for keeps its class;
     /// the others resolve inline, as the bracket forms do.
     /// </summary>
