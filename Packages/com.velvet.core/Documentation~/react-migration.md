@@ -651,18 +651,20 @@ A field's `className` background, border, radius, padding, shadow and ring utili
 is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
 is listed with the `[&>*]:` composite notes.
 
-`maxLength:` limits what the user enters, as `maxlength` does, and nothing else. Text typed or pasted
-is inserted only as far as the limit leaves room for it at the caret, the room being the limit less the
-text that stays, so a selection pasted over counts as gone and a value longer than the limit leaves
-none. The rest of the insertion is refused. An edit that does not lengthen the text is never refused,
-so a value longer than the limit can still be shortened. The limit is applied to the keys the field
-takes and to its paste, cut and delete commands. Text that arrives by IME composition, the touch
-keyboard or undo is not limited, and none of the three has been tested. A value
-set from code is shown whole: the controlled `value:` and an assignment to the field's `value` from a
-`refCallback:`. A render changing `maxLength:` leaves the value and a pending edit as they are, and a
-field holding `isDelayed:` text longer than the limit releases that text on Enter or blur like any
-other. There is no counterpart of the browser's too-long validity state, so a value longer than the
-limit is not flagged.
+`maxLength:` limits what the user enters, as `maxlength` does. Text typed or pasted is inserted only as
+far as the limit leaves room for it at the caret, the room being the limit less the text that stays, so
+a selection pasted over counts as gone and a value longer than the limit leaves none. The rest of the
+insertion is refused. An edit that does not lengthen the text is never refused, so a value longer than
+the limit can still be shortened. Text that reaches the field any other way, the touch keyboard and an
+IME preview among them, is cut from the end to the larger of the limit and the length the text had, as
+the engine's own limit cut it; neither has been tested on a device. A value Velvet writes is shown
+whole: the controlled `value:`, and the value a render or a changed `maxLength:` re-shows. So is an
+assignment to the field's `value` from a `refCallback:` or other code, with one exception: a value
+containing a line break, assigned to a single-line field, is limited like an edit, because the engine
+announces that write the way it announces typing. A render changing `maxLength:` leaves the value and
+a pending edit as they are, and a field holding `isDelayed:` text longer than the limit releases that
+text on Enter or blur like any other. There is no counterpart of the browser's too-long validity state,
+so a value longer than the limit is not flagged.
 
 ### 2-1a. Event props
 

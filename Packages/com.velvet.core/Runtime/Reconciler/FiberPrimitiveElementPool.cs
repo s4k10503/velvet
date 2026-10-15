@@ -203,6 +203,7 @@ namespace Velvet
         {
             if (textField == null) return;
 
+            using var write = FiberPropApplier.OwnWrites.Begin();
             FiberElementPoolReset.DetachForeignChildren(
                 textField, BaseField<string>.inputUssClassName, BaseField<string>.labelUssClassName);
             FiberElementPoolReset.ResetClassListAndCommon(

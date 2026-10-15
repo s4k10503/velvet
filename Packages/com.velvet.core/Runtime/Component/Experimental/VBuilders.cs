@@ -267,7 +267,7 @@ namespace Velvet.Experimental
         /// <summary>A short hint shown in the empty field.</summary>
         public string? Placeholder { get; set; }
 
-        /// <summary>Maximum number of characters the user can enter, -1 for no limit. A value set from code is shown whole.</summary>
+        /// <summary>Maximum number of characters the user can enter, -1 for no limit. Velvet's own writes are shown whole; <c>V.TextField</c> documents what is limited and how.</summary>
         public int? MaxLength { get; set; }
 
         /// <summary>When true, the field cannot be edited.</summary>

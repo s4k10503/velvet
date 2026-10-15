@@ -188,6 +188,7 @@ namespace Velvet
 
         public static void ApplyFieldValue(VisualElement element, object? value)
         {
+            using var write = OwnWrites.Begin();
             // A controlled field reflects its declared value, so clearing the value prop to null resets the
             // element to its type default (mirroring ApplyText's null -> empty coalescing) instead of stranding
             // the prior value. On the initial mount a null FieldValue is skipped by the caller, so this clear
@@ -399,6 +400,7 @@ namespace Velvet
         // on screen for a blur to commit. TextFieldMultilineKeyboardPropTests pins each of these.
         private static void WriteMultiline(TextField field, bool value)
         {
+            using var write = OwnWrites.Begin();
             var edit = HasUncommittedEdit(field) ? field.text : null;
             var turns = field.multiline != value;
             field.multiline = value;
@@ -583,20 +585,20 @@ namespace Velvet
 
         private static readonly EventCallback<InputEvent> s_limitUserEdit = LimitUserEdit;
 
-        // Which InputEvents are the user's. The engine sends one for any change of the shown text it makes
-        // itself, a code write on a single-line field among them (the line break the shown text strips makes
-        // it differ from the value), so the event alone cannot tell a user edit from a code write. What the
-        // user does reaches the field first as a key or a command, on the trickle-down pass before the input
-        // inside it takes it, so those are noted along with the selection they will replace. An InputEvent
-        // from the same frame that finds a note is the edit, and one that finds none is not limited. Text
-        // that reaches the field any other way (IME composition, the touch keyboard, undo) is therefore not
-        // limited either, and has not been tested. TextFieldMaxLengthTests pins the engine behaviour this
-        // relies on: the order of the key and the event, and a code write sending an event of its own.
-        // Only the keys and commands that can change the text are noted: a note left by an arrow key would
-        // make the next code write in the frame look like an edit.
+        // Every InputEvent on a field with a declared limit is limited, because the engine sends one for each
+        // way text reaches a field it did not write itself: a key, a paste, the touch keyboard's poll and an
+        // IME preview. Velvet's own writes are the exception (OwnWrites), since the text they re-show is a
+        // value rather than an edit. A key or command that reaches the field first leaves a note of the
+        // selection it will replace, which sizes the refusal at the caret; an event with no note that fits it
+        // is cut from the end instead, as the engine's own limit cut it. A note that no event consumes is
+        // harmless: it is used only when the edit it describes is the one that arrived (NoteFits). The write
+        // of a refCallback is not Velvet's, so a line-break value on a single-line field, which the engine
+        // announces with an InputEvent, is limited too. TextFieldMaxLengthTests pins each of these.
         private static void NoteKey(KeyDownEvent evt)
         {
-            var edits = evt.character != '\0'
+            var multiline = ((TextField)evt.currentTarget).multiline;
+            var edits = evt.character >= ' '
+                        || (multiline && evt.character is '\n' or '\r')
                         || evt.keyCode == UnityEngine.KeyCode.Backspace
                         || evt.keyCode == UnityEngine.KeyCode.Delete;
             if (edits && !evt.actionKey)
@@ -622,18 +624,33 @@ namespace Velvet
 
             var cursor = field.textSelection.cursorIndex;
             var select = field.textSelection.selectIndex;
-            built.PendingEdit = new PendingEdit(
-                System.Math.Min(cursor, select), System.Math.Abs(cursor - select), UnityEngine.Time.frameCount);
+            built.PendingEdit = new PendingEdit(System.Math.Min(cursor, select), System.Math.Abs(cursor - select));
+        }
+
+        // Whether the text after the edit is the text before it with the noted selection replaced, which
+        // the note's own selection and the two texts decide.
+        private static bool NoteFits(PendingEdit note, string before, string edited)
+        {
+            var stayed = before.Length - note.Start - note.Length;
+            return note.Start >= 0
+                   && stayed >= 0
+                   && note.Start + stayed <= edited.Length
+                   && string.CompareOrdinal(before, 0, edited, 0, note.Start) == 0
+                   && string.CompareOrdinal(before, before.Length - stayed, edited, edited.Length - stayed, stayed) == 0;
         }
 
         // The room an edit has is the limit less the text that stays, as in a browser: pasting over a
         // selection counts the selection as gone, and a value longer than the limit leaves no room. An edit
-        // that does not lengthen the text is never refused, so such a value can still be shortened. The
-        // characters refused are the tail of what was inserted, which ends where the selection began plus
-        // what was inserted.
+        // that does not lengthen the text is never refused, so such a value can still be shortened, and one
+        // with no note that fits is cut to the larger of the limit and the length it had.
         // A delayed field's value is left alone: the edit is pending, not committed.
         private static void LimitUserEdit(InputEvent evt)
         {
+            if (s_ownWrites > 0)
+            {
+                return;
+            }
+
             var field = (TextField)evt.currentTarget;
             if (!s_textFieldDefaults.TryGetValue(field, out var built))
             {
@@ -642,19 +659,25 @@ namespace Velvet
 
             var noted = built.PendingEdit;
             built.PendingEdit = null;
-            if (noted == null || noted.Frame != UnityEngine.Time.frameCount)
+            var limit = built.DeclaredMaxLength ?? NoEngineLimit;
+            var edited = evt.newData ?? string.Empty;
+            var before = evt.previousData ?? string.Empty;
+            if (limit < 0 || edited.Length <= before.Length)
             {
                 return;
             }
 
-            var limit = built.DeclaredMaxLength ?? NoEngineLimit;
-            var edited = evt.newData ?? string.Empty;
-            var before = evt.previousData ?? string.Empty;
-            var inserted = edited.Length - (before.Length - noted.Length);
-            var room = System.Math.Max(0, limit - (before.Length - noted.Length));
-            var refused = inserted <= noted.Length ? 0 : inserted - System.Math.Min(inserted, room);
-            var end = noted.Start + inserted;
-            if (limit < 0 || refused <= 0 || end > edited.Length)
+            var end = edited.Length;
+            var refused = edited.Length - System.Math.Max(limit, before.Length);
+            if (noted != null && NoteFits(noted, before, edited))
+            {
+                var stayed = before.Length - noted.Length;
+                var inserted = edited.Length - stayed;
+                refused = inserted - System.Math.Min(inserted, System.Math.Max(0, limit - stayed));
+                end = noted.Start + inserted;
+            }
+
+            if (refused <= 0)
             {
                 return;
             }
@@ -673,25 +696,39 @@ namespace Velvet
             var keyboard = field.textEdition.touchScreenKeyboard;
             if (keyboard != null)
             {
-                // MUTANT_SURVIVES(unreachable): an editor panel opens no touch keyboard, which TextFieldMaxLengthTests pins.
                 keyboard.text = kept;
             }
         }
 
-        // Where the selection began and how long it was when a key or command reached the field, and the
-        // frame it did.
+        // Where the selection began and how long it was when a key or command reached the field.
         private sealed class PendingEdit
         {
             public readonly int Start;
             public readonly int Length;
-            public readonly int Frame;
 
-            public PendingEdit(int start, int length, int frame)
+            public PendingEdit(int start, int length)
             {
                 Start = start;
                 Length = length;
-                Frame = frame;
             }
+        }
+
+        // Scopes the writes Velvet makes to a field's text, so the InputEvents they send are not read as
+        // edits: a controlled value, the engine's limit moving, multiline coming on or off and a delayed
+        // flag releasing its text. An InputEvent the engine queues instead of dispatching during an event
+        // handler arrives after the scope has closed, so a write made inside a handler is covered only when
+        // the engine dispatches at once; that has not been tested.
+        private static int s_ownWrites;
+
+        internal readonly struct OwnWrites : System.IDisposable
+        {
+            public static OwnWrites Begin()
+            {
+                s_ownWrites++;
+                return default;
+            }
+
+            public void Dispose() => s_ownWrites--;
         }
 
         // The value to report for a change event of the field. A non-delayed field has set its value from the
@@ -732,6 +769,7 @@ namespace Velvet
         // no-edit cases.
         private static void WriteMaxLength(TextField field, int limit)
         {
+            using var write = OwnWrites.Begin();
             if (field.maxLength == limit)
             {
                 return;
@@ -924,6 +962,7 @@ namespace Velvet
         // TextFieldInputPropTests measures the commit itself on both routes off the flag.
         private static void WriteDelayed(TextField field, bool value)
         {
+            using var write = OwnWrites.Begin();
             if (!value && field.isDelayed)
             {
                 field.value = field.text;

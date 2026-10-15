@@ -73,6 +73,22 @@ namespace Velvet.Tests
 
         private static void Type(TextField field, char character) => Press(field, character, KeyCode.None);
 
+        // The touch keyboard's poll hands the engine text through ITextEdition.UpdateText with no key or
+        // command before it. The method is internal to the engine, so it is reached by reflection; a
+        // missing one fails the case that calls it.
+        private static void Poll(TextField field, string text)
+        {
+            var update = typeof(ITextEdition).GetMethod(
+                "UpdateText", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic
+                              | System.Reflection.BindingFlags.Public);
+            if (update == null)
+            {
+                throw new MissingMethodException(nameof(ITextEdition), "UpdateText");
+            }
+
+            update.Invoke(Input(field), new object[] { text });
+        }
+
         private static void Paste(TextField field, string text)
         {
             GUIUtility.systemCopyBuffer = text;
@@ -194,39 +210,6 @@ namespace Velvet.Tests
             Assert.That(field.text, Is.EqualTo("abXYef"));
         }
 
-        // GREEN_ON_BASE(characterization): the base keeps the value of a code assignment whole, cutting only the shown text.
-        // On a single-line field the shown text strips the line break, so the assignment makes the engine
-        // send an InputEvent that LimitUserEdit must not read as an edit.
-        [Test]
-        public void Given_ASingleLineLimitedField_When_CodeAssignsAValueWithALineBreak_Then_TheValueStaysWhole()
-        {
-            // Arrange
-            var field = Mount(V.TextField(maxLength: 3));
-
-            // Act
-            field.value = "ab\ncd";
-
-            // Assert
-            Assert.That(field.value, Is.EqualTo("ab\ncd"));
-        }
-
-        // GREEN_ON_BASE(characterization): the base keeps the value of a code assignment whole, cutting only the shown text.
-        // A key that cannot change the text leaves no note behind for the assignment that follows it.
-        [Test]
-        public void Given_AnArrowKeyPressedInALimitedField_When_CodeAssignsAValueWithALineBreakInTheSameFrame_Then_TheValueStaysWhole()
-        {
-            // Arrange
-            var field = Mount(V.TextField(maxLength: 3));
-            PlaceCaret(field, 0);
-            Press(field, '\0', KeyCode.LeftArrow);
-
-            // Act
-            field.value = "ab\ncd";
-
-            // Assert
-            Assert.That(field.value, Is.EqualTo("ab\ncd"));
-        }
-
         // GREEN_ON_BASE(characterization): the base never edits a value when the engine's limit moves.
         // The declared limit of four is below the value, and the drop puts the built limit of three back.
         [Test]
@@ -279,6 +262,133 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(field.textSelection.cursorIndex, Is.EqualTo(1));
+        }
+
+        // The one write of code that is limited: on a single-line field the shown text strips the line
+        // break, so the assignment makes the engine announce a change of the shown text as it does for
+        // typing, and nothing tells the two apart.
+        [Test]
+        public void Given_ASingleLineLimitedField_When_CodeAssignsAValueWithALineBreak_Then_TheValueIsLimitedLikeAnEdit()
+        {
+            // Arrange
+            var field = Mount(V.TextField(maxLength: 3));
+
+            // Act
+            field.value = "ab\ncd";
+
+            // Assert
+            Assert.That(field.value, Is.EqualTo("ab\nc"));
+        }
+
+        // The assignment of a refCallback is code too, and a value without a line break sends no InputEvent.
+        [Test]
+        public void Given_ARefCallbackAssigningALongerValue_When_TheLimitedFieldIsMounted_Then_TheValueAndTheShownTextStayWhole()
+        {
+            // Arrange
+            Func<VisualElement, Action> assign = el =>
+            {
+                ((TextField)el).value = "abcdef";
+                return () => { };
+            };
+
+            // Act
+            var field = Mount(V.TextField(maxLength: 3, refCallback: assign));
+
+            // Assert
+            Assert.That((field.value, field.text), Is.EqualTo(("abcdef", "abcdef")));
+        }
+
+        [Test]
+        public void Given_ALimitedField_When_ARenderPatchesAValueLongerThanTheLimit_Then_TheValueAndTheShownTextStayWhole()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abc", maxLength: 3));
+
+            // Act
+            Render(V.TextField(value: "abcdef", maxLength: 3));
+
+            // Assert
+            Assert.That((field.value, field.text), Is.EqualTo(("abcdef", "abcdef")));
+        }
+
+        // Multiline coming on re-shows the value with its line break, which is longer than the single-line
+        // display the field showed before.
+        [Test]
+        public void Given_ALimitedSingleLineField_When_ARenderTurnsMultilineOn_Then_TheValueIsReShownWhole()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "a\nbcdef", maxLength: 3));
+
+            // Act
+            Render(V.TextField(value: "a\nbcdef", maxLength: 3, multiline: true));
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("a\nbcdef"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base cuts the shown text to its limit whatever handed it over.
+        // It pins that text handed over with no key behind it, as the touch keyboard's poll does, is cut to
+        // the limit here too.
+        [Test]
+        public void Given_AFieldHoldingItsLimit_When_TheShownTextGrowsWithNoKeyBehindIt_Then_ItIsCutFromTheEnd()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abc", maxLength: 3));
+
+            // Act
+            Poll(field, "abcdef");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("abc"));
+        }
+
+        // The cut never goes below the length the text had, so an over-long value can only shrink.
+        [Test]
+        public void Given_AValueLongerThanTheLimit_When_TheShownTextGrowsWithNoKeyBehindIt_Then_ItIsCutToWhatItWas()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abcdef", maxLength: 3));
+
+            // Act
+            Poll(field, "abcdefg");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("abcdef"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base cuts the shown text to its limit whatever handed it over.
+        // A Backspace at index 0 changes nothing and leaves a note that no event consumes; the poll that
+        // follows must still be cut from the end.
+        [Test]
+        public void Given_ABackspaceAtTheStartThatChangedNothing_When_TheShownTextGrowsWithNoKeyBehindIt_Then_ItIsCutFromTheEnd()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abc", maxLength: 3));
+            PlaceCaret(field, 0);
+            Press(field, '\b', KeyCode.Backspace);
+
+            // Act
+            Poll(field, "abcdef");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("abc"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base cuts the shown text to its limit whatever handed it over.
+        // Enter in a single-line field is not an edit and leaves no note.
+        [Test]
+        public void Given_EnterPressedInASingleLineField_When_TheShownTextGrowsWithNoKeyBehindIt_Then_ItIsCutFromTheEnd()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abc", maxLength: 3));
+            PlaceCaret(field, 3);
+            Press(field, '\n', KeyCode.Return);
+
+            // Act
+            Poll(field, "abcdef");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("abc"));
         }
 
         [Test]
@@ -350,23 +460,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(field.text, Is.EqualTo("ab"));
-        }
-
-        // GREEN_ON_BASE(characterization): the base opens no touch keyboard on an editor panel either.
-        // LimitUserEdit writes the soft keyboard's text when there is one, and no test arranges one: this
-        // is the reading that says the editor panel has none.
-        [Test]
-        public void Given_ALimitedFieldOnAnEditorPanel_When_TheUserTypesPastTheLimit_Then_NoTouchKeyboardIsOpen()
-        {
-            // Arrange
-            var field = Mount(V.TextField(value: "abc", maxLength: 3));
-            PlaceCaret(field, 0);
-
-            // Act
-            Type(field, 'x');
-
-            // Assert
-            Assert.That(field.textEdition.touchScreenKeyboard, Is.Null);
         }
 
         // The second character finds no room, and the first, typed before it, is kept in the middle of the
