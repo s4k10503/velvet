@@ -8,8 +8,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins what happens to the effects of a component a <c>V.Suspense</c> keeps hidden when its host renders it
     /// while the fallback shows. None of its insertion, layout or passive effects runs meanwhile, and the commit
-    /// that reveals it runs every effect whose deps changed since the fiber's last committed render, once: the
-    /// effects of a tree that never showed included, and those of a render that left the deps unchanged.
+    /// that reveals it runs once each insertion and passive effect such a render queued, those of a tree that
+    /// never showed included, and the layout effects all over again. An effect whose deps changed and changed back
+    /// while hidden runs at the reveal too, since the hidden children render at all.
     /// </summary>
     [TestFixture]
     internal sealed class SuspenseHiddenInsertionEffectTests
@@ -138,7 +139,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APrimaryFirstMountedUnderTheFallback_When_ItsHostRendersItAgainWithUnchangedDeps_Then_ItsInsertionEffectRunsOnReveal()
+        public void Given_APrimaryFirstMountedUnderTheFallback_When_ItsHostRendersItAgainWithUnchangedDeps_Then_ItsInsertionEffectRunsOnlyOnReveal()
         {
             // Arrange
             s_depsOf = static _ => 0;
@@ -156,9 +157,31 @@ namespace Velvet.Tests
                 "A tree that never showed commits nothing until the reveal, which runs its effect once");
         }
 
-        private static void SetBlocked(MountedTree mounted)
+        // GREEN_ON_BASE(characterization): the base runs the effect once at the first reveal and queues nothing at the
+        // second. What this pins is that the hold empties at the reveal, so a later hide does not run it again.
+        [Test]
+        public void Given_AShownProbeHiddenAndRevealedOnce_When_ItIsHiddenAgainWithItsDepsUnchangedAndRevealed_Then_ItsInsertionEffectDoesNotRunAgain()
         {
-            s_setBlocked.Invoke(true);
+            // Arrange
+            s_depsOf = static tick => tick > 0 ? 1 : 0;
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            SetBlocked(mounted);
+            SetTick(mounted, 1);
+            Reveal(mounted);
+            SetBlocked(mounted, 2);
+
+            // Act
+            SetTick(mounted, 2);
+            Reveal(mounted);
+
+            // Assert
+            Assert.That(s_insertionSetups, Is.EqualTo(2),
+                "The mount and the first reveal ran the effect, and nothing queued it again");
+        }
+
+        private static void SetBlocked(MountedTree mounted, int block = 1)
+        {
+            s_setBlocked.Invoke(block);
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
@@ -176,7 +199,7 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
-        private static StateUpdater<bool> s_setBlocked;
+        private static StateUpdater<int> s_setBlocked;
         private static StateUpdater<int> s_setTick;
         private static StateUpdater<bool> s_setMounted;
         private static StateUpdater<bool> s_setExtra;
@@ -191,7 +214,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode HostRender()
         {
-            var (blocked, setBlocked) = Hooks.UseState(false);
+            var (blocked, setBlocked) = Hooks.UseState(0);
             var (tick, setTick) = Hooks.UseState(0);
             var (extra, setExtra) = Hooks.UseState(false);
             s_setBlocked = setBlocked;
@@ -225,7 +248,7 @@ namespace Velvet.Tests
                         ? new VNode[]
                         {
                             V.Component(ProbeRender, tick, key: "probe"),
-                            V.Component(ReaderRender, true, key: "reader"),
+                            V.Component(ReaderRender, 1, key: "reader"),
                         }
                         : Array.Empty<VNode>()),
             });
@@ -233,9 +256,9 @@ namespace Velvet.Tests
 
         // Pending for good until s_source resolves, once blocked.
         [Component]
-        private static VNode ReaderRender(bool blocked)
+        private static VNode ReaderRender(int blocked)
         {
-            var value = Hooks.Use<int>(_ => blocked
+            var value = Hooks.Use<int>(_ => blocked > 0
                 ? (s_source = new VelvetTaskCompletionSource<int>()).Task
                 : VelvetTask.FromResult(0), blocked);
             return V.Label(text: "reader:" + value);

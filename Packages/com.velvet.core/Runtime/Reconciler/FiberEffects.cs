@@ -27,6 +27,8 @@ namespace Velvet
         {
             for (var fiber = owner; fiber != null; fiber = fiber.Parent)
             {
+                // A hidden fiber commits none of its render's effects: they wait for the commit that reveals it.
+                if (fiber.LayoutEffectsHidden) continue;
                 HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects);
             }
         }
