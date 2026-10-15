@@ -79,7 +79,7 @@ namespace Velvet
             // The fibers a Suspense of this walk hid (true) or revealed (false), applied once FinalizeGeneralCommit
             // has placed what the walk emitted: React disconnects and reconnects them in its commit, and a walk
             // that rolls back or stops leaves on screen what was there.
-            public List<(ComponentFiber Fiber, bool Hidden)>? OffscreenChanges;
+            public List<(ComponentFiber Fiber, bool Hidden, bool PrimaryWasShown)>? OffscreenChanges;
             // The primary elements a Suspense of this walk hid (true) or revealed (false), each with its NewElements
             // row, applied with OffscreenChanges and on the same terms. RollbackCommitTo drops those of the rows it
             // takes back, whose elements can be in the pool by the time this is applied.
@@ -1393,7 +1393,7 @@ namespace Velvet
                     //
                     // A nested Suspense that suspended has already answered for the fibers it created, and
                     // this delta contains them, so its answer stands.
-                    MarkPrimaryOffscreen(walk, fibersBefore, suspended, boundaryFiber);
+                    MarkPrimaryOffscreen(walk, fibersBefore, suspended, retains, boundaryFiber);
                     // Rollback and fallback expansion must run while fibersBefore is still live
                     // (rented from the pool, contents intact). Performing them after the finally
                     // would observe a Cleared / re-rented set, silently breaking the fibersBefore
@@ -1499,7 +1499,8 @@ namespace Velvet
         }
 
         private void MarkPrimaryOffscreen(
-            InlineWalk walk, HashSet<ComponentFiber> fibersBefore, bool suspended, ComponentFiber? boundaryFiber)
+            InlineWalk walk, HashSet<ComponentFiber> fibersBefore, bool suspended, bool retains,
+            ComponentFiber? boundaryFiber)
         {
             foreach (var f in walk.NewFibers)
             {
@@ -1509,7 +1510,7 @@ namespace Velvet
                     // This Suspense is the innermost over a fiber its own walk mounted. A new-side walk always
                     // carries a commit: only ReconcileGeneral starts one.
                     SetOffscreen(walk.Commit!, f, suspended, hiddenUnder: null, suspended ? boundaryFiber : null);
-                    (walk.Commit!.OffscreenChanges ??= new()).Add((f, suspended));
+                    (walk.Commit!.OffscreenChanges ??= new()).Add((f, suspended, retains));
                 }
                 if (suspended) walk.OffscreenPrimaries.Add(f);
             }
@@ -1547,12 +1548,12 @@ namespace Velvet
                     if (fiber.IsOffscreen && (fiber.HiddenUnder == null || IsAtOrUnder(fiber.HiddenUnder, roots))) continue;
                     var wasOffscreen = fiber.IsOffscreen;
                     SetOffscreen(commit, fiber, true, HolderOf(fiber.MountPoint, roots), boundaryFiber);
-                    if (!wasOffscreen) (commit.OffscreenChanges ??= new()).Add((fiber, true));
+                    if (!wasOffscreen) (commit.OffscreenChanges ??= new()).Add((fiber, true, true));
                 }
                 else if (roots.Contains(fiber.HiddenUnder!))
                 {
                     SetOffscreen(commit, fiber, false, hiddenUnder: null, offscreenUnder: null);
-                    (commit.OffscreenChanges ??= new()).Add((fiber, false));
+                    (commit.OffscreenChanges ??= new()).Add((fiber, false, true));
                     // FlushState deferred this fiber's update while it was hidden and left nothing scheduled, and a
                     // VirtualList row, the one HoldSuspendInPrimary held among them, is rendered by no walk.
                     if (fiber.IsDirty)
@@ -1684,9 +1685,9 @@ namespace Velvet
                 }
             }
             if (commit.OffscreenChanges == null) return;
-            foreach (var (fiber, hidden) in commit.OffscreenChanges)
+            foreach (var (fiber, hidden, primaryWasShown) in commit.OffscreenChanges)
             {
-                if (hidden) FiberEffects.HideLayoutEffects(fiber);
+                if (hidden) FiberEffects.HideLayoutEffects(fiber, primaryWasShown);
                 else FiberEffects.ShowLayoutEffects(fiber, _ctx);
             }
         }

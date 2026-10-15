@@ -112,12 +112,13 @@ namespace Velvet
         // keeping its state, and reconnects them when the tree is revealed. While hidden, the fiber's layout work
         // is dropped from the commit (CommitLayoutBatch), a mount's included: one this render first mounted under the
         // Suspense has set nothing up for the cleanups below to take down, and the reveal sets it up.
-        internal static void HideLayoutEffects(ComponentFiber fiber)
+        internal static void HideLayoutEffects(ComponentFiber fiber, bool primaryWasShown)
         {
             // Each pass that renders the boundary while it shows its fallback hides the fiber again, and must not
             // clear a ref another component has written since.
             if (fiber.LayoutEffectsHidden) return;
             fiber.LayoutEffectsHidden = true;
+            if (primaryWasShown) fiber.HasBeenShown = true;
             HookEffectExecutor.RunCleanups(fiber, fiber.LayoutEffects);
             if (fiber.ImperativeHandleSlots == null) return;
             foreach (var slot in fiber.ImperativeHandleSlots) slot.HandleRef?.Set(null);
@@ -149,6 +150,16 @@ namespace Velvet
                         slot.NextHandleRef = slot.HandleRef;
                     }
                     slot.NextNeedsRecompute = true;
+                }
+            }
+            // A tree never shown ran no insertion effect while hidden, and each render since cleared the pending
+            // list, which a render that leaves the deps unchanged does not fill again.
+            if (!fiber.HasBeenShown && fiber.InsertionEffects != null)
+            {
+                var pending = fiber.PendingInsertionEffects ??= new List<HookEffectSlot>();
+                foreach (var slot in fiber.InsertionEffects)
+                {
+                    if (!pending.Contains(slot)) pending.Add(slot);
                 }
             }
             ctx.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, ctx.CurrentPass));
@@ -285,9 +296,8 @@ namespace Velvet
                 {
                     var (fiber, isMount) = ordered[i];
                     // A tree under a Suspense showing its fallback that has never been shown commits nothing, as React
-                    // mounts it on reveal: its insertion effects stay pending through every render until the commit
-                    // that reveals it runs them.
-                    if (!fiber.LayoutEffectsHidden || fiber.HasCommittedVisible)
+                    // mounts it on reveal; ShowLayoutEffects queues its insertion effects again for that commit.
+                    if (!fiber.LayoutEffectsHidden || fiber.HasBeenShown)
                     {
                         RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
                     }
@@ -304,7 +314,7 @@ namespace Velvet
                     // report below is not layout work, and a hidden boundary that caught still delivers it.
                     if (!fiber.LayoutEffectsHidden)
                     {
-                        fiber.HasCommittedVisible = true;
+                        fiber.HasBeenShown = true;
                         // After every cleanup above, so what the insertion effects and layout cleanups wrote is in
                         // the layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
                         if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);

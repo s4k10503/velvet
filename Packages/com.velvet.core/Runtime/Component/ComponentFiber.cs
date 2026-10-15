@@ -218,9 +218,10 @@ namespace Velvet
         // FiberEffects.HideLayoutEffects.
         internal bool LayoutEffectsHidden { get; set; }
 
-        // Set once a commit has run this fiber's effects with no Suspense hiding it. Until then a hidden fiber's
-        // insertion effects stay pending for the commit that reveals it — see FiberEffects.CommitLayoutBatch.
-        internal bool HasCommittedVisible { get; set; }
+        // Set once the tree this fiber belongs to has been shown: a commit ran its effects with no Suspense hiding it,
+        // or a Suspense that had committed its primary hid it. Until then a hidden fiber's insertion effects wait
+        // for the commit that reveals it — see FiberEffects.CommitLayoutBatch.
+        internal bool HasBeenShown { get; set; }
 
         internal List<ContextDependency> Dependencies { get; private set; } = new();
 

@@ -22,6 +22,9 @@ namespace Velvet.Tests
             s_setBlocked = default;
             s_setTick = default;
             s_setMounted = default;
+            s_setExtra = default;
+            s_lateInsertionSetups = 0;
+            s_probeDepsFollowTick = true;
             s_source = null;
             s_insertionSetups = 0;
             s_layoutSetups = 0;
@@ -81,6 +84,43 @@ namespace Velvet.Tests
                 "React commits nothing of a tree that never showed, so its insertion effect runs once, on reveal");
         }
 
+        [Test]
+        public void Given_APrimaryFirstMountedUnderTheFallback_When_ItsHostRendersItAgainWithUnchangedDepsBeforeTheReveal_Then_ItsInsertionEffectRunsOnReveal()
+        {
+            // Arrange
+            s_probeDepsFollowTick = false;
+            using var mounted = V.Mount(_root, V.Component(NeverShownHostRender, key: "never-shown-host"));
+            s_setMounted.Invoke(true);
+            mounted.FlushStateForTest();
+            SetTick(mounted);
+            var whileHidden = s_insertionSetups;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((whileHidden, s_insertionSetups), Is.EqualTo((0, 1)),
+                "React commits nothing of a tree that never showed, so its insertion effect runs once, on reveal");
+        }
+
+        [Test]
+        public void Given_AHiddenPrimaryTheBoundaryHadShown_When_ItsHostMountsAChildInIt_Then_TheChildsInsertionEffectRuns()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            SetBlocked(mounted);
+
+            // Act
+            s_setExtra.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_lateInsertionSetups, Is.EqualTo(1),
+                "React commits a child mounted in a primary tree the boundary had shown, hidden as it is");
+        }
+
         private static void SetBlocked(MountedTree mounted)
         {
             s_setBlocked.Invoke(true);
@@ -98,6 +138,9 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_setBlocked;
         private static StateUpdater<int> s_setTick;
         private static StateUpdater<bool> s_setMounted;
+        private static StateUpdater<bool> s_setExtra;
+        private static int s_lateInsertionSetups;
+        private static bool s_probeDepsFollowTick;
         private static VelvetTaskCompletionSource<int> s_source;
         private static int s_insertionSetups;
         private static int s_layoutSetups;
@@ -108,8 +151,10 @@ namespace Velvet.Tests
         {
             var (blocked, setBlocked) = Hooks.UseState(false);
             var (tick, setTick) = Hooks.UseState(0);
+            var (extra, setExtra) = Hooks.UseState(false);
             s_setBlocked = setBlocked;
             s_setTick = setTick;
+            s_setExtra = setExtra;
             return V.Div(children: new VNode[]
             {
                 V.Suspense(
@@ -118,6 +163,7 @@ namespace Velvet.Tests
                     {
                         V.Component(ProbeRender, tick, key: "probe"),
                         V.Component(ReaderRender, blocked, key: "reader"),
+                        extra ? V.Component(LateRender, key: "late") : null,
                     }),
             });
         }
@@ -150,6 +196,17 @@ namespace Velvet.Tests
             return V.Label(text: "reader:" + value);
         }
 
+        [Component]
+        private static VNode LateRender()
+        {
+            Hooks.UseInsertionEffect(() =>
+            {
+                s_lateInsertionSetups++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "late");
+        }
+
         // Pending for good once blocked.
         [Component]
         private static VNode ReaderRender(bool blocked)
@@ -167,7 +224,7 @@ namespace Velvet.Tests
             {
                 s_insertionSetups++;
                 return (Action)null;
-            }, new object[] { tick });
+            }, new object[] { s_probeDepsFollowTick ? tick : 0 });
             Hooks.UseLayoutEffect(() =>
             {
                 s_layoutSetups++;
