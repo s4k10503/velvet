@@ -368,6 +368,63 @@ namespace Velvet.Tests
             Assert.That((element.text, element.value), Is.EqualTo(("abc", "xy")));
         }
 
+        // GREEN_ON_BASE(characterization): the base carries typing that differs from its record as multiline comes on.
+        // The pool hands the same instance to the next tenant, so a record the first tenant left stands
+        // unless removal forgets it. The second tenant declares nothing about multiline at mount, so no
+        // multiline write refreshes the record before the typing.
+        [Test]
+        public void Given_ARecycledDelayedField_When_TheNextTenantTypesAndALaterRenderTurnsMultilineOn_Then_TheEditSurvives()
+        {
+            // Arrange
+            var first = new VNode[] { V.TextField(isDelayed: true) };
+            var second = new VNode[] { V.TextField(isDelayed: true) };
+            var multiline = new VNode[] { V.TextField(isDelayed: true, multiline: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), first);
+            var firstElement = (TextField)Root!.ElementAt(0);
+            firstElement.SimulateChange("abc");
+            Reconciler.Reconcile(Root, first, Array.Empty<VNode>());
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), second);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "abc";
+
+            // Act
+            Reconciler.Reconcile(Root, second, multiline);
+
+            // Assert — the instance is folded in: a fresh one passes without the pool being involved.
+            Assert.That(
+                (ReferenceEquals(element, firstElement), element.text, element.value),
+                Is.EqualTo((true, "abc", string.Empty)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base follows a commit with its record in the next tenancy too.
+        // The second tenant commits "xy" and then deletes all of it. A record the removal left standing has
+        // no callback registered for that commit, stays at the empty text, and reads the deletion as no edit,
+        // which multiline coming on would then replace with the value.
+        [Test]
+        public void Given_ARecycledDelayedField_When_TheNextTenantCommitsThenDeletesItAndMultilineComesOn_Then_TheDeletionSurvives()
+        {
+            // Arrange
+            var first = new VNode[] { V.TextField(isDelayed: true) };
+            var second = new VNode[] { V.TextField(isDelayed: true) };
+            var multiline = new VNode[] { V.TextField(isDelayed: true, multiline: true) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), first);
+            var firstElement = (TextField)Root!.ElementAt(0);
+            firstElement.SimulateChange("abc");
+            Reconciler.Reconcile(Root, first, Array.Empty<VNode>());
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), second);
+            var element = (TextField)Root!.ElementAt(0);
+            element.SimulateChange("xy");
+            ((TextElement)element.textEdition).text = string.Empty;
+
+            // Act
+            Reconciler.Reconcile(Root, second, multiline);
+
+            // Assert — the instance is folded in: a fresh one passes without the pool being involved.
+            Assert.That(
+                (ReferenceEquals(element, firstElement), element.text, element.value),
+                Is.EqualTo((true, string.Empty, "xy")));
+        }
+
         // GREEN_ON_BASE(characterization): the base registers no shown-text callback, so nothing accumulates
         // there either. It pins that the branch's removal unregisters the one it registers.
         // Each tenancy that records the shown text registers a change callback on the field, so a removal

@@ -652,8 +652,11 @@ is shown in, as on an `<input>`; [which factories and utilities that covers](sty
 is listed with the `[&>*]:` composite notes.
 
 `maxLength:` limits what the user enters, as `maxlength` does, and nothing else. Text typed or pasted
-past it is inserted only as far as it fits at the caret and the rest is refused, and an edit that does
-not lengthen the text is never refused, so a value longer than the limit can still be shortened. A value
+is inserted only as far as the limit leaves room for it at the caret, the room being the limit less the
+text that stays, so a selection pasted over counts as gone and a value longer than the limit leaves
+none. The rest of the insertion is refused. An edit that does not lengthen the text is never refused,
+so a value longer than the limit can still be shortened. IME composition, undo and the touch keyboard
+have not been tested against the limit. A value
 set from code is shown whole: the controlled `value:` and an assignment to the field's `value` from a
 `refCallback:`. A render changing `maxLength:` leaves the value and a pending edit as they are, and a
 field holding `isDelayed:` text longer than the limit releases that text on Enter or blur like any

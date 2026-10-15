@@ -123,6 +123,77 @@ namespace Velvet.Tests
             Assert.That(sent, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base sends no InputEvent for a code assignment to a field with no limit.
+        // It pins the engine fact LimitUserEdit relies on where it can hold on the base; the limited field
+        // above is the reading that differs there, since the engine's cut makes the text differ from the value.
+        [Test]
+        public void Given_AFieldWithNoLimit_When_CodeAssignsAValue_Then_NoInputEventIsSent()
+        {
+            // Arrange
+            var field = Mount(V.TextField());
+            var sent = 0;
+            field.RegisterCallback<InputEvent>(_ => sent++);
+
+            // Act
+            field.value = "abcdef";
+
+            // Assert
+            Assert.That(sent, Is.EqualTo(0));
+        }
+
+        // A raw listener hears the change event after LimitUserEdit has run, so it carries the text before
+        // the refusal while the field already holds the value it ended with. The first event is an accepted
+        // character, where the two agree.
+        [Test]
+        public void Given_AFieldWithRoomForOneCharacter_When_TheUserTypesTwo_Then_ARawChangeListenerSeesTheRefusedTextBesideTheCorrectedValue()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "ac", maxLength: 3));
+            var heard = new List<string>();
+            field.RegisterValueChangedCallback(evt => heard.Add(evt.newValue + "/" + field.value));
+            PlaceCaret(field, 1);
+            Type(field, 'b');
+
+            // Act
+            Type(field, 'x');
+
+            // Assert
+            Assert.That(string.Join("|", heard), Is.EqualTo("abc/abc|abxc/abc"));
+        }
+
+        // Pasting over a selection leaves the room the limit gives less the text that stays, and a value
+        // longer than the limit leaves none, so the selection goes and nothing is put in its place.
+        [Test]
+        public void Given_AValueLongerThanTheLimit_When_TheUserPastesOverASelection_Then_NothingIsInserted()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abcdef", maxLength: 3));
+            Input(field).Focus();
+            field.textSelection.SelectRange(4, 2);
+
+            // Act
+            Paste(field, "XYZ");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("abef"));
+        }
+
+        // The replacement is as long as the selection, so the edit does not lengthen the text.
+        [Test]
+        public void Given_AValueLongerThanTheLimit_When_TheUserReplacesASelectionWithAsManyCharacters_Then_TheReplacementIsKept()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abcdef", maxLength: 3));
+            Input(field).Focus();
+            field.textSelection.SelectRange(4, 2);
+
+            // Act
+            Paste(field, "XY");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("abXYef"));
+        }
+
         [Test]
         public void Given_AValueLongerThanTheNewLimit_When_ALaterRenderNarrowsMaxLength_Then_TheValueAndTheShownTextStayWhole()
         {

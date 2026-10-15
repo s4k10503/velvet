@@ -533,10 +533,10 @@ namespace Velvet
             }
         }
 
-        // A declared limit is enforced on user edits (LimitUserEdit) and is not handed to the engine, whose
-        // limit cuts the text a controlled value, a refCallback's write or a narrowed limit puts there. The
-        // engine's own limit is lifted for the declaration and the element's constructed one is put back
-        // when the declaration goes, as for the other members. A negative limit declares none.
+        // A declared limit is enforced on user edits (LimitUserEdit) rather than handed to the engine, so
+        // that text written from code stays whole; TextFieldMaxLengthTests pins that. The engine's own
+        // limit is lifted for the declaration and the element's constructed one is put back when the
+        // declaration goes, as for the other members. A negative limit declares none.
         private static void ApplyMaxLength(TextField field, int? declared, TextFieldDefaults built)
         {
             if (declared.HasValue)
@@ -572,11 +572,12 @@ namespace Velvet
 
         private static readonly EventCallback<InputEvent> s_limitUserEdit = LimitUserEdit;
 
-        // An edit may not take the text past the larger of the limit and the length it had, so a value
-        // longer than the limit can still be shortened, and the characters refused are the ones just before
-        // the caret: the tail of what was inserted. The edits reach here as the InputEvent the engine sends
-        // for typed and pasted text, and a value assigned from code sends none. TextFieldMaxLengthTests
-        // pins each.
+        // The room an edit has is the limit less the text that stays, as in a browser: pasting over a
+        // selection counts the selection as gone, and a value longer than the limit leaves no room. An edit
+        // that does not lengthen the text is never refused, so such a value can still be shortened. The
+        // characters refused are the tail of what was inserted, the ones just before the caret. The edits
+        // reach here as the InputEvent the engine sends for typed and pasted text, and a value assigned
+        // from code sends none; TextFieldMaxLengthTests pins each.
         // A delayed field's value is left alone: the edit is pending, not committed.
         private static void LimitUserEdit(InputEvent evt)
         {
@@ -588,14 +589,17 @@ namespace Velvet
 
             var limit = built.DeclaredMaxLength ?? NoEngineLimit;
             var edited = evt.newData ?? string.Empty;
-            var refused = edited.Length - System.Math.Max(limit, evt.previousData?.Length ?? 0);
+            var before = evt.previousData ?? string.Empty;
+            var caret = field.textSelection.cursorIndex;
+            var (inserted, removed) = SpanOfEdit(before, edited, caret);
+            var room = System.Math.Max(0, limit - (before.Length - removed));
+            var refused = inserted <= removed ? 0 : inserted - System.Math.Min(inserted, room);
             // MUTANT_SURVIVES(equivalent, boundary): at zero nothing is cut, and the caret is written to the index it already holds.
             if (limit < 0 || refused <= 0)
             {
                 return;
             }
 
-            var caret = field.textSelection.cursorIndex;
             // MUTANT_SURVIVES(equivalent, boundary): a caret at the end of the text and the end of the text are the same index.
             var end = caret >= refused && caret <= edited.Length ? caret : edited.Length;
             var kept = edited.Remove(end - refused, refused);
@@ -615,6 +619,30 @@ namespace Velvet
                 // MUTANT_SURVIVES(unreachable): an editor panel opens no touch keyboard, which TextFieldMaxLengthTests pins.
                 keyboard.text = kept;
             }
+        }
+
+        // What the edit put in and took out, read from the text before and after and the caret the edit
+        // left behind it: the text after the caret is the text that stayed, and the text before it shares
+        // a prefix with the old text up to where the insertion began. A caret the text cannot account for
+        // reads as an insertion at the end that took nothing out.
+        private static (int Inserted, int Removed) SpanOfEdit(string before, string edited, int caret)
+        {
+            var stayed = edited.Length - caret;
+            if (caret < 0 || stayed < 0 || stayed > before.Length
+                || string.CompareOrdinal(before, before.Length - stayed, edited, caret, stayed) != 0)
+            {
+                return (edited.Length - before.Length, 0);
+            }
+
+            var head = before.Length - stayed;
+            var common = 0;
+            var bound = System.Math.Min(head, caret);
+            while (common < bound && before[common] == edited[common])
+            {
+                common++;
+            }
+
+            return (caret - common, head - common);
         }
 
         // The value to report for a change event of the field. A non-delayed field has set its value from the
