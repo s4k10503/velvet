@@ -1535,9 +1535,7 @@ namespace Velvet
                 if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
                 AddWithPortalChildren(row, roots, i, commit, walk, hidden);
             }
-            List<ComponentFiber>? mounted = new();
-            _ctx.ComponentRegistry.CollectFibersUnder(roots, ref mounted);
-            foreach (var fiber in mounted!)
+            foreach (var (fiber, placeholder) in HeldFibers(roots))
             {
                 if (hidden)
                 {
@@ -1546,7 +1544,7 @@ namespace Velvet
                     // FiberRenderer.NotifyAsyncResourceCompleted routes a resolved read by it between passes.
                     if (fiber.IsOffscreen && (fiber.HiddenUnder == null || IsAtOrUnder(fiber.HiddenUnder, roots))) continue;
                     var wasOffscreen = fiber.IsOffscreen;
-                    SetOffscreen(commit, fiber, true, HolderOf(fiber.MountPoint, roots), boundaryFiber);
+                    SetOffscreen(commit, fiber, true, HolderFor(fiber, placeholder, roots), boundaryFiber);
                     if (!wasOffscreen) (commit.OffscreenChanges ??= new()).Add((fiber, true));
                 }
                 else if (roots.Contains(fiber.HiddenUnder!))
@@ -1613,10 +1611,81 @@ namespace Velvet
             }
         }
 
-        private static void SetOffscreen(GeneralCommitState commit, ComponentFiber fiber, bool offscreen,
+        // The fibers the roots hold: those mounted inside them, and those mounted at a Portal's target by a Portal
+        // among them, which sit beside the portal's elements rather than inside them. Each of the second kind comes
+        // with its placeholder, which is what the hide records it under.
+        private List<(ComponentFiber Fiber, VisualElement? Placeholder)> HeldFibers(HashSet<VisualElement> roots)
+        {
+            var held = new List<(ComponentFiber, VisualElement?)>();
+            var seen = new HashSet<ComponentFiber>();
+            List<ComponentFiber>? found = null;
+            _ctx.ComponentRegistry.CollectFibersUnder(roots, ref found);
+            if (found != null)
+            {
+                foreach (var fiber in found)
+                {
+                    if (seen.Add(fiber)) held.Add((fiber, null));
+                }
+            }
+            // MUTANT_SURVIVES(equivalent, boundary): the loop visits no placeholder over an empty table.
+            if (_ctx.PortalState.Count > 0)
+            {
+                foreach (var placeholder in _ctx.PortalState.Keys)
+                {
+                    if (IsAtOrUnder(placeholder, roots)) AddOwnedBy(placeholder);
+                }
+            }
+            return held;
+
+            void AddOwnedBy(VisualElement portal)
+            {
+                List<ComponentFiber>? owned = null;
+                _ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(portal, ref owned);
+                if (owned == null) return;
+                foreach (var fiber in owned)
+                {
+                    if (seen.Add(fiber)) held.Add((fiber, portal));
+                }
+            }
+        }
+
+        // The element a reveal of these roots finds the fiber by. A fiber mounted at a Portal's target is not inside
+        // any element of the portal, so its holder is the one the portal's placeholder sits under.
+        private static VisualElement? HolderFor(ComponentFiber fiber, VisualElement? placeholder, HashSet<VisualElement> roots)
+            => HolderOf(fiber.MountPoint, roots)
+                ?? (placeholder == null
+                    ? null
+                    : HolderOf(placeholder, roots));
+
+        // The fibers a Portal's drain mounted into children a Suspense hides. The boundary's walk ended before the
+        // drain mounted them, so SetPrimaryHidden never saw them.
+        internal void HideFibersMountedUnder(VisualElement placeholder, ComponentFiber? declaring)
+        {
+            List<ComponentFiber>? owned = null;
+            _ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(placeholder, ref owned);
+            if (owned == null) return;
+            // A declarer under a hidden placeholder is offscreen, which records the boundary hiding it, or renders the
+            // Suspense that hides the placeholder itself.
+            // MUTANT_SURVIVES(equivalent, literal): with the offscreen declarer taken as the boundary, a resolved read of a drained fiber still renders by the reveal; the campaign measured SuspenseHiddenPortalRefTests' resolve-then-reveal case green under this mutant.
+            var boundary =declaring is { IsOffscreen: true } ? declaring.OffscreenUnder : declaring;
+            var holder = SuspenseHiddenElements.NearestHiddenAtOrAbove(placeholder);
+            foreach (var fiber in owned)
+            {
+                // A fiber this drain mounted is offscreen already only where a Suspense in the portal's own
+                // children hid it, and that Suspense stays the one that reveals it.
+                if (fiber.IsOffscreen) continue;
+                SetOffscreen(null, fiber, true, holder, boundary);
+                FiberEffects.HideLayoutEffects(fiber);
+            }
+        }
+
+        private static void SetOffscreen(GeneralCommitState? commit, ComponentFiber fiber, bool offscreen,
             VisualElement? hiddenUnder, ComponentFiber? offscreenUnder)
         {
-            (commit.OffscreenBefore ??= new()).Add((fiber, fiber.IsOffscreen, fiber.HiddenUnder, fiber.OffscreenUnder));
+            if (commit != null)
+            {
+                (commit.OffscreenBefore ??= new()).Add((fiber, fiber.IsOffscreen, fiber.HiddenUnder, fiber.OffscreenUnder));
+            }
             fiber.IsOffscreen = offscreen;
             fiber.HiddenUnder = hiddenUnder;
             fiber.OffscreenUnder = offscreenUnder;

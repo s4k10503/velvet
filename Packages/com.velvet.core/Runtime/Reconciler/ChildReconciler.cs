@@ -466,7 +466,9 @@ namespace Velvet
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
                     resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
                 // A Portal a render created inside children its Suspense hides was hidden with them before this
-                // drain mounted its own, so they are hidden here; the reveal finds them through PortalState.
+                // drain mounted its own, so they are hidden here; the reveal finds them through PortalState. The
+                // boundary's hide pass has already run, so the ref setups it takes back from ordinary elements are
+                // taken back here.
                 if (SuspenseHiddenElements.IsAtOrUnderHidden(placeholder))
                 {
                     // MUTANT_SURVIVES(equivalent, boundary): the slot after this Portal's own holds no child.
@@ -476,8 +478,10 @@ namespace Velvet
                         if (LogicalChildSlots.TryGetPhysical(resolvedTarget, slot, out var physical))
                         {
                             SuspenseHiddenElements.Hide(resolvedTarget[physical]);
+                            _ctx.DetachRefsWhileHidden(resolvedTarget[physical]);
                         }
                     }
+                    _general.HideFibersMountedUnder(placeholder, declaringFiber);
                 }
             }
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
