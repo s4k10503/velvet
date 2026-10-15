@@ -284,7 +284,9 @@ namespace Velvet
                 for (var i = 0; i < ordered.Count; i++)
                 {
                     var (fiber, isMount) = ordered[i];
-                    RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
+                    // A mount under a Suspense showing its fallback commits nothing of the tree, as React mounts it on
+                    // reveal: its insertion effects stay pending, and the commit that reveals it runs them.
+                    if (!(fiber.LayoutEffectsHidden && isMount)) RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
                     HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
                 }
                 for (var i = 0; i < ordered.Count; i++)
