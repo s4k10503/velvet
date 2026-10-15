@@ -36,6 +36,7 @@ namespace Velvet.Tests
     internal sealed class UseMutationLifecycleTests
     {
         private const string None = "none";
+        private static int s_renderCount;
 
         private VisualElement _root = null!;
 
@@ -54,6 +55,7 @@ namespace Velvet.Tests
             s_settledThrowsOnSuccess = null;
             s_settledThrowsOnFailure = null;
             s_callSuccessThrows = null;
+            s_renderCount = 0;
         }
 
         [UnityTest]
@@ -635,6 +637,81 @@ namespace Velvet.Tests
             }
         });
 
+        // GREEN_ON_BASE(characterization): the base clears its mutation slots on unmount too, so a remount's first call
+        // works there; the cut that leaves the retired slot in the list is what reddens this case.
+        [UnityTest]
+        public IEnumerator Given_AFiberUnmounted_When_MountedAgainAndTheNewHandleMutates_Then_TheHandleShowsTheNewCallsOutcome() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — Unmount then Mount reuses one fiber, so the slot list the unmount leaves behind is what
+            // the remount's first render reads at index 0.
+            var fiber = FiberRenderer.CreateRoot(ContextMutationRender);
+            try
+            {
+                FiberRenderer.Mount(fiber, _root);
+                FiberRenderer.Unmount(fiber);
+                FiberRenderer.Mount(fiber, _root);
+
+                // Act
+                await s_captured!.MutateAsync(3);
+
+                // Assert
+                Assert.That((s_captured.Status, s_captured.Data), Is.EqualTo((MutationStatus.Success, 6)),
+                    "A remount builds its own mutation slot, so its handle follows the calls it makes");
+            }
+            finally
+            {
+                FiberRenderer.Dispose(fiber);
+            }
+        });
+
+        // GREEN_ON_BASE(characterization): the base also refuses a call started while the fiber is being disposed; the cut that drops the
+        // IsDisposed clause from the owner check is what reddens this case, since the cleanup runs before the slots are retired.
+        [UnityTest]
+        public IEnumerator Given_AnEffectCleanupThatMutates_When_TheFiberIsDisposed_Then_TheHandleIsNotWritten() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — Dispose sets IsDisposed and then runs the effect cleanups, ahead of the point where the
+            // unmount retires the mutation slots, so only the fiber's flag can refuse this call.
+            var mounted = V.Mount(_root, V.Component(CleanupMutatesRender, key: "dispose-cleanup-mutates"));
+            var handle = s_captured!;
+            mounted.FlushEffectsForTest();
+
+            // Act
+            mounted.Dispose();
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(handle.Status, Is.EqualTo(MutationStatus.Idle),
+                "A call a cleanup starts while the fiber is being disposed runs without writing the handle");
+        });
+
+        [Test]
+        public void Given_AStaleHandleFromAnEarlierMount_When_ItIsResetAfterTheRemount_Then_TheNewMountDoesNotRender()
+        {
+            // Arrange — the first handle belongs to the slot the unmount retired; the remount renders a new one
+            var fiber = FiberRenderer.CreateRoot(ContextMutationRender);
+            try
+            {
+                FiberRenderer.Mount(fiber, _root);
+                var stale = s_captured!;
+                FiberRenderer.Unmount(fiber);
+                FiberRenderer.Mount(fiber, _root);
+                FiberWorkLoop.FlushState(fiber);
+                var rendersBefore = s_renderCount;
+
+                // Act
+                stale.Reset();
+                FiberWorkLoop.FlushState(fiber);
+
+                // Assert
+                Assert.That(s_renderCount, Is.EqualTo(rendersBefore),
+                    "A handle from a mount that has gone cannot ask the live mount to render");
+            }
+            finally
+            {
+                FiberRenderer.Dispose(fiber);
+            }
+        }
+
         [UnityTest]
         public IEnumerator Given_APerCallOnSuccessThatThrows_When_TheCallSucceeds_Then_OnSettledStillRunsAndTheCallStaysASuccess() => VelvetTask.ToCoroutine(async () =>
         {
@@ -798,8 +875,17 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode CleanupMutatesRender()
+        {
+            var handle = Hooks.UseMutation(new MutationOptions<int, int, string>(MutationFn: s_mutationFn));
+            s_captured = handle;
+            Hooks.UseEffect((Func<Action?>)(() => () => handle.Mutate(1)), Array.Empty<object?>());
+            return V.Label(text: "ok");
+        }
+
         public static VNode ContextMutationRender()
         {
+            s_renderCount++;
             s_captured = Hooks.UseMutation(new MutationOptions<int, int, string>(
                 MutationFn: s_mutationFn,
                 OnMutate: v =>
