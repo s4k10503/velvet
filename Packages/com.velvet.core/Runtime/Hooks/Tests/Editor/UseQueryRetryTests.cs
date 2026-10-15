@@ -71,6 +71,7 @@ namespace Velvet.Tests
             s_setShow = default;
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AFailingQuery_When_EachDefaultDelayPasses_Then_ItRunsFourTimesAndThenReportsTheError()
             => VelvetTask.ToCoroutine(async () =>
@@ -94,6 +95,7 @@ namespace Velvet.Tests
                 "Three retries follow the first request, each after twice the wait before it");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AFailedRequest_When_TheFirstDelayIsOneMillisecondShort_Then_ItIsRetriedOnlyOnceItHasPassed()
             => VelvetTask.ToCoroutine(async () =>
@@ -113,6 +115,7 @@ namespace Velvet.Tests
                 "A wait of one second ends when one second has passed, not before");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_ASecondFailure_When_OnlyTheFirstDelayPassesAgain_Then_ItIsRetriedAfterTwiceThat()
             => VelvetTask.ToCoroutine(async () =>
@@ -133,6 +136,7 @@ namespace Velvet.Tests
             Assert.That((afterOneSecond, s_calls), Is.EqualTo((2, 3)), "The wait doubles at each failure");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_ASixthFailure_When_TwentyNineSecondsPass_Then_ItWaitsOneMoreSecondBeforeTheRetry()
             => VelvetTask.ToCoroutine(async () =>
@@ -157,6 +161,7 @@ namespace Velvet.Tests
             Assert.That((afterTwentyNineSeconds, s_calls), Is.EqualTo((6, 7)), "A wait never exceeds thirty seconds");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_ARetryOfOne_When_BothRequestsFail_Then_TheQueryReportsTheErrorAfterTwoRuns()
             => VelvetTask.ToCoroutine(async () =>
@@ -177,6 +182,7 @@ namespace Velvet.Tests
                 "A query's own retry count replaces the client's");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AClientRetryOfOne_When_ABareQueryFailsTwice_Then_TheQueryReportsTheErrorAfterTwoRuns()
             => VelvetTask.ToCoroutine(async () =>
@@ -197,6 +203,7 @@ namespace Velvet.Tests
                 "A query that sets no retry count takes the client's");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [Test]
         public void Given_AQueryRetryOfZeroOverAClientRetryOfThree_When_TheRequestFails_Then_TheQueryReportsTheErrorAtOnce()
         {
@@ -214,6 +221,7 @@ namespace Velvet.Tests
                 "Zero retries make the first failure the entry's error, whatever the client retries by default");
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_ACustomRetryDelay_When_TheFailureIsRetried_Then_ItWaitsThatLong()
             => VelvetTask.ToCoroutine(async () =>
@@ -233,6 +241,7 @@ namespace Velvet.Tests
             Assert.That((afterNineSeconds, s_calls), Is.EqualTo((1, 2)), "The delay function replaces the doubling");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_ARetryDelayOfZero_When_TheRequestFails_Then_TheRetryRunsOnlyAFrameLater()
             => VelvetTask.ToCoroutine(async () =>
@@ -252,6 +261,7 @@ namespace Velvet.Tests
                 "A retry never starts inside the completion of the request that failed");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_ACustomRetryDelay_When_TwoFailuresAreRetried_Then_ItIsHandedEachCountAndException()
             => VelvetTask.ToCoroutine(async () =>
@@ -276,6 +286,7 @@ namespace Velvet.Tests
                 "The count is the failures before this one, as v5 passes it");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [Test]
         public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure()
         {
@@ -294,6 +305,7 @@ namespace Velvet.Tests
                 "A failure that is going to be retried is not yet the entry's error");
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure()
             => VelvetTask.ToCoroutine(async () =>
@@ -315,6 +327,7 @@ namespace Velvet.Tests
                 "A request that lands clears the failures that preceded it");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AQueryFunctionThatThrowsBeforeReturning_When_TheDelayPasses_Then_ItIsCalledAgain()
             => VelvetTask.ToCoroutine(async () =>
@@ -332,6 +345,7 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(2), "A throw is a failed request, which is retried like any other");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AFailedRequestWaitingToRetry_When_ItsOnlyReaderUnmounts_Then_NoRetryRuns()
             => VelvetTask.ToCoroutine(async () =>
@@ -350,6 +364,7 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "With nobody reading, the request in flight is not run again");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AFailedRequestWaitingToRetry_When_ItsOnlyReaderUnmounts_Then_ItStopsWaitingOutTheDelay()
             => VelvetTask.ToCoroutine(async () =>
@@ -371,6 +386,7 @@ namespace Velvet.Tests
                 "The wait is over once nothing will retry, whatever is left of its delay");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AFailedRequestWaitingToRetry_When_ItsOnlyReaderLeaves_Then_TheFailureCountIsBackToZero()
             => VelvetTask.ToCoroutine(async () =>
@@ -389,6 +405,7 @@ namespace Velvet.Tests
                 "Cancelling during the wait puts back the count the request started from");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AFailedRequestWaitingToRetry_When_ItsOnlyReaderLeaves_Then_NoFailureReasonIsHeld()
             => VelvetTask.ToCoroutine(async () =>
@@ -407,6 +424,7 @@ namespace Velvet.Tests
                 "Cancelling during the wait puts back the reason the request started from");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [Test]
         public void Given_ARetryDelayThatThrows_When_TheRequestFails_Then_TheQueryReportsThatErrorAndStopsFetching()
         {
@@ -425,6 +443,7 @@ namespace Velvet.Tests
                 "A delay function that fails ends the request rather than leaving it in flight");
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AFailedRequestWaitingToRetry_When_AReaderMountsBeforeTheDelayPasses_Then_TheRetryRuns()
             => VelvetTask.ToCoroutine(async () =>
@@ -448,6 +467,8 @@ namespace Velvet.Tests
             => new(new QueryClientOptions
             {
                 Retry = retry,
+                // No entry expires, so the client's garbage-collection polling reads no clock to be counted beside the waits.
+                GcTime = TimeSpan.MaxValue,
                 Clock = () =>
                 {
                     s_clockReads++;

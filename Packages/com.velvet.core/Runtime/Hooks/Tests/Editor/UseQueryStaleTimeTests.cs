@@ -56,6 +56,8 @@ namespace Velvet.Tests
             s_sources.Clear();
             s_client = new QueryClient(new QueryClientOptions
             {
+                // No entry expires, so the client's garbage-collection polling reads no clock to be counted beside the waits.
+                GcTime = TimeSpan.MaxValue,
                 Clock = () =>
                 {
                     s_clockReads++;
@@ -64,6 +66,7 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AComponentReadingIsStale_When_TheStaleTimeElapses_Then_ItRerendersAsStale()
             => VelvetTask.ToCoroutine(async () =>
@@ -84,6 +87,7 @@ namespace Velvet.Tests
                 "Fresh data turns stale when its age reaches the stale time, and not before");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AComponentReadingOnlyIsFetching_When_FramesPass_Then_NoWaitReadsTheClock()
             => VelvetTask.ToCoroutine(async () =>
@@ -102,6 +106,7 @@ namespace Velvet.Tests
                 "A change to IsStale would not be this component's, so nothing waits for it");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AComponentReadingOnlyIsFetching_When_TheStaleTimeElapses_Then_ItDoesNotRerender()
             => VelvetTask.ToCoroutine(async () =>
@@ -119,6 +124,7 @@ namespace Velvet.Tests
             Assert.That(s_renderCount, Is.EqualTo(rendersBefore), "A property the component did not read is not its change");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AnInfiniteStaleTime_When_FramesPass_Then_NoWaitReadsTheClock()
             => VelvetTask.ToCoroutine(async () =>
@@ -136,6 +142,7 @@ namespace Velvet.Tests
             Assert.That(s_clockReads, Is.EqualTo(readsAfterTheFirstFrames), "Data that never turns stale is waited for by no one");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AComponentThatReadsIsStaleOnlyFromALaterRender_When_TheStaleTimeElapses_Then_ItRerendersAsStale()
             => VelvetTask.ToCoroutine(async () =>
@@ -156,6 +163,7 @@ namespace Velvet.Tests
             Assert.That(s_result.IsStale, Is.True, "The commit that follows the first read of IsStale starts the wait");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_FreshDataLandingAgainLater_When_TheFirstStaleTimeElapses_Then_ItIsStillFreshUntilTheSecond()
             => VelvetTask.ToCoroutine(async () =>
@@ -180,6 +188,7 @@ namespace Velvet.Tests
                 "Data that landed later is stale a stale time after it did");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AWaitingComponent_When_ItUnmounts_Then_TheWaitStopsReadingTheClock()
             => VelvetTask.ToCoroutine(async () =>
@@ -197,6 +206,7 @@ namespace Velvet.Tests
             Assert.That(s_clockReads, Is.EqualTo(readsAfterTheFirstFrames), "Nothing is waiting for data nobody reads");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AWaitingComponent_When_TheClientIsCleared_Then_TheWaitStopsReadingTheClock()
             => VelvetTask.ToCoroutine(async () =>
@@ -215,6 +225,7 @@ namespace Velvet.Tests
                 "The data the wait was for is gone, whether or not the component has rendered since");
         });
 
+        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
         public IEnumerator Given_AWaitingComponent_When_TheQueryIsDisabled_Then_TheWaitStopsReadingTheClock()
             => VelvetTask.ToCoroutine(async () =>
