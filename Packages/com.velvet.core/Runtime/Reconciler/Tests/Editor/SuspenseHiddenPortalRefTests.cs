@@ -40,6 +40,8 @@ namespace Velvet.Tests
             s_innerLayoutSetups = 0;
             s_innerLayoutCleanups = 0;
             s_portalDirect = false;
+            s_withReader = false;
+            s_readerSource = null;
         }
 
         [Test]
@@ -198,6 +200,29 @@ namespace Velvet.Tests
                 "No ref attaches while the fallback shows, and the reveal attaches the one the last state change gave");
         }
 
+        // GREEN_ON_BASE(characterization): the base routes the resolved read through the nearest boundary above the fiber.
+        // What this pins is that a portal component declared in an offscreen component is rendered by the boundary
+        // that hides it while the reader holds the fallback.
+        [Test]
+        public void Given_AComponentReadingInAPortalMountedWhileItsPrimaryIsHiddenAndSuspendedByAParentRender_When_ItsReadResolves_Then_TheLabelShowsTheValueWhileTheReaderHoldsTheFallback()
+        {
+            // Arrange
+            s_withReader = true;
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            SetBlocked(mounted);
+            ShowPortal(mounted);
+            SetTick(mounted, 1);
+
+            // Act
+            s_readerSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_outerTarget.Q<Label>("reading-value")?.text, Is.EqualTo("reading:7"),
+                "The label shows the resolved value while the reader still holds the fallback");
+        }
+
         // GREEN_ON_BASE(characterization): without the drain's hide nothing overwrites a fiber an inner Suspense hid.
         // What this pins is that the drain leaves such a fiber to the inner Suspense that reveals it. The component
         // renders to completion beside one that never does, so the fallback keeps showing.
@@ -265,6 +290,8 @@ namespace Velvet.Tests
         private static int s_innerLayoutSetups;
         private static int s_innerLayoutCleanups;
         private static bool s_portalDirect;
+        private static bool s_withReader;
+        private static VelvetTaskCompletionSource<int> s_readerSource;
 
         [Component]
         private static VNode HostRender()
@@ -324,6 +351,16 @@ namespace Velvet.Tests
             return V.Label(text: "stuck:" + value);
         }
 
+        // Reads a resource that stays pending while the tick is above zero and its source is unresolved.
+        [Component]
+        private static VNode ReadingRender(int tick)
+        {
+            var value = Hooks.Use<int>(_ => tick > 0
+                ? (s_readerSource = new VelvetTaskCompletionSource<int>()).Task
+                : VelvetTask.FromResult(0), tick);
+            return V.Label(name: "reading-value", text: "reading:" + value);
+        }
+
         [Component]
         private static VNode InnerRender()
         {
@@ -351,7 +388,9 @@ namespace Velvet.Tests
                 s_lastAttachedTick = tick;
                 return () => s_outerCleanups++;
             };
-            VNode[] portaled = s_withSlow
+            VNode[] portaled = s_withReader
+                ? new VNode[] { V.Component(ReadingRender, tick, key: "reading") }
+                : s_withSlow
                 ? new VNode[]
                 {
                     V.Suspense(
