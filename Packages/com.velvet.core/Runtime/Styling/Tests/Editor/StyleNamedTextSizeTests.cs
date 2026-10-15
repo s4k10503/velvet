@@ -104,6 +104,8 @@ namespace Velvet.Tests
         [TestCase("text-9xl/[22px]", LeadingUnit.Pixel, 22f)]
         [TestCase("text-xs/loose", LeadingUnit.Em, 2f)]
         [TestCase("text-base/[1.2]", LeadingUnit.Em, 1.2f)]
+        [TestCase("text-[14px]/6", LeadingUnit.Pixel, 24f)]
+        [TestCase("text-[length:2rem]/[1.2]", LeadingUnit.Em, 1.2f)]
         public void Given_ATextSizeWithALeadingSuffix_When_Parsed_Then_TheSuffixIsTheLeadingUtilitysValue(
             string className, LeadingUnit unit, float amount)
         {
@@ -130,6 +132,11 @@ namespace Velvet.Tests
         [TestCase("text-sm/")]
         [TestCase("text-huge/6")]
         [TestCase("p-4")]
+        [TestCase("text-[14px]")]
+        [TestCase("text-[#fff]/50")]
+        [TestCase("text-red-500/50")]
+        [TestCase("text-[abc]/6")]
+        [TestCase("text-[14px]/abc")]
         public void Given_ATokenThatIsNoReadableTextSize_When_Parsed_Then_NoLeadingIsSet(string className)
         {
             // Act
@@ -142,6 +149,9 @@ namespace Velvet.Tests
         [TestCase("text-xs/4", 12f)]
         [TestCase("text-sm/6", 14f)]
         [TestCase("text-9xl/none", 128f)]
+        [TestCase("text-[14px]/6", 14f)]
+        [TestCase("text-[length:20px]/6", 20f)]
+        [TestCase("text-[1.5rem]/none", 24f)]
         public void Given_ATextSizeWithALeadingSuffix_When_ResolvedAsAnInlineValue_Then_ItIsTheSizesFontSize(
             string className, float expectedPx)
         {
@@ -153,15 +163,56 @@ namespace Velvet.Tests
                 Is.EqualTo((true, ArbitraryProperty.FontSize, expectedPx, LengthUnit.Pixel)));
         }
 
-        // GREEN_ON_BASE(characterization): the base resolves no slash form of a size, so it declines this.
         [Test]
-        public void Given_ATextSizeWithAnUnreadableSuffix_When_ResolvedAsAnInlineValue_Then_ItIsDeclined()
+        public void Given_ALengthHintedBracketSize_When_ResolvedAsAnInlineValue_Then_ItIsTheFontSize()
         {
             // Act
-            var parsed = StyleArbitraryValueResolver.TryParse("text-sm/abc", out _);
+            var parsed = StyleArbitraryValueResolver.TryParse("text-[length:20px]", out var style);
+
+            // Assert
+            Assert.That((parsed, style.Property, style.Value, style.Unit),
+                Is.EqualTo((true, ArbitraryProperty.FontSize, 20f, LengthUnit.Pixel)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base resolves no slash form of a size, so it declines this.
+        [TestCase("text-sm/abc")]
+        [TestCase("text-[14px]/abc")]
+        public void Given_ATextSizeWithAnUnreadableSuffix_When_ResolvedAsAnInlineValue_Then_ItIsDeclined(
+            string className)
+        {
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse(className, out _);
 
             // Assert
             Assert.That(parsed, Is.False);
+        }
+
+        [TestCase("hover:text-sm/6")]
+        [TestCase("hover:text-[14px]/6")]
+        public void Given_AHoverGatedSlashTextSize_When_TheElementIsHoveredAndLeft_Then_TheLineHeightAppliesOnlyWhileHovered(
+            string className)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Label(className: className, text: "hi", name: "label") });
+            var label = scope.Root.Q<Label>("label");
+            var before = label.text;
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                label.SimulateEvent(over);
+            }
+            var hovered = label.text;
+            using (var leave = PointerOutEvent.GetPooled())
+            {
+                label.SimulateEvent(leave);
+            }
+
+            // Assert
+            Assert.That((before, hovered, label.text),
+                Is.EqualTo(("hi", "<line-height=24px>hi</line-height>", "hi")));
         }
 
         [Test]

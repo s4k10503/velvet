@@ -68,6 +68,11 @@ namespace Velvet
                 return false;
             }
 
+            if (StyleNamedTextSize.TryStripLengthHint(className, out var unhinted))
+            {
+                return TryParse(unhinted, out result);
+            }
+
             if (StyleBorderSideColor.TryParse(className, out result)
                 || StyleLogicalUtilities.TryParse(className, out result))
             {
@@ -84,11 +89,10 @@ namespace Velvet
                 return true;
             }
 
-            // text-<size>/<leading> sets the size's font-size here because no USS rule can spell the suffix;
+            // text-<size>/<leading> and text-[<length>]/<leading> set the font-size here because no USS rule can spell the suffix;
             // StyleTextEffectClass reads the same token for its line height.
-            if (StyleNamedTextSize.TryParseSlashFontSize(className, out var slashFontSize))
+            if (StyleNamedTextSize.TryParseSlashFontSize(className, out result))
             {
-                result = new ArbitraryStyle(ArbitraryProperty.FontSize, slashFontSize, LengthUnit.Pixel);
                 return true;
             }
 

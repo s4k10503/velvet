@@ -38,53 +38,90 @@ namespace Velvet
             }
         }
 
-        // The line height a text-<size> or text-<size>/<leading> token sets. The slash form's leading reads
-        // as the leading-* utility of the same suffix (text-sm/6 == leading-6), and a suffix that is no
-        // leading-* value leaves the token unrecognised.
+        // The line height a text-<size>, text-<size>/<leading> or text-[<length>]/<leading> token sets. The
+        // slash form's leading reads as the leading-* utility of the same suffix (text-sm/6 == leading-6), and
+        // a suffix that is no leading-* value leaves the token unrecognised. A bracket size alone pairs nothing.
         public static bool TryParseLineHeight(string core, out LeadingValue lineHeight)
         {
             lineHeight = default;
-            if (!TrySplit(core, out var size, out var suffix))
+            if (!TryRead(core, out _, out var pairedEm, out var suffix))
             {
                 return false;
             }
             if (suffix == null)
             {
-                lineHeight = new LeadingValue(LeadingUnit.Em, s_sizes[size].LineHeightEm);
+                lineHeight = new LeadingValue(LeadingUnit.Em, pairedEm);
                 return true;
             }
             return StyleTextEffectClass.TryParseLeading("leading-" + suffix, out lineHeight);
         }
 
-        // The font size of a text-<size>/<leading> token, the one form no USS rule writes.
-        public static bool TryParseSlashFontSize(string core, out float fontSizePx)
+        // The font size of a slash token, the form no USS rule writes.
+        public static bool TryParseSlashFontSize(string core, out ArbitraryStyle fontSize)
         {
-            fontSizePx = 0f;
-            if (!TrySplit(core, out var size, out var suffix) || suffix == null
-                || !StyleTextEffectClass.TryParseLeading("leading-" + suffix, out _))
+            fontSize = default;
+            if (!TryRead(core, out var size, out _, out var suffix) || suffix == null)
             {
                 return false;
             }
-            fontSizePx = s_sizes[size].FontSizePx;
+            if (!StyleTextEffectClass.TryParseLeading("leading-" + suffix, out _))
+            {
+                return false;
+            }
+            fontSize = size;
             return true;
         }
 
-        private static bool TrySplit(string core, out string size, out string? suffix)
+        // text-[length:<value>] is text-[<value>], Tailwind's type hint for a length.
+        public static bool TryStripLengthHint(string className, out string stripped)
         {
-            size = string.Empty;
+            const string hinted = "text-[length:";
+            stripped = string.Empty;
+            if (!className.StartsWith(hinted, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            stripped = "text-[" + className.Substring(hinted.Length);
+            return true;
+        }
+
+        // Reads the size part of a token: a named size (its font size and paired line height, with an optional
+        // /<suffix>) or a bracket size, which only counts with a suffix.
+        private static bool TryRead(string core, out ArbitraryStyle size, out float pairedEm, out string? suffix)
+        {
+            size = default;
+            pairedEm = 0f;
             suffix = null;
             if (core == null || !core.StartsWith(Prefix, StringComparison.Ordinal))
             {
                 return false;
             }
+            if (core.StartsWith("text-[", StringComparison.Ordinal))
+            {
+                var close = core.IndexOf("]/", StringComparison.Ordinal);
+                if (close == -1)
+                {
+                    return false;
+                }
+                if (!StyleArbitraryValueResolver.TryParse(core.Substring(0, close + 1), out size))
+                {
+                    return false;
+                }
+                if (size.Property != ArbitraryProperty.FontSize)
+                {
+                    return false;
+                }
+                suffix = core.Substring(close + 2);
+                return true;
+            }
             var slash = core.IndexOf('/');
             var end = slash == -1 ? core.Length : slash;
-            var name = core.Substring(Prefix.Length, end - Prefix.Length);
-            if (!s_sizes.ContainsKey(name))
+            if (!s_sizes.TryGetValue(core.Substring(Prefix.Length, end - Prefix.Length), out var entry))
             {
                 return false;
             }
-            size = name;
+            size = new ArbitraryStyle(ArbitraryProperty.FontSize, entry.FontSizePx, LengthUnit.Pixel);
+            pairedEm = entry.LineHeightEm;
             suffix = slash == -1 ? null : core.Substring(slash + 1);
             return true;
         }

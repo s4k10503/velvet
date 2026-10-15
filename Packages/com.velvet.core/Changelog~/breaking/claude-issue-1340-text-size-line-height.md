@@ -5,4 +5,5 @@
   `leading-*` on the same element still wins, and a nearer `text-<size>` replaces an ancestor's `leading-*`. The
   text a `Label` or `Button` displays now carries the `<line-height=…>` tag a `leading-*` already wrote, so code
   that reads it back off the element sees the tag.
-- `text-<size>/<leading>` (`text-sm/6`) sets the size's font size and the matching `leading-*` line height.
+- `text-<size>/<leading>` (`text-sm/6`, `text-[14px]/6`, `hover:text-sm/6`) sets the size's font size and the matching
+  `leading-*` line height, and `text-[length:14px]` reads as `text-[14px]`.

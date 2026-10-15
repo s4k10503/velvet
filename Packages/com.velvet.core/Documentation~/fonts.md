@@ -250,7 +250,8 @@ The pair is the size class's own line height, so it replaces one an ancestor's `
 `leading-*` on the same element wins over it whichever class comes first. `text-<size>/<leading>` takes
 the suffix of the matching `leading-*` utility, so `text-sm/6` is a 14px font with `leading-6`'s 24px line
 height, and `text-sm/loose` the 2 multiplier; a suffix that is no `leading-*` value leaves the class inert. A
-`text-[20px]` bracket size pairs nothing, as in Tailwind.
+bracket size takes the slash too (`text-[14px]/6`, `text-[length:14px]/6`) and pairs nothing without it, as
+in Tailwind. The slash form works behind a variant (`hover:text-sm/6`).
 
 **`text-balance` and `text-pretty`** realise CSS `text-wrap: balance` and `text-wrap: pretty` by writing
 line breaks into the text a leaf *displays*, the way text-transform rewrites it. A box the cascade
