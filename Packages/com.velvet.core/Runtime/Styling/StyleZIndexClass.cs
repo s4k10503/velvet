@@ -1,10 +1,11 @@
+using System;
 using System.Globalization;
 
 namespace Velvet
 {
     // Parses Velvet's z-* utility classes into a resolved stacking value for FiberZLayerCoordinator. Mirrors
     // StyleGapClass/StyleGridClass: a cheap prefix-scan gate (HasZIndexClass) before the full TryExtract parse.
-    // Supports z-auto, the fixed named scale (z-0/10/20/30/40/50), its negated form (-z-10 … -z-50, the
+    // Supports z-auto, z-<n> for any whole number an int holds (z-0, z-15, z-50), its negated form (-z-15, the
     // sign prefixes the whole class), and the arbitrary bracket form (z-[999],
     // z-[-5] — the bracket already carries a signed integer, so no outer "-" is recognized for it: z-index has
     // no separate magnitude/direction split the way a length utility does).
@@ -80,7 +81,7 @@ namespace Velvet
         // A null z is z-auto.
         public static bool TryParse(string cls, out int? z) => TryParse(cls, out z, out _);
 
-        // z-auto, z-0/10/20/30/40/50 (the fixed named scale), -z-0/10/20/30/40/50 (the negated form), or
+        // z-auto, z-<n> (a whole number spelled as Tailwind's bare values are), -z-<n> (the negated form), or
         // z-[<int>] (arbitrary, the bracket's own sign — z-[-5] is how a negative arbitrary value is spelled,
         // not -z-[5]). Anything else (including a non-numeric bracket, or a bare "z-" prefix that is not one
         // of these shapes) returns false.
@@ -115,28 +116,12 @@ namespace Velvet
             {
                 return false;
             }
-            if (!TryNamedLevel(cls.Substring(offset + 2), out var level))
+            if (!StyleArbitraryValueResolver.TryParseWhole(cls.AsSpan(offset + 2), out var level))
             {
                 return false;
             }
             z = negate ? -level : level;
             return true;
-        }
-
-        // Tailwind v3's fixed levels, the same fixed-scale choice rotate-* and the spacing utilities make; any
-        // other integer is spelled z-[N].
-        private static bool TryNamedLevel(string suffix, out int level)
-        {
-            switch (suffix)
-            {
-                case "0": level = 0; return true;
-                case "10": level = 10; return true;
-                case "20": level = 20; return true;
-                case "30": level = 30; return true;
-                case "40": level = 40; return true;
-                case "50": level = 50; return true;
-                default: level = 0; return false;
-            }
         }
     }
 }

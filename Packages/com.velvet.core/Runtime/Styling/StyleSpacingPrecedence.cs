@@ -4,13 +4,13 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    // Tailwind emits a shorthand ahead of the longhands it contains, so pt-2 beats p-[52px] whichever is written
+    // Tailwind emits a shorthand ahead of the longhands it contains, so pt-2 beats p-13 whichever is written
     // first: padding, margin, inset and size/width/height sort that way in property-order.ts. Two utilities
     // of one family at one priority are therefore ordered here by that property order, in the place a border
     // side colour already is (StyleBorderSideColor.CompareCascade), instead of by which arrived last.
     //
     // A stylesheet class cannot take part: an inline value outranks every class on the element it sits on, so
-    // `p-[52px] pt-2` would paint 52px at the top with pt-2 a class. Normalize rewrites such a class into an inline
+    // `p-13 pt-2` would paint 52px at the top with pt-2 a class. Normalize rewrites such a class into an inline
     // form (pt-2 becomes pt-[8px]) when an inline utility of an overlapping family stands beside it, so both
     // are inline layers and the order above decides.
     internal static class StyleSpacingPrecedence
@@ -73,7 +73,7 @@ namespace Velvet
         // padding-inline-start ahead of padding-left, so the physical one holds the side whichever is written
         // first), of the physical classes on the side, the one the stylesheet cascade lets win is written inline when all
         // are stylesheet classes, so that it is not left to a rule the logical token's removal no longer has anything to outrank; tokens itself when neither applies. Tokens are grouped by importance and by the set of their
-        // variants, so `sm:p-[52px] sm:pt-2` is judged apart from `p-[52px] pt-2`, and `hover:focus:` is `focus:hover:`.
+        // variants, so `sm:p-13 sm:pt-2` is judged apart from `p-13 pt-2`, and `hover:focus:` is `focus:hover:`.
         internal static string[] Normalize(string[] tokens)
         {
             if (tokens.Length < 2)

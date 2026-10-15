@@ -885,7 +885,7 @@ physical one it equals there, and nothing flips under a right-to-left language.
 Each takes the values its physical utility takes in Velvet: the spacing scale (`ms-4`, `ms-px`), a bracket value
 (`ps-[12px]`), `auto` on a margin or an inset, `full` and the fractions on an inset (`start-1/2`), the radius scale
 including the bare `rounded-e`, and a minus sign on a margin or an inset (`-ms-4`, `-start-1/2`). A step the physical
-utility lacks, such as `ms-13` or `border-s-3`, is left unresolved as it is there; `border-s-0` is the exception,
+utility lacks, such as `ms-4.1` or `border-s-3`, is left unresolved as it is there; `border-s-0` is the exception,
 resolving to a zero width though the stylesheet declares no `border-l-0`. Variants and the `!` modifier apply
 as they do to the physical utility. A logical utility resolves as inline style, so its scale comes from C#
 mirrors of `--space-*`, `--radius-*` and the `border-l` widths rather than from the stylesheet: a custom

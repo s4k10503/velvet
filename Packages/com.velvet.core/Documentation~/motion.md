@@ -299,7 +299,7 @@ resolved start described above.
 - **`border-radius`,** from the `rounded-*` scale and the bracket forms, including the per-side and
   per-corner spellings.
 - **Spacing-scale lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*`
-  … `inset-y-*`) and `basis-*`, from the `--space-*` scale (`p-4`, `w-64`, `-mt-2`), the sizing
+  … `inset-y-*`) and `basis-*`, from the spacing scale (`p-4`, `w-64`, `-mt-2`, `p-13`; [styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps)), the sizing
   and position fractions (`w-1/2`, `left-1/2`), and the bracket forms. These dirty Yoga layout on
   every tick — the whole subtree relayouts each frame for the length of the play — so reach for a
   transform channel first and animate a length only where the reflow is the point.

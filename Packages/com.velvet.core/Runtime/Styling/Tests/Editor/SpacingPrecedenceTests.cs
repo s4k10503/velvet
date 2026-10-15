@@ -12,7 +12,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class SpacingPrecedenceTests
     {
-        private static float Side(VisualElement element, string side) => side switch
+        internal static float Side(VisualElement element, string side) => side switch
         {
             "paddingTop" => element.style.paddingTop.value.value,
             "paddingLeft" => element.style.paddingLeft.value.value,
@@ -419,7 +419,7 @@ namespace Velvet.Tests
         public void Given_ANameThatIsNotASpacingStep_When_ReadAsAStep_Then_ItIsDeclined(string className)
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryReadSpacingStep(className, out _);
+            var ok = StyleArbitraryValueResolver.TryReadSpacingStep(className, out _, out _);
 
             // Assert
             Assert.That(ok, Is.False);

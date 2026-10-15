@@ -24,14 +24,15 @@ does.
 | Utility | Resolved z |
 |---|---|
 | `z-auto` | none: the element is left unstacked, so `z-10 z-auto` resets the earlier `z-10` |
-| `z-0` / `z-10` / `z-20` / `z-30` / `z-40` / `z-50` | Tailwind's fixed named scale |
-| `-z-10` … `-z-50` | negated named scale |
+| `z-<n>` | any whole number up to 2147483647, spelled without a sign or a leading zero (`z-0`, `z-15`, `z-999`) |
+| `-z-<n>` | its negation (`-z-15`) |
 | `z-[N]` / `z-[-N]` | arbitrary integer (the bracket carries its own sign) |
 
-The named scale is Tailwind v3's fixed one, the same choice `rotate-*` and the spacing utilities make:
-`z-15` is not on it, `z-[15]` is. Each form also accepts the important modifier (`!z-10`, `z-10!`,
-`!z-[5]`, `z-[5]!`): an important `z-*` wins over every plain one on the same element wherever it sits
-in the class list, and within either group the later class wins.
+`z-05`, `z-1.5` and `z-+5` are not whole numbers as Tailwind spells them and leave the class unresolved. Tailwind v4
+puts no cap on `z-<n>`; Velvet declines a value beyond the int range (`z-2147483648`) and leaves the class
+unresolved. Each form
+also accepts the important modifier (`!z-10`, `z-10!`, `!z-[5]`, `z-[5]!`): an important `z-*` wins over every
+plain one on the same element wherever it sits in the class list, and within either group the later class wins.
 
 ## How it works
 
