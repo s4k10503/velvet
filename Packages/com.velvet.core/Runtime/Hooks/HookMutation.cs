@@ -85,9 +85,9 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Callbacks passed to one <see cref="MutationResult{TVariables, TData}.Mutate(TVariables, MutateOptions{TVariables, TData})"/>
+    /// The cancellation token and callbacks passed to one <see cref="MutationResult{TVariables, TData}.Mutate(TVariables, MutateOptions{TVariables, TData})"/>
     /// or <see cref="MutationResult{TVariables, TData}.MutateAsync(TVariables, MutateOptions{TVariables, TData})"/>
-    /// call: TanStack Query's <c>mutate(variables, { onSuccess, onError, onSettled })</c>. They run after the
+    /// call: TanStack Query's <c>mutate(variables, { onSuccess, onError, onSettled })</c>. The callbacks run after the
     /// hook options' own callbacks, once the call's outcome is on the handle, and only while the component is
     /// mounted and the call is still the one the handle follows: the component unmounting, a newer call
     /// starting and <see cref="MutationResult{TVariables, TData}.Reset"/> each drop them. Every context
