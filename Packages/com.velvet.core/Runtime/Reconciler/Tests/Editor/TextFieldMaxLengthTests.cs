@@ -375,20 +375,101 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base cuts the shown text to its limit whatever handed it over.
-        // Enter in a single-line field is not an edit and leaves no note.
+        // Enter in a single-line field is not an edit and leaves no note. The text handed over fits a note
+        // taken at the caret, which would refuse the insertion in the middle and keep "abc", where no note
+        // cuts it from the end to "aXY".
         [Test]
-        public void Given_EnterPressedInASingleLineField_When_TheShownTextGrowsWithNoKeyBehindIt_Then_ItIsCutFromTheEnd()
+        public void Given_EnterPressedInTheMiddleOfASingleLineField_When_TheShownTextGrowsWithNoKeyBehindIt_Then_ItIsCutFromTheEnd()
         {
             // Arrange
             var field = Mount(V.TextField(value: "abc", maxLength: 3));
-            PlaceCaret(field, 3);
+            PlaceCaret(field, 1);
             Press(field, '\n', KeyCode.Return);
+
+            // Act
+            Poll(field, "aXYZbc");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("aXY"));
+        }
+
+        // The note a Backspace at the start leaves would refuse an insertion there and keep "abc"; blur
+        // drops it, so the text handed over afterwards is cut from the end.
+        [Test]
+        public void Given_ANoteALimitedFieldKept_When_TheFieldLosesFocus_Then_TheNextTextHandedOverIsCutFromTheEnd()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abc", maxLength: 3));
+            PlaceCaret(field, 0);
+            Press(field, '\b', KeyCode.Backspace);
+            Input(field).Blur();
+
+            // Act
+            Poll(field, "XYZabc");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("XYZ"));
+        }
+
+        // A render that repeats the limit does not drop the note, so the insertion is still refused at the
+        // start of the text.
+        [Test]
+        public void Given_ANoteALimitedFieldKept_When_ARenderRepeatsTheLimit_Then_TheNoteStillSizesTheEdit()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abc", maxLength: 3));
+            PlaceCaret(field, 0);
+            Press(field, '\b', KeyCode.Backspace);
+            Render(V.TextField(value: "abc", maxLength: 3, placeholder: "p"));
+
+            // Act
+            Poll(field, "XYZabc");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("abc"));
+        }
+
+        // Writing the text back while a composition is open would reach the composition, so nothing is cut
+        // until it ends.
+        [Test]
+        public void Given_AnIMEComposition_When_TheShownTextGrowsPastTheLimit_Then_NothingIsCut()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abc", maxLength: 3));
+            var manipulator = EngineMember.TextEditingManipulator.ResolveProperty()!.GetValue(Input(field));
+            var utilities = EngineMember.TextEditingUtilities.ResolveField()!.GetValue(manipulator);
+            EngineMember.TextCompositionActive.ResolveField()!.SetValue(utilities, true);
 
             // Act
             Poll(field, "abcdef");
 
             // Assert
-            Assert.That(field.text, Is.EqualTo("abc"));
+            Assert.That(field.text, Is.EqualTo("abcdef"));
+        }
+
+        // The engine queues an event sent while another is being handled, so a limit lifted by a render a
+        // handler runs is announced after the render has returned.
+        [Test]
+        public void Given_AValueWithALineBreakOnAFieldBuiltWithALimit_When_AHandlerRendersTheDeclarationOfALimit_Then_TheValueIsShownWhole()
+        {
+            // Arrange
+            var built = new FiberElementProps { FieldValue = "a\nbcdef" };
+            var declared = new FiberElementProps
+            {
+                FieldValue = "a\nbcdef",
+                TextField = new TextFieldSettings(MaxLength: 5),
+            };
+            var field = Mount(V.Custom<TextFieldBuiltLimitTests.BuiltWithThree>(props: built));
+            PlaceCaret(field, 0);
+            field.RegisterCallback<KeyDownEvent>(
+                _ => Render(V.Custom<TextFieldBuiltLimitTests.BuiltWithThree>(props: declared)),
+                TrickleDown.TrickleDown);
+
+            // Act
+            Press(field, '\0', KeyCode.LeftArrow);
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("a\nbcdef"));
         }
 
         [Test]

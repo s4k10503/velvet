@@ -582,89 +582,21 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<div className="x">` | `V.Div(className: "x")` | Unity has no HTML elements. Produces a `VisualElement` |
 | `<span>text</span>` | `V.Text("text")` | A run of text, materialized as a `Label`. A `<span>` styling part of a sentence is a rich-text tag inside the one `V.Text`, as in `V.Text("a <b>bold</b> word")`. A `<span>` grouping other elements in a line is a `V.Div(className: "flex-row flex-wrap")` |
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
-| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters, and `maxLength:` limits what the user enters rather than a value set from code, as `maxlength` does. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it. `inputmode` / `autocorrect` are `keyboardType:` (a `TouchScreenKeyboardType`) / `autoCorrection:`, written to the field's own `keyboardType` / `autoCorrection` |
-| `<textarea>` | `V.TextField(multiline: true)` | A render toggling `multiline:` patches the same element, where React swapping `<input>` for `<textarea>` remounts it. Declaring `isPasswordField:` beside it leaves both flags on, a multi-line password field that HTML has no control for |
-| `<input type="checkbox">` | `V.Toggle()` | |
-| `<input type="range">` | `V.Slider()` | `min` / `max` / `step` are the `lowValue:` / `highValue:` / `step:` parameters. `direction:` (`SliderDirection.Vertical`) and `inverted:` set UI Toolkit's `Slider.direction` and `Slider.inverted` — see below for what null means |
-| `<input type="range" step="1">` | `V.SliderInt()` | A UI Toolkit `SliderInt`: `V.Slider`'s parameters over `int`, with an `Action<int>` change handler. The two paragraphs below on `V.Slider`'s parameters and its input hold for it as well |
-| `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
-| `<>{a}{b}</>` | `V.Fragment(a, b)` | `V.Fragment(children, key: "k")` is `<Fragment key="k">` |
-
-`V.TextField`'s `placeholder:`, `maxLength:`, `isReadOnly:`, `isDelayed:`, `multiline:`, `keyboardType:`
-and `autoCorrection:` are **undeclared** when null, not reset: null is not `placeholder=""`, not
-`maxLength: -1`, not `isReadOnly: false` and not `multiline: false`. A member no render has declared
-is left wherever a `refCallback:` put it, and one a render declared and a later render dropped goes
-back to the value the field carried before any render declared it. The three focus props follow the
-same rule — [focus.md](focus.md) states it for those — and so do
-`V.Slider`'s `direction:` and `inverted:`: a dropped `direction:` puts back the direction the slider
-had before any render declared one, which is horizontal unless something wrote another by then (a
-`refCallback:` or `onCreated:`). `lowValue:` and `highValue:` do not follow it: a render changing
-either writes both, a null `lowValue:` as 0 and a null `highValue:` as 10.
-
-A `V.Slider` with `direction: SliderDirection.Vertical` has its high end at the top, as Radix's vertical
-`Slider` does, and `inverted: true` puts the low end there. Its input is Radix's `Slider`, whatever the
-direction and the flag: Home sets the low value and End the high value; PageUp and PageDown move ten
-steps; an arrow moves one step, ten with Shift, with no Enter pressed first. The
-arrows are Radix's: Up and Right raise the value and Down and Left lower it, except that an inverted
-horizontal slider swaps Left and Right and an inverted vertical one swaps Up and Down. `step:` is the
-distance one step covers and defaults to 1, as in Radix, and a value a key or a drag gives the slider
-lands on the grid of steps counted from `lowValue:`, which is why a slider over 0 to 1 declares
-`step: 0.01`; the controlled `value:` is shown as declared. A key aimed at the numeric input field a slider shows is the field's.
-
-A field holding `isDelayed:` releases the typed text into its value on Enter, on losing focus, and on
-a render taking the flag off — that third one whether the render declares `isDelayed: false` or drops
-the parameter. The render-driven release reports through `onValueChanged:`, so a component that turns
-the flag off mid-edit receives the pending text rather than stranding it on screen. A render turning
-`multiline:` on leaves that pending text on screen too, still unreleased.
-
-UI Toolkit puts a field's `keyboardType` back to `Default` and its `autoCorrection` back to false when
-the field hands focus from its input back to itself (Enter, Shift+Enter in multiline, Escape). A
-declared `keyboardType:` or `autoCorrection:` is written again each time focus comes back into the
-field; one written from `refCallback:` is not.
-
-`V.TextField` takes `onKeyDown:`, `onKeyUp:`, `onFocus:` and `onBlur:` as an `<input>` does, and
-`onSubmit:` for what Enter in an `<input>` does to its form:
-
-- `onKeyDown:` runs before the field takes the key, and a handler calling `StopPropagation()` on the
-  event keeps the key out of the field, as `preventDefault()` does in React.
-- `onFocus:` and `onBlur:` report focus entering the field from outside it and leaving it for outside
-  it. The step where the field hands focus from its input to itself and back, described above, reports
-  neither.
-- `onSubmit:` receives the field's value on each Enter in a single-line field, after a field holding
-  `isDelayed:` has released the typed text into it. Like the browser's implicit submission:
-  - a read-only field submits;
-  - the input keeps focus and its caret across the submitting Enter, so typing goes on where it was,
-    where UI Toolkit alone hands focus to the field on Enter; an Enter that lands on the field itself
-    (after Escape, say) submits too;
-  - the Enter that arrives while an IME composition is open does not submit;
-  - the soft keyboard's Done submits. This is read from the keyboard's status when it blurs the field,
-    and has not yet been verified on a device.
-
-  Enter with Ctrl held and Alt not held submits nothing, as in Chrome, where that key reaches the input
-  as a line feed rather than the carriage return implicit submission answers. Command is held to the
-  same rule, on every platform. A multi-line field never submits, as a `<textarea>` never submits its
-  form.
-
-`onCreated:` runs once when the field element is created, as on `V.Slider` and `V.ScrollView`.
-
-A field's `className` background, border, radius, padding, shadow and ring utilities paint the box the value
-is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
-is listed with the `[&>*]:` composite notes.
-
-`maxLength:` limits what the user enters, as `maxlength` does. Text typed or pasted is inserted only as
+| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters, and `maxLength:` limits what the user enters, as `maxlength` does. Text typed or pasted is inserted only as
 far as the limit leaves room for it at the caret, the room being the limit less the text that stays, so
 a selection pasted over counts as gone and a value longer than the limit leaves none. The rest of the
 insertion is refused. An edit that does not lengthen the text is never refused, so a value longer than
-the limit can still be shortened. Text that reaches the field any other way, the touch keyboard and an
-IME preview among them, is cut from the end to the larger of the limit and the length the text had, as
-the engine's own limit cut it; neither has been tested on a device. A value Velvet writes is shown
-whole: the controlled `value:`, and the value a render or a changed `maxLength:` re-shows. So is an
-assignment to the field's `value` from a `refCallback:` or other code, with one exception: a value
-containing a line break, assigned to a single-line field, is limited like an edit, because the engine
-announces that write the way it announces typing. A render changing `maxLength:` leaves the value and
-a pending edit as they are, and a field holding `isDelayed:` text longer than the limit releases that
-text on Enter or blur like any other. There is no counterpart of the browser's too-long validity state,
-so a value longer than the limit is not flagged.
+the limit can still be shortened. Text that reaches the field any other way, the touch keyboard among
+them, is cut from the end to the larger of the limit and the length the text had. While an IME
+composition is open nothing is cut, and the text is limited once the composition ends. The touch
+keyboard and IME paths have not been tested on a device, and IME composition near the limit may
+misbehave. A value Velvet writes is shown whole: the controlled `value:`, and the value a render or a
+changed `maxLength:` re-shows. So is an assignment to the field's `value` from a `refCallback:` or other
+code, with one exception: a value containing a line break, assigned to a single-line field, is limited
+like an edit, because the engine announces that write the way it announces typing. A render changing
+`maxLength:` leaves the value and a pending edit as they are, and a field holding `isDelayed:` text
+longer than the limit releases that text on Enter or blur like any other. There is no counterpart of the
+browser's too-long validity state, so a value longer than the limit is not flagged.
 
 ### 2-1a. Event props
 

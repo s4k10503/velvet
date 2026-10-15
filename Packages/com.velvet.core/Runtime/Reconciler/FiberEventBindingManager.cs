@@ -289,7 +289,7 @@ namespace Velvet
 
         // The input's own record of an open IME composition, which the engine keeps from the composition
         // string as keys and IME events arrive. False where an engine no longer has the members.
-        private static bool IsComposing(TextElement input)
+        internal static bool IsComposing(TextElement input)
         {
             var manipulator = s_editingManipulator?.GetValue(input);
             var utilities = manipulator == null ? null : s_editingUtilities?.GetValue(manipulator);
