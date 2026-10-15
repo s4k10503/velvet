@@ -68,10 +68,7 @@ namespace Velvet
                 return false;
             }
 
-            if (StyleNamedTextSize.TryStripLengthHint(className, out var unhinted))
-            {
-                return TryParse(unhinted, out result);
-            }
+            className = StyleNamedTextSize.WithoutLengthHint(className);
 
             if (StyleBorderSideColor.TryParse(className, out result)
                 || StyleLogicalUtilities.TryParse(className, out result))

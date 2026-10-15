@@ -218,10 +218,6 @@ namespace Velvet
             WhiteSpace? whiteSpaceClass = null;
             LeadingValue? explicitPlain = null;
             LeadingValue? explicitImportant = null;
-            LeadingValue? size = null;
-            // MUTANT_SURVIVES(equivalent, literal): ResolveLeading reads this only beside a non-null size, and every
-            // assignment of size sets it.
-            var sizeBeatsPlain = false;
             // Same two-pass importance rule as StyleFontClass.TryExtract. The white-space axis is settled within
             // each pass and the important pass's answer, when it has one, replaces the plain pass's: an important
             // whitespace-pre-line beats a plain whitespace-nowrap, and an important whitespace-nowrap beats a plain
@@ -232,7 +228,6 @@ namespace Velvet
                 facets.WhiteSpaceClass = null;
                 facets.WhiteSpaceRank = -1;
                 facets.ExplicitLeading = null;
-                facets.SizeLeading = null;
                 facets.SizeRank = -1;
                 foreach (var cls in classNames)
                 {
@@ -250,10 +245,10 @@ namespace Velvet
                 {
                     explicitImportant = facets.ExplicitLeading;
                 }
-                if (facets.SizeLeading != null)
+                if (facets.SizeRank != -1)
                 {
-                    size = facets.SizeLeading;
-                    sizeBeatsPlain = pass == 1 && facets.SizeRank == StyleNamedTextSize.SlashRank;
+                    facets.ChosenSize = facets.SizeLeading;
+                    facets.ChosenSizeBeatsPlain = pass == 1 && facets.SizeRank == StyleNamedTextSize.SlashRank;
                 }
                 // An explicit whitespace-{normal,nowrap,pre,pre-wrap} or truncate class on the SAME element wins
                 // over that element's own whitespace-pre-line token of the same importance, whichever appears
@@ -278,7 +273,8 @@ namespace Velvet
                 }
             }
             return new TextEffect(facets.Transform, facets.Decoration, whitespace,
-                ResolveLeading(explicitPlain, explicitImportant, size, sizeBeatsPlain), whiteSpaceClass, new TextWrapSetting(facets.Wraps, facets.WrapStyle));
+                ResolveLeading(explicitPlain, explicitImportant, facets.ChosenSize, facets.ChosenSizeBeatsPlain),
+                whiteSpaceClass, new TextWrapSetting(facets.Wraps, facets.WrapStyle));
         }
 
         // A bare text-<size> writes line-height: var(--tw-leading, <pair>) and every leading-* sets
@@ -302,10 +298,14 @@ namespace Velvet
             public TextTransformKind? Transform;
             public TextDecorationKind? Decoration;
             public WhitespaceCollapseKind? Whitespace;
-            // One pass's leading-* answer, and its text-<size> answer with that token's rank.
+            // One pass's leading-* answer, and its text-<size> answer with that token's rank; the answer is read
+            // only while the rank is not -1, which the start of each pass sets.
             public LeadingValue? ExplicitLeading;
             public LeadingValue? SizeLeading;
             public int SizeRank;
+            // The size answer of the latest pass that had one, and whether it is an important slash form.
+            public LeadingValue? ChosenSize;
+            public bool ChosenSizeBeatsPlain;
             // The latest-declared white-space class seen, and its index in WhiteSpaceClassesInSheetOrder.
             public WhiteSpace? WhiteSpaceClass;
             public int WhiteSpaceRank;
