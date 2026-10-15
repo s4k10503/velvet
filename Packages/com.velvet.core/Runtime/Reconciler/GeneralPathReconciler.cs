@@ -1664,9 +1664,9 @@ namespace Velvet
         // drain mounted them, so SetPrimaryHidden never saw them.
         internal void HideFibersMountedUnder(HashSet<VisualElement> roots, VisualElement placeholder, ComponentFiber? declaring)
         {
-            // The nearest Suspense the declaring fiber sits at or under, as FiberRenderer.NotifyAsyncResourceCompleted
-            // takes it for a fiber that is not offscreen.
-            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(declaring);
+            // A declarer under a hidden placeholder is offscreen, which records the boundary hiding it, or renders the
+            // Suspense that hides the placeholder itself.
+            var boundary = declaring is { IsOffscreen: true } ? declaring.OffscreenUnder : declaring;
             foreach (var (fiber, owner) in HeldFibers(roots, placeholder))
             {
                 // A fiber this drain mounted is offscreen already only where a Suspense in the portal's own
@@ -1746,8 +1746,7 @@ namespace Velvet
                     else
                     {
                         SuspenseHiddenElements.Reveal(element);
-                        // A Suspense further out that still hides the element attaches its refs when it reveals.
-                        if (!SuspenseHiddenElements.IsAtOrUnderHidden(element.parent)) _ctx.AttachRefsHiddenUnder(element);
+                        _ctx.AttachRefsHiddenUnder(element);
                     }
                 }
             }
