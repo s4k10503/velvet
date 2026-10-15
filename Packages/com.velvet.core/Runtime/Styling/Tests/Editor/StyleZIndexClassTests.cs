@@ -3,7 +3,7 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the <c>z-*</c> utility parser (StyleZIndexClass): any whole number
+    /// Specifies the <c>z-*</c> utility parser (StyleZIndexClass): any whole number an int holds
     /// (<c>z-0</c>, <c>z-15</c>), its negated form (<c>-z-10</c>), the arbitrary bracket form
     /// (<c>z-[999]</c>, <c>z-[-5]</c>), the cascade (last-wins), and rejection of anything that only
     /// looks like a z-* token (a number spelled with a leading zero or a fraction, a non-integer bracket,

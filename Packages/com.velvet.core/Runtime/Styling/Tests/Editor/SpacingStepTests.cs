@@ -1,4 +1,6 @@
+using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 
@@ -6,7 +8,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies Tailwind v4's bare spacing value: every utility on the spacing scale takes any non-negative
-    /// multiple of 0.25 written in canonical decimal form (<c>p-13</c>, <c>gap-4.5</c>, <c>w-0.25</c>) and
+    /// multiple of 0.25 written in canonical decimal form whose whole part an int holds (<c>p-13</c>, <c>gap-4.5</c>, <c>w-0.25</c>) and
     /// resolves it to that many 4px steps. A step the bundled stylesheets declare a rule for keeps its class;
     /// the others resolve inline, as the bracket forms do.
     /// </summary>
@@ -28,6 +30,20 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((ok, px), Is.EqualTo((true, expectedPx)));
+        }
+
+        [Test]
+        public void Given_TheStepTheTokenSheetDeclaresForOne_When_ReadAsAStep_Then_ThePixelsPerStepAreTheSame()
+        {
+            // Arrange
+            var sheet = File.ReadAllText(Path.GetFullPath("Packages/com.velvet.core/Runtime/Styles/_tokens.uss"));
+            var declared = float.Parse(Regex.Match(sheet, @"--space-1:\s*(?<px>\d+)px").Groups["px"].Value);
+
+            // Act
+            var perStep = StyleSpacingMultiplier.PixelsPerStep;
+
+            // Assert
+            Assert.That(perStep, Is.EqualTo(declared));
         }
 
         // GREEN_ON_BASE(characterization): the base declines every one of these suffixes, and so must this change.

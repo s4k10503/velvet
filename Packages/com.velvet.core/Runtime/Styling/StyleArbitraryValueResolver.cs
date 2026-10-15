@@ -367,12 +367,11 @@ namespace Velvet
             if (TryReadSpacingStep(cls, out var step, out var backed) && backed)
             {
                 property = step.Property;
-                TryGetSpacingPrefix(property, out var stepPrefix);
-                inlineForm = stepPrefix + "[" + step.Value.ToString("R", CultureInfo.InvariantCulture) + "px]";
+                inlineForm = SpacingPrefixOf(property) + "[" + step.Value.ToString("R", CultureInfo.InvariantCulture) + "px]";
                 return true;
             }
             // MUTANT_SURVIVES(equivalent, boundary): the shortest name read here is a family prefix of two characters and `auto` or `full`, six in all, so a bound of 4 turns away only names none of the loop's rows match.
-            if (cls.Length < 4 || cls[0] == '-' || !StyleUtilityProperties.TryGet(cls, out _))
+            if (cls.Length < 4 || !StyleUtilityProperties.TryGet(cls, out _))
             {
                 return false;
             }
@@ -401,18 +400,16 @@ namespace Velvet
         }
 
         // The prefix (with its trailing '-') whose utility writes property.
-        internal static bool TryGetSpacingPrefix(ArbitraryProperty property, out string prefix)
+        private static string SpacingPrefixOf(ArbitraryProperty property)
         {
             foreach (var (familyPrefix, familyProperty, _) in s_spacingFamilies)
             {
                 if (familyProperty == property)
                 {
-                    prefix = familyPrefix;
-                    return true;
+                    return familyPrefix;
                 }
             }
-            prefix = string.Empty;
-            return false;
+            return string.Empty;
         }
 
         // A step the bundled stylesheets declare no rule for, which resolves inline.
@@ -424,8 +421,8 @@ namespace Velvet
         internal static bool TryReadSpacingStep(string cls, out ArbitraryStyle result, out bool stylesheetBacked)
         {
             result = default;
+            // MUTANT_SURVIVES(equivalent, literal): both callers read stylesheetBacked only when this returns true, and every return of true assigns it first.
             stylesheetBacked = false;
-            // MUTANT_SURVIVES(equivalent, boundary): the shortest step is a two-character prefix and a digit, so a bound of 2 admits only strings no prefix and step fit.
             if (cls.Length < 3)
             {
                 return false;

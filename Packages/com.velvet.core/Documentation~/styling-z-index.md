@@ -24,7 +24,7 @@ does.
 | Utility | Resolved z |
 |---|---|
 | `z-auto` | none: the element is left unstacked, so `z-10 z-auto` resets the earlier `z-10` |
-| `z-<n>` | any whole number, spelled without a sign or a leading zero (`z-0`, `z-15`, `z-999`) |
+| `z-<n>` | any whole number up to 2147483647, spelled without a sign or a leading zero (`z-0`, `z-15`, `z-999`) |
 | `-z-<n>` | its negation (`-z-15`) |
 | `z-[N]` / `z-[-N]` | arbitrary integer (the bracket carries its own sign) |
 

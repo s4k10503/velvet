@@ -110,12 +110,12 @@ lands at once rather than animating.
 ## Bare spacing steps
 
 A spacing utility takes a bare number as Tailwind v4 does: any non-negative multiple of 0.25 written in
-canonical decimal form is that many 4px steps, so `p-13` is 52px, `gap-4.5` 18px and `w-0.25` 1px. `.5`,
+canonical decimal form, whose whole part is at most 2147483647, is that many 4px steps, so `p-13` is 52px, `gap-4.5` 18px and `w-0.25` 1px. `.5`,
 `4.50`, `05` and `4.1` are not steps and leave the class unresolved. The utilities are padding, margin
 (`m-*`, `mx-*`, `ps-*`, …), `gap-*`, `space-x-*` / `space-y-*`, `w-*`, `h-*`, `size-*`, `min-*` / `max-*`
 width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-x-*` / `translate-y-*`,
-and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). The
-`auto` keyword stays a bracket, [as above](#what-every-length-bracket-reads). A minus
+and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). `auto` is not a step: it is
+read as the table above says. A minus
 sign negates the margin, inset, translate and `space-*` utilities (`-mt-13`, `-top-4.5`), as in Tailwind;
 padding, sizing, `basis-*` and `gap-*` take none.
 
@@ -162,4 +162,4 @@ The rule is made where a shorthand and a longhand meet in one `className` string
 - Border radii are not ordered this way: `rounded-r-*` and `rounded-t-*` on one corner are left to whichever is
   written last.
 
-`z-<n>` takes any whole number the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).
+`z-<n>` takes any whole number up to 2147483647 the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).

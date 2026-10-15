@@ -3,7 +3,7 @@ using System;
 namespace Velvet
 {
     // Tailwind v4's bare spacing value: --spacing is 0.25rem and a utility takes any non-negative multiple of
-    // 0.25 written in canonical decimal form, so p-13, p-4.5, p-0.25 and p-17.75 resolve and p-.5, p-4.50,
+    // 0.25 written in canonical decimal form whose whole part an int holds, so p-13, p-4.5, p-0.25 and p-17.75 resolve and p-.5, p-4.50,
     // p-05 and p-4.1 do not. A rem is 16px here (StyleArbitraryValueResolver.TryParseValue), which makes a
     // step 4px.
     internal static class StyleSpacingMultiplier

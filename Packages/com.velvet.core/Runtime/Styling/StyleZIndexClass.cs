@@ -5,7 +5,7 @@ namespace Velvet
 {
     // Parses Velvet's z-* utility classes into a resolved stacking value for FiberZLayerCoordinator. Mirrors
     // StyleGapClass/StyleGridClass: a cheap prefix-scan gate (HasZIndexClass) before the full TryExtract parse.
-    // Supports z-auto, z-<n> for any whole number (z-0, z-15, z-50), its negated form (-z-15, the
+    // Supports z-auto, z-<n> for any whole number an int holds (z-0, z-15, z-50), its negated form (-z-15, the
     // sign prefixes the whole class), and the arbitrary bracket form (z-[999],
     // z-[-5] — the bracket already carries a signed integer, so no outer "-" is recognized for it: z-index has
     // no separate magnitude/direction split the way a length utility does).
