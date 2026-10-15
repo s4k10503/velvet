@@ -26,12 +26,15 @@ namespace Velvet.Tests
             s_setTick = default;
             s_setMounted = default;
             s_setExtra = default;
+            s_setPortal = default;
+            s_portalTarget = null;
             s_source = null;
             s_insertionSetups = 0;
             s_layoutSetups = 0;
             s_layoutCleanups = 0;
             s_passiveSetups = 0;
             s_lateInsertionSetups = 0;
+            s_portalInsertionSetups = 0;
             s_depsOf = static tick => tick;
         }
 
@@ -173,6 +176,26 @@ namespace Velvet.Tests
                 "The mount and the first reveal ran the effect, and nothing queued it again");
         }
 
+        [Test]
+        public void Given_AComponentMountedWhileItsPrimaryIsHiddenWithARefdPortalChild_When_TheBoundaryReveals_Then_ItsInsertionEffectRunsOnlyThen()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            SetBlocked(mounted);
+            s_setPortal.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var whileHidden = s_portalInsertionSetups;
+
+            // Act
+            Reveal(mounted);
+
+            // Assert
+            Assert.That((whileHidden, s_portalInsertionSetups), Is.EqualTo((0, 1)),
+                "A ref attaching under a component the boundary hides does not run that component's insertion effect");
+        }
+
         private static void SetBlocked(MountedTree mounted, int block = 1)
         {
             s_setBlocked.Invoke(block);
@@ -197,6 +220,8 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setTick;
         private static StateUpdater<bool> s_setMounted;
         private static StateUpdater<bool> s_setExtra;
+        private static StateUpdater<bool> s_setPortal;
+        private static VisualElement s_portalTarget;
         private static VelvetTaskCompletionSource<int> s_source;
         private static Func<int, int> s_depsOf;
         private static int s_insertionSetups;
@@ -204,6 +229,7 @@ namespace Velvet.Tests
         private static int s_layoutCleanups;
         private static int s_passiveSetups;
         private static int s_lateInsertionSetups;
+        private static int s_portalInsertionSetups;
 
         [Component]
         private static VNode HostRender()
@@ -211,6 +237,8 @@ namespace Velvet.Tests
             var (blocked, setBlocked) = Hooks.UseState(0);
             var (tick, setTick) = Hooks.UseState(0);
             var (extra, setExtra) = Hooks.UseState(false);
+            var (portal, setPortal) = Hooks.UseState(false);
+            s_setPortal = setPortal;
             s_setBlocked = setBlocked;
             s_setTick = setTick;
             s_setExtra = setExtra;
@@ -223,6 +251,7 @@ namespace Velvet.Tests
                         V.Component(ProbeRender, tick, key: "probe"),
                         V.Component(ReaderRender, blocked, key: "reader"),
                         extra ? V.Component(LateRender, key: "late") : null,
+                        portal ? V.Component(PortalDeclarerRender, key: "portal-declarer") : null,
                     }),
             });
         }
@@ -256,6 +285,24 @@ namespace Velvet.Tests
                 ? (s_source = new VelvetTaskCompletionSource<int>()).Task
                 : VelvetTask.FromResult(0), blocked);
             return V.Label(text: "reader:" + value);
+        }
+
+        // The ref sits in a Portal's child, which the portal drain mounts after the boundary hid the primary.
+        [Component]
+        private static VNode PortalDeclarerRender()
+        {
+            Hooks.UseInsertionEffect(() =>
+            {
+                s_portalInsertionSetups++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Div(children: new VNode[]
+            {
+                V.Portal(s_portalTarget, children: new VNode[]
+                {
+                    V.Div(name: "portaled", refCallback: _ => null),
+                }),
+            });
         }
 
         [Component]
