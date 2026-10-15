@@ -340,7 +340,9 @@ namespace Velvet
         internal void MarkActive(QueryEntry entry)
         {
             entry.InactiveSince = null;
-            // MUTANT_SURVIVES(equivalent, line removed): an entry left listed has no InactiveSince, so no sweep expires it; the list only grows.
+            // The deadline the last walk found may belong to this entry, so the next poll walks again.
+            _canExpire = false;
+            // MUTANT_SURVIVES(equivalent, line removed): an entry left listed has no InactiveSince, so no sweep expires it or counts it as one that can; the list only grows.
             _inactive.Remove(entry);
         }
 
@@ -375,10 +377,10 @@ namespace Velvet
                     entry.Remove();
                     continue;
                 }
-                if (!CanExpire(entry)) continue;
+                if (!CanExpire(entry) || entry.InactiveSince is not { } since) continue;
                 canExpire = true;
                 // A fetching entry has no deadline until its request settles, which lowers _nextWalk.
-                if (!entry.IsFetching && entry.InactiveSince is { } since)
+                if (!entry.IsFetching)
                 {
                     var deadline = Deadline(entry, since);
                     // MUTANT_SURVIVES(equivalent, boundary): at equal deadlines the assignment writes the value already held.

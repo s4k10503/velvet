@@ -241,6 +241,50 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_AReaderThatCameBackWhileTheLoopWaited_When_FramesPass_Then_TheClientStopsReadingTheClock()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = await MountResolved();
+            Hide(mounted);
+            var beforeWaiting = s_reads;
+            await Pass(TimeSpan.Zero);
+            var polledWhileWaiting = s_reads > beforeWaiting;
+            Show(mounted);
+            await Pass(TimeSpan.Zero);
+            var before = s_reads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That((polledWhileWaiting, s_reads - before), Is.EqualTo((true, 0)),
+                "A read entry has no deadline to wait for, whatever the one the loop last found");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AReaderThatCameBackOverARequestInFlight_When_FramesPass_Then_TheClientStopsReadingTheClock()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the request is still pending when the reader leaves, so the loop's walk finds no deadline.
+            using var mounted = Mount();
+            Hide(mounted);
+            var beforeWaiting = s_reads;
+            await Pass(TimeSpan.Zero);
+            var polledWhileWaiting = s_reads > beforeWaiting;
+            Show(mounted);
+            await Pass(TimeSpan.Zero);
+            var before = s_reads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That((polledWhileWaiting, s_reads - before), Is.EqualTo((true, 0)),
+                "A request in flight is waited for only while nothing reads the entry");
+        });
+
+        [UnityTest]
         public IEnumerator Given_AClearedClientWhoseLoopIsRunning_When_FramesPass_Then_TheClientStopsReadingTheClock()
             => VelvetTask.ToCoroutine(async () =>
         {
