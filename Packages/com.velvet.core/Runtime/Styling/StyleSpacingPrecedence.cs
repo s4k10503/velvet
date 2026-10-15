@@ -172,8 +172,10 @@ namespace Velvet
         // baseClasses without the inline spacing tokens a pose of the same Motion overrides: a pose is Framer
         // Motion's animate, which overrides the node's own style, so a base pt-[8px] must not outrank a pose's
         // p-[52px] on the top edge as it would in one class list. A base token goes when the pose token's property
-        // contains everything it writes, which includes the same property (a logical pose and the physical base of
-        // its side share one layer slot); baseClasses itself when none does.
+        // contains everything it writes, which includes the same property. A base radius a pose overlaps without
+        // containing is cut down to the corners the pose leaves (rounded-l-[4px] under a rounded-t-[16px] pose
+        // becomes rounded-bl-[4px]), since Tailwind may rank the base ahead of the pose on a shared corner;
+        // baseClasses itself when no token changes.
         internal static string[] WithoutOverriddenBase(string[] baseClasses, string[] pose, string[]? morePose = null)
         {
             if (!MayHoldSpacing(pose) && (morePose == null || !MayHoldSpacing(morePose)) || !MayHoldSpacing(baseClasses))
@@ -190,27 +192,89 @@ namespace Velvet
                 return baseClasses;
             }
             var overridden = new HashSet<int>();
+            var cut = new Dictionary<int, string[]>();
             foreach (var own in ReadAll(baseClasses))
             {
-                if (!own.Backed && poseReadings.Exists(posed => Overrides(posed, own)))
+                if (own.Backed)
+                {
+                    continue;
+                }
+                if (poseReadings.Exists(posed => Overrides(posed, own)))
                 {
                     overridden.Add(own.Index);
+                    continue;
+                }
+                var left = CornersLeftBy(baseClasses[own.Index], own, poseReadings);
+                if (left != null)
+                {
+                    cut[own.Index] = left;
                 }
             }
-            if (overridden.Count == 0)
+            if (overridden.Count == 0 && cut.Count == 0)
             {
                 return baseClasses;
             }
             var kept = new List<string>(baseClasses.Length);
             for (var i = 0; i < baseClasses.Length; i++)
             {
-                if (!overridden.Contains(i))
+                if (overridden.Contains(i))
                 {
-                    kept.Add(baseClasses[i]);
+                    continue;
                 }
+                if (cut.TryGetValue(i, out var corners))
+                {
+                    kept.AddRange(corners);
+                    continue;
+                }
+                kept.Add(baseClasses[i]);
             }
             return kept.ToArray();
         }
+
+        private static readonly (StyleLonghand Longhand, string Prefix)[] s_cornerTokens =
+        {
+            (StyleLonghand.BorderTopLeftRadius, "rounded-tl-"),
+            (StyleLonghand.BorderTopRightRadius, "rounded-tr-"),
+            (StyleLonghand.BorderBottomRightRadius, "rounded-br-"),
+            (StyleLonghand.BorderBottomLeftRadius, "rounded-bl-"),
+        };
+
+        // The corners of the base radius token that no pose of its variants and importance writes, each as a token
+        // of its own with the base's value; null for a token that is no radius or that no pose touches.
+        private static string[]? CornersLeftBy(string token, Reading own, List<Reading> poseReadings)
+        {
+            if (!StyleArbitraryValueResolver.IsRadiusProperty(own.Property))
+            {
+                return null;
+            }
+            var core = StyleArbitraryValueResolver.StripImportant(token, out _);
+            if (!StyleArbitraryValueResolver.TryParseLayer(core.Substring(VariantsLength(core)), out var style))
+            {
+                return null;
+            }
+            var written = StyleArbitraryLonghands.Of(own.Property);
+            var left = new List<string>();
+            var touched = false;
+            foreach (var corner in s_cornerTokens)
+            {
+                if (!written.Contains(corner.Longhand))
+                {
+                    continue;
+                }
+                if (poseReadings.Exists(posed => SameLayer(posed, own)
+                    && StyleArbitraryLonghands.Of(posed.Property).Contains(corner.Longhand)))
+                {
+                    touched = true;
+                    continue;
+                }
+                var unit = style.Unit == UnityEngine.UIElements.LengthUnit.Percent ? "%" : "px";
+                var value = style.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+                left.Add(Spelled(own, corner.Prefix + "[" + value + unit + "]"));
+            }
+            return touched ? left.ToArray() : null;
+        }
+
+        private static bool SameLayer(Reading a, Reading z) => a.Important == z.Important && a.VariantSet == z.VariantSet;
 
         // Whether any token can be a spacing or radius utility: the Motion paths ask it of every pose on every render, and
         // build the readings only where it holds.
@@ -447,9 +511,11 @@ namespace Velvet
             return written.Overlaps(otherWritten) && (written.Union(otherWritten) != written || CompareCascade(candidate.Property, other.Property) > 0);
         }
 
-        private static string Inlined(Reading candidate)
+        private static string Inlined(Reading candidate) => Spelled(candidate, candidate.InlineForm);
+
+        private static string Spelled(Reading candidate, string form)
         {
-            var core = candidate.Variants + candidate.InlineForm;
+            var core = candidate.Variants + form;
             if (!candidate.Important)
             {
                 return core;

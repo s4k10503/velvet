@@ -141,12 +141,15 @@ way (`p-[52px] pt-2`). Variants are compared as a set, so `hover:focus:` and `fo
 
 The radii run `rounded-*`, then the logical sides and corners (`rounded-s-*`, `rounded-ss-*`, `rounded-e-*`,
 `rounded-se-*`, `rounded-ee-*`, `rounded-es-*`), then the physical ones: `rounded-t-*`, `rounded-l-*`,
-`rounded-tl-*`, `rounded-r-*`, `rounded-tr-*`, `rounded-b-*`, `rounded-br-*`, `rounded-bl-*`. Of two that share a
-corner the later holds it whichever comes first, so `rounded-t-[2px] rounded-r-[8px]` and
+`rounded-tl-*`, `rounded-r-*`, `rounded-tr-*`, `rounded-b-*`, `rounded-br-*`, `rounded-bl-*`. Of two that write
+different properties and share a corner the later holds it whichever comes first, so `rounded-t-[2px] rounded-r-[8px]` and
 `rounded-r-[8px] rounded-t-[2px]` both give the top-right corner 8px, `rounded-l-sm rounded-b-lg` and
 `rounded-b-lg rounded-l-sm` both give the bottom-left 8px, and a logical radius gives way to the physical one over
 its corner. A stylesheet radius class that Tailwind emits after an inline one it overlaps is written inline, as
-below: `rounded-r-lg rounded-se-[2px]` leaves the top-right at 8px.
+below: `rounded-r-lg rounded-se-[2px]` leaves the top-right at 8px. Two utilities of one family
+(`rounded-md rounded-lg`) write one property and are not ordered by this rule. In a `V.Motion` pose, a base radius
+the pose partly overlaps keeps only the corners the pose leaves: `rounded-l-[4px]` under a `rounded-t-[16px]` pose
+is `rounded-bl-[4px]`.
 
 An inline value outranks every class on its element, so a stylesheet class that is the narrower of such a pair
 is written inline too when an inline utility of an overlapping family stands beside it: `pt-2` becomes

@@ -383,7 +383,8 @@ namespace Velvet
         // sheets declare a spacing class is read from StyleUtilityProperties, which is generated from them, so only
         // a name with a rule counts: the sheets declare `-auto` for margins, size, width, height and basis and
         // `-full` for sizes and basis, and nothing else in these families. A radius class is read off the radius
-        // scale instead (TryReadRadiusClass), whose steps RadiusPrecedenceTests holds the sheets to.
+        // scale instead (TryReadRadiusClass); RadiusPrecedenceTests checks that the sheets declare a rule for every
+        // step of every family, and the magnitudes are pinned by StyleUtilitiesUssTests and CornerRadiusFitPanelTests.
         internal static bool TryReadStylesheetClass(string cls, out ArbitraryProperty property, out string inlineForm)
         {
             property = default;
@@ -447,6 +448,10 @@ namespace Velvet
                     continue;
                 }
                 var suffix = bare ? string.Empty : cls.Substring(entry.Key.Length);
+                if (suffix.Length == 0 && !bare)
+                {
+                    continue;
+                }
                 if (StyleLogicalUtilities.TryGetRadiusPx(suffix, out var px))
                 {
                     property = entry.Value;

@@ -148,6 +148,7 @@ namespace Velvet.Tests
         [TestCase("rounded-t-lg !rounded-[2px]")]
         [TestCase("rounded-t-huge size-[52px]")]
         [TestCase("size-[52px] flex")]
+        [TestCase("rounded-t- rounded-[2px]")]
         [TestCase("rounded-t-lg rounded-b-lg")]
         public void Given_ARadiusClassListThatNeedsNoRewrite_When_ClassNamesAreParsed_Then_TheyAreAsWritten(string className)
         {
@@ -173,11 +174,20 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", kept), Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(characterization): the base filters no radius from a base list, so these stay as written.
-        // A pose that leaves part of the base radius unwritten keeps it, which filtering on any overlap reddens.
-        [TestCase("rounded-[8px]", "rounded-t-[4px]", "rounded-[8px]")]
-        [TestCase("rounded-t-[4px]", "rounded-b-[8px]", "rounded-t-[4px]")]
-        public void Given_BaseAndPoseRadii_When_ThePoseLeavesPartOfTheBaseUnwritten_Then_TheBaseRadiusStays(
+        // The base is cut down to the corners the pose leaves. Before the cut a partly overlapped base reached the
+        // reconciler whole, so each case here read as the base text unchanged.
+        [TestCase("rounded-l-[4px]", "rounded-t-[16px]", "rounded-bl-[4px]")]
+        [TestCase("rounded-r-[4px]", "rounded-t-[16px]", "rounded-br-[4px]")]
+        [TestCase("rounded-b-[4px]", "rounded-l-[16px]", "rounded-br-[4px]")]
+        [TestCase("rounded-b-[4px]", "rounded-r-[16px]", "rounded-bl-[4px]")]
+        [TestCase("rounded-t-[4px]", "rounded-ss-[8px]", "rounded-tr-[4px]")]
+        [TestCase("rounded-r-[4px]", "rounded-se-[8px]", "rounded-br-[4px]")]
+        [TestCase("rounded-[8px]", "rounded-t-[4px]", "rounded-br-[8px] rounded-bl-[8px]")]
+        [TestCase("rounded-l-[50%]", "rounded-t-[16px]", "rounded-bl-[50%]")]
+        [TestCase("hover:rounded-l-[4px]", "hover:rounded-t-[16px]", "hover:rounded-bl-[4px]")]
+        [TestCase("!rounded-l-[4px]", "!rounded-t-[16px]", "!rounded-bl-[4px]")]
+        [TestCase("rounded-l-[4px]! flex", "rounded-t-[16px]!", "rounded-bl-[4px]! flex")]
+        public void Given_BaseAndPoseRadii_When_ThePoseOverlapsTheBaseWithoutContainingIt_Then_TheBaseKeepsTheCornersTheyLeave(
             string baseClasses, string pose, string expected)
         {
             // Act
@@ -186,6 +196,102 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", kept), Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base filters no radius from a base list, so these stay as written.
+        // A pose in another variant, or on other corners, leaves the base alone, which cutting on any pose reddens.
+        [TestCase("rounded-l-[4px]", "hover:rounded-t-[16px]")]
+        [TestCase("rounded-l-[4px]", "!rounded-t-[16px]")]
+        [TestCase("rounded-t-[4px]", "rounded-b-[8px]")]
+        public void Given_BaseAndPoseRadii_When_ThePoseSharesNoCornerOrLayerWithTheBase_Then_TheBaseRadiusStays(
+            string baseClasses, string pose)
+        {
+            // Act
+            var kept = StyleSpacingPrecedence.WithoutOverriddenBase(
+                V.ParseClassNames(baseClasses), V.ParseClassNames(pose));
+
+            // Assert
+            Assert.That(string.Join(" ", kept), Is.EqualTo(baseClasses));
+        }
+
+        // The pose is Framer Motion's animate, so it holds every corner it writes whichever of the two Tailwind
+        // emits later. Each pair has the base emitted after the pose on the shared corner, so a base left whole
+        // would hold it; the expected string reads the pose's value on the shared corners and the base's on the rest.
+        [TestCase("rounded-l-[4px]", "rounded-t-[16px]", "16,16,0,4")]
+        [TestCase("rounded-r-[4px]", "rounded-t-[16px]", "16,16,4,0")]
+        [TestCase("rounded-b-[4px]", "rounded-l-[16px]", "16,0,4,16")]
+        [TestCase("rounded-b-[4px]", "rounded-r-[16px]", "0,16,16,4")]
+        [TestCase("rounded-t-[4px]", "rounded-ss-[8px]", "8,4,0,0")]
+        [TestCase("rounded-r-[4px]", "rounded-se-[8px]", "0,8,4,0")]
+        public void Given_ABaseRadiusAndAPoseRadiusSharingACorner_When_TheMotionMerges_Then_ThePoseHoldsTheSharedCorners(
+            string baseClasses, string pose, string expected)
+        {
+            // Arrange
+            var root = new VisualElement();
+            var variants = new Dictionary<string, MotionVariant> { ["on"] = pose };
+
+            // Act
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: baseClasses, variants: variants, animate: "on"));
+
+            // Assert
+            Assert.That(Corners(root.Q<VisualElement>("leaf")), Is.EqualTo(expected));
+        }
+
+        // Four tokens each overlapping only the next, written from the far end, so the last one applied has to
+        // reach the first through three others.
+        [Test]
+        public void Given_AChainOfRadiiEachSharingACornerWithTheNext_When_Reconciled_Then_EveryCornerFollowsTailwindsOrder()
+        {
+            // Arrange — Tailwind emits t, tl, r, b; tl holds the top-left, r the top-right, b the rest.
+            const string chain = "rounded-b-[8px] rounded-r-[6px] rounded-t-[4px] rounded-tl-[2px]";
+
+            // Act
+            var corners = CornersOf(chain);
+
+            // Assert
+            Assert.That(corners, Is.EqualTo("2,6,8,8"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets the last of two classes that set the same corners hold them.
+        // Letting the first hold them instead reddens both cases.
+        [TestCase("rounded-sm rounded-lg", 8f)]
+        [TestCase("rounded-lg rounded-sm", 2f)]
+        public void Given_RadiusClassesOfOneShadowCasterOnOneProperty_When_TheCornerRadiusIsResolved_Then_TheLastWrittenHolds(
+            string classNames, float expected)
+        {
+            // Act
+            var ok = StyleShadowClass.TryResolveCornerRadius(classNames.Split(' '), out var radius);
+
+            // Assert
+            Assert.That((ok, radius), Is.EqualTo((true, expected)));
+        }
+
+        [TestCase("rounded-t-lg rounded-sm", 8f)]
+        [TestCase("rounded-tl-sm rounded-l-lg", 2f)]
+        [TestCase("rounded-lg rounded-ss-sm", 2f)]
+        public void Given_RadiusClassesOfOneShadowCaster_When_TheCornerRadiusIsResolved_Then_TheOneTailwindEmitsLastHolds(
+            string classNames, float expected)
+        {
+            // Act
+            var ok = StyleShadowClass.TryResolveCornerRadius(classNames.Split(' '), out var radius);
+
+            // Assert
+            Assert.That((ok, radius), Is.EqualTo((true, expected)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base returns the base list itself whenever no pose token touches it.
+        // Building a fresh array for an unchanged list reddens it.
+        [Test]
+        public void Given_BaseAndPoseRadiiThatShareNoCorner_When_TheBaseIsFilteredForThePose_Then_TheBaseListItselfComesBack()
+        {
+            // Arrange
+            var baseClasses = V.ParseClassNames("rounded-t-[4px] flex");
+
+            // Act
+            var kept = StyleSpacingPrecedence.WithoutOverriddenBase(baseClasses, V.ParseClassNames("rounded-b-[8px]"));
+
+            // Assert
+            Assert.That(ReferenceEquals(kept, baseClasses), Is.True);
         }
 
         [TestCase("rounded-[2px]", "rounded-t-lg", "rounded-t-[8px]")]
@@ -221,7 +327,7 @@ namespace Velvet.Tests
         [TestCase("rounded-es-xl", ArbitraryProperty.BorderEndStartRadius, 12f)]
         [TestCase("rounded-ee-full", ArbitraryProperty.BorderEndEndRadius, 9999f)]
         [TestCase("rounded-s-[12px]", ArbitraryProperty.BorderStartRadius, 12f)]
-        [TestCase("rounded-l-lg", ArbitraryProperty.BorderLeftRadius, 8f)]
+        [TestCase("rounded-l-[8px]", ArbitraryProperty.BorderLeftRadius, 8f)]
         [TestCase("rounded-tl-[3px]", ArbitraryProperty.BorderTopLeftRadius, 3f)]
         [TestCase("ps-4", ArbitraryProperty.PaddingLeft, 16f)]
         public void Given_AToken_When_ParsedAsALayer_Then_OnlyALogicalRadiusTakesAPropertyOfItsOwn(
@@ -248,8 +354,8 @@ namespace Velvet.Tests
         public void Given_TheRoundedClassesOfEveryFamilyAndStep_When_TheirSheetPositionsAreComparedWithTailwindsOrder_Then_OverlappingOnesFollowIt()
         {
             // Arrange — a class that shares a corner with another and sets a different group of corners sits after
-            // it in the sheet exactly when Tailwind emits it after; two classes of one group set the same corners,
-            // so the scale does not order them.
+            // it in the sheet exactly when Tailwind emits it after; two classes of one group write one property,
+            // which this rule does not order.
             var families = new[] { "", "-t", "-l", "-tl", "-r", "-tr", "-b", "-br", "-bl" };
             var steps = new[] { "", "-none", "-sm", "-md", "-lg", "-xl", "-2xl", "-3xl", "-full" };
             var names = families.SelectMany(family => steps.Select(step => "rounded" + family + step)).ToArray();
