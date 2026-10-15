@@ -471,16 +471,20 @@ namespace Velvet
                 // taken back here.
                 if (SuspenseHiddenElements.IsAtOrUnderHidden(placeholder))
                 {
+                    var hiddenRoots = new HashSet<VisualElement>();
+                    var boundary = SuspenseHiddenElements.BoundaryOfHiddenAtOrAbove(placeholder);
                     // MUTANT_SURVIVES(equivalent, boundary): the slot after this Portal's own holds no child.
                     // The children it mounted are the last of resolvedTarget's, so TryGetPhysical declines that slot.
                     for (var slot = slotStart; slot < slotStart + slotLength; slot++)
                     {
                         if (LogicalChildSlots.TryGetPhysical(resolvedTarget, slot, out var physical))
                         {
-                            SuspenseHiddenElements.Hide(resolvedTarget[physical]);
+                            SuspenseHiddenElements.Hide(resolvedTarget[physical], boundary);
                             _ctx.DetachRefsWhileHidden(resolvedTarget[physical]);
+                            hiddenRoots.Add(resolvedTarget[physical]);
                         }
                     }
+                    _general.HideFibersMountedUnder(hiddenRoots, placeholder, boundary);
                 }
             }
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its

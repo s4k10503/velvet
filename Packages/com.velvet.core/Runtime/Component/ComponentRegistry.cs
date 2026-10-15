@@ -590,6 +590,21 @@ namespace Velvet
         // FiberElementCleaner.CleanupPortal owns the call.
         internal void DisposeInlineFibersOwnedByPortal(VisualElement placeholder)
         {
+            List<ComponentFiber>? doomed = null;
+            CollectInlineFibersOwnedByPortal(placeholder, ref doomed);
+            if (doomed == null) return;
+            // Snapshotted first: DisposeFiberInternal mutates the dictionary this walk reads, through
+            // its own child cleanup cascades as well as its own unregister.
+            foreach (var fiber in doomed)
+            {
+                if (fiber.IsDisposed) continue;
+                DisposeFiberInternal(fiber);
+            }
+        }
+
+        // The selection DisposeInlineFibersOwnedByPortal disposes, appended to into, which the first match creates.
+        internal void CollectInlineFibersOwnedByPortal(VisualElement placeholder, ref List<ComponentFiber>? into)
+        {
             if (placeholder == null || _inlineFiberToKey.Count == 0) return;
             List<ComponentFiber>? doomed = null;
             foreach (var entry in _inlineFiberToKey)
@@ -615,13 +630,7 @@ namespace Velvet
                     doomed.Add(child);
                 }
             }
-            // Snapshotted first: DisposeFiberInternal mutates the dictionary this walk reads, through
-            // its own child cleanup cascades as well as its own unregister.
-            foreach (var fiber in doomed)
-            {
-                if (fiber.IsDisposed) continue;
-                DisposeFiberInternal(fiber);
-            }
+            (into ??= new List<ComponentFiber>()).AddRange(doomed);
         }
 
         private static bool IsInsideAny(VisualElement? mountPoint, HashSet<VisualElement> roots)

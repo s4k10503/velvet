@@ -193,7 +193,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((whileHidden, s_portalInsertionSetups), Is.EqualTo((0, 1)),
-                "A component mounted under a primary the boundary hides runs its insertion effect with the reveal");
+                "A ref attaching under a component the boundary hides does not run that component's insertion effect");
         }
 
         private static void SetBlocked(MountedTree mounted, int block = 1)

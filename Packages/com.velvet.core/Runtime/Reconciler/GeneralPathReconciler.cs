@@ -83,7 +83,7 @@ namespace Velvet
             // The primary elements a Suspense of this walk hid (true) or revealed (false), each with its NewElements
             // row, applied with OffscreenChanges and on the same terms. RollbackCommitTo drops those of the rows it
             // takes back, whose elements can be in the pool by the time this is applied.
-            public List<(int Row, VisualElement Element, bool Hidden)>? DisplayChanges;
+            public List<(int Row, VisualElement Element, bool Hidden, ComponentFiber? Boundary)>? DisplayChanges;
             // The record each Suspense of this walk replaced, oldest first, put back where the walk throws.
             public List<(ComponentFiber? Boundary, VisualElement? Container, VisualElement? PortalScope, long Position,
                 ReconcilerContext.SuspenseFallbackRecord? Before)>? RecordsBefore;
@@ -1533,11 +1533,9 @@ namespace Velvet
                 // CommitLeaf records an element for every leaf it commits.
                 var row = commit.NewElements[i].element!;
                 if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
-                AddWithPortalChildren(row, roots, i, commit, walk, hidden);
+                AddWithPortalChildren(row, roots, i, commit, walk, hidden, boundaryFiber);
             }
-            List<ComponentFiber>? mounted = new();
-            _ctx.ComponentRegistry.CollectFibersUnder(roots, ref mounted);
-            foreach (var fiber in mounted!)
+            foreach (var (fiber, placeholder) in HeldFibers(roots, drainPlaceholder: null))
             {
                 if (hidden)
                 {
@@ -1546,7 +1544,7 @@ namespace Velvet
                     // FiberRenderer.NotifyAsyncResourceCompleted routes a resolved read by it between passes.
                     if (fiber.IsOffscreen && (fiber.HiddenUnder == null || IsAtOrUnder(fiber.HiddenUnder, roots))) continue;
                     var wasOffscreen = fiber.IsOffscreen;
-                    SetOffscreen(commit, fiber, true, HolderOf(fiber.MountPoint, roots), boundaryFiber);
+                    SetOffscreen(commit, fiber, true, HolderFor(fiber, placeholder, roots), boundaryFiber);
                     if (!wasOffscreen) (commit.OffscreenChanges ??= new()).Add((fiber, true));
                 }
                 else if (roots.Contains(fiber.HiddenUnder!))
@@ -1565,11 +1563,11 @@ namespace Velvet
         }
 
         private void AddWithPortalChildren(VisualElement element, HashSet<VisualElement> roots, int row,
-            GeneralCommitState commit, InlineWalk walk, bool hidden)
+            GeneralCommitState commit, InlineWalk walk, bool hidden, ComponentFiber? boundary)
         {
             roots.Add(element);
             if (hidden) walk.HiddenPrimaryElements.Add(element);
-            (commit.DisplayChanges ??= new()).Add((row, element, hidden));
+            (commit.DisplayChanges ??= new()).Add((row, element, hidden, boundary));
             foreach (var (placeholder, slots) in _ctx.PortalState)
             {
                 // An entry with no target holds no slot, so its loop below runs no step.
@@ -1577,7 +1575,7 @@ namespace Velvet
                 for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength; slot++)
                 {
                     if (!LogicalChildSlots.TryGetPhysical(slots.Target!, slot, out var physical)) break;
-                    AddWithPortalChildren(slots.Target![physical], roots, row, commit, walk, hidden);
+                    AddWithPortalChildren(slots.Target![physical], roots, row, commit, walk, hidden, boundary);
                 }
             }
         }
@@ -1613,10 +1611,72 @@ namespace Velvet
             }
         }
 
-        private static void SetOffscreen(GeneralCommitState commit, ComponentFiber fiber, bool offscreen,
+        // The fibers the roots hold: those mounted inside them, and those mounted at a Portal's target by a Portal
+        // among them, which sit beside the portal's elements rather than inside them. Each of the second kind comes
+        // with its placeholder, which is what the hide records it under. drainPlaceholder is a Portal whose drain is
+        // mounting into roots that do not hold its placeholder.
+        private List<(ComponentFiber Fiber, VisualElement? Placeholder)> HeldFibers(
+            HashSet<VisualElement> roots, VisualElement? drainPlaceholder)
+        {
+            var held = new List<(ComponentFiber, VisualElement?)>();
+            var seen = new HashSet<ComponentFiber>();
+            List<ComponentFiber>? found = null;
+            _ctx.ComponentRegistry.CollectFibersUnder(roots, ref found);
+            if (found != null)
+            {
+                foreach (var fiber in found)
+                {
+                    if (seen.Add(fiber)) held.Add((fiber, null));
+                }
+            }
+            foreach (var placeholder in _ctx.PortalState.Keys)
+            {
+                if (IsAtOrUnder(placeholder, roots)) AddOwnedBy(placeholder);
+            }
+            if (drainPlaceholder != null) AddOwnedBy(drainPlaceholder);
+            return held;
+
+            void AddOwnedBy(VisualElement portal)
+            {
+                List<ComponentFiber>? owned = null;
+                _ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(portal, ref owned);
+                if (owned == null) return;
+                foreach (var fiber in owned)
+                {
+                    if (seen.Add(fiber)) held.Add((fiber, portal));
+                }
+            }
+        }
+
+        // The element a reveal of these roots finds the fiber by. A fiber mounted at a Portal's target is not inside
+        // any element of the portal, so its holder is the one the portal's placeholder sits under.
+        private static VisualElement? HolderFor(ComponentFiber fiber, VisualElement? placeholder, HashSet<VisualElement> roots)
+            => HolderOf(fiber.MountPoint, roots)
+                ?? (placeholder == null
+                    ? null
+                    : HolderOf(placeholder, roots) ?? SuspenseHiddenElements.NearestHiddenAtOrAbove(placeholder));
+
+        // The fibers a Portal's drain mounted into children a Suspense hides. The boundary's walk ended before the
+        // drain mounted them, so SetPrimaryHidden never saw them.
+        internal void HideFibersMountedUnder(HashSet<VisualElement> roots, VisualElement placeholder, ComponentFiber? boundary)
+        {
+            foreach (var (fiber, owner) in HeldFibers(roots, placeholder))
+            {
+                // Same skip as SetPrimaryHidden: a Suspense inside the portal's children already hid this fiber, and
+                // stays the innermost one that reveals it.
+                if (fiber.IsOffscreen && (fiber.HiddenUnder == null || IsAtOrUnder(fiber.HiddenUnder, roots))) continue;
+                SetOffscreen(null, fiber, true, HolderFor(fiber, owner, roots), boundary);
+                FiberEffects.HideLayoutEffects(fiber);
+            }
+        }
+
+        private static void SetOffscreen(GeneralCommitState? commit, ComponentFiber fiber, bool offscreen,
             VisualElement? hiddenUnder, ComponentFiber? offscreenUnder)
         {
-            (commit.OffscreenBefore ??= new()).Add((fiber, fiber.IsOffscreen, fiber.HiddenUnder, fiber.OffscreenUnder));
+            if (commit != null)
+            {
+                (commit.OffscreenBefore ??= new()).Add((fiber, fiber.IsOffscreen, fiber.HiddenUnder, fiber.OffscreenUnder));
+            }
             fiber.IsOffscreen = offscreen;
             fiber.HiddenUnder = hiddenUnder;
             fiber.OffscreenUnder = offscreenUnder;
@@ -1665,11 +1725,11 @@ namespace Velvet
         {
             if (commit.DisplayChanges != null)
             {
-                foreach (var (_, element, hidden) in commit.DisplayChanges)
+                foreach (var (_, element, hidden, boundary) in commit.DisplayChanges)
                 {
                     if (hidden)
                     {
-                        SuspenseHiddenElements.Hide(element);
+                        SuspenseHiddenElements.Hide(element, boundary);
                         _ctx.DetachRefsWhileHidden(element);
                         // UI Toolkit lets go of the focus of an element no longer displayed only at its next layout
                         // pass, which SuspenseHiddenFocusPanelTests pins; the commit that hides it lets go of it here.
