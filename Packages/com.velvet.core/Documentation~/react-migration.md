@@ -808,8 +808,7 @@ the fallback shows, where React does not, so an effect whose deps changed and th
 runs at the reveal. A
 `V.Portal` a render adds to the hidden children mounts elements that are hidden all the same, and their refs
 wait for the reveal like the others. **Velvet deviation:** the components inside such a portal are not hidden themselves: their
-state updates and layout effects still run meanwhile, and a ref their own re-render queues can attach. This is
-tracked in a follow-up issue. The components of a
+state updates and layout effects still run meanwhile, and a ref their own re-render queues can attach. The components of a
 `V.VirtualList` row the list mounts outside a render of the boundary are not taken down either: they set their
 layout effects and refs up as they mount. A `V.Anchored`
 element among the hidden children stays hidden while it tracks its target. A boundary that has not
