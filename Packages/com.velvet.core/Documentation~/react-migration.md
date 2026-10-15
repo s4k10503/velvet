@@ -368,6 +368,17 @@ invalidation, and the components reading it re-render for what changed. A reques
 and lands over it. A key with no entry gets one, which expires after the client's `GcTime` unless a query
 reads it. The updater form is handed the data held; a null data or updater result writes nothing.
 
+**Garbage collection.** An entry no query reads is removed once it has gone unread for the longest `GcTime`
+any query asked for (five minutes by default), as v5's `scheduleGc` timer removes it, and no client call has
+to come first. While an entry that can still expire is held, the client reads its clock once a frame, as a
+retry's wait does, so removal lands on the first frame whose reading is at or past the deadline; with only
+`TimeSpan.MaxValue` entries, or none, it reads nothing. A query reading the entry again before then keeps it,
+and the time starts over when its last reader leaves. `TimeSpan.Zero` removes the entry on the next frame.
+As in v5, an entry with a request in flight is kept, and readable, until a whole `GcTime` has passed since
+the request settled: the removal never cancels a request, so a request of a query function taking no token
+that never settles keeps its entry for as long as the client lives, and the client reads its clock every
+frame meanwhile. The loop holds the client weakly, so it does not keep a dropped client alive.
+
 **Invalidating after a mutation.** `InvalidateQueries` takes a filter, as v5's non-exact
 `partialMatchKey` does: `new QueryKey("todos")` matches `["todos", 1]` and `["todos"]` alike. A filter part
 that is an array or a list matches a part that starts with it, one that is a dictionary matches a part
@@ -389,11 +400,6 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 
 **Deviations from v5:**
 
-- Garbage collection runs no timer. An entry unread for its `GcTime` (five minutes by default) reads as
-  absent from then on, and is removed the next time a query subscribes to the client, `InvalidateQueries`
-  runs or `SetQueryData` writes. As in v5, an entry with a request in flight is kept, and readable, until
-  a whole `GcTime` has passed since the request settled. A request of a query function taking no token
-  that never settles therefore keeps its entry for as long as the client lives, as a fetching query is kept in v5.
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
   share one request; v5's result arrives a microtask later.
