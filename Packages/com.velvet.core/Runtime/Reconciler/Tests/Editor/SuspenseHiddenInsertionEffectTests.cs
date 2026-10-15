@@ -97,8 +97,6 @@ namespace Velvet.Tests
                 "The hide cleans the layout effect up and nothing sets it up again before the reveal");
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves the effect pending when no render follows the mount.
-        // What this pins is that the hold does not run it early or twice.
         [Test]
         public void Given_AChildMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_ItsInsertionEffectRunsOnlyThen()
         {
@@ -118,8 +116,6 @@ namespace Velvet.Tests
                 "A child mounted into a primary the Suspense hides is committed with the reveal");
         }
 
-        // GREEN_ON_BASE(characterization): the render with changed deps queues the effect again on the base.
-        // What this pins is that the hold does not queue it twice.
         [Test]
         public void Given_APrimaryFirstMountedUnderTheFallback_When_ItsHostRendersItAgainWithChangedDeps_Then_ItsInsertionEffectRunsOnlyOnReveal()
         {
@@ -157,8 +153,6 @@ namespace Velvet.Tests
                 "A tree that never showed commits nothing until the reveal, which runs its effect once");
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the effect once at the first reveal and queues nothing at the
-        // second. What this pins is that the hold empties at the reveal, so a later hide does not run it again.
         [Test]
         public void Given_AShownProbeHiddenAndRevealedOnce_When_ItIsHiddenAgainWithItsDepsUnchangedAndRevealed_Then_ItsInsertionEffectDoesNotRunAgain()
         {

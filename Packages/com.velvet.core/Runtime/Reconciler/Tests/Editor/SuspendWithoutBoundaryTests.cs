@@ -279,8 +279,6 @@ namespace Velvet.Tests
                 "React mounts nothing of a tree a Suspense shows its fallback for, and mounts it on reveal");
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the insertion effect of a first mount only at the reveal.
-        // What this pins is that the hold added for later renders leaves that alone.
         [Test]
         public void Given_AComponentFirstMountedBesideAReaderThatSuspends_When_TheBoundaryShowsItsFallbackAndThenReveals_Then_ItsInsertionEffectRunsOnlyOnReveal()
         {
