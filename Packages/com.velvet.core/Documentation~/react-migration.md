@@ -805,11 +805,13 @@ again. Their passive effects stay connected throughout, as React's do. A render 
 shows commits none of their insertion, layout or passive effects, and the commit that reveals them runs once each
 insertion and passive effect such a render queued. **Velvet deviation:** Velvet renders the hidden children while
 the fallback shows, where React does not, so an effect whose deps changed and then changed back in between still
-runs at the reveal. The element refs in the children of a
-`V.Portal` a render adds to the hidden children, whose elements are hidden all the same, wait for the reveal
-like the others. The components there, and the components and refs of a
-`V.VirtualList` row the list mounts outside a render of the boundary, are not taken down that way: they set
-their layout effects up as they mount, and the row's refs with them. A `V.Anchored`
+runs at the reveal. A
+`V.Portal` a render adds to the hidden children mounts elements that are hidden all the same, and their refs
+wait for the reveal like the others. **Velvet deviation:** the components inside such a portal are not hidden themselves: their
+state updates and layout effects still run meanwhile, and a ref their own re-render queues can attach. This is
+tracked in a follow-up issue. The components of a
+`V.VirtualList` row the list mounts outside a render of the boundary are not taken down either: they set their
+layout effects and refs up as they mount. A `V.Anchored`
 element among the hidden children stays hidden while it tracks its target. A boundary that has not
 shown its children yet discards what the suspended render built: a component whose render suspended keeps
 its state meanwhile only where no host element sits between it and the Suspense — one inside such an element

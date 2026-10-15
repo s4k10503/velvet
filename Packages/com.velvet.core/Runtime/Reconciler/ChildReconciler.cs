@@ -466,9 +466,9 @@ namespace Velvet
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
                     resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
                 // A Portal a render created inside children its Suspense hides was hidden with them before this
-                // drain mounted its own, so they are hidden here; the reveal finds them through PortalState. Their
-                // ref setups are queued by now and the hide pass that took the ordinary elements' back has already
-                // run, so they are taken back here for the reveal to attach (ApplyOffscreenChanges).
+                // drain mounted its own, so they are hidden here; the reveal finds them through PortalState. The
+                // boundary's hide pass has already run, so the ref setups it takes back from ordinary elements are
+                // taken back here.
                 if (SuspenseHiddenElements.IsAtOrUnderHidden(placeholder))
                 {
                     // MUTANT_SURVIVES(equivalent, boundary): the slot after this Portal's own holds no child.
