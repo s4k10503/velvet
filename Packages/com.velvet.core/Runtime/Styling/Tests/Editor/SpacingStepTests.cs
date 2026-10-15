@@ -224,6 +224,17 @@ namespace Velvet.Tests
             Assert.That((claimed, parsed), Is.EqualTo((false, false)));
         }
 
+        // Dropping the `rotate-` clause from the negated branch of `MayBeStaticScale` reddens this.
+        [Test]
+        public void Given_ANegatedRotatePreset_When_DispatchGateChecked_Then_ItIsInlineResolved()
+        {
+            // Act
+            var claimed = StyleArbitraryValueResolver.IsInlineResolved("-rotate-6");
+
+            // Assert
+            Assert.That(claimed, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): a step the bundled stylesheets declare a rule for stays a class, as it is on the base.
         // Claiming it would move its cascade layer from class to inline; dropping the `SuffixInKeys` test in
         // `TryParseSpacingStep` does that and reddens this.
