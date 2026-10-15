@@ -15,19 +15,14 @@ namespace Velvet
         private sealed class Before
         {
             internal StyleEnum<DisplayStyle> Display;
-            internal ComponentFiber? Boundary;
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Before> s_hidden = new();
 
-        // An element two nested Suspenses hide keeps what it had, and the boundary, from the first hide it got.
-        // boundary is the fiber rendering the Suspense, null for one no component renders.
-        internal static void Hide(VisualElement element, ComponentFiber? boundary)
+        // An element two nested Suspenses hide keeps what it had before the first.
+        internal static void Hide(VisualElement element)
         {
-            if (!s_hidden.TryGetValue(element, out _))
-            {
-                s_hidden.Add(element, new Before { Display = element.style.display, Boundary = boundary });
-            }
+            if (!s_hidden.TryGetValue(element, out _)) s_hidden.Add(element, new Before { Display = element.style.display });
             element.style.display = DisplayStyle.None;
         }
 
@@ -54,16 +49,6 @@ namespace Velvet
             for (var ve = element; ve != null; ve = ve.parent)
             {
                 if (IsHidden(ve)) return ve;
-            }
-            return null;
-        }
-
-        // The boundary of the nearest hidden element at or above element; null when none is hidden.
-        internal static ComponentFiber? BoundaryOfHiddenAtOrAbove(VisualElement? element)
-        {
-            for (var ve = element; ve != null; ve = ve.parent)
-            {
-                if (s_hidden.TryGetValue(ve, out var before)) return before.Boundary;
             }
             return null;
         }

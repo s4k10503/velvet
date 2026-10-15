@@ -176,6 +176,8 @@ namespace Velvet.Tests
                 "The mount and the first reveal ran the effect, and nothing queued it again");
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the insertion effect of a hidden fiber only at the reveal.
+        // What this pins is that a component with a ref'd portal child, whose ref no longer attaches while hidden, keeps that.
         [Test]
         public void Given_AComponentMountedWhileItsPrimaryIsHiddenWithARefdPortalChild_When_TheBoundaryReveals_Then_ItsInsertionEffectRunsOnlyThen()
         {
@@ -193,7 +195,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((whileHidden, s_portalInsertionSetups), Is.EqualTo((0, 1)),
-                "A ref attaching under a component the boundary hides does not run that component's insertion effect");
+                "A component mounted under a primary the boundary hides runs its insertion effect with the reveal");
         }
 
         private static void SetBlocked(MountedTree mounted, int block = 1)

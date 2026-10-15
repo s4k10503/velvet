@@ -33,12 +33,11 @@ namespace Velvet.Tests
             s_lastAttachedTick = -1;
             s_nested = false;
             s_withInner = false;
-            s_slowShape = 0;
+            s_withSlow = false;
             s_slowLayoutSetups = 0;
             s_setInner = default;
             s_lastInnerAttached = -1;
             s_innerLayoutSetups = 0;
-            s_innerSource = null;
         }
 
         [Test]
@@ -157,26 +156,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AComponentInAPortalMountedWhileItsPrimaryIsHiddenAndSuspendedByAParentRender_When_ItsReadResolves_Then_TheBoundaryRendersItWhileStillHidden()
-        {
-            // Arrange
-            s_withInner = true;
-            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
-            SetBlocked(mounted);
-            ShowPortal(mounted);
-            SetTick(mounted, 1);
-
-            // Act
-            s_innerSource.TrySetResult(7);
-            mounted.FlushStateForTest();
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Assert
-            Assert.That(s_outerTarget.Q<Label>("inner-value")?.text, Is.EqualTo("inner:7"),
-                "The label shows the resolved value while the reader still holds the fallback");
-        }
-
-        [Test]
         public void Given_AStatefulComponentInAPortalMountedBeforeItsPrimaryIsHidden_When_ItsStateChangesWhileHiddenAndTheBoundaryReveals_Then_TheNewestRefAttachesOnlyThen()
         {
             // Arrange
@@ -200,32 +179,13 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): without the drain's hide nothing overwrites a fiber an inner Suspense hid.
-        // What this pins is that the drain leaves such a fiber to the inner Suspense that reveals it.
+        // What this pins is that the drain leaves such a fiber to the inner Suspense that reveals it. The component
+        // renders to completion beside one that never does, so the fallback keeps showing.
         [Test]
         public void Given_ASuspenseAsADirectChildOfAPortalMountedWhileItsPrimaryIsHidden_When_TheOuterBoundaryReveals_Then_TheSuspendedComponentsLayoutEffectStaysDown()
         {
             // Arrange
-            s_slowShape = 1;
-            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
-            SetBlocked(mounted);
-            ShowPortal(mounted);
-
-            // Act
-            Reveal(mounted);
-
-            // Assert
-            Assert.That((_root.Q<Label>("reader")?.text, s_outerTarget.Q<Label>("slow-fallback") != null, s_slowLayoutSetups),
-                Is.EqualTo(("reader:5", true, 0)),
-                "The outer boundary revealed while the inner one still shows its fallback, which keeps its component's layout effect down");
-        }
-
-        // GREEN_ON_BASE(characterization): without the drain's hide nothing overwrites a fiber an inner Suspense hid.
-        // What this pins is that the drain leaves such a fiber to the inner Suspense that reveals it.
-        [Test]
-        public void Given_ASuspenseInsideAnElementOfAPortalMountedWhileItsPrimaryIsHidden_When_TheOuterBoundaryReveals_Then_TheSuspendedComponentsLayoutEffectStaysDown()
-        {
-            // Arrange
-            s_slowShape = 2;
+            s_withSlow = true;
             using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
             SetBlocked(mounted);
             ShowPortal(mounted);
@@ -278,12 +238,11 @@ namespace Velvet.Tests
         private static int s_innerAttaches;
         private static int s_lastAttachedTick;
         private static bool s_withInner;
-        private static int s_slowShape;
+        private static bool s_withSlow;
         private static int s_slowLayoutSetups;
         private static StateUpdater<int> s_setInner;
         private static int s_lastInnerAttached;
         private static int s_innerLayoutSetups;
-        private static VelvetTaskCompletionSource<int> s_innerSource;
 
         [Component]
         private static VNode HostRender()
@@ -316,7 +275,7 @@ namespace Velvet.Tests
             return V.Label(name: "reader", text: "reader:" + value);
         }
 
-        // Pending for good: the Suspense around it never leaves its fallback.
+        // Renders to completion, so it has a layout effect for a reveal to set up.
         [Component]
         private static VNode SlowRender()
         {
@@ -325,18 +284,22 @@ namespace Velvet.Tests
                 s_slowLayoutSetups++;
                 return (Action)null;
             }, Array.Empty<object>());
+            return V.Label(text: "slow");
+        }
+
+        // Pending for good: the Suspense around it never leaves its fallback.
+        [Component]
+        private static VNode StuckRender()
+        {
             var value = Hooks.Use<int>(_ => new VelvetTaskCompletionSource<int>().Task, 0);
-            return V.Label(text: "slow:" + value);
+            return V.Label(text: "stuck:" + value);
         }
 
         [Component]
-        private static VNode InnerRender(int tick)
+        private static VNode InnerRender()
         {
             var (n, setN) = Hooks.UseState(0);
             s_setInner = setN;
-            var value = Hooks.Use<int>(_ => tick > 0
-                ? (s_innerSource = new VelvetTaskCompletionSource<int>()).Task
-                : VelvetTask.FromResult(0), tick);
             Hooks.UseLayoutEffect(() =>
             {
                 s_innerLayoutSetups++;
@@ -346,7 +309,7 @@ namespace Velvet.Tests
             {
                 s_lastInnerAttached = n;
                 return null;
-            }, children: new VNode[] { V.Label(name: "inner-value", text: "inner:" + value) });
+            });
         }
 
         // The callback captures the tick, so each render of the declarer hands the element a new one.
@@ -359,15 +322,19 @@ namespace Velvet.Tests
                 s_lastAttachedTick = tick;
                 return () => s_outerCleanups++;
             };
-            var slow = V.Suspense(
-                fallback: V.Label(name: "slow-fallback", text: "slow"),
-                children: new VNode[] { V.Component(SlowRender, key: "slow") });
-            VNode[] portaled = s_slowShape == 1
-                ? new VNode[] { slow }
-                : s_slowShape == 2
-                ? new VNode[] { V.Div(name: "slow-host", children: new VNode[] { slow }) }
+            VNode[] portaled = s_withSlow
+                ? new VNode[]
+                {
+                    V.Suspense(
+                        fallback: V.Label(name: "slow-fallback", text: "slow"),
+                        children: new VNode[]
+                        {
+                            V.Component(SlowRender, key: "slow"),
+                            V.Component(StuckRender, key: "stuck"),
+                        }),
+                }
                 : s_withInner
-                ? new VNode[] { V.Component(InnerRender, tick, key: "inner") }
+                ? new VNode[] { V.Component(InnerRender, key: "inner") }
                 : s_nested
                 ? new VNode[]
                 {

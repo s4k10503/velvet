@@ -83,7 +83,7 @@ namespace Velvet
             // The primary elements a Suspense of this walk hid (true) or revealed (false), each with its NewElements
             // row, applied with OffscreenChanges and on the same terms. RollbackCommitTo drops those of the rows it
             // takes back, whose elements can be in the pool by the time this is applied.
-            public List<(int Row, VisualElement Element, bool Hidden, ComponentFiber? Boundary)>? DisplayChanges;
+            public List<(int Row, VisualElement Element, bool Hidden)>? DisplayChanges;
             // The record each Suspense of this walk replaced, oldest first, put back where the walk throws.
             public List<(ComponentFiber? Boundary, VisualElement? Container, VisualElement? PortalScope, long Position,
                 ReconcilerContext.SuspenseFallbackRecord? Before)>? RecordsBefore;
@@ -1533,7 +1533,7 @@ namespace Velvet
                 // CommitLeaf records an element for every leaf it commits.
                 var row = commit.NewElements[i].element!;
                 if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
-                AddWithPortalChildren(row, roots, i, commit, walk, hidden, boundaryFiber);
+                AddWithPortalChildren(row, roots, i, commit, walk, hidden);
             }
             foreach (var (fiber, placeholder) in HeldFibers(roots, drainPlaceholder: null))
             {
@@ -1563,11 +1563,11 @@ namespace Velvet
         }
 
         private void AddWithPortalChildren(VisualElement element, HashSet<VisualElement> roots, int row,
-            GeneralCommitState commit, InlineWalk walk, bool hidden, ComponentFiber? boundary)
+            GeneralCommitState commit, InlineWalk walk, bool hidden)
         {
             roots.Add(element);
             if (hidden) walk.HiddenPrimaryElements.Add(element);
-            (commit.DisplayChanges ??= new()).Add((row, element, hidden, boundary));
+            (commit.DisplayChanges ??= new()).Add((row, element, hidden));
             foreach (var (placeholder, slots) in _ctx.PortalState)
             {
                 // An entry with no target holds no slot, so its loop below runs no step.
@@ -1575,7 +1575,7 @@ namespace Velvet
                 for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength; slot++)
                 {
                     if (!LogicalChildSlots.TryGetPhysical(slots.Target!, slot, out var physical)) break;
-                    AddWithPortalChildren(slots.Target![physical], roots, row, commit, walk, hidden, boundary);
+                    AddWithPortalChildren(slots.Target![physical], roots, row, commit, walk, hidden);
                 }
             }
         }
@@ -1629,9 +1629,13 @@ namespace Velvet
                     if (seen.Add(fiber)) held.Add((fiber, null));
                 }
             }
-            foreach (var placeholder in _ctx.PortalState.Keys)
+            // MUTANT_SURVIVES(equivalent, guard removed, boundary): the loop visits no placeholder over an empty table.
+            if (_ctx.PortalState.Count > 0)
             {
-                if (IsAtOrUnder(placeholder, roots)) AddOwnedBy(placeholder);
+                foreach (var placeholder in _ctx.PortalState.Keys)
+                {
+                    if (IsAtOrUnder(placeholder, roots)) AddOwnedBy(placeholder);
+                }
             }
             if (drainPlaceholder != null) AddOwnedBy(drainPlaceholder);
             return held;
@@ -1658,13 +1662,16 @@ namespace Velvet
 
         // The fibers a Portal's drain mounted into children a Suspense hides. The boundary's walk ended before the
         // drain mounted them, so SetPrimaryHidden never saw them.
-        internal void HideFibersMountedUnder(HashSet<VisualElement> roots, VisualElement placeholder, ComponentFiber? boundary)
+        internal void HideFibersMountedUnder(HashSet<VisualElement> roots, VisualElement placeholder, ComponentFiber? declaring)
         {
+            // The nearest Suspense the declaring fiber sits at or under, as FiberRenderer.NotifyAsyncResourceCompleted
+            // takes it for a fiber that is not offscreen.
+            var boundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(declaring);
             foreach (var (fiber, owner) in HeldFibers(roots, placeholder))
             {
-                // Same skip as SetPrimaryHidden: a Suspense inside the portal's children already hid this fiber, and
-                // stays the innermost one that reveals it.
-                if (fiber.IsOffscreen && (fiber.HiddenUnder == null || IsAtOrUnder(fiber.HiddenUnder, roots))) continue;
+                // A fiber this drain mounted is offscreen already only where a Suspense in the portal's own
+                // children hid it, and that Suspense stays the one that reveals it.
+                if (fiber.IsOffscreen) continue;
                 SetOffscreen(null, fiber, true, HolderFor(fiber, owner, roots), boundary);
                 FiberEffects.HideLayoutEffects(fiber);
             }
@@ -1725,11 +1732,11 @@ namespace Velvet
         {
             if (commit.DisplayChanges != null)
             {
-                foreach (var (_, element, hidden, boundary) in commit.DisplayChanges)
+                foreach (var (_, element, hidden) in commit.DisplayChanges)
                 {
                     if (hidden)
                     {
-                        SuspenseHiddenElements.Hide(element, boundary);
+                        SuspenseHiddenElements.Hide(element);
                         _ctx.DetachRefsWhileHidden(element);
                         // UI Toolkit lets go of the focus of an element no longer displayed only at its next layout
                         // pass, which SuspenseHiddenFocusPanelTests pins; the commit that hides it lets go of it here.
@@ -1739,7 +1746,8 @@ namespace Velvet
                     else
                     {
                         SuspenseHiddenElements.Reveal(element);
-                        _ctx.AttachRefsHiddenUnder(element);
+                        // A Suspense further out that still hides the element attaches its refs when it reveals.
+                        if (!SuspenseHiddenElements.IsAtOrUnderHidden(element.parent)) _ctx.AttachRefsHiddenUnder(element);
                     }
                 }
             }

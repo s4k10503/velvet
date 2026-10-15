@@ -9,7 +9,7 @@ namespace Velvet
     internal static class ComponentBoundarySearch
     {
         // Inclusive of fiber itself.
-        internal static ComponentFiber? FindNearestSuspenseBoundary(ComponentFiber fiber)
+        internal static ComponentFiber? FindNearestSuspenseBoundary(ComponentFiber? fiber)
         {
             for (var current = fiber; current != null; current = current.Parent)
             {
