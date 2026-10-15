@@ -1666,7 +1666,8 @@ namespace Velvet
             if (owned == null) return;
             // A declarer under a hidden placeholder is offscreen, which records the boundary hiding it, or renders the
             // Suspense that hides the placeholder itself.
-            var boundary = declaring is { IsOffscreen: true } ? declaring.OffscreenUnder : declaring;
+            // MUTANT_SURVIVES(equivalent, literal): with the offscreen declarer taken as the boundary, a resolved read of a drained fiber still renders by the reveal; the campaign measured SuspenseHiddenPortalRefTests' resolve-then-reveal case green under this mutant.
+            var boundary =declaring is { IsOffscreen: true } ? declaring.OffscreenUnder : declaring;
             var holder = SuspenseHiddenElements.NearestHiddenAtOrAbove(placeholder);
             foreach (var fiber in owned)
             {
