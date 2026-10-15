@@ -152,9 +152,11 @@ namespace Velvet.Tests
             Assert.That(recognised, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base reads no size class, so it recognises neither of these.
+        // GREEN_ON_BASE(characterization): the base reads no size class, so it recognises none of these.
         [TestCase("p-4")]
         [TestCase("text-red-500")]
+        [TestCase("text-[20px]")]
+        [TestCase("text-[#ff0000]/50")]
         public void Given_ATokenThatIsNoTextEffect_When_AskedWhetherItIsATextEffectToken_Then_ItIsNot(string className)
         {
             // Act
