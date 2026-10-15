@@ -387,8 +387,9 @@ below were measured before sessions, over launches alone; how many mutants a dif
 measured in that section, against the window it names. A mutant's launch-compile-run measured
 100–118 s on a developer machine against a 94 s baseline. `--plan` makes one EditMode shard for every six mutants, as many as ten, and the deal
 sets how many each holds, up to `SHARD_CEILING`; it stops adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
-before its first mutant; a PlayMode shard takes two, since each of its mutants costs more than
-twice an EditMode one measured on the same run. Measured over 121 EditMode shards of the 100 pull-request runs
+before its first mutant; a PlayMode shard takes one, since the pass waits on its slowest shard and
+each of its mutants costs more than twice an EditMode one measured on the same run, which pays a
+shard's pull, activation and baseline once a survivor rather than once a pair for a pass of up to ten. Measured over 121 EditMode shards of the 100 pull-request runs
 completed on 2026-09-26 and 2026-09-27, before a mutant was narrowed, a shard spent a median of 98 s
 before activating, 82 s of it pulling the image, 36 s activating and 211 s on its baseline, and its
 645 mutants took a median of 190 s. Over the 461 EditMode baselines those runs uploaded, the

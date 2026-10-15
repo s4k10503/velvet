@@ -99,7 +99,7 @@ OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
 # activation and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail
 # has the measured cost of each.
-SHARD_SIZE = {"EditMode": 6, "PlayMode": 2}
+SHARD_SIZE = {"EditMode": 6, "PlayMode": 1}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest measured setup and, where the platform is narrowed,
