@@ -59,6 +59,19 @@ namespace Velvet
         public static bool IsInlineResolved(string core)
             => core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core);
 
+        // TryParse for a token that becomes a layer: a logical radius takes the property of its own that Tailwind's
+        // order ranks it by (StyleLogicalUtilities.AsLayer), where TryParse reads it as the physical property it
+        // resolves to. Every other token is as TryParse leaves it.
+        internal static bool TryParseLayer(string className, out ArbitraryStyle result)
+        {
+            if (!TryParse(className, out result))
+            {
+                return false;
+            }
+            result = StyleLogicalUtilities.AsLayer(className, in result);
+            return true;
+        }
+
         // Parses using IndexOf + string operations rather than regex — a per-class hot path.
         public static bool TryParse(string className, out ArbitraryStyle result)
         {
@@ -355,11 +368,22 @@ namespace Velvet
             return false;
         }
 
-        // A stylesheet class of a spacing family and the inline token that resolves to the same thing: a step
-        // becomes its pixel bracket, `auto` the bracket keyword and `full` a hundred percent. Whether the sheets
-        // declare the class is read from StyleUtilityProperties, which is generated from them, so only a name
-        // with a rule counts: the sheets declare `-auto` for margins, size, width, height and basis and `-full`
-        // for sizes and basis, and nothing else in these families.
+        // True when text begins with `rounded`, the start of every radius utility: the cheap test that a token can
+        // be one, which allocates nothing.
+        internal static bool StartsWithRadiusPrefix(string text)
+            => text.StartsWith(RadiusUtilityName, StringComparison.Ordinal);
+
+        internal static bool IsSpacingOrRadiusProperty(ArbitraryProperty property)
+            => IsSpacingProperty(property) || RadiusCornersOf.ContainsKey(property);
+
+        private const string RadiusUtilityName = "rounded";
+
+        // A stylesheet class of a spacing or radius family and the inline token that resolves to the same thing: a
+        // step becomes its pixel bracket, `auto` the bracket keyword and `full` a hundred percent. Whether the
+        // sheets declare a spacing class is read from StyleUtilityProperties, which is generated from them, so only
+        // a name with a rule counts: the sheets declare `-auto` for margins, size, width, height and basis and
+        // `-full` for sizes and basis, and nothing else in these families. A radius class is read off the radius
+        // scale instead (TryReadRadiusClass), whose steps RadiusPrecedenceTests holds the sheets to.
         internal static bool TryReadStylesheetClass(string cls, out ArbitraryProperty property, out string inlineForm)
         {
             property = default;
@@ -368,6 +392,10 @@ namespace Velvet
             {
                 property = step.Property;
                 inlineForm = SpacingPrefixOf(property) + "[" + step.Value.ToString("R", CultureInfo.InvariantCulture) + "px]";
+                return true;
+            }
+            if (TryReadRadiusClass(cls, out property, out inlineForm))
+            {
                 return true;
             }
             // MUTANT_SURVIVES(equivalent, boundary): the shortest name read here is a family prefix of two characters and `auto` or `full`, six in all, so a bound of 4 turns away only names none of the loop's rows match.
@@ -393,6 +421,36 @@ namespace Velvet
                 {
                     property = familyProperty;
                     inlineForm = prefix + "[100%]";
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // A rounded-* class on the scale StyleShadowClass mirrors, read as the radius property it writes and the
+        // bracket token that equals it. The prefix table is walked rather than a family list kept beside it, and a
+        // class is told from a longer family's by its suffix, which only a scale step or full passes.
+        private static bool TryReadRadiusClass(string cls, out ArbitraryProperty property, out string inlineForm)
+        {
+            property = default;
+            inlineForm = string.Empty;
+            if (!StartsWithRadiusPrefix(cls))
+            {
+                return false;
+            }
+            foreach (var entry in s_prefixProperties)
+            {
+                // The bare utility (rounded-t) is the prefix without its trailing '-'.
+                var bare = cls.Length == entry.Key.Length - 1 && entry.Key.StartsWith(cls, StringComparison.Ordinal);
+                if (!bare && !cls.StartsWith(entry.Key, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                var suffix = bare ? string.Empty : cls.Substring(entry.Key.Length);
+                if (StyleLogicalUtilities.TryGetRadiusPx(suffix, out var px))
+                {
+                    property = entry.Value;
+                    inlineForm = entry.Key + "[" + px.ToString("R", CultureInfo.InvariantCulture) + "px]";
                     return true;
                 }
             }
@@ -1071,6 +1129,12 @@ namespace Velvet
             [ArbitraryProperty.BorderTopRightRadius] = RadiusCorners.TopRight,
             [ArbitraryProperty.BorderBottomLeftRadius] = RadiusCorners.BottomLeft,
             [ArbitraryProperty.BorderBottomRightRadius] = RadiusCorners.BottomRight,
+            [ArbitraryProperty.BorderStartRadius] = RadiusCorners.TopLeft | RadiusCorners.BottomLeft,
+            [ArbitraryProperty.BorderEndRadius] = RadiusCorners.TopRight | RadiusCorners.BottomRight,
+            [ArbitraryProperty.BorderStartStartRadius] = RadiusCorners.TopLeft,
+            [ArbitraryProperty.BorderStartEndRadius] = RadiusCorners.TopRight,
+            [ArbitraryProperty.BorderEndStartRadius] = RadiusCorners.BottomLeft,
+            [ArbitraryProperty.BorderEndEndRadius] = RadiusCorners.BottomRight,
         };
 
         // Color-valued counterpart to PropertySetters. Color properties take a
@@ -2077,7 +2141,7 @@ namespace Velvet
         // is the layer the bang selects (Important when present, Base otherwise). Mirror of ClearClassToken.
         public static void ApplyClassToken(VisualElement element, string core, long priority, bool addToClassListFallback = true)
         {
-            if (TryParse(core, out var style))
+            if (TryParseLayer(core, out var style))
             {
                 Apply(element, in style, priority);
             }
@@ -2095,7 +2159,7 @@ namespace Velvet
         // to removing it from the USS class list when neither resolver claims it.
         public static void ClearClassToken(VisualElement element, string core, long priority)
         {
-            if (TryParse(core, out var style))
+            if (TryParseLayer(core, out var style))
             {
                 Clear(element, in style, priority);
             }

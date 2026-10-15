@@ -189,6 +189,15 @@ namespace Velvet
         BorderTopRightRadius,
         BorderBottomLeftRadius,
         BorderBottomRightRadius,
+        // The logical corners write the physical ones they read as (StyleLogicalUtilities), and are members of
+        // their own so a physical and a logical radius on one corner are two layers Tailwind's property order
+        // can rank.
+        BorderStartRadius,      // top-left + bottom-left
+        BorderEndRadius,        // top-right + bottom-right
+        BorderStartStartRadius, // top-left
+        BorderStartEndRadius,   // top-right
+        BorderEndStartRadius,   // bottom-left
+        BorderEndEndRadius,     // bottom-right
         #endregion
 
         #region Border width (StyleFloat)

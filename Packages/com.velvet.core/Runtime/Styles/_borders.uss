@@ -57,11 +57,10 @@
 /* Border Radius - per side & per corner (Tailwind parity) */
 /* Sides set the two corners they touch; corners set one each. Same named scale as the all-corner utilities. */
 /* DEFAULT (bare, no scale suffix) == --radius-default (4px), mirroring Tailwind's rounded-t / rounded-tl etc. */
-.rounded-t { border-top-left-radius: var(--radius-default); border-top-right-radius: var(--radius-default); }
-.rounded-r { border-top-right-radius: var(--radius-default); border-bottom-right-radius: var(--radius-default); }
-.rounded-b { border-bottom-left-radius: var(--radius-default); border-bottom-right-radius: var(--radius-default); }
-.rounded-l { border-top-left-radius: var(--radius-default); border-bottom-left-radius: var(--radius-default); }
+/* The families run in the order Tailwind emits them, each bare utility ahead of its scale, so of two that share a corner the later rule is the one Tailwind emits later. */
+/* A side is declared ahead of the corners it contains. */
 /* side: t */
+.rounded-t { border-top-left-radius: var(--radius-default); border-top-right-radius: var(--radius-default); }
 .rounded-t-none { border-top-left-radius: var(--radius-none); border-top-right-radius: var(--radius-none); }
 .rounded-t-sm { border-top-left-radius: var(--radius-sm); border-top-right-radius: var(--radius-sm); }
 .rounded-t-md { border-top-left-radius: var(--radius-md); border-top-right-radius: var(--radius-md); }
@@ -70,25 +69,8 @@
 .rounded-t-2xl { border-top-left-radius: var(--radius-2xl); border-top-right-radius: var(--radius-2xl); }
 .rounded-t-3xl { border-top-left-radius: var(--radius-3xl); border-top-right-radius: var(--radius-3xl); }
 .rounded-t-full { border-top-left-radius: var(--radius-full); border-top-right-radius: var(--radius-full); }
-/* side: r */
-.rounded-r-none { border-top-right-radius: var(--radius-none); border-bottom-right-radius: var(--radius-none); }
-.rounded-r-sm { border-top-right-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
-.rounded-r-md { border-top-right-radius: var(--radius-md); border-bottom-right-radius: var(--radius-md); }
-.rounded-r-lg { border-top-right-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-lg); }
-.rounded-r-xl { border-top-right-radius: var(--radius-xl); border-bottom-right-radius: var(--radius-xl); }
-.rounded-r-2xl { border-top-right-radius: var(--radius-2xl); border-bottom-right-radius: var(--radius-2xl); }
-.rounded-r-3xl { border-top-right-radius: var(--radius-3xl); border-bottom-right-radius: var(--radius-3xl); }
-.rounded-r-full { border-top-right-radius: var(--radius-full); border-bottom-right-radius: var(--radius-full); }
-/* side: b */
-.rounded-b-none { border-bottom-left-radius: var(--radius-none); border-bottom-right-radius: var(--radius-none); }
-.rounded-b-sm { border-bottom-left-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
-.rounded-b-md { border-bottom-left-radius: var(--radius-md); border-bottom-right-radius: var(--radius-md); }
-.rounded-b-lg { border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-lg); }
-.rounded-b-xl { border-bottom-left-radius: var(--radius-xl); border-bottom-right-radius: var(--radius-xl); }
-.rounded-b-2xl { border-bottom-left-radius: var(--radius-2xl); border-bottom-right-radius: var(--radius-2xl); }
-.rounded-b-3xl { border-bottom-left-radius: var(--radius-3xl); border-bottom-right-radius: var(--radius-3xl); }
-.rounded-b-full { border-bottom-left-radius: var(--radius-full); border-bottom-right-radius: var(--radius-full); }
 /* side: l */
+.rounded-l { border-top-left-radius: var(--radius-default); border-bottom-left-radius: var(--radius-default); }
 .rounded-l-none { border-top-left-radius: var(--radius-none); border-bottom-left-radius: var(--radius-none); }
 .rounded-l-sm { border-top-left-radius: var(--radius-sm); border-bottom-left-radius: var(--radius-sm); }
 .rounded-l-md { border-top-left-radius: var(--radius-md); border-bottom-left-radius: var(--radius-md); }
@@ -97,12 +79,8 @@
 .rounded-l-2xl { border-top-left-radius: var(--radius-2xl); border-bottom-left-radius: var(--radius-2xl); }
 .rounded-l-3xl { border-top-left-radius: var(--radius-3xl); border-bottom-left-radius: var(--radius-3xl); }
 .rounded-l-full { border-top-left-radius: var(--radius-full); border-bottom-left-radius: var(--radius-full); }
-/* Bare corners follow every scaled side group: a side's property set contains a corner's. */
-.rounded-tl { border-top-left-radius: var(--radius-default); }
-.rounded-tr { border-top-right-radius: var(--radius-default); }
-.rounded-bl { border-bottom-left-radius: var(--radius-default); }
-.rounded-br { border-bottom-right-radius: var(--radius-default); }
 /* corner: tl */
+.rounded-tl { border-top-left-radius: var(--radius-default); }
 .rounded-tl-none { border-top-left-radius: var(--radius-none); }
 .rounded-tl-sm { border-top-left-radius: var(--radius-sm); }
 .rounded-tl-md { border-top-left-radius: var(--radius-md); }
@@ -111,7 +89,18 @@
 .rounded-tl-2xl { border-top-left-radius: var(--radius-2xl); }
 .rounded-tl-3xl { border-top-left-radius: var(--radius-3xl); }
 .rounded-tl-full { border-top-left-radius: var(--radius-full); }
+/* side: r */
+.rounded-r { border-top-right-radius: var(--radius-default); border-bottom-right-radius: var(--radius-default); }
+.rounded-r-none { border-top-right-radius: var(--radius-none); border-bottom-right-radius: var(--radius-none); }
+.rounded-r-sm { border-top-right-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
+.rounded-r-md { border-top-right-radius: var(--radius-md); border-bottom-right-radius: var(--radius-md); }
+.rounded-r-lg { border-top-right-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-lg); }
+.rounded-r-xl { border-top-right-radius: var(--radius-xl); border-bottom-right-radius: var(--radius-xl); }
+.rounded-r-2xl { border-top-right-radius: var(--radius-2xl); border-bottom-right-radius: var(--radius-2xl); }
+.rounded-r-3xl { border-top-right-radius: var(--radius-3xl); border-bottom-right-radius: var(--radius-3xl); }
+.rounded-r-full { border-top-right-radius: var(--radius-full); border-bottom-right-radius: var(--radius-full); }
 /* corner: tr */
+.rounded-tr { border-top-right-radius: var(--radius-default); }
 .rounded-tr-none { border-top-right-radius: var(--radius-none); }
 .rounded-tr-sm { border-top-right-radius: var(--radius-sm); }
 .rounded-tr-md { border-top-right-radius: var(--radius-md); }
@@ -120,16 +109,18 @@
 .rounded-tr-2xl { border-top-right-radius: var(--radius-2xl); }
 .rounded-tr-3xl { border-top-right-radius: var(--radius-3xl); }
 .rounded-tr-full { border-top-right-radius: var(--radius-full); }
-/* corner: bl */
-.rounded-bl-none { border-bottom-left-radius: var(--radius-none); }
-.rounded-bl-sm { border-bottom-left-radius: var(--radius-sm); }
-.rounded-bl-md { border-bottom-left-radius: var(--radius-md); }
-.rounded-bl-lg { border-bottom-left-radius: var(--radius-lg); }
-.rounded-bl-xl { border-bottom-left-radius: var(--radius-xl); }
-.rounded-bl-2xl { border-bottom-left-radius: var(--radius-2xl); }
-.rounded-bl-3xl { border-bottom-left-radius: var(--radius-3xl); }
-.rounded-bl-full { border-bottom-left-radius: var(--radius-full); }
+/* side: b */
+.rounded-b { border-bottom-left-radius: var(--radius-default); border-bottom-right-radius: var(--radius-default); }
+.rounded-b-none { border-bottom-left-radius: var(--radius-none); border-bottom-right-radius: var(--radius-none); }
+.rounded-b-sm { border-bottom-left-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
+.rounded-b-md { border-bottom-left-radius: var(--radius-md); border-bottom-right-radius: var(--radius-md); }
+.rounded-b-lg { border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-lg); }
+.rounded-b-xl { border-bottom-left-radius: var(--radius-xl); border-bottom-right-radius: var(--radius-xl); }
+.rounded-b-2xl { border-bottom-left-radius: var(--radius-2xl); border-bottom-right-radius: var(--radius-2xl); }
+.rounded-b-3xl { border-bottom-left-radius: var(--radius-3xl); border-bottom-right-radius: var(--radius-3xl); }
+.rounded-b-full { border-bottom-left-radius: var(--radius-full); border-bottom-right-radius: var(--radius-full); }
 /* corner: br */
+.rounded-br { border-bottom-right-radius: var(--radius-default); }
 .rounded-br-none { border-bottom-right-radius: var(--radius-none); }
 .rounded-br-sm { border-bottom-right-radius: var(--radius-sm); }
 .rounded-br-md { border-bottom-right-radius: var(--radius-md); }
@@ -138,3 +129,13 @@
 .rounded-br-2xl { border-bottom-right-radius: var(--radius-2xl); }
 .rounded-br-3xl { border-bottom-right-radius: var(--radius-3xl); }
 .rounded-br-full { border-bottom-right-radius: var(--radius-full); }
+/* corner: bl */
+.rounded-bl { border-bottom-left-radius: var(--radius-default); }
+.rounded-bl-none { border-bottom-left-radius: var(--radius-none); }
+.rounded-bl-sm { border-bottom-left-radius: var(--radius-sm); }
+.rounded-bl-md { border-bottom-left-radius: var(--radius-md); }
+.rounded-bl-lg { border-bottom-left-radius: var(--radius-lg); }
+.rounded-bl-xl { border-bottom-left-radius: var(--radius-xl); }
+.rounded-bl-2xl { border-bottom-left-radius: var(--radius-2xl); }
+.rounded-bl-3xl { border-bottom-left-radius: var(--radius-3xl); }
+.rounded-bl-full { border-bottom-left-radius: var(--radius-full); }

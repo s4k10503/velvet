@@ -1062,7 +1062,7 @@ namespace Velvet.Tests
                 Is.EqualTo((2f, 2f, 8f)));
         }
 
-        // GREEN_ON_BASE(characterization): the radii are ordered by arrival on the base as here, so the last writers hold their slots there too.
+        // GREEN_ON_BASE(characterization): the slice insets are ordered by arrival on the base as here, so the last writers hold their slots there too.
         // Letting an earlier arrival win the shared corner reddens every case.
         [TestCase(false, false, "leading")]
         [TestCase(false, true, "leading")]
@@ -1099,10 +1099,10 @@ namespace Velvet.Tests
             var root = new VisualElement();
             var bang = important ? "!" : "";
             var extra = largeList ? " flex relative items-start justify-start overflow-hidden opacity-50 bg-red-500" : "";
-            // rounded-r and rounded-t share the top-right corner and StyleSpacingPrecedence ranks neither, so arrival
-            // decides it; a padding pair would not do, as its shorthand sorts ahead of its longhand.
-            var padding = bang + "rounded-r-[8px]";
-            var top = bang + "rounded-t-[2px]";
+            // slice-y and slice-t share the top inset and StyleSpacingPrecedence ranks neither, so arrival decides
+            // it; a padding or radius pair would not do, as Tailwind orders those whichever is written first.
+            var padding = bang + "slice-y-[8]";
+            var top = bang + "slice-t-[2]";
             var (oldClasses, newClasses, oldValue, newValue) = change switch
             {
                 "leading" => ($"w-[20px] {padding} {top}", $"w-[20px] {top} {padding}", 2f, 8f),
@@ -1110,8 +1110,8 @@ namespace Velvet.Tests
                 "duplicate-width" => ($"w-[20px] w-[20px] {padding} {top}", $"w-[20px] w-[20px] {top} {padding}", 2f, 8f),
                 "remove-occurrence" => ($"w-[20px] {padding} {top} {padding}", $"w-[20px] {padding} {top}", 8f, 2f),
                 "append-occurrence" => ($"w-[20px] {padding} {top}", $"w-[20px] {padding} {top} {padding}", 2f, 8f),
-                "corner-chain" => ($"w-[20px] {bang}rounded-r-[6px] {bang}rounded-b-[8px] {bang}rounded-t-[4px]",
-                    $"w-[20px] {bang}rounded-r-[6px] {bang}rounded-b-[8px] {bang}rounded-t-[4px] {bang}rounded-tl-[2px]", 8f, 8f),
+                "corner-chain" => ($"w-[20px] {bang}slice-[6] {bang}slice-y-[8] {bang}slice-t-[4]",
+                    $"w-[20px] {bang}slice-[6] {bang}slice-y-[8] {bang}slice-t-[4] {bang}slice-l-[2]", 8f, 8f),
                 "wrap-new-inline" => ("relative", $"relative {padding} {top}", 0f, 2f),
                 _ => throw new System.ArgumentOutOfRangeException(nameof(change)),
             };
@@ -1137,8 +1137,8 @@ namespace Velvet.Tests
             }
             var corners = change == "corner-chain";
             var before = corners
-                ? root.ElementAt(0).style.borderBottomRightRadius.value.value
-                : root.ElementAt(0).style.borderTopRightRadius.value.value;
+                ? root.ElementAt(0).style.unitySliceBottom.value
+                : root.ElementAt(0).style.unitySliceTop.value;
             root.ElementAt(0).style.width = 99f;
 
             // Act
@@ -1146,10 +1146,10 @@ namespace Velvet.Tests
 
             // Assert
             var element = root.ElementAt(0);
-            var after = corners ? element.style.borderBottomRightRadius.value.value : element.style.borderTopRightRadius.value.value;
-            var companion = corners ? element.style.borderTopLeftRadius.value.value : element.style.borderBottomRightRadius.value.value;
+            var after = corners ? element.style.unitySliceBottom.value : element.style.unitySliceTop.value;
+            var companion = corners ? element.style.unitySliceLeft.value : element.style.unitySliceBottom.value;
             Assert.That((before, after, companion, element.style.width.value.value, historyConsistent),
-                Is.EqualTo((oldValue, newValue, corners ? 2f : 8f, 99f, true)));
+                Is.EqualTo(((int)oldValue, (int)newValue, corners ? 2 : 8, 99f, true)));
         }
 
         [TestCase(false)]
