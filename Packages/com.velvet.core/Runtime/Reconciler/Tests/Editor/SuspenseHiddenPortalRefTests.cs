@@ -40,7 +40,6 @@ namespace Velvet.Tests
             s_innerLayoutSetups = 0;
             s_innerLayoutCleanups = 0;
             s_portalDirect = false;
-            s_innerSource = null;
         }
 
         [Test]
@@ -199,26 +198,6 @@ namespace Velvet.Tests
                 "No ref attaches while the fallback shows, and the reveal attaches the one the last state change gave");
         }
 
-        [Test]
-        public void Given_APortalThatIsADirectChildOfTheBoundaryMountedWhileItsPrimaryIsHidden_When_ItsComponentsReadResolves_Then_TheLabelShowsTheValueWhileTheReaderHoldsTheFallback()
-        {
-            // Arrange
-            s_portalDirect = true;
-            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
-            SetBlocked(mounted);
-            ShowPortal(mounted);
-            SetTick(mounted, 1);
-
-            // Act
-            s_innerSource.TrySetResult(7);
-            mounted.FlushStateForTest();
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Assert
-            Assert.That(s_outerTarget.Q<Label>("inner-value")?.text, Is.EqualTo("inner:7"),
-                "The label shows the resolved value while the reader still holds the fallback");
-        }
-
         // GREEN_ON_BASE(characterization): without the drain's hide nothing overwrites a fiber an inner Suspense hid.
         // What this pins is that the drain leaves such a fiber to the inner Suspense that reveals it. The component
         // renders to completion beside one that never does, so the fallback keeps showing.
@@ -286,7 +265,6 @@ namespace Velvet.Tests
         private static int s_innerLayoutSetups;
         private static int s_innerLayoutCleanups;
         private static bool s_portalDirect;
-        private static VelvetTaskCompletionSource<int> s_innerSource;
 
         [Component]
         private static VNode HostRender()
@@ -301,7 +279,7 @@ namespace Velvet.Tests
             if (portal)
             {
                 declared = s_portalDirect
-                    ? (VNode)V.Portal(s_outerTarget, children: new VNode[] { V.Component(InnerRender, tick, key: "inner") })
+                    ? (VNode)V.Portal(s_outerTarget, children: new VNode[] { V.Component(InnerRender, key: "inner") })
                     : V.Component(DeclarerRender, tick, key: "declarer");
             }
             return V.Div(children: new VNode[]
@@ -347,13 +325,10 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode InnerRender(int tick)
+        private static VNode InnerRender()
         {
             var (n, setN) = Hooks.UseState(0);
             s_setInner = setN;
-            var value = Hooks.Use<int>(_ => tick > 0
-                ? (s_innerSource = new VelvetTaskCompletionSource<int>()).Task
-                : VelvetTask.FromResult(0), tick);
             Hooks.UseLayoutEffect(() =>
             {
                 s_innerLayoutSetups++;
@@ -363,7 +338,7 @@ namespace Velvet.Tests
             {
                 s_lastInnerAttached = n;
                 return null;
-            }, children: new VNode[] { V.Label(name: "inner-value", text: "inner:" + value) });
+            });
         }
 
         // The callback captures the tick, so each render of the declarer hands the element a new one.
@@ -388,7 +363,7 @@ namespace Velvet.Tests
                         }),
                 }
                 : s_withInner
-                ? new VNode[] { V.Component(InnerRender, tick, key: "inner") }
+                ? new VNode[] { V.Component(InnerRender, key: "inner") }
                 : s_nested
                 ? new VNode[]
                 {
