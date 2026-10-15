@@ -110,7 +110,7 @@ namespace Velvet
 
         // React disconnects the layout effects of a tree a Suspense hides — its imperative handles among them —
         // keeping its state, and reconnects them when the tree is revealed. While hidden, the fiber's layout work
-        // is dropped from the commit (TakeBatch), a mount's included: one this render first mounted under the
+        // is dropped from the commit (CommitLayoutBatch), a mount's included: one this render first mounted under the
         // Suspense has set nothing up for the cleanups below to take down, and the reveal sets it up.
         internal static void HideLayoutEffects(ComponentFiber fiber)
         {
@@ -293,11 +293,17 @@ namespace Velvet
                     // A setup's catch can unmount a fiber later in this pass, and a boundary unmounted that way
                     // must not deliver the report it still holds.
                     if (!fiber.IsMounted) continue;
-                    // After every cleanup above, so what the insertion effects and layout cleanups wrote is in the
-                    // layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
-                    if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);
-                    FiberHookCommit.RunImperativeHandleSlots(fiber);
-                    HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount);
+                    // A tree a Suspense hides commits none of the layout work its render queued, as React discards
+                    // that work; ShowLayoutEffects queues all of it again for the commit that reveals it. The
+                    // report below is not layout work, and a hidden boundary that caught still delivers it.
+                    if (!fiber.LayoutEffectsHidden)
+                    {
+                        // After every cleanup above, so what the insertion effects and layout cleanups wrote is in
+                        // the layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
+                        if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);
+                        FiberHookCommit.RunImperativeHandleSlots(fiber);
+                        HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke: isMount);
+                    }
                     DeliverCaughtErrors(ctx, fiber, reportCutoff);
                 }
                 // A setup that mounted more inline children, a boundary's fallback among them, pushed them onto
@@ -332,9 +338,6 @@ namespace Velvet
                 // Its unmount cleared its effect lists and handles, the setup pass skips it, and detached, it
                 // precedes and follows nothing, so InsertInTreeOrder places nothing around it.
                 if (!entry.Fiber.IsMounted) continue;
-                // A tree a Suspense hides commits none of the layout work its render queued, as React discards
-                // that work; ShowLayoutEffects queues all of it again for the commit that reveals it.
-                if (entry.Fiber.LayoutEffectsHidden) continue;
                 if (!IsHeld(entry.Pass) && IsInScope(entry.Fiber, scope))
                 {
                     taken.Add((entry.Fiber, entry.IsMount));
