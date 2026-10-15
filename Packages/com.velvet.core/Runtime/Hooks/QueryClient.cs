@@ -20,9 +20,8 @@ namespace Velvet
         public TimeSpan StaleTime { get; init; } = TimeSpan.Zero;
 
         /// <summary>
-        /// How long an entry nothing observes is kept; after that it reads as absent and the next sweep
-        /// removes it, as the remarks on <see cref="QueryClient"/> say. TanStack Query's default is five
-        /// minutes.
+        /// How long an entry nothing observes is kept; after that the client removes it, as the remarks on
+        /// <see cref="QueryClient"/> say. TanStack Query's default is five minutes.
         /// <see cref="TimeSpan.MaxValue"/> keeps it until <see cref="QueryClient.Clear"/>.
         /// </summary>
         public TimeSpan GcTime { get; init; } = TimeSpan.FromMinutes(5);
@@ -98,12 +97,14 @@ namespace Velvet
     /// <see cref="QueryOptions{TQueryFnData, TData}.QueryFn"/> describes.
     /// </summary>
     /// <remarks>
-    /// Main thread only, like the rest of Velvet. <b>Deviation:</b> garbage collection runs no timer. An
-    /// entry whose time has run out reads as absent from then on, and is removed the next time a query
-    /// subscribes to this client, <see cref="InvalidateQueries"/> runs or
-    /// <see cref="SetQueryData{T}(QueryKey, T)"/> writes, where TanStack Query removes it when its timer fires.
-    /// An entry with a request in flight has not run out, as v5 puts its removal off while it fetches: it runs
-    /// out a whole garbage-collection time after the request settles.
+    /// Main thread only, like the rest of Velvet. An entry nothing observes is removed once its
+    /// garbage-collection time has passed on the client's clock, as TanStack Query's timer removes it. The
+    /// clock is read once a frame, as a retry's wait is, while an entry that can still expire is held: removal
+    /// lands on the first frame whose reading is at or past the deadline, and an entry whose time has run out
+    /// reads as absent before then. The loop holds the client weakly, so it is not what keeps a dropped client
+    /// alive. An entry with a request in flight has not run out, as v5 puts its removal
+    /// off while it fetches: it runs out a whole garbage-collection time after the request settles, and the
+    /// clock is read every frame until then.
     /// </remarks>
     public sealed class QueryClient
     {
@@ -117,6 +118,9 @@ namespace Velvet
         // value left after the render whose effects are subscribing now.
         private int _readEpoch;
         private int _observerCount;
+        private bool _collecting;
+        private TimeSpan _nextWalk;
+        private bool _canExpire;
 
         /// <summary>Creates an empty client.</summary>
         /// <param name="options">Defaults and clock; null takes <see cref="QueryClientOptions"/>' own.</param>
@@ -245,6 +249,7 @@ namespace Velvet
             var entries = SnapshotEntries();
             _entries.Clear();
             _inactive.Clear();
+            _canExpire = false;
             foreach (var entry in entries)
             {
                 entry.Remove();
@@ -324,27 +329,108 @@ namespace Velvet
             entry.InactiveSince = Now;
             entry.InactiveEpoch = _readEpoch;
             _inactive.Add(entry);
+            LowerNextWalk(entry, entry.InactiveSince.Value);
+            if (!_collecting && CanExpire(entry))
+            {
+                _collecting = true;
+                CollectOnFrames(new WeakReference<QueryClient>(this)).Forget();
+            }
         }
 
         internal void MarkActive(QueryEntry entry)
         {
             entry.InactiveSince = null;
-            // MUTANT_SURVIVES(equivalent, line removed): an entry left listed has no InactiveSince, so no sweep expires it; the list only grows.
+            // The deadline the last walk found may belong to this entry, so the next poll walks again.
+            _canExpire = false;
             _inactive.Remove(entry);
         }
 
-        internal void CollectGarbage()
+        internal void CollectGarbage() => Sweep(Now);
+
+        // The earliest clock reading at which a poll has anything to remove. It is lowered where an entry's deadline
+        // can fall before the one the last walk saw, an entry going inactive or a request settling; every other
+        // change moves a deadline later, and a walk that comes early finds nothing.
+        internal void LowerNextWalk(QueryEntry entry, TimeSpan since)
         {
-            var now = Now;
+            var deadline = Deadline(entry, since);
+            // MUTANT_SURVIVES(equivalent, boundary): at equal deadlines the assignment writes the value already held.
+            if (deadline < _nextWalk) _nextWalk = deadline;
+        }
+
+        private static TimeSpan Deadline(QueryEntry entry, TimeSpan since)
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): at each boundary the sum is TimeSpan.MaxValue itself or cannot overflow, so both branches give the same value.
+            return since > TimeSpan.Zero && entry.GcTime >= TimeSpan.MaxValue - since ? TimeSpan.MaxValue : since + entry.GcTime;
+        }
+
+        // Removes what has expired and reports whether an entry is left that can still expire.
+        private bool Sweep(TimeSpan now)
+        {
+            var next = TimeSpan.MaxValue;
+            var canExpire = false;
             for (var i = _inactive.Count - 1; i >= 0; i--)
             {
                 var entry = _inactive[i];
-                if (!IsExpired(entry, now)) continue;
-                _inactive.RemoveAt(i);
-                _entries.Remove(entry.Key);
-                entry.Remove();
+                if (IsExpired(entry, now))
+                {
+                    _inactive.RemoveAt(i);
+                    _entries.Remove(entry.Key);
+                    entry.Remove();
+                    continue;
+                }
+                if (!CanExpire(entry)) continue;
+                if (entry.InactiveSince is not { } since) continue;
+                canExpire = true;
+                // A fetching entry has no deadline until its request settles, which lowers _nextWalk.
+                if (!entry.IsFetching)
+                {
+                    var deadline = Deadline(entry, since);
+                    // MUTANT_SURVIVES(equivalent, boundary): at equal deadlines the assignment writes the value already held.
+                    if (deadline < next) next = deadline;
+                }
             }
+            // MUTANT_SURVIVES(equivalent, line removed): _nextWalk then stays at or below every reading, so each poll walks the list, which finds what a skipped poll would have found later.
+            _nextWalk = next;
+            // MUTANT_SURVIVES(equivalent, line removed): _canExpire then stays false, so each poll walks the list, as it does without the line above.
+            _canExpire = canExpire;
+            return canExpire;
         }
+
+        // One frame's poll, true while another is due. _canExpire is what the last walk found, by this loop or by a
+        // lazy sweep, so a sweep that removed the last expirable entry ends the loop at its next frame. The loop holds the client weakly, so a client the
+        // application dropped is not kept alive by an entry that has not expired.
+        private bool Poll()
+        {
+            var keep = false;
+            try
+            {
+                var now = Now;
+                if (_canExpire && now < _nextWalk) keep = true;
+                else keep = Sweep(now);
+            }
+            finally
+            {
+                if (!keep) _collecting = false;
+            }
+            return keep;
+        }
+
+        // Constraint: a client with nothing left that can expire polls nothing. TanStack's scheduleGc sets no
+        // timer for an infinite gcTime, and Sweep reports whether any entry can still expire.
+        private static async VelvetTask CollectOnFrames(WeakReference<QueryClient> client)
+        {
+            do
+            {
+                await VelvetTask.Yield();
+            }
+            while (PollOf(client));
+        }
+
+        // Kept out of the async method, whose state would hold the client in a local across the await.
+        private static bool PollOf(WeakReference<QueryClient> client)
+            => client.TryGetTarget(out var target) && target.Poll();
+
+        private static bool CanExpire(QueryEntry entry) => entry.GcTime != TimeSpan.MaxValue;
 
         // An entry fetching is not expired whatever its age, as v5's optionalRemove keeps a query whose fetch is
         // not idle; QueryEntry.RescheduleCollection moves its deadline once the request settles.
@@ -401,7 +487,9 @@ namespace Velvet
         // goes a whole gcTime after its request settled. An entry something reads has no removal to start over.
         internal void RescheduleCollection(TimeSpan now)
         {
-            if (InactiveSince != null) InactiveSince = now;
+            if (InactiveSince == null) return;
+            InactiveSince = now;
+            Client.LowerNextWalk(this, now);
         }
 
         // The longest any query asked for, as TanStack's updateGcTime keeps.
