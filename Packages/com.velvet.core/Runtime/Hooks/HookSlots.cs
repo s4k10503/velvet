@@ -401,6 +401,10 @@ namespace Velvet
 
     internal abstract class HookMutationSlot
     {
+        // Set when the mount that created this slot unmounts. A remount of the same fiber builds new
+        // slots, so a call still in flight from the earlier mount matches none of them, which the fiber's
+        // IsDisposed cannot say once the remount has cleared it.
+        public bool Retired { get; set; }
     }
 
     // TContext is Unit for the options records that carry no context. The callbacks are read through the

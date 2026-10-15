@@ -2363,7 +2363,7 @@ namespace Velvet
             // the generation, the one CommitOutcome writes for.
             var mine = ++slot.Generation;
 
-            if (!fiber.IsDisposed)
+            if (!IsMutationOwnerGone(fiber, slot))
             {
                 slot.Result.MarkPending(variables);
                 RequestRender(fiber);
@@ -2430,6 +2430,11 @@ namespace Velvet
             }
         }
 
+        // The slot's own mount is what counts, not the fiber: a remount clears the fiber's IsDisposed while
+        // a call from the earlier mount is still in flight, and that call must write and render nothing.
+        private static bool IsMutationOwnerGone(ComponentFiber fiber, HookMutationSlot slot) =>
+            slot.Retired || fiber.IsDisposed;
+
         // The handlers above run whether or not the component is still mounted, as TanStack's option
         // callbacks outlive the observer; only the handle and the render belong to the mounted component.
         // Returns whether this call's outcome is the one the handle shows, which is also when its per-call
@@ -2441,7 +2446,7 @@ namespace Velvet
             TData data,
             Exception? error)
         {
-            if (fiber.IsDisposed) return false;
+            if (IsMutationOwnerGone(fiber, slot)) return false;
             var owns = generation == slot.Generation;
             if (owns)
             {
@@ -2456,7 +2461,7 @@ namespace Velvet
             ComponentFiber fiber,
             HookMutationSlot<TVariables, TData, TContext> slot)
         {
-            if (fiber.IsDisposed) return;
+            if (IsMutationOwnerGone(fiber, slot)) return;
             slot.Generation++;
             slot.Result.MarkIdle();
             RequestRender(fiber);

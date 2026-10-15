@@ -904,9 +904,14 @@ namespace Velvet
 
         /// <summary>
         /// Drops the mutation slots on Unmount. A call in flight keeps running and is not cancelled; its
-        /// continuation checks <see cref="IsDisposed"/> before it writes the handle.
+        /// continuation checks <see cref="HookMutationSlot.Retired"/> before it writes the handle.
         /// </summary>
-        internal void DisposeMutationSlots() => MutationSlots?.Clear();
+        internal void DisposeMutationSlots()
+        {
+            if (MutationSlots == null) return;
+            foreach (var slot in MutationSlots) slot.Retired = true;
+            MutationSlots.Clear();
+        }
 
         #endregion
 

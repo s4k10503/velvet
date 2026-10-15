@@ -382,7 +382,6 @@ namespace Velvet.Tests
                 "A call made after the unmount runs, as TanStack's mutate does once the observer is gone");
         });
 
-        // GREEN_ON_BASE(characterization): the base never starts a call made after the unmount, so it never writes the handle either; this pins that the call which now runs still does not.
         [UnityTest]
         public IEnumerator Given_AnUnmountedComponent_When_MutateAsyncIsCalled_Then_TheHandleIsNotWritten() => VelvetTask.ToCoroutine(async () =>
         {
@@ -584,6 +583,56 @@ namespace Velvet.Tests
             Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
                 "A call whose component unmounted delivers the options' callbacks and drops its per-call ones, " +
                 "as TanStack skips them once the observer has no listener");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallWithPerCallCallbacksHonouringItsToken_When_TheComponentUnmountsBeforeItSettles_Then_OnlyTheOptionsCallbacksRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the function honours its token, so a call the unmount cancelled would end in an error
+            // and run the options' error callbacks, not the success ones read here.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "call-unmount-honours"));
+            var inFlight = s_captured!.MutateAsync(1, CallOptions());
+
+            // Act
+            mounted.Dispose();
+            gate.TrySetResult(10);
+            await inFlight;
+
+            // Assert
+            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
+                "The options' callbacks run with the call's real outcome and its per-call ones are dropped");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallInFlightFromAnEarlierMount_When_TheSameFiberIsMountedAgainAndTheCallSettles_Then_ItsPerCallCallbacksDoNotRun() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — Unmount then Mount reuses one fiber and clears its IsDisposed, so the call from the
+            // first mount settles against a fiber that reads as live.
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            var fiber = FiberRenderer.CreateRoot(ContextMutationRender);
+            try
+            {
+                FiberRenderer.Mount(fiber, _root);
+                var inFlight = s_captured!.MutateAsync(1, CallOptions());
+                FiberRenderer.Unmount(fiber);
+                FiberRenderer.Mount(fiber, _root);
+
+                // Act
+                gate.TrySetResult(10);
+                await inFlight;
+
+                // Assert — the options' callbacks are the earlier call's own and still run; the per-call ones
+                // belong to the mount it was made in.
+                Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
+                    "A call outliving its mount delivers the options' callbacks and drops its per-call ones");
+            }
+            finally
+            {
+                FiberRenderer.Dispose(fiber);
+            }
         });
 
         [UnityTest]
