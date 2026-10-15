@@ -38,6 +38,7 @@ namespace Velvet.Tests
             s_setInner = default;
             s_lastInnerAttached = -1;
             s_innerLayoutSetups = 0;
+            s_innerLayoutCleanups = 0;
         }
 
         [Test]
@@ -156,26 +157,21 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AStatefulComponentInAPortalMountedBeforeItsPrimaryIsHidden_When_ItsStateChangesWhileHiddenAndTheBoundaryReveals_Then_TheNewestRefAttachesOnlyThen()
+        public void Given_AComponentInAPortalMountedBeforeItsPrimaryIsHidden_When_TheBoundaryHidesAndRevealsItsTree_Then_ItsLayoutEffectIsTornDownAtTheHideAndSetUpAgainAtTheReveal()
         {
             // Arrange
             s_withInner = true;
             using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
             ShowPortal(mounted);
             SetBlocked(mounted);
-            s_setInner.Invoke(1);
-            mounted.FlushStateForTest();
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            var whileHidden = s_lastInnerAttached;
+            var whileHidden = s_innerLayoutCleanups;
 
             // Act
             Reveal(mounted);
-            mounted.FlushStateForTest();
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That((whileHidden, s_lastInnerAttached), Is.EqualTo((0, 1)),
-                "The ref of the shown mount is the last one attached while the fallback shows, and the reveal attaches the newest");
+            Assert.That((whileHidden, s_innerLayoutSetups), Is.EqualTo((1, 2)),
+                "The hide runs the layout effect's cleanup and the reveal sets it up again");
         }
 
         // GREEN_ON_BASE(characterization): without the drain's hide nothing overwrites a fiber an inner Suspense hid.
@@ -243,6 +239,7 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setInner;
         private static int s_lastInnerAttached;
         private static int s_innerLayoutSetups;
+        private static int s_innerLayoutCleanups;
 
         [Component]
         private static VNode HostRender()
@@ -303,7 +300,7 @@ namespace Velvet.Tests
             Hooks.UseLayoutEffect(() =>
             {
                 s_innerLayoutSetups++;
-                return (Action)null;
+                return () => s_innerLayoutCleanups++;
             }, Array.Empty<object>());
             return V.Div(name: "inner", refCallback: _ =>
             {
