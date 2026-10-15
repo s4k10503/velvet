@@ -52,6 +52,7 @@ namespace Velvet
             {
                 if (!held.Contains(pending[i])) held.Add(pending[i]);
             }
+            // MUTANT_SURVIVES(equivalent, line removed): the one caller clears this same list on the next line.
             pending.Clear();
         }
 
@@ -172,6 +173,8 @@ namespace Velvet
                     slot.NextNeedsRecompute = true;
                 }
             }
+            // MUTANT_SURVIVES(equivalent, boundary): an empty held list adds nothing, and every reader of the pending
+            // list reads a null one and an empty one the same.
             if (fiber.HeldInsertionEffects is { Count: > 0 } held)
             {
                 var pending = fiber.PendingInsertionEffects ??= new List<HookEffectSlot>();
