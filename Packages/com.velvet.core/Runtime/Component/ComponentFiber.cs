@@ -903,10 +903,10 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Cancels and disposes all mutation slots' in-flight CancellationTokenSources. Called on Unmount;
-        /// prevents resolved continuations from mutating disposed fiber state.
+        /// Drops the mutation slots on Unmount. A call in flight keeps running and is not cancelled; its
+        /// continuation checks <see cref="IsDisposed"/> before it writes the handle.
         /// </summary>
-        internal void DisposeMutationSlots() => DisposeAndClear(MutationSlots);
+        internal void DisposeMutationSlots() => MutationSlots?.Clear();
 
         #endregion
 

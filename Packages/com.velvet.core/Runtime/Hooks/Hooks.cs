@@ -2348,19 +2348,13 @@ namespace Velvet
             MutateOptions<TVariables, TData>? callOptions,
             bool rethrowOnFailure)
         {
-            if (fiber.IsDisposed)
-            {
-                // A resolved task would hand mutateAsync's caller data no call produced.
-                if (rethrowOnFailure) throw new OperationCanceledException("The component unmounted before the mutation started.");
-                return default!;
-            }
-
             // Two calls run side by side rather than the second aborting the first, as in TanStack, which
             // hands a mutation no signal at all. Cancelling on re-entry dropped the first call's OnSuccess,
-            // so a double-tapped Buy charged the card and never ran the write that follows it. The token
-            // stays because a Unity request wants one on unmount; only the re-entry cancel is gone.
-            var cts = new CancellationTokenSource();
-            slot.Live.Add(cts);
+            // so a double-tapped Buy charged the card and never ran the write that follows it.
+            // Neither does the unmount cancel: TanStack's observer only unsubscribes and the mutation runs
+            // on, so a call made after the unmount runs too and writes no handle. The token the function
+            // receives is the one the caller put on the call's MutateOptions, or none.
+            var token = callOptions?.CancellationToken ?? default;
             // Who may write the OBSERVED result, which is the newest call, as TanStack's observer shows.
             // Ownership is by generation now, not by holding the slot's only token: a superseded call still
             // runs its callbacks, which is what TanStack's Mutation.execute does — it awaits them itself and
@@ -2369,8 +2363,11 @@ namespace Velvet
             // the generation, the one CommitOutcome writes for.
             var mine = ++slot.Generation;
 
-            slot.Result.MarkPending(variables);
-            RequestRender(fiber);
+            if (!fiber.IsDisposed)
+            {
+                slot.Result.MarkPending(variables);
+                RequestRender(fiber);
+            }
 
             // A local rather than a slot field, so overlapping calls each hand their callbacks their own
             // context. It is still default when OnMutate throws, and that is what the failure path hands on.
@@ -2380,7 +2377,7 @@ namespace Velvet
                 // After MarkPending and inside the try, which is TanStack's order: OnMutate reads the handle
                 // as this call's pending one, and a throw from it fails the call before MutationFn is reached.
                 context = slot.InvokeOnMutate(variables);
-                var data = await slot.InvokeMutationFn(variables, cts.Token);
+                var data = await slot.InvokeMutationFn(variables, token);
                 // The handlers run before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess and OnSettled read is the handle as it stands rather than
                 // their own result. Either one throwing leaves the call a failure with nothing of its own
@@ -2394,15 +2391,6 @@ namespace Velvet
                 }
                 return data;
             }
-            catch (OperationCanceledException cancelled) when (cts.IsCancellationRequested)
-            {
-                // Only an unmount cancels this source. The handlers still run, so a write OnMutate made
-                // optimistically is rolled back from OnError although the request it stood for was cancelled.
-                // The caller's await rejects as well, where it would otherwise read default data as a result.
-                DeliverFailure(slot, cancelled, variables, context);
-                if (rethrowOnFailure) throw;
-                return default!;
-            }
             catch (Exception ex)
             {
                 DeliverFailure(slot, ex, variables, context);
@@ -2413,13 +2401,6 @@ namespace Velvet
                 }
                 if (rethrowOnFailure) throw;
                 return default!;
-            }
-            finally
-            {
-                // Only the owner disposes. Unmount clears the list before cancelling, so a call this
-                // one's cancellation settles reaches here with its source already gone, and disposing
-                // it here would leave that loop cancelling a source this finally had already disposed.
-                if (slot.Live.Remove(cts)) cts.Dispose();
             }
         }
 

@@ -328,60 +328,116 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_AContextMutationHonouringItsToken_When_TheComponentUnmounts_Then_OnErrorAndOnSettledRunWithTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AContextMutationHonouringItsToken_When_TheComponentUnmountsAndItThenSucceeds_Then_OnSuccessAndOnSettledRun() => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — the unmount cancels the call's token, and the mutation function honours it, so the
-            // call ends in the cancellation rather than in a result.
+            // Arrange — the function honours the token it is handed, so a call the unmount cancelled would end
+            // in the cancellation instead of its result.
             var gate = new VelvetTaskCompletionSource<int>();
             s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
-            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-cancel"));
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-honours-token"));
             var inFlight = s_captured!.MutateAsync(7);
 
             // Act
             mounted.Dispose();
-            try { await inFlight; } catch (OperationCanceledException) { }
+            gate.TrySetResult(42);
+            await inFlight;
 
             // Assert
-            Assert.That(Read(e => e.Kind is "error" or "settled", e => $"{e.Kind} {e.Cancelled} {e.Context}"),
-                Is.EqualTo("error True ctx7,settled True ctx7"),
-                "A call the unmount cancelled hands OnError and OnSettled the cancellation and its context, so a " +
-                "write OnMutate made can be rolled back");
+            Assert.That(Read(_ => true, e => e.Kind), Is.EqualTo("mutate,success,settled"),
+                "An unmount cancels nothing, so a call whose function honours its token still ends in its result");
         });
 
         [UnityTest]
-        public IEnumerator Given_AMutationHonouringItsToken_When_TheComponentUnmounts_Then_MutateAsyncRejectsWithTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AMutationHonouringItsToken_When_TheComponentUnmounts_Then_MutateAsyncResolvesWithTheResult() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var gate = new VelvetTaskCompletionSource<int>();
             s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
-            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-rejects"));
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "unmount-resolves"));
             var inFlight = s_captured!.MutateAsync(7);
-            Exception? rejection = null;
 
             // Act
             mounted.Dispose();
-            try { await inFlight; } catch (Exception caught) { rejection = caught; }
+            gate.TrySetResult(42);
+            var resolved = await inFlight;
 
             // Assert
-            Assert.That(rejection, Is.InstanceOf<OperationCanceledException>(),
-                "A call the unmount cancelled rejects its MutateAsync, as a failure does, rather than resolving default data");
+            Assert.That(resolved, Is.EqualTo(42),
+                "A call in flight at the unmount resolves its MutateAsync with the function's own result");
         });
 
         [UnityTest]
-        public IEnumerator Given_AnUnmountedComponent_When_MutateAsyncIsCalled_Then_ItRejectsWithTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        public IEnumerator Given_AnUnmountedComponent_When_MutateAsyncIsCalled_Then_ItRunsAndResolvesWithTheResult() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "late-call-rejects"));
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "late-call-runs"));
             var handle = s_captured!;
             mounted.Dispose();
-            Exception? rejection = null;
 
             // Act
-            try { await handle.MutateAsync(7); } catch (Exception caught) { rejection = caught; }
+            var resolved = await handle.MutateAsync(7);
+
+            // Assert — the default function doubles its variable
+            Assert.That(resolved, Is.EqualTo(14),
+                "A call made after the unmount runs, as TanStack's mutate does once the observer is gone");
+        });
+
+        // GREEN_ON_BASE(characterization): the base never starts a call made after the unmount, so it never writes the handle either; this pins that the call which now runs still does not.
+        [UnityTest]
+        public IEnumerator Given_AnUnmountedComponent_When_MutateAsyncIsCalled_Then_TheHandleIsNotWritten() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "late-call-no-write"));
+            var handle = s_captured!;
+            mounted.Dispose();
+
+            // Act
+            await handle.MutateAsync(7);
+
+            // Assert — a handle written for a fiber that is gone would read Pending or Success here
+            Assert.That(handle.Status, Is.EqualTo(MutationStatus.Idle),
+                "A call made after the unmount runs without writing the handle");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallWithACancellationTokenOnItsOptions_When_TheMutationFunctionRuns_Then_ItReceivesThatToken() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var source = new CancellationTokenSource();
+            CancellationToken received = default;
+            s_mutationFn = (v, ct) =>
+            {
+                received = ct;
+                return VelvetTask.FromResult(v);
+            };
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "caller-token"));
+
+            // Act
+            await s_captured!.MutateAsync(1, new MutateOptions<int, int> { CancellationToken = source.Token });
 
             // Assert
-            Assert.That(rejection, Is.InstanceOf<OperationCanceledException>(),
-                "A call made after the unmount never runs, and its MutateAsync says so rather than resolving default data");
+            Assert.That(received, Is.EqualTo(source.Token),
+                "The token a caller puts on the call's options is the one the function receives");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACallWhoseCallerCancelsItsToken_When_TheFunctionHonoursIt_Then_TheHandleShowsTheCancellation() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var source = new CancellationTokenSource();
+            var gate = new VelvetTaskCompletionSource<int>();
+            s_mutationFn = (_, ct) => gate.Task.AttachExternalCancellation(ct);
+            using var mounted = V.Mount(_root, V.Component(ContextMutationRender, key: "caller-cancels"));
+            var inFlight = s_captured!.MutateAsync(1, new MutateOptions<int, int> { CancellationToken = source.Token });
+
+            // Act
+            source.Cancel();
+            try { await inFlight; } catch (OperationCanceledException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_captured.Error, Is.InstanceOf<OperationCanceledException>(),
+                "A call its caller cancelled is a failure like any other: the handle shows the cancellation");
         });
 
         [UnityTest]
@@ -767,7 +823,6 @@ namespace Velvet.Tests
                 Kind = kind,
                 Data = data,
                 Error = error?.Message ?? None,
-                Cancelled = error is OperationCanceledException,
                 Variables = variables,
                 Context = context ?? None,
                 Status = s_captured?.Status ?? MutationStatus.Idle,
@@ -782,7 +837,6 @@ namespace Velvet.Tests
             public string Kind { get; init; } = None;
             public int Data { get; init; }
             public string Error { get; init; } = None;
-            public bool Cancelled { get; init; }
             public int Variables { get; init; }
             public string Context { get; init; } = None;
             public MutationStatus Status { get; init; }
