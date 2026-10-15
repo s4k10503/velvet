@@ -342,7 +342,6 @@ namespace Velvet
             entry.InactiveSince = null;
             // The deadline the last walk found may belong to this entry, so the next poll walks again.
             _canExpire = false;
-            // MUTANT_SURVIVES(equivalent, line removed): an entry left listed has no InactiveSince, so no sweep expires it or counts it as one that can; the list only grows.
             _inactive.Remove(entry);
         }
 

@@ -285,6 +285,57 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_AnEntryWithALaterDeadlineBeingWaitedFor_When_AnotherGoesUnreadWithAnEarlierOne_Then_ItIsRemovedAtItsOwn()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the first walk leaves the client waiting for the ten-minute deadline.
+            s_client.Ensure<int>(Other, TimeSpan.FromMinutes(10));
+            await Pass(TimeSpan.Zero);
+            await Pass(TimeSpan.FromMinutes(1));
+            s_client.Ensure<int>(Todos, TimeSpan.FromMinutes(1));
+
+            // Act
+            await Pass(TimeSpan.FromMinutes(1));
+
+            // Assert
+            Assert.That(EntryKeys(), Is.EqualTo(new[] { Other.ToString() }),
+                "A deadline earlier than the one waited for is waited for instead");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnEntryRemovedByTheLoop_When_ItsKeyIsWrittenAgain_Then_TheNewEntryStays()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, "held");
+            await Pass(GcTime);
+            var afterTheFirst = EntryCount();
+            s_client.SetQueryData(Todos, "again");
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That((afterTheFirst, EntryCount()), Is.EqualTo((0, 1)),
+                "A removed entry leaves the list, so a later sweep cannot take the entry that now holds its key");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnEntryHeldByAReference_When_TheLoopRemovesIt_Then_ItReadsAsRemoved()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, "held");
+            var entry = s_client.Peek<string>(Todos)!;
+
+            // Act
+            await Pass(GcTime);
+
+            // Assert
+            Assert.That(entry.IsRemoved, Is.True, "A removed entry is told so, as a collected one is by the lazy sweep");
+        });
+
+        [UnityTest]
         public IEnumerator Given_AClearedClientWhoseLoopIsRunning_When_FramesPass_Then_TheClientStopsReadingTheClock()
             => VelvetTask.ToCoroutine(async () =>
         {
