@@ -358,9 +358,11 @@ namespace Velvet
             if (deadline < _nextWalk) _nextWalk = deadline;
         }
 
-        // MUTANT_SURVIVES(equivalent, boundary): at each boundary the sum is TimeSpan.MaxValue itself or cannot overflow, so both branches give the same value.
         private static TimeSpan Deadline(QueryEntry entry, TimeSpan since)
-            => since > TimeSpan.Zero && entry.GcTime >= TimeSpan.MaxValue - since ? TimeSpan.MaxValue : since + entry.GcTime;
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): at each boundary the sum is TimeSpan.MaxValue itself or cannot overflow, so both branches give the same value.
+            return since > TimeSpan.Zero && entry.GcTime >= TimeSpan.MaxValue - since ? TimeSpan.MaxValue : since + entry.GcTime;
+        }
 
         // Removes what has expired and reports whether an entry is left that can still expire.
         private bool Sweep(TimeSpan now)
@@ -377,7 +379,8 @@ namespace Velvet
                     entry.Remove();
                     continue;
                 }
-                if (!CanExpire(entry) || entry.InactiveSince is not { } since) continue;
+                if (!CanExpire(entry)) continue;
+                if (entry.InactiveSince is not { } since) continue;
                 canExpire = true;
                 // A fetching entry has no deadline until its request settles, which lowers _nextWalk.
                 if (!entry.IsFetching)
@@ -389,6 +392,7 @@ namespace Velvet
             }
             // MUTANT_SURVIVES(equivalent, line removed): _nextWalk then stays at or below every reading, so each poll walks the list, which finds what a skipped poll would have found later.
             _nextWalk = next;
+            // MUTANT_SURVIVES(equivalent, line removed): _canExpire then stays false, so each poll walks the list, as it does without the line above.
             _canExpire = canExpire;
             return canExpire;
         }
@@ -402,7 +406,8 @@ namespace Velvet
             try
             {
                 var now = Now;
-                keep = (_canExpire && now < _nextWalk) || Sweep(now);
+                if (_canExpire && now < _nextWalk) keep = true;
+                else keep = Sweep(now);
             }
             finally
             {
