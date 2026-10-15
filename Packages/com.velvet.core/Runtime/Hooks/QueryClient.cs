@@ -120,6 +120,7 @@ namespace Velvet
         private int _observerCount;
         private bool _collecting;
         private TimeSpan _nextWalk;
+        private bool _canExpire;
 
         /// <summary>Creates an empty client.</summary>
         /// <param name="options">Defaults and clock; null takes <see cref="QueryClientOptions"/>' own.</param>
@@ -248,6 +249,7 @@ namespace Velvet
             var entries = SnapshotEntries();
             _entries.Clear();
             _inactive.Clear();
+            _canExpire = false;
             foreach (var entry in entries)
             {
                 entry.Remove();
@@ -354,9 +356,9 @@ namespace Velvet
             if (deadline < _nextWalk) _nextWalk = deadline;
         }
 
-        // MUTANT_SURVIVES(equivalent, boundary): at equality the sum is TimeSpan.MaxValue itself, so both branches give it.
+        // MUTANT_SURVIVES(equivalent, boundary): at each boundary the sum is TimeSpan.MaxValue itself or cannot overflow, so both branches give the same value.
         private static TimeSpan Deadline(QueryEntry entry, TimeSpan since)
-            => entry.GcTime >= TimeSpan.MaxValue - since ? TimeSpan.MaxValue : since + entry.GcTime;
+            => since > TimeSpan.Zero && entry.GcTime >= TimeSpan.MaxValue - since ? TimeSpan.MaxValue : since + entry.GcTime;
 
         // Removes what has expired and reports whether an entry is left that can still expire.
         private bool Sweep(TimeSpan now)
@@ -385,10 +387,12 @@ namespace Velvet
             }
             // MUTANT_SURVIVES(equivalent, line removed): _nextWalk then stays at or below every reading, so each poll walks the list, which finds what a skipped poll would have found later.
             _nextWalk = next;
+            _canExpire = canExpire;
             return canExpire;
         }
 
-        // One frame's poll, true while another is due. The loop holds the client weakly, so a client the
+        // One frame's poll, true while another is due. _canExpire is what the last walk found, by this loop or by a
+        // lazy sweep, so a sweep that removed the last expirable entry ends the loop at its next frame. The loop holds the client weakly, so a client the
         // application dropped is not kept alive by an entry that has not expired.
         private bool Poll()
         {
@@ -396,7 +400,7 @@ namespace Velvet
             try
             {
                 var now = Now;
-                keep = (now < _nextWalk && _inactive.Count > 0) || Sweep(now);
+                keep = (_canExpire && now < _nextWalk) || Sweep(now);
             }
             finally
             {

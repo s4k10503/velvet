@@ -6,4 +6,4 @@
   and its data. The clock is polled once a frame, so removal lands on the first frame at or after the
   deadline. A query reading the entry again before then keeps it and the time starts over when its last
   reader leaves, `TimeSpan.MaxValue` sets no timer, and an entry with a request in flight is kept until a
-  whole `GcTime` after the request settles, as before.
+  whole `GcTime` after the request settles, as before, with the clock read every frame meanwhile.

@@ -4,7 +4,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -66,7 +68,6 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            LogAssert.ignoreFailingMessages = false;
             s_client.Clear();
             DrainEditorUpdateForTest();
         }
@@ -200,8 +201,8 @@ namespace Velvet.Tests
         public IEnumerator Given_AFrameWhoseClockReadingThrows_When_AnotherEntryIsWrittenLater_Then_TheClientRemovesBothAtTheirDeadlines()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — the loop's failure is logged by the task it ran in, which this case expects.
-            LogAssert.ignoreFailingMessages = true;
+            // Arrange — the loop's fault is logged as an exception when its task completes unobserved.
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: clock"));
             s_client.SetQueryData(Todos, "held");
             s_clockThrows = true;
             await Pass(TimeSpan.Zero);
@@ -213,6 +214,51 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(EntryCount(), Is.EqualTo(0), "A loop that failed leaves the client able to start another");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ALazySweepThatRemovedTheLastExpirableEntry_When_FramesPass_Then_TheClientStopsReadingTheClock()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the sweep comes after the finite deadline and before the loop's next frame, with an infinite
+            // entry left. The first half of the assertion is what the base cannot do: read the clock while waiting.
+            s_client.Ensure<int>(Forever, TimeSpan.MaxValue);
+            s_client.SetQueryData(Todos, "held");
+            var beforeWaiting = s_reads;
+            await Pass(TimeSpan.Zero);
+            var polledWhileWaiting = s_reads > beforeWaiting;
+            s_now = GcTime;
+            s_client.InvalidateQueries(Other);
+            await Pass(TimeSpan.Zero);
+            var before = s_reads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That((polledWhileWaiting, s_reads - before), Is.EqualTo((true, 0)),
+                "Only an entry that never expires is left, so nothing is waited for, whoever removed the other");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AClearedClientWhoseLoopIsRunning_When_FramesPass_Then_TheClientStopsReadingTheClock()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, "held");
+            var beforeWaiting = s_reads;
+            await Pass(TimeSpan.Zero);
+            var polledWhileWaiting = s_reads > beforeWaiting;
+            s_client.Clear();
+            await Pass(TimeSpan.Zero);
+            var before = s_reads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That((polledWhileWaiting, s_reads - before), Is.EqualTo((true, 0)),
+                "Clear leaves nothing to wait for, well before the deadline the removed entry had");
         });
 
         // GREEN_ON_BASE(characterization): the base starts no loop, so it reads the clock no more often; the
