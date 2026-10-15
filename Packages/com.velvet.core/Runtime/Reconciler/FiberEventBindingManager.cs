@@ -167,6 +167,9 @@ namespace Velvet
                 case ChangeEventBinding<bool> boolChange when element is INotifyValueChanged<bool> boolField:
                     BindDiscreteValueChanged(actions, boolField, boolChange.Handler);
                     break;
+                case ChangeEventBinding<string> stringChange when element is TextField textField:
+                    BindTextFieldValueChanged(actions, textField, stringChange.Handler);
+                    break;
                 case ChangeEventBinding<string> stringChange when element is INotifyValueChanged<string> stringField:
                     BindDiscreteValueChanged(actions, stringField, stringChange.Handler);
                     break;
@@ -661,6 +664,21 @@ namespace Velvet
         private void BindDiscreteValueChanged<T>(List<Action> actions, INotifyValueChanged<T> field, Action<T>? handler)
         {
             var callback = new EventCallback<ChangeEvent<T>>(evt => RunDiscrete(() => handler?.Invoke(evt.newValue)));
+            field.RegisterValueChangedCallback(callback);
+            actions.Add(() => field.UnregisterValueChangedCallback(callback));
+        }
+
+        // Same bracket as BindDiscreteValueChanged, over the value a TextField that limits user edits ended
+        // the edit with rather than the one its event carries.
+        private void BindTextFieldValueChanged(List<Action> actions, TextField field, Action<string>? handler)
+        {
+            var callback = new EventCallback<ChangeEvent<string>>(evt =>
+            {
+                if (FiberPropApplier.TryGetReportedValue(field, evt, out var value))
+                {
+                    RunDiscrete(() => handler?.Invoke(value));
+                }
+            });
             field.RegisterValueChangedCallback(callback);
             actions.Add(() => field.UnregisterValueChangedCallback(callback));
         }

@@ -790,7 +790,7 @@ namespace Velvet
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <param name="placeholder">A short hint shown in the empty field (HTML <c>placeholder</c>). An empty string declares an empty hint.</param>
-        /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
+        /// <param name="maxLength">Maximum number of characters the user can enter, -1 for no limit (HTML <c>maxlength</c>). A value set from code, the controlled <paramref name="value"/> included, is shown whole.</param>
         /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
         /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
         /// <param name="multiline">When true, the field is multi-line (HTML <c>&lt;textarea&gt;</c>).</param>

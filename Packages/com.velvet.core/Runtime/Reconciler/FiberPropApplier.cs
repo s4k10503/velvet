@@ -119,6 +119,10 @@ namespace Velvet
                 // tenancy's record declares, which that tenancy's own registration writes as well; the line
                 // keeps one from staying on a pooled element.
                 textField.UnregisterCallback(s_reassertTouchKeyboard, TrickleDown.TrickleDown);
+                // MUTANT_SURVIVES(equivalent, line removed): the record that goes with this call is what
+                // LimitUserEdit reads the limit from, so a callback left registered refuses nothing; the line
+                // keeps one from staying on a pooled element.
+                textField.UnregisterCallback(s_limitUserEdit);
                 s_textFieldDefaults.Remove(textField);
                 ForgetShownText(textField);
             }
@@ -529,19 +533,119 @@ namespace Velvet
             }
         }
 
+        // A declared limit is enforced on user edits (LimitUserEdit) and is not handed to the engine, whose
+        // limit cuts the text a controlled value, a refCallback's write or a narrowed limit puts there. The
+        // engine's own limit is lifted for the declaration and the element's constructed one is put back
+        // when the declaration goes, as for the other members. A negative limit declares none.
         private static void ApplyMaxLength(TextField field, int? declared, TextFieldDefaults built)
         {
-            if (declared is { } value)
+            if (declared.HasValue)
             {
                 built.MaxLength ??= new Recorded<int>(field.maxLength);
-                WriteMaxLength(field, value);
+                WriteMaxLength(field, NoEngineLimit);
             }
             else if (built.MaxLength != null)
             {
                 WriteMaxLength(field, built.MaxLength.Value);
             }
+
+            var limited = built.DeclaredMaxLength.HasValue;
+            built.DeclaredMaxLength = declared;
+            if (limited == declared.HasValue)
+            {
+                return;
+            }
+
+            if (limited)
+            {
+                // MUTANT_SURVIVES(equivalent, line removed): the callback reads the declaration cleared above,
+                // so one left registered refuses nothing; the line keeps it from running for nothing.
+                field.UnregisterCallback(s_limitUserEdit);
+            }
+            else
+            {
+                field.RegisterCallback(s_limitUserEdit);
+            }
         }
 
+        private const int NoEngineLimit = -1;
+
+        private static readonly EventCallback<InputEvent> s_limitUserEdit = LimitUserEdit;
+
+        // An edit may not take the text past the larger of the limit and the length it had, so a value
+        // longer than the limit can still be shortened, and the characters refused are the ones just before
+        // the caret: the tail of what was inserted. The edits reach here as the InputEvent the engine sends
+        // for typed and pasted text, and a value assigned from code sends none. TextFieldMaxLengthTests
+        // pins each.
+        // A delayed field's value is left alone: the edit is pending, not committed.
+        private static void LimitUserEdit(InputEvent evt)
+        {
+            var field = (TextField)evt.currentTarget;
+            if (!s_textFieldDefaults.TryGetValue(field, out var built))
+            {
+                return;
+            }
+
+            var limit = built.DeclaredMaxLength ?? NoEngineLimit;
+            var edited = evt.newData ?? string.Empty;
+            var refused = edited.Length - System.Math.Max(limit, evt.previousData?.Length ?? 0);
+            // MUTANT_SURVIVES(equivalent, boundary): at zero nothing is cut, and the caret is written to the index it already holds.
+            if (limit < 0 || refused <= 0)
+            {
+                return;
+            }
+
+            var caret = field.textSelection.cursorIndex;
+            // MUTANT_SURVIVES(equivalent, boundary): a caret at the end of the text and the end of the text are the same index.
+            var end = caret >= refused && caret <= edited.Length ? caret : edited.Length;
+            var kept = edited.Remove(end - refused, refused);
+            if (!field.isDelayed && field.value == edited)
+            {
+                field.SetValueWithoutNotify(kept);
+            }
+            else
+            {
+                ((INotifyValueChanged<string>)field.textEdition).SetValueWithoutNotify(kept);
+            }
+
+            field.textSelection.SelectRange(end - refused, end - refused);
+            var keyboard = field.textEdition.touchScreenKeyboard;
+            if (keyboard != null)
+            {
+                // MUTANT_SURVIVES(unreachable): an editor panel opens no touch keyboard, which TextFieldMaxLengthTests pins.
+                keyboard.text = kept;
+            }
+        }
+
+        // The value to report for a change event of the field. A non-delayed field has set its value from the
+        // text it showed by the time LimitUserEdit runs, so the event still carries the text before the
+        // refusal while the field holds the value it ended with. An edit refused whole ends where it began,
+        // which no event reports. TextFieldMaxLengthTests pins the order.
+        internal static bool TryGetReportedValue(TextField field, ChangeEvent<string> evt, out string value)
+        {
+            value = evt.newValue;
+            if (evt.target != field)
+            {
+                return true;
+            }
+
+            if (!s_textFieldDefaults.TryGetValue(field, out var built))
+            {
+                return true;
+            }
+
+            if (!built.DeclaredMaxLength.HasValue)
+            {
+                return true;
+            }
+
+            value = field.value;
+            return value != evt.previousValue;
+        }
+
+        // The engine's limit changes here to lift one the element carries when a limit is declared and to
+        // put it back when the declaration goes, so a field built and left with none does not reach the
+        // writes below.
         // Ordering: the edit is cut to the new limit and written silently BEFORE the limit, then written
         // silently again after it. Narrowing the limit culls the shown text through a notifying setter, so
         // an edit still longer than the limit would be reported to onValueChanged; cut beforehand, the cull
@@ -550,8 +654,8 @@ namespace Velvet
         // blur, and the record keeps the text Velvet last wrote so the restored edit still reads as one.
         // Both writes are skipped on an unchanged limit, which the setter ignores. With no edit, the
         // limit write's own result is what Velvet left on screen and becomes the record.
-        // DelayedMaxLengthEditReportTests pins that nothing is reported; TextFieldInputPropTests pins that
-        // the edit survives and the no-edit cases.
+        // DelayedMaxLengthEditReportTests pins that nothing is reported; TextFieldInputPropTests pins the
+        // no-edit cases.
         private static void WriteMaxLength(TextField field, int limit)
         {
             if (field.maxLength == limit)
@@ -781,6 +885,10 @@ namespace Velvet
             public UnityEngine.TouchScreenKeyboardType? DeclaredKeyboardType;
             public bool? DeclaredAutoCorrection;
             public bool ReassertsOnFocusIn;
+
+            // What the last render declared as the limit on user edits; LimitUserEdit is registered while
+            // it holds a value.
+            public int? DeclaredMaxLength;
         }
 
         private static readonly ConditionalWeakTable<TextField, TextFieldDefaults> s_textFieldDefaults = new();

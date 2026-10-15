@@ -582,7 +582,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<div className="x">` | `V.Div(className: "x")` | Unity has no HTML elements. Produces a `VisualElement` |
 | `<span>text</span>` | `V.Text("text")` | A run of text, materialized as a `Label`. A `<span>` styling part of a sentence is a rich-text tag inside the one `V.Text`, as in `V.Text("a <b>bold</b> word")`. A `<span>` grouping other elements in a line is a `V.Div(className: "flex-row flex-wrap")` |
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
-| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it. `inputmode` / `autocorrect` are `keyboardType:` (a `TouchScreenKeyboardType`) / `autoCorrection:`, written to the field's own `keyboardType` / `autoCorrection` |
+| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters, and `maxLength:` limits what the user enters rather than a value set from code, as `maxlength` does. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it. `inputmode` / `autocorrect` are `keyboardType:` (a `TouchScreenKeyboardType`) / `autoCorrection:`, written to the field's own `keyboardType` / `autoCorrection` |
 | `<textarea>` | `V.TextField(multiline: true)` | A render toggling `multiline:` patches the same element, where React swapping `<input>` for `<textarea>` remounts it. Declaring `isPasswordField:` beside it leaves both flags on, a multi-line password field that HTML has no control for |
 | `<input type="checkbox">` | `V.Toggle()` | |
 | `<input type="range">` | `V.Slider()` | `min` / `max` / `step` are the `lowValue:` / `highValue:` / `step:` parameters. `direction:` (`SliderDirection.Vertical`) and `inverted:` set UI Toolkit's `Slider.direction` and `Slider.inverted` — see below for what null means |
@@ -651,9 +651,14 @@ A field's `className` background, border, radius, padding, shadow and ring utili
 is shown in, as on an `<input>`; [which factories and utilities that covers](styling-variants.md#payloads-velvet-realises-itself)
 is listed with the `[&>*]:` composite notes.
 
-A render changing `maxLength:` while an edit is pending keeps the edit on screen, cut to the new limit,
-and leaves it uncommitted and unreported. When the same render also takes `isDelayed:` off, the cut edit
-is released as above.
+`maxLength:` limits what the user enters, as `maxlength` does, and nothing else. Text typed or pasted
+past it is inserted only as far as it fits at the caret and the rest is refused, and an edit that does
+not lengthen the text is never refused, so a value longer than the limit can still be shortened. A value
+set from code is shown whole: the controlled `value:` and an assignment to the field's `value` from a
+`refCallback:`. A render changing `maxLength:` leaves the value and a pending edit as they are, and a
+field holding `isDelayed:` text longer than the limit releases that text on Enter or blur like any
+other. There is no counterpart of the browser's too-long validity state, so a value longer than the
+limit is not flagged.
 
 ### 2-1a. Event props
 
