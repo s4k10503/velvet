@@ -587,21 +587,6 @@ namespace Velvet
         // straight past it (ComponentFiber.OwningPortalPlaceholder owns why the fiber is stamped rather
         // than located). Selecting by MountPoint alone would be wrong in the other direction — one target
         // carries the ranges of several Portals plus whatever rendered the target itself.
-        // FiberElementCleaner.CleanupPortal owns the call.
-        internal void DisposeInlineFibersOwnedByPortal(VisualElement placeholder)
-        {
-            List<ComponentFiber>? doomed = null;
-            CollectInlineFibersOwnedByPortal(placeholder, ref doomed);
-            if (doomed == null) return;
-            // Snapshotted first: DisposeFiberInternal mutates the dictionary this walk reads, through
-            // its own child cleanup cascades as well as its own unregister.
-            foreach (var fiber in doomed)
-            {
-                if (fiber.IsDisposed) continue;
-                DisposeFiberInternal(fiber);
-            }
-        }
-
         // The selection DisposeInlineFibersOwnedByPortal disposes, appended to into, which the first match creates.
         internal void CollectInlineFibersOwnedByPortal(VisualElement placeholder, ref List<ComponentFiber>? into)
         {
@@ -631,6 +616,21 @@ namespace Velvet
                 }
             }
             (into ??= new List<ComponentFiber>()).AddRange(doomed);
+        }
+
+        // FiberElementCleaner.CleanupPortal owns the call.
+        internal void DisposeInlineFibersOwnedByPortal(VisualElement placeholder)
+        {
+            List<ComponentFiber>? doomed = null;
+            CollectInlineFibersOwnedByPortal(placeholder, ref doomed);
+            if (doomed == null) return;
+            // Snapshotted first: DisposeFiberInternal mutates the dictionary this walk reads, through
+            // its own child cleanup cascades as well as its own unregister.
+            foreach (var fiber in doomed)
+            {
+                if (fiber.IsDisposed) continue;
+                DisposeFiberInternal(fiber);
+            }
         }
 
         private static bool IsInsideAny(VisualElement? mountPoint, HashSet<VisualElement> roots)

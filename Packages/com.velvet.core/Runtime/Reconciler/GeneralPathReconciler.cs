@@ -1535,7 +1535,7 @@ namespace Velvet
                 if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
                 AddWithPortalChildren(row, roots, i, commit, walk, hidden);
             }
-            foreach (var (fiber, placeholder) in HeldFibers(roots, drainPlaceholder: null))
+            foreach (var (fiber, placeholder) in HeldFibers(roots))
             {
                 if (hidden)
                 {
@@ -1613,10 +1613,8 @@ namespace Velvet
 
         // The fibers the roots hold: those mounted inside them, and those mounted at a Portal's target by a Portal
         // among them, which sit beside the portal's elements rather than inside them. Each of the second kind comes
-        // with its placeholder, which is what the hide records it under. drainPlaceholder is a Portal whose drain is
-        // mounting into roots that do not hold its placeholder.
-        private List<(ComponentFiber Fiber, VisualElement? Placeholder)> HeldFibers(
-            HashSet<VisualElement> roots, VisualElement? drainPlaceholder)
+        // with its placeholder, which is what the hide records it under.
+        private List<(ComponentFiber Fiber, VisualElement? Placeholder)> HeldFibers(HashSet<VisualElement> roots)
         {
             var held = new List<(ComponentFiber, VisualElement?)>();
             var seen = new HashSet<ComponentFiber>();
@@ -1629,7 +1627,7 @@ namespace Velvet
                     if (seen.Add(fiber)) held.Add((fiber, null));
                 }
             }
-            // MUTANT_SURVIVES(equivalent, guard removed, boundary): the loop visits no placeholder over an empty table.
+            // MUTANT_SURVIVES(equivalent, boundary): the loop visits no placeholder over an empty table.
             if (_ctx.PortalState.Count > 0)
             {
                 foreach (var placeholder in _ctx.PortalState.Keys)
@@ -1637,7 +1635,6 @@ namespace Velvet
                     if (IsAtOrUnder(placeholder, roots)) AddOwnedBy(placeholder);
                 }
             }
-            if (drainPlaceholder != null) AddOwnedBy(drainPlaceholder);
             return held;
 
             void AddOwnedBy(VisualElement portal)
@@ -1658,21 +1655,25 @@ namespace Velvet
             => HolderOf(fiber.MountPoint, roots)
                 ?? (placeholder == null
                     ? null
-                    : HolderOf(placeholder, roots) ?? SuspenseHiddenElements.NearestHiddenAtOrAbove(placeholder));
+                    : HolderOf(placeholder, roots));
 
         // The fibers a Portal's drain mounted into children a Suspense hides. The boundary's walk ended before the
         // drain mounted them, so SetPrimaryHidden never saw them.
-        internal void HideFibersMountedUnder(HashSet<VisualElement> roots, VisualElement placeholder, ComponentFiber? declaring)
+        internal void HideFibersMountedUnder(VisualElement placeholder, ComponentFiber? declaring)
         {
+            List<ComponentFiber>? owned = null;
+            _ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(placeholder, ref owned);
+            if (owned == null) return;
             // A declarer under a hidden placeholder is offscreen, which records the boundary hiding it, or renders the
             // Suspense that hides the placeholder itself.
             var boundary = declaring is { IsOffscreen: true } ? declaring.OffscreenUnder : declaring;
-            foreach (var (fiber, owner) in HeldFibers(roots, placeholder))
+            var holder = SuspenseHiddenElements.NearestHiddenAtOrAbove(placeholder);
+            foreach (var fiber in owned)
             {
                 // A fiber this drain mounted is offscreen already only where a Suspense in the portal's own
                 // children hid it, and that Suspense stays the one that reveals it.
                 if (fiber.IsOffscreen) continue;
-                SetOffscreen(null, fiber, true, HolderFor(fiber, owner, roots), boundary);
+                SetOffscreen(null, fiber, true, holder, boundary);
                 FiberEffects.HideLayoutEffects(fiber);
             }
         }
