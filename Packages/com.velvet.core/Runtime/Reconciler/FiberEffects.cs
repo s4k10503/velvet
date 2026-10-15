@@ -284,9 +284,13 @@ namespace Velvet
                 for (var i = 0; i < ordered.Count; i++)
                 {
                     var (fiber, isMount) = ordered[i];
-                    // A mount under a Suspense showing its fallback commits nothing of the tree, as React mounts it on
-                    // reveal: its insertion effects stay pending, and the commit that reveals it runs them.
-                    if (!(fiber.LayoutEffectsHidden && isMount)) RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
+                    // A tree under a Suspense showing its fallback that has never been shown commits nothing, as React
+                    // mounts it on reveal: its insertion effects stay pending through every render until the commit
+                    // that reveals it runs them.
+                    if (!fiber.LayoutEffectsHidden || fiber.HasCommittedVisible)
+                    {
+                        RunInsertionEffects(fiber, mountDoubleInvoke: isMount);
+                    }
                     HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
                 }
                 for (var i = 0; i < ordered.Count; i++)
@@ -300,6 +304,7 @@ namespace Velvet
                     // report below is not layout work, and a hidden boundary that caught still delivers it.
                     if (!fiber.LayoutEffectsHidden)
                     {
+                        fiber.HasCommittedVisible = true;
                         // After every cleanup above, so what the insertion effects and layout cleanups wrote is in
                         // the layout the setups read, and per fiber, so what an earlier setup wrote is in it too.
                         if (FiberLayoutReflow.ReadsLayout(fiber)) FiberLayoutReflow.LayOutFor(ctx, fiber);

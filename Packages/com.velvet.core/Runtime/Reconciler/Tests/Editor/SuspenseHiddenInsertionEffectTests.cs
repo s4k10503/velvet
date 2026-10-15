@@ -21,6 +21,8 @@ namespace Velvet.Tests
             FiberStrictMode.Enabled = false;
             s_setBlocked = default;
             s_setTick = default;
+            s_setMounted = default;
+            s_source = null;
             s_insertionSetups = 0;
             s_layoutSetups = 0;
             s_layoutCleanups = 0;
@@ -58,6 +60,27 @@ namespace Velvet.Tests
                 "React disconnects the layout effects of a tree a Suspense hides: one setup at mount, one cleanup at the hide");
         }
 
+        // GREEN_ON_BASE(characterization): the base runs a hidden fiber's insertion effects only at the reveal.
+        // What this pins is that running them for a hidden update does not run them for a tree never shown.
+        [Test]
+        public void Given_APrimaryFirstMountedUnderTheFallback_When_ItsHostRendersItAgainWithChangedDepsBeforeTheReveal_Then_ItsInsertionEffectRunsOnlyOnReveal()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(NeverShownHostRender, key: "never-shown-host"));
+            s_setMounted.Invoke(true);
+            mounted.FlushStateForTest();
+            SetTick(mounted);
+            var whileHidden = s_insertionSetups;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((whileHidden, s_insertionSetups), Is.EqualTo((0, 1)),
+                "React commits nothing of a tree that never showed, so its insertion effect runs once, on reveal");
+        }
+
         private static void SetBlocked(MountedTree mounted)
         {
             s_setBlocked.Invoke(true);
@@ -74,6 +97,8 @@ namespace Velvet.Tests
 
         private static StateUpdater<bool> s_setBlocked;
         private static StateUpdater<int> s_setTick;
+        private static StateUpdater<bool> s_setMounted;
+        private static VelvetTaskCompletionSource<int> s_source;
         private static int s_insertionSetups;
         private static int s_layoutSetups;
         private static int s_layoutCleanups;
@@ -95,6 +120,34 @@ namespace Velvet.Tests
                         V.Component(ReaderRender, blocked, key: "reader"),
                     }),
             });
+        }
+
+        [Component]
+        private static VNode NeverShownHostRender()
+        {
+            var (isMounted, setMounted) = Hooks.UseState(false);
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setMounted = setMounted;
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: isMounted
+                        ? new VNode[]
+                        {
+                            V.Component(ProbeRender, tick, key: "probe"),
+                            V.Component(PendingReaderRender, key: "reader"),
+                        }
+                        : Array.Empty<VNode>()),
+            });
+        }
+
+        [Component]
+        private static VNode PendingReaderRender()
+        {
+            var value = Hooks.Use<int>(_ => (s_source = new VelvetTaskCompletionSource<int>()).Task, "pending-reader");
+            return V.Label(text: "reader:" + value);
         }
 
         // Pending for good once blocked.
