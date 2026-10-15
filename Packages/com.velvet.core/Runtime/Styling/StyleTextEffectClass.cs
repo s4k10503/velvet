@@ -225,6 +225,8 @@ namespace Velvet
                 facets.Whitespace = null;
                 facets.WhiteSpaceClass = null;
                 facets.WhiteSpaceRank = -1;
+                facets.ExplicitLeading = null;
+                facets.SizeLeading = null;
                 foreach (var cls in classNames)
                 {
                     var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
@@ -233,6 +235,9 @@ namespace Velvet
                         ParseToken(core, ref facets);
                     }
                 }
+                // A leading-* class beats the line height a text-<size> class pairs with its size, whichever comes
+                // first, and a later pass's answer replaces an earlier one's the way white-space's does.
+                facets.Leading = facets.ExplicitLeading ?? facets.SizeLeading ?? facets.Leading;
                 // An explicit whitespace-{normal,nowrap,pre,pre-wrap} or truncate class on the SAME element wins
                 // over that element's own whitespace-pre-line token of the same importance, whichever appears
                 // earlier/later in the class list — order-dependent "last wins" (the rule every other case in
@@ -267,6 +272,9 @@ namespace Velvet
             public TextDecorationKind? Decoration;
             public WhitespaceCollapseKind? Whitespace;
             public LeadingValue? Leading;
+            // One pass's leading-* and text-<size> answers, folded into Leading when the pass ends.
+            public LeadingValue? ExplicitLeading;
+            public LeadingValue? SizeLeading;
             // The latest-declared white-space class seen, and its index in WhiteSpaceClassesInSheetOrder.
             public WhiteSpace? WhiteSpaceClass;
             public int WhiteSpaceRank;
@@ -339,13 +347,18 @@ namespace Velvet
             }
             if (TryParseLeading(cls, out var leading))
             {
-                facets.Leading = leading;
+                facets.ExplicitLeading = leading;
+                return true;
+            }
+            if (StyleNamedTextSize.TryParseLineHeight(core, out var sizeLeading))
+            {
+                facets.SizeLeading = sizeLeading;
                 return true;
             }
             return false;
         }
 
-        private static bool TryParseLeading(string cls, out LeadingValue leading)
+        internal static bool TryParseLeading(string cls, out LeadingValue leading)
         {
             if (s_leadingPresets.TryGetValue(cls, out var em))
             {

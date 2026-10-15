@@ -84,6 +84,14 @@ namespace Velvet
                 return true;
             }
 
+            // text-<size>/<leading> sets the size's font-size here because no USS rule can spell the suffix;
+            // StyleTextEffectClass reads the same token for its line height.
+            if (StyleNamedTextSize.TryParseSlashFontSize(className, out var slashFontSize))
+            {
+                result = new ArbitraryStyle(ArbitraryProperty.FontSize, slashFontSize, LengthUnit.Pixel);
+                return true;
+            }
+
             var negate = className.Length > 0 && className[0] == '-';
             var offset = negate ? 1 : 0;
 

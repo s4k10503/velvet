@@ -243,6 +243,15 @@ ancestor's `leading-*` overrides a farther one's). It has no reset utility, unli
 axes: Tailwind defines no `leading-auto` below `leading-none`, and every preset — `leading-none`'s
 multiplier of 1 included — is already a real value, so there is nothing to reset back to.
 
+**`text-<size>` pairs a line height with its font size**, as Tailwind v4's `--text-<size>--line-height` does,
+and emits it as the same em tag a preset does: `text-xs` 1.3333 · `text-sm` 1.4286 · `text-base` 1.5 ·
+`text-lg` 1.5556 · `text-xl` 1.4 · `text-2xl` 1.3333 · `text-3xl` 1.2 · `text-4xl` 1.1111 · `text-5xl`…`text-9xl` 1.
+The pair is the size class's own line height, so it replaces one an ancestor's `leading-*` set, and a
+`leading-*` on the same element wins over it whichever class comes first. `text-<size>/<leading>` takes
+the suffix of the matching `leading-*` utility, so `text-sm/6` is a 14px font with `leading-6`'s 24px line
+height, and `text-sm/loose` the 2 multiplier; a suffix that is no `leading-*` value leaves the class inert. A
+`text-[20px]` bracket size pairs nothing, as in Tailwind.
+
 **`text-balance` and `text-pretty`** realise CSS `text-wrap: balance` and `text-wrap: pretty` by writing
 line breaks into the text a leaf *displays*, the way text-transform rewrites it. A box the cascade
 sizes keeps the width its classes and its parent give it, so `w-full text-balance` balances, as do a
