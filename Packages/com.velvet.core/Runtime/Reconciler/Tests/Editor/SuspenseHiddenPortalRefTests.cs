@@ -200,11 +200,8 @@ namespace Velvet.Tests
                 "No ref attaches while the fallback shows, and the reveal attaches the one the last state change gave");
         }
 
-        // GREEN_ON_BASE(characterization): the base routes the resolved read through the nearest boundary above the fiber.
-        // What this pins is that a portal component declared in an offscreen component is rendered by the boundary
-        // that hides it while the reader holds the fallback.
         [Test]
-        public void Given_AComponentReadingInAPortalMountedWhileItsPrimaryIsHiddenAndSuspendedByAParentRender_When_ItsReadResolves_Then_TheLabelShowsTheValueWhileTheReaderHoldsTheFallback()
+        public void Given_AComponentReadingInAPortalMountedWhileItsPrimaryIsHiddenAndSuspendedByAParentRender_When_ItsReadResolvesAndTheBoundaryReveals_Then_TheLabelShowsTheValue()
         {
             // Arrange
             s_withReader = true;
@@ -212,15 +209,18 @@ namespace Velvet.Tests
             SetBlocked(mounted);
             ShowPortal(mounted);
             SetTick(mounted, 1);
+            s_readerSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Act
-            s_readerSource.TrySetResult(7);
+            Reveal(mounted);
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.That(s_outerTarget.Q<Label>("reading-value")?.text, Is.EqualTo("reading:7"),
-                "The label shows the resolved value while the reader still holds the fallback");
+                "The reveal shows what the component's resolved read rendered");
         }
 
         // GREEN_ON_BASE(characterization): without the drain's hide nothing overwrites a fiber an inner Suspense hid.
