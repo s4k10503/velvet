@@ -3,7 +3,8 @@
 A bracketed value such as `w-[120px]`, `top-[1in]` or `translate-x-[25%]` is resolved by Velvet rather
 than by a USS rule, because no stylesheet can declare every value a bracket can hold. This guide owns which
 lengths a bracket reads, which utilities read which of them, and what each is measured against. The
-[last section](#bare-spacing-steps) owns the bare number a spacing utility takes without a bracket.
+[last section](#bare-spacing-steps) owns the bare number a spacing utility takes without a bracket, and the order of
+a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-longhand)).
 
 ## What every length bracket reads
 
@@ -13,6 +14,7 @@ lengths a bracket reads, which utilities read which of them, and what each is me
 | `1.5rem` | pixels, at 1rem = 16px: UI Toolkit has no root font size to take a rem from |
 | `1in`, `2.54cm`, `25.4mm`, `72pt`, `6pc`, `101.6Q` | pixels, at CSS's fixed ratio of 96px to the inch |
 | `25%` | a percentage, where the utility takes one; a border width takes none, as in CSS |
+| `auto` | the keyword, where the utility takes one: margin (a negated one, `-mt-[auto]`, is declined), `w-*`, `h-*`, `size-*`, `min-w-*`, `min-h-*`, `basis-*` and the insets; padding and the maximum sizes take none |
 | `calc()`, `min()`, `max()`, `clamp()` whose terms all come to pixels, or all to percentages | that pixel length or that percentage |
 
 Unit names match case-sensitively, so `Q` is upper case and the rest lower.
@@ -112,8 +114,8 @@ canonical decimal form is that many 4px steps, so `p-13` is 52px, `gap-4.5` 18px
 `4.50`, `05` and `4.1` are not steps and leave the class unresolved. The utilities are padding, margin
 (`m-*`, `mx-*`, `ps-*`, …), `gap-*`, `space-x-*` / `space-y-*`, `w-*`, `h-*`, `size-*`, `min-*` / `max-*`
 width and height, `basis-*`, `top-*` … `inset-*` and the logical insets, `translate-x-*` / `translate-y-*`,
-and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). A margin,
-size, `basis-*` or inset also takes `[auto]` (`mx-[auto]`); padding and the minimum and maximum sizes take none. A minus
+and `leading-*` (an absolute line height; a named leading such as `leading-tight` is read first). The
+`auto` keyword stays a bracket, [as above](#what-every-length-bracket-reads). A minus
 sign negates the margin, inset, translate and `space-*` utilities (`-mt-13`, `-top-4.5`), as in Tailwind;
 padding, sizing, `basis-*` and `gap-*` take none.
 
@@ -140,7 +142,7 @@ variant or `!` outranks the plain utility as it does anywhere, and a bracket val
 
 An inline value outranks every class on its element, so a stylesheet class that is the narrower of such a pair
 is written inline too when an inline utility of an overlapping family stands beside it: `pt-2` becomes
-`pt-[8px]`, `mx-auto` becomes `mx-[auto]` (an auto bracket, which every family but padding reads) and `w-full`
+`pt-[8px]`, `mx-auto` becomes `mx-[auto]` (the `auto` bracket in the [table above](#what-every-length-bracket-reads)) and `w-full`
 becomes `w-[100%]`. Two things follow. The rewritten class is no longer in the element's class list, so a
 selector on it (`.pt-2 > .x`) and `ClassListContains("pt-2")` stop seeing it, though the unrewritten classes of
 the list are unchanged. And the rewrite writes the pixel value of the step as Velvet's scale gives it, so a
@@ -151,7 +153,8 @@ The rule is made where a shorthand and a longhand meet in one `className` string
 - A logical utility (`ps-*`, `ms-*`, `start-*`, the block forms) beside the physical utility of its own side
   gives way to it, since Tailwind sorts `padding-inline-start` ahead of `padding-left`: `ps-13 pl-2` and
   `pl-2 ps-13` leave the left at 8px, and the logical one is dropped from the list and the physical class
-  written inline. Behind a variant the rule keys already give the physical one the side.
+  written inline; of several physical classes on that side, the one the stylesheet lets win is the one written
+  inline. Behind a variant the rule keys already give the physical one the side.
 - A `V.Motion` pose overrides the node's own spacing, as Framer Motion's `animate` overrides `style`: a base
   `pt-[8px]` beside a pose `p-[52px]` leaves the top at 52px, the base token being left out while that pose
   applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-13` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.

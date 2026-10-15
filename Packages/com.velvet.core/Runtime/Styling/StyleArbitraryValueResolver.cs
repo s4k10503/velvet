@@ -329,12 +329,11 @@ namespace Velvet
 
         internal static bool IsSpacingProperty(ArbitraryProperty property) => s_spacingProperties.Contains(property);
 
-        // The families whose longhand takes `auto`: CSS gives padding none, and a minimum or maximum none either (a
-        // maximum's unbounded value is none, which the setters write as StyleKeyword.None).
+        // The families whose longhand takes `auto`: CSS gives padding none, and a maximum's unbounded value is none,
+        // which the setters write as StyleKeyword.None.
         private static bool TakesAuto(ArbitraryProperty property)
             => IsSpacingProperty(property) && !IsPaddingProperty(property)
-                && property is not (ArbitraryProperty.MinWidth or ArbitraryProperty.MinHeight
-                    or ArbitraryProperty.MaxWidth or ArbitraryProperty.MaxHeight);
+                && property is not (ArbitraryProperty.MaxWidth or ArbitraryProperty.MaxHeight);
 
         private static bool IsPaddingProperty(ArbitraryProperty property)
             => property is ArbitraryProperty.Padding or ArbitraryProperty.PaddingX or ArbitraryProperty.PaddingY
@@ -384,6 +383,7 @@ namespace Velvet
                     continue;
                 }
                 var name = cls.AsSpan(prefix.Length);
+                // MUTANT_SURVIVES(unreachable, clause removed): the guard above admits only a class the sheets declare, and they declare no padding or maximum `-auto` class, which SpacingPrecedenceTests pins.
                 if (name.SequenceEqual("auto".AsSpan()) && TakesAuto(familyProperty))
                 {
                     property = familyProperty;

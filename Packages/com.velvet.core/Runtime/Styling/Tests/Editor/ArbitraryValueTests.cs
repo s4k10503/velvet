@@ -629,11 +629,20 @@ namespace Velvet.Tests
 
         #region TryParse — Invalid Inputs
 
-        [Test]
-        public void Given_NormalBemClass_When_Parsed_Then_Declines()
+        // GREEN_ON_BASE(refactor): the base already declines each of these classes, one method per class.
+        [TestCase("btn--primary", TestName = "Given_NormalBemClass_When_Parsed_Then_Declines")]
+        [TestCase("z-[10]", TestName = "Given_UnknownPrefix_When_Parsed_Then_Declines")]
+        [TestCase("h-[]", TestName = "Given_EmptyBrackets_When_Parsed_Then_Declines")]
+        [TestCase("h-[abc]", TestName = "Given_NonNumericValue_When_Parsed_Then_Declines")]
+        [TestCase("h-[15%", TestName = "Given_MissingClosingBracket_When_Parsed_Then_Declines")]
+        [TestCase("h-[NaN]", TestName = "Given_NaNValue_When_Parsed_Then_Declines")]
+        [TestCase("w-[Infinity]", TestName = "Given_InfinityValue_When_Parsed_Then_Declines")]
+        [TestCase("h-[-Infinity%]", TestName = "Given_NegativeInfinityPercentValue_When_Parsed_Then_Declines")]
+        [TestCase("scale-[abc]", TestName = "Given_NonNumericScaleValue_When_Parsed_Then_Declines")]
+        public void Given_AClassThatIsNoArbitraryUtility_When_Parsed_Then_Declines(string className)
         {
             // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("btn--primary", out _), Is.False);
+            Assert.That(StyleArbitraryValueResolver.TryParse(className, out _), Is.False);
         }
 
         [Test]
@@ -641,55 +650,6 @@ namespace Velvet.Tests
         {
             // Act + Assert
             Assert.That(StyleArbitraryValueResolver.TryParse(null, out _), Is.False);
-        }
-
-        [Test]
-        public void Given_UnknownPrefix_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("z-[10]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_EmptyBrackets_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_NonNumericValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[abc]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_MissingClosingBracket_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[15%", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_NaNValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[NaN]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_InfinityValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("w-[Infinity]", out _), Is.False);
-        }
-
-        [Test]
-        public void Given_NegativeInfinityPercentValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("h-[-Infinity%]", out _), Is.False);
         }
 
         #endregion
@@ -1750,13 +1710,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_NonNumericScaleValue_When_Parsed_Then_Declines()
-        {
-            // Act + Assert
-            Assert.That(StyleArbitraryValueResolver.TryParse("scale-[abc]", out _), Is.False);
-        }
-
-        [Test]
         public void Given_TranslateXArbitraryClass_When_Parsed_Then_ResolvesTranslateXAsPixelLength()
         {
             // Act
@@ -1894,26 +1847,17 @@ namespace Velvet.Tests
         // vertical keyword is the y, a keyword-only pair may come in either order, and a pair holding a
         // length is x then y. Each pivot below differs on both axes, so a swapped reading cannot pass.
 
-        [Test]
-        public void Given_TransformOriginLoneHorizontalKeyword_When_Parsed_Then_ItIsTheXAndTheYIsHalf()
+        // GREEN_ON_BASE(refactor): the base already resolves each lone origin keyword onto its own axis, one method per keyword.
+        [TestCase("origin-[right]", 100f, 50f, TestName = "Given_TransformOriginLoneHorizontalKeyword_When_Parsed_Then_ItIsTheXAndTheYIsHalf")]
+        [TestCase("origin-[bottom]", 50f, 100f, TestName = "Given_TransformOriginLoneVerticalKeyword_When_Parsed_Then_ItIsTheYAndTheXIsHalf")]
+        public void Given_ALoneTransformOriginKeyword_When_Parsed_Then_ItIsOnItsAxisAndTheOtherIsHalf(string className, float expectedX, float expectedY)
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[right]", out var s);
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
             Assert.That((ok, s.Value, s.Unit, s.Value2, s.Unit2),
-                Is.EqualTo((true, 100f, LengthUnit.Percent, 50f, LengthUnit.Percent)));
-        }
-
-        [Test]
-        public void Given_TransformOriginLoneVerticalKeyword_When_Parsed_Then_ItIsTheYAndTheXIsHalf()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[bottom]", out var s);
-
-            // Assert
-            Assert.That((ok, s.Value, s.Unit, s.Value2, s.Unit2),
-                Is.EqualTo((true, 50f, LengthUnit.Percent, 100f, LengthUnit.Percent)));
+                Is.EqualTo((true, expectedX, LengthUnit.Percent, expectedY, LengthUnit.Percent)));
         }
 
         [Test]
@@ -1951,78 +1895,19 @@ namespace Velvet.Tests
         // one or a horizontal keyword behind one has no axis left, and two keywords of one axis leave the
         // other unstated.
 
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginVerticalKeywordThenLength_When_Parsed_Then_Declines()
+        // GREEN_ON_BASE(refactor): the base already refuses every component list here, one method per list.
+        [TestCase("origin-[top_20px]", TestName = "Given_TransformOriginVerticalKeywordThenLength_When_Parsed_Then_Declines")]
+        [TestCase("origin-[20px_left]", TestName = "Given_TransformOriginLengthThenHorizontalKeyword_When_Parsed_Then_Declines")]
+        [TestCase("origin-[left_right]", TestName = "Given_TransformOriginTwoHorizontalKeywords_When_Parsed_Then_Declines")]
+        [TestCase("origin-[top_bottom]", TestName = "Given_TransformOriginTwoVerticalKeywords_When_Parsed_Then_Declines")]
+        [TestCase("origin-[middle]", TestName = "Given_TransformOriginLoneUnknownWord_When_Parsed_Then_Declines")]
+        [TestCase("origin-[middle_20px]", TestName = "Given_TransformOriginUnknownWordFirst_When_Parsed_Then_Declines")]
+        [TestCase("origin-[20px_middle]", TestName = "Given_TransformOriginUnknownWordSecond_When_Parsed_Then_Declines")]
+        [TestCase("origin-[10px_20px_30px_40px]", TestName = "Given_TransformOriginWithFourComponents_When_Parsed_Then_Declines")]
+        public void Given_AnInvalidTransformOriginComponentList_When_Parsed_Then_Declines(string className)
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[top_20px]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginLengthThenHorizontalKeyword_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[20px_left]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginTwoHorizontalKeywords_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[left_right]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginTwoVerticalKeywords_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[top_bottom]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginLoneUnknownWord_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[middle]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginUnknownWordFirst_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[middle_20px]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginUnknownWordSecond_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[20px_middle]", out _);
+            var ok = StyleArbitraryValueResolver.TryParse(className, out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -2034,17 +1919,6 @@ namespace Velvet.Tests
         {
             // Act — CSS takes the z as a length only.
             var ok = StyleArbitraryValueResolver.TryParse("origin-[10%_20%_30%]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): the base refuses every component that is not a length, and every third one.
-        [Test]
-        public void Given_TransformOriginWithFourComponents_When_Parsed_Then_Declines()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("origin-[10px_20px_30px_40px]", out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -3453,14 +3327,16 @@ namespace Velvet.Tests
             Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 2f)));
         }
 
-        [Test]
-        public void Given_ShrinkArbitrary_When_Parsed_Then_ResolvesFlexShrink()
+        // GREEN_ON_BASE(refactor): the base already resolves each of these shrink classes, one method per class.
+        [TestCase("shrink-[3]", 3f, TestName = "Given_ShrinkArbitrary_When_Parsed_Then_ResolvesFlexShrink")]
+        [TestCase("shrink-2", 2f, TestName = "Given_BareShrink_When_Parsed_Then_ResolvesFlexShrink")]
+        public void Given_AShrinkClass_When_Parsed_Then_ResolvesFlexShrink(string className, float expected)
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("shrink-[3]", out var s);
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, 3f)));
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, expected)));
         }
 
         [Test]
@@ -3485,21 +3361,13 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
-        [Test]
-        public void Given_GrowArbitraryWithALengthUnit_When_Parsed_Then_DeclinesToParse()
+        // GREEN_ON_BASE(refactor): the base already declines each of these grow classes, one method per class.
+        [TestCase("grow-[2rem]", TestName = "Given_GrowArbitraryWithALengthUnit_When_Parsed_Then_DeclinesToParse")]
+        [TestCase("-grow-[2]", TestName = "Given_NegatedGrowArbitrary_When_Parsed_Then_DeclinesToParse")]
+        public void Given_AGrowClassOutsideTheFactorForm_When_Parsed_Then_DeclinesToParse(string className)
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("grow-[2rem]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        [Test]
-        public void Given_NegatedGrowArbitrary_When_Parsed_Then_DeclinesToParse()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("-grow-[2]", out _);
+            var ok = StyleArbitraryValueResolver.TryParse(className, out _);
 
             // Assert
             Assert.That(ok, Is.False);
@@ -3557,16 +3425,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 3f)));
-        }
-
-        [Test]
-        public void Given_BareShrink_When_Parsed_Then_ResolvesFlexShrink()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("shrink-2", out var s);
-
-            // Assert
-            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, 2f)));
         }
 
         [Test]

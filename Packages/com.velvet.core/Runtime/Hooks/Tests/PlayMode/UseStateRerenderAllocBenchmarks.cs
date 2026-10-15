@@ -18,8 +18,8 @@ namespace Velvet.Tests.Performance
     {
         private const int HooksPerRender = 16;
         private const int RerenderIterations = 100;
-        private const int WarmUp = 3;
-        private const int Measurements = 10;
+        private static readonly int WarmUp = BenchmarkRun.Warmup(3);
+        private static readonly int Measurements = BenchmarkRun.Measurements(10);
 
         private static Action<int> s_anchorSetter;
 
@@ -46,6 +46,8 @@ namespace Velvet.Tests.Performance
             return V.Label(text: lastValue.ToString());
         }
 
+        // GREEN_ON_BASE(refactor): a benchmark asserts nothing about its numbers, so it is green wherever its body completes.
+        // This change takes its counts from BenchmarkRun, and one iteration still runs the whole body.
         [Test, Performance]
         public void UseState_RerenderClosureAlloc()
         {

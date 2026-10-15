@@ -128,6 +128,8 @@ namespace Velvet.Tests
         [TestCase("size-[52px] w-9", "size-[52px] w-[36px]")]
         [TestCase("[&>*]:p-[52px] [&>*]:pt-2", "[&>*]:p-[52px] [&>*]:pt-[8px]")]
         [TestCase("pt-[1px] ps-[52px] pl-2", "pt-[1px] pl-[8px]")]
+        [TestCase("pl-2 pl-4 ps-[1px]", "pl-2 pl-[16px]")]
+        [TestCase("pl-4 pl-2 ps-[1px]", "pl-[16px] pl-2")]
         public void Given_AStylesheetClassBesideAnInlineShorthandOfItsFamily_When_ClassNamesAreParsed_Then_TheClassIsWrittenInline(
             string className, string expected)
         {
@@ -224,7 +226,24 @@ namespace Velvet.Tests
             Assert.That((height.value, height.unit), Is.EqualTo((100f, LengthUnit.Percent)));
         }
 
+        [Test]
+        public void Given_AnAutoBracketOnAMinimumWidth_When_Reconciled_Then_TheMinimumWidthIsAuto()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var tree = new VNode[] { V.Div("min-w-[auto]") };
+
+            // Act
+            reconciler.Reconcile(root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(root.ElementAt(0).style.minWidth.keyword, Is.EqualTo(StyleKeyword.Auto));
+        }
+
         [TestCase("mx-[auto]", ArbitraryProperty.MarginX)]
+        [TestCase("min-w-[auto]", ArbitraryProperty.MinWidth)]
+        [TestCase("min-h-[auto]", ArbitraryProperty.MinHeight)]
         [TestCase("w-[auto]", ArbitraryProperty.Width)]
         [TestCase("basis-[auto]", ArbitraryProperty.FlexBasis)]
         [TestCase("top-[auto]", ArbitraryProperty.Top)]
@@ -240,15 +259,15 @@ namespace Velvet.Tests
             Assert.That((ok, style.Property, style.Auto), Is.EqualTo((true, (ArbitraryProperty)property, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base declines an auto bracket everywhere, and padding, a minimum and a maximum take none.
-        // Dropping the padding test from `TakesAuto` accepts `p-[auto]`, and dropping its minimum and maximum test
+        // GREEN_ON_BASE(characterization): the base declines an auto bracket everywhere, and padding and a maximum take none.
+        // Dropping the padding test from `TakesAuto` accepts `p-[auto]`, and dropping its maximum test
         // accepts `max-w-[auto]`; either reddens this.
         [TestCase("p-[auto]")]
         [TestCase("pt-[auto]")]
         [TestCase("-mt-[auto]")]
         [TestCase("max-w-[auto]")]
-        [TestCase("min-h-[auto]")]
-        public void Given_AnAutoBracketOnPaddingMinMaxOrNegated_When_Parsed_Then_ItIsDeclined(string className)
+        [TestCase("max-h-[auto]")]
+        public void Given_AnAutoBracketOnPaddingMaxOrNegated_When_Parsed_Then_ItIsDeclined(string className)
         {
             // Act
             var ok = StyleArbitraryValueResolver.TryParse(className, out _);
@@ -298,6 +317,8 @@ namespace Velvet.Tests
         [TestCase("pt-2", "p-[52px]", "pt-2")]
         [TestCase("pt-[8px] ab", "p-[52px] cd", "ab")]
         [TestCase("pt-[8px]", "hover:", "pt-[8px]")]
+        [TestCase("flex ab pt-[8px]", "p-[52px] cd", "flex ab")]
+        [TestCase("flex pt-[8px]", "grid p-[52px]", "flex")]
         public void Given_BaseAndPoseClasses_When_TheBaseIsFilteredForThePose_Then_OnlyTheOverriddenSpacingGoes(
             string baseClasses, string pose, string expected)
         {
@@ -363,6 +384,7 @@ namespace Velvet.Tests
         [TestCase("pt-[8px]", "p-4", "p-4")]
         [TestCase("p-[52px]", "hover:pt-2", "hover:pt-2")]
         [TestCase("!p-[52px]", "pt-2", "pt-2")]
+        [TestCase("hover:p-[52px]", "hover:pt-2", "hover:pt-[8px]")]
         public void Given_BaseAndPoseClasses_When_TheNarrowerPoseClassIsInlined_Then_OnlyAClassBesideAnInlineBaseChanges(
             string baseClasses, string pose, string expected)
         {
@@ -389,6 +411,61 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", composed), Is.EqualTo(expected));
+        }
+
+        [TestCase("w-1/2")]
+        [TestCase("p-")]
+        [TestCase("")]
+        public void Given_ANameThatIsNotASpacingStep_When_ReadAsAStep_Then_ItIsDeclined(string className)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryReadSpacingStep(className, out _, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [TestCase("flex")]
+        [TestCase("grid")]
+        public void Given_ADeclaredClassOutsideTheSpacingFamilies_When_ReadAsAStylesheetClass_Then_ItIsDeclined(string className)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryReadStylesheetClass(className, out _, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [TestCase("pt-2", true)]
+        [TestCase("-mt-2", true)]
+        [TestCase("flex", false)]
+        public void Given_AToken_When_AskedWhetherItCanBeASpacingUtility_Then_OnlyAFamilyPrefixAnswersYes(string token, bool expected)
+        {
+            // Act
+            var startsWithPrefix = StyleArbitraryValueResolver.StartsWithSpacingPrefix(token);
+
+            // Assert
+            Assert.That(startsWithPrefix, Is.EqualTo(expected));
+        }
+
+        // TryReadStylesheetClass tests TakesAuto only for a name the sheets declare, so while none of these is
+        // declared that test is never what turns a class away. Declaring one makes it matter and needs a case of its own.
+        [TestCase("p-auto")]
+        [TestCase("px-auto")]
+        [TestCase("py-auto")]
+        [TestCase("pt-auto")]
+        [TestCase("pr-auto")]
+        [TestCase("pb-auto")]
+        [TestCase("pl-auto")]
+        [TestCase("max-w-auto")]
+        [TestCase("max-h-auto")]
+        public void Given_PaddingOrMaximumFamily_When_TheSheetsAreAskedForItsAutoClass_Then_NoneIsDeclared(string className)
+        {
+            // Act
+            var declared = StyleUtilityProperties.TryGet(className, out _);
+
+            // Assert
+            Assert.That(declared, Is.False);
         }
 
         [TestCase(ArbitraryProperty.Padding, ArbitraryProperty.PaddingX)]

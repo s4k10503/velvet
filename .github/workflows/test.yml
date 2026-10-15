@@ -159,6 +159,13 @@ jobs:
           name: Test results (${{ matrix.testMode }})
           path: ${{ matrix.testMode }}-results
 
+      # PanelTestBase writes panel-phase-timings.csv into the results directory uploaded above. The
+      # report goes to the log, the job summary and a check-run annotation; a missing file is a warning
+      # there, not a failure.
+      - name: Summarise panel fixture timings
+        if: always() && matrix.testMode == 'EditMode'
+        run: python3 scripts/ci/panel_phase_timings.py EditMode-results --results EditMode-results
+
       # game-ci passes -enableCodeCoverage on every run whatever this workflow asks for, so the
       # recorder's cost is paid either way; what the manifest's com.unity.testtools.codecoverage
       # adds is the directory this output names.
@@ -430,6 +437,10 @@ jobs:
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_job_timeouts.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_platform_base_red.py
+
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_benchmark_results.py
+
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_panel_phase_timings.py
 
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"

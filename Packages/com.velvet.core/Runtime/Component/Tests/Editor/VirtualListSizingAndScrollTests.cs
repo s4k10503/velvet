@@ -257,17 +257,19 @@ namespace Velvet.Tests
             Assert.That(parameterCounts, Is.EqualTo(new[] { 10, 10, 2 }));
         }
 
-        [Test]
-        public void Given_StartAlignment_When_ScrolledToAnItem_Then_ItsStartMeetsTheViewportsStart()
+        // GREEN_ON_BASE(refactor): the base already resolves each of these Start-aligned offsets, one method per row.
+        [TestCase(0f, 10, 500f, TestName = "Given_StartAlignment_When_ScrolledToAnItem_Then_ItsStartMeetsTheViewportsStart")]
+        [TestCase(300f, 0, 0f, TestName = "Given_StartAlignment_When_ScrolledToTheFirstItem_Then_TheListIsAtItsTop")]
+        public void Given_StartAlignment_When_ScrolledToAnItem_Then_TheOffsetMeetsTheAlignment(float from, int item, float expected)
         {
             // Arrange
             var (scrollView, handle) = MountScrollable();
 
             // Act
-            var offset = ScrolledTo(scrollView, 0f, () => handle.ScrollToItem(10, VirtualListAlign.Start));
+            var offset = ScrolledTo(scrollView, from, () => handle.ScrollToItem(item, VirtualListAlign.Start));
 
             // Assert
-            Assert.That(offset, Is.EqualTo(500f));
+            Assert.That(offset, Is.EqualTo(expected));
         }
 
         [Test]
@@ -284,19 +286,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_StartAlignment_When_ScrolledToTheFirstItem_Then_TheListIsAtItsTop()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable();
-
-            // Act
-            var offset = ScrolledTo(scrollView, 300f, () => handle.ScrollToItem(0, VirtualListAlign.Start));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(0f));
-        }
-
-        [Test]
         public void Given_EndAlignment_When_ScrolledToAnItem_Then_ItsEndMeetsTheViewportsEnd()
         {
             // Arrange
@@ -309,147 +298,54 @@ namespace Velvet.Tests
             Assert.That(offset, Is.EqualTo(350f));
         }
 
-        [Test]
-        public void Given_CenterAlignment_When_ScrolledToAnItem_Then_ItsMiddleMeetsTheViewportsMiddle()
+        // GREEN_ON_BASE(refactor): the base already resolves each of these Center-aligned offsets, one method per row.
+        [TestCase(0f, 10, 425f, TestName = "Given_CenterAlignment_When_ScrolledToAnItem_Then_ItsMiddleMeetsTheViewportsMiddle")]
+        [TestCase(0f, 99, 4800f, TestName = "Given_CenterAlignment_When_ScrolledToTheLastItem_Then_TheListsEndMeetsTheViewportsEnd")]
+        [TestCase(300f, 0, 0f, TestName = "Given_CenterAlignment_When_ScrolledToTheFirstItem_Then_TheListIsAtItsTop")]
+        public void Given_CenterAlignment_When_ScrolledToAnItem_Then_TheOffsetMeetsTheAlignment(float from, int item, float expected)
         {
             // Arrange
             var (scrollView, handle) = MountScrollable();
 
             // Act
-            var offset = ScrolledTo(scrollView, 0f, () => handle.ScrollToItem(10, VirtualListAlign.Center));
+            var offset = ScrolledTo(scrollView, from, () => handle.ScrollToItem(item, VirtualListAlign.Center));
 
             // Assert
-            Assert.That(offset, Is.EqualTo(425f));
+            Assert.That(offset, Is.EqualTo(expected));
         }
 
-        [Test]
-        public void Given_CenterAlignment_When_ScrolledToTheLastItem_Then_TheListsEndMeetsTheViewportsEnd()
+        // GREEN_ON_BASE(refactor): the base already resolves each of these Auto-aligned offsets, one method per row.
+        [TestCase(0f, 10, 350f, TestName = "Given_AutoAlignment_When_TheItemIsBelowTheViewport_Then_ItsEndMeetsTheViewportsEnd")]
+        [TestCase(1000f, 2, 100f, TestName = "Given_AutoAlignment_When_TheItemIsAboveTheViewport_Then_ItsStartMeetsTheViewportsStart")]
+        [TestCase(100f, 3, 100f, TestName = "Given_AutoAlignment_When_TheItemIsInView_Then_TheListStays")]
+        [TestCase(150f, 3, 150f, TestName = "Given_AutoAlignment_When_TheItemStartsAtTheViewportsStart_Then_TheListStays")]
+        [TestCase(350f, 10, 350f, TestName = "Given_AutoAlignment_When_TheItemEndsAtTheViewportsEnd_Then_TheListStays")]
+        public void Given_AutoAlignment_When_ScrolledToAnItem_Then_TheOffsetMeetsTheAlignment(float from, int item, float expected)
         {
             // Arrange
             var (scrollView, handle) = MountScrollable();
 
             // Act
-            var offset = ScrolledTo(scrollView, 0f, () => handle.ScrollToItem(99, VirtualListAlign.Center));
+            var offset = ScrolledTo(scrollView, from, () => handle.ScrollToItem(item));
 
             // Assert
-            Assert.That(offset, Is.EqualTo(4800f));
+            Assert.That(offset, Is.EqualTo(expected));
         }
 
-        [Test]
-        public void Given_CenterAlignment_When_ScrolledToTheFirstItem_Then_TheListIsAtItsTop()
+        // GREEN_ON_BASE(refactor): the base already resolves each of these Smart-aligned offsets, one method per row.
+        [TestCase(100f, 3, 100f, TestName = "Given_SmartAlignment_When_TheItemIsInView_Then_TheListStays")]
+        [TestCase(150f, 3, 150f, TestName = "Given_SmartAlignment_When_TheItemStartsAtTheViewportsStart_Then_TheListStays")]
+        [TestCase(0f, 10, 425f, TestName = "Given_SmartAlignment_When_TheItemIsOutOfView_Then_ItsMiddleMeetsTheViewportsMiddle")]
+        public void Given_SmartAlignment_When_ScrolledToAnItem_Then_TheOffsetMeetsTheAlignment(float from, int item, float expected)
         {
             // Arrange
             var (scrollView, handle) = MountScrollable();
 
             // Act
-            var offset = ScrolledTo(scrollView, 300f, () => handle.ScrollToItem(0, VirtualListAlign.Center));
+            var offset = ScrolledTo(scrollView, from, () => handle.ScrollToItem(item, VirtualListAlign.Smart));
 
             // Assert
-            Assert.That(offset, Is.EqualTo(0f));
-        }
-
-        [Test]
-        public void Given_AutoAlignment_When_TheItemIsBelowTheViewport_Then_ItsEndMeetsTheViewportsEnd()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable();
-
-            // Act
-            var offset = ScrolledTo(scrollView, 0f, () => handle.ScrollToItem(10));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(350f));
-        }
-
-        [Test]
-        public void Given_AutoAlignment_When_TheItemIsAboveTheViewport_Then_ItsStartMeetsTheViewportsStart()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable();
-
-            // Act
-            var offset = ScrolledTo(scrollView, 1000f, () => handle.ScrollToItem(2));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(100f));
-        }
-
-        [Test]
-        public void Given_AutoAlignment_When_TheItemIsInView_Then_TheListStays()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable();
-
-            // Act
-            var offset = ScrolledTo(scrollView, 100f, () => handle.ScrollToItem(3));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(100f));
-        }
-
-        [Test]
-        public void Given_AutoAlignment_When_TheItemStartsAtTheViewportsStart_Then_TheListStays()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable();
-
-            // Act
-            var offset = ScrolledTo(scrollView, 150f, () => handle.ScrollToItem(3));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(150f));
-        }
-
-        [Test]
-        public void Given_AutoAlignment_When_TheItemEndsAtTheViewportsEnd_Then_TheListStays()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable();
-
-            // Act
-            var offset = ScrolledTo(scrollView, 350f, () => handle.ScrollToItem(10));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(350f));
-        }
-
-        [Test]
-        public void Given_SmartAlignment_When_TheItemIsInView_Then_TheListStays()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable();
-
-            // Act
-            var offset = ScrolledTo(scrollView, 100f, () => handle.ScrollToItem(3, VirtualListAlign.Smart));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(100f));
-        }
-
-        [Test]
-        public void Given_SmartAlignment_When_TheItemStartsAtTheViewportsStart_Then_TheListStays()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable();
-
-            // Act
-            var offset = ScrolledTo(scrollView, 150f, () => handle.ScrollToItem(3, VirtualListAlign.Smart));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(150f));
-        }
-
-        [Test]
-        public void Given_SmartAlignment_When_TheItemIsOutOfView_Then_ItsMiddleMeetsTheViewportsMiddle()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable();
-
-            // Act
-            var offset = ScrolledTo(scrollView, 0f, () => handle.ScrollToItem(10, VirtualListAlign.Smart));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(425f));
+            Assert.That(offset, Is.EqualTo(expected));
         }
 
         // Item 1 runs from 100 to 400, so the 200-tall viewport lies within it from 100 to 200.
@@ -468,30 +364,19 @@ namespace Velvet.Tests
             Assert.That(offset, Is.EqualTo(from));
         }
 
-        [Test]
-        public void Given_AnItemTallerThanTheViewport_When_TheViewportIsAboveIt_Then_AutoBringsItsEndIntoView()
+        // GREEN_ON_BASE(refactor): the base already brings the near edge of a tall item into view, one method per row.
+        [TestCase(0f, 200f, TestName = "Given_AnItemTallerThanTheViewport_When_TheViewportIsAboveIt_Then_AutoBringsItsEndIntoView")]
+        [TestCase(500f, 100f, TestName = "Given_AnItemTallerThanTheViewport_When_TheViewportIsBelowIt_Then_AutoBringsItsStartIntoView")]
+        public void Given_AnItemTallerThanTheViewport_When_TheViewportIsOutsideIt_Then_AutoBringsTheNearEdgeIntoView(float from, float expected)
         {
             // Arrange
             var (scrollView, handle) = MountScrollable(new[] { 100f, 300f, 100f, 100f, 100f, 100f });
 
             // Act
-            var offset = ScrolledTo(scrollView, 0f, () => handle.ScrollToItem(1));
+            var offset = ScrolledTo(scrollView, from, () => handle.ScrollToItem(1));
 
             // Assert
-            Assert.That(offset, Is.EqualTo(200f));
-        }
-
-        [Test]
-        public void Given_AnItemTallerThanTheViewport_When_TheViewportIsBelowIt_Then_AutoBringsItsStartIntoView()
-        {
-            // Arrange
-            var (scrollView, handle) = MountScrollable(new[] { 100f, 300f, 100f, 100f, 100f, 100f });
-
-            // Act
-            var offset = ScrolledTo(scrollView, 500f, () => handle.ScrollToItem(1));
-
-            // Assert
-            Assert.That(offset, Is.EqualTo(100f));
+            Assert.That(offset, Is.EqualTo(expected));
         }
 
         // The scroller's range as the content's last layout left it, short of an item a render has just added.

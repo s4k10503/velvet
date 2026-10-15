@@ -61,8 +61,8 @@ jobs:
   # Two passes, because a mutant is killed when either suite fails on it and the two suites hold
   # different tests. Every mutant runs against the EditMode suite; only the EditMode survivors run
   # against the PlayMode suite, the slower of the two per mutant. Each pass is a plan and a
-  # matrix of shards: the plan counts the mutants, each shard measures every Nth of them and records
-  # their verdicts. The verdict job reads both passes' records and decides. The decision cannot be a
+  # matrix of shards: the plan counts the mutants, each shard measures the mutants dealt to it by expected
+  # cost and records their verdicts. The verdict job reads both passes' records and decides. The decision cannot be a
   # shard's own, since a declaration above one line answers for survivors another shard may have
   # measured.
   #

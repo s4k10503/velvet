@@ -150,7 +150,7 @@ noticed gets written, or the line says why nothing could have, above itself:
 ```
 
 `equivalent` says the mutated program cannot behave differently; `unreachable` says the state where it
-would is not reachable from any entry point. A mutant whose run came back inconclusive counts as
+would is not reachable from any entry point, and neither category answers a mutant the verdict calls **uncovered** merely because no case of the EditMode suite ran its site: that is code with no test, and the answer is the test, a declaration being right only where the state really is unreachable or the mutation really equivalent. A mutant whose run came back inconclusive counts as
 surviving and needs the same answer: an `Assume` that stopped holding measured nothing either. A declaration answers for the change written under it and
 is read the three ways the base-red one below is: one over a statement whose mutants all died is stale
 and fails, one whose category or reason the script refuses fails, and one the branch did not itself
@@ -233,8 +233,8 @@ when either suite fails on it, and one only a PlayMode fixture notices survives 
 `Mutation campaign ▸ library` restores the EditMode Library the branch or the default branch holds,
 imports the head once where neither holds one under its exact key, and saves that for the branch, because
 `Test ▸ unity-tests` saves its own under the pull request's ref, which a dispatch on the branch is
-not. `Mutation campaign ▸ mutation-shard` then measures every mutant in up to ten jobs, each running every Nth of them
-in the editor image `Test ▸ unity-tests` pulls and recording its verdicts — against its area's own
+not. `Mutation campaign ▸ mutation-shard` then measures every mutant in up to ten jobs, each running the mutants it is dealt
+(by expected cost, below) in the editor image `Test ▸ unity-tests` pulls and recording its verdicts — against its area's own
 test assemblies first where those are cheap, and against the whole EditMode suite wherever that did
 not kill it, which
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
@@ -385,10 +385,11 @@ for each stage it runs in its shard's session, which [Generators~/README.md ▸ 
 assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies) describes. The figures
 below were measured before sessions, over launches alone; how many mutants a diff generates is
 measured in that section, against the window it names. A mutant's launch-compile-run measured
-100–118 s on a developer machine against a 94 s baseline. `--plan` gives an EditMode shard six mutants and stops
-adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
-before its first mutant; a PlayMode shard takes two, since each of its mutants costs more than
-twice an EditMode one measured on the same run. Measured over 121 EditMode shards of the 100 pull-request runs
+100–118 s on a developer machine against a 94 s baseline. `--plan` makes one EditMode shard for every six mutants, as many as ten, and the deal
+sets how many each holds, up to `SHARD_CEILING`; it stops adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
+before its first mutant; a PlayMode shard takes one, since the pass waits on its slowest shard and
+each of its mutants costs more than twice an EditMode one measured on the same run, which pays a
+shard's pull, activation and baseline once a survivor rather than once a pair for a pass of up to ten. Measured over 121 EditMode shards of the 100 pull-request runs
 completed on 2026-09-26 and 2026-09-27, before a mutant was narrowed, a shard spent a median of 98 s
 before activating, 82 s of it pulling the image, 36 s activating and 211 s on its baseline, and its
 645 mutants took a median of 190 s. Over the 461 EditMode baselines those runs uploaded, the
@@ -413,7 +414,9 @@ PlayMode, where 84 of the 115 mutants those shards held took a launch of their o
 PlayMode shard that finished spent 934 s a mutant, over two. The slowest EditMode shard spent 493 s a
 mutant over sixteen: the job's timeout cancelled it, so each launch it had not finished is taken at the
 mean of those it had; its session's confirmation under the unmutated program failed, and 15 of its
-16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these.
+16 mutants took launches of their own. `ShardCeilingTests` builds its charges from these, and charges an EditMode session, before its first mutant, one reach run at twice the baseline's figure (the bound a run that never finishes is stopped at) and the opening runs of each mutant's covered cases at a tenth of the baseline's seconds each, in place of an area's own launch, which a session that runs the reach run does not take; a session that places fewer than `REACH_MIN_MUTANTS` or more than `REACH_MAX_MUTANTS` mutants, or declines one, runs none and takes the areas' launches, as before, which the small arm charges for the whole shard; a placed mutant whose reading does not stand launches on its own afterwards and takes its area's baseline, which the reach arm charges once for every area the shard touches, up to all of them, and `REACH_MAX_MUTANTS` is the most mutants for which that fits; no recording run has been timed, so those factors are allowances. A shard whose reach run never finishes is charged as one without the opening runs.
+
+**Mutants are dealt by expected cost, not by position.** `--plan` and every `--shard` job compute the same assignment from the mutant list alone: `deal` takes the mutants longest first and gives each to the shard charged least so far, ties going to the lower shard and then the lower index, and prints each shard's mutant count and expected seconds with the spread between the cheapest and the dearest. A mutant under `Runtime/<Area>/` on EditMode is charged `NARROWED_COST`, 145 s, and any other mutant 493 s on EditMode, or 934 s on PlayMode, where nothing is narrowed and the deal comes to an even count. The 145 s is the median, over the shards above, of a shard's seconds a mutant, and it already includes the mutants that took the whole suite; the 493 s is the one slowest shard, which the timeout cut and which is estimated. They are different statistics, so the ratio is rough, and 145 s is a proxy for a narrowed launch and not a measurement of one: the repo pins no narrowed-only figure. The plan has no baseline, so it cannot know which areas `narrowable` declines (those over a third of the baseline's test time) nor which narrowed mutants survive and take the whole suite as well, and a previous campaign's timings are not kept (the ledger holds verdicts, not seconds); a mutant dealt as narrowed may therefore cost more than its figure, which skews the balance and never the ceiling, since no mutant is charged above what the ceiling charges it. A shard is never given more than `SHARD_CEILING` mutants however cheap they are, so a shard of cheap mutants can hold 14 to 16 and takes the path of a shard above `REACH_MAX_MUTANTS`, which `ShardCeilingTests` charges. On a 149-mutant plan with every fifth mutant a whole-suite one, dealt by position the dearest shard was charged 2.33 times the mean and dealt by cost 1.02 times, by the same figures.
 
 `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
 be generated at all, and that every declaration in the package is one the script would accept rather
@@ -1046,8 +1049,11 @@ on every platform.
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
+| `Benchmarks ▸ benchmarks` (PlayMode) | push (filtered) to `main` / every PR labelled `benchmarks` / manual | **required** (skipped if absent) | no |
+| `Benchmarks ▸ trend-main` | push (filtered) to `main`, after `benchmarks` | not required | no |
+| `Benchmarks ▸ trend-pull-request` | every PR labelled `benchmarks`, after `benchmarks` | not required | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
-| `Docs` (DocFX → GitHub Pages) | push (filtered) / release / manual | **required** (skipped if absent) | no |
+| `Docs` (DocFX → GitHub Pages; also carries the benchmark chart, as of its last deployment) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
@@ -1107,6 +1113,79 @@ section says how a line lands.
 The source-generator tests and the `upm`-branch split run with no Unity license, so the pipeline
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
 unless a license secret is configured.
+
+### Panel fixture timing
+
+Every fixture built on `PanelTestBase` creates, shows and closes an editor window per case. Each such
+case records how long that took, apart from its body, through `PanelPhaseTimings` in `TestUtilities`:
+the window's creation and `Show` (`create_show`), its `Close` and `DestroyImmediate` (`teardown`), each
+forced layout/styles pass made while the case is open (`layout`) and the whole span from the base
+`SetUp` to the end of the base `TearDown` (`case`). A `layout` row falls inside the body or the setup,
+so it is not added to the others, and `teardown` leaves out the unmount before it, which only `case`
+holds. A layout pass in a derived `TearDown` before it calls the base one falls inside the `case` span;
+one after it is not recorded. A further window a fixture opens itself is not measured, and a case
+ignored for want of a graphics device records nothing.
+
+A run whose editor was given `-testResults` writes the rows to `panel-phase-timings.csv` in the
+directory of the file that argument names, one flush per fixture, with no flag to pass; a run without it
+writes nothing, and no directory is created for the file. A failure to record or to write is swallowed,
+not reported as a failed case. The EditMode job of `Test ▸ unity-tests` uploads the directory as
+`Test results (EditMode)`, so the CSV is in that artifact, and runs `scripts/ci/panel_phase_timings.py`
+over it. The script prints the count, total and mean per phase, the window cost as a share of the panel
+cases and of the suite, and the fixtures with the largest window cost, to the log, the job summary and
+a `::notice` annotation on the job's check run, which the REST API serves where the summary is not.
+A run that wrote no CSV is a `::warning::` and a summary line, not a failure, and a run with no results
+XML reports the suite share as unknown. The suite share takes the panel cases from the `case` rows,
+which hold their setup and teardown, and the rest from the results XML, so that part follows whatever the
+runner's per-case duration covers for cases that are not panel cases.
+
+### Benchmarks
+
+The PlayMode fixtures in the `Velvet.Tests.Performance` namespace measure with Unity Performance
+Testing and assert nothing about their numbers, so they run in two modes. `BenchmarkRun` in
+`TestUtilities` picks the mode: by default a benchmark takes one measured iteration and no warmup, and the editor flag `-velvetBenchmarkFull` restores the counts
+each one declares. `Test ▸ unity-tests`, the base-red reading and the mutation campaign pass no flag, so
+the required PlayMode run carries only the one-iteration form. A new benchmark takes its counts from
+`BenchmarkRun.Warmup` and `BenchmarkRun.Measurements` rather than from literals. A path that only a later
+iteration reaches (an unmount that follows a mount, a mount that rents what an earlier unmount pooled)
+goes unexercised in the one-iteration form, so a benchmark whose body has one runs it once more
+unconditionally after its loops. Each fixture's body was read for such a path when this was written;
+a new benchmark is held to the same reading. A local run that wants real numbers passes the flag
+itself, and the flag is necessary for them rather than sufficient.
+
+`.github/workflows/benchmarks.yml` runs the full counts, as its own workflow and not a required one:
+
+- on every push to `main` that changes the package (documentation and generator sources excluded), and
+  on a manual dispatch;
+- on a pull request carrying the **`benchmarks`** label, at the label being added and at every push
+  after. The label has to exist in the repository; nothing in the workflow creates it. A newer push
+  cancels the run still measuring an older head, and a run for any other event (another label being
+  added, say) is in a group of its own, so it cancels nothing.
+
+A run uploads the results XML as `Benchmark results`, writes the medians as a table to the job summary
+and uploads them as `Benchmark medians`, in the JSON shape `benchmark-action/github-action-benchmark`
+reads (`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
+benchmark that throws fails the run like any other test. The history is not gated on a number:
+
+- `trend-main` appends a push's run to the `benchmark-data` branch under `dev/bench`, one entry per commit
+  and at most 200 in the chart. It first creates the branch as an orphan commit holding a README when
+  the remote has none, which the action does not do itself, and it is the only job holding
+  `contents: write`. The `Docs` workflow copies that directory into the
+  site it deploys, so the trend chart is at <https://s4k10503.github.io/velvet/dev/bench/>; it
+  refreshes with the next docs deployment, so it can trail the newest entry by a merge, and the site
+  lacks the page until `main` has recorded a first entry and a docs deployment has followed.
+- `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
+  writes nothing.
+
+The numbers are one consistent CI series, not absolute ones: the editor runs them with
+`-debugCodeOptimization` and the code-coverage recorder on, because game-ci passes both whatever the
+workflow asks for (`test.yml` says so beside its coverage options), so the history is for comparing runs
+with each other.
+
+Both flag a median above 150% of the previous entry in the summary and neither fails: CI runners'
+timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for the head
+like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled pull
+request, and a failed newest run blocks its merge.
 
 ### Merging a pull request
 

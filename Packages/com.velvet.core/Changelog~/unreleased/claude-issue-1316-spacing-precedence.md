@@ -1,7 +1,7 @@
 ### Added
 
-- A margin, `w-*`, `h-*`, `size-*`, `basis-*` or inset takes `[auto]` (`mx-[auto]`); padding and the minimum and
-  maximum sizes take none.
+- A margin, `w-*`, `h-*`, `size-*`, `min-w-*`, `min-h-*`, `basis-*` or inset takes `[auto]` (`mx-[auto]`); padding
+  and the maximum sizes take none.
 
 ### Fixed
 

@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using System.Diagnostics;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -31,6 +32,8 @@ namespace Velvet.TestUtilities
         /// <summary>The live mounted tree, disposed in teardown. Assigned by mount helpers / individual tests.</summary>
         protected MountedTree _mounted;
 
+        private Stopwatch? _caseClock;
+
         /// <summary>
         /// Size applied to the window BEFORE it is shown. Defaults to 800x600. Override for a fixed pre-show size
         /// (e.g. a card laid out at a known box); USS fixtures that size after <c>Show()</c> instead do so in
@@ -53,9 +56,13 @@ namespace Velvet.TestUtilities
         {
             TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
 
+            PanelPhaseTimings.BeginCase();
+            _caseClock = Stopwatch.StartNew();
+            var createShow = Stopwatch.StartNew();
             _window = ScriptableObject.CreateInstance<TestHostWindow>();
             _window.position = WindowSize;
             _window.Show();
+            PanelPhaseTimings.Record(PanelPhaseTimings.CreateShow, createShow.Elapsed.TotalMilliseconds);
 
             LoadStyleSheets();
         }
@@ -67,15 +74,33 @@ namespace Velvet.TestUtilities
         [TearDown]
         public virtual void TearDown()
         {
-            _mounted?.Dispose();
-            _mounted = null;
-            if (_window != null)
+            try
             {
-                _window.Close();
-                Object.DestroyImmediate(_window);
-                _window = null;
+                _mounted?.Dispose();
+                _mounted = null;
+                if (_window != null)
+                {
+                    var teardown = Stopwatch.StartNew();
+                    _window.Close();
+                    Object.DestroyImmediate(_window);
+                    _window = null;
+                    PanelPhaseTimings.Record(PanelPhaseTimings.Teardown, teardown.Elapsed.TotalMilliseconds);
+                }
+            }
+            finally
+            {
+                if (_caseClock != null)
+                {
+                    PanelPhaseTimings.Record(PanelPhaseTimings.Case, _caseClock.Elapsed.TotalMilliseconds);
+                    _caseClock = null;
+                }
+                PanelPhaseTimings.EndCase();
             }
         }
+
+        /// <summary>Writes the phase timings recorded so far to the run's results directory.</summary>
+        [OneTimeTearDown]
+        public void FlushPhaseTimings() => PanelPhaseTimings.Flush();
 
         /// <summary>
         /// Forces the panel through a layout/styles pass via reflection so <c>resolvedStyle</c> is populated; the

@@ -891,9 +891,10 @@ stylesheet that redefines `--space-4` moves `ml-4` and leaves `ms-4` where it wa
 
 - **Ranking.** Two rules of one variant rank order by the property Tailwind sorts them by: a shorthand
   (`m-4`, `px-4`, `inset-0`, `rounded-lg`, `border-2`) first, then the logical property, then the edge, so
-  `hover:m-4 hover:ms-2` leaves `ms-2` on the start edge and `hover:ml-8 hover:ms-4` leaves `ml-8` there. Two base
-  utilities on one edge still tie as [styling-variants.md](styling-variants.md) describes, and an inline-resolved
-  one outranks a stylesheet class: `ml-8 ms-4` gives the edge to `ms-4`, where Tailwind gives it to `ml-8`.
+  `hover:m-4 hover:ms-2` leaves `ms-2` on the start edge and `hover:ml-8 hover:ms-4` leaves `ml-8` there. Two physical base
+  utilities on one edge still tie as [styling-variants.md](styling-variants.md) describes. At one priority in one
+  `className`, `ml-8 ms-4` gives the edge to `ml-8`, as Tailwind does:
+  [styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#a-shorthand-and-its-longhand) owns that order.
 - **Not resolved.** `scroll-ms-*` and the other `scroll-m*` / `scroll-p*` utilities, because UI Toolkit has no
   scroll-margin or scroll-padding and the physical `scroll-ml-*` is not resolved either. `border-s-` followed by
   a color is a per-side border color, in [§4-1b](#4-1b-per-side-border-colors).
