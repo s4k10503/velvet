@@ -115,7 +115,6 @@ namespace Velvet.Tests
             "ms-1/2",        // a margin takes no fraction
             "ps-full",
             "rounded-s-1/2",
-            "ms-4.1",        // not a multiple of 0.25
             "-start-auto",   // Tailwind has no negative auto
             "-ms-auto",
             "start-1/0",     // no percent stands for a zero denominator
@@ -131,6 +130,21 @@ namespace Velvet.Tests
         // `StyleLogicalUtilities.Family`, which resolves `-ps-4`, `-border-s-2` and `-rounded-s-lg`.
         [TestCaseSource(nameof(DeclinedClasses))]
         public void Given_ClassTheFamilyDoesNotTake_When_Parsed_Then_NothingResolves(string className)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base declines each of these too, a decimal off its scale as much as a
+        // decimal on this change's. What reddens it is reading a logical margin's step as any decimal rather than
+        // a multiple of 0.25, which resolves both.
+        [TestCase("ms-4.1")]
+        [TestCase("me-0.3")]
+        public void Given_ALogicalMarginStepThatIsNoMultipleOfAQuarter_When_Parsed_Then_NothingResolves(
+            string className)
         {
             // Act
             var ok = StyleArbitraryValueResolver.TryParse(className, out _);
