@@ -655,8 +655,9 @@ is listed with the `[&>*]:` composite notes.
 is inserted only as far as the limit leaves room for it at the caret, the room being the limit less the
 text that stays, so a selection pasted over counts as gone and a value longer than the limit leaves
 none. The rest of the insertion is refused. An edit that does not lengthen the text is never refused,
-so a value longer than the limit can still be shortened. IME composition, undo and the touch keyboard
-have not been tested against the limit. A value
+so a value longer than the limit can still be shortened. The limit is applied to the keys the field
+takes and to its paste, cut and delete commands. Text that arrives by IME composition, the touch
+keyboard or undo is not limited, and none of the three has been tested. A value
 set from code is shown whole: the controlled `value:` and an assignment to the field's `value` from a
 `refCallback:`. A render changing `maxLength:` leaves the value and a pending edit as they are, and a
 field holding `isDelayed:` text longer than the limit releases that text on Enter or blur like any

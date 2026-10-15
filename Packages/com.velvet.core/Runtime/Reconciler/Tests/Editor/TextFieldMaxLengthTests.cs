@@ -194,6 +194,93 @@ namespace Velvet.Tests
             Assert.That(field.text, Is.EqualTo("abXYef"));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the value of a code assignment whole, cutting only the shown text.
+        // On a single-line field the shown text strips the line break, so the assignment makes the engine
+        // send an InputEvent that LimitUserEdit must not read as an edit.
+        [Test]
+        public void Given_ASingleLineLimitedField_When_CodeAssignsAValueWithALineBreak_Then_TheValueStaysWhole()
+        {
+            // Arrange
+            var field = Mount(V.TextField(maxLength: 3));
+
+            // Act
+            field.value = "ab\ncd";
+
+            // Assert
+            Assert.That(field.value, Is.EqualTo("ab\ncd"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps the value of a code assignment whole, cutting only the shown text.
+        // A key that cannot change the text leaves no note behind for the assignment that follows it.
+        [Test]
+        public void Given_AnArrowKeyPressedInALimitedField_When_CodeAssignsAValueWithALineBreakInTheSameFrame_Then_TheValueStaysWhole()
+        {
+            // Arrange
+            var field = Mount(V.TextField(maxLength: 3));
+            PlaceCaret(field, 0);
+            Press(field, '\0', KeyCode.LeftArrow);
+
+            // Act
+            field.value = "ab\ncd";
+
+            // Assert
+            Assert.That(field.value, Is.EqualTo("ab\ncd"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never edits a value when the engine's limit moves.
+        // The declared limit of four is below the value, and the drop puts the built limit of three back.
+        [Test]
+        public void Given_AValueLongerThanTheDroppedLimit_When_ALaterRenderDropsMaxLength_Then_TheValueIsUntouched()
+        {
+            // Arrange
+            var declared = new FiberElementProps
+            {
+                FieldValue = "hello",
+                TextField = new TextFieldSettings(MaxLength: 4),
+            };
+            var dropped = new FiberElementProps { FieldValue = "hello" };
+            var field = Mount(V.Custom<TextFieldBuiltLimitTests.BuiltWithThree>(props: declared));
+
+            // Act
+            Render(V.Custom<TextFieldBuiltLimitTests.BuiltWithThree>(props: dropped));
+
+            // Assert
+            Assert.That(field.value, Is.EqualTo("hello"));
+        }
+
+        // Selecting "bc" and pasting "bxy" shares its first character with the selection, which the text
+        // alone cannot tell from an insertion one place on.
+        [Test]
+        public void Given_AValueLongerThanTheLimit_When_TheUserPastesOverASelectionTheInsertionStartsLike_Then_NothingIsInserted()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abcdef", maxLength: 3));
+            Input(field).Focus();
+            field.textSelection.SelectRange(3, 1);
+
+            // Act
+            Paste(field, "bxy");
+
+            // Assert
+            Assert.That(field.text, Is.EqualTo("adef"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base deletes forward and leaves the caret where it was.
+        // Deleting does not lengthen the text, so the limit leaves the caret to the engine.
+        [Test]
+        public void Given_AFieldHoldingItsLimit_When_TheUserDeletesForward_Then_TheCaretStays()
+        {
+            // Arrange
+            var field = Mount(V.TextField(value: "abc", maxLength: 3));
+            PlaceCaret(field, 1);
+
+            // Act
+            Press(field, '\0', KeyCode.Delete);
+
+            // Assert
+            Assert.That(field.textSelection.cursorIndex, Is.EqualTo(1));
+        }
+
         [Test]
         public void Given_AValueLongerThanTheNewLimit_When_ALaterRenderNarrowsMaxLength_Then_TheValueAndTheShownTextStayWhole()
         {
