@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -96,6 +97,33 @@ namespace Velvet
     // case (effect set at mount) is fully correct.
     internal static class StyleTextEffectResolver
     {
+        // The context an element's own effect was recorded in, for LineHeightOf, whose caller holds none.
+        // ctx.TextEffects stays the record: an element whose context no longer holds it reads as having no effect,
+        // so the pool's side-table sweep needs no step here.
+        private static readonly ConditionalWeakTable<VisualElement, ReconcilerContext> s_effectContexts = new();
+
+        // The line height CSS computes on element, in pixels, from the nearest leading on it or an ancestor
+        // (ResolveEffective's walk): a number times the element's own font size, an em or percentage length
+        // times its declaring element's, or a length as written. NaN where none sets one, which is CSS's
+        // `normal`.
+        internal static float LineHeightOf(VisualElement element)
+        {
+            for (var e = element; e != null; e = e.hierarchy.parent)
+            {
+                if (s_effectContexts.TryGetValue(e, out var ctx) && ctx.TextEffects.TryGetValue(e, out var eff)
+                    && eff.Leading is { } leading)
+                {
+                    return leading.Unit switch
+                    {
+                        LeadingUnit.Em => leading.Value * element.resolvedStyle.fontSize,
+                        LeadingUnit.EmLength => leading.Value * e.resolvedStyle.fontSize,
+                        _ => leading.Value,
+                    };
+                }
+            }
+            return float.NaN;
+        }
+
         // Captures the untransformed text for a text-bearing element at a text-set seam (TextNode create/patch,
         // or an element's Text prop). Stored so a later re-apply (this element's or an ancestor's effect pass)
         // transforms the RAW text, not an already-transformed value.
@@ -131,10 +159,12 @@ namespace Velvet
             if (own.IsEmpty)
             {
                 ctx.TextEffects.Remove(element);
+                s_effectContexts.Remove(element);
             }
             else
             {
                 ctx.TextEffects[element] = own;
+                s_effectContexts.AddOrUpdate(element, ctx);
             }
 
             // The element's own text (Label / Button carrying a Text prop) reflects its cascade-resolved

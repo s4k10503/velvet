@@ -98,7 +98,8 @@ namespace Velvet
         {
             result = default;
             if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var opacityValue)
-                || opacityValue < 0f || opacityValue > 1f)
+                || (opacityValue = StyleArbitraryValueResolver.ClampMathResult(valueSpan, opacityValue, 0f, 1f)) < 0f
+                || opacityValue > 1f)
             {
                 return false;
             }
@@ -116,7 +117,8 @@ namespace Velvet
             bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var factor) || factor < 0f)
+            if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var factor)
+                || (factor = StyleArbitraryValueResolver.ClampMathResult(valueSpan, factor, 0f)) < 0f)
             {
                 return false;
             }

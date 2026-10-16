@@ -314,9 +314,24 @@ namespace Velvet
                 value = -value;
             }
 
-            result = new ArbitraryStyle(property, value, unit);
+            result = new ArbitraryStyle(property, ClampMathResult(valueSpan, value, MinimumOf(property)), unit);
             return true;
         }
+
+        // A math function's result outside the range its property takes is clamped into it, as CSS clamps a
+        // top-level calculation; a literal is returned as written, for the caller to judge.
+        internal static float ClampMathResult(ReadOnlySpan<char> text, float value, float min, float max = float.MaxValue)
+            => StyleLengthExpression.OpensMathFunction(text.Trim("_ ".AsSpan())) ? Math.Clamp(value, min, max) : value;
+
+        // The least value property takes in CSS: zero for a size, a padding, a radius, a border width and a font
+        // size, and no bound for the rest.
+        private static float MinimumOf(ArbitraryProperty property)
+            => property is >= ArbitraryProperty.Width and <= ArbitraryProperty.MaxHeight
+                or >= ArbitraryProperty.PaddingTop and <= ArbitraryProperty.PaddingY
+                or >= ArbitraryProperty.BorderRadius and <= ArbitraryProperty.BorderLeftWidth
+                or ArbitraryProperty.FontSize or ArbitraryProperty.Size or ArbitraryProperty.FlexBasis
+                ? 0f
+                : -float.MaxValue;
 
         // Where Tailwind reads a bracket as either a length or a colour, whether its type tests take this one for
         // the length; a value they do not is written as a colour, which a browser discards. Every other property
@@ -394,12 +409,11 @@ namespace Velvet
             ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (!PropertySetters.ContainsKey(property) || !StyleLengthExpression.TryParse(valueSpan, out var expression)
-                || !expression!.IsFinite())
+            if (!PropertySetters.ContainsKey(property) || !StyleLengthExpression.TryParse(valueSpan, out var expression))
             {
                 return false;
             }
-            result = new ArbitraryStyle(property, negate ? expression!.Negated() : expression!);
+            result = new ArbitraryStyle(property, negate ? expression!.Negated() : expression!.AtLeast(MinimumOf(property)));
             return true;
         }
 
@@ -965,7 +979,7 @@ namespace Velvet
             result = default;
             if (prefix == "slice-scale-")
             {
-                if (negate || !TryParseFloat(value, out var factor) || factor < 0f)
+                if (negate || !TryParseFloat(value, out var factor) || (factor = ClampMathResult(value, factor, 0f)) < 0f)
                 {
                     return false;
                 }
@@ -1057,9 +1071,16 @@ namespace Velvet
         }
 
         // Parses a duration-[..] time value to SECONDS. Accepts "<n>ms" / "<n>s" (duration-[400ms] /
-        // duration-[.4s]); a bare number is rejected (a unit is required on arbitrary durations).
+        // duration-[.4s]) and a math function coming to a time; a bare number is rejected (a unit is required on
+        // arbitrary durations).
         private static bool TryParseDurationSeconds(ReadOnlySpan<char> value, out float seconds)
         {
+            if (StyleLengthExpression.OpensMathFunction(value))
+            {
+                var parsed = StyleLengthExpression.TryParseTime(value, out var ms);
+                seconds = Math.Max(0f, ms / 1000f);
+                return parsed;
+            }
             seconds = 0f;
             float scale;
             ReadOnlySpan<char> num;
@@ -3230,7 +3251,7 @@ namespace Velvet
                 return false;
             }
             if (TryParseValue(inner, out var value, out var unit)
-                && unit == LengthUnit.Pixel && value >= 0f)
+                && unit == LengthUnit.Pixel && (value = ClampMathResult(inner, value, 0f)) >= 0f)
             {
                 px = value;
                 return true;
@@ -3329,7 +3350,8 @@ namespace Velvet
         // A non-negative pixel length, the grammar TryParseArbitraryPixels reads inside its bracket.
         internal static bool TryParsePixels(ReadOnlySpan<char> inner, out float px)
         {
-            var parsed = TryParseValue(inner, out px, out var unit) && unit == LengthUnit.Pixel && px >= 0f;
+            var parsed = TryParseValue(inner, out px, out var unit) && unit == LengthUnit.Pixel
+                && (px = ClampMathResult(inner, px, 0f)) >= 0f;
             px = parsed ? px : 0f;
             return parsed;
         }
@@ -3381,10 +3403,15 @@ namespace Velvet
             return false;
         }
 
-        // Parses a unitless finite float (used by scale-[..]). A trailing unit is rejected.
+        // Parses a unitless finite float (used by scale-[..]), or a math function coming to a number. A trailing
+        // unit is rejected.
         // Internal so the extracted transform/filter parsers share the one float grammar.
         internal static bool TryParseFloat(ReadOnlySpan<char> valueStr, out float value)
         {
+            if (StyleLengthExpression.OpensMathFunction(valueStr))
+            {
+                return StyleLengthExpression.TryParseNumber(valueStr, out value);
+            }
             var parsed = float.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
             return parsed && float.IsFinite(value);
         }
@@ -3410,11 +3437,15 @@ namespace Velvet
         }
 
         // Parses an angle (used by rotate-[..]) and normalizes it to degrees. Accepts the
-        // deg / rad / grad / turn suffixes in any case; a bare number is degrees, which each caller
-        // narrows to what its CSS property takes (IsUnitlessAngle).
+        // deg / rad / grad / turn suffixes in any case, and a math function coming to an angle; a bare number is
+        // degrees, which each caller narrows to what its CSS property takes (IsUnitlessAngle).
         // Internal so the extracted transform/filter parsers share the one angle grammar.
         internal static bool TryParseAngleDegrees(ReadOnlySpan<char> valueStr, out float degrees)
         {
+            if (StyleLengthExpression.OpensMathFunction(valueStr))
+            {
+                return StyleLengthExpression.TryParseAngle(valueStr, out degrees);
+            }
             degrees = 0f;
 
             var factor = 1f;
@@ -3449,6 +3480,7 @@ namespace Velvet
         }
 
         // Whether an angle TryParseAngleDegrees accepted was a bare number, which is never empty.
-        internal static bool IsUnitlessAngle(ReadOnlySpan<char> valueStr) => !char.IsLetter(valueStr[valueStr.Length - 1]);
+        internal static bool IsUnitlessAngle(ReadOnlySpan<char> valueStr)
+            => !char.IsLetter(valueStr[valueStr.Length - 1]) && valueStr[valueStr.Length - 1] != ')';
     }
 }

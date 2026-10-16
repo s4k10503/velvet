@@ -113,6 +113,10 @@ namespace Velvet
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
             "UnityEngine.UIElements.StylePropertyName", "id", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
+        // StyleFontUnits: the font asset an element's text is drawn with.
+        internal static readonly EngineMember ElementFontAsset = Method(UIElements, "UnityEngine.UIElements.TextUtilities",
+            "GetFontAsset", "UnityEngine.TextCore.Text.FontAsset", VisualElementType);
+
         // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";
         private const string UpdatePhaseShape = "enum:" + UpdatePhaseType;

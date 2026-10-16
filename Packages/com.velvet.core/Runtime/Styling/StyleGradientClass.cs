@@ -961,7 +961,7 @@ namespace Velvet
         // in_{space}[_{method}_hue].
         private static bool TryParseLine(string arg, ref Shape shape)
         {
-            var tokens = arg.Split('_');
+            var tokens = SplitTopLevel(arg, '_').ToArray();
             var at = Array.IndexOf(tokens, "in");
             if (at < 0)
             {
@@ -1033,16 +1033,16 @@ namespace Velvet
             if (rest.StartsWith("from_", StringComparison.Ordinal))
             {
                 // "from", the angle, and whatever follows it.
-                var parts = rest.Split(new[] { '_' }, 3);
+                var parts = SplitTopLevel(rest, '_');
                 if (!TryParseCssAngle(parts[1], out shape.Angle))
                 {
                     return false;
                 }
-                if (parts.Length < 3)
+                if (parts.Count < 3)
                 {
                     return true;
                 }
-                rest = parts[2];
+                rest = string.Join("_", parts.Skip(2));
             }
             return TryParseListPosition(rest, out shape.CenterX, out shape.CenterY);
         }
@@ -1051,7 +1051,7 @@ namespace Velvet
         // order of shape and size. Writes the shape only when the whole line reads.
         private static bool TryParseRadialLine(string line, ref Shape shape)
         {
-            var tokens = line.Split('_');
+            var tokens = SplitTopLevel(line, '_').ToArray();
             var at = Array.IndexOf(tokens, "at");
             float centerX = shape.CenterX, centerY = shape.CenterY;
             if (at >= 0 && !TryParseListPosition(string.Join("_", tokens, at, tokens.Length - at), out centerX, out centerY))
@@ -1146,6 +1146,10 @@ namespace Velvet
         // bare number is no angle in CSS.
         private static bool TryParseCssAngle(string s, out float deg)
         {
+            if (StyleLengthExpression.OpensMathFunction(s.AsSpan()))
+            {
+                return StyleLengthExpression.TryParseAngle(s.AsSpan(), out deg);
+            }
             deg = 0f;
             foreach (var (unit, degrees) in AngleUnits)
             {
@@ -1187,8 +1191,8 @@ namespace Velvet
             {
                 return false;
             }
-            var tokens = arg.Substring(3).Split('_');
-            if (tokens.Length > 2)
+            var tokens = SplitTopLevel(arg.Substring(3), '_');
+            if (tokens.Count > 2)
             {
                 return false;
             }
@@ -1304,7 +1308,7 @@ namespace Velvet
         private static void ParseRadialPosition(string content, ref float centerX, ref float centerY)
         {
             bool xSet = false, ySet = false;
-            foreach (var tok in content.Split('_'))
+            foreach (var tok in SplitTopLevel(content, '_'))
             {
                 switch (tok)
                 {
@@ -1327,6 +1331,10 @@ namespace Velvet
 
         private static bool TryParseCentrePercent(string token, out float frac)
         {
+            if (token.EndsWith(")", StringComparison.Ordinal))
+            {
+                return TryParsePercent(token, out frac);
+            }
             frac = 0f;
             if (token.Length < 2 || token[token.Length - 1] != '%'
                 || !float.TryParse(token.Substring(0, token.Length - 1), NumberStyles.Float, CultureInfo.InvariantCulture, out var pct)
