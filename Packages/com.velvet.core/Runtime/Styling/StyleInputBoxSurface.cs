@@ -162,8 +162,8 @@ namespace Velvet
             return PlacementOfCore(core) == Placement.Both && IsControl(target) && TryGetBox(target, out box);
         }
 
-        // The element inside a box that draws its text, which a text-overflow utility lands on as well, since the
-        // ellipsis CSS draws ends the input's own text.
+        // The element inside a box that draws its text, which a text-overflow utility lands on as well: CSS
+        // applies text-overflow to the input, whose own text it is.
         public static bool TryGetBoxText(VisualElement box, string core, out VisualElement text)
         {
             text = null!;
