@@ -639,9 +639,6 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the cleanup of a ref a setup's write replaces after the setup
-        // has returned. It re-reads its queue after each setup and runs the cleanups of what was queued meanwhile
-        // ahead of their setups.
         [Test]
         public void Given_ASetupWhoseWriteReplacesTheAttachedRefOfAnotherElement_When_TheSetupReturns_Then_ThatRefsCleanupRunsAfterItAndAheadOfTheNewSetup()
         {
@@ -694,9 +691,6 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base finishes the cleanup a write runs inside before any setup runs.
-        // Its drain holds off the passes that write starts until the cleanup has returned, and takes what they
-        // queued after the setups already queued.
         [Test]
         public void Given_ACleanupWhoseWriteAddsAnElementCarryingARef_When_TheCommitDetachesTheReplacedRef_Then_NoSetupRunsInsideTheCleanup()
         {
