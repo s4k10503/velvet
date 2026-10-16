@@ -28,6 +28,28 @@ namespace Velvet.Tests
             Assert.That(leaf.resolvedStyle.width, Is.EqualTo(1f));
         }
 
+        [TestCase("w-px w-[10px]")]
+        [TestCase("w-[10px] w-px")]
+        public void Given_AnInlineWidthAndAStepClassTailwindEmitsLater_When_LaidOut_Then_TheClassHoldsTheWidth(string className)
+        {
+            // Act
+            var leaf = MountAndResolve(className);
+
+            // Assert — --space-px is 1px, and px sorts after the bracket.
+            Assert.That(leaf.resolvedStyle.width, Is.EqualTo(1f));
+        }
+
+        [TestCase("w-1/2 w-4")]
+        [TestCase("w-4 w-1/2")]
+        public void Given_AFractionWidthAndAStepClassTailwindEmitsLater_When_LaidOut_Then_TheClassHoldsTheWidth(string className)
+        {
+            // Act
+            var leaf = MountAndResolve(className);
+
+            // Assert — --space-4 is 16px, and the 1 of 1/2 sorts ahead of the 4.
+            Assert.That(leaf.resolvedStyle.width, Is.EqualTo(16f));
+        }
+
         [TestCase("p-1 p-px")]
         [TestCase("p-px p-1")]
         public void Given_TwoPaddingsOfTheScale_When_LaidOut_Then_TheStepTailwindEmitsLaterHoldsThePadding(string className)

@@ -173,3 +173,19 @@ The rule is made where a shorthand and a longhand meet in one `className` string
 - A class list assembled outside a `className` string, or beside a class list of another element, is not ordered this way.
 
 `z-<n>` takes any whole number an int holds the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).
+
+### An inline value and a stylesheet class
+
+Of two base utilities that write one longhand, one resolved inline (a bracket value, a fraction, `auto`, a negated
+step, a colour with an opacity, a logical side) and one a stylesheet class, the one Tailwind emits later holds it,
+whichever is written first. Tailwind sorts the candidate names by character code with digits compared as numbers, so
+`w-px w-[10px]` and `w-[10px] w-px` both give 1px, `w-1/2 w-4` gives 16px, and `mt-[10px] mt-auto`, `-mt-2 mt-1`,
+`bg-[#ff0000] bg-red-500` and `border-s-2 border-l-4` leave the class the property. Where the inline token is the
+later one it keeps the property: `w-4 w-[10px]` gives 10px, and `ml-8 ms-4` gives 32px in either order, as above.
+
+An inline token that the classes Tailwind emits after it write in full is left out of the class list, so it writes no
+style; taking the class away brings it back. A token those classes write only in part stays whole. For the spacing,
+size, inset and radius families the class is then written inline (above), and for a border side width it is not:
+`border-[3px] border-l-4` leaves the bracket on every side. Only plain base tokens take part. A variant, an important
+token and a class gated on a state are ranked by their own layer, and two utilities that both resolve inline are
+ordered only where the sections above say so.

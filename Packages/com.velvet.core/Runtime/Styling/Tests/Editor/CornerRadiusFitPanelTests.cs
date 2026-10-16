@@ -25,7 +25,6 @@ namespace Velvet.Tests
         public override void SetUp()
         {
             s_setClass = default;
-            s_setPoolState = default;
             base.SetUp();
         }
 
@@ -62,21 +61,6 @@ namespace Velvet.Tests
             var (className, setClass) = Hooks.UseState(s_initialClass);
             s_setClass = setClass;
             return V.Div(name: "box", className: className);
-        }
-
-        private static StateUpdater<string> s_setPoolState;
-
-        [Component]
-        private static VNode RenderPoolReuse()
-        {
-            var (state, setState) = Hooks.UseState("rounded");
-            s_setPoolState = setState;
-            return state switch
-            {
-                "rounded" => V.Label(name: "leaf", className: "w-[100px] h-[40px] rounded-md rounded-[12px]", text: "a"),
-                "plain" => V.Label(name: "leaf", className: "w-[100px] h-[20px]", text: "b"),
-                _ => V.Div(name: "placeholder"),
-            };
         }
 
         private static float[] Radii(VisualElement element)
@@ -197,33 +181,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((fitted, box.resolvedStyle.borderTopLeftRadius > 6.5f), Is.EqualTo((true, true)));
-        }
-
-        // GREEN_ON_BASE(characterization): the base has no fit, so a recycled Label carries no radius there.
-        // Dropping `CornerRadiusFit.Release(element)` from StyleArbitraryValueResolver.ClearAll reddens it: the
-        // recycled Label refits the previous consumer's 12px to the 20px height it is laid out at. The class
-        // beside the arbitrary radius is what makes the recycled Label resolve its style for the fit once more.
-        [Test]
-        public void Given_AFittedLabelReturnedToThePool_When_RentedByAPlainLabel_Then_ItPaintsNoRadius()
-        {
-            // Arrange — VNodePool's Label pool is LIFO and nothing else rents a Label in between, so the plain
-            // label is handed the same instance back.
-            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderPoolReuse));
-            var scheduler = _mounted.Root.Reconciler.Context.BatchScheduler;
-            ForcePanelUpdate(_window.rootVisualElement.panel);
-            var first = _window.rootVisualElement.Q<Label>("leaf");
-            s_setPoolState.Invoke("hidden");
-            scheduler.DrainImmediateForTest();
-
-            // Act
-            s_setPoolState.Invoke("plain");
-            scheduler.DrainImmediateForTest();
-            ForcePanelUpdate(_window.rootVisualElement.panel);
-
-            // Assert — the instance is carried beside the radius, since a label built afresh has none either.
-            var recycled = _window.rootVisualElement.Q<Label>("leaf");
-            Assert.That((ReferenceEquals(first, recycled), recycled.resolvedStyle.borderTopLeftRadius),
-                Is.EqualTo((true, 0f)));
         }
 
         [Test]

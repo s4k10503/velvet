@@ -7,7 +7,7 @@
   wraps, `rounded-md rounded-lg` gives `rounded-md`, `transition-colors transition-opacity` transitions opacity,
   and `transition-none` follows every other `transition-*`. `truncate` now yields to `overflow-*`, `whitespace-*`
   and `text-ellipsis` where it used to outrank them. The `anim-*` presets keep their place after the base
-  utilities, since the animation scheduler applies them to outrank those. Utilities Velvet resolves inline in C# are
+  utilities, since the animation scheduler applies them to outrank those. Two utilities that both resolve inline in C# are
   not part of this: the font facets (`font-light font-bold`, `not-italic italic`) still go to the last class written.
   A label with `truncate overflow-visible` (or `overflow-hidden md:overflow-visible` above `md`) is no longer treated as
   clipped by the text item's automatic minimum size.
