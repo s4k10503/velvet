@@ -52,6 +52,9 @@ namespace Velvet
         private const float DefaultRingAlpha = 0.5f;
         // Bare `outline` (outline-style: solid) — Velvet picks a thin default width; outline-{N} overrides.
         private const float DefaultOutlineWidth = 1f;
+        // outline-width's initial value, medium: the width of an outline whose style a class set and whose width
+        // no class did.
+        private const float MediumOutlineWidth = 3f;
 
         private static bool s_blue500Resolved;
         private static Color s_blue500 = new(59f / 255f, 130f / 255f, 246f / 255f, 1f); // opaque fallback
@@ -119,6 +122,7 @@ namespace Velvet
             public bool WidthSet;
             public float Width;
             public bool IsOutline;   // tracks which family established intent, for the default width
+            public bool OutlineDeclared; // bare `outline`, which declares its 1px width
             public bool ColorSet;
             public Color Color;
             public float Offset;
@@ -148,7 +152,7 @@ namespace Velvet
 
             var effectiveWidth = slots.WidthSet
                 ? slots.Width
-                : (slots.IsOutline ? DefaultOutlineWidth : DefaultRingWidth);
+                : (slots.IsOutline ? (slots.OutlineDeclared ? DefaultOutlineWidth : MediumOutlineWidth) : DefaultRingWidth);
             if (effectiveWidth <= 0f)
             {
                 return false; // ring-0 / outline-none: no ring
@@ -199,6 +203,7 @@ namespace Velvet
             {
                 slots.HasIntent = true;
                 slots.IsOutline = true;
+                slots.OutlineDeclared = true;
                 return;
             }
 
@@ -216,6 +221,11 @@ namespace Velvet
                 slots.IsOutline = isOutlineFamily;
                 slots.WidthSet = true;
                 slots.Width = 0f;
+                return;
+            }
+
+            if (isOutlineFamily && TryParseOutlineNumber(ringSuffix!, ref slots))
+            {
                 return;
             }
 
@@ -241,6 +251,26 @@ namespace Velvet
             // An unrecognized ring-*/outline-* suffix is ignored (not a known utility).
         }
 
+        // outline-[N] and outline-[N%], which Tailwind's type tests take for a number or a percentage and write as
+        // outline-width beside outline-style: solid. The browser keeps the width only as 0, and otherwise draws the
+        // outline at the width the rest of the cascade gives it.
+        private static bool TryParseOutlineNumber(string suffix, ref RingSlots slots)
+        {
+            if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner) || TailwindDataTypes.IsLength(inner)
+                || !(TailwindDataTypes.IsNumber(inner) || TailwindDataTypes.IsPercentage(inner)))
+            {
+                return false;
+            }
+            slots.HasIntent = true;
+            slots.IsOutline = true;
+            if (StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out var zero))
+            {
+                slots.WidthSet = true;
+                slots.Width = zero;
+            }
+            return true;
+        }
+
         private static bool TryMatchPrefix(string cls, string prefix, out string? suffix)
         {
             if (cls.StartsWith(prefix, StringComparison.Ordinal))
@@ -254,7 +284,7 @@ namespace Velvet
 
         // A width is either a preset (0/1/2/4/8) or an arbitrary [Npx] (px only — a ring width is pixels).
         // inferred: whether Tailwind reads this prefix's bracket as a length or a colour
-        // (StyleArbitraryValueResolver.SpellsUnitAsTailwindInfers); outline-offset- takes a length alone.
+        // (StyleArbitraryValueResolver.TryParseInferredArbitraryPixels); outline-offset- takes a length alone.
         private static bool TryParseWidthValue(string? suffix, bool inferred, out float width)
         {
             width = 0f;
