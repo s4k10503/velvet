@@ -35,6 +35,10 @@ namespace Velvet.Tests
     /// through a helper — ahead of a hook call, where a hook its runtime target composes would feed the body a
     /// value the deps array does not capture. A delegate invocation (virtual Invoke on a sealed type) is not an
     /// open dispatch.</item>
+    /// <item>Below the gate, each child of a children list that is a call of a <c>V</c> factory gets a scope gate
+    /// (<c>TryGetMemoizedScope</c>) of its own where everything it reads is a parameter or a hook value compared at
+    /// its start. A child calling anything else gets none, and neither does any child of a body with a loop around the
+    /// children or a <c>try</c> in it. <c>ReactiveScopeWovenBehaviorE2ETests</c> asserts what the gates do.</item>
     /// <item>A body opting out with <c>[Component(Compiler = false)]</c> is left unwoven even when it is provably
     /// analyzable; the opt-out is honored ahead of analysis.</item>
     /// <item>Every component — woven, opted-out, or bailed — still renders normally and produces visible output
@@ -1456,10 +1460,497 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region First reactive scopes
+
+        private static string s_scopeText = "";
+
+        private static string DescribeText(string text) => s_scopeText + text;
+
+        private sealed class RefCarrier : System.Collections.Generic.Dictionary<string, string>
+        {
+            public RefCarrier(MutableRef<string> reference)
+            {
+                reference.Current = "carried";
+            }
+        }
+
+        private sealed class ServiceCarrier : System.Collections.Generic.Dictionary<string, string>
+        {
+            public ServiceCarrier(System.Collections.Generic.List<string> items)
+            {
+                items.Add("carried");
+            }
+        }
+
+        private static System.Collections.Generic.List<string> UseTextItems() => new();
+
+        [Component]
+        public static VNode TwoTextChildrenComponent()
+        {
+            var (left, _) = Hooks.UseState("");
+            var (right, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: left), V.Label(text: right));
+        }
+
+        [Component]
+        public static VNode NestedTextChildrenComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            var (b, _) = Hooks.UseState("");
+            return V.Div("root", V.Div("group", V.Label(text: a), V.Label(text: b)), V.Label(text: b));
+        }
+
+        [Component]
+        public static VNode ConditionalTextChildComponent()
+        {
+            var (flag, _) = Hooks.UseState(false);
+            var (a, _) = Hooks.UseState("");
+            var (b, _) = Hooks.UseState("");
+            return V.Div("root", flag ? V.Label(text: a) : V.Label(text: b), V.Label(text: b));
+        }
+
+        [Component]
+        public static VNode TextChildAfterAHookComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: a), V.Label(text: Hooks.UseId()));
+        }
+
+        [Component]
+        public static VNode TextChildOfAParameterComponent(string title)
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: title), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode FixedTextChildComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: "fixed"), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildCallingAFixtureMethodComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: DescribeText(a)), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode FixtureMethodChildReadingNothingComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: DescribeText("fixed")), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildReadingAStaticComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: s_scopeText), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildrenBuiltInALoopComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            VNode? last = null;
+            for (var i = 0; i < 2; i++)
+            {
+                last = V.Div("row", V.Label(text: a), V.Label(text: a));
+            }
+            return last!;
+        }
+
+        [Component]
+        public static VNode TextChildrenAfterATryFinallyComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            try
+            {
+                s_scopeText = a;
+            }
+            finally
+            {
+                s_scopeText += "x";
+            }
+            return V.Div("root", V.Label(text: a), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode CarrierChildWritingALocalComponent()
+        {
+            var (a, _) = Hooks.UseState(new System.Collections.Generic.List<string>());
+            var written = new System.Collections.Generic.List<string>();
+            return V.Div("root", V.Label(data: new ServiceCarrier(written = a)), V.Label(data: new ServiceCarrier(written)));
+        }
+
+        [Component]
+        public static VNode TextChildCarryingARefComponent()
+        {
+            var counter = Hooks.UseMutableRef("");
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(data: new RefCarrier(counter)), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildReadingAServiceValueComponent()
+        {
+            var items = UseTextItems();
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(data: new ServiceCarrier(items)), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildReadingAReferenceStateComponent()
+        {
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<string>());
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(data: new ServiceCarrier(items)), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildAssigningAParameterComponent(string title)
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: title = a), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode CarrierChildReadingAReassignedHookValueComponent()
+        {
+            var (a, _) = Hooks.UseState(new System.Collections.Generic.List<string>());
+            var (b, _) = Hooks.UseState(new System.Collections.Generic.List<string>());
+            a = b;
+            return V.Div("root", V.Label(data: new ServiceCarrier(a)), V.Label(data: new ServiceCarrier(b)));
+        }
+
+        private static System.Collections.Generic.IReadOnlyDictionary<string, string> UseTextTable()
+        {
+            var (table, _) = Hooks.UseState<System.Collections.Generic.IReadOnlyDictionary<string, string>>(
+                new System.Collections.Generic.Dictionary<string, string>());
+            return table;
+        }
+
+        [Component]
+        public static VNode TextChildPassingAServiceTableComponent()
+        {
+            var table = Hooks.UseService<System.Collections.Generic.IReadOnlyDictionary<string, string>>();
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(data: table), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildPassingACustomHookTableComponent()
+        {
+            var table = UseTextTable();
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(data: table), V.Label(text: a));
+        }
+
+        [Component]
+        public static VNode TextChildReadingAGenericParameterComponent<T>(T value)
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: value as string), V.Label(text: a));
+        }
+
+        private static System.ReadOnlySpan<char> UseTextSpan()
+        {
+            var (text, _) = Hooks.UseState("");
+            return System.MemoryExtensions.AsSpan(text);
+        }
+
+        [Component]
+        public static VNode TextChildReadingARefStructHookValueComponent()
+        {
+            var span = UseTextSpan();
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Label(text: new string(span)), V.Label(text: a));
+        }
+
+        private static int ScopeGatesOf(string component) => CountHookCalls(LoadMethod(component), ScopeGateName);
+
+        [Test]
+        public void Given_TwoChildrenReadingDifferentHookValues_When_Woven_Then_EachGetsItsOwnScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TwoTextChildrenComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildReadingOneHookValue_When_Woven_Then_ItsScopeIsKeyedOnThatValue()
+        {
+            // Act
+            var dependencies = DependencyCountOfCall(LoadMethod(nameof(TwoTextChildrenComponent)), ScopeGateName, 0);
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ChildrenNestedInAChildReadingBothValues_When_Woven_Then_EveryChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(NestedTextChildrenComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void Given_AChildChoosingBetweenTwoCalls_When_Woven_Then_TheChoiceIsOneScopeKeyedOnWhatItReads()
+        {
+            // Act
+            var dependencies = DependencyCountOfCall(LoadMethod(nameof(ConditionalTextChildComponent)), ScopeGateName, 0);
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_AChildChoosingBetweenTwoCalls_When_Woven_Then_ItsSiblingGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ConditionalTextChildComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves the component gate of this body and no scope gate, which
+        // is the pair it asserts.
+        // What it pins is a child ahead of a later hook staying out of every scope: `true` in place of
+        // `each.Span.Start > boundary` in `PlanScopes` gives it one.
+        [Test]
+        public void Given_AChildAheadOfALaterHook_When_Woven_Then_TheComponentIsWovenWithNoScopeGate()
+        {
+            // Act
+            var method = LoadMethod(nameof(TextChildAfterAHookComponent));
+
+            // Assert
+            Assert.That((IsWoven(method), CountHookCalls(method, ScopeGateName)), Is.EqualTo((true, 0)));
+        }
+
+        [Test]
+        public void Given_AChildReadingAParameter_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildOfAParameterComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildReadingAParameter_When_Woven_Then_ItsScopeIsKeyedOnThatParameter()
+        {
+            // Act
+            var dependencies = DependencyCountOfCall(LoadMethod(nameof(TextChildOfAParameterComponent)), ScopeGateName, 0);
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHookValueTheBodyReassigns_When_Woven_Then_OnlyTheChildNotReadingItGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(CarrierChildReadingAReassignedHookValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingNothing_When_Woven_Then_ItGetsAScopeGateBesideTheOneReadingTheValue()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(FixedTextChildComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ATextChildCallingAMethodOfTheFixture_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildCallingAFixtureMethodComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingNothingButCallingAMethodOfTheFixture_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(FixtureMethodChildReadingNothingComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingAStaticField_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildReadingAStaticComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no child gate, so it counts none here either.
+        // What it pins is a loop around the children keeping them out of every scope: replacing the last line of
+        // `BranchBreaksRegion` with `return false;` gives them one.
+        [Test]
+        public void Given_TextChildrenBuiltInALoop_When_Woven_Then_NoChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildrenBuiltInALoopComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no child gate, so it counts none here either.
+        // What it pins is a protected region keeping every child out of every scope: `DepthsBefore(instructions)` in
+        // place of `body.HasExceptionHandlers ? null : DepthsBefore(instructions)` in `PlanScopes` gives them some.
+        [Test]
+        public void Given_TextChildrenAfterATryFinally_When_Woven_Then_NoChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildrenAfterATryFinallyComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no child gate, so it counts none here either.
+        // What it pins is a local that is no hook value staying out of the scopes: removing `||
+        // !facts.CanBeCompared(local, local.VariableType, region)` from `ScanLocal` gives the children some.
+        [Test]
+        public void Given_AChildWritingALocalALaterChildReads_When_Woven_Then_NoChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(CarrierChildWritingALocalComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AChildHandedAMutableRef_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildCarryingARefComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildHandedAServiceValue_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildReadingAServiceValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildHandedAReferenceState_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildReadingAReferenceStateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ATextChildAssigningAParameter_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildAssigningAParameterComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildPassingAServiceValue_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildPassingAServiceTableComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildPassingAReferenceFromACustomHook_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildPassingACustomHookTableComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingARefStructFromACustomHook_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildReadingARefStructHookValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildCastingAGenericParameter_When_Woven_Then_TheParameterIsBoxedForTheGateTheScopeAndTheCast()
+        {
+            // Act
+            var method = LoadMethod(nameof(TextChildReadingAGenericParameterComponent));
+            var boxes = method.Body.Instructions.Count(
+                instruction => instruction.OpCode == OpCodes.Box && instruction.Operand is GenericParameter);
+
+            // Assert
+            Assert.That(boxes, Is.EqualTo(3));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no scope gate, so no jump passes a store there and the
+        // count of jumps equals the count of gates, nought.
+        // What it pins is the weave of a scope's store: removing `RetargetBranches(body, plan.Store, store[0]);` from
+        // `InjectScope` reddens it, and so does removing the `foreach` there that inserts the store.
+        [Test]
+        public void Given_AChildChoosingBetweenTwoCalls_When_Woven_Then_OnlyEachGatesHitPathJumpsPastTheStoreOfItsScope()
+        {
+            // Act
+            var method = LoadMethod(nameof(ConditionalTextChildComponent));
+            var gates = ScopeGatesOf(nameof(ConditionalTextChildComponent));
+            var jumpsPastTheStore = method.Body.Instructions.Count(instruction => instruction.Operand is Instruction target
+                && target.Previous?.Previous?.Operand is MethodReference call && call.Name == ScopeStoreName);
+
+            // Assert
+            Assert.That(jumpsPastTheStore, Is.EqualTo(gates));
+        }
+
+        #endregion
 
 
 
 
+        #region Reactive scopes (a gate per child)
+        #endregion
 
         #region Bailed shapes (left unwoven)
 
@@ -2227,6 +2718,12 @@ namespace Velvet.Tests
             while (instructions[gate + 2 + pops].OpCode == OpCodes.Pop) pops++;
             return pops;
         }
+
+        private const string ScopeGateName = "TryGetMemoizedScope";
+        private const string ScopeStoreName = "StoreMemoizedScope";
+
+        private static int CountHookCalls(MethodDefinition method, string hookMethodName) =>
+            method.Body.Instructions.Count(IsHookCallTo(hookMethodName));
 
         // The length of the dependency array handed to the `occurrence`th call to a gate: the `ldc.i4 n; newarr object`
         // that builds it, ahead of the call.

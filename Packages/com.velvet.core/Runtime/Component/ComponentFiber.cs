@@ -270,7 +270,8 @@ namespace Velvet
         internal List<HookOptimisticSlot>? OptimisticSlots;
 
         // Never reset: only a difference between two readings in one render means anything, and
-        // Hooks.StoreMemoizedVNode takes it against the reading Hooks.TryGetMemoizedVNode took at the gate.
+        // Hooks.StoreMemoizedVNode takes it against the reading Hooks.TryGetMemoizedVNode took at the gate, as
+        // Hooks.StoreMemoizedScope does against the one of Hooks.TryGetMemoizedScope.
         internal int HookCallCount;
 
         /// <summary>

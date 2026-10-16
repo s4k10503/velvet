@@ -27,6 +27,11 @@ namespace Velvet.CodeGen
 
         private static readonly HookCaptureOutcome BailOutcome = new(HookCaptureMatch.Bail, default, null);
 
+        // The value of a hook that no comparison stands for: what UseService returns, and what a custom hook returns
+        // unless it is a value, which may be an instance it holds from inside.
+        private static bool IsUncomparableHookValue(MethodReference hook, bool isDirect, TypeReference type)
+            => isDirect ? hook.Name is nameof(Velvet.Hooks.UseService) : !IsValueLike(type);
+
         private static TypeReference? ElementOf(TypeReference? type)
             => type is GenericInstanceType instance ? ElementOf(instance.ElementType) : type;
 

@@ -31,6 +31,7 @@ namespace Velvet.Tests
     /// positional slot is exactly the expected names (no more, no fewer, no duplicates), and structurally, every
     /// public <c>Use*</c> hook whose implementation allocates a positional slot is present in that list — the
     /// ILPP weaver reads the list directly, so an omission is silently invisible to it rather than caught here.</item>
+    /// <item>A Velvet declaring the component gate alone is woven with no scope gate.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -1553,6 +1554,93 @@ namespace Velvet.Tests
                 }
             }
             return false;
+        }
+
+        // --- Reactive scope probes ---
+        //
+        // A scope may leave a local out of its dependencies when its own expression stores it before reading it
+        // and nothing reads the value after. These bodies are assembled by hand to hold two children whose
+        // calls reach one local that way, `ldloca; initobj; ldloc` for an optional nullable argument, since no
+        // compiled fixture of this assembly is certain to share a local between two calls.
+
+        private static TypeDefinition AddFactoryType(ModuleDefinition module, out MethodDefinition label, out MethodDefinition div)
+        {
+            var vnode = module.GetType("Velvet.VNode");
+            var factory = new TypeDefinition("Velvet", "V",
+                Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Abstract
+                | Mono.Cecil.TypeAttributes.Sealed | Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
+            module.Types.Add(factory);
+            label = AddStaticMethod(factory, "Label", vnode, module.TypeSystem.String, module.ImportReference(typeof(int?)));
+            div = AddStaticMethod(factory, "Div", vnode, module.TypeSystem.String, new ArrayType(vnode));
+            return factory;
+        }
+
+        private static MethodDefinition AddStaticMethod(TypeDefinition type, string name, TypeReference returns,
+            params TypeReference[] parameters)
+        {
+            var method = new MethodDefinition(name,
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, returns);
+            foreach (var parameter in parameters)
+            {
+                method.Parameters.Add(new ParameterDefinition(parameter));
+            }
+            type.Methods.Add(method);
+            return method;
+        }
+
+        // `var id = Hooks.UseId(null); return V.Div("root", V.Label(id, default), V.Label(id, default));`
+        private static MethodDefinition AssembleTwoLabelsSharingATemporary(ModuleDefinition module,
+            MethodDefinition component, MethodReference useId, MethodReference label, MethodReference div)
+        {
+            var optional = module.ImportReference(typeof(int?));
+            var id = new VariableDefinition(module.TypeSystem.String);
+            var temporary = new VariableDefinition(optional);
+            component.Body.Variables.Add(id);
+            component.Body.Variables.Add(temporary);
+            var il = component.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc, id));
+            il.Append(Instruction.Create(OpCodes.Ldstr, "root"));
+            il.Append(Instruction.Create(OpCodes.Ldc_I4, 2));
+            il.Append(Instruction.Create(OpCodes.Newarr, component.ReturnType));
+            foreach (var index in new[] { 0, 1 })
+            {
+                il.Append(Instruction.Create(OpCodes.Dup));
+                il.Append(Instruction.Create(OpCodes.Ldc_I4, index));
+                il.Append(Instruction.Create(OpCodes.Ldloc, id));
+                il.Append(Instruction.Create(OpCodes.Ldloca, temporary));
+                il.Append(Instruction.Create(OpCodes.Initobj, optional));
+                il.Append(Instruction.Create(OpCodes.Ldloc, temporary));
+                il.Append(Instruction.Create(OpCodes.Call, label));
+                il.Append(Instruction.Create(OpCodes.Stelem_Ref));
+            }
+            il.Append(Instruction.Create(OpCodes.Call, div));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(component);
+            return component;
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves the component gate and no scope gate here, so it counts one too.
+        // What it pins is a Velvet declaring no scope gate being woven without one: `true` in place of the
+        // `context.TryGetMemoizedScope != null && context.StoreMemoizedScope != null` test in `InjectMemoization` plans
+        // scopes it has no gate to call, the weave throws, and the method is left unwoven.
+        [Test]
+        public void Given_AVelvetDeclaringTheComponentGateAlone_When_CompilerWeaverRuns_Then_ItIsWovenWithNoScopeGate()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("GateAloneProbe", out var method, out var useId, out _, out _);
+            AddFactoryType(module, out var label, out var div);
+            AssembleTwoLabelsSharingATemporary(module, method, useId, label, div);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(
+                method.Body.Instructions.Count(instr => instr.OpCode == OpCodes.Call
+                    && instr.Operand is MethodReference callee && callee.Name.StartsWith("TryGetMemoized", StringComparison.Ordinal)),
+                Is.EqualTo(1));
         }
 
     }
