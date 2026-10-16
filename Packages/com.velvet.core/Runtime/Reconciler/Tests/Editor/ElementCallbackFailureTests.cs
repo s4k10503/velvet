@@ -12,8 +12,11 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies what a user callback the create and patch paths invoke does to the reconcile that
     /// invoked it when it throws. Each is application code the reconciler calls on behalf of a component
-    /// that is still live, so each reaches the nearest error boundary and, with none registered, the
-    /// console — one log line, unlike the two a teardown-path failure leaves.
+    /// that is still live, so each reaches the nearest error boundary at or above the component that rendered
+    /// the element and, with none registered, the console — one log line, unlike the two a teardown-path
+    /// failure leaves. A boundary reached from the creation of the element catches an <c>onCreated</c> or
+    /// <c>wrapElement</c> error in the walk, as a render error, which <c>BoundaryCatchScopeTests</c> holds; the
+    /// cases here that register a boundary read the ref callbacks.
     /// <list type="bullet">
     /// <item>A ref setup that throws does not stop the setup queued behind it, and a later patch carrying
     /// the same callback does not try it again — the entry records the identity whether or not the setup

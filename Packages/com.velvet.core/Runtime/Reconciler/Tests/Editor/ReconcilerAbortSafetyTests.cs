@@ -13,13 +13,13 @@ namespace Velvet.Tests
     /// <c>ChildReconciler.PatchOrReplaceAtSlot</c> call sites (the Common-phase indexed loop, and both keyed
     /// Pass-1 linear-scan implementations — sync and time-sliced).
     /// <list type="bullet">
-    /// <item>Where an error boundary inside the replacement catches a render, the replacement is inserted
-    /// holding the fallback and the scan goes on to patch the later sibling, as React commits the rest of a
-    /// render around a boundary's fallback — in the indexed loop and the synchronous keyed scan.</item>
-    /// <item>Where the construction raises an abort (<see cref="ReconcilerContext.IsAborted"/>) instead — the
-    /// boundary inside it catching an element callback's error, or the callback raising the flag itself — the
-    /// replacement is still inserted and the scan leaves the later sibling untouched, in the indexed loop and
-    /// both keyed scans.</item>
+    /// <item>Where an error boundary inside the replacement catches a render error or an element callback's
+    /// error, the replacement is inserted holding the fallback and the scan goes on to patch the later sibling,
+    /// as React commits the rest of a render around a boundary's fallback — in the indexed loop and the
+    /// synchronous keyed scan.</item>
+    /// <item>Where the construction raises an abort (<see cref="ReconcilerContext.IsAborted"/>) instead, which an
+    /// element callback raises by hand here, the replacement is still inserted and the scan leaves the later
+    /// sibling untouched, in the time-sliced keyed scan.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -235,8 +235,8 @@ namespace Velvet.Tests
     /// Specifies that <see cref="Reconciler.ContinueReconcile"/>'s own top-level completion point consumes
     /// <see cref="ReconcilerContext.IsAborted"/> exactly like <see cref="Reconciler.Reconcile"/>'s does —
     /// reading it into <see cref="Reconciler.LastTopLevelWasAborted"/> and resetting it (twice, around the
-    /// Portal / z-layer drain) rather than leaving it untouched. Without this, an Error Boundary catching
-    /// inside a Portal that a RESUMED time-sliced slice enqueued leaves the shared flag true after
+    /// Portal / z-layer drain) rather than leaving it untouched. Without this, an Error Boundary catching on the
+    /// aborting path inside a Portal that a RESUMED time-sliced slice patched leaves the shared flag true after
     /// ContinueReconcile returns; the very next unrelated fiber's own top-level Reconcile — sharing the same
     /// ReconcilerContext — then hits ChildReconciler.Reconcile's entry guard (<c>if (_ctx.IsAborted) return;</c>)
     /// and silently no-ops its entire pass. The same boundary must also apply the REST of a pass's
@@ -251,8 +251,7 @@ namespace Velvet.Tests
         private VisualElement _root;
         private static bool s_fallbackShown;
         private static int s_listCount;
-        private static bool s_portalAdded;
-        private static bool s_keyedFragmentAdded;
+        private static bool s_refDropped;
         private static ComponentFiber s_listFiber;
         private static string s_counterText;
         private static StateUpdater<string> s_setCounterText;
@@ -264,8 +263,7 @@ namespace Velvet.Tests
             RuntimeStateProbe.ClearPortalRegistry();
             s_fallbackShown = false;
             s_listCount = 3;
-            s_portalAdded = false;
-            s_keyedFragmentAdded = false;
+            s_refDropped = false;
             s_listFiber = null;
             s_counterText = "initial";
             s_setCounterText = default;
@@ -277,29 +275,28 @@ namespace Velvet.Tests
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
-        // GREEN_ON_BASE(characterization): the base's resumed slice drains the Portal and its boundary catches.
-        // The catch was an Assume, and sits in the assertion now so a pass whose boundary no longer catches
-        // reads red rather than inconclusive.
+        // GREEN_ON_BASE(characterization): the base's resumed slice raises the same abort through a Portal child's
+        // boundary and clears it in the same place. The catch was an Assume, and sits in the assertion now so a
+        // pass whose boundary no longer catches reads red rather than inconclusive.
         [Test]
-        public void Given_ATimeSlicedResumeDrainsAPortalWhoseErrorBoundaryCatches_When_AnUnrelatedFiberLaterReRenders_Then_ItsChangeStillCommits()
+        public void Given_ATimeSlicedResumePatchesAPortalWhoseErrorBoundaryCatchesOnTheAbortingPath_When_AnUnrelatedFiberLaterReRenders_Then_ItsChangeStillCommits()
         {
             // Arrange — a target the Portal resolves at enqueue time, and a host with two INDEPENDENT
             // inline-mounted sibling fibers sharing one ReconcilerContext (mirrors TimeSlicedFiberTests' own
-            // SiblingHostRender shape): "list" (a flat, keyed, time-sliceable array that grows a brand-new
-            // trailing Portal — wrapping an error boundary around a throwing child — only below) and
-            // "counter" (an ordinary, unrelated fiber whose own later re-render this test observes).
+            // SiblingHostRender shape): "list" (a flat, keyed, time-sliceable array ending in a Portal that wraps an
+            // error boundary around a child holding a ref) and "counter" (an ordinary, unrelated fiber whose own
+            // later re-render this test observes).
             var portalTarget = new VisualElement();
             FiberPortalRegistry.Register("continue-reconcile-abort-leak-target", portalTarget);
             using var mounted = V.Mount(_root, V.Component(Host, key: "host"), CaughtErrors.Unlogged);
             Assume.That(s_listFiber.HasPendingReconcileWorkForTest(), Is.False,
                 "Precondition: the initial mount is synchronous (zero budget)");
 
-            // Act (1) — add the trailing Portal under a tiny time-sliced budget: the pass parks on the
-            // existing (unchanged) keyed prefix one item per tick, then a RESUMED tick creates the Portal's
-            // placeholder (enqueuing it) as the pass's very last entry — so that SAME tick's own top-level
-            // finally (Reconciler.ContinueReconcile) is what drains it: the boundary catches the Portal
-            // child's throw and calls SetAborted() on the shared context.
-            s_portalAdded = true;
+            // Act (1) — drop the child's ref, whose cleanup throws, under a tiny time-sliced budget: the pass parks
+            // on the unchanged keyed prefix one item per tick, then a RESUMED tick patches the Portal as the pass's
+            // last entry, where the removed ref's cleanup fails and the boundary catches on the aborting path,
+            // calling SetAborted() on the shared context.
+            s_refDropped = true;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_listFiber.FlushStateWithTinyBudgetForTest();
             var parkedMidCommit = s_listFiber.HasPendingReconcileWorkForTest();
@@ -312,7 +309,7 @@ namespace Velvet.Tests
             s_setCounterText.Invoke("updated");
             mounted.FlushStateForTest();
 
-            // Assert — RED without the fix: a stale IsAborted left over from the Portal drain makes
+            // Assert — RED without the fix: a stale IsAborted left over from the resumed slice makes
             // ChildReconciler.Reconcile's entry guard silently no-op this fiber's entire reconcile, leaving
             // the old text in place instead of committing the update.
             Assert.That(
@@ -330,27 +327,14 @@ namespace Velvet.Tests
         private static VNode ListRender()
         {
             s_listFiber = FiberAmbientStack.Current;
-            var total = s_listCount + (s_portalAdded || s_keyedFragmentAdded ? 1 : 0);
+            var total = s_listCount + 1;
             var children = new VNode[total];
             for (var i = 0; i < s_listCount; i++)
             {
                 children[i] = V.Label(text: "item-" + i, key: "item" + i);
             }
-            if (s_portalAdded)
-            {
-                children[s_listCount] = V.Portal("continue-reconcile-abort-leak-target", key: "portal",
-                    children: new VNode[] { V.Component(BoundaryWrappingThrowerRender, key: "throwing-child") });
-            }
-            else if (s_keyedFragmentAdded)
-            {
-                children[s_listCount] = V.Div(key: "kf-wrap", children: new VNode[]
-                {
-                    V.Fragment(key: "kf", children: new VNode[]
-                    {
-                        V.Label(name: "keyed-fragment-leaf", text: "kf-leaf"),
-                    }),
-                });
-            }
+            children[s_listCount] = V.Portal("continue-reconcile-abort-leak-target", key: "portal",
+                children: new VNode[] { V.Component(BoundaryWrappingThrowerRender, s_refDropped, key: "boundary") });
             return V.Fragment(children: children);
         }
 
@@ -362,23 +346,24 @@ namespace Velvet.Tests
             return V.Label(name: "counter-label", text: text);
         }
 
-        #region BoundaryWrappingThrower component (boundary + Hooks.UseFallback wrapping a throwing child)
+        #region BoundaryWrappingThrower component (boundary + Hooks.UseFallback wrapping a child whose ref cleanup throws)
 
         [Component(IsErrorBoundary = true)]
-        private static VNode BoundaryWrappingThrowerRender()
+        private static VNode BoundaryWrappingThrowerRender(bool refDropped)
         {
             Hooks.UseFallback(_ =>
             {
                 s_fallbackShown = true;
                 return V.Label(text: "caught");
             });
-            return V.Component(ThrowingChildRender, key: "throwing-child-inner");
+            return V.Component(RefDroppingChildRender, refDropped, key: "ref-dropping-child");
         }
 
-        // An element callback's error rather than a render's: the boundary catches a render error in the walk
-        // of its own output, which raises no abort for the drain to leave behind.
+        // A ref removed outright is cleaned up where the patch drops it — see ReconcilerContext.SyncRefCallback —
+        // and that failure is not a render error, so the boundary catches it on the aborting path.
         [Component]
-        private static VNode ThrowingChildRender() => V.ScrollView(onCreated: _ => throw new Exception("boom-child"));
+        private static VNode RefDroppingChildRender(bool refDropped)
+            => V.Label(text: "child", refCallback: refDropped ? null : _ => () => throw new Exception("boom-child"));
 
         #endregion
     }

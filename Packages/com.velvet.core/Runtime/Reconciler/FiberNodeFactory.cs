@@ -100,7 +100,7 @@ namespace Velvet
         // A callback of an element being created fails while the render that creates it is still going on, so a
         // boundary whose output that render is expanding catches it there, as it catches a render error, and the
         // rest of that render goes on around its fallback, as React commits the siblings of a boundary that caught.
-        // The element, which has no parent yet, is released before the catch unwinds, with what it built and a ref
+        // No caller holds the element once that catch unwinds, so it is released first, with what it built and a ref
         // the wrap path has already queued for it.
         private void ContainCreationCallbackFailure(VisualElement element, Exception exception)
         {

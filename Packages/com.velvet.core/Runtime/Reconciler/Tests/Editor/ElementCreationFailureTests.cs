@@ -395,7 +395,7 @@ namespace Velvet.Tests
 
         // A row whose child raises the pass's abort while the row is created. A boundary catching an element
         // callback's error there now catches it in the walk, and a boundary above this reconcile would get a context
-        // of its own (ReconcilerAbortSafetyTests' time-sliced case says why), so the child raises the abort itself.
+        // of its own (ChildReconcilerAbortSafetyTests' time-sliced case says why), so the child raises the abort itself.
         private static VNode RowAbortedFromInside(string key)
             => V.Div(key: key, refCallback: s_rowRef,
                 children: new VNode[] { V.ScrollView(onCreated: _ => s_abortedContext.IsAborted = true) });
