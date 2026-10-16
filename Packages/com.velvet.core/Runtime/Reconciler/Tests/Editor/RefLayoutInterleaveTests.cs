@@ -845,7 +845,8 @@ namespace Velvet.Tests
 
             // Assert — the tick the ref attached with is read beside the layout effect, because a flush that never
             // rendered the sibling leaves the earlier ref in place and reads the same
-            Assert.That((string.Join(",", s_log), s_lastWatchedTick), Is.EqualTo(("reader:null", 1)));
+            Assert.That((string.Join(",", s_log), s_lastWatchedTick), Is.EqualTo(("reader:null", 1)),
+                "recorded order: " + string.Join(",", s_log));
         }
 
         // Owns the same write as OwedSibling and logs the order of a re-rendered component's own commit: the
@@ -911,7 +912,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.FindAll(entry => entry == "insertion" || entry == "attach"),
-                Is.EqualTo(new[] { "insertion", "attach" }));
+                Is.EqualTo(new[] { "insertion", "attach" }), "recorded order: " + string.Join(",", log));
         }
 
         [Test]
@@ -922,7 +923,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.FindAll(entry => entry == "layout-cleanup" || entry == "attach"),
-                Is.EqualTo(new[] { "layout-cleanup", "attach" }));
+                Is.EqualTo(new[] { "layout-cleanup", "attach" }), "recorded order: " + string.Join(",", log));
         }
 
         // The presence mounts when the state is written, so its first render suppresses the enter of the Motion it

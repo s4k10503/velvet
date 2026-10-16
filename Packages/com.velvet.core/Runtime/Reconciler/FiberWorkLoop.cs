@@ -356,8 +356,13 @@ namespace Velvet
             {
                 // MUTANT_SURVIVES(equivalent, line removed): FlushOwedSettleRenders is the only reader of a list, and it holds the list it was handed, so a list left installed is appended to by a settle outside every flush, or after the flush's last read, and read by nothing.
                 s_owedSettleRenders = enclosing;
+                if (enclosing == null) s_indicatorFlushOwed = false;
             }
         }
+
+        // A flush nested in an owed window leaves the indicator's drain to the flush that encloses it, which runs
+        // it after its own commit has attached its refs.
+        private static bool s_indicatorFlushOwed;
 
         // The components a settle inside the running FlushState or ContinueReconcile asked for a render, in the
         // order it asked; null outside both. Each call makes its own list, so a nested call neither reads nor
@@ -554,7 +559,7 @@ namespace Velvet
                 // DOM mutations are committed so a has- ancestor that did not itself reconcile is not left stale.
                 // Scoped to this flush's region (the fiber's MountPoint subtree) — see RefreshHasVariants.
                 FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
-                FlushCompletedTransitionIndicator(fiber);
+                FlushCompletedTransitionIndicator(fiber, endsEnclosingCommit);
             }
             if (!endsEnclosingCommit) FiberEffects.CommitStrandedLayoutWork(context!);
         }
@@ -573,10 +578,16 @@ namespace Velvet
                     || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition)
                         && !fiber.HasPromotedTransition));
 
-        private static void FlushCompletedTransitionIndicator(ComponentFiber fiber)
+        private static void FlushCompletedTransitionIndicator(ComponentFiber fiber, bool endsEnclosingCommit)
         {
-            if (fiber.PendingReconcileDrainsTransitionWork)
+            if (endsEnclosingCommit)
             {
+                s_indicatorFlushOwed |= fiber.PendingReconcileDrainsTransitionWork;
+                return;
+            }
+            if (fiber.PendingReconcileDrainsTransitionWork || s_indicatorFlushOwed)
+            {
+                s_indicatorFlushOwed = false;
                 fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
             }
         }
