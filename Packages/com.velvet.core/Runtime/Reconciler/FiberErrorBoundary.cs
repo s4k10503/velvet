@@ -34,8 +34,23 @@ namespace Velvet
                 exception));
 
         // MountOptions.OnUncaughtError's default: the entry is the error itself, as React's default reports the
-        // error itself.
-        internal static void LogUncaughtError(Exception exception, ErrorInfo info) => Debug.LogException(exception);
+        // error itself, and a development build adds the warning naming the component React's development build adds.
+        internal static void LogUncaughtError(Exception exception, ErrorInfo info)
+        {
+            Debug.LogException(exception);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.LogWarning(UncaughtErrorWarning(info));
+#endif
+        }
+
+        private static string UncaughtErrorWarning(ErrorInfo info)
+        {
+            var firstLine = info.ComponentStack.Split('\n')[0];
+            var component = firstLine.StartsWith(StackLinePrefix, StringComparison.Ordinal)
+                ? $"An error occurred in the <{firstLine.Substring(StackLinePrefix.Length)}> component."
+                : "An error occurred in one of your Velvet components.";
+            return component + "\n\nConsider adding an error boundary to your tree to customize error handling behavior.";
+        }
 
         // Fallback path for a function-style Error Boundary: invokes the factory registered via
         // Hooks.UseFallback within the Render of a [Component(IsErrorBoundary = true)] component.
@@ -55,6 +70,8 @@ namespace Velvet
         // Walks the throwing fiber's Parent chain to produce a component stack
         // (one line per fiber, deepest first), honoring [Component(DisplayName)] overrides
         // via Hooks.ComponentName.
+        private const string StackLinePrefix = "    at ";
+
         private static string BuildComponentStack(ComponentFiber? throwingFiber)
         {
             if (throwingFiber == null) return string.Empty;
@@ -62,7 +79,7 @@ namespace Velvet
             for (var current = throwingFiber; current != null; current = current.Parent)
             {
                 if (sb.Length > 0) sb.Append('\n');
-                sb.Append("    at ").Append(Hooks.ComponentName(current));
+                sb.Append(StackLinePrefix).Append(Hooks.ComponentName(current));
             }
             return sb.ToString();
         }

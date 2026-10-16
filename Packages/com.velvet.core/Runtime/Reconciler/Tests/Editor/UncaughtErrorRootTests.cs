@@ -14,6 +14,7 @@ namespace Velvet.Tests
     /// <item>A render error, on mount or on update, and a passive effect's error unmount the whole tree: the target
     /// is left without its elements and the effects of the components that unmount are cleaned up.</item>
     /// <item>So does an error the reconcile of the tree the root was handed raises below no component.</item>
+    /// <item>Without a handler, the error is logged and followed by a warning naming the component that threw.</item>
     /// <item>A click handler's error unmounts nothing.</item>
     /// </list>
     /// </summary>
@@ -107,6 +108,25 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.childCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_NoHandler_When_AChildsUpdateRenderThrows_Then_AWarningNamesTheComponentThatThrew()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ThrowerBesideProbeRender, key: "host"));
+            LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {RenderMessage}");
+            LogAssert.Expect(LogType.Warning,
+                "An error occurred in the <UncaughtErrorRootTests.ThrowingRender> component.\n\n"
+                + "Consider adding an error boundary to your tree to customize error handling behavior.");
+            s_throws = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the expected warning is what fails the case when it is not logged
+            LogAssert.NoUnexpectedReceived();
         }
 
         // GREEN_ON_BASE(characterization): a click handler's error unmounts nothing on the base, and must not after it.
