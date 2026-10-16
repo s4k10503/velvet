@@ -51,6 +51,19 @@ namespace Velvet.Tests
             Assert.That(Flex(ok, s), Is.EqualTo(expected));
         }
 
+        [TestCase("flex-[2_3_2em]")]
+        [TestCase("flex-[50vw_2_3]")]
+        [TestCase("flex-[2_3_calc(50%+10px)]")]
+        public void Given_AFlexShorthandWithABasisTheElementMeasures_When_Parsed_Then_ItCarriesTheFactorsAndTheMeasuredBasis(
+            string cls)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
+
+            // Assert — grow and shrink, then whether the basis is left to the element to measure.
+            Assert.That(Flex(ok, s) + $" {s.Expression != null}", Is.EqualTo("2 3 0Pixel True"));
+        }
+
         // GREEN_ON_BASE(characterization): the base parses no flex shorthand utility, so each is declined there.
         // Each row names the check that rejects it: dropping `denominator != 0` in TryGetFlexPreset reddens flex-1/0,
         // and dropping `number < 0f` in TakeFlexNumber reddens flex-[-1].

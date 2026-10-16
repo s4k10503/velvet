@@ -2852,9 +2852,8 @@ namespace Velvet
                     var flex = ClipPathLayoutBox.StyleFor(element, style.Property);
                     flex.flexGrow = style.Value;
                     flex.flexShrink = style.Value3;
-                    flex.flexBasis = float.IsNaN(style.Value2)
-                        ? new StyleLength(StyleKeyword.Auto)
-                        : new StyleLength(new Length(style.Value2, style.Unit2));
+                    // The basis is written as basis-[…] writes its own, a measured length included.
+                    WriteLength(element, flex, FlexBasisOf(style), PropertySetters[ArbitraryProperty.FlexBasis]);
                     return;
                 }
                 case ArbitraryProperty.AspectRatio:
@@ -2915,6 +2914,12 @@ namespace Velvet
 
             WriteLength(element, ClipPathLayoutBox.BoxFor(element, style.Property).style, style, setters);
         }
+
+        // A Flex result's basis as the FlexBasis result basis-[…] parses to.
+        private static ArbitraryStyle FlexBasisOf(in ArbitraryStyle flex)
+            => flex.Expression != null ? new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Expression)
+                : float.IsNaN(flex.Value2) ? ArbitraryStyle.AutoLength(ArbitraryProperty.FlexBasis)
+                : new ArbitraryStyle(ArbitraryProperty.FlexBasis, flex.Value2, flex.Unit2);
 
         // A relative length is measured per setter, since each carries its own axis and its own stand-in for an
         // indefinite one; a length that cannot be measured yet leaves that slot as it is.

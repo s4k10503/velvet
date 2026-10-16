@@ -356,7 +356,8 @@ namespace Velvet
         // null for every other property.
         public CustomFilterValue? Custom { get; }
         // A length an element has to measure (em, a viewport unit, a percentage beside a pixel length), for a
-        // property PropertySetters writes; Value and Unit then carry nothing. Null for every other result.
+        // property PropertySetters writes, where Value and Unit then carry nothing, or for Flex's basis, where
+        // Value2 and Unit2 do. Null for every other result.
         public StyleLengthExpression? Expression { get; }
         // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
         public bool Auto { get; }
@@ -420,6 +421,16 @@ namespace Velvet
         // Creates a Flex result: grow, shrink, and the basis (NaN for auto).
         public static ArbitraryStyle Flex(float grow, float shrink, float basis, LengthUnit basisUnit)
             => new(ArbitraryProperty.Flex, grow, basisUnit, basis, basisUnit, shrink);
+
+        // Creates a Flex result whose basis only the element it is written to can measure.
+        public static ArbitraryStyle Flex(float grow, float shrink, StyleLengthExpression basis)
+            => new(grow, shrink, basis);
+
+        private ArbitraryStyle(float grow, float shrink, StyleLengthExpression basis)
+            : this(ArbitraryProperty.Flex, grow, LengthUnit.Pixel, 0f, LengthUnit.Pixel, shrink)
+        {
+            Expression = basis;
+        }
 
         // Creates a pair-valued length result.
         public ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit,

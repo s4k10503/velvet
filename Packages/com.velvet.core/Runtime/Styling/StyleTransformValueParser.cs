@@ -152,8 +152,11 @@ namespace Velvet
                     return false;
                 }
             }
-            result = ArbitraryStyle.Flex(float.IsNaN(parts.Grow) ? 1f : parts.Grow,
-                float.IsNaN(parts.Shrink) ? 1f : parts.Shrink, parts.Basis, parts.Unit);
+            var grow = float.IsNaN(parts.Grow) ? 1f : parts.Grow;
+            var shrink = float.IsNaN(parts.Shrink) ? 1f : parts.Shrink;
+            result = parts.Measured != null
+                ? ArbitraryStyle.Flex(grow, shrink, parts.Measured)
+                : ArbitraryStyle.Flex(grow, shrink, parts.Basis, parts.Unit);
             return true;
         }
 
@@ -187,6 +190,8 @@ namespace Velvet
             public float Shrink;
             public float Basis;
             public LengthUnit Unit;
+            // A basis only the element can measure (2em, 50vw, calc(50%+10px)), in place of Basis and Unit.
+            public StyleLengthExpression Measured;
             public bool HasBasis;
             public bool PairClosed;
         }
@@ -211,8 +216,19 @@ namespace Velvet
                 parts.Basis = float.NaN;
                 return true;
             }
-            return StyleArbitraryValueResolver.TryParseValue(part, out parts.Basis, out parts.Unit)
-                && parts.Basis >= 0f;
+            if (StyleArbitraryValueResolver.TryParseValue(part, out parts.Basis, out parts.Unit))
+            {
+                return parts.Basis >= 0f;
+            }
+            // A length the element measures, as basis-[…] reads one (TryParseRelativeLength). One spelled with a
+            // leading minus is declined, as the shorthand declines a negative basis above.
+            if (part.Length == 0 || part[0] == '-' || !StyleLengthExpression.TryParse(part, out var measured)
+                || !measured.IsFinite())
+            {
+                return false;
+            }
+            parts.Measured = measured;
+            return true;
         }
 
         private static bool TakeFlexNumber(float number, ref FlexParts parts)

@@ -339,8 +339,8 @@ The `flex` shorthand takes Tailwind v4's forms: `flex-<N>` is `flex: <N>` (grow 
 `flex-<a>/<b>` is `flex: calc(<a>/<b> * 100%)` (grow and shrink 1, that percentage as the basis), and
 `flex-[…]` is `flex: …` with `_` for each space — `flex-[2_1_120px]`, `flex-[none]`, `flex-[1_1_0]`, with
 the keywords in any case and `unset` and `revert` reading as `initial`. A basis is `auto`, a unitless `0`
-after the factors, or a length in `px`, `rem` (at 16px), `%` or an absolute unit (`in`, `cm`, `mm`, `pt`,
-`pc`, `Q`). `flex-1` (`flex: 1`, a 0% basis like every other `flex-<N>`), `flex-auto`, `flex-initial` and
+after the factors, or any non-negative length `basis-[…]` takes, those the element measures (`2em`, `50vw`,
+`calc(50%+10px)`) included. `flex-1` (`flex: 1`, a 0% basis like every other `flex-<N>`), `flex-auto`, `flex-initial` and
 `flex-none` are USS classes.
 
 Tailwind declares `flex` before `flex-shrink`, `flex-grow` and `flex-basis`, so a longhand beside the
