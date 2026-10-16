@@ -7903,14 +7903,17 @@ class CostDealtShardTests(unittest.TestCase):
         # Assert
         self.assertEqual(dealt, [[1, 3], [2]])
 
+    # GREEN_ON_BASE(characterization): the base's ceiling of 16 is held by the same cap; deleting the `len(held[shard]) < SHARD_CEILING[platform]` test in `deal` reddens it.
     def test_Given_FewDearMutantsAndManyCheapOnes_When_DealtToTheMostShards_Then_NoShardHoldsMoreThanTheCeiling(self):
-        # Arrange — 3 dear and 157 cheap fill ten shards of 16 exactly; balanced on cost alone the six shards
-        # without a dear mutant would each take 17 cheap ones.
-        kinds = "w" * 3 + "n" * 157
+        # Arrange — 3 dear and the rest cheap fill every shard of the ceiling exactly; balanced on cost alone the
+        # shards without a dear mutant would each take one cheap mutant more.
+        total = mutation_check.MAX_SHARDS * mutation_check.SHARD_CEILING["EditMode"]
+        kinds = "w" * 3 + "n" * (total - 3)
         mutants = self.mutants(kinds)
 
         # Act
-        dealt = mutation_check.deal(list(range(1, 161)), mutants, self.PROJECT, "EditMode", mutation_check.MAX_SHARDS)
+        dealt = mutation_check.deal(list(range(1, total + 1)), mutants, self.PROJECT, "EditMode",
+                                    mutation_check.MAX_SHARDS)
 
         # Assert
         self.assertLessEqual(max(len(indices) for indices in dealt), mutation_check.SHARD_CEILING["EditMode"])
@@ -7964,34 +7967,36 @@ class CostDealtShardTests(unittest.TestCase):
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
+    # Measured on this week's EditMode shards (runs 38882765210 and 38865742861 among them): a baseline of
+    # 445 to 486 s, a launch of an area's own assemblies of 180 to 231 s, and a mutant at about 561 s from
+    # the end of a shard's baseline to its last verdict. The slowest of each is charged.
+    BASELINE = 486
+
     # What a narrowed platform's shard spends before its first mutant when it makes the reach run: the whole
-    # suite once under the unmutated program with the switches recording. Charged at twice the 375 s the
-    # slowest EditMode baseline took -- an allowance, since no recording run has been timed -- in place of
-    # each area's own baseline, which a shard that makes the reach run does not take in its opening.
-    REACH_RUN = 2 * 375
+    # suite once under the unmutated program with the switches recording. Charged at twice the baseline --
+    # an allowance, since no recording run has been timed -- in place of each area's own baseline, which a
+    # shard that makes the reach run does not take in its opening.
+    REACH_RUN = 2 * BASELINE
 
     # What the opening runs of the covered sets add: each of a shard's mutants gets one, of at most
-    # 1/REACH_SHARE of the 375 s baseline in seconds, and none is shared in the worst case.
-    GATE_SUITE_SECONDS = 375
+    # 1/REACH_SHARE of the baseline in seconds, and none is shared in the worst case.
+    GATE_SUITE_SECONDS = BASELINE
 
     # What a launch of its own spends on its area's baseline, charged once for each area the launches
     # touch; the slowest measured. A shard takes it in its opening when it takes main's path -- it places
-    # fewer than `REACH_MIN_MUTANTS` or more than `REACH_MAX_MUTANTS`, or was assigned one it declined --
-    # and afterwards for a placed mutant whose reading does not stand.
-    AREA_LAUNCH = 145
+    # fewer than `REACH_MIN_MUTANTS`, or was assigned one it declined. The same figure stands for the launch
+    # of the fixtures reading IL that follows a session survivor under `Runtime/`: a build and the cases
+    # of the six files that read IL, about 190, which no run has timed.
+    AREA_LAUNCH = 231
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
-    # baseline, of its baseline and after its last verdict, added together. The 493 s is the slowest
-    # shard's seconds per mutant, from its baseline's end to its last verdict "less its areas' own
-    # launches" in CONTRIBUTING.md, so the areas' baselines are charged apart from it. It was measured on
-    # launches that took their area first, which is the path a launch of its own still takes, and before a
-    # placed mutant's first launch was its covered cases; it is kept until one is measured. Three arms, by
-    # `arm`: "reach" is a shard that makes the reach run, for `count` placed mutants, charged for the reach
-    # run, a gate for each mutant, and `fallback_areas` area baselines for placed mutants whose reading
-    # does not stand and which launch on their own afterwards; "failed" the same with a reach run that
-    # never finishes, every mutant taking the whole suite; "small" a shard that takes main's path, which
-    # is main's charge: every area's baseline and the whole shard.
-    def fits(self, job, platform, mutant, setup, arm="reach", count=None, fallback_areas=0):
+    # baseline, of its baseline and after its last verdict, added together. The 561 s is a shard's measured
+    # seconds per mutant. Three arms, by `arm`: "reach" is a shard that makes the reach run, for `count`
+    # placed mutants, charged for the reach run and a gate for each mutant, and each mutant charged as a
+    # survivor under `Runtime/`: the session's whole suite and then the launch of the fixtures reading IL;
+    # "failed" the same with a reach run that never finishes, every mutant taking the whole suite; "small"
+    # a shard that takes main's path, which is main's charge: every area's baseline and the whole shard.
+    def fits(self, job, platform, mutant, setup, arm="reach", count=None):
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         # Both platforms' measuring steps sit in `mutation-shard`, each with a timeout of its own under the
         # job's, which must hold both and the steps around them.
@@ -8001,9 +8006,10 @@ class ShardCeilingTests(unittest.TestCase):
         count = per if count is None else count
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
         opening = self.REACH_RUN if narrowed else 0
+        if narrowed and arm in ("reach", "failed"):
+            mutant = max(mutant, self.BASELINE + self.AREA_LAUNCH)
         if narrowed and arm == "reach" and per is not None:
             opening += self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * count
-            opening += fallback_areas * self.AREA_LAUNCH
         if arm == "small":
             opening = self.areas() * self.AREA_LAUNCH
         return (per is not None and found is not None
@@ -8022,50 +8028,50 @@ class ShardCeilingTests(unittest.TestCase):
             '<test-suite type="Assembly" name="{}.dll" duration="1" />'.format(name) for name in ran)))
         return len(mutation_check.narrowable(results, [path for path in runtime.iterdir() if path.is_dir()]))
 
-    def test_Given_TheMostPlacedMutantsWhoseReachRunNeverFinishes_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
+    def test_Given_AFullShardWhoseReachRunNeverFinishes_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the run is stopped at REACH_BOUND times the baseline, which REACH_RUN charges; no covered
         # set is then run, and every mutant takes the whole suite at the same measured figure.
-        mutant, setup = 493, 201 + 375 + 12 + 900
+        mutant, setup = 561, 201 + 486 + 12 + 900
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="failed",
-                         count=mutation_check.REACH_MAX_MUTANTS)
+                         count=mutation_check.SHARD_CEILING["EditMode"])
 
         # Assert
         self.assertTrue(fits)
 
-    def test_Given_EveryCountOfPlacedMutantsTheReachRunIsMadeFor_When_AFallbackLaunchesInEveryTouchedArea_Then_EveryOneFits(self):
-        # Arrange — n placed mutants touching min(n, all) areas, each with a fallback launch that takes its
-        # area's baseline: 1488 + 750 + 37.5 n + 145 min(n, 8) + 493 n, which is 10294.5 at n = 13.
-        mutant, setup = 493, 201 + 375 + 12 + 900
-        counts = range(mutation_check.REACH_MIN_MUTANTS, mutation_check.REACH_MAX_MUTANTS + 1)
+    def test_Given_EveryCountOfPlacedMutantsTheReachRunIsMadeFor_When_EveryOneTakesTheWholeSuiteAfterwards_Then_EveryOneFits(self):
+        # Arrange — n placed mutants, each charged the whole suite after the reach run and its gate:
+        # 1599 + 972 + 48.6 n + 717 n, a survivor's charge: the session's whole suite, then the launch of the
+        # fixtures reading IL.
+        mutant, setup = 561, 201 + 486 + 12 + 900
+        counts = range(mutation_check.REACH_MIN_MUTANTS, mutation_check.SHARD_CEILING["EditMode"] + 1)
 
         # Act
         fitting = [placed for placed in counts
-                   if self.fits("mutation-shard", "EditMode", mutant, setup, count=placed,
-                                fallback_areas=min(placed, self.areas()))]
+                   if self.fits("mutation-shard", "EditMode", mutant, setup, count=placed)]
 
         # Assert
         self.assertEqual(fitting, list(counts))
 
-    def test_Given_TheMostPlacedMutantsTheReachRunIsMadeFor_When_OneMoreIsAdded_Then_AFallbackInEveryAreaNoLongerFits(self):
-        # Arrange — the maximum is derived here from the job timeout rather than read back from the constant:
-        # it is the largest count whose charge fits, and at one more the shard could overrun.
-        mutant, setup = 493, 201 + 375 + 12 + 900
-        largest = max(placed for placed in range(1, mutation_check.SHARD_CEILING["EditMode"] + 1)
-                      if self.fits("mutation-shard", "EditMode", mutant, setup, count=placed,
-                                   fallback_areas=min(placed, self.areas())))
+    def test_Given_EveryArmAShardCanTake_When_TheMostMutantsFittingAllOfThemAreCounted_Then_ItIsTheEditModeCeiling(self):
+        # Arrange — derived from the job timeout rather than read back from the constant: a shard of this many
+        # fits whether it makes the reach run, its reach run never finishes, or it is on main's path.
+        mutant, setup = 561, 201 + 486 + 12 + 900
+        largest = max((count for count in range(1, 40)
+                       if all(self.fits("mutation-shard", "EditMode", mutant, setup, arm=arm, count=count)
+                              for arm in ("reach", "failed", "small"))), default=0)
 
         # Act
-        stated = mutation_check.REACH_MAX_MUTANTS
+        stated = mutation_check.SHARD_CEILING["EditMode"]
 
         # Assert
         self.assertEqual(stated, largest)
 
     def test_Given_AnEditModeShardOnMainsPath_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange — a shard below the minimum or above the maximum, or assigned a declined mutant: every area's
-        # baseline, then every mutant the shard was assigned.
-        mutant, setup = 493, 201 + 375 + 12 + 900
+        # Arrange — a shard below the minimum, or assigned a declined mutant: every area's baseline, then every
+        # mutant the shard was assigned.
+        mutant, setup = 561, 201 + 486 + 12 + 900
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small")
@@ -8075,14 +8081,16 @@ class ShardCeilingTests(unittest.TestCase):
                          (True, True))
 
     def test_Given_ThePlanWhoseCostDealingWouldPileCheapMutantsOnOneShard_When_TheDearestShardIsCharged_Then_ItFitsTheJobTimeout(self):
-        # Arrange — 3 whole-suite and 157 narrowed mutants fill ten shards of the ceiling exactly. Charged at
-        # the 493 s a mutant the ceiling uses, the dearest shard is taken on main's path, as a shard above
-        # `REACH_MAX_MUTANTS` is.
+        # Arrange — 3 whole-suite and the rest narrowed mutants fill ten shards of the ceiling exactly. Charged at
+        # the 561 s a mutant the ceiling uses, the dearest shard is charged on main's path, the dearer
+        # of the two arms.
         runtime = REPO_ROOT / mutation_check.PACKAGE / "Runtime"
+        total = mutation_check.MAX_SHARDS * mutation_check.SHARD_CEILING["EditMode"]
         mutants = [survivor(runtime / ("Reconciler/N.cs" if number > 3 else "W.cs"), number)
-                   for number in range(1, 161)]
-        dealt = mutation_check.deal(list(range(1, 161)), mutants, REPO_ROOT, "EditMode", mutation_check.MAX_SHARDS)
-        mutant, setup = 493, 201 + 375 + 12 + 900
+                   for number in range(1, total + 1)]
+        dealt = mutation_check.deal(list(range(1, total + 1)), mutants, REPO_ROOT, "EditMode",
+                                    mutation_check.MAX_SHARDS)
+        mutant, setup = 561, 201 + 486 + 12 + 900
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small",
@@ -8091,10 +8099,11 @@ class ShardCeilingTests(unittest.TestCase):
         # Assert
         self.assertTrue(fits)
 
+    # GREEN_ON_BASE(characterization): the base's 493 s whole-suite figure is also under the 561 s charged here; raising `WHOLE_COST["EditMode"]` to 600 reddens it.
     def test_Given_TheDealsCostFigures_When_ComparedWithWhatTheCeilingCharges_Then_NoMutantIsDealtDearer(self):
-        # Arrange — the ceiling charges 493 s an EditMode mutant and 934 + 100 s a PlayMode one, so a mutant the
+        # Arrange — the ceiling charges 561 s an EditMode mutant and 934 + 100 s a PlayMode one, so a mutant the
         # plan deals as narrowed that `narrowable` then declines is still within the charge.
-        edit, play = 493, 934 + 100
+        edit, play = 561, 934 + 100
 
         # Act
         within = (max(mutation_check.NARROWED_COST, mutation_check.WHOLE_COST["EditMode"]) <= edit,
@@ -8201,6 +8210,12 @@ class SessionCampaign(StubbedCampaign):
     # The cases the reach run reports, each with the mutant ids it ran: None is a reach run that did not
     # come out green, which is what a stub that knows nothing of it reports.
     reach = None
+    # What an own launch whose filter names the IL-reading fixture reports instead of a green run of its one
+    # case (see `il_answer`), and how the unmutated control of that filter comes out: "red" or "short".
+    il_launch = None
+    il_control = None
+    # Whether a mutant whose text joins `a - b` fails to build, as a `+` between strings does.
+    rejects_minus = False
     reach_cases = ("N.C.A", "N.C.B", "N.C.C", "N.C.D") + tuple("N.C.F{}".format(number) for number in range(36))
     # A case the reach run reports as failed, and whether it reports one case fewer than the baseline held.
     failing_case = None
@@ -8219,6 +8234,7 @@ class SessionCampaign(StubbedCampaign):
         self.outcome = "killed"
         self.rewrites = []
         self.launched = []
+        self.scopes = []
         self.during = None
         self.plans = []
         self.environments = []
@@ -8240,7 +8256,37 @@ class SessionCampaign(StubbedCampaign):
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         self.launched.append(Path(results).name)
-        return super().run_suite(_unity, _project, _platform, _scope, results, log, _timeout, _holder)
+        self.scopes.append(list(_scope))
+        answer = super().run_suite(_unity, _project, _platform, _scope, results, log, _timeout, _holder)
+        name = Path(results).name
+        if name == "baseline-il.xml" and self.il_control:
+            Path(results).write_text(FAILING_RESULTS if self.il_control == "red" else
+                                     '<test-run total="0" passed="0" failed="0" inconclusive="0" />')
+        if self.il_launch and name.startswith("mutant-") and "ReaderTests" in " ".join(_scope):
+            return self.il_answer(Path(results), Path(log), answer)
+        if self.rejects_minus and name.startswith("mutant-") and "a - b" in self.source.read_text():
+            Path(log).write_text("Packages/com.velvet.core/Runtime/Probe.cs(5,80): error CS0019: Operator '-' "
+                                 "cannot be applied to operands of type 'string' and 'string'\n")
+        return answer
+
+    def il_answer(self, results, log, answer):
+        """What a launch that runs the fixtures reading IL reports, by `il_launch`."""
+        mode = self.il_launch
+        if mode == "nothing":
+            results.write_text('<test-run total="0" passed="0" failed="0" inconclusive="0" />')
+        elif mode == "timeout_complete":
+            return answer[0], True, 0
+        elif mode == "timeout":
+            results.unlink()
+            return answer[0], True, 0
+        elif mode == "none":
+            results.unlink()
+        elif mode == "build":
+            log.write_text("Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n")
+        elif mode == "fail":
+            results.write_text('<test-run total="3" passed="2" failed="1" inconclusive="0">'
+                               '<test-case fullname="N.ReaderTests.A" result="Failed" /></test-run>')
+        return answer
 
     def rewrite(self, _unity, project, request, _scratch):
         self.rewrites.append(request)
@@ -8276,7 +8322,9 @@ class SessionCampaign(StubbedCampaign):
                          "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
             else:
                 xml.write_text('<test-run total="0" passed="0" failed="0" inconclusive="0" />'
-                               if self.short else GREEN_RESULTS)
+                               if self.short else
+                               '<test-run total="1" passed="0" failed="0" inconclusive="1" />'
+                               if self.outcome == "inconclusive" else GREEN_RESULTS)
                 stage = {"name": "whole", "finished": True, "xml": str(xml), "failures": [],
                          "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
             name.write_text(json.dumps({"id": number, "stages": [stage]}))
@@ -8480,6 +8528,349 @@ class SessionRoutingTests(SessionRoutingBase):
 
         # Assert
         self.assertEqual(campaign.rewrites, [])
+
+
+READER = "class ReaderTests { void A() { ModuleDefinition.ReadModule(\"x\"); } }"
+ONE_READER_CASE = (
+    '<test-run total="1" passed="1" failed="0" inconclusive="0">'
+    '<test-suite type="Assembly" name="Velvet.Tests.Ran.dll" duration="1" />'
+    '<test-case fullname="N.ReaderTests.A" classname="N.ReaderTests" result="Passed" /></test-run>')
+ONLY_READERS = ["-testFilter", "[.+]ReaderTests$"]
+
+
+class ILReadingBase(SessionRoutingBase):
+    """A project holding one fixture that reads IL, one case of it in the baseline, and an assembly the
+    session reports as read."""
+
+    def setUp(self):
+        super().setUp()
+        tests = self.campaign.source.parent / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.Ran"}))
+        (tests / "ReaderTests.cs").write_text(READER)
+        self.campaign.baseline_text = ONE_READER_CASE
+        self.campaign.outcome = "survived"
+        self.il_read = {mutation_check.assembly_of(self.campaign.source)}
+
+    def own(self):
+        """The scope of each launch of mutant 1."""
+        return [scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
+                if name == "mutant-001.xml"]
+
+
+class ILReadingSurvivorTests(ILReadingBase):
+    """A session survivor in an assembly some fixture reads the IL of stands for every other fixture, so
+    its own launch runs the fixtures reading IL and nothing else."""
+
+    def ran(self):
+        found = re.findall(r"s; cases run: ([^;]*);", self.campaign.printed)
+        return found[-1] if found else None
+
+    def test_Given_ASessionSurvivorInAnAssemblyAFixtureReadsTheILOf_When_ItsOwnLaunchRuns_Then_OnlyTheFixturesReadingILAreSelected(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS])
+
+    def test_Given_TheFixturesReadingILPassAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheyAreRunOnceBeforeAnyMutant(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual([scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
+                          if name == "baseline-il.xml"], [ONLY_READERS])
+
+    # GREEN_ON_BASE(characterization): drop the `held["failed"]` term of the control's check in `mutation_check.py` and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_TheFixturesReadingILRedAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
+        # Arrange — their failure on a mutant would not be the mutation's.
+        self.campaign.il_control = "red"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    # GREEN_ON_BASE(characterization): drop the `held["total"] != il_cases` term of the control's check and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_AControlThatRanOtherCasesThanTheBaselineHolds_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
+        # Arrange — a filter that selected nothing proves nothing about these fixtures.
+        self.campaign.il_control = "short"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    def test_Given_AnILReadingLaunchThatSelectsNoCase_When_ItSurvives_Then_TheWholeSuiteDecides(self):
+        # Arrange — a filter that selected nothing would read every mutant as surviving the fixtures it
+        # was meant to run.
+        self.campaign.il_launch = "nothing"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatTimedOutOverACompleteResult_When_ItSurvives_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "timeout_complete"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatWroteNoResult_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "none"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatTimedOutWithoutAResult_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "timeout"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchWhoseBuildStopped_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "build"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatFailedACase_When_ItEnds_Then_ItIsTheVerdictAndTheWholeSuiteIsNotRun(self):
+        # Arrange — it reports more cases than the baseline holds, which a failure does not make wrong.
+        self.campaign.il_launch = "fail"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.own(), mutation_check.KILLED in self.campaign.printed), ([ONLY_READERS], True))
+
+    def test_Given_AnILReadingLaunchThatFellBackOnTheWholeSuite_When_TheSummaryPrints_Then_ItNamesOnlyTheWholeRun(self):
+        # Arrange
+        self.campaign.il_launch = "nothing"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.ran(), "whole 1")
+
+    def test_Given_AnOwnLaunch_When_TheSummaryPrints_Then_ItNamesHowManyCasesItRan(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.ran(), "fixtures reading IL 1")
+
+    # GREEN_ON_BASE(characterization): let the survivor-only test beside `CALL_REMOVING` pass an inconclusive reading and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_ASessionSurvivorThatWasInconclusive_When_ItsOwnLaunchRuns_Then_ItTakesTheWholeSuite(self):
+        # Arrange — the session's inconclusive case may be any fixture's, not only those reading IL.
+        self.campaign.outcome = "inconclusive"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    # GREEN_ON_BASE(characterization): delete the `if scope:` return of `il_only_classes` and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_AScopeTheCallerChose_When_ASurvivorsOwnLaunchRuns_Then_NoLaunchIsNarrowedToTheFixturesReadingIL(self):
+        # Act
+        self.campaign.run("--max", "1", "--filter", "N.Elsewhere")
+
+        # Assert
+        self.assertEqual([scope for scope in self.campaign.scopes if "[.+]ReaderTests$" in " ".join(scope)], [])
+
+    # GREEN_ON_BASE(characterization): the base launches the whole suite for every such survivor, and deleting the `if not cases` test in `il_only_scope` reddens it.
+    def test_Given_NoFixtureReadingIL_When_ASurvivorsAssemblyIsRead_Then_TheWholeSuiteIsTheOwnLaunch(self):
+        # Arrange — the assembly is read as IL by name, but no fixture file the project holds says so.
+        (self.campaign.source.parent / "Tests" / "Editor" / "ReaderTests.cs").write_text("class ReaderTests { }")
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    def test_Given_AReaderThatIsAlsoATextReader_When_TheScopeIsBuilt_Then_ItIsLeftOutOfIt(self):
+        # Arrange
+        results = self.campaign.project / "baseline.xml"
+        results.write_text(ONE_READER_CASE)
+
+        # Act
+        scope = mutation_check.il_only_scope(self.campaign.project, results, {"ReaderTests"}, [])
+
+        # Assert
+        self.assertEqual(scope, (None, 0))
+
+    def test_Given_AScopeTheCallerChose_When_TheScopeIsBuilt_Then_ThereIsNone(self):
+        # Arrange
+        results = self.campaign.project / "baseline.xml"
+        results.write_text(ONE_READER_CASE)
+
+        # Act
+        scope = mutation_check.il_only_scope(self.campaign.project, results, set(), ["-testFilter", "X"])
+
+        # Assert
+        self.assertEqual(scope, (None, 0))
+
+
+class ILReadingUncoveredTests(ILReadingBase):
+    """A mutant no case ran, in an assembly some fixture reads the IL of, takes the same launch."""
+
+    reach_from = 1
+
+    def setUp(self):
+        super().setUp()
+        self.campaign.reach = {"N.C.A": {99}}
+
+    def test_Given_AMutantNoCaseRanInAnAssemblyAFixtureReadsTheILOf_When_ItsOwnLaunchRuns_Then_OnlyTheFixturesReadingILAreSelected(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS])
+
+
+class CallRemovingCampaign(SessionCampaign):
+    """A mutant whose kept operator takes a call out of the method."""
+
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static void Run()
+                {
+                    Work();
+                }
+            }
+        }
+        """)
+
+
+class ILReadingCallRemovalTests(ILReadingBase):
+    """A woven component's IL is read through the callees it reaches, so a survivor that removes a call is
+    not narrowed to the fixtures reading IL."""
+
+    campaign_class = CallRemovingCampaign
+
+    # GREEN_ON_BASE(characterization): delete the `CALL_REMOVING` test on the survivor path and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_ASurvivorThatRemovedACall_When_ItsAssemblyIsReadAsIL_Then_ItsOwnLaunchIsTheWholeSuite(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+
+class ILReadingCallRemovalUncoveredTests(ILReadingBase):
+    campaign_class = CallRemovingCampaign
+    reach_from = 1
+
+    # GREEN_ON_BASE(characterization): delete the `CALL_REMOVING` test on the uncovered path and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
+    def test_Given_AnUncoveredMutantThatRemovedACall_When_ItsAssemblyIsReadAsIL_Then_ItsOwnLaunchIsTheWholeSuite(self):
+        # Arrange
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+
+class RejectingSessionCampaign(SessionCampaign):
+    """`Log(a + b, ok && other);`: the kept `+ -> -` rewrite does not build, and the cap holds a clause
+    removal behind it."""
+
+    BODY = RejectingJoinCampaign.BODY
+    rejects_minus = True
+
+
+class ILReadingStandInTests(ILReadingBase):
+    """The mutant that stands for a line whose kept mutant is no program was not the session's survivor."""
+
+    campaign_class = RejectingSessionCampaign
+
+    def test_Given_AKeptMutantThatDoesNotBuild_When_AStandInIsMeasured_Then_ItRunsTheWholeSuite(self):
+        # Act
+        self.campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, [], []])
+
+
+class ILFixtureHazardTests(unittest.TestCase):
+    """Fixtures a class filter and a case count cannot follow."""
+
+    def classes(self, declarations):
+        project = Path(tempfile.mkdtemp(prefix="il-hazard-"))
+        tests = project / "Packages" / "P" / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "T.asmdef").write_text(json.dumps({"name": "T"}))
+        (tests / "ReaderTests.cs").write_text(declarations)
+        (tests / "Other.cs").write_text("class Other : ReaderBase { }")
+        return mutation_check.il_only_classes(project, {"T"}, set())
+
+    def test_Given_APlainFixtureReadingIL_When_Named_Then_ItsClassIsReturned(self):
+        # Act
+        classes = self.classes(READER)
+
+        # Assert
+        self.assertEqual(classes, {"ReaderTests"})
+
+    def test_Given_AFixtureTakingArguments_When_Named_Then_NoClassIsReturned(self):
+        # Act
+        classes = self.classes("[TestFixture(1)]\n" + READER)
+
+        # Assert
+        self.assertIsNone(classes)
+
+    def test_Given_AFixtureSourceInTheReadingFile_When_Named_Then_NoClassIsReturned(self):
+        # Act
+        classes = self.classes("[TestFixtureSource(nameof(X))]\n" + READER)
+
+        # Assert
+        self.assertIsNone(classes)
+
+    def test_Given_AClassSomeSourceDerivesFrom_When_Named_Then_NoClassIsReturned(self):
+        # Act
+        classes = self.classes("class ReaderBase { void A() { ModuleDefinition.ReadModule(\"x\"); } }")
+
+        # Assert
+        self.assertIsNone(classes)
+
+    def test_Given_TheFixturesTheRepositoryReadsILIn_When_Named_Then_TheyAreNamedAndNoneIsParameterisedOrDerived(self):
+        # Arrange — the guard that fails the day one is added, so the narrowing is declined rather than wrong.
+        ran = {json.loads(path.read_text())["name"]
+               for path in (REPO_ROOT / mutation_check.PACKAGE).rglob("*.asmdef")
+               if path.parent.parts[-2:] == ("Tests", "Editor")}
+
+        # Act
+        classes = mutation_check.il_only_classes(REPO_ROOT, ran, set())
+
+        # Assert
+        self.assertTrue(classes)
 
 
 class SessionReachTests(SessionRoutingBase):
@@ -8942,27 +9333,37 @@ class DeclinedMutantBesideASessionTests(SixOrSevenMutantsBase):
 
 
 class FourteenMutantCampaign(SixMutantCampaign):
-    """Fourteen mutants, all placed: one more than the reach run is made for."""
+    """Fourteen mutants, all placed."""
 
     BODY = probe_body(14)
 
 
-class TooLargeShardTests(SixOrSevenMutantsBase):
+class ManyPlacedMutantsTests(SixOrSevenMutantsBase):
     campaign_class = FourteenMutantCampaign
 
-    def test_Given_OneMorePlacedMutantThanTheReachRunIsMadeFor_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
-        # Arrange — a fallback in every area it touches would no longer fit the job.
-        limit = mutation_check.REACH_MAX_MUTANTS
+    def test_Given_FourteenMutantsAllPlaced_When_TheCampaignRuns_Then_TheReachRunIsMade(self):
+        # Arrange
 
         # Act
-        self.campaign.run("--max", str(limit + 1))
+        self.campaign.run("--max", "14")
 
         # Assert
-        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+        self.assertEqual(self.campaign.plans[0].get("reach"), True)
 
 
 class FullyPlacedShardTests(SixOrSevenMutantsBase):
     campaign_class = SixMutantCampaign
+
+    def test_Given_AReachRunAndAnItemNoLaunchFinished_When_TheMutantTakesItsOwnLaunch_Then_NoAreaBaselinePrecedesIt(self):
+        # Arrange — the reading does not stand; the whole suite answers all its area could.
+        self.campaign.lost = True
+        self.campaign.outcome = "survived"
+
+        # Act
+        self.campaign.run("--max", "6")
+
+        # Assert
+        self.assertEqual([name for name in self.campaign.launched if name.startswith("baseline-")], [])
 
     def test_Given_SixMutantsAllPlaced_When_TheCampaignRuns_Then_TheReachRunIsMade(self):
         # Arrange — the control for the pair above: the same threshold with nothing left for a launch of its own.
