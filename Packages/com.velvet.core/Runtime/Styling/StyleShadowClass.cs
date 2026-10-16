@@ -130,12 +130,19 @@ namespace Velvet
         // classNames (CSS cascade: later classes win). Returns false when no shadow is
         // wanted — either no shadow class at all, or the winning class is shadow-none.
         public static bool TryExtract(string[] classNames, out ShadowSpec spec)
+            => TryExtract(classNames, classNames?.Length ?? 0, out spec);
+
+        // baseCount as StyleRingClass.TryExtract takes it: the box-shadow utilities among the element's own classes
+        // are read in the order Tailwind emits them (StyleRingClass.InEmitOrder), so `shadow-xl shadow-none` keeps
+        // its shadow.
+        public static bool TryExtract(string[] classNames, int baseCount, out ShadowSpec spec)
         {
             spec = default;
             if (classNames == null)
             {
                 return false;
             }
+            classNames = StyleRingClass.InEmitOrder(classNames, baseCount);
 
             var found = false;
             var foundBoxShadow = false;

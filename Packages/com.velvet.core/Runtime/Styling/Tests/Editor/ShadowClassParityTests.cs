@@ -56,16 +56,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ShadowNoneThenShadowLg_When_Extracted_Then_LgWins()
+        public void Given_ShadowNoneThenShadowLg_When_Extracted_Then_TheRuleTailwindEmitsLastWins()
         {
-            // Arrange
-            var classes = new[] { "shadow-none", "shadow-lg" };
+            // Arrange — Tailwind emits shadow-lg, shadow-none, shadow-xl in that order, whatever order the classes
+            // are written in, so none cancels lg and xl outlasts none.
+            var cancelled = new[] { "shadow-none", "shadow-lg" };
+            var kept = new[] { "shadow-xl", "shadow-none" };
 
             // Act
-            var found = StyleShadowClass.TryExtract(classes, out var spec);
+            var lg = StyleShadowClass.TryExtract(cancelled, out _);
+            var xl = StyleShadowClass.TryExtract(kept, out _);
 
             // Assert
-            Assert.That(found && spec.Blur == 34f, Is.True);
+            Assert.That((lg, xl), Is.EqualTo((false, true)));
         }
 
         [Test]

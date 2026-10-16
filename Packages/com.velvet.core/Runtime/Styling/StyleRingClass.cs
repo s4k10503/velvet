@@ -157,6 +157,11 @@ namespace Velvet
         // Resolves the composite ring/outline spec from classNames. Returns false when nothing is drawn — no
         // ring/outline class, or every band resolved to width 0 (ring-0 alone, outline-none).
         public static bool TryExtract(string[] classNames, out RingSpec spec)
+            => TryExtract(classNames, classNames?.Length ?? 0, out spec);
+
+        // baseCount: how many leading entries are the element's own classes rather than variant tokens appended
+        // after them (ReconcilerContext.ReconciledClassCount); InEmitOrder orders those as Tailwind emits them.
+        public static bool TryExtract(string[] classNames, int baseCount, out RingSpec spec)
         {
             spec = default;
             if (classNames == null)
@@ -164,6 +169,7 @@ namespace Velvet
                 return false;
             }
 
+            classNames = InEmitOrder(classNames, baseCount);
             var slots = default(RingSlots);
             var discarded = DiscardsBoxShadow(classNames);
             foreach (var cls in classNames)
@@ -209,10 +215,19 @@ namespace Velvet
             return false;
         }
 
+        // The ring, outline and box-shadow utilities among the element's own classes, put in the order Tailwind
+        // emits their rules, which is what decides between two of them writing one property whatever order the
+        // classes were written in: `ring-4 ring-2` is 4px and `outline-none outline-2` draws no outline.
+        internal static string[] InEmitOrder(string[] classNames, int baseCount)
+            => StyleRuleOrder.WithMembersInEmitOrder(classNames, baseCount, s_emitOrdered);
+
+        private static readonly Func<string, bool> s_emitOrdered =
+            cls => IsRingClass(cls) || cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal);
+
         // Whether the box-shadow Tailwind composes for these classes is one the browser discards, which takes the
         // ring and every shadow-* with it: a ring whose colour, width or offset colour the browser rejects, or a
-        // shadow-[…] holding a bare non-zero number. The ring colour and width are read last class winning, as
-        // Accumulate reads them.
+        // shadow-[…] holding a bare non-zero number. classNames is in the order InEmitOrder gives, read last rule
+        // winning, as Accumulate reads it.
         internal static bool DiscardsBoxShadow(string[]? classNames)
         {
             if (classNames == null)

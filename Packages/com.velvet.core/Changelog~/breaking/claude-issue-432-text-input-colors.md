@@ -31,6 +31,10 @@
   gap transparent, and the ring's colour spreads under that fill as Tailwind's box-shadow composes it. A
   `shadow-*` beside `ring-offset-<n>` draws the fill too. `ring-none`, which Tailwind does not generate, no
   longer cancels a ring.
+- Two of an element's own ring, outline or `shadow-*` utilities writing one property resolve in the order
+  Tailwind emits them, where the class written last won: `ring-4 ring-2` is 4px, `outline-none outline-2`
+  draws no outline, `shadow-none shadow-lg` draws no shadow, and `ring ring-[5PX] ring-[#ff0000]` discards
+  the box-shadow, as `ring-[5PX]` is emitted last.
 - `grid-cols-[5]` leaves the class inert, as the browser rejects the `grid-template-columns: 5` Tailwind writes
   for it; it used to lay out five columns. `grid-cols-[repeat(5,minmax(0,1fr))]`, the list `grid-cols-5` writes,
   is five columns.

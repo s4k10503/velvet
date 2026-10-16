@@ -813,6 +813,14 @@ namespace Velvet
         // pure side-table (teardown is a plain Remove), so it is enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, VariantGateState> VariantGateClasses { get; } = new();
 
+        // How many leading entries of classNames, the class source a paint pass was handed for element, are the
+        // element's own reconciled classes rather than the variant tokens composed after them.
+        internal int ReconciledClassCount(VisualElement element, string[] classNames)
+            => VariantGateClasses.TryGetValue(element, out var gate) && gate.Reconciled != null
+                && ReferenceEquals(gate.Resolved, classNames)
+                    ? gate.Reconciled.Length
+                    : classNames.Length;
+
         // The family each element's font layer named or inherited (FiberFontScope). Its two tables are pure
         // side-tables, enrolled below.
         internal FiberFontScope FontScope { get; } = new();

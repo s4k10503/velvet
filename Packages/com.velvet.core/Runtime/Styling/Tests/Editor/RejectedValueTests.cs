@@ -64,15 +64,15 @@ namespace Velvet.Tests
             Assert.That(ok, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base ignored a rejected ring colour, and a later colour still wins here.
         [Test]
-        public void Given_ARejectedRingColourOverriddenByALaterColour_When_Extracted_Then_TheRingIsDrawn()
+        public void Given_ARejectedRingColourWrittenBeforeAValidOne_When_Extracted_Then_NoRingIsDrawn()
         {
-            // Act
-            var ok = StyleRingClass.TryExtract(new[] { "ring", "ring-[5PX]", "ring-[#ff0000]" }, out var spec);
+            // Act — Tailwind emits ring-[#ff0000] before ring-[5PX], so the rejected colour is the one the browser
+            // reads whichever comes first in the class list.
+            var ok = StyleRingClass.TryExtract(new[] { "ring", "ring-[5PX]", "ring-[#ff0000]" }, out _);
 
             // Assert
-            Assert.That(ok ? spec.Ring.Color : Color.clear, Is.EqualTo(Color.red));
+            Assert.That(ok, Is.False);
         }
 
         // GREEN_ON_BASE(characterization): a drop-shadow is a filter, which the base drew beside any ring as this does.

@@ -20,7 +20,8 @@ namespace Velvet
         // overlay on the element's attach instead.
         internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
         {
-            if (!StyleRingClass.HasRingClass(classNames) || !StyleRingClass.TryExtract(classNames, out var spec))
+            if (!StyleRingClass.HasRingClass(classNames)
+                || !StyleRingClass.TryExtract(classNames, _ctx.ReconciledClassCount(element, classNames), out var spec))
             {
                 return;
             }
@@ -54,7 +55,8 @@ namespace Velvet
             }
 
             var spec = default(RingSpec);
-            var want = !clipActive && StyleRingClass.TryExtract(classNames, out spec);
+            var want = !clipActive
+                && StyleRingClass.TryExtract(classNames, _ctx.ReconciledClassCount(element, classNames), out spec);
 
             if (want && bound)
             {

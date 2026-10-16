@@ -19,7 +19,8 @@ namespace Velvet
         // wrapElement.
         internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)
         {
-            if (!StyleShadowClass.HasShadowClass(classNames) || !StyleShadowClass.TryExtract(classNames, out var spec))
+            if (!StyleShadowClass.HasShadowClass(classNames)
+                || !StyleShadowClass.TryExtract(classNames, _ctx.ReconciledClassCount(element, classNames), out var spec))
             {
                 return;
             }
@@ -66,7 +67,8 @@ namespace Velvet
             }
 
             var spec = default(ShadowSpec);
-            var want = !clipActive && StyleShadowClass.TryExtract(classNames, out spec);
+            var want = !clipActive
+                && StyleShadowClass.TryExtract(classNames, _ctx.ReconciledClassCount(element, classNames), out spec);
 
             // ApplySkewOnPatch ran before this (the shared pass order), so the SkewBindings entry is in its
             // post-patch state: a skewed caster's face is owned by its SkewSilhouette, an upright caster's by

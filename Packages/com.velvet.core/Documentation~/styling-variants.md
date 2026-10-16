@@ -310,7 +310,10 @@ A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `rin
 colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A band whose
 family names no colour is drawn in the element's text colour and follows it as it changes. A ring and an
 outline on one element are two bands, each with its own width, colour and offset, the outline drawn over the
-ring: `ring-4 outline-2` is a 4px ring under a 2px outline.
+ring: `ring-4 outline-2` is a 4px ring under a 2px outline. Two of an element's own ring, outline or `shadow-*`
+utilities that write one property resolve in the order Tailwind emits their rules, not the order they are
+written: `ring-2 ring-4` and `ring-4 ring-2` are both 4px, `outline-none outline-2` draws no outline, and
+`shadow-xl shadow-none` keeps its shadow. A variant's utility still outranks the element's own.
 
 `ring-offset-<n>` fills the gap with `--tw-ring-offset-color`, white unless `ring-offset-<colour>` names
 another, and the ring spreads across the offset under that fill, as Tailwind composes them into one

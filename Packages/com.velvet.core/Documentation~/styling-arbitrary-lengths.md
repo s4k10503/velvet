@@ -79,7 +79,7 @@ element's box-shadow discards the whole box-shadow, the ring and every `shadow-*
 `drop-shadow-*`, a filter, stays: a ring colour that is no colour (`ring ring-[5PX]`, `ring-2 ring-[2]`), a ring
 width that is no length (`ring-[length:2]`), a ring offset colour that is no colour beside an offset width
 (`ring-offset-2 ring-offset-[2]`), and a `shadow-[…]` holding a bare non-zero number (`shadow-[0_4_8_#000]`).
-The ring colour and width are each the last class's, as the ring reads them. A `from-` / `via-` / `to-` colour
+The ring colour and width are each the one Tailwind emits last, as the ring reads them. A `from-` / `via-` / `to-` colour
 that is no colour (`from-[1IN]`) leaves its stop transparent, and a position that is no length
 (`from-[length:red]`) returns the stop to its initial position: 0%, 50% or 100%.
 

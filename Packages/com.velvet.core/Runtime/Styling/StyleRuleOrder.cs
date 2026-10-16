@@ -366,6 +366,51 @@ namespace Velvet
         // first, which leaves a property they share to z.
         internal static int CompareUtilities(string a, string z) => SortKey.Of(a).CompareTo(SortKey.Of(z));
 
+        // classNames with the members among its first baseCount entries put in the order Tailwind emits them, each
+        // into one of the places a member held, so a reader that lets the last class win reads the rule Tailwind
+        // emits last. Every other entry keeps its place, and so does every entry from baseCount on: those are the
+        // variant tokens a variant appends after the element's own classes, already in the order their layers
+        // rank. classNames itself when its members are already in that order.
+        internal static string[] WithMembersInEmitOrder(string[] classNames, int baseCount, Func<string, bool> member)
+        {
+            List<int>? places = null;
+            var end = Math.Min(baseCount, classNames.Length);
+            for (var i = 0; i < end; i++)
+            {
+                if (classNames[i] != null && member(classNames[i]))
+                {
+                    (places ??= new List<int>()).Add(i);
+                }
+            }
+            if (places == null || places.Count < 2)
+            {
+                return classNames;
+            }
+            var keys = new SortKey[places.Count];
+            var order = new int[places.Count];
+            for (var i = 0; i < keys.Length; i++)
+            {
+                keys[i] = SortKey.Of(classNames[places[i]]);
+                order[i] = i;
+            }
+            // Ties keep the order they were written in.
+            Array.Sort(order, (a, z) =>
+            {
+                var byKey = keys[a].CompareTo(keys[z]);
+                return byKey != 0 ? byKey : a.CompareTo(z);
+            });
+            string[]? sorted = null;
+            for (var i = 0; i < order.Length; i++)
+            {
+                if (order[i] != i)
+                {
+                    sorted ??= (string[])classNames.Clone();
+                    sorted[places[i]] = classNames[places[order[i]]];
+                }
+            }
+            return sorted ?? classNames;
+        }
+
         private static int? ShorthandIndexOf(StyleLonghandSet set)
         {
             foreach (var (shorthandSet, index) in s_shorthandIndexes)

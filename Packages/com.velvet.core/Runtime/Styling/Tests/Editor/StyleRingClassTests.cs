@@ -83,7 +83,8 @@ namespace Velvet.Tests
             // base named others. Resolving the ring whole-spec — the shadow parser's rule — would let a
             // variant that mentions only a colour reset the width to the family default.
             VelvetPalette.TryResolveColorToken("blue-500", out var blue);
-            var spec = Extract("ring-2", "ring-red-500", "ring-blue-500");
+            // The element's own classes are the first two; the variant's colour is appended after them.
+            StyleRingClass.TryExtract(new[] { "ring-2", "ring-red-500", "ring-blue-500" }, 2, out var spec);
             Assert.That((spec.Ring.Width, spec.Ring.Color), Is.EqualTo((2f, blue)));
         }
 
@@ -116,13 +117,30 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_RingThenRingZero_When_Extracted_Then_LaterZeroCancels()
+        public void Given_RingThenRingZero_When_Extracted_Then_OnlyAVariantZeroCancels()
         {
-            // The control is the same list minus the trailing ring-0, which separates a CANCELLATION from
-            // a ring that was never resolved in the first place.
+            // Among the element's own classes Tailwind emits ring-0 before ring-2, so ring-2 stands; a variant's
+            // ring-0, appended after them, cancels it.
             Assert.That(
-                (Extract("ring-2").Ring.Width, StyleRingClass.TryExtract(new[] { "ring-2", "ring-0" }, out _)),
+                (Extract("ring-2", "ring-0").Ring.Width, StyleRingClass.TryExtract(new[] { "ring-2", "ring-0" }, 1, out _)),
                 Is.EqualTo((2f, false)));
+        }
+
+        [Test]
+        public void Given_OutlineNoneWrittenBeforeAWidth_When_Extracted_Then_NoOutlineIsDrawn()
+        {
+            // Tailwind emits outline-none after outline-2; the control is the width alone.
+            Assert.That(
+                (StyleRingClass.TryExtract(new[] { "outline-none", "outline-2" }, out _), Extract("outline-2").Outline.Width),
+                Is.EqualTo((false, 2f)));
+        }
+
+        [Test]
+        public void Given_TwoRingColours_When_Extracted_Then_TheOneTailwindEmitsLastWins()
+        {
+            // ring-blue-500 is emitted before ring-red-500, so red wins written either way.
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+            Assert.That(Extract("ring-2", "ring-red-500", "ring-blue-500").Ring.Color, Is.EqualTo(red));
         }
 
         [Test]
