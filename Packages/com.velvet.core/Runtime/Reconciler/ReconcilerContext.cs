@@ -2565,8 +2565,7 @@ namespace Velvet
 
         public ReconcilerContext()
         {
-            EventManager = new FiberEventBindingManager(BatchScheduler,
-                (element, target) => FiberCrossPanelEventDispatcher.IsOnLogicalChain(element, target, this));
+            EventManager = new FiberEventBindingManager(BatchScheduler);
             FiberElementFactory = new FiberElementFactory(EventManager);
             ComponentRegistry = new ComponentRegistry(this);
             FiberMemoCache = new FiberMemoCache();

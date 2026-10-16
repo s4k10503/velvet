@@ -21,6 +21,17 @@ namespace Velvet
         // event type" without any generic type parameter to dispatch on.
         private readonly Dictionary<VisualElement, List<FiberEventBinding>> _bindingsByElement = new();
 
+        // Per Button, whether the press or submit now under way began in content off the logical chain. It is
+        // kept apart from the bindings because a render that binds the Button again between the press and the
+        // click must not lose it; Forget drops it once the Button leaves the tree.
+        private readonly Dictionary<Button, ClickGate> _clickGates = new();
+
+        private sealed class ClickGate
+        {
+            public bool OffChain;
+            public Action Unwire = null!;
+        }
+
         // The click every ClickedEventBinding on a button hands its handler, replaced at the start of each
         // click by the callback BindClickedEvent puts ahead of them on Button.clicked.
         private readonly Dictionary<Button, ClickedEventSlot> _clickedEventSlots = new();
@@ -70,6 +81,8 @@ namespace Velvet
 
         internal bool IsBridgeAnchor(VisualElement element) => _bridges.ContainsKey(element);
 
+        internal bool HoldsBridges => _bridges.Count > 0;
+
         // Called once an element's bindings were registered again after UnbindAll.
         internal void Rebound(VisualElement element)
         {
@@ -87,26 +100,9 @@ namespace Velvet
         // tests of binding registration): the discrete flag is still bracketed, but no synchronous flush runs.
         private readonly FiberBatchScheduler? _batchScheduler;
 
-        // Answers whether an element is on the logical chain of an event's target. Null in isolated unit tests of
-        // binding registration, where no element is off a chain.
-        private readonly Func<VisualElement, VisualElement, bool>? _isOnLogicalChain;
-
-        internal FiberEventBindingManager(FiberBatchScheduler? batchScheduler = null,
-            Func<VisualElement, VisualElement, bool>? isOnLogicalChain = null)
+        internal FiberEventBindingManager(FiberBatchScheduler? batchScheduler = null)
         {
             _batchScheduler = batchScheduler;
-            _isOnLogicalChain = isOnLogicalChain;
-        }
-
-        // Whether native dispatch is about to run element's handler for an event the React tree would not carry
-        // to it: element is on the target's physical path and off its logical chain, as the element a portal
-        // renders into and its physical ancestors are. Synthetic invocation never asks, since it walks the chain.
-        // The answer costs a chain walk per handler, so a manager holding no bridge skips it.
-        private bool OffLogicalChain(VisualElement element, EventBase evt)
-        {
-            if (_isOnLogicalChain == null || _bridges.Count == 0) return false;
-            if (evt.target is not VisualElement target) return false;
-            return !_isOnLogicalChain(element, target);
         }
 
         // Skips re-registration if the same delegate is already registered for the same kind of binding in the
@@ -170,7 +166,12 @@ namespace Velvet
                 case ClickedBinding clicked when element is Button button:
                 {
                     var handler = clicked.Handler;
-                    Action wrapped = () => RunDiscrete(handler);
+                    var gate = GateClicks(button);
+                    Action wrapped = () =>
+                    {
+                        if (gate.OffChain) return;
+                        RunDiscrete(handler);
+                    };
                     button.clicked += wrapped;
                     actions.Add(() => button.clicked -= wrapped);
                     break;
@@ -273,9 +274,9 @@ namespace Velvet
                 }
             };
             EventCallback<FocusInEvent> keyboardOpened = _ => keyboard = field.textEdition.touchScreenKeyboard;
-            EventCallback<FocusOutEvent> keyboardClosed = _ =>
+            EventCallback<FocusOutEvent> keyboardClosed = evt =>
             {
-                if (keyboard != null && SubmitsOnKeyboardClose(field.multiline, keyboard.status))
+                if (keyboard != null && SubmitsOnFocusOut(field, evt, keyboard.status))
                 {
                     RunDiscrete(() => handler?.Invoke(field.value));
                 }
@@ -296,6 +297,11 @@ namespace Velvet
                 field.UnregisterCallback(keyboardClosed);
             });
         }
+
+        // A focus-out raised in portal content the field holds without being above its call site is no blur of the
+        // field, however the keyboard ended.
+        internal static bool SubmitsOnFocusOut(TextField field, FocusOutEvent evt, UnityEngine.TouchScreenKeyboard.Status status)
+            => !FiberCrossPanelEventDispatcher.OffLogicalChain(field, evt) && SubmitsOnKeyboardClose(field.multiline, status);
 
         // Done is the status a keyboard the user finished with reports; a multi-line field never submits.
         internal static bool SubmitsOnKeyboardClose(bool multiline, UnityEngine.TouchScreenKeyboard.Status status)
@@ -342,6 +348,7 @@ namespace Velvet
         {
             EventCallback<T> wrapped = evt =>
             {
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(field, evt)) return;
                 if (!IsWithin(field, evt.relatedTarget))
                 {
                     RunDiscrete(() => handler?.Invoke(evt));
@@ -490,6 +497,8 @@ namespace Velvet
             _unbindActions.Clear();
             _boundDelegates.Clear();
             _bindingsByElement.Clear();
+            foreach (var gate in _clickGates.Values) gate.Unwire();
+            _clickGates.Clear();
         }
 
         // Invoked by FiberCrossPanelEventDispatcher (see that class for the walks) for an element no native
@@ -620,7 +629,7 @@ namespace Velvet
             }
             EventCallback<T> wrapped = evt =>
             {
-                if (OffLogicalChain(element, evt)) return;
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(element, evt)) return;
                 handler?.Invoke(evt);
             };
             element.RegisterCallback(wrapped, TrickleDown.TrickleDown);
@@ -632,7 +641,7 @@ namespace Velvet
         {
             EventCallback<T> wrapped = evt =>
             {
-                if (OffLogicalChain(element, evt)) return;
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(element, evt)) return;
                 if (StoppedByBubblePrelude(element, evt)) return;
                 handler?.Invoke(evt);
             };
@@ -640,10 +649,50 @@ namespace Velvet
             actions.Add(() => element.UnregisterCallback(wrapped));
         }
 
+        // clicked carries no event, so the origin of a click is read where the press starts: a pointer-down or a
+        // submit trickling through the Button still names the element it was raised on. The up and cancel
+        // callbacks are registered after the Button's own, which therefore read the origin first. A capture-out
+        // is left out of that: its order against the click is not pinned here, and every press or submit starts
+        // by writing the origin again.
+        private ClickGate GateClicks(Button button)
+        {
+            if (_clickGates.TryGetValue(button, out var gate)) return gate;
+
+            gate = new ClickGate();
+            EventCallback<PointerDownEvent> pressed = evt => BeginPress(button, gate, evt);
+            EventCallback<NavigationSubmitEvent> submitting = evt => BeginPress(button, gate, evt);
+            EventCallback<PointerUpEvent> released = _ => gate.OffChain = false;
+            EventCallback<PointerCancelEvent> cancelled = _ => gate.OffChain = false;
+            button.RegisterCallback(pressed, TrickleDown.TrickleDown);
+            button.RegisterCallback(submitting, TrickleDown.TrickleDown);
+            button.RegisterCallback(released);
+            button.RegisterCallback(cancelled);
+            gate.Unwire = () =>
+            {
+                button.UnregisterCallback(pressed, TrickleDown.TrickleDown);
+                button.UnregisterCallback(submitting, TrickleDown.TrickleDown);
+                button.UnregisterCallback(released);
+                button.UnregisterCallback(cancelled);
+            };
+            _clickGates[button] = gate;
+            return gate;
+        }
+
+        private static void BeginPress(Button button, ClickGate gate, EventBase evt) =>
+            gate.OffChain = FiberCrossPanelEventDispatcher.OffLogicalChain(button, evt);
+
+        // Called once a Button leaves the tree for good.
+        internal void Forget(Button button)
+        {
+            if (!_clickGates.Remove(button, out var gate)) return;
+            gate.Unwire();
+        }
+
         // The callback registered first runs first on Button.clicked, so the one registered here ahead of
         // the button's first ClickedEventBinding opens each click's event before any handler reads it.
         private void BindClickedEvent(List<Action> actions, Button button, Action<ClickedEvent>? handler)
         {
+            var gate = GateClicks(button);
             if (!_clickedEventSlots.TryGetValue(button, out var slot))
             {
                 slot = new ClickedEventSlot();
@@ -657,7 +706,11 @@ namespace Velvet
                 });
             }
 
-            Action wrapped = () => RunDiscrete(() => handler?.Invoke(slot.Current));
+            Action wrapped = () =>
+            {
+                if (gate.OffChain) return;
+                RunDiscrete(() => handler?.Invoke(slot.Current));
+            };
             button.clicked += wrapped;
             actions.Add(() => button.clicked -= wrapped);
         }
@@ -671,7 +724,7 @@ namespace Velvet
             var phase = capture ? TrickleDown.TrickleDown : bubblePhase;
             EventCallback<T> wrapped = evt =>
             {
-                if (OffLogicalChain(element, evt)) return;
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(element, evt)) return;
                 if (!capture && StoppedByBubblePrelude(element, evt)) return;
                 RunDiscrete(() => handler?.Invoke(evt));
             };
@@ -687,7 +740,7 @@ namespace Velvet
             var element = (VisualElement)field;
             var callback = new EventCallback<ChangeEvent<T>>(evt =>
             {
-                if (OffLogicalChain(element, evt)) return;
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(element, evt)) return;
                 RunDiscrete(() => handler?.Invoke(evt.newValue));
             });
             field.RegisterValueChangedCallback(callback);

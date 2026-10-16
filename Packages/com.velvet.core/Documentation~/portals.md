@@ -82,9 +82,9 @@ The boundary behaves the same in all four forms:
   (`ChangeEventBinding<T>`) a value change of that type, the way React's `onClick` and `onChange` bubble out of a portal. Native dispatch also
   reaches the target's physical ancestors; an element that is one but no logical ancestor of the
   call site, the element the portal renders into included, runs none of its `events:` handlers for an
-  event raised in the content, in either phase, as the container of a React portal never sees them. A
-  `Button`'s `onClick` is the exception: it rides the button's own click handling rather than the
-  event dispatch, and that suppression does not reach it. An element that is both — a physical
+  event raised in the content, in either phase, whichever reconciler rendered the element, as the container of a React portal never sees them.
+  That covers the `Button` `onClick`s and the field focus, blur, key and value-change bindings too. A
+  `Button`'s click follows the press that started it, a pointer-down or a submit raised in the content. An element that is both — a physical
   ancestor of the target AND a logical ancestor of the call site — still fires exactly once, and so
   does a logical ancestor reached through portals nested in each other's content. A portal's child
   need not be a component: an element written straight into the portal bubbles the same way. `FocusEvent`/`BlurEvent` do not
@@ -92,8 +92,8 @@ The boundary behaves the same in all four forms:
   `onFocus`/`onBlur` correspond to `FocusInEvent`/`FocusOutEvent`. See "Cross-panel input routing"
   below for what this shared mechanism does not cover. A capture binding (`Capture = true`) on a logical
   ancestor runs before the portal's content does, outermost first, as React's `on…Capture` handlers run
-  ahead of a portal child's; a physical ancestor's runs through native dispatch, as its bubble handler
-  does. However many portals' content the target's physical path crosses, a logical ancestor runs once in
+  ahead of a portal child's; a physical ancestor's runs through native dispatch, and only where it is also
+  a logical ancestor. However many portals' content the target's physical path crosses, a logical ancestor runs once in
   each phase and the bridge runs nothing else, and a portal rendering into an element above its own call
   site runs the call site's bubble handlers before that element's. A pointer-down or pointer-up the layer
   router hands to a `V.Portal(layer:)`'s content reaches the content's logical ancestors in both phases
