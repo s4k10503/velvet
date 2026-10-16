@@ -23,12 +23,14 @@ namespace Velvet.Tests
         private GameObject _host;
         private PanelSettings _settings;
         private MountedTree _mounted;
+        private VisualElement _root;
 
         [UnityTearDown]
         public IEnumerator UnityTearDown()
         {
             _mounted?.Dispose();
             _mounted = null;
+            _root = null;
             if (_host != null)
             {
                 Object.Destroy(_host);
@@ -42,10 +44,9 @@ namespace Velvet.Tests
             yield return null;
         }
 
-        [UnityTest]
-        public IEnumerator Given_ATruncatedNarrowFieldHoldingALongValue_When_ItIsNotFocused_Then_ItsTextIsElided()
+        // The runtime theme's panel, with the bundled sheet attached.
+        private IEnumerator OpenThemedPanel()
         {
-            // Arrange
             var theme = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(ThemePath);
             Assume.That(theme, Is.Not.Null, "Precondition: the project's runtime theme is at " + ThemePath);
             _settings = ScriptableObject.CreateInstance<PanelSettings>();
@@ -54,22 +55,54 @@ namespace Velvet.Tests
             var document = _host.AddComponent<UIDocument>();
             document.panelSettings = _settings;
             yield return null;
-            var root = document.rootVisualElement;
-            VelvetStyleUtilities.AttachTo(root);
+            _root = document.rootVisualElement;
+            VelvetStyleUtilities.AttachTo(_root);
+        }
 
-            // Act
-            _mounted = V.Mount(root, V.TextField(name: "field", className: "truncate w-[60px]", value: LongValue));
+        // Mounts an unfocused field holding LongValue and gives the panel frames to lay it out and draw its text.
+        private IEnumerator MountField(string className)
+        {
+            _mounted = V.Mount(_root, V.TextField(name: "field", className: className, value: LongValue));
             for (var frame = 0; frame < 5; frame++)
             {
                 yield return null;
             }
-            var text = root.Q<TextField>("field").Q<TextElement>();
+        }
+
+        private TextElement FieldText() => _root.Q<TextField>("field").Q<TextElement>();
+
+        private static string Describe(TextElement text)
+            => $"text width {text.layout.width}, box width {text.parent.layout.width}, "
+               + $"text-overflow {text.resolvedStyle.textOverflow}, white-space {text.resolvedStyle.whiteSpace}";
+
+        [UnityTest]
+        public IEnumerator Given_ATruncatedNarrowFieldHoldingALongValue_When_ItIsNotFocused_Then_ItsTextIsElided()
+        {
+            // Arrange
+            yield return OpenThemedPanel();
+
+            // Act
+            yield return MountField("truncate w-[60px]");
+            var text = FieldText();
 
             // Assert
-            Assert.That(text.isElided, Is.True,
-                $"text width {text.layout.width}, box width {text.parent.layout.width}, "
-                + $"text-overflow {text.resolvedStyle.textOverflow}, "
-                + $"white-space {text.resolvedStyle.whiteSpace}");
+            Assert.That(text.isElided, Is.True, Describe(text));
+        }
+
+        // An <input> clips its text with no overflow utility on it, so text-overflow alone ends the text in an
+        // ellipsis.
+        [UnityTest]
+        public IEnumerator Given_AnEllipsisAloneOnANarrowFieldHoldingALongValue_When_ItIsNotFocused_Then_ItsTextIsElided()
+        {
+            // Arrange
+            yield return OpenThemedPanel();
+
+            // Act
+            yield return MountField("text-ellipsis w-[60px]");
+            var text = FieldText();
+
+            // Assert
+            Assert.That(text.isElided, Is.True, Describe(text));
         }
     }
 }
