@@ -1,3 +1,4 @@
+Packages/com.velvet.core/CodeGen/CompilerWeaver.Closures.cs	11
 Packages/com.velvet.core/CodeGen/CompilerWeaver.cs	14
 Packages/com.velvet.core/CodeGen/MetadataRegistrationWeaver.cs	3
 Packages/com.velvet.core/Runtime/Component/ClassNameParseCache.cs	2

@@ -1158,6 +1158,309 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Hook values held by display classes
+
+        // A hook value a handler captures is hoisted by the compiler into a field of a display class, so the hook
+        // call stores into a field and the value is read from it.
+        [Component]
+        public static VNode HandlerCapturingAHookValueComponent()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            return V.Button(text: "add", onClick: () => setCount.Invoke(count + 1));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingAMemoValueComponent()
+        {
+            var label = Hooks.UseMemo(() => "x", System.Array.Empty<object>());
+            return V.Button(text: "go", onClick: () => System.Console.Write(label));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingAWholeTupleComponent()
+        {
+            var pair = Hooks.UseState(0);
+            return V.Button(text: "go", onClick: () => pair.Item2.Invoke(pair.Item1 + 1));
+        }
+
+        private sealed class HookValueHolder
+        {
+            public int Count;
+            public StateUpdater<int> Setter = null!;
+            public string Label = "";
+        }
+
+        [Component]
+        public static VNode HookTupleDeconstructedIntoAnObjectComponent()
+        {
+            var holder = new HookValueHolder();
+            (holder.Count, holder.Setter) = Hooks.UseState(0);
+            return V.Label(text: holder.Count.ToString());
+        }
+
+        [Component]
+        public static VNode HookTupleElementStoredToAnObjectFieldComponent()
+        {
+            var holder = new HookValueHolder();
+            var pair = Hooks.UseState(0);
+            holder.Count = pair.Item1;
+            return V.Label(text: holder.Count.ToString());
+        }
+
+        [Component]
+        public static VNode HookValueStoredToAnObjectFieldComponent()
+        {
+            var holder = new HookValueHolder();
+            holder.Label = Hooks.UseMemo(() => "x", System.Array.Empty<object>());
+            return V.Label(text: holder.Label);
+        }
+
+        [Component]
+        public static VNode TupleHeldThenDeconstructedComponent()
+        {
+            var pair = Hooks.UseState(0);
+            var count = pair.Item1;
+            var setCount = pair.Item2;
+            if (count < 0) setCount.Invoke(0);
+            return V.Label(text: count.ToString());
+        }
+
+        [Component]
+        public static VNode TupleElementPassedStraightToAHookComponent()
+        {
+            var pair = Hooks.UseState(0);
+            var deferred = Hooks.UseDeferredValue(pair.Item1);
+            return V.Label(text: deferred.ToString());
+        }
+
+        private static (int First, int Second) UsePairHook()
+        {
+            var (first, _) = Hooks.UseState(0);
+            return (first, 1);
+        }
+
+        [Component]
+        public static VNode HandlerCapturingACustomHookPairComponent()
+        {
+            var (first, second) = UsePairHook();
+            return V.Button(text: "go", onClick: () => System.Console.Write(first + second));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingATupleValueComponent()
+        {
+            var (pair, setPair) = Hooks.UseState((1, 2));
+            return V.Button(text: "go", onClick: () => setPair.Invoke(pair));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingTwoHookValuesComponent()
+        {
+            var (a, setA) = Hooks.UseState(0);
+            var (b, setB) = Hooks.UseState(0);
+            return V.Button(text: "go", onClick: () => { setA.Invoke(b); setB.Invoke(a); });
+        }
+
+        [Component]
+        public static VNode HandlerCapturingOnlyASetterComponent()
+        {
+            var (_, setCount) = Hooks.UseState(0);
+            return V.Button(text: "go", onClick: () => setCount.Invoke(1));
+        }
+
+        [Component]
+        public static VNode ValueAndSetterComponent()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            if (count < 0) setCount.Invoke(0);
+            return V.Label(text: count.ToString());
+        }
+
+        [Test]
+        public void Given_AHookValueAHandlerCaptures_When_Woven_Then_ItIsWoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingAHookValueComponent))), Is.True);
+        }
+
+        [Test]
+        public void Given_AHookValueAHandlerCaptures_When_Woven_Then_TheGateIsKeyedOnTheValueAlone()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(HandlerCapturingAHookValueComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1), "The setter is the one object for the life of the component and is no dependency");
+        }
+
+        [Test]
+        public void Given_AMemoValueAHandlerCaptures_When_Woven_Then_TheGateIsKeyedOnTheValue()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(HandlerCapturingAMemoValueComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures a whole tuple unwoven too,
+        // as it reads no hook result stored to a field.
+        // What it pins is the new reading declining a tuple held whole: dropping `&& !IsValueTupleType(type)` from
+        // `TryMatchFieldCapture` weaves it and the gate then compares the tuple structurally.
+        [Test]
+        public void Given_AWholeTupleAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingAWholeTupleComponent))), Is.False,
+                "A tuple held whole compares structurally rather than by reference");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a hook tuple deconstructed into the fields of an object
+        // unwoven too.
+        // What it pins is a tuple temporary that anything but the element stores of a local or a display class reads
+        // counting as read again: dropping `|| IsTupleReadAgain(cursor, tuple, body)` from `TryMatchTupleTemp` weaves
+        // it.
+        [Test]
+        public void Given_AHookTupleDeconstructedIntoAnObject_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookTupleDeconstructedIntoAnObjectComponent))), Is.False,
+                "Only a display class field is read back for the gate; the fields of any other object are not");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a hook tuple element stored to the field of an object
+        // unwoven too.
+        // What it pins is a field store counting as a capture only on a display class: dropping `&&
+        // IsClosureClass(receiver.VariableType)` from `ClosureElement` weaves it.
+        [Test]
+        public void Given_AHookTupleElementStoredToAnObjectField_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookTupleElementStoredToAnObjectFieldComponent))), Is.False,
+                "A hit would skip the store, leaving the field at an earlier render's value");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a hook value stored to the field of an object unwoven too.
+        // What it pins is a field store counting as a capture only on a display class: dropping `||
+        // !IsClosureField(field)` from `TryMatchFieldCapture` weaves it.
+        [Test]
+        public void Given_AHookValueStoredToAnObjectField_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HookValueStoredToAnObjectFieldComponent))), Is.False,
+                "A hit would skip the store, leaving the field at an earlier render's value");
+        }
+
+        [Test]
+        public void Given_ATupleHeldThenDeconstructed_When_Woven_Then_TheGateIsKeyedOnTheValueAlone()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(TupleHeldThenDeconstructedComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ATupleHeldThenDeconstructed_When_Woven_Then_TheGateLeavesNothingOnTheStack()
+        {
+            // Act
+            var pops = HitPathPops(LoadMethod(nameof(TupleHeldThenDeconstructedComponent)));
+
+            // Assert
+            Assert.That(pops, Is.EqualTo(0), "The gate sits after the store of the last element, not between the read and the store");
+        }
+
+        [Test]
+        public void Given_ATupleElementPassedStraightToAHook_When_Woven_Then_TheGateIsKeyedOnTheElementAndTheMemo()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(TupleElementPassedStraightToAHookComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures the pair of a custom hook
+        // unwoven too.
+        // What it pins is the second element being taken for a setter only from a hook of the library: dropping `&&
+        // (setters is 0 || (isDirect && setters is 1))` from `TupleElementsAreSound` weaves it.
+        [Test]
+        public void Given_ACustomHookPairAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingACustomHookPairComponent))), Is.False,
+                "Only a hook of the library promises its second element stable; a custom hook's is a value the gate does not compare");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures a tuple held in state
+        // unwoven too.
+        // What it pins is a tuple value being refused as the captured value: dropping `&& !IsValueTupleType(kept)`
+        // from `TupleElementsAreSound` weaves it.
+        [Test]
+        public void Given_ATupleValueAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingATupleValueComponent))), Is.False,
+                "A tuple value compares structurally rather than by reference");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures only a setter unwoven too.
+        // What it pins is a pair being captured only with its first element: taking the first element found in
+        // `TupleElementsAreSound` and element 0 in `TryMatchTupleTemp` in place of the element numbered 1 weaves it.
+        [Test]
+        public void Given_OnlyTheSetterAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(HandlerCapturingOnlyASetterComponent))), Is.False,
+                "The setter is stable while the value it sets is never captured");
+        }
+
+        [Test]
+        public void Given_TwoHookValuesAHandlerCaptures_When_Woven_Then_TheGateIsKeyedOnBoth()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(HandlerCapturingTwoHookValuesComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keys the gate of a body that deconstructs its pair into locals on
+        // the value alone too.
+        // What it pins is the recording of the hook result for the gate: removing
+        // `hookPipedLocals.Add(outcome.Capture);` from `TryScanHookSection` reddens it.
+        [Test]
+        public void Given_AValueAndItsSetter_When_Woven_Then_TheGateIsKeyedOnTheValueAlone()
+        {
+            // Act
+            var dependencies = GateDependencyCount(LoadMethod(nameof(ValueAndSetterComponent)));
+
+            // Assert
+            Assert.That(dependencies, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves the gate of a body that deconstructs its pair into locals
+        // clear of the stack too.
+        // What it pins is the same recording: removing `hookPipedLocals.Add(outcome.Capture);` from
+        // `TryScanHookSection` reddens it.
+        [Test]
+        public void Given_AValueAndItsSetter_When_Woven_Then_TheGateLeavesNothingOnTheStack()
+        {
+            // Act
+            var pops = HitPathPops(LoadMethod(nameof(ValueAndSetterComponent)));
+
+            // Assert
+            Assert.That(pops, Is.EqualTo(0), "The gate sits after the store of the last element, not between the read and the store");
+        }
+
+        #endregion
+
+
+
+
+
+
         #region Bailed shapes (left unwoven)
 
         [Test]
@@ -1216,7 +1519,6 @@ namespace Velvet.Tests
             Assert.That(IsWoven(LoadMethod(nameof(UseMutationComponent))), Is.False,
                 "UseMutation returns a stable reference mutated in place; a woven memo would return a stale VNode, so the weaver bails");
         }
-
         [Test]
         public void Given_VoidOnlyComponentWithoutProps_When_Analyzed_Then_IsLeftUnwoven()
         {
@@ -1240,7 +1542,6 @@ namespace Velvet.Tests
             Assert.That(IsWoven(LoadMethod(nameof(TransitiveUseComponent))), Is.False,
                 "A custom hook that transitively reaches the suspend-unsafe Use hook forces the component to bail");
         }
-
         [Test]
         public void Given_TransitiveUseMutationComponent_When_Analyzed_Then_IsLeftUnwoven()
         {
@@ -1248,7 +1549,6 @@ namespace Velvet.Tests
             Assert.That(IsWoven(LoadMethod(nameof(TransitiveUseMutationComponent))), Is.False,
                 "A custom hook that transitively reaches UseMutation forces the component to bail");
         }
-
         // GREEN_ON_BASE(characterization): the base bails a body making an open dispatch, and this one stays bailed.
         // What it pins is the ahead-of-gate refusal: removing the `HasOpaqueCallAhead` check from `TryAnalyze`
         // reddens it.
@@ -1259,7 +1559,6 @@ namespace Velvet.Tests
             Assert.That(IsWoven(LoadMethod(nameof(InterfaceDispatchAheadOfHookComponent))), Is.False,
                 "A dispatch ahead of the gate runs whether or not the gate hits, and a hook it reached would go uncaptured");
         }
-
         // GREEN_ON_BASE(characterization): the base bails a body whose helper makes an open dispatch, as this one.
         // What it pins is the helper taking Opaque from its dispatch: masking the Opaque flag off what
         // `CallGraphFold.Visit` folds from a callee reddens it.
@@ -1270,7 +1569,6 @@ namespace Velvet.Tests
             Assert.That(IsWoven(LoadMethod(nameof(HelperDispatchAheadOfHookComponent))), Is.False,
                 "A helper whose only reach is a dispatch is Opaque, and Opaque ahead of the gate bails the body");
         }
-
         // GREEN_ON_BASE(characterization): the base bails a custom hook reaching a dispatch, and so does this change.
         // What it pins is a hook call still carrying its dispatch: testing `IsOpaqueCall` for a reach of exactly
         // Opaque instead of for the Opaque flag reddens it.
@@ -1281,7 +1579,6 @@ namespace Velvet.Tests
             Assert.That(IsWoven(LoadMethod(nameof(CustomHookWithDispatchComponent))), Is.False,
                 "A custom hook runs ahead of the gate, so a dispatch inside it bails the body as a direct one does");
         }
-
         [Test]
         public void Given_HookCycleEnteredAtItsOtherMember_When_ThatMemberSitsBehindABranch_Then_IsLeftUnwoven()
         {
@@ -1297,7 +1594,6 @@ namespace Velvet.Tests
             Assert.That(IsWoven(LoadMethod(nameof(MutatingLoopMemberComponent))), Is.False,
                 "UseMutatingLoopSecond reaches UseMutation through UseMutatingLoopFirst, so the body bails");
         }
-
         // GREEN_ON_BASE(characterization): the base leaves a setter-only read unwoven, and so does this change.
         // What it pins is the stack capture taking Item1 alone: deleting the `field.Name != "Item1"` check from
         // `TryCaptureStackValue` captures the stable setter and reddens it.
@@ -1331,7 +1627,6 @@ namespace Velvet.Tests
             Assert.That(IsWoven(LoadMethod(nameof(CustomHookWithDispatchAsArgumentComponent))), Is.False,
                 "The custom hook is the boundary and runs ahead of the gate, so its dispatch bails the body");
         }
-
         // GREEN_ON_BASE(characterization): the base bails a whole tuple stored to a field, and so does this change.
         // What it pins is the stack capture reading Item1 only through an ldfld: deleting the `OpCodes.Ldfld`
         // check from `TryCaptureStackValue` takes the stsfld naming a field Item1 for the value element.
@@ -1932,6 +2227,33 @@ namespace Velvet.Tests
             while (instructions[gate + 2 + pops].OpCode == OpCodes.Pop) pops++;
             return pops;
         }
+
+        // The length of the dependency array handed to the `occurrence`th call to a gate: the `ldc.i4 n; newarr object`
+        // that builds it, ahead of the call.
+        private static int DependencyCountOfCall(MethodDefinition method, string gateName, int occurrence)
+        {
+            var gate = method.Body.Instructions.Where(IsHookCallTo(gateName)).ElementAt(occurrence);
+            var array = gate;
+            while (array.OpCode != OpCodes.Newarr) array = array.Previous;
+            var length = array.Previous;
+            return length.OpCode.Code switch
+            {
+                Code.Ldc_I4_0 => 0,
+                Code.Ldc_I4_1 => 1,
+                Code.Ldc_I4_2 => 2,
+                Code.Ldc_I4_3 => 3,
+                Code.Ldc_I4_4 => 4,
+                Code.Ldc_I4_5 => 5,
+                Code.Ldc_I4_6 => 6,
+                Code.Ldc_I4_7 => 7,
+                Code.Ldc_I4_8 => 8,
+                Code.Ldc_I4_S => (sbyte)length.Operand,
+                _ => (int)length.Operand,
+            };
+        }
+
+        private static int GateDependencyCount(MethodDefinition method) =>
+            DependencyCountOfCall(method, nameof(Hooks.TryGetMemoizedVNode), 0);
 
         private static bool InjectsHookCall(MethodDefinition method, string hookMethodName) =>
             method.Body.Instructions.Any(IsHookCallTo(hookMethodName));

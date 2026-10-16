@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
@@ -53,7 +54,7 @@ namespace Velvet.CodeGen
     // model.
     // A body that already contains a Velvet.Hooks.TryGetMemoizedVNode call (a hand-written memoization,
     // e.g. in a test fixture) is skipped so the weaver does not memoize it a second time.
-    internal static class CompilerWeaver
+    internal static partial class CompilerWeaver
     {
         // This assembly references Velvet, so every name it matches against is taken from the type system
         // rather than spelled out: a rename on the runtime side then fails to compile here instead of
@@ -354,7 +355,7 @@ namespace Velvet.CodeGen
                 return false;
             }
 
-            var hookPipedLocals = new List<(VariableDefinition? Local, TypeReference Type, Instruction Stored)>();
+            var hookPipedLocals = new List<HookCapture>();
             var hookCalls = new List<Instruction>();
             if (!TryScanHookSection(body, reach, hookPipedLocals, hookCalls,
                     out var lastHookBoundary))
@@ -556,7 +557,7 @@ namespace Velvet.CodeGen
         // into. False means the shape is unweavable and the whole method bails; a true result with a null
         // boundary means the body reached no hook at all.
         private static bool TryScanHookSection(MethodBody body, HookReachFold reach,
-            List<(VariableDefinition? Local, TypeReference Type, Instruction Stored)> hookPipedLocals,
+            List<HookCapture> hookPipedLocals,
             List<Instruction> hookCalls,
             out Instruction? lastHookBoundary)
         {
@@ -590,20 +591,20 @@ namespace Velvet.CodeGen
                     return false;
                 }
 
-                var capture = TryCaptureHookResult(next, body, isDirect, out var local, out var boundary);
-                if (capture == HookCaptureMatch.Bail)
+                var outcome = TryCaptureHookResult(next, body, isDirect);
+                if (outcome.Match == HookCaptureMatch.Bail)
                 {
                     return false;
                 }
-                if (capture == HookCaptureMatch.Matched)
+                if (outcome.Match == HookCaptureMatch.Matched)
                 {
-                    hookPipedLocals.Add((local!, local!.VariableType, boundary!));
-                    lastHookBoundary = boundary;
+                    hookPipedLocals.Add(outcome.Capture);
+                    lastHookBoundary = outcome.Boundary;
                     continue;
                 }
                 if (TryCaptureStackValue(instr, next, out var stackType, out var producer))
                 {
-                    hookPipedLocals.Add((null, stackType!, producer));
+                    hookPipedLocals.Add(new HookCapture(null, null, null, stackType!, producer));
                     lastHookBoundary = producer;
                     continue;
                 }
@@ -618,22 +619,31 @@ namespace Velvet.CodeGen
         // The shapes are tried in this order because each is a strictly narrower read of the same
         // instruction, and the first one that recognizes the shape owns the verdict — including a Bail,
         // which means the shape matched but is unsound and a later matcher must not get to claim it.
-        private static HookCaptureMatch TryCaptureHookResult(Instruction next, MethodBody body, bool isDirect,
-            out VariableDefinition? local, out Instruction? boundary)
+        // A tuple held in a temporary is claimed ahead of TryMatchDirectCapture, which refuses a whole tuple.
+        private static HookCaptureOutcome TryCaptureHookResult(Instruction next, MethodBody body, bool isDirect)
         {
-            var direct = TryMatchDirectCapture(next, body, out local, out boundary);
-            if (direct != HookCaptureMatch.NotMatched)
+            if (TryGetStlocVariable(next, body, out var temporary) && IsValueTupleType(temporary.VariableType))
             {
-                return direct;
+                return TryMatchTupleTemp(next, body, isDirect, temporary);
+            }
+            if (next.OpCode == OpCodes.Stfld)
+            {
+                var field = TryMatchFieldCapture(next, body);
+                if (field.Match != HookCaptureMatch.NotMatched) return field;
             }
 
-            var item1 = TryMatchItem1Deconstruction(next, body, out local, out boundary);
-            if (item1 != HookCaptureMatch.NotMatched)
+            var direct = TryMatchDirectCapture(next, body, out var local, out var boundary);
+            if (direct == HookCaptureMatch.NotMatched)
             {
-                return item1;
+                direct = TryMatchItem1Deconstruction(next, body, out local, out boundary);
             }
-
-            return TryMatchTwoElementDeconstruction(next, body, isDirect, out local, out boundary);
+            if (direct == HookCaptureMatch.NotMatched)
+            {
+                direct = TryMatchTwoElementDeconstruction(next, body, isDirect, out local, out boundary);
+            }
+            return direct == HookCaptureMatch.Matched
+                ? new HookCaptureOutcome(direct, new HookCapture(local, null, null, local!.VariableType, boundary!), boundary)
+                : new HookCaptureOutcome(direct, default, null);
         }
 
         // A hook call can be followed directly by whatever reads its value, with no store between. Such a value
@@ -714,11 +724,10 @@ namespace Velvet.CodeGen
         private static bool TryMatchDiscardedHookResult(Instruction next)
             => next.OpCode == OpCodes.Pop;
 
-        // A whole-tuple capture (`var s = Hooks.UseState(...)`) stores the returned ValueTuple and is
-        // compared via ValueTuple.Equals — per-element EqualityComparer<T>.Default (structural). For a
-        // reference / float Item1 that diverges from the Object.is the reconciler uses to drive a
-        // re-render, so a fresh-but-equal value would be a stale hit. Bail: single-element
-        // deconstruction (`var (value, _) = ...`) captures Item1 directly and is compared soundly.
+        // A `ref var` local holds a managed pointer, which cannot be stored into the object[] of deps. A whole
+        // tuple stored in a local is TryMatchTupleTemp's: boxed and compared with ValueTuple.Equals it would be
+        // matched per element by EqualityComparer<T>.Default, which diverges from the Object.is the reconciler
+        // uses to drive a re-render, so a tuple read otherwise than element by element bails there.
         private static HookCaptureMatch TryMatchDirectCapture(
             Instruction next, MethodBody body, out VariableDefinition? capturedLocal, out Instruction? newBoundary)
         {
@@ -728,8 +737,7 @@ namespace Velvet.CodeGen
             {
                 return HookCaptureMatch.NotMatched;
             }
-            // A `ref var` local holds a managed pointer, which cannot be stored into the object[] of deps.
-            if (IsValueTupleType(local.VariableType) || local.VariableType.IsByReference)
+            if (local.VariableType.IsByReference)
             {
                 return HookCaptureMatch.Bail;
             }
@@ -1255,12 +1263,12 @@ namespace Velvet.CodeGen
             // reads the copies: Roslyn gives two nested hooks' results one temp, and a statement's local can be
             // assigned again before the gate, so the local a hook stored into need not hold its value there. A
             // value left on the stack is copied off it with a dup where it is produced.
-            var copies = new List<(VariableDefinition? Local, Instruction Stored, VariableDefinition Copy)>();
-            foreach (var (local, type, stored) in analysis.HookCaptures)
+            var copies = new List<(HookCapture Capture, VariableDefinition Copy)>();
+            foreach (var capture in analysis.HookCaptures)
             {
-                var copy = new VariableDefinition(type);
+                var copy = new VariableDefinition(capture.Type);
                 body.Variables.Add(copy);
-                copies.Add((local, stored, copy));
+                copies.Add((capture, copy));
             }
 
             var insertAfter = analysis.LastHookBoundary;
@@ -1287,7 +1295,7 @@ namespace Velvet.CodeGen
                 injected.Add(Instruction.Create(OpCodes.Stelem_Ref));
             }
             var depIndex = paramCount;
-            foreach (var (_, _, local) in copies)
+            foreach (var (_, local) in copies)
             {
                 injected.Add(Instruction.Create(OpCodes.Dup));
                 injected.Add(Instruction.Create(OpCodes.Ldc_I4, depIndex++));
@@ -1337,10 +1345,13 @@ namespace Velvet.CodeGen
             }
 
             // After the gate, so that a copy lands between its store and the gate where that store is the boundary.
-            foreach (var (local, stored, copy) in copies)
+            foreach (var (capture, copy) in copies)
             {
-                il.InsertAfter(stored, Instruction.Create(OpCodes.Stloc, copy));
-                il.InsertAfter(stored, local == null ? Instruction.Create(OpCodes.Dup) : Instruction.Create(OpCodes.Ldloc, local));
+                il.InsertAfter(capture.Stored, Instruction.Create(OpCodes.Stloc, copy));
+                foreach (var load in CopySource(capture).Reverse())
+                {
+                    il.InsertAfter(capture.Stored, load);
+                }
             }
 
             // Inject Store + reload at every return path so all `Ret` instructions
@@ -1425,7 +1436,7 @@ namespace Velvet.CodeGen
 
         private readonly struct HookAnalysis
         {
-            public HookAnalysis(IReadOnlyList<(VariableDefinition? Local, TypeReference Type, Instruction Stored)> hookCaptures,
+            public HookAnalysis(IReadOnlyList<HookCapture> hookCaptures,
                 Instruction? lastHookBoundary,
                 IReadOnlyList<Instruction> returns,
                 int stackDepthAtGate)
@@ -1435,10 +1446,28 @@ namespace Velvet.CodeGen
                 Returns = returns;
                 StackDepthAtGate = stackDepthAtGate;
             }
-            public IReadOnlyList<(VariableDefinition? Local, TypeReference Type, Instruction Stored)> HookCaptures { get; }
+            public IReadOnlyList<HookCapture> HookCaptures { get; }
             public Instruction? LastHookBoundary { get; }
             public IReadOnlyList<Instruction> Returns { get; }
             public int StackDepthAtGate { get; }
+        }
+
+        // The loads that copy a captured value off wherever it was stored, once it is there.
+        private static IEnumerable<Instruction> CopySource(HookCapture capture)
+        {
+            if (capture.Local != null)
+            {
+                yield return Instruction.Create(OpCodes.Ldloc, capture.Local);
+            }
+            else if (capture.Field != null)
+            {
+                yield return Instruction.Create(OpCodes.Ldloc, capture.Receiver!);
+                yield return Instruction.Create(OpCodes.Ldfld, capture.Field);
+            }
+            else
+            {
+                yield return Instruction.Create(OpCodes.Dup);
+            }
         }
     }
 

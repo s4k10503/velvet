@@ -1104,7 +1104,6 @@ namespace Velvet.Tests
             Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((false, 0)),
                 "A callee Resolve() returns nothing for cannot be inspected, so the weaver bails without failing");
         }
-
         // GREEN_ON_BASE(characterization): the base reads such a callee inside a Velvet.Hooks member as no hook.
         // What it pins is the reach fold's null guard: deleting `if (definition == null) return true;` from
         // `HookReachFold.TryLeaf` hands the null on to `IsDispatchOpen`, and the weave throws.
@@ -1257,7 +1256,6 @@ namespace Velvet.Tests
             Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
                 "A callee the weaver cannot inspect bails a body with no hook as it bails one with a hook");
         }
-
         private static int IndexOfCallTo(MethodDefinition method, string name)
         {
             var instructions = method.Body.Instructions;
@@ -1556,5 +1554,6 @@ namespace Velvet.Tests
             }
             return false;
         }
+
     }
 }
