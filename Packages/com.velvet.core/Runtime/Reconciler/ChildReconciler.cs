@@ -278,11 +278,10 @@ namespace Velvet
             }
         }
 
-        // Mounts every Portal that FiberNodeFactory.CreateElement queued during the
-        // reconcile pass that just finished. Each pending Portal's target reconcile re-enters
-        // Reconcile, which may enqueue more Portals (nested case) — they flow into
-        // the same queue and are drained in FIFO order until empty so each Portal mounts at
-        // target.childCount that already reflects every earlier-drained Portal's contribution.
+        // Drains what the pass that just finished deferred: each Portal's and WorldSpace node's children, and
+        // each z-* element's placement in its layer container. A Portal's children reconcile can queue more;
+        // they join the same queue, drained FIFO until empty, so a Portal mounts at the logical slot
+        // (LogicalChildSlots.Count) after every earlier-drained Portal's children in the same target.
         // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
         // finally both reach, so the single-top-level-loop invariant holds across nested PatchPortal recursion.
         internal void DrainPendingPortalMounts()
