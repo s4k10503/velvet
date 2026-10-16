@@ -10637,6 +10637,19 @@ class FixtureTraceTests(unittest.TestCase):
         # Assert
         self.assertIsNone(traced)
 
+    def test_Given_AnotherFileSpellingTheFixturesClassInAString_When_Traced_Then_OnlyTheFixturesFileIsHashed(self):
+        # Arrange -- a generator test holding C# source as text declares no class.
+        campaign = LedgerCampaign()
+        other = campaign.project / "Packages/com.velvet.core/Runtime/Tests/Editor/OtherTests.cs"
+        other.write_text(other.read_text().replace(
+            "{ }", "{ var source = \"class ProbeTests { void Given_A_When_B_Then_Probe() { } }\"; }"))
+
+        # Act
+        traced = self.trace(campaign, "Velvet.Tests.ProbeTests.Given_A_When_B_Then_Probe")
+
+        # Assert
+        self.assertEqual(sorted(traced or {}), ["Packages/com.velvet.core/Runtime/Tests/Editor/ProbeTests.cs"])
+
     def test_Given_AFixtureDerivedFromABaseInAnotherFile_When_Traced_Then_BothFilesAreHashed(self):
         # Arrange
         campaign = LedgerCampaign()

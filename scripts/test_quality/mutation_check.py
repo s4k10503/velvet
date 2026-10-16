@@ -4262,12 +4262,13 @@ def test_index(project):
         except OSError:
             continue
         texts[relative] = text
-        for match in CLASS_HEADER.finditer(text):
+        code = code_text(text)
+        for match in CLASS_HEADER.finditer(code):
             bases = BASE_LIST.search(match.group(2))
             names = [re.sub(r"<.*", "", part).strip().split(".")[-1]
                      for part in (bases.group(1).split(",") if bases else ())]
             classes.setdefault(match.group(1), []).append((relative, [name for name in names if name]))
-        for name in top_level_types(code_text(text)):
+        for name in top_level_types(code):
             declarers.setdefault(name, set()).add(relative)
     uses = {}
     for relative, text in texts.items():
