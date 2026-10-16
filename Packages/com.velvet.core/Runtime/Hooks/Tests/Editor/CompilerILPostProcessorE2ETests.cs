@@ -1577,6 +1577,13 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode TextChildOmittingAnOptionalNullableComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Button(text: a), V.Label(text: a));
+        }
+
+        [Component]
         public static VNode TextChildOfAParameterComponent(string title)
         {
             var (a, _) = Hooks.UseState("");
@@ -1782,18 +1789,39 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(2));
         }
 
-        // GREEN_ON_BASE(characterization): the base weaves the component gate of this body and no scope gate, which
-        // is the pair it asserts.
+        // GREEN_ON_BASE(characterization): the base weaves the component gate of this body.
+        // It holds the next case to account: a body left unwoven has no scope gate either.
+        [Test]
+        public void Given_AChildAheadOfALaterHook_When_Woven_Then_TheComponentIsWoven()
+        {
+            // Act
+            var woven = IsWoven(LoadMethod(nameof(TextChildAfterAHookComponent)));
+
+            // Assert
+            Assert.That(woven, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no scope gate, so it counts none here either.
         // What it pins is a child ahead of a later hook staying out of every scope: `true` in place of
         // `each.Span.Start > boundary` in `PlanScopes` gives it one.
         [Test]
-        public void Given_AChildAheadOfALaterHook_When_Woven_Then_TheComponentIsWovenWithNoScopeGate()
+        public void Given_AChildAheadOfALaterHook_When_Woven_Then_NoChildGetsAScopeGate()
         {
             // Act
-            var method = LoadMethod(nameof(TextChildAfterAHookComponent));
+            var gates = ScopeGatesOf(nameof(TextChildAfterAHookComponent));
 
             // Assert
-            Assert.That((IsWoven(method), CountHookCalls(method, ScopeGateName)), Is.EqualTo((true, 0)));
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AChildOmittingAnOptionalNullableParameter_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildOmittingAnOptionalNullableComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
         }
 
         [Test]
@@ -2004,9 +2032,6 @@ namespace Velvet.Tests
             Assert.That(jumpsPastTheStore, Is.EqualTo(gates));
         }
 
-        #endregion
-
-        #region Reactive scopes (a gate per child)
         #endregion
 
         #region Bailed shapes (left unwoven)

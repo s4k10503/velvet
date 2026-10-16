@@ -1578,20 +1578,17 @@ namespace Velvet.Tests
 
         // --- Reactive scope probes ---
         //
-        // A scope may leave a local out of its dependencies when its own expression stores it before reading it
-        // and nothing reads the value after. These bodies are assembled by hand to hold two children whose
-        // calls reach one local that way, `ldloca; initobj; ldloc` for an optional nullable argument, since no
-        // compiled fixture of this assembly is certain to share a local between two calls.
+        // Bodies assembled by hand against a Velvet whose V declares only the factories a case names.
 
-        private static TypeDefinition AddFactoryType(ModuleDefinition module, out MethodDefinition label, out MethodDefinition div)
+        private static TypeDefinition AddFactoryType(ModuleDefinition module, out MethodDefinition div)
         {
             var vnode = module.GetType("Velvet.VNode");
             var factory = new TypeDefinition("Velvet", "V",
                 Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Abstract
                 | Mono.Cecil.TypeAttributes.Sealed | Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
             module.Types.Add(factory);
-            label = AddStaticMethod(factory, "Label", vnode, module.TypeSystem.String, module.ImportReference(typeof(int?)));
             div = AddStaticMethod(factory, "Div", vnode, module.TypeSystem.String, new ArrayType(vnode));
+            AddStaticMethod(factory, "Caption", vnode, module.TypeSystem.String, module.TypeSystem.String);
             return factory;
         }
 
@@ -1608,15 +1605,14 @@ namespace Velvet.Tests
             return method;
         }
 
-        // `var id = Hooks.UseId(null); return V.Div("root", V.Label(id, default), V.Label(id, default));`
-        private static MethodDefinition AssembleTwoLabelsSharingATemporary(ModuleDefinition module,
-            MethodDefinition component, MethodReference useId, MethodReference label, MethodReference div)
+        // `var id = Hooks.UseId(null); return V.Div("root", V.Caption(id, id), V.Caption(id, id));`: two children a
+        // Velvet declaring the scope gate would cache.
+        private static void AssembleTwoCaptionsReadingAHookValue(ModuleDefinition module, MethodDefinition component,
+            MethodReference useId, TypeDefinition factory, MethodReference div)
         {
-            var optional = module.ImportReference(typeof(int?));
+            var caption = factory.Methods.Single(each => each.Name == "Caption");
             var id = new VariableDefinition(module.TypeSystem.String);
-            var temporary = new VariableDefinition(optional);
             component.Body.Variables.Add(id);
-            component.Body.Variables.Add(temporary);
             var il = component.Body.GetILProcessor();
             il.Append(Instruction.Create(OpCodes.Ldnull));
             il.Append(Instruction.Create(OpCodes.Call, useId));
@@ -1629,29 +1625,26 @@ namespace Velvet.Tests
                 il.Append(Instruction.Create(OpCodes.Dup));
                 il.Append(Instruction.Create(OpCodes.Ldc_I4, index));
                 il.Append(Instruction.Create(OpCodes.Ldloc, id));
-                il.Append(Instruction.Create(OpCodes.Ldloca, temporary));
-                il.Append(Instruction.Create(OpCodes.Initobj, optional));
-                il.Append(Instruction.Create(OpCodes.Ldloc, temporary));
-                il.Append(Instruction.Create(OpCodes.Call, label));
+                il.Append(Instruction.Create(OpCodes.Ldloc, id));
+                il.Append(Instruction.Create(OpCodes.Call, caption));
                 il.Append(Instruction.Create(OpCodes.Stelem_Ref));
             }
             il.Append(Instruction.Create(OpCodes.Call, div));
             il.Append(Instruction.Create(OpCodes.Ret));
             AssignSequentialOffsets(component);
-            return component;
         }
 
         // GREEN_ON_BASE(characterization): the base weaves the component gate and no scope gate here, so it counts one too.
         // What it pins is a Velvet declaring no scope gate being woven without one: `true` in place of the
         // `context.TryGetMemoizedScope != null && context.StoreMemoizedScope != null` test in `InjectMemoization` plans
-        // scopes it has no gate to call, the weave throws, and the method is left unwoven.
+        // scopes it has no gate to call, and the method is left unwoven.
         [Test]
         public void Given_AVelvetDeclaringTheComponentGateAlone_When_CompilerWeaverRuns_Then_ItIsWovenWithNoScopeGate()
         {
             // Arrange
             using var module = BuildHookShapeProbeModule("GateAloneProbe", out var method, out var useId, out _, out _);
-            AddFactoryType(module, out var label, out var div);
-            AssembleTwoLabelsSharingATemporary(module, method, useId, label, div);
+            var factory = AddFactoryType(module, out var div);
+            AssembleTwoCaptionsReadingAHookValue(module, method, useId, factory, div);
 
             // Act
             InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
