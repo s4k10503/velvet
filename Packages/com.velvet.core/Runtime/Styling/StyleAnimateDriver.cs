@@ -360,7 +360,7 @@ namespace Velvet
             binding.Opacity.Seed(style.opacity);
             binding.Rotation.Seed(style.rotate);
             binding.Scale.Seed(style.scale);
-            binding.Translation.Seed(style.translate);
+            binding.Translation.Seed(SeatedTranslate.Read(element));
         }
 
         /// <summary>
@@ -457,7 +457,7 @@ namespace Velvet
             else if (binding.Spec.Mode == AnimateMode.Bounce)
             {
                 // Same ownership rule as the Spin branch, over the translate slot.
-                element.style.translate = StyleKeyword.Null;
+                SeatedTranslate.Write(element, StyleKeyword.Null);
             }
         }
 
@@ -732,12 +732,12 @@ namespace Velvet
             {
                 return;
             }
-            var translation = binding.Translation.Own(element.style.translate, Adopts(driven, MotionTransitionSlots.Translate));
+            var translation = binding.Translation.Own(SeatedTranslate.Read(element), Adopts(driven, MotionTransitionSlots.Translate));
             var own = ReadTranslate(element, binding, translation);
             var x = LengthPx(own.x, width) + lift.x;
             var y = LengthPx(own.y, height) + lift.y;
-            element.style.translate = new Translate(new Length(x), new Length(y), own.z);
-            binding.Translation.Wrote(element.style.translate);
+            SeatedTranslate.Write(element, new Translate(new Length(x), new Length(y), own.z));
+            binding.Translation.Wrote(SeatedTranslate.Read(element));
         }
 
         // A translate component in pixels; a percentage is of the element's own extent along that axis.

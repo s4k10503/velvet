@@ -701,7 +701,7 @@ namespace Velvet
             // its UNRELATED (non-swapped) classes rested it at — e.g. a base translate-y-8 alongside a
             // variant pair that only touches translate-x. Used as the resting value for a translate axis the
             // swap names on neither side (see Resolve's own doc).
-            var restingTranslate = element.style.translate.value;
+            var restingTranslate = SeatedTranslate.Read(element).value;
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
                 restingTranslate.x.value, restingTranslate.y.value,
                 MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
@@ -870,7 +870,7 @@ namespace Velvet
 
             // Read BEFORE the class swap lands (same rationale as StartSpringVariant): a translate axis the swap
             // names on neither side rests at the element's own current inline translate rather than snapping to 0.
-            var restingTranslate = element.style.translate.value;
+            var restingTranslate = SeatedTranslate.Read(element).value;
             var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
                 restingTranslate.x.value, restingTranslate.y.value,
                 MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot)));

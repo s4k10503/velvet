@@ -2506,12 +2506,12 @@ namespace Velvet
             var hasY = TryWinningLayer(map, ArbitraryProperty.TranslateY, out var yw);
             if (!hasX && !hasY)
             {
-                element.style.translate = StyleKeyword.Null;
+                SeatedTranslate.Write(element, StyleKeyword.Null);
                 return;
             }
             var x = hasX ? new Length(xw.Value, xw.Unit) : new Length(0f);
             var y = hasY ? new Length(yw.Value, yw.Unit) : new Length(0f);
-            element.style.translate = new Translate(x, y);
+            SeatedTranslate.Write(element, new Translate(x, y));
         }
 
         private static void ApplyCombinedScale(VisualElement element, LayerMap map)
@@ -2947,7 +2947,7 @@ namespace Velvet
                 // single combined translate/scale when that matters.
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
-                    element.style.translate = StyleKeyword.Null;
+                    SeatedTranslate.Write(element, StyleKeyword.Null);
                     return true;
                 case ArbitraryProperty.Scale:
                 case ArbitraryProperty.ScaleX:

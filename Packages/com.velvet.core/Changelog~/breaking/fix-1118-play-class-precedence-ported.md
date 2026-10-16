@@ -46,3 +46,6 @@
 - A skewed or `border-dashed` element kept painting the background and border colours it had when its skew or
   dashed border attached after a variant, gesture or drag class, a theme change or a play changed them, until
   an unrelated re-render.
+- A direct child of a skewed element showed either the skew's seat or its own translate — `translate-x-*`, a
+  `V.Motion` translation, a drag offset — whichever was written last. The two compose, as CSS composes a
+  parent's transform with the child's.

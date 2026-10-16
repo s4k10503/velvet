@@ -221,7 +221,7 @@ namespace Velvet
 
         private static LayoutIdProjection CreateProjection(VisualElement element, VisualElement host, ReconcilerContext ctx)
         {
-            var translate = element.style.translate;
+            var translate = SeatedTranslate.Read(element);
             var scale = element.style.scale;
             var resolved = element.resolvedStyle;
             var ownTranslate = translate.keyword == StyleKeyword.Undefined ? Pixels(translate.value, element.layout) : resolved.translate;
@@ -413,9 +413,9 @@ namespace Velvet
                 var own = projection.OwnTranslate;
                 // A running bounce's lift is in the element's own frame, so the projection's scale carries it too.
                 var lift = StyleAnimateDriver.CurrentLiftPx(element) * projection.Scale.y;
-                element.style.translate = new Translate(
-                    new Length(own.x + translate.x + lift.x), new Length(own.y + translate.y + lift.y), own.z);
-                projection.WrittenTranslate = element.style.translate;
+                SeatedTranslate.Write(element, new Translate(
+                    new Length(own.x + translate.x + lift.x), new Length(own.y + translate.y + lift.y), own.z));
+                projection.WrittenTranslate = SeatedTranslate.Read(element);
             }
             if (projection.WritesScale || !IsUnit(projection.Scale))
             {
@@ -443,7 +443,7 @@ namespace Velvet
         // element's own from then on: composed with, and handed back when the projection ends.
         private static void AdoptForeignWrites(VisualElement element, LayoutIdProjection projection)
         {
-            var translate = element.style.translate;
+            var translate = SeatedTranslate.Read(element);
             if (projection.WritesTranslate && translate != projection.WrittenTranslate)
             {
                 projection.OwnInlineTranslate = translate;
@@ -544,7 +544,7 @@ namespace Velvet
         {
             if (!ctx.LayoutIdProjections.Remove(element, out var projection)) return;
             AdoptForeignWrites(element, projection);
-            if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
+            if (projection.WritesTranslate) SeatedTranslate.Write(element, projection.OwnInlineTranslate);
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
             StyleAnimateDriver.YieldSlots(element, projection, MotionTransitionSlots.None);
             // The loop's frame follows at once, rather than the element standing at its own value until its next tick.

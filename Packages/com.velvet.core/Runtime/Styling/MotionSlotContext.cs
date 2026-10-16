@@ -193,7 +193,7 @@ namespace Velvet
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
                 {
-                    var translate = style.translate;
+                    var translate = SeatedTranslate.Read(Owner(slot));
                     if (translate.keyword != StyleKeyword.Undefined)
                     {
                         return false;

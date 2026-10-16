@@ -234,20 +234,20 @@ namespace Velvet.Tests
         [Test]
         public void Given_ChildWithExplicitTranslateXUnderCaster_When_CasterUnskewed_Then_ChildsOwnTranslateXSurvives()
         {
-            // Arrange — a child carries its own translate-x-1 (4px) under a skewed caster, which overwrites it
-            // with the shear seat while active.
+            // Arrange — a child carries its own translate-x-1 (4px) under a skewed caster, whose seat moves it
+            // off that value while active.
             _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderTranslateChildColumn));
             var col = _window.rootVisualElement.Q<VisualElement>("col");
             var child = _window.rootVisualElement.Q<VisualElement>("t");
             SeatViaGeometry(col);
             Assume.That(Mathf.Approximately(child.style.translate.value.x.value, 4f), Is.False,
-                "Precondition: the manipulator overwrote the child's own translate-x while skewed");
+                "Precondition: the seat moved the child off its own translate-x while skewed");
 
             // Act — unskew the caster.
             s_setTranslateClass.Invoke("w-[120px]");
             Drain();
 
-            // Assert — the child's own translate (captured before the shear overwrite) was restored, not nulled.
+            // Assert — the child's own translate was restored, not nulled.
             Assert.That(child.style.translate.value.x.value, Is.EqualTo(4f).Within(0.01f));
         }
 
@@ -399,6 +399,83 @@ namespace Velvet.Tests
             // under positive skewX); the content-extent frame would place the row above centre and lean it
             // negative.
             Assert.That(row.style.translate.value.x.value, Is.GreaterThan(0f));
+        }
+
+        private static float Tan12 => Mathf.Tan(12f * Mathf.Deg2Rad);
+
+        // The x a child at its laid-out centroid shows under col's skew-x-12 seat with its own translate-x of own.
+        private static float SeatedX(VisualElement col, VisualElement child, float own)
+            => own + StyleSkewChildTranslateManipulator.ComputeOffset(
+                child.layout.center.x + own, child.layout.center.y, col.layout.width, col.layout.height, Tan12, 0f).x;
+
+        [Test]
+        public void Given_ChildWithExplicitTranslateXUnderSkewedCaster_When_Seated_Then_ItsOwnTranslateAddsToTheSeat()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderTranslateChildColumn));
+            var col = _window.rootVisualElement.Q<VisualElement>("col");
+            var child = _window.rootVisualElement.Q<VisualElement>("t");
+
+            // Act
+            SeatViaGeometry(col);
+
+            // Assert — CSS composes the parent's skew with the child's own translate: the 4px rides on the seat.
+            Assert.That(child.style.translate.value.x.value, Is.EqualTo(SeatedX(col, child, 4f)).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ASeatedChild_When_ItsOwnTranslateIsWrittenAfterwards_Then_TheSeatStays()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderFlowTransitionColumn));
+            var col = _window.rootVisualElement.Q<VisualElement>("col");
+            var child = _window.rootVisualElement.Q<VisualElement>("m");
+            SeatViaGeometry(col);
+
+            // Act — the reconciler writes the child's translate-x-2 (8px) through the arbitrary-value resolver.
+            s_setChildClass.Invoke("translate-x-2 h-[24px]");
+            Drain();
+
+            // Assert
+            Assert.That(child.style.translate.value.x.value, Is.EqualTo(SeatedX(col, child, 8f)).Within(0.01f));
+        }
+
+        [Component]
+        private static VNode RenderDrivenMotionColumn()
+        {
+            var poses = new System.Collections.Generic.Dictionary<string, MotionVariant>
+            {
+                ["a"] = "translate-x-0", ["b"] = "translate-x-[20px]",
+            };
+            return V.Div(className: "skew-x-12 w-[120px] h-[200px]", name: "col", children: new VNode?[]
+            {
+                V.Motion(key: "m", name: "m", className: "h-[24px]", variants: poses, initial: "a", animate: "b",
+                    transition: new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 0.2f }),
+            });
+        }
+
+        [Test]
+        public void Given_AMotionChildDrivingItsTranslate_When_ItsPlayEnds_Then_ItRestsAtItsPoseOnTheSeat()
+        {
+            // Arrange — a bezier drives the child from translate-x-0 to translate-x-[20px], writing every frame.
+            UseFrameFakeClockHost.Reset();
+            EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel,
+                UseFrameFakeClockHost.ReadFakeClock);
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderDrivenMotionColumn));
+            var col = _window.rootVisualElement.Q<VisualElement>("col");
+            var child = _window.rootVisualElement.Q<VisualElement>("m");
+            SeatViaGeometry(col);
+
+            // Act
+            for (var frame = 0; frame < 3; frame++)
+            {
+                UseFrameFakeClockHost.Ms += 1000;
+                EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+                ForcePanelUpdate(child.panel);
+            }
+
+            // Assert
+            Assert.That(child.style.translate.value.x.value, Is.EqualTo(SeatedX(col, child, 20f)).Within(0.01f));
         }
     }
 
