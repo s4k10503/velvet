@@ -113,6 +113,10 @@ namespace Velvet
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
             "UnityEngine.UIElements.StylePropertyName", "id", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
+        // RingOverlay's outline host: whether an element clips what it holds.
+        internal static readonly EngineMember ElementShouldClip =
+            Method(UIElements, VisualElementType, "ShouldClip", "System.Boolean");
+
         // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";
         private const string UpdatePhaseShape = "enum:" + UpdatePhaseType;

@@ -22,6 +22,9 @@
 - `ring-<n>`, `outline-<n>`, `ring-offset-<n>` and `outline-offset-<n>` take any integer Tailwind generates
   (`ring-3`, `outline-12`), where only 0, 1, 2, 4 and 8 were read, and `-outline-offset-<n>` and
   `outline-offset-[-2px]` draw the outline inside the element's edge.
+- `inset-ring`, `inset-ring-<n>`, `inset-ring-[…]` and `inset-ring-<colour>` draw Tailwind v4's inset ring,
+  and `inset-shadow-2xs` / `-xs` / `-sm` / `-[…]`, `inset-shadow-<colour>`, `inset-shadow-current` and a size's
+  opacity modifier its inset shadow, inside the padding box under the element's content.
 
 ### Fixed
 

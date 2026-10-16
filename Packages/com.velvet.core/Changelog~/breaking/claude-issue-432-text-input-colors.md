@@ -38,6 +38,12 @@
 - A `shadow-[…]` naming no colour is drawn in the element's text colour, as Tailwind's
   `var(--tw-shadow-color, currentcolor)` is, where it took the bare `shadow`'s tint; so is a `drop-shadow-[…]`
   naming none, as `drop-shadow()` defaults to `currentcolor`.
+- A ring's and its offset fill's outer corners grow by the spread as CSS grows a box-shadow's, so a square
+  element's ring is square where it was rounded by the ring's width, and an outline's corners stay square on a
+  square element.
+- An outline paints over the content around it, as CSS paints it after the rest of its stacking context, where
+  a later sibling's face covered it. `ring-inset` paints inside the padding box under the element's children
+  and text, where it painted over them across the border box.
 - `grid-cols-[5]` leaves the class inert, as the browser rejects the `grid-template-columns: 5` Tailwind writes
   for it; it used to lay out five columns. `grid-cols-[repeat(5,minmax(0,1fr))]`, the list `grid-cols-5` writes,
   is five columns.

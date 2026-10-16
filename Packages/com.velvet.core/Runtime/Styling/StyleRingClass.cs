@@ -43,8 +43,14 @@ namespace Velvet
         public readonly bool Inset;
         // Width 0 is no outline.
         public readonly RingBand Outline;
+        // inset-ring-*: a band of Width inside the padding box, over the ring and its offset fill. Width 0 is none.
+        public readonly RingBand InsetRing;
+        // inset-shadow-*: one blurred shadow inside the padding box, over the inset ring.
+        public readonly bool HasInsetShadow;
+        public readonly ShadowSpec InsetShadow;
 
-        public RingSpec(bool hasRing, RingBand ring, bool hasOffsetFill, Color offsetColor, bool inset, RingBand outline)
+        public RingSpec(bool hasRing, RingBand ring, bool hasOffsetFill, Color offsetColor, bool inset, RingBand outline,
+            RingBand insetRing = default, bool hasInsetShadow = false, ShadowSpec insetShadow = default)
         {
             HasRing = hasRing;
             Ring = ring;
@@ -52,7 +58,14 @@ namespace Velvet
             OffsetColor = offsetColor;
             Inset = inset;
             Outline = outline;
+            InsetRing = insetRing;
+            HasInsetShadow = hasInsetShadow;
+            InsetShadow = insetShadow;
         }
+
+        // Whether anything is painted inside the padding box: the ring and its fill where ring-inset puts them
+        // there, the inset ring, the inset shadow.
+        public bool PaintsInside => (Inset && (RingSpread > 0f || OffsetSpread > 0f)) || InsetRing.Width > 0f || HasInsetShadow;
 
         // The spread the ring's own box-shadow covers, and the offset fill's.
         public float RingSpread => HasRing ? Ring.Offset + Ring.Width : 0f;
@@ -80,7 +93,7 @@ namespace Velvet
 
         // ring-<n>, outline-<n>, ring-offset-<n> and outline-offset-<n> take any integer Tailwind writes as pixels: digits
         // with no leading zero but `0` itself, so `ring-3` is 3px and `ring-02` is no utility.
-        private static bool TryParseInteger(string suffix, out float value)
+        internal static bool TryParseInteger(string suffix, out float value)
         {
             value = 0f;
             if (suffix.Length == 0 || (suffix[0] == '0' && suffix.Length > 1))
@@ -106,7 +119,8 @@ namespace Velvet
                 && (cls == "ring" || cls == "outline"
                     || cls.StartsWith("ring-", StringComparison.Ordinal)
                     || cls.StartsWith("outline-", StringComparison.Ordinal)
-                    || cls.StartsWith(NegatedOutlineOffset, StringComparison.Ordinal));
+                    || cls.StartsWith(NegatedOutlineOffset, StringComparison.Ordinal)
+                    || StyleInsetBoxShadowClass.IsInsetBoxShadowClass(cls));
 
         private const string NegatedOutlineOffset = "-outline-offset-";
 
@@ -171,19 +185,8 @@ namespace Velvet
 
             classNames = InEmitOrder(classNames, baseCount);
             var slots = default(RingSlots);
-            var discarded = DiscardsBoxShadow(classNames);
-            foreach (var cls in classNames)
-            {
-                if (discarded && cls != null && cls.StartsWith("ring", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-                if (!discarded && cls != null && StyleShadowClass.DeclaresBoxShadow(cls))
-                {
-                    slots.ShadowDeclared = true;
-                }
-                Accumulate(cls!, ref slots);
-            }
+            var inset = default(StyleInsetBoxShadowClass.Slots);
+            AccumulateAll(classNames, ref slots, ref inset);
 
             var ring = new RingBand(
                 slots.RingWidthSet ? slots.RingWidth : DefaultRingWidth,
@@ -200,19 +203,51 @@ namespace Velvet
                 slots.OutlineOffset,
                 slots.OutlineColor,
                 currentColor: !slots.OutlineColorSet);
+            var hasInsetShadow = StyleInsetBoxShadowClass.TryShadowOf(inset, out var insetShadow);
             spec = new RingSpec(
                 slots.RingDeclared,
                 ring,
-                hasOffsetFill: slots.RingDeclared || slots.ShadowDeclared,
+                // Every box-shadow Tailwind writes lists var(--tw-ring-offset-shadow).
+                hasOffsetFill: slots.RingDeclared || slots.ShadowDeclared || inset.RingDeclared || inset.ShadowDeclared,
                 slots.RingOffsetColorSet ? slots.RingOffsetColor : DefaultRingOffsetColor,
                 slots.Inset,
-                outline);
-            if (spec.RingSpread > 0f || spec.OffsetSpread > 0f || outline.Width > 0f)
+                outline,
+                StyleInsetBoxShadowClass.RingOf(inset),
+                hasInsetShadow,
+                insetShadow);
+            if (spec.RingSpread > 0f || spec.OffsetSpread > 0f || outline.Width > 0f || spec.PaintsInside)
             {
                 return true;
             }
             spec = default;
             return false;
+        }
+
+        // classNames in the order InEmitOrder gives, read into the ring and outline slots and the inset ones. A
+        // box-shadow the browser discards takes the ring and the inset layers with it; the outline stays.
+        private static void AccumulateAll(string[] classNames, ref RingSlots slots, ref StyleInsetBoxShadowClass.Slots inset)
+        {
+            var discarded = DiscardsBoxShadow(classNames);
+            foreach (var cls in classNames)
+            {
+                if (string.IsNullOrEmpty(cls))
+                {
+                    continue;
+                }
+                var insetFamily = StyleInsetBoxShadowClass.IsInsetBoxShadowClass(cls);
+                if (discarded && (insetFamily || cls.StartsWith("ring", StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+                if (!discarded && StyleShadowClass.DeclaresBoxShadow(cls))
+                {
+                    slots.ShadowDeclared = true;
+                }
+                if (!insetFamily || !StyleInsetBoxShadowClass.TryAccumulate(cls, ref inset))
+                {
+                    Accumulate(cls, ref slots);
+                }
+            }
         }
 
         // The ring, outline and box-shadow utilities among the element's own classes, put in the order Tailwind
@@ -463,7 +498,7 @@ namespace Velvet
             return true;
         }
 
-        private static bool TryMatchPrefix(string cls, string prefix, out string? suffix)
+        internal static bool TryMatchPrefix(string cls, string prefix, out string? suffix)
         {
             if (cls.StartsWith(prefix, StringComparison.Ordinal))
             {
@@ -476,7 +511,7 @@ namespace Velvet
 
         // A width is either an integer (TryParseInteger) or an arbitrary [Npx] that Tailwind reads as a length
         // rather than a colour (StyleArbitraryValueResolver.TryParseInferredArbitraryPixels).
-        private static bool TryParseWidthValue(string? suffix, out float width)
+        internal static bool TryParseWidthValue(string? suffix, out float width)
         {
             width = 0f;
             if (string.IsNullOrEmpty(suffix))
@@ -490,7 +525,7 @@ namespace Velvet
         // A color is a palette token (red-500 / white / black) or an arbitrary [<color>], whose type hint is the
         // colour branch's unless HintSelectsNonColour says otherwise for root, either one followed by an opacity
         // modifier (ring-red-500/50, ring-offset-[#fff]/50) where the bracket is not the whole suffix.
-        private static bool TryParseColorValue(string root, string? suffix, out Color color)
+        internal static bool TryParseColorValue(string root, string? suffix, out Color color)
         {
             color = default;
             if (string.IsNullOrEmpty(suffix))

@@ -318,26 +318,31 @@ namespace Velvet
         // shadow-current is the text colour, its modifier kept as the factor in color.a; shadow-inherit takes the
         // ancestor's (TryInheritedColor).
         internal static bool TryParseShadowColor(string cls, out ShadowColorSource kind, out Color color)
+            => TryParseShadowColor(cls, "shadow-", out kind, out color);
+
+        // The same colour branch under another prefix: inset-shadow- writes --tw-inset-shadow-color the same way.
+        internal static bool TryParseShadowColor(string cls, string prefix, out ShadowColorSource kind, out Color color)
         {
             color = default;
             kind = ShadowColorSource.Explicit;
-            const int start = 7; // "shadow-"
-            if (string.IsNullOrEmpty(cls) || !cls.StartsWith("shadow-", StringComparison.Ordinal))
+            var start = prefix.Length;
+            if (string.IsNullOrEmpty(cls) || !cls.StartsWith(prefix, StringComparison.Ordinal))
             {
                 return false;
             }
-            if (cls == "shadow-inherit")
+            var rest = cls.AsSpan(start);
+            if (rest.SequenceEqual("inherit".AsSpan()))
             {
                 kind = ShadowColorSource.Inherit;
                 return true;
             }
-            if (cls.StartsWith("shadow-current", StringComparison.Ordinal))
+            if (rest.StartsWith("current".AsSpan(), StringComparison.Ordinal))
             {
+                var end = start + "current".Length;
                 kind = ShadowColorSource.Current;
                 color = Color.white;
-                return cls.Length == "shadow-current".Length
-                    || (cls["shadow-current".Length] == '/'
-                        && StyleColorValueParser.TryScaleAlpha(cls.AsSpan("shadow-current/".Length), ref color));
+                return cls.Length == end
+                    || (cls[end] == '/' && StyleColorValueParser.TryScaleAlpha(cls.AsSpan(end + 1), ref color));
             }
             if (StyleArbitraryValueResolver.TryStripBrackets(cls, start, out var inner))
             {
@@ -350,7 +355,7 @@ namespace Velvet
 
         // A size's opacity modifier: the part after the '/' outside any bracket, which Tailwind writes as the alpha
         // of the size's own colour and as --tw-shadow-alpha. size is cls without it.
-        private static bool TrySplitSizeModifier(string cls, out string size, out float? alpha)
+        internal static bool TrySplitSizeModifier(string cls, out string size, out float? alpha)
         {
             size = cls;
             alpha = null;
@@ -479,7 +484,7 @@ namespace Velvet
         // default to 0 and the color defaults to the DEFAULT preset tint. Percent lengths are rejected (the SDF
         // bake is pixel-based).
         // alpha: the class's opacity modifier, which replaces a written colour's alpha and scales the text colour's.
-        private static bool TryParseArbitrary(string body, float? alpha, out ShadowSpec spec)
+        internal static bool TryParseArbitrary(string body, float? alpha, out ShadowSpec spec)
         {
             spec = default;
             if (string.IsNullOrEmpty(body))

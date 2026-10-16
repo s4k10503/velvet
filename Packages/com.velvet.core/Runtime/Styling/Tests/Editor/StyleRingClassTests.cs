@@ -331,6 +331,65 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
+        // inset-ring-* and inset-shadow-*, the inset layers Tailwind v4 composes into box-shadow above the ring.
+
+        [Test]
+        public void Given_ABareInsetRing_When_Extracted_Then_ItIsOnePixelInTheTextColour()
+        {
+            var spec = Extract("inset-ring");
+            Assert.That((spec.InsetRing.Width, spec.InsetRing.CurrentColor), Is.EqualTo((1f, true)));
+        }
+
+        [Test]
+        public void Given_AnInsetRingWidthAndColour_When_Extracted_Then_TheBandTakesBoth()
+        {
+            StyleColorValueParser.TryParseColor("#00ff00".AsSpan(), out var green);
+            var spec = Extract("inset-ring-3", "inset-ring-[#00ff00]");
+            Assert.That((spec.InsetRing.Width, spec.InsetRing.Color), Is.EqualTo((3f, green)));
+        }
+
+        [Test]
+        public void Given_AnInsetShadowSize_When_Extracted_Then_ItIsTailwindsLayer()
+        {
+            // --inset-shadow-sm: inset 0 2px 4px rgb(0 0 0 / 0.05).
+            var spec = Extract("inset-shadow-sm");
+            Assert.That((spec.HasInsetShadow, spec.InsetShadow.OffsetY, spec.InsetShadow.Blur, spec.InsetShadow.Color.a),
+                Is.EqualTo((true, 2f, 4f, 0.05f)));
+        }
+
+        [Test]
+        public void Given_AnInsetShadowColourWithASizeModifier_When_Extracted_Then_TheColourIsScaledByIt()
+        {
+            StyleColorValueParser.TryParseColor("#ff0000".AsSpan(), out var red);
+            red.a = 0.5f;
+            Assert.That(Extract("inset-shadow-sm/50", "inset-shadow-[#ff0000]").InsetShadow.Color, Is.EqualTo(red));
+        }
+
+        [Test]
+        public void Given_InsetShadowNone_When_Extracted_Then_NoInsetShadowIsDrawn()
+        {
+            // The control is the size alone.
+            Assert.That(
+                (StyleRingClass.TryExtract(new[] { "inset-shadow-sm", "inset-shadow-none" }, out _), Extract("inset-shadow-sm").HasInsetShadow),
+                Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AnInsetRingBesideARingOffset_When_Extracted_Then_TheOffsetFillIsDrawn()
+        {
+            // The box-shadow inset-ring-* writes lists var(--tw-ring-offset-shadow) too.
+            Assert.That(Extract("inset-ring-2", "ring-offset-2").OffsetSpread, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void Given_InsetLayersAndAnInsetPosition_When_GateChecked_Then_OnlyTheLayersAreRingClasses()
+        {
+            Assert.That(
+                (StyleRingClass.IsRingClass("inset-shadow-sm"), StyleRingClass.IsRingClass("inset-ring-2"),
+                    StyleRingClass.IsRingClass("inset-0")),
+                Is.EqualTo((true, true, false)));
+        }
+
         [Test]
         public void Given_PlainUtility_When_GateChecked_Then_NotARingClass()
         {
@@ -352,8 +411,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Geometry coverage for the ring overlay against the USS-scale radius and the element's own edge: once
     /// the ringed element is LAID OUT (a real panel), the band must size, position and round to its resolved
-    /// box. Outset (default): inflated by (offset + width) per side with outer radius = radius + offset +
-    /// width. Inset (ring-inset): matches the box at its own radius. Off-panel there is no resolved size, so
+    /// box. Outset (default): inflated by (offset + width) per side with the outer radius a box-shadow's spread
+    /// gives. Inset (ring-inset): painted by the element itself, so no band. Off-panel there is no resolved size, so
     /// this needs a real <see cref="UnityEditor.EditorWindow"/> panel + forced layout (the spec's width/color
     /// are asserted off-panel in ClipPathWrapTests, and the arbitrary / per-corner radius forms in
     /// RingOverlayTests). GWT, one assert each.
@@ -375,8 +434,10 @@ namespace Velvet.Tests
             return null;
         }
 
+        // A second mount in one case replaces the first, so the band found is always this one's.
         private VisualElement MountRinged(string className)
         {
+            _mounted?.Dispose();
             _mounted = V.Mount(_window.rootVisualElement, V.Div(className: className, name: "card"));
             ForcePanelUpdate(_window.rootVisualElement.panel);
             return RingBandIn(_window.rootVisualElement);
@@ -422,21 +483,14 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_InsetRing_When_LaidOut_Then_OverlayMatchesTheInnerBox()
+        public void Given_InsetRing_When_LaidOut_Then_TheOverlayDrawsNoBand()
         {
-            // ring-inset: the band is drawn inside, so the band matches the inner box exactly (no inflation).
-            var band = MountRinged("w-[100px] h-[40px] ring-2 ring-inset");
+            // ring-inset paints inside the padding box, in the element's own content, so the outset band is hidden;
+            // the control is the same ring outset.
+            var outset = MountRinged("w-[100px] h-[40px] ring-2")?.resolvedStyle.display;
+            var inset = MountRinged("w-[100px] h-[40px] ring-2 ring-inset")?.resolvedStyle.display;
 
-            Assert.That(band?.resolvedStyle.width, Is.EqualTo((float?)100f));
-        }
-
-        [Test]
-        public void Given_InsetRingWithRoundedLg_When_LaidOut_Then_OuterRadiusEqualsTheInnerRadius()
-        {
-            // An inset band hugs the inner edge, so its corner radius is the inner radius (8px), NOT inflated.
-            var band = MountRinged("w-[100px] h-[40px] rounded-lg ring-2 ring-inset");
-
-            Assert.That(band?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)8f));
+            Assert.That((outset, inset), Is.EqualTo(((DisplayStyle?)DisplayStyle.Flex, (DisplayStyle?)DisplayStyle.None)));
         }
     }
 }

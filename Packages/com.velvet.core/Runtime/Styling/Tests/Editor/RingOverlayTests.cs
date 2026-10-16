@@ -43,14 +43,13 @@ namespace Velvet.Tests
                 : null;
         }
 
-        // The ring's band and the outline's, each a child of the overlay BandFor finds. Named rather than read
-        // off RingOverlay's constants, so a tree that draws no such child reports null here instead of failing
-        // to build.
+        // The ring's band, a child of the overlay BandFor finds, and the outline's, which sits on an overlay of its
+        // own wherever the outline paints.
         private static VisualElement RingBandFor(VisualElement element)
-            => BandFor(element)?.Q<VisualElement>("velvet-ring-band");
+            => BandFor(element)?.Q<VisualElement>(RingOverlay.RingBandName);
 
         private static VisualElement OutlineBandFor(VisualElement element)
-            => BandFor(element)?.Q<VisualElement>("velvet-outline-band");
+            => RingOverlay.TryGet(element)?.OutlineElement;
 
         // How far along x a band paints from the element it rings. worldBound and not layout because layout
         // is the pre-transform box, and the element's OWN transform is the thing this reading exists to
@@ -157,10 +156,10 @@ namespace Velvet.Tests
             var card = MountRinged("w-[100px] h-[40px] rounded-tl-lg ring-4");
             var band = RingBandFor(card);
 
-            // Assert — top-left carries the radius plus the ring width; top-right carries the ring width only.
-            // rounded-lg is 8px.
+            // Assert — top-left carries the radius plus the ring width; the square top-right stays square, as a
+            // box-shadow's spread keeps it. rounded-lg is 8px.
             Assert.That((band?.resolvedStyle.borderTopLeftRadius, band?.resolvedStyle.borderTopRightRadius),
-                Is.EqualTo(((float?)12f, (float?)4f)));
+                Is.EqualTo(((float?)12f, (float?)0f)));
         }
 
         // Which transforms the band follows. The band is a sibling, so the element's own transform reaches
@@ -262,7 +261,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert — the card's own red is the class taking effect.
-            Assert.That((card.resolvedStyle.color, RingBandFor(card)?.resolvedStyle.borderTopColor),
+            Assert.That((card.resolvedStyle.color, RingOverlay.TryGet(card)?.RingTint),
                 Is.EqualTo((Color.red, (Color?)Color.red)));
         }
 
@@ -295,9 +294,55 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert — each band takes its own family's colour: the ring the blue it names, the outline the text.
-            Assert.That(
-                (RingBandFor(card)?.resolvedStyle.borderTopColor, OutlineBandFor(card)?.resolvedStyle.borderTopColor),
-                Is.EqualTo(((Color?)Color.blue, (Color?)Color.red)));
+            var binding = RingOverlay.TryGet(card);
+            Assert.That((binding?.RingTint, binding?.OutlineTint), Is.EqualTo(((Color?)Color.blue, (Color?)Color.red)));
+        }
+
+        // Where an outline is hosted: after the content of the nearest ancestor that clips or composites.
+
+        [Test]
+        public void Given_AnOutlineInsideAClippingParent_When_LaidOut_Then_ItIsThatParentsLastChild()
+        {
+            // Arrange — the later sibling b is what the outline has to come after.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "clip", className: "w-[200px] h-[100px] overflow-hidden", children: new VNode[]
+                {
+                    V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                    V.Div(name: "b", className: "w-[40px] h-[40px]"),
+                }));
+            var clip = _window.rootVisualElement.Q<VisualElement>("clip");
+            var b = _window.rootVisualElement.Q<VisualElement>("b");
+
+            // Act
+            ForcePanelUpdate(clip.panel);
+            var outline = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a"))?.OutlineOverlay;
+
+            // Assert
+            Assert.That((outline?.parent == clip, clip.IndexOf(outline) > clip.IndexOf(b)), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAFadedAncestor_When_LaidOut_Then_ThatAncestorHostsIt()
+        {
+            // Arrange — an opacity below 1 composites what it holds, so the outline stays inside it to fade with it;
+            // the unfaded wrapper above is the control.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[200px] h-[100px]", children: new VNode[]
+                {
+                    V.Div(name: "faded", className: "w-[100px] h-[60px] opacity-50", children: new VNode[]
+                    {
+                        V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                    }),
+                }));
+            var faded = _window.rootVisualElement.Q<VisualElement>("faded");
+
+            // Act
+            ForcePanelUpdate(faded.panel);
+            ForcePanelUpdate(faded.panel);
+            var outline = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a"))?.OutlineOverlay;
+
+            // Assert
+            Assert.That(outline?.parent?.name, Is.EqualTo("faded"));
         }
 
         [Test]

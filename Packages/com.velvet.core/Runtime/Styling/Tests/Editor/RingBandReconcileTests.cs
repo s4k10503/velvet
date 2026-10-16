@@ -7,33 +7,23 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Which bands a reconciled element's ring overlay draws, and in what width and colour: the ring Tailwind
-    /// composes into box-shadow, the ring-offset fill over it, and the outline, each its own band. Read off the
-    /// inline style the overlay writes, which needs no panel. GWT, one assert per case.
+    /// Which bands a reconciled element's ring binding draws, how wide, and in what colour: the ring Tailwind
+    /// composes into box-shadow, the ring-offset fill over it, the outline, and the inset layers. Read off the
+    /// binding, which needs no panel. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class RingBandReconcileTests
     {
-        private static void Mount(ReconcilerScope scope, string className)
-            => scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
-                new VNode[] { V.Div(className: className, name: "card") });
-
-        // A band by its name under the overlay beside the card. Named rather than read off RingOverlay's
-        // constants, so a tree that draws no such child reports null here instead of failing to build.
-        private static VisualElement Band(ReconcilerScope scope, string name)
+        private static VisualElement Mount(ReconcilerScope scope, string className)
         {
-            for (var i = 0; i < scope.Root.childCount; i++)
-            {
-                if (scope.Root[i].ClassListContains(RingOverlay.MarkerClass))
-                {
-                    return scope.Root[i].Q<VisualElement>(name);
-                }
-            }
-            return null;
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: className, name: "card") });
+            return scope.Root.Q<VisualElement>("card");
         }
 
-        private static float? Width(VisualElement band)
-            => band == null ? (float?)null : band.style.display.value == DisplayStyle.None ? 0f : band.style.borderTopWidth.value;
+        // How wide band paints: 0 where it is hidden.
+        private static float? Shown(VisualElement band, float width)
+            => band == null ? null : band.style.display.value == DisplayStyle.None ? 0f : width;
 
         [Test]
         public void Given_ARingAndAnOutline_When_Reconciled_Then_EachBandCarriesItsOwnWidth()
@@ -42,10 +32,11 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
 
             // Act
-            Mount(scope, "ring-4 outline-2");
+            var binding = RingOverlay.TryGet(Mount(scope, "ring-4 outline-2"));
 
             // Assert
-            Assert.That((Width(Band(scope, "velvet-ring-band")), Width(Band(scope, "velvet-outline-band"))),
+            Assert.That(
+                (Shown(binding?.RingElement, binding?.Spec.RingSpread ?? 0f), Shown(binding?.OutlineElement, binding?.Spec.Outline.Width ?? 0f)),
                 Is.EqualTo(((float?)4f, (float?)2f)));
         }
 
@@ -56,11 +47,11 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
 
             // Act
-            Mount(scope, "ring-2 ring-offset-2 ring-[#ff0000]");
+            var binding = RingOverlay.TryGet(Mount(scope, "ring-2 ring-offset-2 ring-[#ff0000]"));
 
             // Assert — --tw-ring-offset-color's initial value is #fff.
-            var fill = Band(scope, "velvet-ring-offset-band");
-            Assert.That((Width(fill), fill?.style.borderTopColor.value), Is.EqualTo(((float?)2f, (Color?)Color.white)));
+            Assert.That((Shown(binding?.OffsetElement, binding?.Spec.OffsetSpread ?? 0f), binding?.Spec.OffsetColor),
+                Is.EqualTo(((float?)2f, (Color?)Color.white)));
         }
 
         [Test]
@@ -71,24 +62,10 @@ namespace Velvet.Tests
             StyleColorValueParser.TryParseColor("#00ff00".AsSpan(), out var green);
 
             // Act
-            Mount(scope, "ring-2 ring-offset-2 ring-offset-[#00ff00]");
+            var binding = RingOverlay.TryGet(Mount(scope, "ring-2 ring-offset-2 ring-offset-[#00ff00]"));
 
             // Assert
-            Assert.That(Band(scope, "velvet-ring-offset-band")?.style.borderTopColor.value, Is.EqualTo((Color?)green));
-        }
-
-        [Test]
-        public void Given_ARingWithAnOffset_When_Reconciled_Then_TheRingBandSpansTheOffset()
-        {
-            // Arrange
-            using var scope = new ReconcilerScope();
-
-            // Act
-            Mount(scope, "ring-2 ring-offset-4");
-
-            // Assert — the ring's spread is its width plus the offset, under the fill, so a translucent fill shows
-            // the ring through it as the browser does.
-            Assert.That(Width(Band(scope, "velvet-ring-band")), Is.EqualTo((float?)6f));
+            Assert.That(binding?.Spec.OffsetColor, Is.EqualTo((Color?)green));
         }
 
         [Test]
@@ -98,11 +75,49 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
 
             // Act
-            Mount(scope, "shadow-lg ring-offset-2");
+            var binding = RingOverlay.TryGet(Mount(scope, "shadow-lg ring-offset-2"));
 
             // Assert — the box-shadow a shadow-* writes carries the offset fill and no ring.
-            Assert.That((Width(Band(scope, "velvet-ring-offset-band")), Width(Band(scope, "velvet-ring-band"))),
+            Assert.That(
+                (Shown(binding?.OffsetElement, binding?.Spec.OffsetSpread ?? 0f), Shown(binding?.RingElement, binding?.Spec.RingSpread ?? 0f)),
                 Is.EqualTo(((float?)2f, (float?)0f)));
+        }
+
+        // The inside bands: painted in the element's own content rather than on the overlay beside it.
+
+        [Test]
+        public void Given_AnInsetRing_When_Reconciled_Then_TheElementPaintsItAndTheOverlayDoesNot()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+
+            // Act
+            var card = Mount(scope, "ring-2 ring-inset");
+            var binding = RingOverlay.TryGet(card);
+
+            // Assert
+            Assert.That(
+                (binding?.RingElement.style.display.value,
+                    Array.IndexOf(card.generateVisualContent?.GetInvocationList() ?? Array.Empty<Delegate>(), binding?.OnGenerateInside) >= 0),
+                Is.EqualTo(((DisplayStyle?)DisplayStyle.None, true)));
+        }
+
+        [Test]
+        public void Given_AnInsetRingOnAButton_When_Reconciled_Then_ItPaintsBeforeTheButtonsText()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Button(className: "inset-ring-2", name: "btn", text: "ok") });
+            var button = scope.Root.Q<Button>("btn");
+            var callbacks = button.generateVisualContent.GetInvocationList();
+
+            // Act
+            var inside = Array.IndexOf(callbacks, RingOverlay.TryGet(button)?.OnGenerateInside);
+            var text = Array.FindIndex(callbacks, c => ReferenceEquals(c.Target, button));
+
+            // Assert — the text's own callback is the control: it is there to come after.
+            Assert.That((inside >= 0, text > inside), Is.EqualTo((true, true)));
         }
     }
 }

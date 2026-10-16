@@ -20,7 +20,7 @@ namespace Velvet.Tests
     /// (<see cref="FiberWrapperElementAppliers.ClipPathWrapperClass"/>) that carries the baked shape. It is
     /// the only remaining structural wrapper.</item>
     /// <item><c>ring-*</c> / <c>outline-*</c>: UI Toolkit (6000.3) has no CSS box-shadow / outline either,
-    /// so Velvet paints the band on a native-border overlay hosted as a reconciler-invisible SIBLING of the
+    /// so Velvet paints the band on an overlay hosted as a reconciler-invisible SIBLING of the
     /// ringed element (<see cref="RingOverlay"/>) — no GPU shader, unlike the soft drop shadow, and nothing
     /// added to the element's own slot. Width / color come from the utility scale; the corner radius follows
     /// the element's rounded-*.</item>
@@ -65,8 +65,8 @@ namespace Velvet.Tests
             return null;
         }
 
-        // The ring's own band, which the overlay holds beside the offset fill and the outline.
-        private static VisualElement RingBandIn(VisualElement host) => RingOverlayIn(host)?.Q<VisualElement>("velvet-ring-band");
+        // The binding of the element named card under host.
+        private static RingBinding RingOf(VisualElement host) => RingOverlay.TryGet(host.Q<VisualElement>("card"));
 
         private static void Mount(ReconcilerScope scope, VNode[] tree)
             => scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
@@ -504,7 +504,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That(RingBandIn(scope.Root)?.style.borderTopWidth.value, Is.EqualTo((float?)2f));
+            Assert.That(RingOf(scope.Root)?.Spec.RingSpread, Is.EqualTo((float?)2f));
         }
 
         [Test]
@@ -515,7 +515,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2 ring-red-500", name: "card") });
 
-            Assert.That(RingBandIn(scope.Root)?.style.borderRightColor.value, Is.EqualTo((Color?)red));
+            Assert.That(RingOf(scope.Root)?.RingTint, Is.EqualTo((Color?)red));
         }
 
         [Test]
