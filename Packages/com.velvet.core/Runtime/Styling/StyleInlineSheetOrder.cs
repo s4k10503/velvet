@@ -129,7 +129,6 @@ namespace Velvet
             var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
             if (important || !StyleUtilityProperties.TryGet(core, out var rule) || rule.Gate != StyleUtilityGate.None)
             {
-                // MUTANT_SURVIVES(equivalent, literal): written is assigned only below this return, so a class read here would hold no longhand and cover nothing.
                 return false;
             }
             written = rule.Properties;

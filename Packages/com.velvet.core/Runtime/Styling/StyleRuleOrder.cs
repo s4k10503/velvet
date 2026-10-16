@@ -329,27 +329,35 @@ namespace Velvet
 
         private const string NegatedRotatePrefix = "rotate-n";
 
-        // utility as Tailwind spells it, its important modifier kept where it stood.
+        // utility as Tailwind spells it, its important modifier kept where it stood; utility itself when its name is
+        // Tailwind's own.
         private static string TailwindSpellingOf(string utility)
         {
             var core = StyleArbitraryValueResolver.StripImportant(utility, out var important);
-            var spelled = core;
-            foreach (var (name, tailwind) in s_spelledOtherwise)
+            var spelled = SpelledOtherwise(core);
+            if (spelled == null)
             {
-                if (core == name)
-                {
-                    spelled = tailwind;
-                }
-            }
-            if (core.StartsWith(NegatedRotatePrefix, StringComparison.Ordinal))
-            {
-                spelled = string.Concat("-rotate-", core.Substring(NegatedRotatePrefix.Length));
+                return utility;
             }
             if (!important)
             {
                 return spelled;
             }
             return utility[0] == '!' ? string.Concat("!", spelled) : string.Concat(spelled, "!");
+        }
+
+        private static string? SpelledOtherwise(string core)
+        {
+            foreach (var (name, tailwind) in s_spelledOtherwise)
+            {
+                if (core == name)
+                {
+                    return tailwind;
+                }
+            }
+            return core.StartsWith(NegatedRotatePrefix, StringComparison.Ordinal)
+                ? string.Concat("-rotate-", core.Substring(NegatedRotatePrefix.Length))
+                : null;
         }
 
         internal static int TailwindIndexOf(string property) => Array.IndexOf(s_tailwindPropertyOrder, property);
