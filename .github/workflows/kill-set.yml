@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       files:
-        description: "Production sources whose mutants are measured, space-separated, e.g. Packages/com.velvet.core/Runtime/Foo.cs"
+        description: "Production sources whose mutants are measured, space-separated, e.g. Packages/com.velvet.core/Runtime/Styling/StyleSpacingPrecedence.cs"
         required: true
       assemblies:
         description: "Comma-separated test assemblies the suite is narrowed to; empty is every one"
