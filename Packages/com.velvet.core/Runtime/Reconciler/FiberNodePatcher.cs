@@ -2575,7 +2575,7 @@ namespace Velvet
         // ones leaving first, since a declaration changing value leaves and arrives at the same layer.
         private void ApplyCustomPropertyConfig(VisualElement element, string[] classNames)
         {
-            List<(string Core, long Priority, int Declaration)>? tokens = null;
+            List<(string Core, long Priority, int Declaration, int Order)>? tokens = null;
             if (classNames != null)
             {
                 for (var i = 0; i < classNames.Length; i++)
@@ -2588,13 +2588,14 @@ namespace Velvet
                     var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
                     if (!string.IsNullOrEmpty(core) && StyleCustomPropertyClass.IsCustomPropertyToken(core))
                     {
-                        // A reader takes the layer the literal base utilities share, so it ranks against them as they
-                        // rank against each other; a declaration ranks only against declarations, by rule place.
-                        (tokens ??= new List<(string, long, int)>()).Add((core,
+                        // A reader takes the layer the literal base utilities share, where its rule place ranks it
+                        // against them (StyleCustomProperties.Settle); a declaration ranks only against declarations,
+                        // by rule place.
+                        var order = StyleRuleOrder.OrdinalOf(classNames, i);
+                        var declares = StyleCustomPropertyClass.TryDeclaration(core, out _, out _);
+                        (tokens ??= new List<(string, long, int, int)>()).Add((core,
                             important ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base) : StyleLayerPriority.Base,
-                            StyleCustomPropertyClass.TryDeclaration(core, out _, out _)
-                                ? StyleRuleOrder.OrdinalOf(classNames, i)
-                                : StyleVariantPayload.NoDeclaration));
+                            declares ? order : StyleVariantPayload.NoDeclaration, order));
                     }
                 }
             }
@@ -2603,16 +2604,16 @@ namespace Velvet
             {
                 return;
             }
-            var leaving = new List<(string Core, long Priority, int Declaration)>();
-            var arriving = new List<(string Core, long Priority, int Declaration)>();
-            foreach (var token in previous ?? new List<(string, long, int)>())
+            var leaving = new List<(string Core, long Priority, int Declaration, int Order)>();
+            var arriving = new List<(string Core, long Priority, int Declaration, int Order)>();
+            foreach (var token in previous ?? new List<(string, long, int, int)>())
             {
                 if (tokens == null || !tokens.Contains(token))
                 {
                     leaving.Add(token);
                 }
             }
-            foreach (var token in tokens ?? new List<(string, long, int)>())
+            foreach (var token in tokens ?? new List<(string, long, int, int)>())
             {
                 if (previous == null || !previous.Contains(token))
                 {
@@ -2643,16 +2644,15 @@ namespace Velvet
 
         // Declarations before consumers, so a consumer arriving with the declaration it reads resolves once.
         private void ToggleCustomPropertyTokens(VisualElement element,
-            List<(string Core, long Priority, int Declaration)> tokens, bool on)
+            List<(string Core, long Priority, int Declaration, int Order)> tokens, bool on)
         {
             for (var pass = 0; pass < 2; pass++)
             {
-                foreach (var (core, priority, declaration) in tokens)
+                foreach (var (core, priority, declaration, order) in tokens)
                 {
                     if (StyleCustomPropertyClass.TryDeclaration(core, out _, out _) == (pass == 0))
                     {
-                        StyleVariantPayload.Apply(element, new[] { core }, on, priority, _ctx,
-                            declarations: new[] { declaration });
+                        StyleCustomProperties.Toggle(element, core, on, priority, declaration, _ctx, order);
                     }
                 }
             }

@@ -241,6 +241,114 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStylesheetDeclaringAProperty_When_AStylePassRuns_Then_TheChildTakesItsValueInThatPass()
+        {
+            // Arrange
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            var child = Mount("css-var-host", "w-[var(--w)]");
+
+            // Act — no scheduler tick: the value has to be written while the style pass runs.
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(Width(child), Is.EqualTo((StyleKeyword.Undefined, 25f)));
+        }
+
+        [Test]
+        public void Given_AThemeRuleOnTheReader_When_AnInheritedColourIsUnset_Then_TheParentsColourShows()
+        {
+            // Arrange — the reader's own rule sets a colour, which the browser's unset does not let through.
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            var child = Mount("text-[#ff0000]", "css-var-themed hover:text-[var(--c)]");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) child.SimulateEvent(over);
+            ForcePanelUpdate(child.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            ForcePanelUpdate(child.panel);
+
+            // Assert
+            Assert.That(child.resolvedStyle.color, Is.EqualTo(new UnityEngine.Color(1f, 0f, 0f, 1f)));
+        }
+
+        [Test]
+        public void Given_AnUnresolvableLineHeight_When_AnAncestorSetsOne_Then_TheLabelInheritsIt()
+        {
+            // Arrange / Act — line-height inherits, so the own leading-[30px] the reader outranks does not show.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "leading-[20px]", children: new VNode?[]
+                {
+                    V.Label(className: "leading-[30px] leading-[var(--lh)]", text: "hi"),
+                }));
+
+            // Assert
+            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=20px>hi</line-height>"));
+        }
+
+        [TestCase("bg-[#ff0000]/(--a)")]
+        [TestCase("bg-[#ff0000]/[var(--a)]")]
+        public void Given_AModifierReadingAPercentage_When_Mounted_Then_TheColourTakesThatAlpha(string inner)
+        {
+            // Arrange / Act
+            var child = Mount("[--a:50%]", inner);
+
+            // Assert
+            Assert.That(child.style.backgroundColor.value.a, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AModifierReadingANumber_When_Mounted_Then_TheColourIsUnset()
+        {
+            // Arrange / Act — color-mix() takes a percentage, so a bare number is invalid at computed-value time.
+            var child = Mount("[--a:0.5]", "bg-[#ff0000]/(--a)");
+
+            // Assert
+            Assert.That(child.style.backgroundColor.keyword, Is.EqualTo(StyleKeyword.Initial));
+        }
+
+        [Test]
+        public void Given_AnArbitraryPaddingOfTwoValues_When_Mounted_Then_EachSideTakesItsValue()
+        {
+            // Arrange / Act
+            var child = Mount("", "[padding:1px_2px]");
+
+            // Assert
+            Assert.That((child.style.paddingTop.value.value, child.style.paddingRight.value.value,
+                child.style.paddingBottom.value.value, child.style.paddingLeft.value.value),
+                Is.EqualTo((1f, 2f, 1f, 2f)));
+        }
+
+        [Test]
+        public void Given_AReadPaddingOfThreeValues_When_Mounted_Then_TheLeftTakesTheSecond()
+        {
+            // Arrange / Act
+            var child = Mount("[--p:1px_2px_3px]", "p-(--p)");
+
+            // Assert
+            Assert.That((child.style.paddingBottom.value.value, child.style.paddingLeft.value.value), Is.EqualTo((3f, 2f)));
+        }
+
+        [Test]
+        public void Given_AnArbitraryPaddingBesideALiteralTop_When_Mounted_Then_TheLiteralTopWins()
+        {
+            // Arrange / Act — Tailwind emits padding ahead of padding-top, whatever order the class list holds.
+            var child = Mount("", "pt-[9px] [padding:1px_2px]");
+
+            // Assert
+            Assert.That((child.style.paddingTop.value.value, child.style.paddingRight.value.value), Is.EqualTo((9f, 2f)));
+        }
+
+        [Test]
+        public void Given_TwoReadersOfOneWidth_When_Mounted_Then_TheOneTailwindEmitsLaterWins()
+        {
+            // Arrange / Act — w-[var(--b)] sorts after w-[var(--a)], though the class list writes it first.
+            var child = Mount("[--a:10px] [--b:20px]", "w-[var(--b)] w-[var(--a)]");
+
+            // Assert
+            Assert.That(Width(child), Is.EqualTo((StyleKeyword.Undefined, 20f)));
+        }
+
+        [Test]
         public void Given_AStylesheetDeclaringAProperty_When_AChildReadsIt_Then_TheChildTakesItsValue()
         {
             // Arrange

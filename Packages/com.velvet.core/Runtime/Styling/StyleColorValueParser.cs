@@ -233,8 +233,9 @@ namespace Velvet
             return true;
         }
 
-        // Parses the alpha portion of a color opacity modifier: an integer percent 0..100 (50 -> 0.5) or an
-        // arbitrary bracketed 0..1 fraction ([0.32] -> 0.32). Returns false for any other / out-of-range form.
+        // Parses the alpha portion of a color opacity modifier: an integer percent 0..100 (50 -> 0.5), an
+        // arbitrary bracketed 0..1 fraction ([0.32] -> 0.32) or a bracketed percentage ([50%] -> 0.5). Returns false
+        // for any other / out-of-range form.
         internal static bool TryParseAlphaModifier(ReadOnlySpan<char> span, out float alpha)
         {
             alpha = 0f;
@@ -244,12 +245,14 @@ namespace Velvet
             }
             if (StyleArbitraryValueResolver.TryStripBrackets(span, 0, out var inner))
             {
-                if (!float.TryParse(inner, NumberStyles.Float, CultureInfo.InvariantCulture, out var frac)
-                    || !float.IsFinite(frac) || frac < 0f || frac > 1f)
+                var percentage = inner.Length > 1 && inner[inner.Length - 1] == '%';
+                if (!float.TryParse(percentage ? inner.Slice(0, inner.Length - 1) : inner, NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out var frac)
+                    || !float.IsFinite(frac) || frac < 0f || frac > (percentage ? 100f : 1f))
                 {
                     return false;
                 }
-                alpha = frac;
+                alpha = percentage ? frac / 100f : frac;
                 return true;
             }
             if (!int.TryParse(span, NumberStyles.Integer, CultureInfo.InvariantCulture, out var percent)

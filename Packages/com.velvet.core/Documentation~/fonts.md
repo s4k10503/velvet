@@ -19,10 +19,11 @@ registry that maps family names to Font Assets.
 | Class | Meaning |
 |---|---|
 | `font-sans`, `font-serif`, `font-mono`, `font-<name>` | Selects the family named `<name>` from the registry |
-| `font-[Inter]` | Arbitrary family by registered name |
-| `font-[addr:<key>]` | Arbitrary family loaded from Addressables (mirrors `bg-[addr:<key>]`) |
+| `font-[Inter]` / `font-[family-name:Inter]` / `font-[generic-name:serif]` | Arbitrary family by registered name; `_` is a space and `\_` an underscore, as Tailwind reads a bracket |
+| `font-[addr:<key>]` | Arbitrary family loaded from Addressables (mirrors `bg-[addr:<key>]`), the key read as written |
 | `font-thin` … `font-black` | Weight scale (100…900) |
-| `font-[550]` / `font-[weight:550]` | Arbitrary weight |
+| `font-[550]` / `font-[weight:550]` / `font-[number:550]` | Arbitrary weight |
+| `font-[weight:inherit]` / `font-[family-name:inherit]` | The parent's weight or family, over the element's own classes |
 | `italic` / `not-italic` | Italic axis |
 | `font-bold italic` | **Composes** to bold-and-italic |
 | `bold-italic` | Single-class bold + italic (back-compat) |
@@ -216,7 +217,8 @@ The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.
 as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-height`'s values: a
 unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
 (`leading-[150%]`), and `px`, `rem` (1rem = 16px, as `w-[…]` takes it) or an absolute unit (`in`, `cm`,
-`mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. A math function is read where it
+`mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. `leading-[inherit]` takes the parent's
+line height over the element's own. A math function is read where it
 comes to one of those pixel lengths or one percentage
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A negative value, any other unit, or a
 malformed value is ignored. A bare spacing step (`leading-6`, `leading-13`, `leading-4.5`, `leading-px`) emits

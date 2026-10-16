@@ -12,10 +12,11 @@ namespace Velvet
 {
     // CSS custom properties for the class tokens StyleCustomPropertyClass reads. A declaration is held per element
     // and per layer, as a variant payload's value is; a stylesheet's declarations are read from the engine. A
-    // consumer is resolved on its element into the utility it would be with each var() replaced, and that utility
-    // is applied as a payload at the consumer's own layer. A consumer that cannot be resolved, or whose result the
-    // utility's property rejects, is invalid at computed-value time: one writing a style property writes that
-    // property's unset value, and one a class-driven pass paints (a gradient stop, a shadow) applies nothing.
+    // consumer is resolved on its element into the utility it would be with each var() replaced, split into its
+    // sides where it is a shorthand holding several values, and applied as payloads at the consumer's own layer.
+    // A var() that cannot be resolved, or whose result the utility's property rejects, is invalid at
+    // computed-value time: a consumer writing a style property writes that property's unset value, and one a
+    // class-driven pass paints writes the utility standing for what the browser draws (PaintedUnset).
     internal static class StyleCustomProperties
     {
         // Nesting of var() through fallbacks and declarations past this depth is declined rather than followed.
@@ -28,6 +29,10 @@ namespace Velvet
         private static readonly ConditionalWeakTable<VisualElement, Consumers> s_consumers = new();
         private static readonly EventCallback<AttachToPanelEvent> s_onAttach = OnAttach;
 
+        // The class list a reconcile last applied to the element, which ranks its base-layer consumers against its
+        // literal base utilities (Settle).
+        private static readonly ConditionalWeakTable<VisualElement, string[]> s_classes = new();
+
         // Reused by every resolution: one runs alone and nothing it calls resolves re-entrantly.
         private static readonly StringBuilder s_built = new();
         private static readonly List<(VisualElement Element, string Name)> s_resolving = new();
@@ -38,6 +43,8 @@ namespace Velvet
         // The number of elements holding a consumer, so a declaration change on a tree with none walks nothing.
         private static int s_consumerElements;
 
+        private static readonly Dictionary<string, string?> s_probes = new(StringComparer.Ordinal);
+
         private sealed class Consumers
         {
             public readonly List<Consumer> Entries = new();
@@ -47,42 +54,60 @@ namespace Velvet
             public object? Context;
         }
 
-        // The class list a reconcile last applied to the element, whose literal base utilities a base-layer
-        // consumer hands its layer back to (Withdraw).
-        private static readonly ConditionalWeakTable<VisualElement, string[]> s_classes = new();
-
         private sealed class Consumer
         {
             public readonly string Utility;
             public readonly long Priority;
             public readonly int Declaration;
+            // The utility's place among the element's rules (StyleRuleOrder), for a base-layer consumer, which
+            // ranks it against the element's other base utilities writing the same property.
+            public readonly int Order;
             public readonly ReconcilerContext? Context;
+            public readonly UtilityShape Shape;
+            // The hint written into the resolved bracket where Tailwind types the value without testing it
+            // (DefaultHint), and the hint the value is read with, written or so added.
+            public readonly string? AddedHint;
+            public readonly string? EffectiveHint;
             // The property the utility writes as an inline layer (WrittenProperty), which an unresolvable var()
             // writes the unset value of. Null for a utility that reads no var(), whose value is as written.
             public readonly ArbitraryProperty? Property;
             // For a utility a class-driven pass paints, the one standing for what an unresolvable var() computes
             // to (PaintedUnset).
             public readonly string? UnsetUtility;
-            // Whether the resolved bracket is written behind a colour hint (ColourByDefault).
-            public readonly bool AddsColourHint;
-            public string? Applied;
+            // The side utilities a shorthand splits into (StyleCustomPropertyClass.SidesOf).
+            public readonly string[]? Sides;
+            // Whether a modifier bracket reads a var(), whose value is a color-mix() percentage.
+            public readonly bool ModifierReadsVariable;
+            // The resolution the applied state came from, null when the last one resolved nothing.
+            public string? Source;
+            public bool Resolved;
+            public string[]? Applied;
             public bool Unset;
-            // The last resolution the property rejected, so a poll that finds it again writes nothing.
-            public string? Rejected;
+            // The parent's value an inherited unset writes, once the element's own stylesheets are seen to give it
+            // another (TrackInherited); null while no inline value stands for it.
+            public ArbitraryStyle? Inherited;
 
-            public Consumer(string utility, long priority, int declaration, ReconcilerContext? context)
+            public Consumer(string utility, long priority, int declaration, int order, ReconcilerContext? context)
             {
                 Utility = utility;
                 Priority = priority;
                 Declaration = declaration;
+                Order = order;
                 Context = context;
-                var open = utility.IndexOf('[');
-                AddsColourHint = ColourByDefault(utility, open, utility.Substring(open + 1, utility.Length - open - 2),
-                    out var hint) && hint == null;
-                if (utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0)
+                Shape = UtilityShape.Of(utility);
+                AddedHint = DefaultHint(utility, Shape);
+                EffectiveHint = Shape.Hint ?? AddedHint;
+                Sides = StyleCustomPropertyClass.SidesOf(utility, Shape);
+                var readsVariable = utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0;
+                ModifierReadsVariable = Shape.HasModifier
+                    && utility.IndexOf("var(", Math.Max(Shape.MainClose, 0), StringComparison.OrdinalIgnoreCase) >= 0;
+                if (readsVariable)
                 {
-                    Property = WrittenProperty(utility);
-                    UnsetUtility = Property == null ? PaintedUnset(utility.Substring(0, open), hint) : null;
+                    Property = WrittenProperty(utility, Shape, AddedHint, out _);
+                    UnsetUtility = Property == null && Shape.MainOpen > 0
+                        ? PaintedUnset(utility.Substring(utility[0] == '-' ? 1 : 0, Shape.MainOpen - (utility[0] == '-' ? 1 : 0)),
+                            EffectiveHint)
+                        : null;
                 }
             }
 
@@ -93,9 +118,10 @@ namespace Velvet
         }
 
         // Applies (on) or withdraws one token StyleCustomPropertyClass.IsCustomPropertyToken accepts, at the
-        // priority and rule place a payload carries (StyleVariantPayload.Apply).
+        // priority and rule place a payload carries (StyleVariantPayload.Apply). order is the token's place among
+        // the element's rules, for a token on the base layer.
         public static void Toggle(VisualElement target, string core, bool on, long priority, int declaration,
-            ReconcilerContext? context)
+            ReconcilerContext? context, int order = StyleVariantPayload.NoDeclaration)
         {
             if (StyleCustomPropertyClass.TryDeclaration(core, out var name, out var value))
             {
@@ -122,7 +148,7 @@ namespace Velvet
             }
             if (on)
             {
-                Bind(target, new Consumer(utility, priority, declaration, context));
+                Bind(target, new Consumer(utility, priority, declaration, order, context));
             }
             else
             {
@@ -158,6 +184,31 @@ namespace Velvet
                 Unwatch(element, consumers);
                 s_consumers.Remove(element);
             }
+        }
+
+        // Records the class list a reconcile applied to element, for Settle.
+        public static void RecordClasses(VisualElement element, string[] classNames)
+        {
+            s_classes.Remove(element);
+            s_classes.Add(element, classNames);
+        }
+
+        // A parseable stand-in for a consumer token, read in place of it where the rule order sorts the element's
+        // tokens by the property they write: the utility with a value of the type Tailwind gives it. Null for any
+        // other token, and for a consumer no such value parses for.
+        public static string? SortableOf(string core)
+        {
+            if (StyleCustomPropertyClass.Consumer(core) is not { } utility)
+            {
+                return null;
+            }
+            if (!s_probes.TryGetValue(utility, out var probe))
+            {
+                var shape = UtilityShape.Of(utility);
+                WrittenProperty(utility, shape, DefaultHint(utility, shape), out probe, keywordOnly: false);
+                s_probes[utility] = probe;
+            }
+            return probe;
         }
 
         private static bool Declare(VisualElement target, string name, string value, long key, bool on)
@@ -224,9 +275,10 @@ namespace Velvet
             }
         }
 
-        // A stylesheet's declarations move at a style pass, whose custom-style event the engine sends only to an
-        // element matching a rule that declares one, so the panel's scheduler asks again each tick; attaching to a
-        // panel is when the element first has the ancestors its declarations come from.
+        // Attaching to a panel is when the element first has the ancestors its declarations come from. A
+        // stylesheet's declarations move at a style pass, where OnCustomStyle hears the element declaring them;
+        // the scheduler's tick asks again for a context that changed on an element no walk has read yet, which
+        // nothing listens to.
         private static void Watch(VisualElement target, Consumers consumers)
         {
             s_consumerElements++;
@@ -270,11 +322,71 @@ namespace Velvet
             }
         }
 
+        // The engine sends this from inside its style traversal, after the declaring element's variable context is
+        // rebuilt and before its descendants' are, and a descendant's inline value is written here, ahead of the
+        // traversal reaching it, rather than at the next scheduler tick. Each descendant still holds its previous
+        // context then, so the one compared with the declaring element's (TryStylesheet) is that element's
+        // previous one. A payload a class-driven pass reads waits for the scheduler, since that pass may add or
+        // remove a sibling mid-traversal.
+        private static void OnCustomStyle(CustomStyleResolvedEvent evt)
+        {
+            if (s_consumerElements <= 0 || evt.currentTarget is not VisualElement declaring)
+            {
+                return;
+            }
+            s_seen.TryGetValue(declaring, out var previous);
+            (s_traversed, s_traversedPrevious) = (declaring, previous);
+            try
+            {
+                ReresolveInlineSubtree(declaring);
+            }
+            finally
+            {
+                (s_traversed, s_traversedPrevious) = (null, null);
+            }
+        }
+
+        private static void ReresolveInlineSubtree(VisualElement root)
+        {
+            if (s_consumers.TryGetValue(root, out var consumers))
+            {
+                var deferred = false;
+                foreach (var consumer in consumers.Entries.ToArray())
+                {
+                    if (consumer.Property != null)
+                    {
+                        Reresolve(root, consumer);
+                    }
+                    else
+                    {
+                        deferred = true;
+                    }
+                }
+                if (deferred)
+                {
+                    root.schedule.Execute(() => ReresolveAll(root));
+                }
+            }
+            var children = root.hierarchy;
+            for (var i = 0; i < children.childCount; i++)
+            {
+                ReresolveInlineSubtree(children[i]);
+            }
+        }
+
         private static void Poll(VisualElement target)
         {
             if (!s_consumers.TryGetValue(target, out var consumers))
             {
                 return;
+            }
+            var entries = consumers.Entries;
+            for (var i = 0; i < entries.Count; i++)
+            {
+                if (entries[i].Unset && Inherits(entries[i].Property!.Value))
+                {
+                    TrackInherited(target, entries[i]);
+                }
             }
             var context = s_variableContext?.GetValue(target);
             if (ReferenceEquals(context, consumers.Context))
@@ -317,215 +429,425 @@ namespace Velvet
         {
             s_built.Clear();
             var resolved = TryBuild(target, consumer, s_built);
-            if (resolved && ((consumer.Applied != null && Matches(s_built, consumer.Applied))
-                    || (consumer.Unset && consumer.Rejected != null && Matches(s_built, consumer.Rejected))))
+            if (consumer.Resolved && (resolved ? consumer.Source != null && Matches(s_built, consumer.Source) : consumer.Source == null))
             {
                 return;
             }
-            var payload = resolved ? s_built.ToString() : null;
+            var source = resolved ? s_built.ToString() : null;
+            var payloads = source == null ? null : Split(consumer, source);
             var unset = false;
             if (consumer.Property is { } property)
             {
-                unset = payload == null || !StyleArbitraryValueResolver.TryParseLayer(payload, out var parsed)
-                    || parsed.Property != property;
-                consumer.Rejected = unset ? payload : null;
-                payload = unset ? null : payload;
+                unset = payloads == null || !AllWrite(payloads, consumer.Sides == null || payloads.Length == 1 ? property : null);
+                payloads = unset ? null : payloads;
             }
-            else if (payload == null)
+            else if (payloads == null && consumer.UnsetUtility != null)
             {
-                payload = consumer.UnsetUtility;
-            }
-            if (payload == consumer.Applied && unset == consumer.Unset)
-            {
-                return;
+                payloads = new[] { consumer.UnsetUtility };
             }
             Withdraw(target, consumer);
-            consumer.Applied = payload;
+            consumer.Source = source;
+            consumer.Resolved = true;
+            consumer.Applied = payloads;
             consumer.Unset = unset;
             if (unset)
             {
-                StyleArbitraryValueResolver.Apply(target, UnsetOf(consumer.Property!.Value), consumer.Key);
+                StyleArbitraryValueResolver.Apply(target, UnsetOf(consumer), consumer.Key);
             }
-            else if (payload != null)
+            else if (payloads != null)
             {
-                StyleVariantPayload.Apply(target, new[] { payload }, true, consumer.Priority, consumer.Context,
-                    declarations: new[] { consumer.Declaration });
+                StyleVariantPayload.Apply(target, payloads, true, consumer.Priority, consumer.Context,
+                    declarations: Repeat(consumer.Declaration, payloads.Length));
             }
+            SettleWritten(target, consumer, WrittenBy(consumer.Applied, unset ? consumer.Property : null));
         }
 
         // A consumer on the base layer shares it with the literal base utilities writing the same property, so
-        // what it clears is handed back to them.
+        // whichever of them ranks last is put back once this one is gone.
         private static void Withdraw(VisualElement target, Consumer consumer)
         {
             var (applied, unset) = (consumer.Applied, consumer.Unset);
             consumer.Applied = null;
             consumer.Unset = false;
-            ArbitraryProperty? written = null;
+            consumer.Inherited = null;
             if (unset)
             {
-                written = consumer.Property!.Value;
-                StyleArbitraryValueResolver.Clear(target, written.Value, consumer.Key);
+                StyleArbitraryValueResolver.Clear(target, consumer.Property!.Value, consumer.Key);
             }
             else if (applied != null)
             {
-                if (StyleArbitraryValueResolver.TryParseLayer(applied, out var parsed))
-                {
-                    written = parsed.Property;
-                }
-                StyleVariantPayload.Apply(target, new[] { applied }, false, consumer.Priority, consumer.Context,
-                    declarations: new[] { consumer.Declaration });
+                StyleVariantPayload.Apply(target, applied, false, consumer.Priority, consumer.Context,
+                    declarations: Repeat(consumer.Declaration, applied.Length));
             }
-            if (written != null && consumer.OnBaseLayer && s_classes.TryGetValue(target, out var classes))
-            {
-                FiberNodePatcher.ReapplyArbitraryValues(target, classes,
-                    affectedLonghands: StyleArbitraryLonghands.Of(written.Value));
-            }
+            SettleWritten(target, consumer, WrittenBy(applied, unset ? consumer.Property : null));
         }
 
-        // Records the class list a reconcile applied to element, for Withdraw.
-        public static void RecordClasses(VisualElement element, string[] classNames)
+        private static List<ArbitraryProperty>? WrittenBy(string[]? payloads, ArbitraryProperty? unset)
         {
-            s_classes.Remove(element);
-            s_classes.Add(element, classNames);
+            List<ArbitraryProperty>? written = null;
+            if (unset is { } property)
+            {
+                (written = new List<ArbitraryProperty>()).Add(property);
+            }
+            foreach (var payload in payloads ?? Array.Empty<string>())
+            {
+                if (StyleArbitraryValueResolver.TryParseLayer(payload, out var parsed))
+                {
+                    (written ??= new List<ArbitraryProperty>()).Add(parsed.Property);
+                }
+            }
+            return written;
         }
 
-        // Re-applies element's base-layer consumers writing one of longhands, or every one when longhands is null,
-        // after the reconciler re-applied the literal base utilities over the layer they share.
+        private static void SettleWritten(VisualElement target, Consumer consumer, List<ArbitraryProperty>? written)
+        {
+            if (written == null || !consumer.OnBaseLayer)
+            {
+                return;
+            }
+            foreach (var property in written)
+            {
+                Settle(target, property, consumer.Key);
+            }
+        }
+
+        // The base layer holds one value per property, which every base utility writing it shares: re-applies the
+        // one Tailwind emits last among the element's literal utilities and its consumers, so the order they were
+        // applied in does not decide.
+        private static void Settle(VisualElement target, ArbitraryProperty property, long key)
+        {
+            var best = -1;
+            ArbitraryStyle? winner = null;
+            if (s_classes.TryGetValue(target, out var classes))
+            {
+                for (var i = 0; i < classes.Length; i++)
+                {
+                    var raw = classes[i];
+                    if (!FiberNodePatcher.IsInlineResolved(raw))
+                    {
+                        continue;
+                    }
+                    var core = StyleArbitraryValueResolver.StripImportant(raw, out var important);
+                    if ((important ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base) : StyleLayerPriority.Base) != key
+                        || !StyleArbitraryValueResolver.TryParseLayer(core, out var style) || style.Property != property)
+                    {
+                        continue;
+                    }
+                    var order = StyleRuleOrder.OrdinalOf(classes, i);
+                    if (order >= best)
+                    {
+                        (best, winner) = (order, style);
+                    }
+                }
+            }
+            if (s_consumers.TryGetValue(target, out var consumers))
+            {
+                foreach (var consumer in consumers.Entries)
+                {
+                    if (consumer.Key != key || consumer.Order < best)
+                    {
+                        continue;
+                    }
+                    if (consumer.Unset && consumer.Property == property)
+                    {
+                        (best, winner) = (consumer.Order, UnsetOf(consumer));
+                        continue;
+                    }
+                    foreach (var payload in consumer.Applied ?? Array.Empty<string>())
+                    {
+                        if (StyleArbitraryValueResolver.TryParseLayer(payload, out var style) && style.Property == property)
+                        {
+                            (best, winner) = (consumer.Order, style);
+                        }
+                    }
+                }
+            }
+            if (winner is { } settled)
+            {
+                StyleArbitraryValueResolver.Apply(target, settled, key);
+            }
+        }
+
+        // Re-ranks element's base-layer consumers against the literal base utilities the reconciler has just
+        // re-applied, for the properties writing one of longhands, or every one when longhands is null.
         public static void ReassertBase(VisualElement element, StyleLonghandSet? longhands)
         {
             if (!s_consumers.TryGetValue(element, out var consumers))
             {
                 return;
             }
-            foreach (var consumer in consumers.Entries)
+            foreach (var consumer in consumers.Entries.ToArray())
             {
                 if (!consumer.OnBaseLayer)
                 {
                     continue;
                 }
-                ArbitraryStyle style;
-                if (consumer.Unset)
+                foreach (var property in WrittenBy(consumer.Applied, consumer.Unset ? consumer.Property : null)
+                    ?? new List<ArbitraryProperty>())
                 {
-                    style = UnsetOf(consumer.Property!.Value);
-                }
-                else if (consumer.Applied == null || !StyleArbitraryValueResolver.TryParseLayer(consumer.Applied, out style))
-                {
-                    continue;
-                }
-                if (longhands is not { } affected || StyleArbitraryLonghands.Of(style.Property).Overlaps(affected))
-                {
-                    StyleArbitraryValueResolver.Apply(element, style, consumer.Key);
+                    if (longhands is not { } affected || StyleArbitraryLonghands.Of(property).Overlaps(affected))
+                    {
+                        Settle(element, property, consumer.Key);
+                    }
                 }
             }
         }
 
-        // What an unresolvable var() computes to, as a utility, for the painted utilities where that is not
-        // nothing: a gradient stop's colour and position are custom properties Tailwind registers with a
-        // transparent initial value and with 0%, 50% and 100%, a box shadow's one with an initial value that
-        // draws none, and gap's initial value is no gap.
-        private static string? PaintedUnset(string prefix, string? hint)
-            => prefix switch
+        private static int[] Repeat(int declaration, int count)
+        {
+            var declarations = new int[count];
+            for (var i = 0; i < count; i++)
             {
-                "from-" when hint is "length" or "percentage" => "from-0%",
-                "via-" when hint is "length" or "percentage" => "via-50%",
-                "to-" when hint is "length" or "percentage" => "to-100%",
-                "from-" or "via-" or "to-" => prefix + "transparent",
-                "shadow-" when hint != "color" => "shadow-none",
-                "gap-" or "gap-x-" or "gap-y-" => prefix + "0",
-                _ => null,
+                declarations[i] = declaration;
+            }
+            return declarations;
+        }
+
+        // The payloads a resolution applies: the resolved utility, or for a shorthand holding several values its
+        // sides, in CSS's order of one to four values (two for gap). Null where the value count is one the
+        // shorthand does not take, or where a modifier read from a var() is not a percentage, which is what
+        // color-mix() takes it as.
+        private static string[]? Split(Consumer consumer, string source)
+        {
+            if (consumer.ModifierReadsVariable)
+            {
+                var modifier = source.LastIndexOf("/[", StringComparison.Ordinal);
+                if (modifier < 0 || source.Length < modifier + 4 || source[source.Length - 2] != '%')
+                {
+                    return null;
+                }
+            }
+            if (consumer.Sides is not { } sides)
+            {
+                return new[] { source };
+            }
+            var shape = UtilityShape.Of(source);
+            var values = SplitValues(source, shape.BodyStart, shape.MainClose);
+            if (values.Count <= 1)
+            {
+                return new[] { source };
+            }
+            if (values.Count > sides.Length)
+            {
+                return null;
+            }
+            var hint = shape.Hint == null ? string.Empty : shape.Hint + ":";
+            var payloads = new string[sides.Length];
+            for (var side = 0; side < sides.Length; side++)
+            {
+                // Top, right, bottom, left: a missing right is the top, a missing bottom the top and a missing
+                // left the right.
+                var index = side < values.Count ? side : side == 3 && values.Count > 1 ? 1 : 0;
+                payloads[side] = sides[side] + "[" + hint + values[index] + "]";
+            }
+            return payloads;
+        }
+
+        private static List<string> SplitValues(string text, int start, int end)
+        {
+            var values = new List<string>();
+            var depth = 0;
+            var from = start;
+            for (var i = start; i <= end; i++)
+            {
+                var c = i < end ? text[i] : '_';
+                depth += c == '(' ? 1 : c == ')' ? -1 : 0;
+                if (depth != 0 || c != '_' || (i > start && text[i - 1] == '\\'))
+                {
+                    continue;
+                }
+                if (i > from)
+                {
+                    values.Add(text.Substring(from, i - from));
+                }
+                from = i + 1;
+            }
+            return values;
+        }
+
+        // Whether every payload parses to an inline layer, of property where one is given.
+        private static bool AllWrite(string[] payloads, ArbitraryProperty? property)
+            => Array.TrueForAll(payloads, payload => StyleArbitraryValueResolver.TryParseLayer(payload, out var parsed)
+                && (property == null || parsed.Property == property));
+
+        // What an unresolvable var() computes to, as a utility, for the painted utilities where that is not
+        // nothing. A gradient stop's colour and position, a box shadow, a ring's shadow and its offset are custom
+        // properties Tailwind registers with an initial value: transparent; 0%, 50% and 100%; one that draws none;
+        // the same; 0px. A ring's colour is one it registers without one, which its shadow reads with a
+        // currentcolor fallback; an outline colour's initial value is currentcolor and its width's is medium (3px).
+        // Gap's initial value is no gap. A font's weight and family and a line height inherit.
+        private static string? PaintedUnset(string prefix, string? hint)
+        {
+            if (!s_paintedUnset.TryGetValue(prefix, out var unset))
+            {
+                return null;
+            }
+            return hint is null or "color" ? unset.Colour
+                : hint is "family-name" or "generic-name" ? unset.Family
+                : unset.Typed;
+        }
+
+        // Per painted utility: what an unresolvable var() stands for when the value is a colour (or untyped), a
+        // family name, and any other type.
+        private static readonly Dictionary<string, (string? Colour, string? Family, string? Typed)> s_paintedUnset =
+            new(StringComparer.Ordinal)
+            {
+                ["from-"] = ("from-transparent", "from-transparent", "from-0%"),
+                ["via-"] = ("via-transparent", "via-transparent", "via-50%"),
+                ["to-"] = ("to-transparent", "to-transparent", "to-100%"),
+                ["shadow-"] = (null, "shadow-none", "shadow-none"),
+                ["ring-"] = ("ring-current", "ring-current", "ring-0"),
+                ["ring-offset-"] = (null, null, "ring-offset-0"),
+                ["outline-"] = ("outline-current", "outline-current", "outline-[length:3px]"),
+                ["gap-"] = ("gap-0", "gap-0", "gap-0"),
+                ["gap-x-"] = ("gap-x-0", "gap-x-0", "gap-x-0"),
+                ["gap-y-"] = ("gap-y-0", "gap-y-0", "gap-y-0"),
+                ["font-"] = ("font-[weight:inherit]", "font-[family-name:inherit]", "font-[weight:inherit]"),
+                ["leading-"] = ("leading-[inherit]", "leading-[inherit]", "leading-[inherit]"),
             };
 
-        // CSS's unset: a property that inherits takes its parent's value, written as no inline value, and every
-        // other property its initial value.
-        private static ArbitraryStyle UnsetOf(ArbitraryProperty property)
-            => new(property, property is ArbitraryProperty.TextColor or ArbitraryProperty.FontSize
-                or ArbitraryProperty.LetterSpacing
-                ? StyleKeyword.Null
-                : StyleKeyword.Initial);
+        private static bool Inherits(ArbitraryProperty property)
+            => property is ArbitraryProperty.TextColor or ArbitraryProperty.FontSize or ArbitraryProperty.LetterSpacing;
+
+        // CSS's unset: a property that inherits takes its parent's value, and every other property its initial
+        // value. The parent's is written as no inline value until the element's own stylesheets are seen to give
+        // it another (TrackInherited).
+        private static ArbitraryStyle UnsetOf(Consumer consumer)
+        {
+            var property = consumer.Property!.Value;
+            return !Inherits(property) ? new ArbitraryStyle(property, StyleKeyword.Initial)
+                : consumer.Inherited ?? new ArbitraryStyle(property, StyleKeyword.Null);
+        }
+
+        // An inherited unset left to the engine shows the parent's value unless a rule of the element's own sets
+        // the property, which the browser's unset does not let through: the parent's value is then written, and
+        // followed as it changes.
+        private static void TrackInherited(VisualElement target, Consumer consumer)
+        {
+            var parent = target.hierarchy.parent;
+            if (parent == null || target.panel == null)
+            {
+                return;
+            }
+            var property = consumer.Property!.Value;
+            var inherited = ResolvedOf(parent, property);
+            var shown = consumer.Inherited ?? ResolvedOf(target, property);
+            if (SameValue(shown, inherited))
+            {
+                return;
+            }
+            consumer.Inherited = inherited;
+            StyleArbitraryValueResolver.Apply(target, inherited, consumer.Key);
+            SettleWritten(target, consumer, new List<ArbitraryProperty> { property });
+        }
+
+        private static ArbitraryStyle ResolvedOf(VisualElement element, ArbitraryProperty property)
+        {
+            var style = element.resolvedStyle;
+            return property == ArbitraryProperty.TextColor ? new ArbitraryStyle(property, style.color)
+                : new ArbitraryStyle(property, property == ArbitraryProperty.FontSize ? style.fontSize : style.letterSpacing,
+                    LengthUnit.Pixel);
+        }
+
+        private static bool SameValue(ArbitraryStyle a, ArbitraryStyle b)
+            => a.Keyword == b.Keyword && a.Value == b.Value && a.Color == b.Color;
 
         private static bool Matches(StringBuilder built, string applied) => built.Equals(applied.AsSpan());
 
         // The property an inline utility writes, read by parsing it with a value of the type Tailwind gives it in
-        // place of its own: a colour where ColourByDefault holds, else the bracket with each var() read as 0, else
-        // a length, a number or an angle. Null when none parses to a layer the unset value can be written to.
-        private static ArbitraryProperty? WrittenProperty(string utility)
+        // place of its own: a colour where DefaultHint adds one, else the bracket with each var() read as 0, else
+        // a length, a number or an angle; a var() in a modifier is read as 50%. Null when none parses to a layer
+        // the unset value can be written to, or where keywordOnly is false, to any layer at all. probe is the
+        // utility that parsed.
+        private static ArbitraryProperty? WrittenProperty(string utility, UtilityShape shape, string? addedHint,
+            out string? probe, bool keywordOnly = true)
         {
-            var open = utility.IndexOf('[');
-            var body = utility.Substring(open + 1, utility.Length - open - 2);
-            var probes = ColourByDefault(utility, open, body, out var hint)
-                ? new[] { "color:#000" }
-                : new[] { WithVarsAsZero(body), "0px", "0", "0deg" };
-            foreach (var probe in probes)
+            probe = null;
+            string[] candidates;
+            if (shape.MainOpen < 0)
             {
-                var value = hint != null && !probe.StartsWith(hint + ":", StringComparison.Ordinal) && probe != "color:#000"
-                    ? hint + ":" + probe
-                    : probe;
-                if (StyleArbitraryValueResolver.TryParseLayer(utility.Substring(0, open + 1) + value + "]", out var parsed)
-                    && StyleArbitraryValueResolver.WritesKeyword(parsed.Property))
+                candidates = new[] { WithVarsAs(utility, "50%") };
+            }
+            else
+            {
+                var head = utility.Substring(0, shape.MainOpen + 1);
+                var hint = shape.Hint == null ? string.Empty : shape.Hint + ":";
+                var tail = "]" + WithVarsAs(utility.Substring(shape.MainClose + 1), "50%");
+                var body = utility.Substring(shape.BodyStart, shape.MainClose - shape.BodyStart);
+                candidates = addedHint != null
+                    ? new[] { head + addedHint + ":" + (addedHint == "color" ? "#000" : "400") + tail }
+                    : new[]
+                    {
+                        head + hint + WithVarsAs(body, "0") + tail, head + hint + "0px" + tail, head + hint + "0" + tail,
+                        head + hint + "0deg" + tail,
+                    };
+            }
+            foreach (var candidate in candidates)
+            {
+                if (StyleArbitraryValueResolver.TryParseLayer(candidate, out var parsed)
+                    && (!keywordOnly || StyleArbitraryValueResolver.WritesKeyword(parsed.Property)))
                 {
+                    probe = candidate;
                     return parsed.Property;
                 }
             }
             return null;
         }
 
-        private static string WithVarsAsZero(string body)
+        private static string WithVarsAs(string text, string value)
         {
-            var text = new StringBuilder();
-            for (var at = 0; at < body.Length;)
+            var written = new StringBuilder();
+            for (var at = 0; at < text.Length;)
             {
-                var call = IndexOfVar(body, at, body.Length);
-                text.Append(body, at, call - at);
-                if (call == body.Length)
+                var call = IndexOfVar(text, at, text.Length);
+                written.Append(text, at, call - at);
+                if (call == text.Length)
                 {
                     break;
                 }
-                var close = MatchingClose(body, call + 3, body.Length);
+                var close = MatchingClose(text, call + 3, text.Length);
                 if (close < 0)
                 {
                     break;
                 }
-                text.Append('0');
+                written.Append(value);
                 at = close + 1;
             }
-            return text.ToString();
+            return written.ToString();
         }
 
-        // Whether Tailwind writes this bracket as a colour without testing it: a utility whose untyped value
-        // defaults to a colour, holding a value that opens with var(), which Tailwind's type inference declines
-        // to test.
-        private static bool ColourByDefault(string utility, int open, string body, out string? hint)
+        // The hint Tailwind's typing gives an untyped value opening with var(), which its type inference declines
+        // to test, so the utility writes its default: a colour for the utilities StyleColorValueParser.
+        // DefaultsToColour names, and a weight for font-. Null where the value is typed or tested, and where a
+        // modifier follows, which already makes it a colour.
+        private static string? DefaultHint(string utility, in UtilityShape shape)
         {
-            StyleArbitraryValueResolver.TrySplitTypeHint(body.AsSpan(), out hint, out var value);
-            var root = utility.Substring(utility[0] == '-' ? 1 : 0, open - (utility[0] == '-' ? 2 : 1));
-            return (hint == null || hint == "color")
-                && StyleColorValueParser.DefaultsToColour(root)
-                && (hint != null || value.TrimStart("_ ".AsSpan()).StartsWith("var(".AsSpan(), StringComparison.OrdinalIgnoreCase));
+            if (shape.MainOpen < 0 || shape.Hint != null || shape.HasModifier
+                || string.Compare(utility, shape.BodyStart, "var(", 0, 4, StringComparison.OrdinalIgnoreCase) != 0)
+            {
+                return null;
+            }
+            var root = utility.Substring(utility[0] == '-' ? 1 : 0, shape.MainOpen - (utility[0] == '-' ? 2 : 1));
+            return StyleColorValueParser.DefaultsToColour(root) ? "color" : root == "font" ? "weight" : null;
         }
 
-        // The utility with every var() in its bracket replaced by what it resolves to on element, spaces written
-        // as `_`, and a colour hint added where ColourByDefault holds. False when a var() resolves to nothing.
+        // The utility with every var() replaced by what it resolves to on element, spaces written as `_` and an
+        // underscore as `\_`, and the hint DefaultHint adds. False when a var() resolves to nothing.
         private static bool TryBuild(VisualElement element, Consumer consumer, StringBuilder into)
         {
             var utility = consumer.Utility;
-            var open = utility.IndexOf('[');
-            var close = utility.Length - 1;
-            into.Append(utility, 0, open + 1);
-            if (consumer.AddsColourHint)
+            var from = consumer.Shape.MainOpen >= 0 ? consumer.Shape.MainOpen + 1 : 0;
+            into.Append(utility, 0, from);
+            if (consumer.AddedHint != null)
             {
-                into.Append("color:");
+                into.Append(consumer.AddedHint).Append(':');
             }
             s_resolving.Clear();
-            if (!TryAppendSubstituted(element, utility, open + 1, close, encoded: true, into))
-            {
-                return false;
-            }
-            into.Append(']');
-            return true;
+            return TryAppendSubstituted(element, utility, from, utility.Length, encoded: true, into);
         }
 
         // Appends text[start, end) with each var() in it substituted. encoded text is a class bracket, whose
-        // spaces are already `_`; anything else is CSS text, whose spaces are written as `_`.
+        // spaces are already `_`; anything else is CSS text.
         private static bool TryAppendSubstituted(VisualElement scope, string text, int start, int end, bool encoded,
             StringBuilder into)
         {
@@ -676,12 +998,25 @@ namespace Velvet
             return (start, end);
         }
 
+        // CSS text is written into a class bracket the way Tailwind reads one back: a space as `_`, an underscore
+        // as `\_`.
         private static void AppendText(string text, int start, int end, bool encoded, StringBuilder into)
         {
             for (var i = start; i < end; i++)
             {
                 var c = text[i];
-                into.Append(!encoded && char.IsWhiteSpace(c) ? '_' : c);
+                if (encoded)
+                {
+                    into.Append(c);
+                }
+                else if (c == '_')
+                {
+                    into.Append('\\').Append('_');
+                }
+                else
+                {
+                    into.Append(char.IsWhiteSpace(c) ? '_' : c);
+                }
             }
         }
 
@@ -704,7 +1039,7 @@ namespace Velvet
 
         // A custom property a stylesheet declares on element itself rather than one it inherits: element's
         // variable context holds it and its parent's does not hold the same declaration. A value Velvet cannot
-        // spell (an asset, a function other than var()) is read as null.
+        // spell (an asset reference) is read as null.
         private static bool TryStylesheet(VisualElement element, string name, out string? value)
         {
             value = null;
@@ -713,8 +1048,11 @@ namespace Velvet
                 return false;
             }
             var parent = element.hierarchy.parent;
-            if (parent != null && TryReadContext(parent, out var inherited) && inherited.TryGetValue(name, out var outer)
-                && ReferenceEquals(outer.Identity, own.Identity))
+            var inherited = parent == null ? null
+                : ReferenceEquals(parent, s_traversed) ? Read(s_traversedPrevious)
+                : TryReadContext(parent, out var read) ? read
+                : null;
+            if (inherited != null && inherited.TryGetValue(name, out var outer) && ReferenceEquals(outer.Identity, own.Identity))
             {
                 return false;
             }
@@ -722,12 +1060,34 @@ namespace Velvet
             return true;
         }
 
+        // The element OnCustomStyle is handling and the context it held before the traversal rebuilt it.
+        private static VisualElement? s_traversed;
+        private static object? s_traversedPrevious;
+
+        // The context last read on each element, which OnCustomStyle hands TryStylesheet as the declaring element's
+        // previous one. An element is listened to from its first reading.
+        private static readonly ConditionalWeakTable<VisualElement, object> s_seen = new();
+        private static readonly EventCallback<CustomStyleResolvedEvent> s_onCustomStyle = OnCustomStyle;
+
+        private static Dictionary<string, (string? Text, object Identity)>? Read(object? handle)
+            => handle == null ? null : s_contexts.GetValue(handle, s_readContext);
+
         private static bool TryReadContext(VisualElement element, out Dictionary<string, (string? Text, object Identity)> context)
         {
             context = null!;
             if (s_variableContext?.GetValue(element) is not { } handle)
             {
                 return false;
+            }
+            if (!s_seen.TryGetValue(element, out var seen))
+            {
+                element.RegisterCallback(s_onCustomStyle);
+                s_seen.Add(element, handle);
+            }
+            else if (!ReferenceEquals(seen, handle))
+            {
+                s_seen.Remove(element);
+                s_seen.Add(element, handle);
             }
             context = s_contexts.GetValue(handle, s_readContext);
             return true;
@@ -753,8 +1113,9 @@ namespace Velvet
             return read;
         }
 
-        // A declaration's value handles as CSS text: numbers, dimensions, colours, keywords and names, commas, and
-        // a var() with its fallback, which the engine stores as its last argument.
+        // A declaration's value handles as CSS text: numbers, dimensions, colours, keywords, names and strings,
+        // commas, resource() paths and functions with their arguments. A var() with a fallback is stored with the
+        // fallback as the rest of the declaration, so its parenthesis closes at the end.
         private static string? Spell(object? sheet, Array handles)
         {
             if (sheet == null || s_handleKind == null || s_readAsString == null || s_readColor == null || s_readFloat == null)
@@ -763,57 +1124,87 @@ namespace Velvet
             }
             var text = new StringBuilder();
             var opened = 0;
-            for (var i = 0; i < handles.Length; i++)
+            var index = 0;
+            if (!SpellRange(sheet, handles, ref index, handles.Length, text, ref opened))
             {
-                var handle = handles.GetValue(i);
-                var kind = s_handleKind.GetValue(handle)?.ToString();
-                if (kind == "CommaSeparator")
-                {
-                    text.Append(',');
-                    continue;
-                }
-                var token = kind == "Function" ? SpellVar(sheet, handles, ref i, ref opened) : SpellValue(sheet, handle, kind);
-                if (token == null)
-                {
-                    return null;
-                }
-                if (text.Length > 0 && text[text.Length - 1] != ',')
-                {
-                    text.Append(' ');
-                }
-                text.Append(token);
+                return null;
             }
             text.Append(')', opened);
             return text.ToString();
         }
 
-        private static string? SpellValue(object sheet, object handle, string? kind)
+        private static bool SpellRange(object sheet, Array handles, ref int index, int end, StringBuilder text, ref int opened)
+        {
+            for (; index < end; index++)
+            {
+                var handle = handles.GetValue(index);
+                var kind = s_handleKind!.GetValue(handle)?.ToString();
+                if (kind == "CommaSeparator")
+                {
+                    text.Append(',');
+                    continue;
+                }
+                Separate(text);
+                if (kind != "Function")
+                {
+                    var token = SpellValue(sheet, handle, kind);
+                    if (token == null)
+                    {
+                        return false;
+                    }
+                    text.Append(token);
+                    continue;
+                }
+                if (index + 1 >= handles.Length)
+                {
+                    return false;
+                }
+                var name = s_readAsString!.Invoke(null, new[] { sheet, handle }) as string;
+                var arguments = (int)(float)s_readFloat!.Invoke(sheet, new[] { handles.GetValue(index + 1) })!;
+                text.Append(name).Append('(');
+                index += 2;
+                if (name == "var")
+                {
+                    var spelled = SpellValue(sheet, handles.GetValue(index), "Variable");
+                    text.Append(spelled);
+                    if (arguments > 1)
+                    {
+                        opened++;
+                    }
+                    else
+                    {
+                        text.Append(')');
+                    }
+                    continue;
+                }
+                var argumentsEnd = Math.Min(handles.Length, index + arguments);
+                if (!SpellRange(sheet, handles, ref index, argumentsEnd, text, ref opened))
+                {
+                    return false;
+                }
+                text.Append(')');
+                index--;
+            }
+            return true;
+        }
+
+        private static void Separate(StringBuilder text)
+        {
+            if (text.Length > 0 && text[text.Length - 1] != ',' && text[text.Length - 1] != '(')
+            {
+                text.Append(' ');
+            }
+        }
+
+        private static string? SpellValue(object sheet, object? handle, string? kind)
             => kind switch
             {
                 "Float" or "Dimension" or "Keyword" or "Enum" or "String" or "Variable"
                     => s_readAsString!.Invoke(null, new[] { sheet, handle }) as string,
+                "ResourcePath" => "resource(\"" + s_readAsString!.Invoke(null, new[] { sheet, handle }) + "\")",
                 "Color" => Hex((Color)s_readColor!.Invoke(sheet, new[] { handle })!),
                 _ => null,
             };
-
-        // `var(` and the name, leaving the parenthesis open when a fallback follows: the engine stores the fallback
-        // as the rest of the declaration, so it closes at the end.
-        private static string? SpellVar(object sheet, Array handles, ref int i, ref int opened)
-        {
-            if (s_readAsString!.Invoke(null, new[] { sheet, handles.GetValue(i) }) as string != "var" || i + 2 >= handles.Length)
-            {
-                return null;
-            }
-            var arguments = (int)(float)s_readFloat!.Invoke(sheet, new[] { handles.GetValue(i + 1) })!;
-            var token = "var(" + s_readAsString.Invoke(null, new[] { sheet, handles.GetValue(i + 2) });
-            i += 2;
-            if (arguments > 1)
-            {
-                opened++;
-                return token;
-            }
-            return token + ")";
-        }
 
         private static string Hex(Color color)
         {

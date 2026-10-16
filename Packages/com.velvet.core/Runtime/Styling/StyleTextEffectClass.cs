@@ -92,12 +92,14 @@ namespace Velvet
     // real, meaningful value rather than a sentinel standing in for "reset to nothing" the way normal-case /
     // no-underline / an explicit whitespace-* class are. A None member here would have no Parse case that
     // ever produces it and no caller that would ever need it, so it is left out rather than added purely
-    // for symmetry with the other three axes.
+    // for symmetry with the other three axes. Inherit is not one: it is CSS's inherit keyword
+    // (leading-[inherit]), which ranks as any leading-* does and leaves the element taking its parent's line height.
     internal enum LeadingUnit
     {
         Em,
         EmLength,
         Pixel,
+        Inherit,
     }
 
     // A resolved leading-* value: the numeric multiplier/length plus which unit it is in. Nullable
@@ -272,8 +274,9 @@ namespace Velvet
                     whiteSpaceClass = null;
                 }
             }
+            var leading = ResolveLeading(explicitPlain, explicitImportant, facets.ChosenSize, facets.ChosenSizeBeatsPlain);
             return new TextEffect(facets.Transform, facets.Decoration, whitespace,
-                ResolveLeading(explicitPlain, explicitImportant, facets.ChosenSize, facets.ChosenSizeBeatsPlain),
+                leading?.Unit == LeadingUnit.Inherit ? null : leading,
                 whiteSpaceClass, new TextWrapSetting(facets.Wraps, facets.WrapStyle));
         }
 
@@ -492,6 +495,12 @@ namespace Velvet
 
         private static bool TryParseLineHeight(ReadOnlySpan<char> value, out float amount, out LeadingUnit unit)
         {
+            unit = LeadingUnit.Inherit;
+            amount = 0f;
+            if (value.SequenceEqual("inherit".AsSpan()) || value.SequenceEqual("unset".AsSpan()))
+            {
+                return true;
+            }
             unit = LeadingUnit.Em;
             if (StyleArbitraryValueResolver.TryParseFloat(value, out amount))
             {

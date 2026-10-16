@@ -1,4 +1,8 @@
-/* A custom property a stylesheet declares, which CustomPropertyTests reads. */
+/* Rules CustomPropertyTests reads: a custom property a stylesheet declares, and a colour a rule matching the reader sets. */
 .css-var-host {
     --w: 25px;
+}
+
+.css-var-themed {
+    color: rgb(0, 0, 255);
 }

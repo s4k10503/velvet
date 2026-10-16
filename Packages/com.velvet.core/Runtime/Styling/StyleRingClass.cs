@@ -304,6 +304,20 @@ namespace Velvet
                 return;
             }
 
+            // ring-current / outline-current: the family's colour is currentcolor, which is what an unset one draws.
+            if (ringSuffix == "current")
+            {
+                if (isRingFamily)
+                {
+                    slots.RingColorSet = false;
+                }
+                else
+                {
+                    slots.OutlineColorSet = false;
+                }
+                return;
+            }
+
             // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]), which sets its own family's
             // colour and names no band: in Tailwind v4 it writes only the colour property.
             if (TryParseColorValue(isRingFamily ? "ring" : "outline", ringSuffix, out var c))
