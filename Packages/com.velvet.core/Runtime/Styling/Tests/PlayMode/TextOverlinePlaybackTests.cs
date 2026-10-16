@@ -84,8 +84,8 @@ namespace Velvet.Tests
 
         // Counts red pixels in the TOP band (the top 20% of the label's own resolved height) of the ONLY
         // label in the panel. That fraction is chosen with margin on both sides for typical sans-serif
-        // metrics: TextOverlinePainter places its rule ~15% of the FONT size below the content box's top —
-        // roughly 12% of a ~1.2x-font-size line box — comfortably inside a 20% band; "moon"'s x-height ink
+        // metrics: TextOverlinePainter places its rule on the text block's top edge, its first line's ascent
+        // line — comfortably inside a 20% band; "moon"'s x-height ink
         // starts only around 40% down from the same top (line box top -> baseline is ~0.95em for a typical
         // sans-serif, x-height is ~0.5em, leaving ~0.45em, i.e. ~37% of a 1.2em line box, of clear space
         // above it) — comfortably outside a 20% band. Either estimate would have to be off by roughly double

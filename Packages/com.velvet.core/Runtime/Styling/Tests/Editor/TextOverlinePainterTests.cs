@@ -81,9 +81,9 @@ namespace Velvet.Tests
             var (ok, from, _, _) = Compute(
                 contentRect: contentRect, measuredWidth: 40f, textBlockHeight: 20f, fontSize: 16f, align: TextAnchor.UpperLeft);
 
-            // Assert — yMin (20) + 15% of the 16px font (2.4).
+            // Assert — yMin (20) + half the 1px stroke, whose top is the first line's ascent line.
             Assume.That(ok, Is.True, "Precondition: a well-formed content rect computes geometry");
-            Assert.That(from.y, Is.EqualTo(22.4f).Within(1e-3f));
+            Assert.That(from.y, Is.EqualTo(20.5f).Within(1e-3f));
         }
 
         [Test]
@@ -97,9 +97,9 @@ namespace Velvet.Tests
             var (ok, from, _, _) = Compute(
                 contentRect: contentRect, measuredWidth: 40f, textBlockHeight: 20f, fontSize: 16f, align: TextAnchor.MiddleLeft);
 
-            // Assert — 35 + 2.4.
+            // Assert — 35 + 0.5.
             Assume.That(ok, Is.True, "Precondition: a well-formed content rect computes geometry");
-            Assert.That(from.y, Is.EqualTo(37.4f).Within(1e-3f));
+            Assert.That(from.y, Is.EqualTo(35.5f).Within(1e-3f));
         }
 
         [Test]
@@ -114,9 +114,9 @@ namespace Velvet.Tests
             var (ok, from, _, _) = Compute(
                 contentRect: contentRect, measuredWidth: 40f, textBlockHeight: 20f, fontSize: 16f, align: TextAnchor.LowerLeft);
 
-            // Assert — 50 + 2.4.
+            // Assert — 50 + 0.5.
             Assume.That(ok, Is.True, "Precondition: a well-formed content rect computes geometry");
-            Assert.That(from.y, Is.EqualTo(52.4f).Within(1e-3f));
+            Assert.That(from.y, Is.EqualTo(50.5f).Within(1e-3f));
         }
 
         [Test]

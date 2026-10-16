@@ -30,3 +30,5 @@
   `space-*`, `divide-*`, `ring-*`, `ring-offset-*`, `outline-offset-*`, `clip-path-[…]`, a gradient's stops,
   radii and centre, and `leading-[…]`. A `translate-*` and an `origin-[…]` read a percentage of the element's own
   box beside one, and a clip-path or gradient length a percentage added to a length (`calc(100%_-_10px)`).
+- An `overline` sits with its top edge on the first line's ascent line, as Chromium draws one, where it sat 15% of
+  the font size below it.

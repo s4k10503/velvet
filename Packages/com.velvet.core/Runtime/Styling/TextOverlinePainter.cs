@@ -16,10 +16,6 @@ namespace Velvet
     // between pure math (ComputeSegments) and the live-Painter2D stroke call (StrokeDashed).
     internal static class TextOverlinePainter
     {
-        // The rule sits this far below the FIRST line's top edge, as a fraction of font size: a fixed offset, not
-        // the font's ascent line, which the element's font asset carries (StyleFontUnits reads that asset).
-        private const float TopOffsetFraction = 0.15f;
-
         // Typical browsers stroke an underline/overline at roughly 1/16th of the font size; floored at 1px
         // so a small font size never thins the rule to an invisible sub-pixel stroke.
         private const float ThicknessDivisor = 16f;
@@ -53,7 +49,9 @@ namespace Velvet
             var width = Mathf.Clamp(measuredWidth, 0f, contentRect.width);
             var x0 = ResolveStartX(contentRect, width, align);
             var firstLineTop = ResolveFirstLineTop(contentRect, textBlockHeight, align);
-            var y = firstLineTop + (fontSize * TopOffsetFraction);
+            // The stroke's top edge on the first line's top, which is its ascent line: Chromium draws an overline's
+            // top there, and the text generator sets a block's first line with its ascender on the block's top.
+            var y = firstLineTop + (ResolveThickness(fontSize) * 0.5f);
             rule = new OverlineRule
             {
                 From = new Vector2(x0, y),

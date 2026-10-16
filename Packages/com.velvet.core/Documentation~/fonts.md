@@ -173,9 +173,8 @@ The stroke color tracks `resolvedStyle.color`, its thickness is
 `-unity-text-align`'s vertical component for where the FIRST line sits — top-aligned under an
 `upper-*` anchor, vertically centered under a `middle-*` anchor (the default for
 `text-left|center|right|start|end`, and UI Toolkit's own unstyled default), bottom-aligned under a
-`lower-*` anchor — then nudges down a small, documented fraction of the font size from that line's
-own top edge as an approximation of CSS's ascent-line placement (UI Toolkit exposes no public,
-synchronously-reachable ascent metric to place it exactly).
+`lower-*` anchor — with the stroke's top edge on that line's ascent line, where Chromium draws an
+overline's.
 
 `overline` joins the SAME decoration axis as `underline` / `line-through` / `no-underline`, so
 cascade, inheritance, and the `no-underline` reset all apply to it. The axis stays single-valued,
