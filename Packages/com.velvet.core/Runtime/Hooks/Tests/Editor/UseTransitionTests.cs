@@ -1406,6 +1406,7 @@ namespace Velvet.Tests
                 "The write is still queued, so the transition it belongs to has not committed");
         }
 
+        // GREEN_ON_BASE(characterization): the base wrote the state at the call, so its child's own flush showed the write too.
         [Test]
         public void Given_AChildsQueuedTransitionWrite_When_AParentsNormalPassSubsumedTheChild_Then_TheChildsOwnTransitionFlushCommitsTheWrite()
         {
@@ -1486,6 +1487,7 @@ namespace Velvet.Tests
 
         // The write sits in a store rather than in a state slot, so a pass of the Normal lane renders it and settles
         // the transition, while the reader's deferred value keeps the Transition lane queued.
+        // GREEN_ON_BASE(characterization): no state slot holds this write, so the base settled the transition the same way.
         [Test]
         public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassRendersTheReaderWhoseDeferredValueHoldsTheLane_Then_IsPendingClears()
         {
@@ -1505,6 +1507,7 @@ namespace Velvet.Tests
                 "isPending belongs to the slot that queued the work, not to whoever holds the transition lane");
         }
 
+        // GREEN_ON_BASE(characterization): no state slot holds this write, so the base's deferred value asked for the lane again as well.
         [Test]
         public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassRendersTheReaderWhoseDeferredValueHoldsTheLane_Then_TheLaneStaysQueued()
         {

@@ -373,6 +373,7 @@ namespace Velvet.Tests
                 "The node a skipped write is replayed over must stay rented out while that write is queued");
         }
 
+        // GREEN_ON_BASE(characterization): the base wrote the Normal state at the call, so no queued write was left to carry the node.
         [Test]
         public void Given_ATransitionWriteCarryingTheNodeSkippedAfterANormalOne_When_TheNormalRenderRetiresTheOldTree_Then_TheNodeStaysOutOfThePool()
         {
@@ -392,6 +393,7 @@ namespace Velvet.Tests
                 "A node a skipped write carries must stay rented out while the render that reaches the write can emit it");
         }
 
+        // GREEN_ON_BASE(characterization): the base wrote the resolved node into its slot at the call, which kept it out of the pool.
         [Test]
         public void Given_ATransitionUpdaterThatResolvedToTheNodeAtTheCall_When_TheNormalRenderRetiresTheOldTree_Then_TheNodeStaysOutOfThePool()
         {
@@ -433,6 +435,7 @@ namespace Velvet.Tests
             return V.Div(name: "held-child", children: new VNode[] { count % 2 == 0 ? held : null });
         }
 
+        // GREEN_ON_BASE(characterization): the base wrote the parent's state at the call, so its slot already held the node.
         [Test]
         public void Given_AParentWriteCarryingTheNodeNotYetFolded_When_TheChildRendersAloneAndDropsIt_Then_TheNodeStaysOutOfThePool()
         {
