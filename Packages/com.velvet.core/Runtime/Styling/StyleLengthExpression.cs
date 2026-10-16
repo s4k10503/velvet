@@ -37,9 +37,8 @@ namespace Velvet
         // Nesting, and a run of terms or arguments, past this depth is declined rather than recursed into.
         private const int MaxDepth = 64;
 
-        // Unit names match case-sensitively, as StyleArbitraryValueResolver.TryParseValue's do. The small,
-        // large and dynamic viewport units read the panel as vw/vh/vmin/vmax do: a panel has no UA chrome to
-        // show or hide, the case where CSS makes all three equal.
+        // The small, large and dynamic viewport units read the panel as vw/vh/vmin/vmax do: a panel has no UA
+        // chrome to show or hide, the case where CSS makes all three equal.
         private static readonly Dictionary<string, Leaf> s_units = BuildUnits();
 
         private readonly int _reads;
@@ -82,7 +81,7 @@ namespace Velvet
 
         private static Dictionary<string, Leaf> BuildUnits()
         {
-            var units = new Dictionary<string, Leaf>(StringComparer.Ordinal)
+            var units = new Dictionary<string, Leaf>(StringComparer.OrdinalIgnoreCase)
             {
                 ["px"] = new Leaf(_ => 1f, ReadsPixels),
                 ["rem"] = new Leaf(_ => 16f, ReadsPixels),

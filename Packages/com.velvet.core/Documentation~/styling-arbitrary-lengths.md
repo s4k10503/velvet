@@ -17,7 +17,12 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 | `auto` | the keyword, where the utility takes one: margin (a negated one, `-mt-[auto]`, is declined), `w-*`, `h-*`, `size-*`, `min-w-*`, `min-h-*`, `basis-*` and the insets; padding and the maximum sizes take none |
 | `calc()`, `min()`, `max()`, `clamp()` whose terms all come to pixels, or all to percentages | that pixel length or that percentage |
 
-Unit names match case-sensitively, so `Q` is upper case and the rest lower.
+A unit is read in any case, as CSS reads it: `w-[10PX]` is `w-[10px]`. Where Tailwind reads a bracket as
+either a length or a colour — `border-*`, `text-*`, `ring-*`, `outline-*`, `ring-offset-*` and `from-*`,
+`via-*` and `to-*` — it takes a length only when the unit is in its own case, `Q` upper and the rest lower,
+and writes anything else as a colour, so `border-[2PX]` and `text-[16PX]` leave the class inert there as here.
+A math function is a length there whatever case its units are in (`border-[calc(2PX)]`), and so is
+`text-[length:16PX]`, whose type hint skips the test.
 
 Swapping one bracketed value for another that writes the same property (`w-[300px]` for `w-[10px]`, with or
 without `!`) leaves the old inline value in place until the new one is written, so a `transition-*` or
