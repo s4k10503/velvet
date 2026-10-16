@@ -100,8 +100,8 @@ namespace Velvet
             return aRank < 0 || zRank < 0 ? StyleBorderSideColor.CompareCascade(a, z) : aRank.CompareTo(zRank);
         }
 
-        // tokens without the inline token a later stylesheet class writes in full (StyleInlineSheetOrder), and with
-        // each stylesheet-backed spacing class that an inline utility of an overlapping family stands
+        // tokens without the inline token a later stylesheet class writes in full, and with a border width cut down to
+        // the sides such classes leave (StyleInlineSheetOrder), and with each stylesheet-backed spacing class that an inline utility of an overlapping family stands
         // beside rewritten to its inline form (pt-2 as pt-[8px], mx-auto as mx-[auto], w-full as w-[100%]), and
         // each logical utility dropped for the physical one of its own side (ps-13 beside pl-2: Tailwind sorts
         // padding-inline-start ahead of padding-left, so the physical one holds the side whichever is written

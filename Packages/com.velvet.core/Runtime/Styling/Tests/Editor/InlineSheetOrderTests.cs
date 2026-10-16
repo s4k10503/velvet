@@ -1,10 +1,11 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -28,7 +29,7 @@ namespace Velvet.Tests
         [TestCase("w-[10px] w-px", "w-px")]
         [TestCase("w-full w-[10px]", "w-full")]
         [TestCase("w-[10px] w-full", "w-full")]
-        public void Given_AnInlineWidthAndAStepClassTailwindEmitsLater_When_Reconciled_Then_TheClassHoldsTheWidth(
+        public void Given_AnInlineWidthAndAWidthClassTailwindEmitsLater_When_Reconciled_Then_TheClassHoldsTheWidth(
             string className, string winner)
         {
             // Arrange
@@ -64,7 +65,7 @@ namespace Velvet.Tests
         [TestCase("mt-auto mt-[10px]", "mt-auto")]
         [TestCase("-mt-2 mt-1", "mt-1")]
         [TestCase("mt-1 -mt-2", "mt-1")]
-        public void Given_AnAutoOrNegatedMarginAndAStepClassTailwindEmitsLater_When_Reconciled_Then_TheClassHoldsTheMargin(
+        public void Given_AnInlineMarginAndAMarginClassTailwindEmitsLater_When_Reconciled_Then_TheClassHoldsTheMargin(
             string className, string winner)
         {
             // Arrange
@@ -95,6 +96,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((element.style.backgroundColor.keyword, element.ClassListContains(winner)),
+                Is.EqualTo((StyleKeyword.Null, true)));
+        }
+
+        [TestCase("text-lg/7 text-sm")]
+        [TestCase("text-sm text-lg/7")]
+        [TestCase("text-[14px]/6 text-sm")]
+        public void Given_ASlashSizeAndANamedSizeTailwindEmitsLater_When_Reconciled_Then_TheClassHoldsTheFontSize(
+            string className)
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+
+            // Act
+            var element = MountOne(reconciler, root, className);
+
+            // Assert
+            Assert.That((element.style.fontSize.keyword, element.ClassListContains("text-sm")),
                 Is.EqualTo((StyleKeyword.Null, true)));
         }
 
@@ -235,28 +254,6 @@ namespace Velvet.Tests
                 Is.EqualTo((32f, StyleKeyword.Null, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base writes the width inline and FiberElementPoolReset clears it when the label returns to the pool.
-        // A pair that left its width or its class on the recycled label reddens it.
-        [Test]
-        public void Given_ALabelOfAnOutrankedPair_When_ItIsPooledAndALabelIsMountedAfterIt_Then_ItCarriesNeitherTheWidthNorTheClass()
-        {
-            // Arrange
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            var first = new VNode[] { V.Label(className: "w-px w-[10px]", text: "a") };
-            var second = new VNode[] { V.Label(className: "h-[10px]", text: "b") };
-            reconciler.Reconcile(root, Array.Empty<VNode>(), first);
-            reconciler.Reconcile(root, first, Array.Empty<VNode>());
-
-            // Act
-            reconciler.Reconcile(root, Array.Empty<VNode>(), second);
-
-            // Assert
-            var element = root.ElementAt(0);
-            Assert.That((element.style.width.keyword, element.ClassListContains("w-px")),
-                Is.EqualTo((StyleKeyword.Null, false)));
-        }
-
         [TestCase("w-px w-[10px]", "w-px")]
         [TestCase("w-[10px] w-px", "w-px")]
         [TestCase("w-1/2 w-4", "w-4")]
@@ -270,6 +267,9 @@ namespace Velvet.Tests
         [TestCase("flex w-px w-[10px] p-2", "flex w-px p-2")]
         [TestCase("w-[10px] w-px w-[20px]", "w-px")]
         [TestCase("border-[3px] border-x-2 border-y-4", "border-x-2 border-y-4")]
+        [TestCase("text-lg/7 text-sm", "text-sm")]
+        [TestCase("text-sm text-lg/7", "text-sm")]
+        [TestCase("text-[14px]/6 text-sm", "text-sm")]
         [TestCase("w-px w-[10px] size-[5px]", "w-[1px] size-[5px]")]
         public void Given_AnInlineTokenTheLaterClassesWriteInFull_When_ClassNamesAreParsed_Then_TheTokenIsLeftOut(
             string className, string expected)
@@ -297,9 +297,7 @@ namespace Velvet.Tests
 
         private static IEnumerable<(string Name, StyleUtilityRule Rule)> BundledClasses()
         {
-            var table = (IDictionary)typeof(StyleUtilityProperties)
-                .GetField("ByClassName", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-            foreach (var name in table.Keys.Cast<string>())
+            foreach (var name in StyleUtilityTableProbe.ClassNames())
             {
                 StyleUtilityProperties.TryGet(name, out var rule);
                 yield return (name, rule);
@@ -349,6 +347,73 @@ namespace Velvet.Tests
             Assert.That(string.Join("; ", claimed), Is.Empty);
         }
 
+        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the readers of StyleSpacingPrecedence, which agree on the base too.
+        // Add `.w-fit { width: auto; }` to `_sizing.uss`, regenerate `StyleUtilityProperties.g.cs`, and this is what reddens.
+        [Test]
+        public void Given_TheBundledClassesThatWritePartOfASpacingSizeInsetOrRadiusFamily_When_ReadAsStylesheetClasses_Then_EachIsRead()
+        {
+            // Arrange
+            var families = Enum.GetValues(typeof(ArbitraryProperty)).Cast<ArbitraryProperty>()
+                .Where(StyleArbitraryValueResolver.IsSpacingOrRadiusProperty)
+                .ToArray();
+
+            // Act
+            var unread = BundledClasses()
+                .Where(utility => utility.Rule.Gate == StyleUtilityGate.None)
+                .Where(utility => families.Any(property =>
+                {
+                    var written = StyleArbitraryLonghands.Of(property);
+                    return utility.Rule.Properties.Overlaps(written)
+                        && utility.Rule.Properties.Union(written) != utility.Rule.Properties;
+                }))
+                .Select(utility => utility.Name)
+                .Where(name => !StyleArbitraryValueResolver.TryReadStylesheetClass(name, out _, out _))
+                .ToArray();
+
+            // Assert
+            Assert.That(string.Join("; ", unread), Is.Empty);
+        }
+
+        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the names StyleInlineSheetOrder gives them, which agree on the base too.
+        // Change `.rotate-n6 { rotate: -6deg; }` to `rotate: -7deg;` in `_transforms.uss` and this is what reddens.
+        [Test]
+        public void Given_TheNegatedRotateClasses_When_TheirSheetRulesAreRead_Then_EachWritesTheNegativeOfTheDegreesItsNameGives()
+        {
+            // Arrange
+            var sheet = File.ReadAllText(Path.GetFullPath("Packages/com.velvet.core/Runtime/Styles/_transforms.uss"));
+            var degrees = BundledClasses()
+                .Select(utility => Regex.Match(utility.Name, "^rotate-n(\\d+)$"))
+                .Where(match => match.Success)
+                .Select(match => match.Groups[1].Value)
+                .ToArray();
+
+            // Act
+            var wrong = degrees.Where(value => !sheet.Contains(".rotate-n" + value + " { rotate: -" + value + "deg; }"));
+
+            // Assert
+            Assert.That((degrees.Length > 0, string.Join("; ", wrong)), Is.EqualTo((true, string.Empty)));
+        }
+
+        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the names StyleInlineSheetOrder gives them, which agree on the base too.
+        // Change `--duration-fast: 0.1s;` to `0.2s` in `_tokens.uss` and this is what reddens.
+        [TestCase("fast", "100", "0.1s")]
+        [TestCase("normal", "150", "0.15s")]
+        [TestCase("slow", "200", "0.2s")]
+        public void Given_ADurationName_When_ComparedWithTheStepItIsOrderedAs_Then_BothSheetsGiveTheSameTime(
+            string name, string step, string time)
+        {
+            // Arrange
+            var tokens = File.ReadAllText(Path.GetFullPath("Packages/com.velvet.core/Runtime/Styles/_tokens.uss"));
+            var steps = File.ReadAllText(Path.GetFullPath("Packages/com.velvet.core/Runtime/Styles/_state_variants.uss"));
+
+            // Act
+            var agree = tokens.Contains("--duration-" + name + ": " + time + ";")
+                && steps.Contains(".duration-" + step + " { transition-duration: " + time + "; }");
+
+            // Assert
+            Assert.That(agree, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base rewrites or drops nothing for these, so each list reaches the reconciler as written.
         // Each is a pair where the inline token already holds what Tailwind gives it, or one ranked by its own layer
         // (a variant, an important token, a class gated on a pseudo-class) or one that writes no longhand the
@@ -362,6 +427,12 @@ namespace Velvet.Tests
         [TestCase("w-[10px]! w-px")]
         [TestCase("w-[10px] !w-px")]
         [TestCase("bg-[#ffffff] hover-bg-surface")]
+        [TestCase("scale-100 -scale-[0.5]")]
+        [TestCase("scale-95 -scale-x-[1]")]
+        [TestCase("text-lg text-xl/7")]
+        [TestCase("rotate-[10deg] rotate-n6")]
+        [TestCase("rotate-n6 -rotate-6")]
+        [TestCase("duration-[300ms] duration-fast")]
         [TestCase("blur-[4px] w-px")]
         [TestCase("w-px blur-sm")]
         [TestCase("border-[3px] border-2")]

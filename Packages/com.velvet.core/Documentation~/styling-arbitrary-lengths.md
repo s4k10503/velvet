@@ -178,14 +178,21 @@ The rule is made where a shorthand and a longhand meet in one `className` string
 
 Of two base utilities that write one longhand, one resolved inline (a bracket value, a fraction, `auto`, a negated
 step, a colour with an opacity, a logical side) and one a stylesheet class, the one Tailwind emits later holds it,
-whichever is written first. Tailwind sorts the candidate names by character code with digits compared as numbers, so
-`w-px w-[10px]` and `w-[10px] w-px` both give 1px, `w-1/2 w-4` gives 16px, and `mt-[10px] mt-auto`, `-mt-2 mt-1`,
-`bg-[#ff0000] bg-red-500` and `border-s-2 border-l-4` leave the class the property. Where the inline token is the
-later one it keeps the property: `w-4 w-[10px]` gives 10px, and `ml-8 ms-4` gives 32px in either order, as above.
+whichever is written first. Tailwind sorts the candidate names by character code with digits compared as numbers, and
+a rule with more declarations ahead of one with fewer, so `w-px w-[10px]` and `w-[10px] w-px` both give 1px,
+`w-1/2 w-4` gives 16px, and `mt-[10px] mt-auto`, `-mt-2 mt-1`, `bg-[#ff0000] bg-red-500`, `border-s-2 border-l-4` and
+`text-lg/7 text-sm` leave the class the property. Where the inline token is the later one it keeps the property:
+`w-4 w-[10px]` gives 10px, and `scale-100 -scale-[0.5]` gives the inline scale, since `scale-100` declares three
+variables beside `scale` and so sorts ahead.
 
 An inline token that the classes Tailwind emits after it write in full is left out of the class list, so it writes no
 style; taking the class away brings it back. One they write only in part keeps the rest: for the spacing, size, inset
 and radius families the class is written inline (above), and a border width is cut down to the sides the classes leave,
-so `border-[3px] border-l-4` and `border-l-4 border-[3px]` give the left side 4px and the other three 3px. Only plain
-base tokens take part. A variant, an important token and a class gated on a state are ranked by their own layer, and
-two utilities that both resolve inline are ordered only where the sections above say so.
+so `border-[3px] border-l-4` and `border-l-4 border-[3px]` give the left side 4px and the other three 3px. A few
+bundled classes carry Velvet's own name for a Tailwind utility and sort by that utility: `rotate-n6` as `-rotate-6`,
+and `duration-fast`, `duration-normal` and `duration-slow` as `duration-100`, `duration-150` and `duration-200`.
+
+This orders one inline token against the classes beside it. Only plain base tokens take part: a variant, an important
+token and a class gated on a state are ranked by their own layer. Where a class is written inline beside a second
+inline token of the same property (`size-[10px] w-[20px] w-4`), the two inline writers of that property go to the last
+one written, which this section does not change.

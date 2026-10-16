@@ -10,10 +10,23 @@ namespace Velvet
     // write are taken out of the list: a token they write in full is dropped, and one they write in part is
     // replaced by a token per longhand they leave, as StyleSpacingPrecedence.CornersLeftBy cuts a pose's radius
     // down to the corners it leaves. A spacing, size, inset or radius token is not cut here:
-    // StyleSpacingPrecedence writes the class inline instead. InlineSheetOrderTests holds that no other
-    // multi-longhand family has a bundled class that writes part of it.
+    // StyleSpacingPrecedence writes the class inline instead, and InlineSheetOrderTests holds that it can write every
+    // bundled class that covers part of one. The same fixture holds that no other multi-longhand family has a
+    // bundled class that writes part of it.
     internal static class StyleInlineSheetOrder
     {
+        // The bundled classes whose name is Velvet's own, with the Tailwind utility each stands for: Tailwind orders by
+        // the name it gives the utility, so rotate-n6 sorts as -rotate-6 and the duration names as the steps they equal.
+        // InlineSheetOrderTests holds the values against the sheets.
+        private static readonly (string Name, string Tailwind)[] s_spelledOtherwise =
+        {
+            ("duration-fast", "duration-100"),
+            ("duration-normal", "duration-150"),
+            ("duration-slow", "duration-200"),
+        };
+
+        private const string NegatedRotatePrefix = "rotate-n";
+
         // The families cut down to a token per longhand, with the prefix their bracket value follows and the token
         // each longhand is written by.
         private static readonly (ArbitraryProperty Property, string Prefix, (StyleLonghand Longhand, string Side)[] Sides)[] s_splits =
@@ -54,7 +67,7 @@ namespace Velvet
                 var covered = StyleLonghandSet.Empty;
                 foreach (var (index, classWritten) in classes)
                 {
-                    if (StyleRuleOrder.CompareUtilities(tokens[index], tokens[i]) > 0)
+                    if (StyleRuleOrder.CompareUtilities(TailwindNameOf(tokens[index]), tokens[i]) > 0)
                     {
                         covered = covered.Union(classWritten);
                     }
@@ -102,7 +115,6 @@ namespace Velvet
             {
                 // A negated bracket (-border-[3px]) parses to the same property and keeps its sign in front of the
                 // prefix, so a token not starting with the prefix is left whole.
-                // MUTANT_SURVIVES(unreachable, clause removed): another token starting with this prefix is a border colour, and no bundled class writes part of one (InlineSheetOrderTests), so a partly covered one never reaches here.
                 if (splitProperty != property || !core.StartsWith(prefix, StringComparison.Ordinal))
                 {
                     continue;
@@ -113,12 +125,26 @@ namespace Velvet
                 {
                     if (!covered.Contains(longhand))
                     {
-                        left.Add(side + value);
+                        left.Add(string.Concat(side, value));
                     }
                 }
                 return left.ToArray();
             }
             return null;
+        }
+
+        private static string TailwindNameOf(string cls)
+        {
+            foreach (var (name, tailwind) in s_spelledOtherwise)
+            {
+                if (cls == name)
+                {
+                    return tailwind;
+                }
+            }
+            return cls.StartsWith(NegatedRotatePrefix, StringComparison.Ordinal)
+                ? "-rotate-" + cls.Substring(NegatedRotatePrefix.Length)
+                : cls;
         }
 
         // A bundled class that holds its longhands unconditionally. No bundled class name is claimed by
@@ -129,6 +155,7 @@ namespace Velvet
             var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
             if (important || !StyleUtilityProperties.TryGet(core, out var rule) || rule.Gate != StyleUtilityGate.None)
             {
+                // MUTANT_SURVIVES(equivalent, literal): written is assigned only below this return, so a class read here would hold no longhand and cover nothing.
                 return false;
             }
             written = rule.Properties;
@@ -148,12 +175,10 @@ namespace Velvet
             {
                 return false;
             }
-            // MUTANT_SURVIVES(equivalent): every parser TryParse reaches without a variant anchors on the start of the token (a prefix compared by equality or StartsWith, or FractionFamilyOf's StartsWith over its rows), so a variant-prefixed token fails to parse below.
             if (StyleSpacingPrecedence.VariantsLength(core) != 0)
             {
                 return false;
             }
-            // MUTANT_SURVIVES(equivalent): a token IsInlineResolved rejects but TryParse reads (text-sm/6) is sorted by StyleRuleOrder.PropertySortOf as a name with no listed property, after every class that writes one, so no class is emitted after it and nothing it writes is covered.
             if (!StyleArbitraryValueResolver.IsInlineResolved(core)
                 || !StyleArbitraryValueResolver.TryParseLayer(core, out var style))
             {

@@ -95,8 +95,6 @@ namespace Velvet
         // font-size alone, UI Toolkit having no line-height; the sort adds it back for them.
         private static readonly int s_lineHeightIndex = Array.IndexOf(s_tailwindPropertyOrder, "line-height");
 
-        private const string NamedTextSizePrefix = "text-";
-
         private const string GridUtility = "grid";
 
         private static int[] BuildTailwindIndex()
@@ -336,18 +334,28 @@ namespace Velvet
             return null;
         }
 
-        // The Tailwind property-order indexes of what the utility writes, ascending, and how many longhands it
-        // writes.
+        // The declarations Tailwind counts for a scale-<n> utility: the three --tw-scale variables and scale. compile.ts
+        // sorts the rule with more declarations first, so scale-100 is emitted ahead of -scale-[.5], which declares
+        // scale alone, and an axis utility (scale-x-50) sits between them with its one variable. StyleRuleOrderTests
+        // pins the order against what Tailwind emits.
+        private const int ScaleClassDeclarations = 4;
+        private const int ScaleAxisDeclarations = 2;
+
+        // The Tailwind property-order indexes of what the utility writes, ascending, and how many declarations
+        // Tailwind counts for it: its longhands, plus the line-height a named or slash text size also declares, except
+        // where a variable beside the property adds to them (see ScaleClassDeclarations).
         private static (List<int> Order, int Count) PropertySortOf(string utility)
         {
             var core = StyleArbitraryValueResolver.StripImportant(utility, out _);
             var inline = false;
+            var property = default(ArbitraryProperty);
             StyleLonghandSet set;
             if (StyleArbitraryValueResolver.IsInlineResolved(core)
                 && StyleArbitraryValueResolver.TryParse(core, out var style))
             {
                 inline = true;
-                set = StyleArbitraryLonghands.Of(style.Property);
+                property = style.Property;
+                set = StyleArbitraryLonghands.Of(property);
             }
             else
             {
@@ -361,8 +369,7 @@ namespace Velvet
             }
             var order = new List<int>();
             var count = 0;
-            if (!inline && set.Contains(StyleLonghand.FontSize)
-                && core.StartsWith(NamedTextSizePrefix, StringComparison.Ordinal))
+            if (set.Contains(StyleLonghand.FontSize) && (!inline || StyleNamedTextSize.TryParseSlashFontSize(core, out _)))
             {
                 // MUTANT_SURVIVES(equivalent): without this index, count still puts named sizes before a lone
                 // font-size. RuleOrderCascadeBoundaryTests pins the font-size-only sets and adjacent line-height index.
@@ -404,6 +411,11 @@ namespace Velvet
             {
                 order.Clear();
                 order.Add(shorthand);
+            }
+            if (set.Contains(StyleLonghand.Scale))
+            {
+                count = !inline ? ScaleClassDeclarations
+                    : property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY ? ScaleAxisDeclarations : 1;
             }
             order.Sort();
             return (order, count);
