@@ -97,6 +97,43 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantWidthLayerAlreadyOnTheElement_When_AWidthDriveWrites_Then_TheDrivenWidthShows()
+        {
+            // Arrange — the play's own important pose lands before its first frame, as !w-[80px] does here.
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-[10px]" }, new[] { "w-[120px]" });
+            var state = BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f);
+
+            // Act
+            BezierTweenDriver.ApplyCurrentValues(element, state!);
+
+            // Assert
+            Assert.That(element.style.width.value.value, Is.EqualTo(10f));
+        }
+
+        [Test]
+        public void Given_AWidthDriveHoldingItsFromPose_When_AnImportantWidthLayerComesAndGoes_Then_ItWinsWhileItLasts()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-[10px]" }, new[] { "w-[120px]" });
+            var state = BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f);
+            BezierTweenDriver.ApplyCurrentValues(element, state!);
+            var important = StyleLayerPriority.ImportantOf(StyleLayerPriority.Dark);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.Width, 80f, LengthUnit.Pixel),
+                important);
+            var underLayer = element.style.width.value.value;
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.Width, important);
+
+            // Assert — the driven width coming back rides along, since a layer that never let go would read 80.
+            Assert.That((underLayer, element.style.width.value.value), Is.EqualTo((80f, 10f)));
+        }
+
+        [Test]
         public void Given_ABackgroundColorPair_When_SteppedToHalfTheDuration_Then_TheInlineBackgroundColorIsTheExactMidpoint()
         {
             // Arrange

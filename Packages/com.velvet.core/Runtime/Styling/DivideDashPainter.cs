@@ -201,19 +201,22 @@ namespace Velvet
             return true;
         }
 
-        // A motion driver's color wins, as its write wins the slot (StyleArbitraryValueResolver.ApplyDriven). Then
-        // the divide-{color} where no class of the child's own outranks it, giving way to a layer of the child's
-        // own as a solid divider's hold does (StyleDivideManipulator.WriteColors); then a layer of the child's own;
-        // then a color written inline on the child; then the color the child's own style rules give the edge.
+        // A motion driver's color wins unless an important declaration does — an important divide-{color}, or one of
+        // the child's own the write gives way to — as on the slot (StyleArbitraryValueResolver.ApplyDriven). Then the
+        // divide-{color} where no class of the child's own outranks it, giving way to a layer of the child's own as
+        // a solid divider's hold does (StyleDivideManipulator.WriteColors); then a layer of the child's own; then a
+        // color written inline on the child; then the color the child's own style rules give the edge.
         internal static Color PaintColor(DivideDashChildBinding binding)
         {
-            if (binding.Driven is { } driven)
+            var slot = StyleDivideManipulator.ColorSlot(binding.Edge);
+            var divides = binding.Divider.HasValue
+                && !StyleDivideManipulator.ChildOutranks(binding.Child, slot, binding.DividerImportant);
+            if (binding.Driven is { } driven && !(divides && binding.DividerImportant)
+                && !StyleArbitraryValueResolver.ImportantWinsOverDriven(binding.Child, slot))
             {
                 return driven;
             }
-            var slot = StyleDivideManipulator.ColorSlot(binding.Edge);
-            if (binding.Divider is { } divider
-                && !StyleDivideManipulator.ChildOutranks(binding.Child, slot, binding.DividerImportant))
+            if (binding.Divider is { } divider && divides)
             {
                 return StyleArbitraryValueResolver.ResolveLayered(binding.Child, slot, binding.DividerImportant) is { } over
                     ? over.Color

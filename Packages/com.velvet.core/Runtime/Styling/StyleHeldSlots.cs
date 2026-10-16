@@ -35,10 +35,13 @@ namespace Velvet
         // The yielding slots that give way only to an important layer.
         private int _importantOnlyMask;
 
-        // The slots a per-frame driver writes now, which every hold but a mask leaves to it
+        // The slots a per-frame driver writes now, which every hold but a mask or an important one leaves to it
         // (StyleArbitraryValueResolver.ApplyDriven), and the held slots that are masks.
         private int _driven;
         private int _masks;
+
+        // An important hold is one yielding only to an important layer: an important divide's (Yield).
+        private int Overridden => _driven & ~_masks & ~(_yieldMask & _importantOnlyMask);
         private StyleLength[]? _lengths;
 
         // The part of each held length a gap contributes, indexed like _lengths.
@@ -90,7 +93,7 @@ namespace Velvet
 
         public bool YieldsOnlyToImportant(HeldSlot slot) => (_importantOnlyMask & Bit(slot)) != 0;
 
-        public bool Yields(HeldSlot slot) => (_yieldMask & _mask & ~_driven & Bit(slot)) != 0;
+        public bool Yields(HeldSlot slot) => (_yieldMask & _mask & ~Overridden & Bit(slot)) != 0;
 
         public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
 
@@ -105,7 +108,7 @@ namespace Velvet
         // Writes every held slot among slots back onto style.
         public void Reassert(IStyle style, int slots)
         {
-            var due = _mask & slots & ~(_driven & ~_masks);
+            var due = _mask & slots & ~Overridden;
             for (var i = 0; due != 0; i++, due >>= 1)
             {
                 if ((due & 1) != 0)

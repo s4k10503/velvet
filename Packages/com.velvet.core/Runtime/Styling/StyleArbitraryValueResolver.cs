@@ -1263,7 +1263,7 @@ namespace Velvet
 
             // What a per-frame driver last wrote, by property, until ReleaseDriven — see ApplyDriven. Lazily
             // allocated: only an element a driver writes through ApplyDriven gets one.
-            public Dictionary<ArbitraryProperty, ArbitraryStyle>? Driven;
+            public Dictionary<ArbitraryProperty, DrivenWrite>? Driven;
 
             // The containers that re-apply when a class of this element's own changes — see
             // StyleChildOwnership. Lazily allocated: only a claimed child gets one.
@@ -1724,21 +1724,28 @@ namespace Velvet
             holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
         }
 
-        // A per-frame driver's write, which owns what it writes until ReleaseDriven: inline, so every layer of
-        // the element's own and every hold but a mask stands down for it, and comes back on the release.
+        // A per-frame driver's write, which owns what it writes until ReleaseDriven: inline, so every hold and every
+        // declaration of the element's own stands down for it and comes back on the release, but a mask and the
+        // important ones — an important layer or class DrivenWrite does not exempt, an important divide's hold —
+        // which keep what they win, as !important outranks an animation in CSS.
         internal static void ApplyDriven(VisualElement element, in ArbitraryStyle style)
         {
             // Recorded from the first write, holds or none: a mount's from-pose is written before the container
             // that holds the slot first applies.
             var map = MapOf(element);
-            (map.Driven ??= new Dictionary<ArbitraryProperty, ArbitraryStyle>())[style.Property] = style;
+            var driven = map.Driven ??= new Dictionary<ArbitraryProperty, DrivenWrite>();
+            if (!driven.TryGetValue(style.Property, out var write))
+            {
+                write = new DrivenWrite(map, StyleArbitraryLonghands.Of(style.Property));
+                driven.Add(style.Property, write);
+            }
+            write.Style = style;
             var slots = HeldSlotGroups.SlotsOf(style.Property);
             if (slots != 0)
             {
                 (map.Holds ??= new StyleHeldSlots()).Drive(slots);
             }
-            ApplyInline(element, style);
-            WriteOverHolds(element, map.Holds, style);
+            WriteDriven(element, map, write);
             DivideDashPainter.Drive(element, slots, style.Color);
         }
 
@@ -1763,30 +1770,158 @@ namespace Velvet
             {
                 return;
             }
-            foreach (var driven in map.Driven.Values)
+            foreach (var write in map.Driven.Values)
             {
-                if (StyleArbitraryLonghands.Of(driven.Property).Overlaps(longhands))
+                if (StyleArbitraryLonghands.Of(write.Style.Property).Overlaps(longhands))
                 {
-                    ApplyInline(element, driven);
-                    WriteOverHolds(element, map.Holds, driven);
+                    WriteDriven(element, map, write);
                 }
             }
         }
 
-        // Puts back the masks a driver's write covered, and adds a gap to a driven margin (Hold's gap form).
-        private static void WriteOverHolds(VisualElement element, StyleHeldSlots? holds, in ArbitraryStyle driven)
+        private static void WriteDriven(VisualElement element, LayerMap map, DrivenWrite write)
         {
+            ApplyInline(element, write.Style);
+            YieldToImportant(element, map, write);
+            WriteOverHolds(element, map, write);
+        }
+
+        // A driver's write, and the important layers and class claims of the element's own it found on its
+        // longhands when its play first wrote, which YieldToImportant does not give way to: a play's own important
+        // pose is among them, since StyleAnimationScheduler adds the pose's classes before the play's first write,
+        // and giving way to it would hold the element at the pose's end value for the whole play.
+        private sealed class DrivenWrite
+        {
+            public ArbitraryStyle Style;
+            private readonly List<(ArbitraryProperty Property, long Key)> _layers = new();
+            private readonly Dictionary<StyleLonghand, long> _claims = new();
+
+            public DrivenWrite(LayerMap map, StyleLonghandSet longhands)
+            {
+                foreach (var pair in map)
+                {
+                    if (!StyleArbitraryLonghands.Of(pair.Key).Overlaps(longhands))
+                    {
+                        continue;
+                    }
+                    foreach (var key in pair.Value.Keys)
+                    {
+                        if ((key & StyleLayerPriority.Important) != 0)
+                        {
+                            _layers.Add((pair.Key, key));
+                        }
+                    }
+                }
+                if (map.Projection == null)
+                {
+                    return;
+                }
+                foreach (var longhand in s_longhands)
+                {
+                    var claim = map.Projection.ClaimOf(longhand);
+                    if (longhands.Contains(longhand) && (claim & StyleLayerPriority.Important) != 0)
+                    {
+                        _claims[longhand] = claim;
+                    }
+                }
+            }
+
+            public bool Outranks(ArbitraryProperty property, long key)
+                => (key & StyleLayerPriority.Important) != 0 && !_layers.Contains((property, key));
+
+            public bool Outranks(StyleLonghand longhand, long claim)
+                => (claim & StyleLayerPriority.Important) != 0
+                    && (!_claims.TryGetValue(longhand, out var found) || claim > found);
+        }
+
+        // Reused by every YieldToImportant: it resolves nothing re-entrantly.
+        private static readonly List<(long Key, ArbitraryStyle Style)> s_importantWinners = new();
+
+        // Writes back, over a driver's write, what an important declaration of the element's own outranking it wins
+        // there (DrivenWrite.Outranks): an important layer's value, or the class an important claim names, by
+        // clearing the inline value over it. Between the two the higher key wins, as ResolveSharedLonghands orders
+        // them.
+        private static void YieldToImportant(VisualElement element, LayerMap map, DrivenWrite write)
+        {
+            var longhands = StyleArbitraryLonghands.Of(write.Style.Property);
+            s_importantWinners.Clear();
+            foreach (var pair in map)
+            {
+                if (pair.Key == ArbitraryProperty.FilterCustom || IsFilter(pair.Key)
+                    || !StyleArbitraryLonghands.Of(pair.Key).Overlaps(longhands)
+                    || !TryWinningLayer(map, pair.Key, out var style))
+                {
+                    continue;
+                }
+                var key = pair.Value.Keys[pair.Value.Count - 1];
+                if (write.Outranks(pair.Key, key))
+                {
+                    s_importantWinners.Add((key, style));
+                }
+            }
+            s_importantWinners.Sort((a, z) => a.Key.CompareTo(z.Key));
+            foreach (var (_, style) in s_importantWinners)
+            {
+                ApplyInline(element, style);
+            }
+            if (map.Projection == null)
+            {
+                return;
+            }
+            foreach (var longhand in s_longhands)
+            {
+                var claim = map.Projection.ClaimOf(longhand);
+                if (longhands.Contains(longhand) && write.Outranks(longhand, claim)
+                    && !OutrankedOn(longhand, claim, s_importantWinners)
+                    && s_soleWriters.TryGetValue(longhand, out var sole))
+                {
+                    ClearInline(element, sole);
+                }
+            }
+        }
+
+        // Whether an important declaration of the element's own outranking write wins slot.
+        private static bool ImportantWins(LayerMap map, HeldSlot slot, DrivenWrite write)
+            => TryLayeredWinner(map, slot, out var winner, out var rank) && write.Outranks(winner.Property, rank)
+                || map.Projection != null && write.Outranks(HeldSlotGroups.LonghandOf(slot),
+                    map.Projection.ClaimOf(HeldSlotGroups.LonghandOf(slot)));
+
+        // Whether a driver writes slot and an important declaration of the element's own outranking it wins there,
+        // so a dashed divider paints the slot in what the slot shows.
+        internal static bool ImportantWinsOverDriven(VisualElement element, HeldSlot slot)
+        {
+            if (!s_layers.TryGetValue(element, out var map) || map.Driven == null)
+            {
+                return false;
+            }
+            foreach (var write in map.Driven.Values)
+            {
+                if ((HeldSlotGroups.SlotsOf(write.Style.Property) & StyleHeldSlots.Bit(slot)) != 0
+                    && ImportantWins(map, slot, write))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Puts back the masks and important holds a driver's write covered, and adds a gap to a driven margin
+        // (Hold's gap form) where the driven value shows.
+        private static void WriteOverHolds(VisualElement element, LayerMap map, DrivenWrite write)
+        {
+            var holds = map.Holds;
             if (holds == null)
             {
                 return;
             }
+            var driven = write.Style;
             var slots = HeldSlotGroups.SlotsOf(driven.Property);
-            holds.Reassert(element.style, slots);
+            ReassertHolds(element, map, slots);
             var pixels = DrivenPixels(element, driven);
             foreach (var slot in HeldSlotGroups.EverySlot)
             {
                 var gap = (slots & StyleHeldSlots.Bit(slot)) != 0 ? holds.DrivenGap(slot) : 0f;
-                if (gap != 0f && !float.IsNaN(pixels))
+                if (gap != 0f && !float.IsNaN(pixels) && !ImportantWins(map, slot, write))
                 {
                     WriteLayered(element, slot, new ArbitraryStyle(driven.Property, pixels + gap, LengthUnit.Pixel));
                 }

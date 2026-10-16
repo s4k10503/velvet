@@ -196,7 +196,8 @@ namespace Velvet
         // colors all four edges of a divided child, as Tailwind's `border-color` does. Tailwind writes all of it
         // at zero specificity, so a width or color the child's own classes set on an edge wins there, unless the
         // divide's own token is important and the child's is not — see ChildOutranks. Under divide-dashed a
-        // width of the child's own that wins is still dashed, since Tailwind's border-*-N takes the border style the divider set.
+        // width of the child's own that wins is still dashed, since Tailwind's border-*-N takes the border style
+        // the divider set.
         private void ApplyToChild(VisualElement child, DivideEdge edge, bool isDivider)
         {
             var ownWidth = ChildOutranks(child, WidthSlot(edge), (_spec.Important & DivideImportance.Width) != 0);

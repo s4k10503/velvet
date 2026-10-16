@@ -1112,6 +1112,45 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantDivideColor_When_AMotionDriverWritesTheChildsBorderColor_Then_TheDivideColorStands()
+        {
+            // Arrange — !important outranks an animation in CSS, and Tailwind emits the divide color !important.
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x !divide-gray-200", ""),
+            });
+            var child = scope.Root[0][1];
+
+            // Act
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red));
+
+            // Assert
+            Assert.That(child.style.borderRightColor.value, Is.EqualTo(gray200));
+        }
+
+        [Test]
+        public void Given_AMotionDriverWritingADashedChildsBorderColor_When_AnImportantColorLayerArrives_Then_TheDashTakesIt()
+        {
+            // Arrange — a hover:!border-[#ff0000] turning on mid-play: !important outranks an animation in CSS.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                DividerRowWithColoredChild("flex flex-row divide-x divide-dashed divide-gray-200", ""),
+            });
+            var child = scope.Root[0][1];
+            StyleArbitraryValueResolver.ApplyDriven(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.blue));
+
+            // Act
+            StyleArbitraryValueResolver.Apply(child, new ArbitraryStyle(ArbitraryProperty.BorderColor, Color.red),
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Hover));
+
+            // Assert
+            Assert.That(DivideDashPainter.PaintColor(scope.Reconciler.Context.DivideDashBindings[child]), Is.EqualTo(Color.red));
+        }
+
+        [Test]
         public void Given_ADashTransitionInsideItsDelay_When_Eased_Then_ItHasNotStarted()
         {
             // Arrange
