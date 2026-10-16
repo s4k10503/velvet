@@ -923,27 +923,39 @@ namespace Velvet.Tests
                 Is.EqualTo(new[] { "layout-cleanup", "attach" }));
         }
 
-        [Component]
+        // The presence mounts when the state is written, so its first render suppresses the enter of the Motion it
+        // holds.
+        [Component(Compiler = false)]
         private static VNode NoOpEnterHost()
-            => V.Div(children: new VNode[]
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
             {
-                V.AnimatePresence(initial: false, children: new VNode[]
-                {
-                    V.Motion(key: "m", transition: StyleTransition.Fade,
-                        onEnterComplete: () => s_log.Add("enter-complete"),
-                        refCallback: element =>
-                        {
-                            s_log.Add("attach");
-                            return null;
-                        }),
-                }),
+                tick == 0
+                    ? null
+                    : V.AnimatePresence(initial: false, children: new VNode[]
+                    {
+                        V.Motion(key: "m", transition: StyleTransition.Fade,
+                            onEnterComplete: () => s_log.Add("enter-complete"),
+                            refCallback: element =>
+                            {
+                                s_log.Add("attach");
+                                return null;
+                            }),
+                    }),
             });
+        }
 
         [Test]
-        public void Given_AMotionWhoseEnterPlaysNothing_When_ItMounts_Then_ItsRefAttachesBeforeItsEnterCompletes()
+        public void Given_AMotionWhoseEnterPlaysNothing_When_ADrainMountsIt_Then_ItsRefAttachesBeforeItsEnterCompletes()
         {
-            // Act
+            // Arrange
             using var mounted = V.Mount(_root, V.Component(NoOpEnterHost, key: "host"));
+            s_setTick.Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("attach,enter-complete"));
