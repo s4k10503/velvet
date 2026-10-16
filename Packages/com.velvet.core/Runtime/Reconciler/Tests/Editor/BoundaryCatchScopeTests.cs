@@ -107,6 +107,7 @@ namespace Velvet.Tests
             s_setDisposedTick = null;
             s_outerCaught = false;
             s_swapReports.Clear();
+            s_setListTick = null;
             s_setSwapThrowerTick = null;
             s_setOrderedExitTick = null;
             s_exitOrder.Clear();
@@ -2016,6 +2017,65 @@ namespace Velvet.Tests
             // Assert — the rendered text is read beside the reports, since an uncaught cleanup error unmounts the tree
             Assert.That(string.Join(",", s_swapReports) + " | " + Texts(),
                 Is.EqualTo("Swap render throw,Swap cleanup throw | fallback"));
+        }
+
+        // The list's row is mounted on an anchor of its own and is disposed before it unmounts what it rendered, so the
+        // walk from the child whose cleanup throws starts at a fiber already torn down.
+        [Test]
+        public void Given_AListRowWhoseChildsCleanupThrows_When_TheListLeavesBelowABoundary_Then_TheBoundaryCatchesIt()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's re-render renders a row
+            using var mounted = V.Mount(_root, V.Component(ListBoundaryRender, key: "boundary"),
+                new MountOptions((exception, _) => s_swapReports.Add(exception.Message)));
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()], 50f);
+            s_setListTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setListTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(",", s_swapReports), Is.EqualTo("List row child cleanup throw"));
+        }
+
+        private static Action<int> s_setListTick;
+
+        [Component(Compiler = false)]
+        private static VNode ListRowChildRender()
+        {
+            Hooks.UseEffect(
+                (Func<Action>)(() => () => throw new InvalidOperationException("List row child cleanup throw")),
+                Array.Empty<object>());
+            return V.Label(text: "row-child");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ListRowRender() => V.Div(children: new VNode[] { V.Component(ListRowChildRender, key: "child") });
+
+        [Component(Compiler = false)]
+        private static VNode ListHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setListTick = setTick;
+            if (tick > 1) return V.Label(text: "gone");
+            return V.VirtualList(
+                items: tick > 0 ? new[] { "a" } : Array.Empty<string>(),
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Component(ListRowRender, key: item),
+                overscan: 0,
+                key: "list");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode ListBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "list-fallback"));
+            return V.Component(ListHostRender, key: "host");
         }
 
         private static readonly System.Collections.Generic.List<string> s_swapReports = new();
