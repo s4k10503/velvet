@@ -1853,14 +1853,7 @@ namespace Velvet
 
         // Whether a setup waits for a commit that has no fiber of its own to bring. Read only where
         // FiberEffects.CommitStrandedLayoutWork has found no commit on the stack.
-        internal bool HasAttachableRefs()
-        {
-            foreach (var entry in _pendingRefAttaches)
-            {
-                if (IsAttachable(entry)) return true;
-            }
-            return false;
-        }
+        internal bool HasAttachableRefs() => _pendingRefAttaches.Exists(IsAttachable);
 
         // Runs the setup the queue holds for the element, which is not always the one the commit took: a write
         // since then can have queued another callback, and can have taken the element out or dropped its ref.
@@ -1922,7 +1915,7 @@ namespace Velvet
                 // what keeps a setup that acquires a resource from leaking it.
                 try
                 {
-                    InOwnersFrame(owner, cleanup);
+                    InOwnersFrame(owner, _ => { cleanup(); return null; }, element);
                 }
                 catch (System.Exception exception)
                 {
@@ -1934,25 +1927,12 @@ namespace Velvet
         // A ref callback runs with its owner on the ambient stack, as it did when the pass attached it, so a hook
         // called from it is refused by name (HookGuard.ThrowIfNotRendering) rather than as an anonymous component.
         private static System.Action? InOwnersFrame(
-            ComponentFiber? owner, System.Func<VisualElement, System.Action> callback, VisualElement element)
+            ComponentFiber? owner, System.Func<VisualElement, System.Action?> callback, VisualElement element)
         {
             if (owner != null) FiberAmbientStack.Push(owner);
             try
             {
                 return callback(element);
-            }
-            finally
-            {
-                if (owner != null) FiberAmbientStack.Pop();
-            }
-        }
-
-        private static void InOwnersFrame(ComponentFiber? owner, System.Action cleanup)
-        {
-            if (owner != null) FiberAmbientStack.Push(owner);
-            try
-            {
-                cleanup();
             }
             finally
             {
@@ -1980,7 +1960,7 @@ namespace Velvet
                 // Its failure goes where a setup's does, and the setup still runs.
                 try
                 {
-                    InOwnersFrame(owner, replaced);
+                    InOwnersFrame(owner, _ => { replaced(); return null; }, element);
                 }
                 catch (System.Exception exception)
                 {
