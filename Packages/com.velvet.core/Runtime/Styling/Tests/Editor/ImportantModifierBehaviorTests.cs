@@ -56,6 +56,40 @@ namespace Velvet.Tests
             Assert.That(leaf.style.width.value.value, Is.EqualTo(50f));
         }
 
+        [TestCase("hover:!w-[50px]", "hover:w-[50px] True")]
+        [TestCase("[&:hover]:!w-[50px]", "[&:hover]:w-[50px] True")]
+        [TestCase("hover:focus:!p-4", "hover:focus:p-4 True")]
+        public void Given_TheBangBehindTheVariants_When_Stripped_Then_TheUtilityIsImportant(string token, string expected)
+        {
+            // Act
+            var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
+
+            // Assert
+            Assert.That($"{core} {important}", Is.EqualTo(expected));
+        }
+
+        [TestCase("!hover:w-[50px]")]
+        [TestCase("![&:hover]:w-[50px]")]
+        public void Given_ABangAheadOfTheVariants_When_Stripped_Then_TheTokenIsLeftWholeAndPlain(string token)
+        {
+            // Act
+            var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
+
+            // Assert
+            Assert.That($"{core} {important}", Is.EqualTo($"{token} False"));
+        }
+
+        // GREEN_ON_BASE(characterization): a bang inside a bracket is the value's, and the base left it there too.
+        [TestCase("hover:bg-[url(a:!b)]")]
+        public void Given_ABangInsideABracket_When_Stripped_Then_TheTokenIsPlain(string token)
+        {
+            // Act
+            var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
+
+            // Assert
+            Assert.That($"{core} {important}", Is.EqualTo($"{token} False"));
+        }
+
         [Test]
         public void Given_ImportantClassOnlyUtility_When_Mounted_Then_BangStrippedAndClassApplied()
         {
