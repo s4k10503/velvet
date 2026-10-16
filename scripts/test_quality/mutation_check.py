@@ -108,6 +108,12 @@ MAX_SHARDS = 10
 # `ShardCeilingTests` holds each pair together. The charge is not a worst case, so a full shard can still outrun the
 # job, and the mutants it had not reached are then recorded by no shard.
 SHARD_CEILING = {"EditMode": 10, "PlayMode": 7}
+# `SHARD_CEILING` for a campaign run with `--run-out`, which `.github/workflows/kill-set.yml` shards. Nothing
+# is narrowed there, so a mutant is charged the whole-suite figure with no reach run or area launch before it,
+# and a shard measures its mutants on the head tree and then again on the base tree, in two steps of that
+# workflow's job. Each figure is the most mutants one such step fits its timeout at the cost
+# `KillSetShardTests` charges. No `--run-out` run has been timed; the charge is an allowance.
+RUN_OUT_CEILING = {"EditMode": 14, "PlayMode": 7}
 # What `deal` charges a mutant, in seconds, so that every shard is given about the same total. Only the
 # ratio of the figures matters to the deal. The narrowed figure is 145, the median over shards of a shard's
 # seconds a mutant on EditMode, which already includes the mutants that took the whole suite; the whole-suite
@@ -3596,7 +3602,7 @@ def session_verdict(item, planned, index, assembly, expected, opening, confirmed
 
 
 def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceiling, timeout, directory,
-                 selection=None):
+                 selection=None, run_out=False):
     """The plan a session runs: the opening item's stages under the unmutated program -- the areas'
     baselines for `attempts`, and the gate of each distinct set in `selection` -- then each placed
     mutant's stages, with a confirmation after every SESSION_MUTANTS of them.
@@ -3606,10 +3612,10 @@ def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceil
     it maps to in place of its area, after the same cases have run once unmutated in the opening, and
     then the whole suite. An EditMode stage is cancelled at its first failing case rather than run out,
     since the verdict is decided there, so `killers` is the cases that failed before the stop; a
-    PlayMode stage runs out.
+    PlayMode stage runs out, and so does every stage under `run_out`.
     """
     selection = selection or {}
-    stop = platform == "EditMode"
+    stop = platform == "EditMode" and not run_out
     opening = []
     for area in sorted(attempts):
         opening.append(session_stage("narrowed:" + area.name, attempts[area], False, ceiling))
@@ -3963,13 +3969,13 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
             path.write_text(text)
         # The reach run comes first and its plan second: which mutants are measured, and against what, is
         # read off it.
-        reaching = (args.platform in NARROWED_PLATFORMS
+        reaching = (args.platform in NARROWED_PLATFORMS and not args.run_out
                     and REACH_MIN_MUTANTS <= len(placed)
                     and len(placed) == len(pending))
         standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder,
                                  REACH_BOUND * baseline_wall) if reaching else None
         attempts = {}
-        if not reaching and not scope and args.platform in NARROWED_PLATFORMS:
+        if not reaching and not scope and args.platform in NARROWED_PLATFORMS and not args.run_out:
             attempts = area_attempts(baseline_results, mutants, placed, project, text_readers)
         if standing is not None:
             reached, setup, seconds, unsure = standing
@@ -3980,7 +3986,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                                            len(placed) - len(selection) - len(uncovered)))
         launched = [index for index in placed if index not in uncovered]
         plan, segments = session_plan(project, mutants, launched, attempts, whole_scope, args.platform, ceiling,
-                                      args.timeout, directory, selection)
+                                      args.timeout, directory, selection, args.run_out)
         plan["segments"] = segments
         plan["watch"] = library_files(project)
         runs, lost, stopped = run_session(args, project, plan, directory, holder) \
@@ -4677,48 +4683,55 @@ def shard_count(mutants, platform="EditMode"):
     return min(MAX_SHARDS, -(-mutants // SHARD_SIZE[platform]))
 
 
-def mutant_cost(mutant, project, platform):
+def shard_ceiling(platform, run_out=False):
+    return (RUN_OUT_CEILING if run_out else SHARD_CEILING)[platform]
+
+
+def mutant_cost(mutant, project, platform, run_out=False):
     """What `deal` charges `mutant`, in seconds: `NARROWED_COST` where its first launch could be narrowed
     to an area, the platform's whole-suite figure otherwise. Read off the path and the platform alone, so
-    every job computes the same figure."""
-    if platform in NARROWED_PLATFORMS and area_of(mutant.path, project) is not None:
+    every job computes the same figure. Under `run_out` nothing is narrowed, so every mutant is charged the
+    whole-suite figure."""
+    if (platform in NARROWED_PLATFORMS and not run_out
+            and area_of(mutant.path, project) is not None):
         return NARROWED_COST
     return WHOLE_COST[platform]
 
 
-def deal(chosen, mutants, project, platform, count):
+def deal(chosen, mutants, project, platform, count, run_out=False):
     """`count` lists of mutant indices, each ascending: `chosen` longest first, each into the shard that
     has been charged least so far.
 
-    No shard is given more than `SHARD_CEILING` mutants however cheap they are, since the ceiling is
+    No shard is given more than `shard_ceiling` mutants however cheap they are, since the ceiling is
     charged per mutant. Ties on the charge go to the lowest shard and equal costs to the lowest index, so
     every job given one plan deals the same shards. Dealt over `chosen` rather than over all indices, since
     a second pass chooses the first pass's survivors.
     """
     held = [[] for _ in range(count)]
     totals = [0] * count
-    cost = {index: mutant_cost(mutants[index - 1], project, platform) for index in chosen}
+    cost = {index: mutant_cost(mutants[index - 1], project, platform, run_out) for index in chosen}
+    ceiling = shard_ceiling(platform, run_out)
     for index in sorted(chosen, key=lambda index: (-cost[index], index)):
-        shard = min((shard for shard in range(count) if len(held[shard]) < SHARD_CEILING[platform]),
+        shard = min((shard for shard in range(count) if len(held[shard]) < ceiling),
                     key=lambda shard: (totals[shard], shard))
         held[shard].append(index)
         totals[shard] += cost[index]
     return [sorted(indices) for indices in held]
 
 
-def sharded(chosen, shard, mutants, project, platform):
+def sharded(chosen, shard, mutants, project, platform, run_out=False):
     """The indices in `chosen` that `shard` (K, N) measures, or all of them where there is none."""
     if shard is None:
         return list(chosen)
-    return deal(chosen, mutants, project, platform, shard[1])[shard[0]]
+    return deal(chosen, mutants, project, platform, shard[1], run_out)[shard[0]]
 
 
-def spread_report(chosen, mutants, project, platform, count):
+def spread_report(chosen, mutants, project, platform, count, run_out=False):
     """Each shard's mutant count and expected cost, then the cheapest and dearest shard and the gap."""
     if not count:
         return ""
-    dealt = deal(chosen, mutants, project, platform, count)
-    costs = [sum(mutant_cost(mutants[index - 1], project, platform) for index in indices)
+    dealt = deal(chosen, mutants, project, platform, count, run_out)
+    costs = [sum(mutant_cost(mutants[index - 1], project, platform, run_out) for index in indices)
              for indices in dealt]
     lines = ["shard {}: {} mutant(s), expected {} s".format(shard, len(indices), cost)
              for shard, (indices, cost) in enumerate(zip(dealt, costs))]
@@ -4974,7 +4987,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # built. Not taken under a scope the caller chose, which already asks a question of its own.
     attempts = {}
     ceiling = min(args.timeout, baseline_wall)
-    if not scope and args.platform in NARROWED_PLATFORMS and not reach_made:
+    if not scope and args.platform in NARROWED_PLATFORMS and not reach_made and not args.run_out:
         areas = {area_of(mutants[index - 1].path, project) for index in own - il_only} - {None}
         for area, names in narrowable(baseline_results, areas).items():
             attempt = excluding(["-assemblyNames", ";".join(names)], text_readers) + args.editor_arg
@@ -5360,6 +5373,12 @@ def main():
     parser.add_argument("--reuse", metavar="FILE",
                         help="take the kills FILE records as decided and measure around them; "
                              "--collect checks that each still stands in this tree")
+    parser.add_argument("--run-out", action="store_true",
+                        help="record every case that fails on a mutant rather than the cases up to the first: "
+                             "no EditMode stage is cancelled at a failure, and none is narrowed to an area or "
+                             "to the cases that ran the site, so a verdict's killers are the scope's whole "
+                             "failing set. For comparing two trees' kills "
+                             "(scripts/test_quality/kill_set_diff.py); a mutant costs a whole-suite run")
     parser.add_argument("--emit-ledger", metavar="FILE",
                         help="with --collect, write what the decision measured to FILE, for a later "
                              "campaign's --reuse-from")
@@ -5371,6 +5390,10 @@ def main():
                      "reads that decision with --reuse")
     if args.emit_reuse is not None and args.reuse_from is None:
         parser.error("--emit-reuse writes the decision --reuse-from takes")
+    if args.run_out and (args.collect is not None or args.survivors_of is not None
+                         or args.reuse_from is not None or args.reuse is not None):
+        parser.error("--run-out measures every mutant of the list in full; --collect, --survivors-of and "
+                     "the reuse flags each take a verdict someone else measured")
     if args.emit_ledger is not None and args.collect is None:
         parser.error("--emit-ledger records a decision; it goes with --collect")
     if (args.reuse_from is not None or args.reuse is not None) and args.files:
@@ -5595,11 +5618,11 @@ def main():
 
     if args.plan and args.survivors_of is None:
         owed = len(mutants) - len(reused)
-        if owed > MAX_SHARDS * SHARD_CEILING[args.platform]:
+        if owed > MAX_SHARDS * shard_ceiling(args.platform, args.run_out):
             print(coverage)
             print("{} mutants is more than {} shards of {} can measure inside the shard job's "
-                  "timeout.\nSplit the pull request.".format(owed, MAX_SHARDS,
-                                                             SHARD_CEILING[args.platform]))
+                  "timeout.\n{}".format(owed, MAX_SHARDS, shard_ceiling(args.platform, args.run_out),
+                                        "Name fewer files." if args.run_out else "Split the pull request."))
             return CEILING_REFUSAL
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
         if reading and mutants:
@@ -5615,7 +5638,7 @@ def main():
             print("reusing={}".format(len(reused)))
         count = shard_count(owed, args.platform)
         dealt = [number for number in range(1, len(mutants) + 1) if number not in reused]
-        print(spread_report(dealt, mutants, project, args.platform, count))
+        print(spread_report(dealt, mutants, project, args.platform, count, args.run_out))
         print("shards={}".format(json.dumps(list(range(count)))))
         return 0
 
@@ -5696,7 +5719,7 @@ def main():
                     mutants[number - 1].verdict = REUSE_LAPSED
                     mutants[number - 1].detail = problem
     else:
-        selected = sharded(chosen, args.shard, mutants, project, args.platform)
+        selected = sharded(chosen, args.shard, mutants, project, args.platform, args.run_out)
         if selected:
             try:
                 measure(args, project, holder, output, targets, mutants, scope, campaign, coverage,

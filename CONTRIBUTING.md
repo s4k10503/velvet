@@ -487,6 +487,66 @@ record from a narrowed sweep it would replace the rest with them, which is refus
 rather than after. A floor catches a collapse, not a thinning — a record rewritten to eighteen
 fixtures of one line each still passes.
 
+**A pull request that only deletes tests is checked by comparing kills, not by the campaign.** Mutants are
+placed in package sources outside `Tests/` and `TestUtilities/`, so a pull request that touches nothing
+else has none: its campaign reports no mutable change and passes whatever it removed. What such a pull
+request claims is that every removed case was redundant, and that is a statement about two trees over the
+same production source: each mutant the base tree's tests killed is killed by what the head leaves.
+`.github/workflows/kill-set.yml` measures it. It is dispatched by hand, is required by nothing, and runs on
+no event, because every mutant it measures costs the whole suite on two trees.
+
+```bash
+gh workflow run kill-set.yml --ref main \
+  -f files="Packages/com.velvet.core/Runtime/Foo/Bar.cs Packages/com.velvet.core/Runtime/Foo/Baz.cs" \
+  -f assemblies="Velvet.Tests.Foo.Editor" -f base=main -f head=my-pruning-branch -f platform=EditMode
+```
+
+`files` names the production sources whose mutants the removed cases could have been killing, each taken
+whole, and `head` must leave them byte-identical to the merge base or the plan refuses. `assemblies` is
+the test assemblies of the removed cases and of whatever is meant to keep killing what they killed: a
+kill by an assembly left out of it is not made on either tree, so a mutant the removed cases killed and
+only an omitted assembly would still kill reads as lost, and leaving it empty measures the whole suite.
+`base` is the branch the pull request merges into, resolved to its merge base with `head` by
+`scripts/ci/change_base.py`. The tooling that runs is the head's own, so a head cut before `kill-set.yml`
+and `--run-out` landed has neither. Listing the mutants needs no editor:
+
+```bash
+python3 scripts/test_quality/mutation_check.py --files <the same paths> --list
+```
+
+One shard takes `RUN_OUT_CEILING` of the mutants listed (14 on EditMode, 7 on PlayMode), in at most ten shards, and
+the plan refuses a list over that.
+
+Each shard measures the mutants it is dealt on the head and then on the base, in two steps of one job, with
+`--run-out`: no stage stops at its first failing case and none is narrowed to an area or to the cases that
+ran the site, so a mutant's killers are every case of the scope the campaign runs that failed on it. The
+diff job runs `scripts/test_quality/kill_set_diff.py` over the two sets of records, matching mutants by
+file, line, column and rewrite and never by index. It fails, and names each one, when a mutant the base
+killed is not killed on the head — a survivor, or a verdict that measured nothing — and when the two trees
+do not generate the same mutants, or the base killed none and so proved nothing. A kill the head makes
+that the base did not is reported and passes.
+
+Say in the pull request body which `files` and `assemblies` were measured, the run's link, and the summary
+line the diff job prints (`N mutant(s); killed on the base: …, lost on the head: 0, …`), beside the
+deleted cases.
+
+Pruning trips two other checks as well:
+
+- **Removing a `[TestCase]` row changes the method's own text.** `base_red_check.py` reads a case's span
+  as the attribute lines above the method as well as its body, so the method is posed to the base run, where
+  its remaining rows pass; it needs a refactor declaration above it. Deleting a whole case poses nothing, since a case the branch no longer has is not one it wrote.
+- **A deleted case's lines in `scripts/test_quality/neuter_holes.txt` and
+  `scripts/test_quality/assume_gate_baseline.txt` have to go with it.** `Test ▸ test-quality` runs
+  `neuter_check.py --audit`, which fails an entry for a case its fixture no longer declares, and
+  `assume_gate_check.py`, which fails an entry the scan no longer finds. A case with no line in either
+  needs nothing there.
+
+The first one's declaration reads, above the method:
+
+```csharp
+// GREEN_ON_BASE(refactor): the remaining rows are cases this method already ran.
+```
+
 ### Checking that a new test could have failed
 
 Both instruments above ask what happens when the production code is broken on purpose.

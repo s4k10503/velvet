@@ -7873,6 +7873,29 @@ class CostDealtShardTests(unittest.TestCase):
         # Assert
         self.assertEqual(costs[0], costs[1])
 
+    def test_Given_AnAreaMutant_When_CostedForRunOut_Then_ItIsChargedTheWholeSuite(self):
+        # Arrange — `--run-out` narrows nothing, so the area that narrows it without the flag changes no charge.
+        area, = self.mutants("n")
+
+        # Act
+        cost = mutation_check.mutant_cost(area, self.PROJECT, "EditMode", run_out=True)
+
+        # Assert
+        self.assertEqual(cost, mutation_check.WHOLE_COST["EditMode"])
+
+    def test_Given_EveryShardFilledToTheRunOutCeiling_When_Dealt_Then_EachHoldsExactlyThatMany(self):
+        # Arrange — fourteen to a shard is past the default ceiling of ten, which would refuse the last mutants.
+        total = mutation_check.MAX_SHARDS * mutation_check.RUN_OUT_CEILING["EditMode"]
+        mutants = self.mutants("w" * total)
+
+        # Act
+        dealt = mutation_check.deal(list(range(1, total + 1)), mutants, self.PROJECT, "EditMode",
+                                    mutation_check.MAX_SHARDS, run_out=True)
+
+        # Assert
+        self.assertEqual([len(indices) for indices in dealt],
+                         [mutation_check.RUN_OUT_CEILING["EditMode"]] * mutation_check.MAX_SHARDS)
+
     def test_Given_WholeSuiteMutantsAtEveryOtherPosition_When_Dealt_Then_TheShardsCostTheSame(self):
         # Arrange — dealt by position, the second shard would hold every narrowed mutant and the first every dear one.
         kinds = "wnwnwnwn"
@@ -9838,6 +9861,20 @@ class SessionPlanTests(unittest.TestCase):
         self.assertEqual([stage["stopAtFirstFailure"] for item in plan["items"] if not item.get("confirm")
                           for stage in item["stages"]], [True, True])
 
+    def test_Given_EditModeRunOut_When_Planned_Then_NoStageStopsAtItsFirstFailure(self):
+        # Arrange — the control is the case above: the same plan without the flag stops every stage.
+        project = Path("/p")
+        mutants = [mutation_check.Mutant(project / "Packages/com.velvet.core/Runtime/Styling/A.cs", 1, 0,
+                                         "<", "<=", "boundary") for _ in range(2)]
+
+        # Act
+        plan, _ = mutation_check.session_plan(project, mutants, [1, 2], {}, [], "EditMode", 100, 900,
+                                              Path("/out"), run_out=True)
+
+        # Assert
+        self.assertEqual({stage["stopAtFirstFailure"] for item in plan["items"] for stage in item["stages"]},
+                         {False})
+
 
 class SessionFilterTests(unittest.TestCase):
     def test_Given_AnEditorScope_When_ReadAsAStageFilter_Then_EachFlagSplitsOnSemicolons(self):
@@ -11274,6 +11311,166 @@ class ReusedKillCampaignTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(("reusing=" in campaign.printed, "verdicts reused" in campaign.printed), (False, False))
+
+
+class RunOutReachTests(SixOrSevenMutantsBase):
+    """`--run-out` over the six placed mutants `FullyPlacedShardTests` makes the reach run for."""
+
+    campaign_class = SixMutantCampaign
+
+    def test_Given_SixPlacedMutants_When_RunOut_Then_NoReachRunIsMade(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "6", "--run-out")
+
+        # Assert
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+
+
+class RunOutAreaTests(SixOrSevenMutantsBase):
+    """`--run-out` over a mutant whose session takes its area's assemblies first, as
+    `SessionReachAreaTests` has it do below the reach threshold."""
+
+    campaign_class = StylingSessionCampaign
+    reach_from = 2
+
+    def test_Given_AnAreaMutantBelowTheReachThreshold_When_RunOut_Then_ItsSessionStageIsTheWholeSuiteAlone(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "1", "--run-out")
+
+        # Assert
+        self.assertEqual([stage["name"] for plan in self.campaign.plans for item in plan["items"]
+                          if item["id"] == 1 for stage in item["stages"]], ["whole"])
+
+
+class RunOutDeclinedMutantTests(SixOrSevenMutantsBase):
+    """`--run-out` beside a session that declines one mutant, which `DeclinedMutantBesideASessionTests`
+    shows taking its area's baseline first."""
+
+    campaign_class = SevenMutantCampaign
+
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_RunOut_Then_TheDeclinedOneTakesItsOwnLaunchWithNoAreaBaseline(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "7", "--run-out")
+
+        # Assert — the launch of its own is what the baseline's absence is read beside.
+        self.assertEqual(([name for name in self.campaign.launched if name.startswith("baseline-")],
+                          "mutant-007.xml" in self.campaign.launched), ([], True))
+
+
+class RunOutPlanTests(unittest.TestCase):
+
+    def test_Given_MoreMutantsThanTheDefaultCeilingButWithinTheRunOutOne_When_PlannedWithRunOut_Then_ItIsNotRefused(self):
+        # Arrange — 120 mutants: past ten shards of ten, within ten shards of fourteen.
+        campaign = StubbedCampaign(body=probe_body(120))
+
+        # Act
+        code = campaign.run("--plan", "--run-out")
+
+        # Assert
+        self.assertEqual((code, "mutants=120" in campaign.printed), (0, True))
+
+
+class KillSetShardTests(unittest.TestCase):
+    """`.github/workflows/kill-set.yml` against the ceilings and the account it is sized for."""
+
+    WORKFLOW = REPO_ROOT / ".github/workflows/kill-set.yml"
+    # The concurrent jobs the account's plan allows, which is 20 on GitHub's Free plan.
+    FREE_PLAN_JOBS = 20
+    # What a step spends on a whole-suite mutant and, before its first, on setup: the figures
+    # `ShardCeilingTests` charges the same suites. No `--run-out` run has been timed.
+    CHARGES = {"EditMode": (561, 201 + 486 + 12 + 900), "PlayMode": (934 + 100, 202 + 625 + 11 + 900)}
+
+    def text(self):
+        return self.WORKFLOW.read_text()
+
+    def job(self, name, after):
+        return self.text().partition("\n  {}:".format(name))[2].partition("\n  {}:".format(after))[0]
+
+    def test_Given_TheMeasuringStepTimeouts_When_TheMostMutantsFittingThemAreCounted_Then_ItIsTheRunOutCeiling(self):
+        # Arrange — derived from the step timeouts rather than read back from the constant.
+        minutes = dict(re.findall(r"- name: Measure (head|base)\n        timeout-minutes: (\d+)",
+                                  self.job("shard", "diff")))
+        step = min(map(int, minutes.values()), default=0) * 60
+
+        # Act
+        largest = {platform: max((count for count in range(1, 60) if setup + count * mutant <= step), default=0)
+                   for platform, (mutant, setup) in self.CHARGES.items()}
+
+        # Assert
+        self.assertEqual((sorted(minutes), largest), (["base", "head"], mutation_check.RUN_OUT_CEILING))
+
+    def test_Given_TheShardJobsTimeout_When_ComparedWithItsTwoMeasuringSteps_Then_ItHoldsBothAndTheRest(self):
+        # Arrange — the head's step and then the base's, on one runner; what is left after both is the checkout,
+        # restore, tree switch and uploads, which the measured setup figures do not cover.
+        job = self.job("shard", "diff")
+        steps = [int(minutes) for minutes in re.findall(r"^        timeout-minutes: (\d+)$", job, re.MULTILINE)]
+        found = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
+
+        # Act
+        spare = int(found.group(1)) - sum(steps) if found else None
+
+        # Assert
+        self.assertEqual((len(steps), spare is not None and spare >= 15), (2, True))
+
+    def test_Given_TheShardMatrix_When_ItsParallelismIsRead_Then_ItIsAtMostHalfTheAccountsConcurrentJobs(self):
+        # Arrange — a pull request's own checks run beside it.
+        found = re.search(r"^      max-parallel: (\d+)$", self.job("shard", "diff"), re.MULTILINE)
+
+        # Act
+        parallel = int(found.group(1)) if found else None
+
+        # Assert
+        self.assertEqual(parallel is not None and mutation_check.MAX_SHARDS <= parallel <= self.FREE_PLAN_JOBS // 2,
+                         True)
+
+    def test_Given_TheWorkflow_When_ItsTriggersAndInputsAreRead_Then_ItIsDispatchedByHandWithTheFourInputsAndTheSuite(self):
+        # Arrange
+        block = re.search(r"^on:\n((?:  .*\n|\n)*)", self.text(), re.MULTILINE).group(1)
+
+        # Act
+        read = (re.findall(r"^  ([a-z_]+):", block, re.MULTILINE),
+                sorted(re.findall(r"^      ([a-z]+):", block, re.MULTILINE)), "Required checks (" in self.text())
+
+        # Assert
+        self.assertEqual(read, (["workflow_dispatch"], ["assemblies", "base", "files", "head", "platform"], False))
+
+    def test_Given_ThePlanAndTheTwoMeasuringSteps_When_TheirInvocationsAreRead_Then_EachRunsOutAndTheTwoWriteApart(self):
+        # Arrange — the plan, then the shards on the head's tree and on the base's. A plan without the flag
+        # refuses past ten shards of ten, and a shard without it narrows and stops at a failure.
+        plan = re.findall(r'mutation_check\.py --base "\$BASE"[^\n]*\\\n[^\n]*', self.text())
+        shards = re.findall(r"ci_mutation_shard\.py -- \\\n((?:[^\n]*\\\n)*[^\n]*)", self.text())
+
+        # Act
+        read = [("--run-out" in text, (re.search(r"--output (\S+)", text) or [None, None])[1])
+                for text in plan + shards]
+
+        # Assert
+        self.assertEqual(read, [(True, None), (True, "Logs/kill-set-head"), (True, "Logs/kill-set-base")])
+
+    def test_Given_TheShardJob_When_ItsStepsAreRead_Then_TheBaseIsMeasuredAfterTheTreeIsSwitchedToIt(self):
+        # Arrange
+        job = self.job("shard", "diff")
+
+        # Act
+        order = re.findall(r"- name: (Measure head|Switch to the base tree|Measure base)", job)
+
+        # Assert
+        self.assertEqual(order, ["Measure head", "Switch to the base tree", "Measure base"])
+
+    def test_Given_TheDiffJob_When_ItsComparisonIsRead_Then_ItReadsTheBaseDirectoryFirst(self):
+        # Arrange
+
+        # Act
+        read = re.search(r"kill_set_diff\.py (\S+) (\S+)", self.job("diff", "-")).groups()
+
+        # Assert
+        self.assertEqual(read, ("Logs/kill-set-base", "Logs/kill-set-head"))
 
 
 if __name__ == "__main__":
