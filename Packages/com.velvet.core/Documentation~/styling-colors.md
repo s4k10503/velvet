@@ -47,7 +47,7 @@ The functions follow CSS Color 4:
   - no component has an exponent, a `+` sign or `none`, and the saturation is a percentage rather than a number.
 
   `text-[hsl(0_150%_75%)]` is then `text-[hsl(0_100%_75%)]`. Any other spelling (`hsl(0_150_75)`,
-  `HSL(0_150%_75%)`, `hsl(0_150%_75%_/_50%)`, `hsl(0_150%_75%_/_0.5_)`) keeps the saturation above 100%, and the
+  `hSLa(0_150%_75%)`, `hsl(0_150%_75%_/_50%)`, `hsl(0_150%_75%_/_0.5_)`) keeps the saturation above 100%, and the
   channels clip, so `hsl(0_150_75)` is `rgb(100% 37.5% 37.5%)`.
 - **Which utilities clamp**: the colour longhands only: `text-[…]`, `bg-[…]`, `border-t-[…]` / `-r-` / `-b-` / `-l-`
   / `-s-` / `-e-` / `-bs-` / `-be-`, `outline-[…]`, `caret-[…]` and `selection:bg-[…]` / `selection:text-[…]`. A
