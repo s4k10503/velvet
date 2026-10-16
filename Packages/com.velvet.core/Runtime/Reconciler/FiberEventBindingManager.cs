@@ -21,6 +21,20 @@ namespace Velvet
         // event type" without any generic type parameter to dispatch on.
         private readonly Dictionary<VisualElement, List<FiberEventBinding>> _bindingsByElement = new();
 
+        // Per Button, the press origins a click is decided from. It is kept apart from the bindings because a
+        // render that binds the Button again between the press and the click must not lose them; Forget drops
+        // it once the Button leaves the tree.
+        private readonly Dictionary<Button, ClickGate> _clickGates = new();
+
+        private sealed class ClickGate
+        {
+            // The pointers whose press began in content off the logical chain.
+            public readonly HashSet<int> OffChainDowns = new();
+            // Whether the click now being raised is one the React tree would not carry to the Button.
+            public bool Suppress;
+            public Action Unwire = null!;
+        }
+
         // The click every ClickedEventBinding on a button hands its handler, replaced at the start of each
         // click by the callback BindClickedEvent puts ahead of them on Button.clicked.
         private readonly Dictionary<Button, ClickedEventSlot> _clickedEventSlots = new();
@@ -69,6 +83,8 @@ namespace Velvet
         }
 
         internal bool IsBridgeAnchor(VisualElement element) => _bridges.ContainsKey(element);
+
+        internal bool HoldsBridges => _bridges.Count > 0;
 
         // Called once an element's bindings were registered again after UnbindAll.
         internal void Rebound(VisualElement element)
@@ -153,7 +169,12 @@ namespace Velvet
                 case ClickedBinding clicked when element is Button button:
                 {
                     var handler = clicked.Handler;
-                    Action wrapped = () => RunDiscrete(handler);
+                    var gate = GateClicks(button);
+                    Action wrapped = () =>
+                    {
+                        if (gate.Suppress) return;
+                        RunDiscrete(handler);
+                    };
                     button.clicked += wrapped;
                     actions.Add(() => button.clicked -= wrapped);
                     break;
@@ -256,9 +277,9 @@ namespace Velvet
                 }
             };
             EventCallback<FocusInEvent> keyboardOpened = _ => keyboard = field.textEdition.touchScreenKeyboard;
-            EventCallback<FocusOutEvent> keyboardClosed = _ =>
+            EventCallback<FocusOutEvent> keyboardClosed = evt =>
             {
-                if (keyboard != null && SubmitsOnKeyboardClose(field.multiline, keyboard.status))
+                if (SubmitsOnFocusOut(field, evt, keyboard, static held => held.status))
                 {
                     RunDiscrete(() => handler?.Invoke(field.value));
                 }
@@ -279,6 +300,13 @@ namespace Velvet
                 field.UnregisterCallback(keyboardClosed);
             });
         }
+
+        // A focus-out raised in portal content the field holds without being above its call site is no blur of the
+        // field, however the keyboard ended. The keyboard is a type parameter so that a case can stand one in.
+        internal static bool SubmitsOnFocusOut<TKeyboard>(TextField field, FocusOutEvent evt, TKeyboard? keyboard,
+            Func<TKeyboard, UnityEngine.TouchScreenKeyboard.Status> statusOf) where TKeyboard : class
+            => keyboard != null && !FiberCrossPanelEventDispatcher.OffLogicalChain(field, evt)
+                && SubmitsOnKeyboardClose(field.multiline, statusOf(keyboard));
 
         // Done is the status a keyboard the user finished with reports; a multi-line field never submits.
         internal static bool SubmitsOnKeyboardClose(bool multiline, UnityEngine.TouchScreenKeyboard.Status status)
@@ -325,6 +353,7 @@ namespace Velvet
         {
             EventCallback<T> wrapped = evt =>
             {
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(field, evt)) return;
                 if (!IsWithin(field, evt.relatedTarget))
                 {
                     RunDiscrete(() => handler?.Invoke(evt));
@@ -473,6 +502,8 @@ namespace Velvet
             _unbindActions.Clear();
             _boundDelegates.Clear();
             _bindingsByElement.Clear();
+            foreach (var gate in _clickGates.Values) gate.Unwire();
+            _clickGates.Clear();
         }
 
         // Invoked by FiberCrossPanelEventDispatcher (see that class for the walks) for an element no native
@@ -601,8 +632,13 @@ namespace Velvet
                 BindBubbleCallback(actions, element, handler);
                 return;
             }
-            element.RegisterCallback(handler, TrickleDown.TrickleDown);
-            actions.Add(() => element.UnregisterCallback(handler, TrickleDown.TrickleDown));
+            EventCallback<T> wrapped = evt =>
+            {
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(element, evt)) return;
+                handler?.Invoke(evt);
+            };
+            element.RegisterCallback(wrapped, TrickleDown.TrickleDown);
+            actions.Add(() => element.UnregisterCallback(wrapped, TrickleDown.TrickleDown));
         }
 
         private void BindBubbleCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)
@@ -610,6 +646,7 @@ namespace Velvet
         {
             EventCallback<T> wrapped = evt =>
             {
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(element, evt)) return;
                 if (StoppedByBubblePrelude(element, evt)) return;
                 handler?.Invoke(evt);
             };
@@ -617,10 +654,72 @@ namespace Velvet
             actions.Add(() => element.UnregisterCallback(wrapped));
         }
 
+        // clicked carries no event, so whether a click reaches the Button is decided where it starts. A browser
+        // raises a click on the common ancestor of the press and the release, and React walks the fiber tree
+        // from there: the Button hears it unless both ended off the logical chain. The pointer-up is read on
+        // its trickle pass, before the Button's own click handling raises clicked, and the bubble-pass
+        // callbacks registered after it clear the decision once that handling has run. A submit has the one
+        // element it was raised on. A capture-out is left out: where it falls against the click is not pinned.
+        private ClickGate GateClicks(Button button)
+        {
+            if (_clickGates.TryGetValue(button, out var gate)) return gate;
+
+            gate = new ClickGate();
+            EventCallback<PointerDownEvent> pressed = evt =>
+            {
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(button, evt)) gate.OffChainDowns.Add(evt.pointerId);
+                else gate.OffChainDowns.Remove(evt.pointerId);
+            };
+            EventCallback<PointerUpEvent> releasing = evt =>
+                gate.Suppress = gate.OffChainDowns.Remove(evt.pointerId)
+                    && FiberCrossPanelEventDispatcher.OffLogicalChain(button, ReleasedOn(button, evt));
+            EventCallback<PointerUpEvent> released = _ => gate.Suppress = false;
+            EventCallback<PointerCancelEvent> cancelled = evt =>
+            {
+                gate.OffChainDowns.Remove(evt.pointerId);
+                gate.Suppress = false;
+            };
+            EventCallback<NavigationSubmitEvent> submitting = evt =>
+                gate.Suppress = FiberCrossPanelEventDispatcher.OffLogicalChain(button, evt);
+            EventCallback<NavigationSubmitEvent> submitted = _ => gate.Suppress = false;
+            button.RegisterCallback(pressed, TrickleDown.TrickleDown);
+            button.RegisterCallback(releasing, TrickleDown.TrickleDown);
+            button.RegisterCallback(submitting, TrickleDown.TrickleDown);
+            button.RegisterCallback(released);
+            button.RegisterCallback(cancelled);
+            button.RegisterCallback(submitted);
+            gate.Unwire = () =>
+            {
+                button.UnregisterCallback(pressed, TrickleDown.TrickleDown);
+                button.UnregisterCallback(releasing, TrickleDown.TrickleDown);
+                button.UnregisterCallback(submitting, TrickleDown.TrickleDown);
+                button.UnregisterCallback(released);
+                button.UnregisterCallback(cancelled);
+                button.UnregisterCallback(submitted);
+            };
+            _clickGates[button] = gate;
+            return gate;
+        }
+
+        // The element a release landed on. One aimed at the Button itself names
+        // whatever lies under the pointer; the Button stands for a release over nothing.
+        private static VisualElement? ReleasedOn(Button button, PointerUpEvent evt)
+            => ReferenceEquals(evt.target, button)
+                ? button.panel?.Pick(evt.position) ?? button
+                : evt.target as VisualElement;
+
+        // Called once a Button leaves the tree for good.
+        internal void Forget(Button button)
+        {
+            if (!_clickGates.Remove(button, out var gate)) return;
+            gate.Unwire();
+        }
+
         // The callback registered first runs first on Button.clicked, so the one registered here ahead of
         // the button's first ClickedEventBinding opens each click's event before any handler reads it.
         private void BindClickedEvent(List<Action> actions, Button button, Action<ClickedEvent>? handler)
         {
+            var gate = GateClicks(button);
             if (!_clickedEventSlots.TryGetValue(button, out var slot))
             {
                 slot = new ClickedEventSlot();
@@ -634,7 +733,11 @@ namespace Velvet
                 });
             }
 
-            Action wrapped = () => RunDiscrete(() => handler?.Invoke(slot.Current));
+            Action wrapped = () =>
+            {
+                if (gate.Suppress) return;
+                RunDiscrete(() => handler?.Invoke(slot.Current));
+            };
             button.clicked += wrapped;
             actions.Add(() => button.clicked -= wrapped);
         }
@@ -648,6 +751,7 @@ namespace Velvet
             var phase = capture ? TrickleDown.TrickleDown : bubblePhase;
             EventCallback<T> wrapped = evt =>
             {
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(element, evt)) return;
                 if (!capture && StoppedByBubblePrelude(element, evt)) return;
                 RunDiscrete(() => handler?.Invoke(evt));
             };
@@ -660,7 +764,12 @@ namespace Velvet
         // synchronously at the handler's end. Collapses the per-T ChangeEventBinding<T> cases.
         private void BindDiscreteValueChanged<T>(List<Action> actions, INotifyValueChanged<T> field, Action<T>? handler)
         {
-            var callback = new EventCallback<ChangeEvent<T>>(evt => RunDiscrete(() => handler?.Invoke(evt.newValue)));
+            var element = (VisualElement)field;
+            var callback = new EventCallback<ChangeEvent<T>>(evt =>
+            {
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(element, evt)) return;
+                RunDiscrete(() => handler?.Invoke(evt.newValue));
+            });
             field.RegisterValueChangedCallback(callback);
             actions.Add(() => field.UnregisterValueChangedCallback(callback));
         }

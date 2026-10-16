@@ -1296,6 +1296,7 @@ namespace Velvet
         // the innermost.
         internal VisualElement? PortalHoldingRow(VisualElement row, VisualElement parent)
         {
+            if (PortalState.Count == 0) return null;
             var index = LogicalChildSlots.ToLogical(parent, parent.IndexOf(row));
             VisualElement? holder = null;
             var holderStart = -1;

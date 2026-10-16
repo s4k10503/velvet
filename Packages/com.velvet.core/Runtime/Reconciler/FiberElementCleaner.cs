@@ -239,6 +239,9 @@ namespace Velvet
             // never keeps ticking against it.
             MotionLayoutIdDriver.CancelForTeardown(element, _ctx);
             _ctx.EventManager.UnbindAll(element);
+            // A pooled Button is handed out again as the same instance, so the press origin recorded for it must
+            // not survive into whatever mounts it next.
+            if (element is Button button) _ctx.EventManager.Forget(button);
             _ctx.ComponentRegistry.Remove(element);
             RelationalSourceSet.DropDeparted(_ctx, element);
             DetachManipulator(element, _ctx.GestureManipulators);
