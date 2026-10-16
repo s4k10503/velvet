@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -71,6 +73,24 @@ namespace Velvet.Tests
         public void Given_ANativeOpacityTransitionInFlight_When_TheLabelSwaps_Then_TheNewPlayStartsFromThePaint()
         {
             // Arrange
+            var element = MountMidwayThroughANativeFade();
+            var paint = element.resolvedStyle.opacity;
+            var from = new[] { "opacity-100" };
+            var to = new[] { "opacity-50" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f,
+                MotionSlotContext.Read(element, from, to, _ => false));
+
+            // Assert — NaN unless the transition is part of the way, so a paint at either end cannot pass by
+            // meeting the swapped-out value.
+            Assert.That(paint > 0.01f && paint < 0.99f ? plan.Opacity?.from ?? float.NaN : float.NaN,
+                Is.EqualTo(paint).Within(1e-5f));
+        }
+
+        // The transition the native test above builds, a linear 2 s fade from 1 to 0 a quarter of the way in.
+        private VisualElement MountMidwayThroughANativeFade()
+        {
             var element = Mount();
             var now = 100.0;
             element.style.opacity = 1f;
@@ -86,18 +106,30 @@ namespace Velvet.Tests
             now += 0.5;
             EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
             ForcePanelUpdate(element.panel);
-            var paint = element.resolvedStyle.opacity;
-            var from = new[] { "opacity-100" };
-            var to = new[] { "opacity-50" };
+            return element;
+        }
+
+        // The fade moves at -0.5 per second; the spring toward 0.5 from the painted 0.75 has negative travel, which
+        // the accelerated driver signs the velocity by.
+        [Test]
+        public void Given_ANativeOpacityTransitionInFlight_When_ASpringLabelSwapsIt_Then_TheSpringStartsWithTheTransitionsVelocity()
+        {
+            // Arrange
+            var element = MountMidwayThroughANativeFade();
+            var scheduler = new StyleAnimationScheduler();
 
             // Act
-            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f,
-                MotionSlotContext.Read(element, from, to, _ => false));
+            scheduler.PlayVariantEnter(element, new[] { "opacity-100" }, new[] { "opacity-50" },
+                new StyleTransitionConfig { Type = TransitionType.Spring });
+            var enters = (IDictionary)typeof(StyleAnimationScheduler)
+                .GetField("_pendingEnters", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scheduler);
+            var pending = enters[element];
+            var spring = (MotionSpringState)pending?.GetType().GetField("Spring")!.GetValue(pending);
+            var startVelocity = spring?.Opacity?.StartVelocity ?? float.NaN;
+            scheduler.CancelAll();
 
-            // Assert — NaN unless the transition is part of the way, so a paint at either end cannot pass by
-            // meeting the swapped-out value.
-            Assert.That(paint > 0.01f && paint < 0.99f ? plan.Opacity?.from ?? float.NaN : float.NaN,
-                Is.EqualTo(paint).Within(1e-5f));
+            // Assert
+            Assert.That(startVelocity, Is.EqualTo(0.5f).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(characterization): the base starts a slot no play drives from the swapped-out value too, and

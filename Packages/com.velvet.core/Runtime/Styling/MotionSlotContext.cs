@@ -110,6 +110,49 @@ namespace Velvet
 
         public bool NativeTransitionRunning(ArbitraryProperty slot) => HasRunningNativeTransition(slot);
 
+        // The rate per second a running native transition is moving the slot at, in `unit` for a length; null where
+        // none is, where the slot is a color, or where the engine does not give it up.
+        public float? NativeVelocity(ArbitraryProperty slot, LengthUnit unit)
+        {
+            if (_drivenByRunningPlay(slot) || MotionPropertyClassParser.IsColor(slot))
+            {
+                return null;
+            }
+            var owner = Owner(slot);
+            var longhands = StyleArbitraryLonghands.Of(slot);
+            for (var i = 0; i < s_nativePropertyIds.Length; i++)
+            {
+                if (longhands.Contains((StyleLonghand)i) && HasRunningNativeTransition(owner, (StyleLonghand)i))
+                {
+                    return NativeTransitionVelocity.Of(owner, s_nativePropertyIds[i]!,
+                        value => NativeMagnitude(value, slot, unit));
+                }
+            }
+            return null;
+        }
+
+        private static float? NativeMagnitude(object value, ArbitraryProperty slot, LengthUnit unit)
+        {
+            switch (value)
+            {
+                case float number:
+                    return number;
+                case Length length:
+                    return length.unit == unit ? length.value : null;
+                case Translate translate:
+                {
+                    var axis = slot == ArbitraryProperty.TranslateX ? translate.x : translate.y;
+                    return axis.unit == unit ? axis.value : null;
+                }
+                case Scale scale:
+                    return scale.value.x;
+                case Rotate rotate:
+                    return rotate.angle.ToDegrees();
+                default:
+                    return null;
+            }
+        }
+
         public bool TryReadCurrent(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {
             if (slot == ArbitraryProperty.BorderColor)

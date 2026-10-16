@@ -72,6 +72,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFieldDeclaredWithTheAnyShape_When_ItsNameIsNotThere_Then_NothingIsFound()
+        {
+            // Arrange
+            var control = Declare("Field", "UnityEngine.UIElements.StyleSheet", "imports", "*");
+            var member = Declare("Field", "UnityEngine.UIElements.StyleSheet", "importsNoSuchField", "*");
+
+            // Act
+            var resolved = (control.Resolve() != null, member.Resolve() != null);
+
+            // Assert
+            Assert.That(resolved, Is.EqualTo((true, false)));
+        }
+
+        [Test]
         public void Given_AGetterOnlyPropertyDeclaredWritable_When_Resolved_Then_NothingIsFound()
         {
             // Arrange — VisualElement.panel has a getter and no setter.

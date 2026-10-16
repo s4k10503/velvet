@@ -268,8 +268,10 @@ new StyleTransitionConfig
   label change mid-spring, or an exit cancelled mid-flight — releases a new one from the current
   value *and velocity***, as Framer starts an interrupted value's next animation. A spring that
   interrupts a running `Bezier` play (or a `Tween` the mount's own clock drives) starts with the velocity of the
-  curve at that moment. A spring that interrupts a native CSS transition starts at rest, since Velvet reads no
-  velocity from one, which deviates from Framer. An exit whose delta resolves no channel at all completes immediately.
+  curve at that moment. A spring that interrupts a native CSS transition starts with the
+  transition's rate at that moment, read off the panel's style animation system. A spring on a paused or
+  rate-scaled `MotionPlayback` that interrupts a `Bezier` play on it starts with the playback's share of that
+  velocity. An exit whose delta resolves no channel at all completes immediately.
 - `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
   slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
   so a frame that arrives late moves the spring as far as the time it covers.

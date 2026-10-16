@@ -53,30 +53,59 @@ namespace Velvet.Tests
             Assert.That(startVelocity, Is.LessThan(0f));
         }
 
-        [Test]
-        public void Given_AnOpacityBezierRisingPartWay_When_ALabelChangeSendsItBackWithASpring_Then_TheNewSpringStartsWithItsVelocity()
+        private static StyleTransitionConfig LinearBezier() => new()
         {
-            // Arrange — six frames into a linear fade in, the opacity is still rising.
+            Type = TransitionType.Bezier, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f, DurationSec = 1f,
+        };
+
+        // Six frames into a linear second of fading in, the opacity is still rising at one per second.
+        private (VisualElement Element, MotionPlayback Playback) RisingBezier()
+        {
             _scheduler = new StyleAnimationScheduler();
             var element = new VisualElement();
             element.AddToClassList("opacity-100");
             Root.Add(element);
-            var bezier = new StyleTransitionConfig
-            {
-                Type = TransitionType.Bezier, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
-                DurationSec = 1f,
-            };
-            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, bezier);
+            var playback = new MotionPlayback();
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, LinearBezier(),
+                playback: playback);
             for (var i = 0; i < 6; i++) Tick();
+            return (element, playback);
+        }
 
-            // Act
+        private float SpringStartVelocityAfterALabelChangeBack(VisualElement element)
+        {
             _scheduler.PlayVariantEnter(element, new[] { "opacity-100" }, new[] { "opacity-0" },
                 new StyleTransitionConfig { Type = TransitionType.Spring });
+            return RunningEnterSpring(element)?.Opacity?.StartVelocity ?? float.NaN;
+        }
 
-            // Assert — below zero as in the spring case above, which a spring started at rest does not have. NaN
-            // when no spring took over.
-            var startVelocity = RunningEnterSpring(element)?.Opacity?.StartVelocity ?? float.NaN;
-            Assert.That(startVelocity, Is.LessThan(0f));
+        // Linear (0, 0, 1, 1) over one second moves at 1 per second, which the accelerated driver signs by the
+        // spring's travel, here toward 0. NaN when no spring took over.
+        [Test]
+        public void Given_AnOpacityBezierRisingPartWay_When_ALabelChangeSendsItBackWithASpring_Then_TheNewSpringStartsWithItsVelocity()
+        {
+            // Arrange
+            var (element, _) = RisingBezier();
+
+            // Act
+            var startVelocity = SpringStartVelocityAfterALabelChangeBack(element);
+
+            // Assert
+            Assert.That(startVelocity, Is.EqualTo(-1f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnOpacityBezierOnAHeldPlayback_When_ALabelChangeSendsItBackWithASpring_Then_TheNewSpringStartsAtRest()
+        {
+            // Arrange
+            var (element, playback) = RisingBezier();
+            playback.Rate = 0f;
+
+            // Act
+            var startVelocity = SpringStartVelocityAfterALabelChangeBack(element);
+
+            // Assert
+            Assert.That(startVelocity, Is.EqualTo(0f).Within(1e-6f));
         }
     }
 }

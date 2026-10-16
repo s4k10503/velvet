@@ -690,9 +690,10 @@ namespace Velvet
             // variant pair that only touches translate-x. Used as the resting value for a translate axis the
             // swap names on neither side (see Resolve's own doc).
             var restingTranslate = element.style.translate.value;
+            var context = MotionSlotContext.Read(element, fromClasses, toClasses,
+                slot => DrivenByRunningPlay(element, slot), slot => DrivenByLivePlay(element, slot));
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
-                restingTranslate.x.value, restingTranslate.y.value,
-                MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot), slot => DrivenByLivePlay(element, slot)));
+                restingTranslate.x.value, restingTranslate.y.value, context);
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
@@ -700,7 +701,8 @@ namespace Velvet
             var state = ValidateSpringParameters(stiffness, damping, mass)
                 ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat)
                 : null;
-            // A spring or bezier play this one interrupts hands on its velocity, read before the cancel below ends it.
+            // A spring, a bezier play or a native transition this one interrupts hands on its velocity, read before the
+            // cancel and the class swap below end it.
             var interruptedPlay = map.GetValueOrDefault(element);
             if (state != null && interruptedPlay?.Spring is { } interrupted)
             {
@@ -708,7 +710,11 @@ namespace Velvet
             }
             else if (state != null && interruptedPlay?.Bezier is { } interruptedBezier)
             {
-                MotionSpringDriver.InheritVelocity(state, interruptedBezier);
+                MotionSpringDriver.InheritVelocity(state, interruptedBezier, interruptedPlay.Playback?.Scale(1f) ?? 1f);
+            }
+            if (state != null && context != null)
+            {
+                MotionSpringDriver.InheritVelocity(state, context);
             }
 
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's

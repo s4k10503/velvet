@@ -458,29 +458,58 @@ namespace Velvet
         /// <see cref="InheritVelocity(MotionSpringState, MotionSpringState)"/> for a bezier play: each channel the two
         /// share is released at the bezier channel's slope at its current time.
         /// </summary>
-        public static void InheritVelocity(MotionSpringState next, BezierTweenState interrupted)
+        public static void InheritVelocity(MotionSpringState next, BezierTweenState interrupted, float rate)
         {
-            Inherit(next, next.Opacity, interrupted.Opacity, interrupted);
-            Inherit(next, next.TranslateX, interrupted.TranslateX, interrupted);
-            Inherit(next, next.TranslateY, interrupted.TranslateY, interrupted);
-            Inherit(next, next.Scale, interrupted.Scale, interrupted);
-            Inherit(next, next.Rotate, interrupted.Rotate, interrupted);
+            Inherit(next, next.Opacity, interrupted.Opacity, interrupted, rate);
+            Inherit(next, next.TranslateX, interrupted.TranslateX, interrupted, rate);
+            Inherit(next, next.TranslateY, interrupted.TranslateY, interrupted, rate);
+            Inherit(next, next.Scale, interrupted.Scale, interrupted, rate);
+            Inherit(next, next.Rotate, interrupted.Rotate, interrupted, rate);
             if (next.Lengths != null && interrupted.Lengths != null)
             {
                 foreach (var length in next.Lengths)
                 {
                     var match = interrupted.Lengths.Find(l => l.Property == length.Property && l.Unit == length.Unit);
-                    Inherit(next, length.Value, match?.Value, interrupted);
+                    Inherit(next, length.Value, match?.Value, interrupted, rate);
                 }
             }
         }
 
+        /// <summary>
+        /// <see cref="InheritVelocity(MotionSpringState, MotionSpringState)"/> for a channel a native transition is
+        /// moving, which the context reads the rate of.
+        /// </summary>
+        public static void InheritVelocity(MotionSpringState next, MotionSlotContext context)
+        {
+            InheritNative(next, next.Opacity, context, ArbitraryProperty.Opacity, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateX, context, ArbitraryProperty.TranslateX, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateY, context, ArbitraryProperty.TranslateY, LengthUnit.Pixel);
+            InheritNative(next, next.Scale, context, ArbitraryProperty.Scale, LengthUnit.Pixel);
+            InheritNative(next, next.Rotate, context, ArbitraryProperty.Rotate, LengthUnit.Pixel);
+            if (next.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    InheritNative(next, length.Value, context, length.Property, length.Unit);
+                }
+            }
+        }
+
+        private static void InheritNative(MotionSpringState next, SpringChannel? channel, MotionSlotContext context,
+            ArbitraryProperty slot, LengthUnit unit)
+        {
+            if (channel != null && context.NativeVelocity(slot, unit) is { } velocity)
+            {
+                Release(next, channel, channel.Origin, velocity);
+            }
+        }
+
         private static void Inherit(MotionSpringState next, SpringChannel? channel, BezierTweenChannel? interrupted,
-            BezierTweenState state)
+            BezierTweenState state, float rate)
         {
             if (channel != null && interrupted != null)
             {
-                Release(next, channel, channel.Origin, BezierTweenDriver.VelocityOf(state, interrupted));
+                Release(next, channel, channel.Origin, BezierTweenDriver.VelocityOf(state, interrupted) * rate);
             }
         }
 
