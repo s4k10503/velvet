@@ -2179,6 +2179,16 @@ namespace Velvet
         // mounted as ghosts) and which have finished exiting (dropped on the next render). PresenceStateOwner
         // enumerates what it is pruned with; RetireBoundaryStatesNotReRendered and the whole-table clear in
         // Reconciler.ReleaseHostsAndScopes are the other two ways it ends.
+        // An exit's settle waiting for a commit to run after. Staging is null while no walk holds it, and names the
+        // walk's stage otherwise, so the put-back of an earlier walk leaves a later stage alone.
+        internal sealed class PendingSettle
+        {
+            internal PendingSettle(System.Action settle) => Settle = settle;
+
+            internal System.Action Settle { get; }
+            internal object? Staging { get; set; }
+        }
+
         internal sealed class PresenceBoundaryState
         {
             // Keyed children currently in the DOM (in DOM order), including exiting ghosts.
@@ -2194,9 +2204,9 @@ namespace Velvet
             // diff removes their leaves.
             public readonly HashSet<string> ExitComplete = new();
 
-            // Per exiting key whose exit animates nothing, the exit the completion staged for after its removing
-            // commit settles (GeneralPathReconciler.SettleAfterTheRemovingCommit). A re-entry drops it.
-            public readonly Dictionary<string, object> QuietExits = new();
+            // Per exiting key, the settle that waits for a commit to run after
+            // (GeneralPathReconciler.SettleAfterTheRemovingCommit). A re-entry drops it.
+            public readonly Dictionary<string, PendingSettle> PendingSettles = new();
 
             // Anchor element of each exiting ghost (its first emitted leaf). Once a Motion's exit detaches
             // its element, the old-side reproduction can no longer recurse into the ghost's subtree, so its

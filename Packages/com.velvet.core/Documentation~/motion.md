@@ -88,7 +88,7 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   removed it, and its exit completes in the passive-effect flush after that render, which runs after the layout
   effects of its commit: Framer completes a child holding no motion component from `PresenceChild`'s effect, and
   a motion component's exit with nothing to animate from that exit's promise. A removal that render never
-  committed completes nothing, and the next render that removes the child starts its exit again. Under
+  committed completes nothing, and the next render that still removes the child completes it after its commit. Under
   `AnimatePresenceMode.Wait` such a child holds the new children back until that later render, as it does while
   an exit animates.
 - `onExitComplete` runs when the last removed child's exit completes, ahead of the render that drops it: the

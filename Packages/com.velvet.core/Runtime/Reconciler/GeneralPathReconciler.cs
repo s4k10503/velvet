@@ -97,9 +97,9 @@ namespace Velvet
             public LogicalSlotCursor OldSlots;
             // What a presence's removals of this walk keep until the removals run: the retirement of the
             // dropped ghosts' trees, applied once FinalizeGeneralCommit has removed their leaves, and the put-back
-            // of the presence's per-key records and of the exits it started with nothing to animate, applied where
-            // the walk throws or an abort skips the removals, since the next walk reads those records to find the
-            // leaves still on screen and starts those exits again.
+            // of the presence's per-key records and the unstaging of the settles it staged, applied where the walk
+            // throws or an abort skips the removals, since the next walk reads those records to find the leaves
+            // still on screen and stages those settles again.
             public List<Action>? AfterRemovals;
             public List<Action>? PutBackRemovals;
         }
@@ -2271,6 +2271,10 @@ namespace Velvet
                         state, key, boundary, presence.OnExitComplete, HoldsAMotion(state, key)));
                 }
             }
+            else if (commit != null)
+            {
+                RestagePendingSettle(in pass, key);
+            }
 
             pass.NextCommitted.Add((key, node));
         }
@@ -2278,26 +2282,45 @@ namespace Velvet
         // Framer Motion completes an exit that animates nothing after the commit that removed the child, never
         // inside it: PresenceChild's effect for a child holding no motion component, the exit's promise for one
         // that does. So the child stays on screen for that commit and leaves on the render the completion asks
-        // for. The walk's commit takes the completion back where its removals never run, and the next render
-        // starts the exit again.
+        // for. The walk's commit takes the completion back where its removals never run (StagePendingSettle).
         private void SettleAfterTheRemovingCommit(in PresenceExpansion pass, string key, Action settle)
         {
-            var state = pass.State;
-            var commit = pass.Walk.Commit!;
-            // A key that came back and left again before the flush is another exit, which this one must not settle.
-            var exit = new object();
-            state.QuietExits[key] = exit;
+            var pending = new ReconcilerContext.PendingSettle(settle);
+            pass.State.PendingSettles[key] = pending;
+            StagePendingSettle(pass.State, pass.Walk.Commit!, pass.BoundaryFiber, key, pending);
+        }
+
+        // Where the walk's removals never run, the settle waits for the next walk to stage it again rather than the
+        // exit starting over: a restarted exit would pin a PopLayout child and relegate its layoutIds a second time.
+        private void StagePendingSettle(
+            ReconcilerContext.PresenceBoundaryState state,
+            GeneralCommitState commit,
+            ComponentFiber? boundary,
+            string key,
+            ReconcilerContext.PendingSettle pending)
+        {
+            var staging = new object();
+            pending.Staging = staging;
             _ctx.CompleteAfterTheRemovals(() =>
             {
-                if (!state.QuietExits.TryGetValue(key, out var current) || !ReferenceEquals(current, exit)) return;
-                state.QuietExits.Remove(key);
-                settle();
-            }, pass.BoundaryFiber, removedBy: commit);
+                // A key that came back and left again before the flush is another exit, which this one must not settle.
+                if (!state.PendingSettles.TryGetValue(key, out var current) || !ReferenceEquals(current, pending)) return;
+                state.PendingSettles.Remove(key);
+                pending.Settle();
+            }, boundary, removedBy: commit);
             (commit.PutBackRemovals ??= new List<Action>()).Add(() =>
             {
-                state.QuietExits.Remove(key);
-                state.Exiting.Remove(key);
+                if (ReferenceEquals(pending.Staging, staging)) pending.Staging = null;
             });
+        }
+
+        // A ghost whose settle a walk that never committed took back is staged again by the next walk that emits it.
+        private void RestagePendingSettle(in PresenceExpansion pass, string key)
+        {
+            if (pass.State.PendingSettles.TryGetValue(key, out var pending) && pending.Staging == null)
+            {
+                StagePendingSettle(pass.State, pass.Walk.Commit!, pass.BoundaryFiber, key, pending);
+            }
         }
 
         // A finished exit's ghost leaves the committed set and is not emitted, so the diff removes its leaves. A walk
@@ -2898,7 +2921,7 @@ namespace Velvet
             if (commit != null && anchor != null)
             {
                 var wasExiting = state.Exiting.Remove(key);
-                state.QuietExits.Remove(key);
+                state.PendingSettles.Remove(key);
                 var wasExitComplete = state.ExitComplete.Remove(key);
                 if (wasExiting || wasExitComplete)
                 {
