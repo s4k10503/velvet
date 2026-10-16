@@ -128,15 +128,7 @@ namespace Velvet
 
         // A number, or a percentage of 1, as each of these CSS functions takes.
         private static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
-        {
-            if (valueSpan.EndsWith("%"))
-            {
-                var parsed = StyleArbitraryValueResolver.TryParseFloat(valueSpan.Slice(0, valueSpan.Length - 1), out amount);
-                amount /= 100f;
-                return parsed;
-            }
-            return StyleArbitraryValueResolver.TryParseFloat(valueSpan, out amount);
-        }
+            => StyleArbitraryValueResolver.TryParseNumberOrPercentage(valueSpan, out amount);
 
         // Warn-once bookkeeping for a filter-[name:...] token whose name was never registered with
         // VelvetFilters: logging once per NAME (not once per resolve) keeps a class re-resolved on every

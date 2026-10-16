@@ -42,6 +42,16 @@ namespace Velvet
         public float Em => Font.Em;
     }
 
+    // The type a math function comes to, where a percentage is its own (StyleLengthExpression.TypeOf).
+    internal enum MathType
+    {
+        Length,
+        Angle,
+        Time,
+        Number,
+        Percentage,
+    }
+
     // A bracketed CSS <length-percentage>: a single dimension, or a math function of CSS Values 4 over numbers,
     // dimensions, the constants and nested parentheses, with `_` read as a space. The text is first spaced as
     // TailwindMathSpacing writes it, and then read as CSS reads it: a binary + or - needs a space on both sides.
@@ -174,6 +184,37 @@ namespace Velvet
         public static bool TryParseNumber(ReadOnlySpan<char> text, out float number)
             => TryParseConstant(text, CalcType.Number, out number);
 
+        // A math function coming to a number or to a percentage, where a percentage is its own type rather than a
+        // length (scale, opacity, a filter amount, a colour channel). percent says which, and value is the number
+        // or the percentage as written (150 for 150%).
+        public static bool TryParseNumberOrPercentage(ReadOnlySpan<char> text, out float value, out bool percent)
+        {
+            var expression = OpensMathFunction(text.Trim("_ ".AsSpan())) ? Parse(text, null, percentIsLength: false) : null;
+            percent = expression != null && expression._type.Equals(CalcType.Percent);
+            var constant = expression != null && (percent || expression._type.IsNumber) && (expression._reads | ReadsPixels) == ReadsPixels;
+            value = constant ? expression!.Evaluate(default) : 0f;
+            return constant;
+        }
+
+        // The CSS type a math function comes to, or null where the text is no math function this reads, or is one
+        // CSS's type rules reject.
+        public static MathType? TypeOf(ReadOnlySpan<char> text)
+        {
+            if (!OpensMathFunction(text.Trim("_ ".AsSpan())))
+            {
+                return null;
+            }
+            // A percentage beside a length is a length-percentage, which reads only with percentages as lengths.
+            var expression = Parse(text, null, percentIsLength: false) ?? Parse(text, CalcType.Length);
+            return expression == null ? null
+                : expression._type.Equals(CalcType.Length) ? MathType.Length
+                : expression._type.Equals(CalcType.Angle) ? MathType.Angle
+                : expression._type.Equals(CalcType.Time) ? MathType.Time
+                : expression._type.Equals(CalcType.Percent) ? MathType.Percentage
+                : expression._type.IsNumber ? MathType.Number
+                : null;
+        }
+
         private static bool TryParseConstant(ReadOnlySpan<char> text, CalcType type, out float value)
         {
             var expression = OpensMathFunction(text.Trim("_ ".AsSpan())) ? Parse(text, type) : null;
@@ -182,10 +223,12 @@ namespace Velvet
             return constant;
         }
 
-        private static StyleLengthExpression? Parse(ReadOnlySpan<char> text, CalcType type)
+        // The expression text comes to, or null where it comes to another type than type (any type, where type is
+        // null). A percentage is a length where percentIsLength holds, and its own type otherwise.
+        private static StyleLengthExpression? Parse(ReadOnlySpan<char> text, CalcType? type, bool percentIsLength = true)
         {
-            var parser = new Parser(TailwindMathSpacing.Format(text.ToString().Replace('_', ' ').Trim(' ')));
-            return parser.TryTop(out var top) && top != null && top._type.Equals(type) ? top : null;
+            var parser = new Parser(TailwindMathSpacing.Format(text.ToString().Replace('_', ' ').Trim(' ')), percentIsLength);
+            return parser.TryTop(out var top) && top != null && (type == null || top._type.Equals(type.Value)) ? top : null;
         }
 
         private static float Censor(double value)
@@ -239,36 +282,41 @@ namespace Velvet
                 : null;
         }
 
-        // A CSS type: the power of length, angle and time it carries. A percentage is a length here, since every
-        // property this writes resolves its percentages against a length.
+        // A CSS type: the power of length, angle, time and percentage it carries. A percentage is a length where
+        // the property resolves its percentages against one, and its own type elsewhere (Parser).
         private readonly struct CalcType : IEquatable<CalcType>
         {
             public static readonly CalcType Number = default;
             public static readonly CalcType Length = new(1, 0, 0);
             public static readonly CalcType Angle = new(0, 1, 0);
             public static readonly CalcType Time = new(0, 0, 1);
+            public static readonly CalcType Percent = new(0, 0, 0, 1);
 
             private readonly int _length;
             private readonly int _angle;
             private readonly int _time;
+            private readonly int _percent;
 
-            private CalcType(int length, int angle, int time)
+            private CalcType(int length, int angle, int time, int percent = 0)
             {
                 _length = length;
                 _angle = angle;
                 _time = time;
+                _percent = percent;
             }
 
             public bool IsNumber => Equals(Number);
 
             public CalcType Times(CalcType other, int sign)
-                => new(_length + (sign * other._length), _angle + (sign * other._angle), _time + (sign * other._time));
+                => new(_length + (sign * other._length), _angle + (sign * other._angle), _time + (sign * other._time),
+                    _percent + (sign * other._percent));
 
-            public bool Equals(CalcType other) => _length == other._length && _angle == other._angle && _time == other._time;
+            public bool Equals(CalcType other)
+                => _length == other._length && _angle == other._angle && _time == other._time && _percent == other._percent;
 
             public override bool Equals(object? obj) => obj is CalcType other && Equals(other);
 
-            public override int GetHashCode() => (_length * 31 * 31) + (_angle * 31) + _time;
+            public override int GetHashCode() => (((_length * 31) + _angle) * 31 + _time) * 31 + _percent;
         }
 
         private sealed class Constant : StyleLengthExpression
@@ -511,10 +559,15 @@ namespace Velvet
         {
             private readonly List<Token> _tokens = new();
             private readonly bool _tokenized;
+            private readonly bool _percentIsLength;
             private int _at;
             private int _depth;
 
-            public Parser(string text) => _tokenized = Tokenize(text, _tokens);
+            public Parser(string text, bool percentIsLength)
+            {
+                _tokenized = Tokenize(text, _tokens);
+                _percentIsLength = percentIsLength;
+            }
 
             // A function or a single dimension, with no space before it and nothing after it.
             public bool TryTop(out StyleLengthExpression? top)
@@ -639,7 +692,9 @@ namespace Velvet
                 {
                     return null;
                 }
-                return token.Unit != null ? Dimension(number, token.Unit) : new Constant(number, 0, CalcType.Number);
+                return token.Unit == null ? new Constant(number, 0, CalcType.Number)
+                    : token.Unit == "%" && !_percentIsLength ? new Constant(number, 0, CalcType.Percent)
+                    : Dimension(number, token.Unit);
             }
 
             // Splits text into tokens, each after an optional run of spaces or underscores: a number with an

@@ -82,8 +82,9 @@ below what its property takes is raised to it, as CSS clamps a calculation: `w-[
 amounts stop at 0, and `opacity-[…]` at 0 and 1.
 
 The same functions are read where a utility takes an angle (`rotate-[calc(45deg*2)]`, `skew-x-[…]`,
-`hue-rotate-[…]`, a gradient's angle), a number (`scale-[…]`, `opacity-[…]`, `grow-[…]`, the filter amounts)
-or a time (`duration-[…]`), coming to that type. What CSS rejects is declined and leaves the class inert:
+`hue-rotate-[…]`, a gradient's angle), a number (`grow-[…]`), a number or a percentage (`scale-[…]`,
+`opacity-[…]`, the filter amounts, each of which takes a percentage literal too: `scale-[150%]` is 1.5) or a time
+(`duration-[…]`), coming to that type. What CSS rejects is declined and leaves the class inert:
 adding a number to a length (`calc(1px+2)`), a result of the wrong type (`calc(4)` or `calc(1px*2px)` for a
 length, `rotate-[calc(45)]`), a function given a type it does not take (`sin(1px)`, `mod(10px,3)`), `round()`
 leaving out a length's step, `clamp()` without three arguments, and any function other than these
@@ -113,7 +114,8 @@ to `sepia-*`, `hue-rotate-*` and `drop-shadow-*`. Each utility sets a custom pro
 reads, and a value the browser rejects leaves the family at its identity — no translation, a scale of 1, no
 skew, no filter — wherever it is the value its property takes, as the browser discards the shared declaration
 there: `translate-x-4 translate-y-[10]` translates nowhere, `blur-sm brightness-[abc]` filters nothing, and
-`drop-shadow-lg blur-[2]` loses its drop shadow. A property takes the value of the class that wins it: an
+`drop-shadow-lg blur-[2]` loses its drop shadow. A math function coming to a type the property does not take is
+such a value: `translate-y-[calc(45deg)]`, `skew-y-[calc(10px)]`, `blur-[calc(50%)]`. A property takes the value of the class that wins it: an
 important one over a plain one, then one behind a variant while the variant holds, then the later in
 Tailwind's order. So a rejected value another class outranks takes nothing: `skew-x-[8] !skew-x-6` skews by
 6°, `blur-[-2px] blur-sm` blurs, and `translate-y-[10] hover:translate-y-4` translates on hover alone, while

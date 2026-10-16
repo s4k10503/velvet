@@ -3406,6 +3406,25 @@ namespace Velvet
             return TryParseCssFloat(valueStr, out value);
         }
 
+        // A <number> or a <percentage> as a number (50% is 0.5), literal or a math function coming to either: the
+        // grammar scale, opacity and the filter amounts take.
+        internal static bool TryParseNumberOrPercentage(ReadOnlySpan<char> valueStr, out float value)
+        {
+            if (StyleLengthExpression.OpensMathFunction(valueStr))
+            {
+                var parsed = StyleLengthExpression.TryParseNumberOrPercentage(valueStr, out value, out var percent);
+                value = percent ? value / 100f : value;
+                return parsed;
+            }
+            if (valueStr.Length > 1 && valueStr[valueStr.Length - 1] == '%')
+            {
+                var parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - 1), out value);
+                value /= 100f;
+                return parsed;
+            }
+            return TryParseCssFloat(valueStr, out value);
+        }
+
         // A finite float, where a literal CSS number past a float's range is the largest float of its sign, as
         // Chromium reads one. Mono's parser declines such a literal where .NET's returns an infinity, so both are
         // replaced; a spelled-out "Infinity" or "NaN" is no CSS number and is declined.
