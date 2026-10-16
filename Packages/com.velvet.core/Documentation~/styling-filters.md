@@ -56,7 +56,7 @@ shader) it runs. Velvet exposes such a definition to class strings through a reg
 assets out of the render path the same way `VelvetFonts` keeps font assets out of class names:
 
 ```csharp
-// Startup (before the consuming tree mounts):
+// Startup:
 VelvetFilters.Register("dissolve", dissolveDefinition);
 VelvetFilters.Register("glow", glowDefinition);
 

@@ -7,8 +7,8 @@ namespace Velvet
 {
     /// <summary>
     /// Registry for user-defined UI Toolkit custom filters consumed by the <c>filter-[name:args]</c>
-    /// utility. Register a <see cref="FilterFunctionDefinition"/> under a name at startup (before the
-    /// consuming tree mounts), then reference it from any class string:
+    /// utility. Register a <see cref="FilterFunctionDefinition"/> under a name, then reference it from any
+    /// class string:
     /// <code>
     /// VelvetFilters.Register("dissolve", dissolveDefinition);
     /// V.Div(className: "filter-[dissolve:0.4]");
