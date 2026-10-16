@@ -35,7 +35,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var content = MountHolderBesideCaller(
-                typeof(VisualElement), PointerDown("holder", false), typeof(VisualElement), PointerDown("caller", false));
+                typeof(VisualElement), BindPointerDown("holder", false), typeof(VisualElement), BindPointerDown("caller", false));
 
             // Act
             Dispatch(PointerDownEvent.GetPooled(), content);
@@ -49,7 +49,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var content = MountHolderBesideCaller(
-                typeof(VisualElement), PointerDown("holder", true), typeof(VisualElement), PointerDown("caller", true));
+                typeof(VisualElement), BindPointerDown("holder", true), typeof(VisualElement), BindPointerDown("caller", true));
 
             // Act
             Dispatch(PointerDownEvent.GetPooled(), content);
@@ -63,7 +63,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var content = MountHolderBesideCaller(
-                typeof(VisualElement), Wheel("holder", true), typeof(VisualElement), Wheel("caller", true));
+                typeof(VisualElement), BindWheel("holder", true), typeof(VisualElement), BindWheel("caller", true));
 
             // Act
             Dispatch(WheelEvent.GetPooled(), content);
@@ -77,7 +77,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var content = MountHolderBesideCaller(
-                typeof(VisualElement), Wheel("holder", false), typeof(VisualElement), Wheel("caller", false));
+                typeof(VisualElement), BindWheel("holder", false), typeof(VisualElement), BindWheel("caller", false));
 
             // Act
             Dispatch(WheelEvent.GetPooled(), content);
@@ -106,12 +106,14 @@ namespace Velvet.Tests
             // Arrange — the element the portal renders into is the bridge's own anchor.
             _mounted = V.Mount(_root, V.Div(children: new VNode[]
             {
-                V.Motion(name: "container", events: PointerDown("container", false), refCallback: RegisterTarget),
-                V.Motion(events: PointerDown("caller", false), children: new VNode[]
+                V.Motion(name: "container", events: BindPointerDown("container", false), refCallback: RegisterTarget),
+                V.Motion(events: BindPointerDown("caller", false), children: new VNode[]
                 {
                     V.Portal(TargetId, children: new VNode[] { V.Div(name: "content") }),
                 }),
             }));
+
+            _mounted.FlushStateForTest();
 
             // Act
             Dispatch(PointerDownEvent.GetPooled(), _root.Q<VisualElement>("content"));
@@ -140,6 +142,7 @@ namespace Velvet.Tests
                     events: new FiberEventBinding[] { new WheelBinding { Handler = evt => evt.StopPropagation() } },
                     children: new VNode[] { V.Portal(TargetId, children: new VNode[] { V.Div(name: "content") }) }),
             }));
+            _mounted.FlushStateForTest();
             var content = _root.Q<VisualElement>("scroll").contentContainer.Q<VisualElement>("content");
 
             // Act
@@ -445,8 +448,8 @@ namespace Velvet.Tests
             var rootOfOther = new VisualElement();
             _window.rootVisualElement.Add(rootOfOther);
             _other = V.Mount(rootOfOther, V.Motion(
-                name: "modal-root", events: PointerDown("modal-root", false), refCallback: RegisterTarget));
-            _mounted = V.Mount(_root, V.Motion(events: PointerDown("caller", false), children: new VNode[]
+                name: "modal-root", events: BindPointerDown("modal-root", false), refCallback: RegisterTarget));
+            _mounted = V.Mount(_root, V.Motion(events: BindPointerDown("caller", false), children: new VNode[]
             {
                 V.Portal(TargetId, children: new VNode[] { V.Div(name: "content") }),
             }));
@@ -477,7 +480,7 @@ namespace Velvet.Tests
         public void Given_AnElementHoldingBothThePortalTargetAndTheCallSite_When_AWheelReachesTheContent_Then_ItsCaptureHandlerRunsOnce()
         {
             // Arrange
-            _mounted = V.Mount(_root, V.Motion(name: "shared", events: Wheel("shared", true), children: new VNode[]
+            _mounted = V.Mount(_root, V.Motion(name: "shared", events: BindWheel("shared", true), children: new VNode[]
             {
                 V.Div(name: "slot"),
                 V.Component(CallerRender),
@@ -500,7 +503,7 @@ namespace Velvet.Tests
         {
             var (on, setOn) = Hooks.UseState(true);
             s_showButton = setOn;
-            return V.Motion(name: "shared", events: on ? Wheel("shared", true) : null, children: new VNode[] { V.Div(name: "inner") });
+            return V.Motion(name: "shared", events: on ? BindWheel("shared", true) : null, children: new VNode[] { V.Div(name: "inner") });
         }
 
         // GREEN_ON_BASE(characterization): the base unregisters a capture handler the render dropped.
@@ -570,7 +573,7 @@ namespace Velvet.Tests
         {
             var (show, setShow) = Hooks.UseState(true);
             s_showButton = setShow;
-            return V.Motion(name: "ancestor", events: PointerDown("ancestor", false), children: new VNode[]
+            return V.Motion(name: "ancestor", events: BindPointerDown("ancestor", false), children: new VNode[]
             {
                 V.When(show, () => V.Motion(name: "child", events: new FiberEventBinding[]
                 {

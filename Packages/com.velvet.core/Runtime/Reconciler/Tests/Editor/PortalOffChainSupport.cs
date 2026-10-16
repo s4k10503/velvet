@@ -22,10 +22,10 @@ namespace Velvet.Tests
             return V.When(show, () => V.Portal(TargetId, children: new VNode[] { V.Div(name: "content") }));
         }
 
-        internal static FiberEventBinding[] PointerDown(string entry, bool capture) =>
+        internal static FiberEventBinding[] BindPointerDown(string entry, bool capture) =>
             new FiberEventBinding[] { new PointerDownBinding { Handler = _ => s_log.Add(entry), Capture = capture } };
 
-        internal static FiberEventBinding[] Wheel(string entry, bool capture) =>
+        internal static FiberEventBinding[] BindWheel(string entry, bool capture) =>
             new FiberEventBinding[] { new WheelBinding { Handler = _ => s_log.Add(entry), Capture = capture } };
 
         internal static FiberEventBinding[] Change(string entry) =>
