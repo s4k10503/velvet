@@ -92,17 +92,16 @@ namespace Velvet
             return true;
         }
 
-        // opacity-[..] is a unitless StyleFloat (0..1). Out-of-range or negated values are rejected
-        // (UITK does not clamp style.opacity), so opacity-[2] / -opacity-[.5] is not a recognized utility.
+        // opacity-[..] is a unitless StyleFloat; the negated form, which Tailwind does not define, is rejected.
         private static bool TryParseOpacity(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var opacityValue)
-                || (opacityValue = StyleArbitraryValueResolver.ClampMathResult(valueSpan, opacityValue, 0f, 1f)) < 0f
-                || opacityValue > 1f)
+            if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var opacityValue))
             {
                 return false;
             }
+            // CSS takes any number and clamps it to 0..1, which UI Toolkit's opacity does not.
+            opacityValue = Math.Clamp(opacityValue, 0f, 1f);
             result = new ArbitraryStyle(ArbitraryProperty.Opacity, opacityValue, LengthUnit.Pixel);
             return true;
         }

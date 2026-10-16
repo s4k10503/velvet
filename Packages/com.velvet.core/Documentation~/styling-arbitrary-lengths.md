@@ -95,7 +95,10 @@ So `top-[calc(1rem+4px)]`, `gap-[min(2rem,24px)]`, `blur-[calc(2px*3)]`,
 ### A rejected value
 
 A value Tailwind writes and the browser rejects does what it does in the browser. A plain declaration is
-dropped, so the class is inert: `border-[2PX]`, `text-[16]`, `w-[120]`. One Tailwind composes into the
+dropped, so the class is inert: `border-[2PX]`, `text-[16]`, `w-[120]`, and a negative literal where the property
+takes none, as `w-[-5px]`, `p-[-5px]`, `rounded-[-2px]`, `border-[-2px]`, `text-[-4px]` and `basis-[-4px]` are (a
+margin, an inset and `tracking-[…]` take one). A literal past a float's range is the largest float of its sign, as
+the browser reads it (`w-[1e39px]`, `rotate-[1e39deg]`), and `opacity-[…]` takes any number, clamped to 0..1. One Tailwind composes into the
 element's box-shadow discards the whole box-shadow, the ring and every `shadow-*` with it, while a
 `drop-shadow-*`, a filter, stays: a ring colour that is no colour (`ring ring-[5PX]`, `ring-2 ring-[2]`), a ring
 width that is no length (`ring-[length:2]`), a ring offset colour that is no colour beside an offset width

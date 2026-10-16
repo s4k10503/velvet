@@ -309,6 +309,12 @@ namespace Velvet
                 return false;
             }
 
+            // CSS declines a literal below the property's range, where a math function is clamped into it.
+            if (!negate && value < MinimumOf(property) && !IsMathFunction(valueSpan))
+            {
+                return false;
+            }
+
             if (negate)
             {
                 value = -value;
@@ -318,10 +324,13 @@ namespace Velvet
             return true;
         }
 
+        private static bool IsMathFunction(ReadOnlySpan<char> text)
+            => StyleLengthExpression.OpensMathFunction(text.Trim("_ ".AsSpan()));
+
         // A math function's result outside the range its property takes is clamped into it, as CSS clamps a
         // top-level calculation; a literal is returned as written, for the caller to judge.
         internal static float ClampMathResult(ReadOnlySpan<char> text, float value, float min, float max = float.MaxValue)
-            => StyleLengthExpression.OpensMathFunction(text.Trim("_ ".AsSpan())) ? Math.Clamp(value, min, max) : value;
+            => IsMathFunction(text) ? Math.Clamp(value, min, max) : value;
 
         // The least value property takes in CSS: zero for a size, a padding, a radius, a border width and a font
         // size, and no bound for the rest.
@@ -409,7 +418,8 @@ namespace Velvet
             ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (!PropertySetters.ContainsKey(property) || !StyleLengthExpression.TryParse(valueSpan, out var expression))
+            if (!PropertySetters.ContainsKey(property) || !StyleLengthExpression.TryParse(valueSpan, out var expression)
+                || (!negate && MinimumOf(property) == 0f && !IsMathFunction(valueSpan) && valueSpan.Trim("_ ".AsSpan())[0] == '-'))
             {
                 return false;
             }
@@ -1098,8 +1108,7 @@ namespace Velvet
             {
                 return false;
             }
-            if (!float.TryParse(num.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
-                || float.IsNaN(v) || float.IsInfinity(v) || v < 0f)
+            if (!TryParseCssFloat(num, out var v) || v < 0f)
             {
                 return false;
             }
@@ -3278,55 +3287,37 @@ namespace Velvet
             if (valueStr.Length > 0 && valueStr[valueStr.Length - 1] == '%')
             {
                 unit = LengthUnit.Percent;
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - 1),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
+                parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - 1), out value);
             }
             else if (valueStr.EndsWith("rem".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 // 1rem resolves to a fixed 16px (UI Toolkit has no rem unit), so the parsed head is
                 // scaled and emitted as a pixel length rather than carried as a distinct unit.
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - 3),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
+                parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - 3), out value);
                 value *= 16f;
             }
             else if (valueStr.EndsWith("px".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 unit = LengthUnit.Pixel;
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - 2),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
+                parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - 2), out value);
             }
             else if (TryFindAbsoluteUnit(valueStr, out var unitLength, out var pixelsPerUnit))
             {
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - unitLength),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
+                parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - unitLength), out value);
                 value *= pixelsPerUnit;
             }
             else
             {
                 // A bare number is a length only as 0: the browser rejects the declaration Tailwind writes for
                 // any other.
-                parsed = (float.TryParse(
-                    valueStr,
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value) && value == 0f)
+                parsed = (TryParseCssFloat(valueStr, out value) && value == 0f)
                     || (StyleLengthExpression.OpensMathFunction(valueStr) && StyleLengthExpression.TryParse(valueStr, out var expression)
                         && expression!.TryFoldConstant(out value, out unit));
             }
 
-            return parsed && float.IsFinite(value);
+            // A unit's factor can carry a literal past the range too.
+            value = Math.Clamp(value, -float.MaxValue, float.MaxValue);
+            return parsed && !float.IsNaN(value);
         }
 
         // CSS's absolute length units at their fixed ratio to a pixel (96 per inch).
@@ -3412,8 +3403,21 @@ namespace Velvet
             {
                 return StyleLengthExpression.TryParseNumber(valueStr, out value);
             }
-            var parsed = float.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
-            return parsed && float.IsFinite(value);
+            return TryParseCssFloat(valueStr, out value);
+        }
+
+        // A finite float, where a literal CSS number past a float's range is the largest float of its sign, as
+        // Chromium reads one. Mono's parser declines such a literal where .NET's returns an infinity, so both are
+        // replaced; a spelled-out "Infinity" or "NaN" is no CSS number and is declined.
+        internal static bool TryParseCssFloat(ReadOnlySpan<char> text, out float value)
+        {
+            if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && float.IsFinite(value))
+            {
+                return true;
+            }
+            var end = TailwindDataTypes.NumberEnd(text.ToString(), withExponent: true);
+            value = end > 0 && end == text.Length ? (text[0] == '-' ? -float.MaxValue : float.MaxValue) : 0f;
+            return end > 0 && end == text.Length;
         }
 
         // Parses an aspect ratio (used by aspect-[..]): either a "w/h" fraction or a bare
@@ -3470,12 +3474,12 @@ namespace Velvet
                 factor = 360f;
             }
 
-            if (!float.TryParse(numeric, NumberStyles.Float, CultureInfo.InvariantCulture, out var raw) || !float.IsFinite(raw))
+            if (!TryParseCssFloat(numeric, out var raw))
             {
                 return false;
             }
 
-            degrees = raw * factor;
+            degrees = Math.Clamp(raw * factor, -float.MaxValue, float.MaxValue);
             return true;
         }
 
