@@ -91,6 +91,7 @@ namespace Velvet.Tests
             s_exitFailCompletions = 0;
             s_exitFailChild = () => V.Label(text: "exiting", key: "exiting");
             s_exitFailNeighbour = null;
+            s_exitFailChildren = null;
             s_setOwnerShown = null;
             s_setAbortedEnterTick = null;
             s_setAbortedExitTick = null;
@@ -2519,7 +2520,66 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode ExitFailerRender(bool shown)
             => V.AnimatePresence(key: "exit", onExitComplete: () => throw new InvalidOperationException("Exit complete throw"),
-                children: shown ? new VNode[] { s_exitFailChild() } : Array.Empty<VNode>());
+                children: shown ? s_exitFailChildren?.Invoke() ?? new VNode[] { s_exitFailChild() } : Array.Empty<VNode>());
+
+        // Set by a case removing several children at once from the presence whose onExitComplete fails.
+        private static Func<VNode[]> s_exitFailChildren;
+
+        // A Motion with no transition names no exit target, so Framer Motion resolves its exit from a promise, ahead of
+        // the plain child's effect: the plain child settles last, and a boundary takes the error.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_APlainChildAndAMotionWithNoExitTargetLeaveTogether_Then_TheBoundaryCatches()
+        {
+            // Arrange
+            s_exitFailChildren = () => new VNode[]
+            {
+                V.Label(text: "plain", key: "plain"),
+                new MotionNode
+                {
+                    Key = "m",
+                    ElementType = typeof(VisualElement),
+                    Transition = null,
+                    Children = new VNode[] { V.Label(text: "m") },
+                },
+            };
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("o-fallback,tail:1"));
+        }
+
+        // An exit pose played on no duration is an instant animation, which Framer Motion completes on the next frame,
+        // after the plain child's effect: the Motion settles last, and no boundary takes the error.
+        // GREEN_ON_BASE(characterization): the base read any removed V.Motion as the completion's and logged the error.
+        // What this pins is the order the exits settle in, which the base did not have.
+        [Test]
+        public void Given_APresenceInABoundaryWhoseOnExitCompleteFails_When_AMotionWithAnInstantExitPoseAndAPlainChildLeaveTogether_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange
+            s_exitFailChildren = () => new VNode[]
+            {
+                V.Motion(key: "m", variants: s_fade, animate: "visible", exit: "hidden",
+                    transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }),
+                V.Label(text: "plain", key: "plain"),
+            };
+            using var mounted = V.Mount(_root, V.Component(ExitFailHostRender, false, key: "host"), CaughtErrors.Unlogged);
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
+
+            // Act
+            s_setExitFailTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("tail:1"));
+        }
 
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode ExitFailBoundaryRender(int tick)

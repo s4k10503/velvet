@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -2089,7 +2090,8 @@ namespace Velvet
                             settle();
                             continue;
                         }
-                        var pending = new ReconcilerContext.PendingSettle(settle);
+                        // An instant animation's completion, on a frame after the commit.
+                        var pending = new ReconcilerContext.PendingSettle(settle, ReconcilerContext.ExitSettlePhase.Frame);
                         state.PendingSettles[key] = pending;
                         StagePendingSettle(state, commit, boundaryFiber, key, pending);
                     }
@@ -2278,8 +2280,10 @@ namespace Velvet
                     // one with nothing to animate does.
                     var presence = pass.Presence;
                     var boundary = pass.BoundaryFiber;
+                    var holdsAMotion = HoldsAMotion(state, key);
                     SettleAfterTheRemovingCommit(in pass, key, () => CompletePresenceExit(
-                        state, key, boundary, presence.OnExitComplete, HoldsAMotion(state, key)));
+                            state, key, boundary, presence.OnExitComplete, holdsAMotion),
+                        holdsAMotion ? ReconcilerContext.ExitSettlePhase.Promise : ReconcilerContext.ExitSettlePhase.Effect);
                 }
             }
             else if (commit != null)
@@ -2294,9 +2298,10 @@ namespace Velvet
         // inside it: PresenceChild's effect for a child holding no motion component, the exit's promise for one
         // that does. So the child stays on screen for that commit and leaves on the render the completion asks
         // for. The walk's commit takes the completion back where its removals never run (StagePendingSettle).
-        private void SettleAfterTheRemovingCommit(in PresenceExpansion pass, string key, Action settle)
+        private void SettleAfterTheRemovingCommit(
+            in PresenceExpansion pass, string key, Action settle, ReconcilerContext.ExitSettlePhase phase)
         {
-            var pending = new ReconcilerContext.PendingSettle(settle);
+            var pending = new ReconcilerContext.PendingSettle(settle, phase);
             pass.State.PendingSettles[key] = pending;
             StagePendingSettle(pass.State, pass.Walk.Commit!, pass.BoundaryFiber, key, pending);
         }
@@ -2318,7 +2323,7 @@ namespace Velvet
                 if (!state.PendingSettles.TryGetValue(key, out var current) || !ReferenceEquals(current, pending)) return;
                 state.PendingSettles.Remove(key);
                 pending.Settle();
-            }, boundary, removedBy: commit);
+            }, boundary, removedBy: commit, pending.Phase);
             (commit.PutBackRemovals ??= new List<Action>()).Add(() =>
             {
                 if (ReferenceEquals(pending.Staging, staging)) pending.Staging = null;
@@ -2534,10 +2539,11 @@ namespace Velvet
             ReconcilerContext.PresenceBoundaryState state,
             string key,
             MotionNode? anchor,
-            List<ReconcilerContext.PresenceDescendantExit>? into)
+            List<ReconcilerContext.PresenceDescendantExit>? into,
+            StrongBox<bool>? instantTarget = null)
         {
             if (!state.ChildRoots.TryGetValue(key, out var roots)) return 0;
-            var walk = new DescendantExitWalk { Roots = roots, Anchor = anchor, Into = into };
+            var walk = new DescendantExitWalk { Roots = roots, Anchor = anchor, Into = into, InstantTarget = instantTarget };
             var count = 0;
             foreach (var root in roots)
             {
@@ -2557,6 +2563,8 @@ namespace Velvet
             internal List<VisualElement> Roots { get; init; }
             internal MotionNode? Anchor { get; init; }
             internal List<ReconcilerContext.PresenceDescendantExit>? Into { get; init; }
+            // Set when a descendant's exit names a target it reaches instantly (QuietExitPhase).
+            internal StrongBox<bool>? InstantTarget { get; init; }
         }
 
         // inheritedExit is the exit label an ancestor Motion hands down and frame the orchestration an
@@ -2641,6 +2649,11 @@ namespace Velvet
                 exitTransition = hasPose ? pose.Transition ?? motion.Transition
                     : motion.Exit != null ? motion.Transition : null;
                 exitPoseClass = hasPose ? pose.ClassName : null;
+                if (walk.InstantTarget != null && exitTransition?.HasExitAnimation != true
+                    && (hasPose || exitTransition?.ExitToClasses.Length > 0))
+                {
+                    walk.InstantTarget.Value = true;
+                }
                 if (exitTransition?.HasExitAnimation == true)
                 {
                     if (!ReferenceEquals(motion, walk.Anchor))
@@ -2798,11 +2811,15 @@ namespace Velvet
 
             var anchorPlays = ResolveExitTransition(ghostMotionNode)?.HasExitAnimation == true;
             var descendants = new List<ReconcilerContext.PresenceDescendantExit>();
-            CollectDescendantExits(state, key, ghostMotionNode, descendants);
+            var instantTarget = new StrongBox<bool>();
+            CollectDescendantExits(state, key, ghostMotionNode, descendants, instantTarget);
             var inners = PresencesRunningExitsUnder(state, key);
             if (!anchorPlays && descendants.Count == 0 && inners == null)
             {
-                SettleAfterTheRemovingCommit(in pass, key, Settled);
+                var phase = !HoldsAMotion(state, key) ? ReconcilerContext.ExitSettlePhase.Effect
+                    : instantTarget.Value || HasExitTarget(ghostMotionNode) ? ReconcilerContext.ExitSettlePhase.Frame
+                    : ReconcilerContext.ExitSettlePhase.Promise;
+                SettleAfterTheRemovingCommit(in pass, key, Settled, phase);
                 return false;
             }
 
@@ -3689,6 +3706,12 @@ namespace Velvet
         // timed exit pose, collapses a reversed stagger to forward order.
         internal static StyleTransitionConfig? ResolveExitTransition(MotionNode? motion)
             => TryResolveExitVariant(motion, out _, out _, out var transition) ? transition : motion?.Transition;
+
+        // Whether the anchor's exit names somewhere to go, a pose or the classic exit's classes: what Framer Motion
+        // animates there, instantly where the config plays nothing, rather than resolving the exit with nothing to do.
+        private static bool HasExitTarget(MotionNode? motion)
+            => motion != null && (TryResolveExitVariant(motion, out _, out _, out _)
+                || motion.Transition?.ExitToClasses.Length > 0);
 
         // The exit-variant preconditions, in one place so the gates above and TryResolveVariantExit below
         // cannot drift apart on which configurations count as a variant exit.

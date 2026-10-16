@@ -1438,7 +1438,19 @@ namespace Velvet
         // pass has ended — see CompleteEnterAfterThePass. RemovedBy is the commit whose removals an exit's child
         // waits on: that exit completes from the passive-effect flush after the pass, and the commit takes it
         // back if its removals never run (DropCompletionsRemovedBy).
-        internal readonly record struct PendingCompletion(System.Action Complete, ComponentFiber? Boundary, object? RemovedBy);
+        internal readonly record struct PendingCompletion(
+            System.Action Complete, ComponentFiber? Boundary, object? RemovedBy, ExitSettlePhase Phase = ExitSettlePhase.Effect);
+
+        // The order Framer Motion settles the exits one commit leaves with nothing to animate: a motion component's
+        // exit naming no target from a promise its layout effect resolves, a child holding no motion component from
+        // PresenceChild's passive effect, and an exit it animates instantly on the next frame. Which settles last
+        // decides how onExitComplete's error is routed (GeneralPathReconciler.CompletePresenceExit).
+        internal enum ExitSettlePhase
+        {
+            Promise,
+            Effect,
+            Frame,
+        }
 
         internal readonly List<PendingCompletion> PendingCompletions = new();
 
@@ -1473,13 +1485,15 @@ namespace Velvet
 
         // An exit that animates nothing settles from the passive-effect flush that follows the pass whose commit
         // removedBy is, and that commit takes it back if its removals never run.
-        internal void CompleteAfterTheRemovals(System.Action settle, ComponentFiber? boundary, object removedBy)
-            => CompleteAfterThePass(settle, boundary, removedBy);
+        internal void CompleteAfterTheRemovals(
+            System.Action settle, ComponentFiber? boundary, object removedBy, ExitSettlePhase phase)
+            => CompleteAfterThePass(settle, boundary, removedBy, phase);
 
-        private void CompleteAfterThePass(System.Action complete, ComponentFiber? boundary, object? removedBy)
+        private void CompleteAfterThePass(System.Action complete, ComponentFiber? boundary, object? removedBy,
+            ExitSettlePhase phase = ExitSettlePhase.Effect)
         {
             if (SharedReconcileDepth == 0 && removedBy == null) complete();
-            else PendingCompletions.Add(new PendingCompletion(complete, boundary, removedBy));
+            else PendingCompletions.Add(new PendingCompletion(complete, boundary, removedBy, phase));
         }
 
         // The entries a render below boundary queued: read before a catch detaches what that render created, since
@@ -1521,10 +1535,17 @@ namespace Velvet
             // Copied out first: a callback can start a pass whose own end reaches this list.
             var completions = PendingCompletions.ToArray();
             PendingCompletions.Clear();
+            List<PendingCompletion>? staged = null;
             foreach (var entry in completions)
             {
                 if (entry.RemovedBy == null) entry.Complete();
-                else FiberEffects.StagePassiveCompletion(this, entry.Complete);
+                else (staged ??= new List<PendingCompletion>()).Add(entry);
+            }
+            if (staged == null) return;
+            // In ExitSettlePhase order, tree order within a phase.
+            foreach (var entry in System.Linq.Enumerable.OrderBy(staged, entry => entry.Phase))
+            {
+                FiberEffects.StagePassiveCompletion(this, entry.Complete);
             }
         }
 
@@ -2183,9 +2204,14 @@ namespace Velvet
         // walk's stage otherwise, so the put-back of an earlier walk leaves a later stage alone.
         internal sealed class PendingSettle
         {
-            internal PendingSettle(System.Action settle) => Settle = settle;
+            internal PendingSettle(System.Action settle, ExitSettlePhase phase)
+            {
+                Settle = settle;
+                Phase = phase;
+            }
 
             internal System.Action Settle { get; }
+            internal ExitSettlePhase Phase { get; }
             internal object? Staging { get; set; }
         }
 
