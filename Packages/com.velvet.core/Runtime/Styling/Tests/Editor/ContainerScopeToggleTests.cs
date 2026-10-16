@@ -344,6 +344,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHoverStackedContainerLeaf_When_ItsClassNameLosesTheVariant_Then_NoStackedManipulatorIsLeftOnIt()
+        {
+            // Arrange — a 600px container is above @md, so the stacked hover: inner is created and, being
+            // edge-based, kept when its gate closes.
+            using var store = new ScopeStore(string.Empty, "@container w-[600px] shrink-[0]", "@md:hover:bg-wide");
+            var leaf = MountScope(store, "@container");
+            var context = _mounted.Root.Reconciler.Context;
+            var stackedWhileDeclared = context.HasStackedVariantsOn(leaf);
+
+            // Act
+            store.SetLeaf("p-2");
+            Drain();
+
+            // Assert
+            Assert.That((stackedWhileDeclared, context.HasStackedVariantsOn(leaf)), Is.EqualTo((true, false)));
+        }
+
+        [Test]
         public void Given_AContainerManipulatorTheUnmountNeverReached_When_TheTreeIsDisposed_Then_ItIsReleased()
         {
             // Arrange — a manipulator the unmount never reached: its element belongs to no fiber, as one an aborted
@@ -354,7 +372,7 @@ namespace Velvet.Tests
             var stray = new Label("x");
             StyleContainerQuery.TryParse("@md", out var query);
             var manipulator = new StyleContainerVariantManipulator(context,
-                new[] { new ContainerBinding(query, new[] { "bg-wide" }, new[] { 0 }) });
+                new[] { new ContainerBinding("@md", query, new[] { "bg-wide" }, new[] { 0 }) });
             stray.AddManipulator(manipulator);
             context.ContainerVariantManipulators[stray] = manipulator;
             var held = (ScopeSubscribers() - before, context.ContainerVariantManipulators.Count);

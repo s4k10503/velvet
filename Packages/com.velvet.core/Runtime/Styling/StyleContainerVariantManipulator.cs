@@ -7,13 +7,16 @@ namespace Velvet
     // two payloads), with each payload's rule place (see VariantDeclarations).
     internal sealed class ContainerBinding
     {
-        public ContainerBinding(StyleContainerQuery query, string[] payloads, int[] declarations)
+        public ContainerBinding(string spelling, StyleContainerQuery query, string[] payloads, int[] declarations)
         {
+            Spelling = spelling;
             Query = query;
             Payloads = payloads;
             Declarations = declarations;
         }
 
+        // The prefix as written. Two spellings of one threshold (`@md`, `@min-md`) are two bindings.
+        public string Spelling { get; }
         public StyleContainerQuery Query { get; }
         public string[] Payloads { get; }
         public int[] Declarations { get; }
@@ -33,6 +36,10 @@ namespace Velvet
         private bool[] _on;
         // Keyed by container name, "" for the nearest container of any name.
         private readonly Dictionary<string, ResponsiveWidthSource> _sources = new();
+        // The owner a binding's stacked payloads (`@md:dark:p-2`) are keyed by, one per spelling and kept across
+        // UpdateBindings: the stacked key carries the owner and a rank two spellings share, so a single owner
+        // would make `@md:dark:p-2 @lg:dark:p-2` one stacked manipulator with one outer gate.
+        private readonly Dictionary<string, object> _owners = new();
 
         public StyleContainerVariantManipulator(ReconcilerContext ctx, ContainerBinding[] bindings)
         {
@@ -76,6 +83,10 @@ namespace Velvet
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
             UnhookSources();
+            foreach (var owner in _owners.Values)
+            {
+                _ctx.DropStackedVariants(owner);
+            }
         }
 
         private void OnAttach(AttachToPanelEvent evt)
@@ -163,7 +174,17 @@ namespace Velvet
 
         // Layers by the query's rank: a floor over a ceiling, and a container query over any viewport breakpoint.
         private void ApplyPayloads(ContainerBinding binding, bool on)
-            => StyleVariantPayload.Apply(target, binding.Payloads, on, binding.Query.Rank, _ctx, this,
-                binding.Declarations);
+            => StyleVariantPayload.Apply(target, binding.Payloads, on, binding.Query.Rank, _ctx,
+                OwnerOf(binding.Spelling), binding.Declarations);
+
+        private object OwnerOf(string spelling)
+        {
+            if (!_owners.TryGetValue(spelling, out var owner))
+            {
+                owner = new object();
+                _owners[spelling] = owner;
+            }
+            return owner;
+        }
     }
 }

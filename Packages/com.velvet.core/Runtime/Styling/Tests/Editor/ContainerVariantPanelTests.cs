@@ -307,6 +307,69 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AContainerWithPaddingAtTheThreshold_When_Resolved_Then_ItsContentWidthDecides()
+        {
+            // Arrange — 460px across the border box and 420px of content, either side of @md (448px).
+            _mounted = V.Mount(_window.rootVisualElement,
+                Container("padded", "@container w-[460px] p-[20px]", Leaf("leaf", "@md:bg-wide")));
+
+            // Act
+            Resolve(Find("padded"));
+
+            // Assert
+            Assert.That(
+                (Find("padded").resolvedStyle.width >= MdThreshold, Find("padded").contentRect.width < MdThreshold,
+                    On("leaf")),
+                Is.EqualTo((true, true, false)));
+        }
+
+        [Test]
+        public void Given_TwoContainerSpellingsStackedWithDarkOnOneLeaf_When_TheLargerThresholdFailsThenTheSmaller_Then_TheLeafStaysOnUntilTheLast()
+        {
+            // Arrange — dark is on and the container is 1000px, above @md (448px) and @3xl (768px).
+            VelvetTheme.IsDark = true;
+            _mounted = V.Mount(_window.rootVisualElement,
+                Container("scope", "@container w-[1000px]", Leaf("leaf", "@md:dark:bg-wide @3xl:dark:bg-wide")));
+            Resolve(Find("scope"));
+            var before = On("leaf");
+
+            // Act — 600px is below @3xl and above @md, and 300px below both.
+            Find("scope").style.width = 600f;
+            Resolve(Find("scope"));
+            var middle = On("leaf");
+            Find("scope").style.width = 300f;
+            Resolve(Find("scope"));
+
+            // Assert
+            Assert.That((before, middle, On("leaf")), Is.EqualTo((true, true, false)));
+        }
+
+        [Test]
+        public void Given_TwoContainerSpellingsStackedWithHoverOnOneLeaf_When_TheLargerThresholdFailsThenTheSmaller_Then_TheHoveredLeafStaysOnUntilTheLast()
+        {
+            // Arrange — the container is 1000px, above @md (448px) and @3xl (768px), and the pointer is over the leaf.
+            _mounted = V.Mount(_window.rootVisualElement,
+                Container("scope", "@container w-[1000px]", Leaf("leaf", "@md:hover:bg-wide @3xl:hover:bg-wide")));
+            Resolve(Find("scope"));
+            if (CallbackRegistry.GetValue(Find("leaf")) != null)
+            {
+                using var over = PointerOverEvent.GetPooled();
+                Find("leaf").SimulateEvent(over);
+            }
+            var before = On("leaf");
+
+            // Act — 600px is below @3xl and above @md, and 300px below both.
+            Find("scope").style.width = 600f;
+            Resolve(Find("scope"));
+            var middle = On("leaf");
+            Find("scope").style.width = 300f;
+            Resolve(Find("scope"));
+
+            // Assert
+            Assert.That((before, middle, On("leaf")), Is.EqualTo((true, true, false)));
+        }
+
+        [Test]
         public void Given_ViewportAndContainerVariantsOfOneProperty_When_BothAreOn_Then_TheContainerOneWinsWhicheverIsWrittenLast()
         {
             // Arrange — the 1000px panel is above md: (768px) and the 700px container above @md (448px).

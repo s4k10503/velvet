@@ -364,9 +364,11 @@ namespace Velvet
         // The tracked root's resolved width, or 0 when unhooked.
         public float Width => _root?.resolvedStyle.width ?? 0f;
 
-        // Whether the tracked root's width meets query. Nothing hooked meets none: a container query with no
-        // container matches nothing, and Width's 0 would pass a ceiling.
-        public bool Satisfies(StyleContainerQuery query) => _root != null && query.Matches(Width);
+        // Whether the tracked root's content width, padding and border excluded, meets query, as a CSS container
+        // query measures its container's content box (ContainerVariantPanelTests pins a padded container).
+        // Nothing hooked meets none: a container query with no container matches nothing, and Width's 0 would pass
+        // a ceiling.
+        public bool Satisfies(StyleContainerQuery query) => _root != null && query.Matches(_root.contentRect.width);
 
         public void Hook(VisualElement? root)
         {

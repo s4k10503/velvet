@@ -566,6 +566,8 @@ name, so a named container still answers the unnamed variants inside it.
   container above it.
 - Marking an element a container does not contain its size, as `container-type: inline-size` does in CSS, so
   give the container a width that does not depend on the content its variants change.
+- A container's width is its content width, padding and border excluded, as CSS measures it: a `p-[20px]`
+  container 460 px across is 420 px for its variants.
 - A floor holds from its width up and a ceiling below its width, so `@md:` and `@max-md:` are on
   complementary sides of 448 px.
 - Variants stack with the rest like any other: `dark:@md:`, `@md:dark:` and `@md:hover:`, either way round.

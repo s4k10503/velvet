@@ -2436,9 +2436,10 @@ namespace Velvet
 
             var bindings = new ContainerBinding[bySpelling.Count];
             var next = 0;
-            foreach (var entry in bySpelling.Values)
+            foreach (var (spelling, entry) in bySpelling)
             {
-                bindings[next++] = new ContainerBinding(entry.Query, entry.Payloads.ToArray(), entry.Positions.ToArray());
+                bindings[next++] = new ContainerBinding(spelling, entry.Query, entry.Payloads.ToArray(),
+                    entry.Positions.ToArray());
             }
             return bindings;
         }

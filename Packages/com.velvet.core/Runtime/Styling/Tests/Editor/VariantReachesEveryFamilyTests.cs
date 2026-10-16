@@ -142,8 +142,7 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-        // GREEN_ON_BASE(construction): this branch only removes two text-balance families from the matrix, so the test-side family reader is carried onto the base with this fixture;
-        // removing the `excluded` filter makes negated predicates count as accepted families.
+        // GREEN_ON_BASE(characterization): the family reader runs over the literal gate strings below, and this branch changes neither it nor them, so the base reads them the same way.
         [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
         [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
             "StyleGapClass.IsGapToken")]
@@ -170,6 +169,7 @@ namespace Velvet.Tests
         /// leaves the derived set, the matrix stops posing it, and the deletion — the exact defect this
         /// fixture exists for — passes. Dropping one now leaves a representative naming nothing.
         /// </remarks>
+        // GREEN_ON_BASE(characterization): the dispatcher's gated families and this fixture's declared set agree on the base as they do here, since this branch changes neither.
         [Test]
         public void Given_ThePayloadDispatcher_When_ItsFamiliesAreDerived_Then_TheyAreExactlyTheDeclaredOnes()
         {
@@ -188,7 +188,6 @@ namespace Velvet.Tests
                 + "drifted apart, so the matrix below poses a different question than the code answers");
         }
 
-        // GREEN_ON_BASE(characterization): this branch only removes two text-balance families from the matrix, and the families left reach what the bare form reaches as on the base.
         [Test]
         public void Given_EveryPayloadFamily_When_WrittenBehindEachVariantCategory_Then_ItReachesWhatTheBareFormReaches()
         {

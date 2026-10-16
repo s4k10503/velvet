@@ -40,8 +40,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AFloorAndACeilingAtOneThreshold_When_Ordered_Then_TheFloorComesLater()
         {
-            // Arrange — Tailwind emits @max-sm before @sm.
-            var names = new[] { "@sm:p-2", "@max-sm:p-2" };
+            // Arrange — Tailwind emits @max-lg before @lg.
+            var names = new[] { "@lg:p-2", "@max-lg:p-2" };
 
             // Act
             var ordinals = StyleRuleOrder.OrdinalsOf(names);
@@ -93,13 +93,14 @@ namespace Velvet.Tests
         public void Given_NamedAndUnnamedQueriesAtOneThreshold_When_Ordered_Then_NamesComeFirstAndTheUnnamedLast()
         {
             // Arrange — Tailwind emits @md/a, @md/b, @md.
-            var names = new[] { "@md:p-2", "@md/b:p-2", "@md/a:p-2" };
+            var spellings = new[] { "@md", "@md/b", "@md/a" };
 
             // Act
-            var ordinals = StyleRuleOrder.OrdinalsOf(names);
+            System.Array.Sort(spellings, static (a, z) => string.CompareOrdinal(
+                StyleContainerQuery.OrderKeyOf(a), StyleContainerQuery.OrderKeyOf(z)));
 
             // Assert
-            Assert.That(ordinals, Is.EqualTo(new[] { 2, 1, 0 }));
+            Assert.That(spellings, Is.EqualTo(new[] { "@md/a", "@md/b", "@md" }));
         }
 
         [Test]
@@ -118,14 +119,14 @@ namespace Velvet.Tests
         [Test]
         public void Given_AContainerQueryAndDark_When_Ordered_Then_DarkComesLater()
         {
-            // Arrange — Tailwind emits @sm: before dark:.
-            var names = new[] { "dark:p-2", "@sm:p-2" };
+            // Arrange — Tailwind emits 2xl:, @sm:, dark: in that order.
+            var names = new[] { "dark:p-2", "@sm:p-2", "2xl:p-2" };
 
             // Act
             var ordinals = StyleRuleOrder.OrdinalsOf(names);
 
             // Assert
-            Assert.That(ordinals, Is.EqualTo(new[] { 1, 0 }));
+            Assert.That(ordinals, Is.EqualTo(new[] { 2, 1, 0 }));
         }
     }
 }
