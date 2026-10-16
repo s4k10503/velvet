@@ -86,7 +86,7 @@ namespace Velvet
             overlay.AddToClassList(MarkerClass);
 
             var binding = new RingBinding(overlay) { ClassNames = classNames, Spec = spec };
-            ApplySpec(overlay, spec);
+            ApplySpec(overlay, spec, element);
 
             binding.OnGeometry = _ => Place(element, binding);
             element.RegisterCallback(binding.OnGeometry);
@@ -143,7 +143,7 @@ namespace Velvet
         {
             binding.Spec = spec;
             binding.ClassNames = classNames;
-            ApplySpec(binding.Overlay, spec);
+            ApplySpec(binding.Overlay, spec, element);
             Place(element, binding);
         }
 
@@ -166,16 +166,21 @@ namespace Velvet
 
         // Native border on all four sides is the whole band; its geometry (position / size / radii) is set by
         // SyncGeometry once the element is laid out.
-        private static void ApplySpec(VisualElement overlay, RingSpec spec)
+        private static void ApplySpec(VisualElement overlay, RingSpec spec, VisualElement element)
         {
             overlay.style.borderTopWidth = spec.Width;
             overlay.style.borderRightWidth = spec.Width;
             overlay.style.borderBottomWidth = spec.Width;
             overlay.style.borderLeftWidth = spec.Width;
-            overlay.style.borderTopColor = spec.Color;
-            overlay.style.borderRightColor = spec.Color;
-            overlay.style.borderBottomColor = spec.Color;
-            overlay.style.borderLeftColor = spec.Color;
+            ApplyColor(overlay, spec.CurrentColor ? element.resolvedStyle.color : spec.Color);
+        }
+
+        private static void ApplyColor(VisualElement overlay, Color color)
+        {
+            overlay.style.borderTopColor = color;
+            overlay.style.borderRightColor = color;
+            overlay.style.borderBottomColor = color;
+            overlay.style.borderLeftColor = color;
         }
 
         // Re-homes the overlay onto the element's CURRENT parent and re-sizes it. The host is re-derived on
@@ -270,6 +275,11 @@ namespace Velvet
         {
             var rs = element.resolvedStyle;
             var style = binding.Overlay.style;
+            // A band in the element's text colour follows it as it changes, as currentcolor does.
+            if (binding.Spec.CurrentColor)
+            {
+                ApplyColor(binding.Overlay, rs.color);
+            }
             style.opacity = rs.opacity;
             style.visibility = rs.visibility;
             style.display = rs.display;

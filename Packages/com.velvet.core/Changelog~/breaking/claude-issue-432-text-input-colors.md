@@ -18,3 +18,7 @@
   per-axis and uniform scale, skew, the filters — drops the family's other utilities with the same variants and
   importance, as the browser drops the shared declaration: `translate-x-4 translate-y-[10]` no longer translates
   along x, and `drop-shadow-lg blur-[2]` no longer draws its drop shadow. `blur-[-2px]` is declined.
+- `ring` is 1px, Tailwind v4's default ring width, where it was 3px, and a ring or outline naming no colour is
+  drawn in the element's text colour, as v4's `var(--tw-ring-color, currentcolor)` and `outline-color`'s
+  initial value are, where it was blue-500 (at half alpha for a ring). A colour class alone (`ring-red-500`) no
+  longer draws a ring, and a ring colour no longer colours an outline.
