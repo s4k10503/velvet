@@ -94,6 +94,11 @@ namespace Velvet.Tests
             return new List<FilterFunction> { fn };
         }
 
+        // A user custom as the resolver applies one, bound to a definition nothing registers.
+        private ArbitraryStyle UserCustom(string name)
+            => new(ArbitraryProperty.FilterCustom,
+                new CustomFilterValue(name, CreateUserDefinition(new FilterParameter(0f)), new[] { new FilterParameter(1f) }));
+
         // A single-blur inline filter list, the simplest interpolable filter (one float parameter).
         private static List<FilterFunction> BlurList(float px)
         {
@@ -331,10 +336,7 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Group A2 — user custom filters (filter-[name:args])
-
-        // A user filter-[name:args] is CSS's url() reference, and Filter Effects interpolates a filter list holding
-        // one discretely, whatever else the list holds.
+        #region Group A2 — pairing two lists into channels, and frames of the pairs
 
         [Test]
         public void Given_TwoListsOfOneUserCustom_When_ChannelsBuilt_Then_ItSnaps()
@@ -467,6 +469,80 @@ namespace Velvet.Tests
             // Assert — each blur pairs with the one at its position, and the grayscale fades in from 0.
             Assert.That((built, string.Join(",", channels.Select(c => c.From[0].floatValue + "->" + c.To[0].floatValue))),
                 Is.EqualTo((true, "2->4,4->8,0->1")));
+        }
+
+        // GREEN_ON_BASE(characterization): a brightness composed before its definition was rebuilt faded out on the base.
+        [Test]
+        public void Given_ABrightnessComposedBeforeItsDefinitionWasRebuilt_When_ItIsRemoved_Then_ItFadesOut()
+        {
+            // Arrange — the pass material destroyed under the cached definition, as a shader reimport does, so the
+            // next read builds another while the element still holds the first.
+            var stale = BuiltInFilterDefinitions.Brightness;
+            Assume.That(stale, Is.Not.Null, "Precondition: the brightness shader resolved into a definition");
+            _spawned.Add(stale);
+            var brightness = new FilterFunction(stale);
+            brightness.AddParameter(new FilterParameter(1.5f));
+            var from = new List<FilterFunction>(BlurList(0f)) { brightness };
+            Object.DestroyImmediate(stale.passes[0].material);
+            var rebuilt = BuiltInFilterDefinitions.Brightness;
+
+            // Act
+            var built = StyleFilterTransitionDriver.TryBuildChannels(from, BlurList(12f), out var channels);
+
+            // Assert
+            Assert.That((ReferenceEquals(rebuilt, stale), built, channels.Length), Is.EqualTo((false, true, 2)));
+        }
+
+        // GREEN_ON_BASE(characterization): a tint Velvet did not write faded out to white on the base, as it still does.
+        [Test]
+        public void Given_AnInlineTintVelvetDidNotWrite_When_ChannelsBuilt_Then_ItFadesOutToWhite()
+        {
+            // Arrange — Velvet composes no tint, so one in the from-list was written past the resolver.
+            var tint = new FilterFunction(FilterFunctionType.Tint);
+            tint.AddParameter(new FilterParameter(Color.black));
+            var from = new List<FilterFunction>(BlurList(0f)) { tint };
+
+            // Act
+            StyleFilterTransitionDriver.TryBuildChannels(from, BlurList(12f), out var channels);
+
+            // Assert
+            Assert.That(channels.Length == 2 ? channels[1].To[0].colorValue : Color.clear, Is.EqualTo(Color.white));
+        }
+
+        // GREEN_ON_BASE(characterization): a fading tint painted its colour half way on the base, as it still does.
+        [Test]
+        public void Given_AnInlineTintFadingOut_When_FrameAtMid_Then_ItsColorIsHalfway()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var tint = new FilterFunction(FilterFunctionType.Tint);
+            tint.AddParameter(new FilterParameter(Color.black));
+            var from = new List<FilterFunction>(BlurList(0f)) { tint };
+            var to = BlurList(12f);
+            StyleFilterTransitionDriver.TryBuildChannels(from, to, out var channels);
+            var binding = new StyleFilterTransitionBinding { Channels = channels, Easing = EasingMode.Linear, Target = to };
+
+            // Act
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert
+            var list = element.style.filter.value;
+            Assert.That(list.Count == 2 ? list[1].GetParameter(0).colorValue.r : float.NaN, Is.EqualTo(0.5f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AnInlineOpacityVelvetDidNotWrite_When_ChannelsBuilt_Then_ItFadesOutToOne()
+        {
+            // Arrange — opacity(1) is CSS's no-op, as contrast(1) is.
+            var opacity = new FilterFunction(FilterFunctionType.Opacity);
+            opacity.AddParameter(new FilterParameter(0.5f));
+            var from = new List<FilterFunction>(BlurList(0f)) { opacity };
+
+            // Act
+            StyleFilterTransitionDriver.TryBuildChannels(from, BlurList(12f), out var channels);
+
+            // Assert
+            Assert.That(channels.Length == 2 ? channels[1].To[0].floatValue : float.NaN, Is.EqualTo(1f));
         }
 
         // GREEN_ON_BASE(characterization): a frame dropped a dead Custom channel on the base, as it still does.
@@ -1622,45 +1698,6 @@ namespace Velvet.Tests
             Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
         }
 
-        private ArbitraryStyle UserCustom(string name)
-            => new(ArbitraryProperty.FilterCustom,
-                new CustomFilterValue(name, CreateUserDefinition(new FilterParameter(0f)), new[] { new FilterParameter(1f) }));
-
-        [Test]
-        public void Given_NoBindingAndAWholePropertyTransition_When_AUserCustomJoinsABlurThatIsAnimating_Then_TheBlurIsPaintedAtOnce()
-        {
-            // Arrange — blur(0) at rest.
-            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
-            ApplyBlur(element, 0f);
-            AdvanceAndPaint(element.panel, 1.0);
-
-            // Act — the blur's change starts the engine's transition, and the custom joins the list after it.
-            ApplyBlur(element, 12f);
-            StyleArbitraryValueResolver.Apply(element, UserCustom("joins-engine"));
-            AdvanceAndPaint(element.panel, 0.15);
-
-            // Assert
-            Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
-        }
-
-        [Test]
-        public void Given_NoBindingAndAWholePropertyTransitionOverABlurAndAUserCustom_When_TheCustomIsRemoved_Then_OnlyTheBlurIsPaintedAtOnce()
-        {
-            // Arrange — blur(12) and a user custom at rest.
-            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
-            var custom = UserCustom("leaves-engine");
-            ApplyBlur(element, 12f);
-            StyleArbitraryValueResolver.Apply(element, custom);
-            AdvanceAndPaint(element.panel, 1.0);
-
-            // Act
-            StyleArbitraryValueResolver.Clear(element, custom);
-            AdvanceAndPaint(element.panel, 0.15);
-
-            // Assert
-            Assert.That(element.resolvedStyle.filter.Count(), Is.EqualTo(1));
-        }
-
         // GREEN_ON_BASE(characterization): a removed contrast leaves no filter once its fade ends, as it did before.
         [Test]
         public void Given_NoBindingAndAWholePropertyTransition_When_ARemovedContrastsFadeEnds_Then_NoFilterIsLeft()
@@ -1878,6 +1915,48 @@ namespace Velvet.Tests
 
             // Assert — half way from 2 to CSS's identity 1; the engine's own padding would put it at 1.
             Assert.That(PaintedFloat(element), Is.EqualTo(1.5f).Within(1e-3f));
+        }
+
+        #endregion
+
+        #region Group E2 — a user custom under the engine's animation
+
+        // Mounted like Group E. A list holding a user custom is CSS's url() case, which changes discretely, so the
+        // engine's animation must not take the write.
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransition_When_AUserCustomJoinsABlurThatIsAnimating_Then_TheBlurIsPaintedAtOnce()
+        {
+            // Arrange — blur(0) at rest.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            ApplyBlur(element, 0f);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act — the blur's change starts the engine's transition, and the custom joins the list after it.
+            ApplyBlur(element, 12f);
+            StyleArbitraryValueResolver.Apply(element, UserCustom("joins-engine"));
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert
+            Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_NoBindingAndAWholePropertyTransitionOverABlurAndAUserCustom_When_TheCustomIsRemoved_Then_OnlyTheBlurIsPaintedAtOnce()
+        {
+            // Arrange — blur(12) and a user custom at rest.
+            MountWithInlineTransition("w-[100px] h-[40px]", out var element, "all");
+            var custom = UserCustom("leaves-engine");
+            ApplyBlur(element, 12f);
+            StyleArbitraryValueResolver.Apply(element, custom);
+            AdvanceAndPaint(element.panel, 1.0);
+
+            // Act
+            StyleArbitraryValueResolver.Clear(element, custom);
+            AdvanceAndPaint(element.panel, 0.15);
+
+            // Assert
+            Assert.That(element.resolvedStyle.filter.Count(), Is.EqualTo(1));
         }
 
         #endregion

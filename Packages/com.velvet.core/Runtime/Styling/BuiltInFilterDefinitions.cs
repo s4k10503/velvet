@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -27,10 +28,12 @@ namespace Velvet
         internal static FilterFunctionDefinition? Saturate
             => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", "velvet-saturate");
 
-        // Read off the cached fields rather than the properties, which build a definition where none is cached.
+        // Every definition Build has handed out, not only the cached two: a shader reimport and the subsystem reset
+        // below both replace the cached one while elements still hold the one they were composed with.
+        private static readonly ConditionalWeakTable<FilterFunctionDefinition, object> s_built = new();
+
         internal static bool IsFirstParty(FilterFunctionDefinition? definition)
-            => definition is not null
-                && (ReferenceEquals(definition, s_brightness) || ReferenceEquals(definition, s_saturate));
+            => definition is not null && s_built.TryGetValue(definition, out _);
 
         // A cached definition is reusable only while both it and the material its single pass binds are live.
         // A shader reimport can destroy the pass material out from under a surviving definition; UI Toolkit's
@@ -83,6 +86,7 @@ namespace Velvet
                     },
                 },
             };
+            s_built.Add(def, s_built);
             return def;
         }
 

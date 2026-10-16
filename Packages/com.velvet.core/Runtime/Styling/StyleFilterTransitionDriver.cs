@@ -405,7 +405,7 @@ namespace Velvet
                 {
                     var f = from![k];
                     var t = to![k];
-                    if (!SameChannel(f, t) || f.parameterCount != t.parameterCount || !ParameterTypesAlign(f, t))
+                    if (!SameChannel(f, t) || f.parameterCount != t.parameterCount)
                     {
                         return false;
                     }
@@ -432,20 +432,6 @@ namespace Velvet
         // built-in custom, null for a native type (ApplyFrame rebuilds that by FilterFunctionType).
         private static FilterFunctionDefinition? DefinitionOf(FilterFunction f)
             => f.type == FilterFunctionType.Custom ? f.customDefinition : null;
-
-        // Two paired functions interpolate only when each slot holds the same kind of value: a definition may
-        // declare a color slot where its counterpart declares a float, and lerping across those is meaningless.
-        private static bool ParameterTypesAlign(FilterFunction a, FilterFunction b)
-        {
-            for (var k = 0; k < a.parameterCount; k++)
-            {
-                if (a.GetParameter(k).type != b.GetParameter(k).type)
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
 
         // Two functions share a channel when they are the same native filter type, or both Custom bound to the
         // SAME definition — brightness, saturate and each user filter-[name:args] are distinct channels even
@@ -475,14 +461,15 @@ namespace Velvet
         // only one side fades from or to. A CUSTOM function declares its own per-slot neutral, and that
         // declaration is the same value the engine pads a filter-list transition with, so it is read straight
         // off the definition rather than guessed from the function's shape. For a native type the neutral
-        // follows the CSS definition: contrast is off at 1, every other float filter (blur, grayscale,
-        // hue-rotate, invert, sepia) is off at 0, and a color parameter's identity is white.
+        // follows the CSS definition: contrast and opacity are off at 1, every other float filter (blur, grayscale,
+        // hue-rotate, invert, sepia) is off at 0, and a color parameter's identity is white. Velvet composes no
+        // opacity or tint, but a one-sided channel can come from a filter Velvet did not write.
         private static FilterParameter[] IdentityParams(FilterFunction f)
         {
             var count = f.parameterCount;
             var arr = new FilterParameter[count];
             var declarations = f.type == FilterFunctionType.Custom ? f.customDefinition?.parameters : null;
-            var floatIdentity = f.type == FilterFunctionType.Contrast ? 1f : 0f;
+            var floatIdentity = f.type is FilterFunctionType.Contrast or FilterFunctionType.Opacity ? 1f : 0f;
             for (var k = 0; k < count; k++)
             {
                 // A declaration shorter than the live parameter list leaves that slot without a declared
