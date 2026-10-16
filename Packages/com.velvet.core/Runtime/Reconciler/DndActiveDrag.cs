@@ -563,7 +563,8 @@ namespace Velvet
             var strategy = _scope.Settings.CollisionDetection ?? DndCollisions.RectIntersection;
             var query = new DndCollisionQuery(
                 new Rect(_originRect.position + _delta, _originRect.size), _lastPointerPosition, _queryBuffer);
-            SetOver(strategy(in query));
+            var collisions = strategy(in query);
+            SetOver(collisions.Length > 0 ? collisions[0].Id : null);
         }
 
         private void SetOver(string? winnerId)

@@ -72,10 +72,20 @@ arm, as dnd-kit's innermost activator claims the press.
 The strategy is a delegate — `DndCollisionDetection` — receiving the active rect (the source's
 activation-time rect translated by the pointer delta: dnd-kit's translated-initial-rect
 semantics, correct even under `Movement.None`), the pointer position, and the pre-filtered
-candidates (in-scope, enabled, same panel, self excluded). Built-ins on `DndCollisions`:
-`RectIntersection` (largest overlap wins — the dnd-kit default), `ClosestCenter` (the sortable
-workhorse), and `PointerWithin` (pointer containment, innermost wins). A custom strategy is just
-a delegate; it must be pure over the query, since it runs on every move.
+candidates (in-scope, enabled, same panel, self excluded), and returns a ranked `DndCollision[]`
+(`Id`, `Data`, and the `Value` it ranked by) with the best first, as dnd-kit's `CollisionDetection`
+does; the first entry becomes `over` and an empty array means no collision. Built-ins on
+`DndCollisions` follow the dnd-kit algorithm of the same name, including its four-decimal rounding where it
+rounds and its tie order (equal values keep registration order):
+
+| Strategy | Collides | Ranked by |
+| --- | --- | --- |
+| `RectIntersection` (the default) | droppables overlapping the active rect | intersection ratio `i / (droppable + active - i)`, greatest first |
+| `ClosestCenter` (the sortable workhorse) | every droppable | distance between centers, nearest first |
+| `ClosestCorners` | every droppable | mean distance between the four corresponding corners, nearest first |
+| `PointerWithin` | droppables whose rect contains the pointer, edges included | mean distance from the pointer to the four corners, nearest first |
+
+A custom strategy is just a delegate; it must be pure over the query, since it runs on every move.
 
 Candidate rects are read live from the panel every move, so mid-drag layout shifts, scrolls, and
 droppables mounting/unmounting are picked up automatically — dnd-kit's `MeasuringConfiguration`
@@ -121,8 +131,6 @@ to use instead.
 - **`dropAnimation`** on the overlay, **`modifiers`** (axis/bounds restriction), and
   **auto-scroll** near container edges — additive later.
 - **`useDndMonitor` / `useDndContext`** introspection — no consumer yet.
-- **Ranked `Collision[]`** — a strategy returns a single winner; the context only ever consumed
-  the first collision anyway.
 - **Multi-touch / concurrent drags** — one active drag per mounted tree (dnd-kit's `active` is
   singular too); extra pointer-downs during a session do not arm.
 

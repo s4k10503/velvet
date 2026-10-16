@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -14,10 +15,10 @@ namespace Velvet.Tests
     /// rects, Escape cancels, and a source unmounting mid-drag scrubs synchronously while deferring the
     /// user cancel callback past the flush — the pool-reuse ghosting contract.
     /// <para>
-    /// Also pins the three built-in collision strategies as pure functions over a
-    /// <c>DndCollisionQuery</c> — no panel involved: <c>RectIntersection</c> ranks by overlap area
-    /// (ties to registration order), <c>ClosestCenter</c> by center distance, and
-    /// <c>PointerWithin</c> by pointer containment with innermost-wins nesting.
+    /// Also pins the four built-in collision strategies as pure functions over a
+    /// <c>DndCollisionQuery</c> — no panel involved — each returning its full ranking: <c>RectIntersection</c>
+    /// by intersection ratio, <c>ClosestCenter</c> by center distance, <c>ClosestCorners</c> and
+    /// <c>PointerWithin</c> by mean corner distance, with registration order kept among equal values.
     /// </para>
     /// </summary>
     internal sealed class DndInteractionTests
@@ -993,6 +994,54 @@ namespace Velvet.Tests
             Assert.That((heldWhileMounted, context.NoDragElements.Count), Is.EqualTo((1, 0)));
         }
 
+        // A strategy that ranks the candidates in reverse registration order, so the first entry is the
+        // last-registered droppable wherever the pointer is.
+        [Component]
+        private static VNode ReverseRankedScene()
+        {
+            return V.DndContext(
+                onDragEnd: e => s_ended.Add(e.Over?.Id),
+                collisionDetection: (in DndCollisionQuery query) =>
+                {
+                    var ranked = new DndCollision[query.Droppables.Count];
+                    for (var i = 0; i < ranked.Length; i++)
+                    {
+                        var candidate = query.Droppables[ranked.Length - 1 - i];
+                        ranked[i] = new DndCollision(candidate.Id, candidate.Data, i);
+                    }
+                    return ranked;
+                },
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                name: "scope",
+                children: new VNode[]
+                {
+                    V.Draggable("item", key: "item", name: "item",
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                    V.Droppable("first", key: "first", name: "first",
+                        className: "absolute left-[150px] top-[0px] w-[100px] h-[100px]"),
+                    V.Droppable("second", key: "second", name: "second",
+                        className: "absolute left-[150px] top-[150px] w-[100px] h-[100px]"),
+                });
+        }
+
+        [Test]
+        public void Given_AStrategyRankingTwoDroppables_When_TheDragEnds_Then_TheFirstRankedEntryIsTheOverTarget()
+        {
+            // Arrange
+            Mount(ReverseRankedScene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Act — release with the pointer inside "first", which the strategy ranks second.
+            SendPointerMove(item, new Vector2(190, 20));
+            SendPointerUp(item, new Vector2(190, 20));
+
+            // Assert
+            Assert.That(s_ended, Is.EqualTo(new[] { "second" }));
+        }
+
         #region Collision strategies (pure functions, no panel)
 
         private static DndCollisionQuery Query(Rect activeRect, Vector2 pointer, params DndDroppableRect[] droppables)
@@ -1000,37 +1049,95 @@ namespace Velvet.Tests
 
         private static DndDroppableRect Candidate(string id, Rect rect) => new(id, rect, null);
 
+        private static string Ids(DndCollision[] ranked)
+            => string.Join(",", ranked.Select(collision => collision.Id));
+
+        private static string Values(DndCollision[] ranked)
+            => string.Join(",", ranked.Select(collision =>
+                collision.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)));
+
+        // The active rect shared by the ranking cases: 10x10 at the origin, center (5,5).
+        private static readonly Rect s_active = new(0, 0, 10, 10);
+
         [Test]
-        public void Given_TwoOverlappingCandidates_When_RectIntersectionRuns_Then_TheLargerOverlapWins()
+        public void Given_ABigAndASmallCandidate_When_RectIntersectionRuns_Then_TheHigherIntersectionRatioRanksFirstNotTheLargerOverlapArea()
         {
-            // Arrange — the active rect overlaps "small" by 10x10 and "large" by 30x10.
-            var query = Query(new Rect(0, 0, 40, 10), Vector2.zero,
-                Candidate("small", new Rect(30, 0, 100, 100)),
-                Candidate("large", new Rect(10, 0, 100, 100)));
+            // Arrange — "big" overlaps by 100 of 10000 (ratio 0.01); "small" by 50 of 150 (ratio 0.3333).
+            var query = Query(s_active, Vector2.zero,
+                Candidate("big", new Rect(0, 0, 100, 100)),
+                Candidate("small", new Rect(5, 0, 10, 10)));
 
             // Act
-            var winner = DndCollisions.RectIntersection(in query);
+            var ranked = DndCollisions.RectIntersection(in query);
 
             // Assert
-            Assert.That(winner, Is.EqualTo("large"));
+            Assert.That(Ids(ranked), Is.EqualTo("small,big"));
         }
 
         [Test]
-        public void Given_NoCandidateOverlapsTheActiveRect_When_RectIntersectionRuns_Then_NoCollisionIsReported()
+        public void Given_ABigAndASmallCandidate_When_RectIntersectionRuns_Then_ValuesAreTheRatiosRoundedToFourDecimals()
         {
             // Arrange
-            var query = Query(new Rect(0, 0, 10, 10), Vector2.zero,
-                Candidate("far", new Rect(100, 100, 10, 10)));
+            var query = Query(s_active, Vector2.zero,
+                Candidate("big", new Rect(0, 0, 100, 100)),
+                Candidate("small", new Rect(5, 0, 10, 10)));
 
             // Act
-            var winner = DndCollisions.RectIntersection(in query);
+            var ranked = DndCollisions.RectIntersection(in query);
 
             // Assert
-            Assert.That(winner, Is.Null);
+            Assert.That(Values(ranked), Is.EqualTo("0.3333,0.01"));
         }
 
         [Test]
-        public void Given_TwoCandidatesWithEqualOverlap_When_RectIntersectionRuns_Then_TheFirstRegisteredWins()
+        public void Given_ThreeOverlappingCandidatesRegisteredOutOfOrder_When_RectIntersectionRuns_Then_AllAreRankedGreatestRatioFirst()
+        {
+            // Arrange — ratios 1/3 ("low"), 1 ("high") and 80/120 ("mid", a 10x10 shifted by 2).
+            var query = Query(s_active, Vector2.zero,
+                Candidate("low", new Rect(5, 0, 10, 10)),
+                Candidate("high", new Rect(0, 0, 10, 10)),
+                Candidate("mid", new Rect(2, 0, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.RectIntersection(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo("high,mid,low"));
+        }
+
+        [Test]
+        public void Given_CandidatesThatOnlyTouchTheActiveRect_When_RectIntersectionRuns_Then_NoCollisionIsReported()
+        {
+            // Arrange — one shares the right edge, one only the bottom-right corner.
+            var query = Query(s_active, Vector2.zero,
+                Candidate("edge", new Rect(10, 0, 10, 10)),
+                Candidate("corner", new Rect(10, 10, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.RectIntersection(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo(""));
+        }
+
+        [Test]
+        public void Given_CandidatesSeparatedOnOneOrBothAxes_When_RectIntersectionRuns_Then_NoCollisionIsReported()
+        {
+            // Arrange — "right" is apart on x only, "below" on y only, "diagonal" on both.
+            var query = Query(s_active, Vector2.zero,
+                Candidate("right", new Rect(20, 0, 10, 10)),
+                Candidate("below", new Rect(0, 20, 10, 10)),
+                Candidate("diagonal", new Rect(20, 20, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.RectIntersection(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo(""));
+        }
+
+        [Test]
+        public void Given_TwoCandidatesWithEqualOverlap_When_RectIntersectionRuns_Then_RegistrationOrderIsKept()
         {
             // Arrange — both candidates overlap the active rect by an identical 10x10 corner.
             var query = Query(new Rect(0, 0, 20, 20), Vector2.zero,
@@ -1038,42 +1145,164 @@ namespace Velvet.Tests
                 Candidate("second", new Rect(10, 10, 50, 50)));
 
             // Act
-            var winner = DndCollisions.RectIntersection(in query);
+            var ranked = DndCollisions.RectIntersection(in query);
 
-            // Assert — ties resolve deterministically by registration order.
-            Assert.That(winner, Is.EqualTo("first"));
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo("first,second"));
         }
 
         [Test]
-        public void Given_TwoCandidates_When_ClosestCenterRuns_Then_TheNearerCenterWinsEvenWithoutOverlap()
+        public void Given_TwoRatiosThatRoundToTheSameFourDecimals_When_RectIntersectionRuns_Then_RegistrationOrderIsKept()
         {
-            // Arrange — neither candidate overlaps the active rect; "near" has the closer center.
-            var query = Query(new Rect(0, 0, 10, 10), Vector2.zero,
-                Candidate("far", new Rect(200, 200, 10, 10)),
-                Candidate("near", new Rect(30, 0, 10, 10)));
+            // Arrange — "a" is exactly 1/3 and "b" about 0.333336, so only the rounding ties them and
+            // keeps "a" ahead of the greater unrounded "b".
+            var query = Query(s_active, Vector2.zero,
+                Candidate("a", new Rect(5, 0, 10, 10)),
+                Candidate("b", new Rect(5, 0, 9.9999f, 10)));
 
             // Act
-            var winner = DndCollisions.ClosestCenter(in query);
+            var ranked = DndCollisions.RectIntersection(in query);
 
             // Assert
-            Assert.That(winner, Is.EqualTo("near"));
+            Assert.That(Ids(ranked), Is.EqualTo("a,b"));
+        }
+
+        [Test]
+        public void Given_ACandidateCarryingData_When_RectIntersectionRuns_Then_TheCollisionCarriesThatData()
+        {
+            // Arrange
+            var data = new object();
+            var query = Query(s_active, Vector2.zero, new DndDroppableRect("a", new Rect(0, 0, 10, 10), data));
+
+            // Act
+            var ranked = DndCollisions.RectIntersection(in query);
+
+            // Assert
+            Assert.That(ranked[0].Data, Is.SameAs(data));
+        }
+
+        [Test]
+        public void Given_CandidatesAtDifferentDistances_When_ClosestCenterRuns_Then_EveryCandidateIsRankedNearestCenterFirst()
+        {
+            // Arrange — none overlaps the active rect (center 5,5); centers at distance 200, 30 and 5
+            // (a 3-4-5 offset, so a Manhattan distance would read 7).
+            var query = Query(s_active, Vector2.zero,
+                Candidate("far", new Rect(0, 200, 10, 10)),
+                Candidate("mid", new Rect(30, 0, 10, 10)),
+                Candidate("near", new Rect(3, 4, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.ClosestCenter(in query);
+
+            // Assert
+            Assert.That((Ids(ranked), Values(ranked)), Is.EqualTo(("near,mid,far", "5,30,200")));
+        }
+
+        [Test]
+        public void Given_TwoCandidatesAtTheSameCenterDistance_When_ClosestCenterRuns_Then_RegistrationOrderIsKept()
+        {
+            // Arrange — centers (25,5) and (-15,5) are both 20 from (5,5); "right" registers first.
+            var query = Query(s_active, Vector2.zero,
+                Candidate("right", new Rect(20, 0, 10, 10)),
+                Candidate("left", new Rect(-20, 0, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.ClosestCenter(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo("right,left"));
         }
 
         [Test]
         public void Given_NoCandidates_When_ClosestCenterRuns_Then_NoCollisionIsReported()
         {
             // Arrange
-            var query = Query(new Rect(0, 0, 10, 10), Vector2.zero);
+            var query = Query(s_active, Vector2.zero);
 
             // Act
-            var winner = DndCollisions.ClosestCenter(in query);
+            var ranked = DndCollisions.ClosestCenter(in query);
 
             // Assert
-            Assert.That(winner, Is.Null);
+            Assert.That(Ids(ranked), Is.EqualTo(""));
         }
 
         [Test]
-        public void Given_APointerInsideOneCandidate_When_PointerWithinRuns_Then_TheContainingRectWins()
+        public void Given_ACenteredLargeRectAndANearerSmallRect_When_ClosestCenterRuns_Then_TheCenteredRectRanksFirst()
+        {
+            // Arrange — "wide" shares the active center; "small" is 20 away at its center and every corner.
+            var query = Query(s_active, Vector2.zero,
+                Candidate("small", new Rect(20, 0, 10, 10)),
+                Candidate("wide", new Rect(-45, -45, 100, 100)));
+
+            // Act
+            var ranked = DndCollisions.ClosestCenter(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo("wide,small"));
+        }
+
+        [Test]
+        public void Given_ACenteredLargeRectAndANearerSmallRect_When_ClosestCornersRuns_Then_TheRectWithNearerCornersRanksFirst()
+        {
+            // Arrange — the pair of the ClosestCenter case above, where the verdict is the opposite.
+            var query = Query(s_active, Vector2.zero,
+                Candidate("wide", new Rect(-45, -45, 100, 100)),
+                Candidate("small", new Rect(20, 0, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.ClosestCorners(in query);
+
+            // Assert
+            Assert.That((Ids(ranked), Values(ranked)), Is.EqualTo(("small,wide", "20,63.6396")));
+        }
+
+        [Test]
+        public void Given_CandidatesAtDifferentCornerDistances_When_ClosestCornersRuns_Then_ValuesAreMeanCornerDistancesPairedByCorner()
+        {
+            // Arrange — corners pair as top-left, top-right, bottom-left, bottom-right: "big" is
+            // (0 + 90 + 90 + 127.2792) / 4 away, "below" 50 on each pair and "right" 30 on each.
+            var query = Query(s_active, Vector2.zero,
+                Candidate("big", new Rect(0, 0, 100, 100)),
+                Candidate("below", new Rect(0, 50, 10, 10)),
+                Candidate("right", new Rect(30, 0, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.ClosestCorners(in query);
+
+            // Assert
+            Assert.That((Ids(ranked), Values(ranked)), Is.EqualTo(("right,below,big", "30,50,76.8198")));
+        }
+
+        [Test]
+        public void Given_TwoCandidatesAtTheSameCornerDistance_When_ClosestCornersRuns_Then_RegistrationOrderIsKept()
+        {
+            // Arrange
+            var query = Query(s_active, Vector2.zero,
+                Candidate("right", new Rect(20, 0, 10, 10)),
+                Candidate("left", new Rect(-20, 0, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.ClosestCorners(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo("right,left"));
+        }
+
+        [Test]
+        public void Given_NoCandidates_When_ClosestCornersRuns_Then_NoCollisionIsReported()
+        {
+            // Arrange
+            var query = Query(s_active, Vector2.zero);
+
+            // Act
+            var ranked = DndCollisions.ClosestCorners(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo(""));
+        }
+
+        [Test]
+        public void Given_APointerInsideOneCandidate_When_PointerWithinRuns_Then_OnlyTheContainingRectCollides()
         {
             // Arrange — the active rect overlaps "other" more, but the POINTER sits inside "hit".
             var query = Query(new Rect(0, 0, 60, 60), new Vector2(105, 105),
@@ -1081,40 +1310,117 @@ namespace Velvet.Tests
                 Candidate("hit", new Rect(100, 100, 20, 20)));
 
             // Act
-            var winner = DndCollisions.PointerWithin(in query);
+            var ranked = DndCollisions.PointerWithin(in query);
 
             // Assert
-            Assert.That(winner, Is.EqualTo("hit"));
+            Assert.That(Ids(ranked), Is.EqualTo("hit"));
         }
 
         [Test]
-        public void Given_NestedCandidatesBothContainingThePointer_When_PointerWithinRuns_Then_TheInnermostWins()
+        public void Given_ASmallAreaRectWithDistantCornersAndALargeCenteredRect_When_PointerWithinRuns_Then_TheSmallerMeanCornerDistanceRanksFirstNotTheSmallerArea()
         {
-            // Arrange
-            var query = Query(new Rect(0, 0, 10, 10), new Vector2(55, 55),
-                Candidate("outer", new Rect(0, 0, 200, 200)),
-                Candidate("inner", new Rect(50, 50, 20, 20)));
+            // Arrange — the pointer is the center of "outer" (mean corner distance 70.7107, area 10000);
+            // "strip" has the smaller area (2400) but its far corners put the mean at 101.4658.
+            var query = Query(s_active, new Vector2(50, 50),
+                Candidate("strip", new Rect(45, 45, 200, 12)),
+                Candidate("outer", new Rect(0, 0, 100, 100)));
 
             // Act
-            var winner = DndCollisions.PointerWithin(in query);
+            var ranked = DndCollisions.PointerWithin(in query);
 
-            // Assert — on nesting, the smallest containing rect takes the collision.
-            Assert.That(winner, Is.EqualTo("inner"));
+            // Assert
+            Assert.That((Ids(ranked), Values(ranked)), Is.EqualTo(("outer,strip", "70.7107,101.4658")));
+        }
+
+        [Test]
+        public void Given_ThreeContainingRectsRegisteredOutOfOrder_When_PointerWithinRuns_Then_AllAreRankedSmallestMeanDistanceFirst()
+        {
+            // Arrange — the pointer is the center of each square, so the mean corner distance is half
+            // the diagonal: 14.14, 35.36 and 141.42.
+            var query = Query(s_active, new Vector2(50, 50),
+                Candidate("c", new Rect(-50, -50, 200, 200)),
+                Candidate("a", new Rect(40, 40, 20, 20)),
+                Candidate("b", new Rect(25, 25, 50, 50)));
+
+            // Act
+            var ranked = DndCollisions.PointerWithin(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo("a,b,c"));
+        }
+
+        [Test]
+        public void Given_TwoRectsWithTheSameMeanCornerDistance_When_PointerWithinRuns_Then_RegistrationOrderIsKept()
+        {
+            // Arrange
+            var query = Query(s_active, new Vector2(5, 5),
+                Candidate("first", new Rect(0, 0, 10, 10)),
+                Candidate("second", new Rect(0, 0, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.PointerWithin(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo("first,second"));
+        }
+
+        [Test]
+        public void Given_APointerOnTheTopLeftCorner_When_PointerWithinRuns_Then_TheRectCollides()
+        {
+            // Arrange
+            var query = Query(s_active, new Vector2(0, 0), Candidate("a", new Rect(0, 0, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.PointerWithin(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo("a"));
+        }
+
+        [Test]
+        public void Given_APointerOnTheBottomRightCorner_When_PointerWithinRuns_Then_TheRectCollides()
+        {
+            // Arrange
+            var query = Query(s_active, new Vector2(10, 10), Candidate("a", new Rect(0, 0, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.PointerWithin(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo("a"));
+        }
+
+        [Test]
+        public void Given_APointerOutsideEachRectOnExactlyOneSide_When_PointerWithinRuns_Then_NoCollisionIsReported()
+        {
+            // Arrange — pointer (50,5): "xBefore" ends left of it and "xAfter" starts right of it, both
+            // spanning its y; "yBefore" and "yAfter" bracket it on x but sit off its y.
+            var query = Query(s_active, new Vector2(50, 5),
+                Candidate("xBefore", new Rect(0, 0, 10, 10)),
+                Candidate("xAfter", new Rect(60, 0, 10, 10)),
+                Candidate("yAfter", new Rect(40, 100, 20, 10)),
+                Candidate("yBefore", new Rect(40, -100, 20, 10)));
+
+            // Act
+            var ranked = DndCollisions.PointerWithin(in query);
+
+            // Assert
+            Assert.That(Ids(ranked), Is.EqualTo(""));
         }
 
         [Test]
         public void Given_APointerOutsideEveryCandidate_When_PointerWithinRuns_Then_NoCollisionIsReported()
         {
             // Arrange
-            var query = Query(new Rect(0, 0, 10, 10), new Vector2(500, 500),
+            var query = Query(s_active, new Vector2(500, 500),
                 Candidate("a", new Rect(0, 0, 50, 50)),
                 Candidate("b", new Rect(100, 100, 50, 50)));
 
             // Act
-            var winner = DndCollisions.PointerWithin(in query);
+            var ranked = DndCollisions.PointerWithin(in query);
 
             // Assert
-            Assert.That(winner, Is.Null);
+            Assert.That(Ids(ranked), Is.EqualTo(""));
         }
 
         #endregion

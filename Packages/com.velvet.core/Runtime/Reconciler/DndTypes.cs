@@ -93,9 +93,26 @@ namespace Velvet
         }
     }
 
-    /// <summary>Returns the winning droppable id, or null for no collision. Must be pure over the query —
-    /// it runs on every pointer move of an active drag.</summary>
-    public delegate string? DndCollisionDetection(in DndCollisionQuery query);
+    /// <summary>One colliding droppable: its id, its <see cref="DndDroppableRect.Data"/>, and the value the
+    /// strategy ranked it by (<see cref="DndCollisions"/> says which per strategy).</summary>
+    public readonly struct DndCollision
+    {
+        public string Id { get; }
+        public object? Data { get; }
+        public double Value { get; }
+
+        public DndCollision(string id, object? data, double value)
+        {
+            Id = id;
+            Data = data;
+            Value = value;
+        }
+    }
+
+    /// <summary>Returns the colliding droppables ranked best first, as dnd-kit's <c>CollisionDetection</c>
+    /// does; the first entry becomes the over target and an empty array means no collision. Must be pure
+    /// over the query — it runs on every pointer move of an active drag.</summary>
+    public delegate DndCollision[] DndCollisionDetection(in DndCollisionQuery query);
 
     /// <summary>
     /// Drag-and-drop scope configuration. All callbacks are optional;
