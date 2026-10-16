@@ -38,11 +38,15 @@ namespace Velvet
         public const long ResponsiveLg = 1L << 42;
         public const long ResponsiveXl = 1L << 43;
         public const long Responsive2xl = 1L << 44;
-        public const long Dark = 1L << 45;
+        // Container queries (@md:, @max-md:): a ceiling ranks below a floor, and both above every viewport
+        // breakpoint, so an `@md:` utility beats an `md:` one where both are on.
+        public const long ContainerMax = 1L << 45;
+        public const long ContainerMin = 1L << 46;
+        public const long Dark = 1L << 47;
         // [&>*]: — `.x > *` on the child, one class, and an arbitrary variant, which Tailwind orders after every
         // named one: it wins over the child's base utility and its md:/dark:, and loses to any pseudo-class
         // variant the child declares. Its selector sorts after [&:…]:'s, ':' before '>'.
-        public const long ChildVariant = 1L << 47;
+        public const long ChildVariant = 1L << 49;
         #endregion
 
         #region One pseudo-class or attribute selector on top of the utility's class
@@ -75,7 +79,7 @@ namespace Velvet
         public const long Nth = OneClass | 1L << 37;
         public const long NthLast = OneClass | 1L << 38;
         // [&:nth-child(N)]: and the other [&:…]: structural forms: an arbitrary variant.
-        public const long ArbitrarySelector = OneClass | 1L << 46;
+        public const long ArbitrarySelector = OneClass | 1L << 48;
         #endregion
 
         public static long AttributeOf(StyleAttributeNamespace ns) => ns == StyleAttributeNamespace.Aria ? Aria : Data;
@@ -110,6 +114,11 @@ namespace Velvet
 
         internal static long ForVariant(StyleVariantKind kind) => s_forVariant[kind];
 
+        // The rank of a variant as written. Only a container query's rank depends on more than its kind: the
+        // name a Container parse returns is the prefix, whose direction picks between the two container ranks.
+        internal static long ForVariant(StyleVariantKind kind, string? name)
+            => kind == StyleVariantKind.Container ? StyleContainerQuery.RankOf(name) : ForVariant(kind);
+
         private static readonly VariantKindTable<long> s_forVariant = new(
             (StyleVariantKind.Hover, Hover),
             (StyleVariantKind.Sm, ResponsiveSm),
@@ -117,6 +126,7 @@ namespace Velvet
             (StyleVariantKind.Lg, ResponsiveLg),
             (StyleVariantKind.Xl, ResponsiveXl),
             (StyleVariantKind.Xxl, Responsive2xl),
+            (StyleVariantKind.Container, ContainerMin),
             (StyleVariantKind.Dark, Dark),
             (StyleVariantKind.GroupHover, GroupHover),
             (StyleVariantKind.GroupFocus, GroupFocus),

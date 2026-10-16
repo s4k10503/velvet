@@ -76,6 +76,8 @@ namespace Velvet.Tests
         private const string TextInputColorReader =
             "System.Void Velvet.StyleTextInputColors.Consider(UnityEngine.UIElements.VisualElement, System.String, "
             + "UnityEngine.UIElements.TextElement, Velvet.StyleTextInputColors/Winner&)";
+        private const string ContainerMarkerReader =
+            "System.Boolean Velvet.StyleResponsiveScope.IsContainer(UnityEngine.UIElements.VisualElement)";
         private const string DeclaredKindReader =
             "Velvet.StyleRelativeLengths/Declared Velvet.StyleRelativeLengths.DeclaredKind("
             + "UnityEngine.UIElements.VisualElement, Velvet.StyleLonghand, UnityEngine.UIElements.StyleLength)";
@@ -795,6 +797,31 @@ namespace Velvet.Tests
                 "a space margin or a divider gives way to the child's own class wherever it sits in the list");
         }
 
+        // What shows the case can fail is IsContainer answering from the first class on the list: the arrangement
+        // that opens with p-2 then finds no container. The verdict is that only the set decides.
+        [Test]
+        [ReaderVerdict(ContainerMarkerReader)]
+        public void Given_ANamedContainerMarkerBesideAnotherClass_When_TheOrderTheyWereAddedInIsReversed_Then_TheUnnamedQueryResolvesTheSameContainerBothWays()
+        {
+            // Arrange
+            var added = Carrying("@container/side", "p-2");
+            var reversed = Carrying("p-2", "@container/side");
+            var addedLeaf = new VisualElement();
+            var reversedLeaf = new VisualElement();
+            added.Add(addedLeaf);
+            reversed.Add(reversedLeaf);
+
+            // Act
+            var fromAdded = StyleResponsiveScope.ResolveContainer(addedLeaf, string.Empty);
+            var fromReversed = StyleResponsiveScope.ResolveContainer(reversedLeaf, string.Empty);
+
+            // Assert — both resolve the parent rather than merely agreeing: two nulls would agree while
+            // measuring nothing.
+            Assert.That((ReferenceEquals(fromAdded, added), ReferenceEquals(fromReversed, reversed)),
+                Is.EqualTo((true, true)),
+                "an unnamed container query finds a marked ancestor wherever the marker sits in its class list");
+        }
+
         [Test]
         [ReaderVerdict(UniformScaleReader)]
         public void Given_TwoUniformScalePresets_When_TheirOrderAndTheAxisPriorityChange_Then_TheFallbackFollowsTheVisibleCascadeBothWays()
@@ -933,7 +960,6 @@ namespace Velvet.Tests
             => ReadDeclaredKind.Invoke(null, new object[] { element, StyleLonghand.Height, element.style.height })!
                 .ToString();
 
-        // GREEN_ON_BASE(characterization): the base already picks this winner by cascade position.
         // What shows the case can fail is widening `position > winningPosition` to take every match:
         // measured, the two arrangements then declare different slots.
         [Test]
@@ -954,7 +980,7 @@ namespace Velvet.Tests
             // Assert — that the two utilities declare different slots rides along, since a pair that
             // declared the same ones would agree here whatever decided between them.
             Assert.That((fromAdded, fromReversed, colorsAlone == transformAlone),
-                Is.EqualTo((colorsAlone, colorsAlone, false)),
+                Is.EqualTo((transformAlone, transformAlone, false)),
                 "the later cascade position wins this reading, not the later place in the class list");
         }
 

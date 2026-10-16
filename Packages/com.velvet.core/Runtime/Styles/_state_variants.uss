@@ -100,64 +100,34 @@
 .selected-text-strong.is-selected { color: var(--color-text); }
 
 /* ============================= */
-/* Transition                    */
+/* Transition timing             */
 /* ============================= */
 
-/* Each property utility bundles a default duration + curve (Tailwind ships
- * transition-duration/timing-function inside every transition-* utility) so the class works
- * standalone — UI Toolkit's initial transition-duration is 0s, which would otherwise snap.
- * The default curve is ease-in-out: Tailwind's default is cubic-bezier(0.4, 0, 0.2, 1), which UI
- * Toolkit (no cubic-bezier easing) approximates most closely with its ease-in-out keyword, not the
- * fast-start ease-out. The explicit .duration-* / .ease-* classes below are declared later and override. */
-.transition-all {
-    transition-property: all;
-    transition-duration: var(--duration-normal);
-    transition-timing-function: ease-in-out;
-}
-.transition-none { transition-property: none; }
-.transition-opacity {
-    transition-property: opacity;
-    transition-duration: var(--duration-normal);
-    transition-timing-function: ease-in-out;
-}
-.transition-colors {
-    transition-property: background-color, border-color, color;
-    transition-duration: var(--duration-normal);
-    transition-timing-function: ease-in-out;
-}
-.transition-colors-scale {
-    transition-property: background-color, border-color, color, scale;
-    transition-duration: var(--duration-normal);
-    transition-timing-function: ease-in-out;
-}
-.transition-colors-scale-opacity {
-    transition-property: background-color, border-color, color, scale, opacity;
-    transition-duration: var(--duration-normal);
-    transition-timing-function: ease-in-out;
-}
-.duration-fast { transition-duration: var(--duration-fast); }
-.duration-normal { transition-duration: var(--duration-normal); }
-.duration-slow { transition-duration: var(--duration-slow); }
-/* Numeric scale (Tailwind ms steps; UI Toolkit transition-duration is in seconds). */
+/* The transition-* rules that set a duration and a curve of their own are in _effects.uss, ahead of these. */
+/* The numeric scale is Tailwind's ms steps; UI Toolkit transition-duration is in seconds. */
 .duration-0 { transition-duration: 0s; }
 .duration-75 { transition-duration: 0.075s; }
 .duration-100 { transition-duration: 0.1s; }
+.duration-fast { transition-duration: var(--duration-fast); }
 .duration-150 { transition-duration: 0.15s; }
+.duration-normal { transition-duration: var(--duration-normal); }
 .duration-200 { transition-duration: 0.2s; }
+.duration-slow { transition-duration: var(--duration-slow); }
 .duration-300 { transition-duration: 0.3s; }
 .duration-500 { transition-duration: 0.5s; }
 .duration-700 { transition-duration: 0.7s; }
 .duration-1000 { transition-duration: 1s; }
 .ease { transition-timing-function: ease; }
 .ease-in { transition-timing-function: ease-in; }
-.ease-out { transition-timing-function: ease-out; }
 .ease-in-out { transition-timing-function: ease-in-out; }
 .ease-linear { transition-timing-function: linear; }
+.ease-out { transition-timing-function: ease-out; }
 
 /* ============================= */
 /* Aspect ratio                  */
 /* ============================= */
 
-.aspect-square { aspect-ratio: 1; }
-.aspect-video { aspect-ratio: 1.7778; } /* 16 / 9 */
 .aspect-auto { aspect-ratio: auto; }
+.aspect-square { aspect-ratio: 1; }
+/* aspect-video is 16 / 9 */
+.aspect-video { aspect-ratio: 1.7778; }

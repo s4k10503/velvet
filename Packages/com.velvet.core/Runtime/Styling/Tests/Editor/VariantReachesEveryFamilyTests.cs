@@ -87,6 +87,9 @@ namespace Velvet.Tests
             Variants =
             {
                 ("md:", (fixture, host) => fixture.ResolveAt(WidePanel, host)),
+                // 768px: between the narrow and the wide panel, and the group root that is the container fills
+                // the host.
+                ("@3xl:", (fixture, host) => fixture.ResolveContainerAt(WidePanel, host)),
                 ("dark:", (fixture, host) => VelvetTheme.IsDark = true),
                 ("hover:", (fixture, host) => Hover(host)),
                 ("group-hover:", (fixture, host) => Hover(host)),
@@ -139,8 +142,7 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-        // GREEN_ON_BASE(construction): this branch only removes two text-balance families from the matrix, so the test-side family reader is carried onto the base with this fixture;
-        // removing the `excluded` filter makes negated predicates count as accepted families.
+        // GREEN_ON_BASE(characterization): the family reader runs over the literal gate strings below, and this branch changes neither it nor them, so the base reads them the same way.
         [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
         [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
             "StyleGapClass.IsGapToken")]
@@ -167,6 +169,7 @@ namespace Velvet.Tests
         /// leaves the derived set, the matrix stops posing it, and the deletion — the exact defect this
         /// fixture exists for — passes. Dropping one now leaves a representative naming nothing.
         /// </remarks>
+        // GREEN_ON_BASE(characterization): the dispatcher's gated families and this fixture's declared set agree on the base as they do here, since this branch changes neither.
         [Test]
         public void Given_ThePayloadDispatcher_When_ItsFamiliesAreDerived_Then_TheyAreExactlyTheDeclaredOnes()
         {
@@ -185,7 +188,6 @@ namespace Velvet.Tests
                 + "drifted apart, so the matrix below poses a different question than the code answers");
         }
 
-        // GREEN_ON_BASE(characterization): this branch only removes two text-balance families from the matrix, and the families left reach what the bare form reaches as on the base.
         [Test]
         public void Given_EveryPayloadFamily_When_WrittenBehindEachVariantCategory_Then_ItReachesWhatTheBareFormReaches()
         {
@@ -279,7 +281,7 @@ namespace Velvet.Tests
                 // the spacing and paint families need an element with children, the text families need a text
                 // element, and a relational payload needs a group ancestor. All three are rendered for every
                 // family so the choice stays out of the declarations.
-                using var mounted = V.Mount(host, V.Div(className: "group", children: new VNode?[]
+                using var mounted = V.Mount(host, V.Div(className: "group @container", children: new VNode?[]
                 {
                     V.Div(className: className,
                         children: new VNode?[] { V.Label(text: "a"), V.Label(text: "b") }),
@@ -369,6 +371,21 @@ namespace Velvet.Tests
             {
                 using var evt = EventBase<GeometryChangedEvent>.GetPooled();
                 tree.SimulateEvent(evt);
+            }
+        }
+
+        // Sets the panel width, lays out, then fires the geometry event the container variants re-read their
+        // container's width from: the mounted group root, which fills the host.
+        private void ResolveContainerAt(float width, VisualElement host)
+        {
+            _window.position = new Rect(0, 0, width, 600);
+            ForcePanelUpdate(host.panel);
+            var container = host[0];
+            // Same skip as the tree above: nothing registered on the container means no query is listening.
+            if (CallbackRegistry.GetValue(container) != null)
+            {
+                using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+                container.SimulateEvent(evt);
             }
         }
 

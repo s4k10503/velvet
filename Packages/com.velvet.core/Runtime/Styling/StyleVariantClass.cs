@@ -63,6 +63,12 @@ namespace Velvet
         // Relational disabled states: the group ancestor / peer sibling is disabled, as Disabled reads it.
         GroupDisabled,
         PeerDisabled,
+
+        // Container query variants (@sm:, @max-lg:, @min-[475px]:, @md/main:): the width of the nearest marked
+        // container. One member stands for every spelling; the threshold, the direction and the container's
+        // name ride in the prefix text, which StyleContainerQuery reads. Appended, like Disabled, so the members
+        // already published keep their values.
+        Container,
     }
 
     /// <summary>
@@ -112,6 +118,8 @@ namespace Velvet
         /// arbitrary value (i.e. occurs inside <c>[...]</c>, as in <c>bg-[addr:key]</c>). A named relational
         /// token (<c>group-hover/sidebar:</c>) parses to its kind with the name discarded; use the
         /// <see cref="TryParse(string, out StyleVariantKind, out string, out string)"/> overload to recover it.
+        /// A container query token (<c>@md:</c>, <c>@max-lg/main:</c>, <c>@min-[475px]:</c>) parses to
+        /// <see cref="StyleVariantKind.Container"/>, and its threshold is not recoverable through this overload.
         /// </summary>
         public static bool TryParse(string? token, out StyleVariantKind kind, out string? payload)
             => TryParse(token, out kind, out _, out payload);
@@ -152,7 +160,8 @@ namespace Velvet
         /// unnamed forms and for every non-relational variant. A <c>/</c> in the variant prefix is rejected
         /// (returns false) when the kind is not relational or when the name is empty (<c>group-hover/:</c>).
         /// The payload's own <c>/</c> (the opacity modifier <c>bg-black/50</c>) is untouched — it lives after
-        /// the <c>:</c>, not in the prefix.
+        /// the <c>:</c>, not in the prefix. For <see cref="StyleVariantKind.Container"/> the name is the whole
+        /// prefix (<c>@md/main</c>), which <c>StyleContainerQuery.TryParse</c> reads.
         /// <para/>
         /// Internal (not part of the public surface): the public 2-arg <see cref="TryParse(string, out StyleVariantKind, out string)"/>
         /// stays the supported entry point, matching the other (internal) variant parsers; the reconciler reads
@@ -166,6 +175,11 @@ namespace Velvet
             if (string.IsNullOrEmpty(token))
             {
                 return false;
+            }
+
+            if (token[0] == '@')
+            {
+                return TryParseContainer(token, out kind, out name, out payload);
             }
 
             var colon = token.IndexOf(':');
@@ -217,6 +231,31 @@ namespace Velvet
                 name = null;
                 return false;
             }
+            return true;
+        }
+
+        // `@md:p-2`, `@max-lg/main:p-2`, `@min-[475px]:p-2`: the prefix runs to the first ':'. The prefix, `@`
+        // included, is returned as the name, which is how a stacked variant tells one container query from another.
+        private static bool TryParseContainer(string token, out StyleVariantKind kind, out string? name,
+            out string? payload)
+        {
+            kind = default;
+            name = null;
+            payload = null;
+            var colon = token.IndexOf(':');
+            if (colon == -1 || colon == token.Length - 1)
+            {
+                return false;
+            }
+
+            var prefix = token.Substring(0, colon);
+            if (!StyleContainerQuery.TryParse(prefix, out _))
+            {
+                return false;
+            }
+            kind = StyleVariantKind.Container;
+            name = prefix;
+            payload = token.Substring(colon + 1);
             return true;
         }
 
@@ -279,6 +318,7 @@ namespace Velvet
             (StyleVariantKind.Lg, null),
             (StyleVariantKind.Xl, null),
             (StyleVariantKind.Xxl, null),
+            (StyleVariantKind.Container, null),
             (StyleVariantKind.Dark, null));
 
         /// <summary>True for the relational variant kinds (group-* / peer-*), the only ones that accept a name.</summary>
@@ -312,6 +352,7 @@ namespace Velvet
             (StyleVariantKind.Checked, 0f),
             (StyleVariantKind.Disabled, 0f),
             (StyleVariantKind.Dark, 0f),
+            (StyleVariantKind.Container, 0f),
             (StyleVariantKind.GroupHover, 0f),
             (StyleVariantKind.GroupFocus, 0f),
             (StyleVariantKind.GroupFocusWithin, 0f),

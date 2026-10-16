@@ -687,7 +687,7 @@ namespace Velvet.Editor.Preview
             EditorPrefs.SetString(ViewportKey, viewport);
             if (_viewportMenu != null) _viewportMenu.text = ViewportLabel();
 
-            // Re-apply the canvas size (which toggles the @container scope marker), then re-mount the story so its
+            // Re-apply the canvas size (which toggles the viewport marker), then re-mount the story so its
             // descendants resolve their responsive width source against the new scope — a manipulator binds its
             // width source at attach, so the story must re-attach for the viewport to drive its breakpoints.
             ApplyCanvasSize(_selected);
@@ -849,12 +849,12 @@ namespace Velvet.Editor.Preview
         // mutating state:
         // <list type="bullet">
         // <item>A story's explicit Width/Height ALWAYS wins: an authored card footprint is shown at its real size
-        // and is NOT treated as a responsive container. If only one axis is authored, the OTHER axis falls back to
+        // and is NOT treated as a viewport scope. If only one axis is authored, the OTHER axis falls back to
         // the measured stage size (so e.g. a Width-only story still gets a sensible height instead of 0).</item>
         // <item>Else a fixed viewport (preset or custom) sizes the canvas to that reference W x H and marks it a
-        // responsive scope so the mounted story's sm:/md:/... evaluate against the simulated size.</item>
+        // viewport scope so the mounted story's sm:/md:/... evaluate against the simulated size.</item>
         // <item>Else ("Full", no explicit size): the canvas fills the stage — its reference size IS the measured
-        // stage size. It is a responsive scope only with PanelSettings chosen, standing in for the game panel's
+        // stage size. It is a viewport scope only with PanelSettings chosen, standing in for the game panel's
         // root; without them breakpoints match the editor panel root, as that panel is the one shown.</item>
         // </list>
         private (float Width, float Height, bool IsResponsiveScope) ComputeReferenceSize(VelvetPreviewStory story)
@@ -883,7 +883,7 @@ namespace Velvet.Editor.Preview
 
         // Writes the canvas's reference size (pre-zoom, in px) as an EXPLICIT pixel size — never a percentage. A
         // percentage reference would make the canvas's layout size a function of its unscaled parent, leaving no
-        // stable "100%" to multiply by a zoom factor. Also toggles the @container responsive-scope marker per
+        // stable "100%" to multiply by a zoom factor. Also toggles the viewport-scope marker per
         // ComputeReferenceSize's rule.
         private void ApplyCanvasSize(VelvetPreviewStory story)
         {
@@ -894,7 +894,7 @@ namespace Velvet.Editor.Preview
             // on story metadata / viewport mode, both known regardless of layout — so it is always safe to apply,
             // unlike the pixel size below. Toggling it unconditionally also keeps a Full selection able to clear
             // the marker even before the first layout pass.
-            _canvas.EnableInClassList(VelvetResponsive.ContainerClass, isResponsiveScope);
+            _canvas.EnableInClassList(VelvetResponsive.ViewportClass, isResponsiveScope);
 
             // Unresolved (NaN pre-layout, or a collapsed stage with no explicit/viewport size to fall back to):
             // skip the size write rather than corrupt the canvas with a NaN or 0x0 size. The stage's

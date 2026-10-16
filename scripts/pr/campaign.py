@@ -1,8 +1,8 @@
 """Whether a pull request's head owes the mutation campaign, and what the campaign on it concluded.
 
 The campaign runs once per labelled head rather than on every push: `automerge.py`'s hand-off
-dispatches `WORKFLOW` onto the head's branch once `AFTER` has passed on that head while the label is
-on. CONTRIBUTING.md's continuous-integration section owns the label's meaning. `settle.py`,
+dispatches `WORKFLOW` onto the head's branch as soon as the head carries the label, beside the head's
+other workflows rather than after them. CONTRIBUTING.md's continuous-integration section owns the label's meaning. `settle.py`,
 `automerge.py` and `refuse/merge_unproven_head.py` all decide from here.
 
 A campaign is a run of `WORKFLOW` whose head is the pull request's head, read off the Actions runs
@@ -29,8 +29,9 @@ WORKFLOW = "mutation.yml"
 
 PATH = ".github/workflows/" + WORKFLOW
 
-# The workflow a head has to pass before its campaign is dispatched, by the file it runs.
-# CONTRIBUTING.md's continuous-integration section owns why.
+# The workflow whose pass a recovery waits for before it dispatches a campaign onto a head, and whose
+# failure cancels the head's open campaign, by the file it runs. The hand-off at push time waits for
+# neither. CONTRIBUTING.md's continuous-integration section owns why.
 AFTER = ".github/workflows/test.yml"
 
 # The job of `AFTER` that concludes over every other, by the name it declares.
@@ -134,9 +135,11 @@ def reason(labels, found, head, stuck, unbacked=None):
         return None
     if found is None:
         return (f"it carries the {LABEL} label and no {WORKFLOW} run has measured {short}: a "
-                f"hand-off dispatches one once {AFTER} passes on it, for a branch of this "
-                f"repository whose base holds automerge.yml, and adding the label again asks again; "
-                f"for any other branch the label comes off before a merge by hand")
+                f"hand-off dispatches one when the label is added, a labelled draft is marked ready, a "
+                f"labelled pull request is reopened or its head is pushed, and the merge job and the "
+                f"sweep dispatch one once {AFTER} has passed on it, for a branch of this repository "
+                f"whose base holds automerge.yml, and adding the label again asks again; for any "
+                f"other branch the label comes off before a merge by hand")
     if found == RUNNING:
         return f"its {WORKFLOW} run on {short} has not finished ({stuck})"
     if found == CANCELLED:

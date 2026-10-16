@@ -245,7 +245,7 @@ namespace Velvet
                 _childReconciler.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
                 return null;
             }
-            var enterCompletionsBefore = _ctx.PendingEnterCompletions.Count;
+            var completionsBefore = _ctx.PendingCompletions.Count;
             catchingBoundary.CatchesInTheWalk = true;
             try
             {
@@ -256,8 +256,8 @@ namespace Velvet
             {
                 // React runs nothing for work that never committed. Counted rather than read off the parent
                 // chain, which the failed walk's disposal of what it mounted has already cut.
-                _ctx.PendingEnterCompletions.RemoveRange(
-                    enterCompletionsBefore, _ctx.PendingEnterCompletions.Count - enterCompletionsBefore);
+                _ctx.PendingCompletions.RemoveRange(
+                    completionsBefore, _ctx.PendingCompletions.Count - completionsBefore);
                 return signal;
             }
             finally
@@ -356,7 +356,7 @@ namespace Velvet
                 // A setup the drain left to the layout commit attaches before the enters complete, as a ref is
                 // set by the time an enter that plays nothing reports; the commit's end completes them
                 // (FiberEffects.CommitStrandedLayoutWork).
-                if (!_ctx.HasAttachableRefs()) _ctx.RunPendingEnterCompletions();
+                if (!_ctx.HasAttachableRefs()) _ctx.RunPendingCompletions();
             }
         }
 
@@ -828,6 +828,12 @@ namespace Velvet
             }
 
             _ctx.ConditionalVariantManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.ContainerVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ContainerVariantManipulators.Clear();
             foreach (var (element, manipulator) in _ctx.RelationalVariantManipulators)
             {
                 element.RemoveManipulator(manipulator);

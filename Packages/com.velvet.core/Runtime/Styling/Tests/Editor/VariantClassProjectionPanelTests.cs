@@ -126,8 +126,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoDirectionUtilitiesAtOnePriority_When_OneIsMarkedImportant_Then_ItWinsInsteadOfTheLaterRule()
         {
-            // Arrange — nothing ranks two base utilities against each other, so _layout.uss decides and the
-            // row family, declared last, takes it. The bang is the only thing that can change that.
+            // Arrange — the variant ranking does not separate two base utilities, so the order _layout.uss
+            // declares them in, which is Tailwind's, decides and the row family, declared last, takes it. The bang
+            // is the only thing that can change that.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode?[]
             {
                 V.Div(name: "plain", className: "flex-row flex-col"),
@@ -253,16 +254,18 @@ namespace Velvet.Tests
             Assert.AreEqual((32f, 16f), (wide, leaf.resolvedStyle.width));
         }
 
+        // GREEN_ON_BASE(characterization): the base's projection already retires a base alignment that an equal
+        // payload set displaces, whichever of the two the sheet declares later.
         [Test]
-        public void Given_ACenteredBaseWithAnMdStartVariant_When_TheRootIsWiderThanMd_Then_TheVariantAlignmentWins()
+        public void Given_AStartBaseWithAnMdCenterVariant_When_TheRootIsWiderThanMd_Then_TheVariantAlignmentWins()
         {
-            // Arrange / Act — .items-start is declared before .items-center, so the base wins on its own.
-            var leaf = MountAt(WideWidth, "items-center md:items-start");
-            Assume.That(leaf.panel.visualTree.resolvedStyle.width, Is.GreaterThanOrEqualTo(MdBreakpoint),
-                "Precondition: the panel root resolved at least the md breakpoint wide");
+            // Arrange / Act — .items-start is declared after .items-center, so the base wins on its own.
+            var leaf = MountAt(WideWidth, "items-start md:items-center");
 
-            // Assert
-            Assert.That(leaf.resolvedStyle.alignItems, Is.EqualTo(Align.FlexStart));
+            // Assert — the panel root resolving at least the md breakpoint wide rides along, since a narrower one
+            // would leave the base alignment whatever the variant does.
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width >= MdBreakpoint, leaf.resolvedStyle.alignItems),
+                Is.EqualTo((true, Align.Center)));
         }
 
         #endregion
@@ -337,8 +340,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnMdAndADarkVariantOnOneProperty_When_BothAreActive_Then_TheHigherPrecedenceOneWins()
         {
-            // Arrange — dark outranks a breakpoint, and .bg-blue-500 is declared before .bg-red-500's sibling
-            // steps, so neither source order nor application order picks the winner here.
+            // Arrange — dark outranks a breakpoint, and .bg-blue-500 is declared before .bg-red-500, so the sheet alone
+            // would give the breakpoint's colour.
             var leaf = MountAt(WideWidth, "bg-white md:bg-red-500 dark:bg-blue-500");
 
             // Act
@@ -386,7 +389,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoColourUtilitiesAtOnePriority_When_OneIsMarkedImportant_Then_ItWinsInsteadOfTheLaterRule()
         {
-            // Arrange / Act — .bg-white is declared after the palette, so it takes every ordinary tie; the
+            // Arrange / Act — .bg-white is declared after .bg-red-500, so it takes the ordinary tie; the
             // bang is the only thing that changes that. Both halves are the pair the variants guide states.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode?[]
             {

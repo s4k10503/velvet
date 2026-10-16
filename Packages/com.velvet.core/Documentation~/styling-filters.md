@@ -130,9 +130,9 @@ shows again until it ends. This is CSS's order: a transition applies only while 
 and an animation's start or end starts no transition.
 
 > **`transition-filter` does not combine with another `transition-*` utility.** They all set the
-> same `transition-property`, and at equal specificity the one declared later in the bundled sheet
-> wins outright rather than merging — `transition-filter transition-colors` resolves to the colors
-> list, which silently takes filter changes back to instant. Note also that pinning the property
+> same `transition-property`, and at equal specificity the one Tailwind emits later, which the bundled
+> sheet declares later, wins outright rather than merging — `transition-filter transition-opacity`
+> resolves to the opacity list, which silently takes filter changes back to instant. Note also that pinning the property
 > means `transition-filter` transitions *only* `filter`: the element's colours, transforms and
 > geometry stop transitioning, which is what CSS does too. Put the other properties' transitions on a
 > different element, or hand-author a `transition-property` naming `filter` alongside them, in a stylesheet

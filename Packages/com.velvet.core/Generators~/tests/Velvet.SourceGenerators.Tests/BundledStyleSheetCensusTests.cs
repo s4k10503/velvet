@@ -24,8 +24,8 @@ namespace Velvet.SourceGenerators.Tests
     /// </remarks>
     public sealed class BundledStyleSheetCensusTests
     {
-        private const int SurveyedRuleCount = 2228;
-        private const int SurveyedSingleClassRuleCount = 2188;
+        private const int SurveyedRuleCount = 2235;
+        private const int SurveyedSingleClassRuleCount = 2197;
         private const int SurveyedDistinctPropertyNameCount = 65;
         private const int SurveyedUtilityClassCount = 2145;
         private const int SurveyedTransitionUtilityCount = 36;
@@ -124,9 +124,7 @@ namespace Velvet.SourceGenerators.Tests
         [Fact]
         public void Given_TheDerivedTable_When_Compiled_Then_TheTransitionUtilitiesAreInTheOrderTheSheetsDeclareThem()
         {
-            // Arrange — transition-none sits between transition-all and the property-specific utilities rather
-            // than ahead of both, which is the deviation from the reference cascade BundledStyleSheetOrderTests
-            // exempts.
+            // Arrange — Tailwind's order, transition-none last since it writes transition-property alone.
             var sheets = BundledStyleSheets();
             Assume.NotEmpty(sheets, "the bundled stylesheets were located");
             var probe = StyleTableTestHelper.Load(StyleTableTestHelper.Derive(sheets));
@@ -140,9 +138,9 @@ namespace Velvet.SourceGenerators.Tests
             Assert.Equal(
                 new[]
                 {
-                    "transition-transform", "transition-filter", "transition-all", "transition-none",
-                    "transition-opacity", "transition-colors", "transition-colors-scale",
-                    "transition-colors-scale-opacity",
+                    "transition-all", "transition-colors", "transition-colors-scale",
+                    "transition-colors-scale-opacity", "transition-filter", "transition-opacity",
+                    "transition-transform", "transition-none",
                 },
                 ordered);
         }
@@ -268,8 +266,7 @@ namespace Velvet.SourceGenerators.Tests
             // Arrange
             var expected = new Dictionary<SelectorShape, int>
             {
-                [SelectorShape.SingleClass] = 2188,
-                [SelectorShape.SelectorList] = 2,
+                [SelectorShape.SingleClass] = 2197,
                 [SelectorShape.ClassWithPseudoClass] = 32,
                 [SelectorShape.ClassWithStateMarker] = 3,
                 [SelectorShape.Root] = 2,

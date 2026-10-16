@@ -167,9 +167,9 @@ namespace Velvet
                 }
                 CommitLayoutBatch(ctx, null, s_noRoots);
             }
-            // Enters that played nothing, which a pass left to complete once its refs attach
-            // (Reconciler.FinishTopLevelPass).
-            ctx.RunPendingEnterCompletions();
+            // Completions a pass left until its refs attach (Reconciler.FinishTopLevelPass): an enter that
+            // played nothing completes here, an exit stages for the passive flush.
+            ctx.RunPendingCompletions();
             // What is left undelivered is held by a parked pass or names a boundary that is gone, which nothing
             // delivers.
             ctx.PendingCaughtErrorReports.RemoveAll(static report => !report.Boundary.IsMounted);
@@ -560,6 +560,11 @@ namespace Velvet
             {
                 context.PendingPassiveEffectFibers.Add(fiber);
             }
+            ArmPassiveDrain(context);
+        }
+
+        private static void ArmPassiveDrain(ReconcilerContext context)
+        {
             if (context.PassiveEffectDrainScheduled) return;
             // One drain serves the whole context and only that drain clears the latch below, so the
             // registration has to sit on a host outliving any single subtree: the batch scheduler's
@@ -575,6 +580,30 @@ namespace Velvet
             anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, context, DrainPassiveEffects));
         }
 
+        // An exit whose child left in the pass that just ended completes in the passive-effect flush, after the
+        // effects that flush runs, as Framer Motion's PresenceChild completes it from an effect. A context with no
+        // scheduler anchor, a bare Reconciler, has no flush to wait for and completes at once.
+        internal static void StagePassiveCompletion(ReconcilerContext context, Action complete)
+        {
+            if (context.BatchScheduler.Anchor == null)
+            {
+                complete();
+                return;
+            }
+            context.PendingPassiveCompletions.Add(complete);
+            ArmPassiveDrain(context);
+        }
+
+        // Run whether or not the presence's owner has unmounted since staging: an inner presence that leaves with
+        // its enclosing child is gone by the flush, and Framer Motion still calls its onExitComplete.
+        private static void RunPassiveCompletions(ReconcilerContext context)
+        {
+            if (context.PendingPassiveCompletions.Count == 0) return;
+            var completions = context.PendingPassiveCompletions.ToArray();
+            context.PendingPassiveCompletions.Clear();
+            foreach (var complete in completions) complete();
+        }
+
         // Tree-ordered, 2-phase passive (UseEffect) commit across every fiber staged in the current
         // batch. Phase 1 runs every pending fiber's effect cleanups; phase 2 runs every pending
         // fiber's effect setups. Both phases walk the staged fibers in post-order
@@ -588,11 +617,12 @@ namespace Velvet
             // Snapshot and clear the staged set before running: an effect setup can synchronously
             // stage further passive effects (setState in a UseEffect), which must enqueue a NEW drain
             // rather than mutate the list we are iterating.
-            if (context.PendingPassiveEffectFibers.Count == 0) return;
+            if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return;
             context.EffectCommitDepth++;
             try
             {
                 RunPassivePhases(context);
+                RunPassiveCompletions(context);
             }
             finally
             {
@@ -765,7 +795,7 @@ namespace Velvet
             // An effect setup may setState and stage a fresh batch synchronously; drain until quiescent.
             // Bounded to surface a runaway effect-stages-effect loop as a test failure rather than a hang.
             var guard = 0;
-            while (context.PendingPassiveEffectFibers.Count > 0)
+            while (context.PendingPassiveEffectFibers.Count > 0 || context.PendingPassiveCompletions.Count > 0)
             {
                 if (guard++ > 10000)
                 {

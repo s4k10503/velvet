@@ -192,17 +192,18 @@ The **Viewport** addon simulates responsive widths. "Full" (the default) lets th
 the stage. Typing a size into the toolbar's width/height fields switches the viewport to
 **Custom** and sizes the canvas to that exact reference px, clamped to 1–8192 (the fields start
 at 1920×1080 the first time the window opens, and remember the last value entered). A sized
-(Custom) viewport makes the canvas a **responsive scope** (it applies the `@container` marker)
+(Custom) viewport makes the canvas a **viewport scope** (it applies `VelvetResponsive.ViewportClass`)
 so the mounted story's `sm:`/`md:`/… breakpoints evaluate against the simulated width rather
-than the panel root. See [styling-variants.md](styling-variants.md) for container queries.
+than the panel root. A story's `@md:`-style container variants are unaffected: they read the
+`@container` the story marks. See [styling-variants.md](styling-variants.md#simulating-a-viewport-velvet-viewport).
 
 Two behaviors are worth knowing:
 
 - **Re-mount on change.** Changing the viewport re-applies the canvas size (toggling the
-  `@container` marker) **and re-mounts the story**, so its descendants attach afresh and resolve
+  viewport marker) **and re-mounts the story**, so its descendants attach afresh and resolve
   their width source against the new scope.
 - **A story's explicit size wins.** A story with an explicit `Width`/`Height` is always shown
-  at its real footprint and is **not** treated as a responsive container — the viewport
+  at its real footprint and is **not** treated as a viewport scope — the viewport
   simulation applies only to fill-canvas stories (no explicit size).
 
 ### Theme
@@ -234,7 +235,7 @@ treats the viewport as a screen of that many pixels (the stage itself under **Fu
 target texture as the screen when they have one, and resolves the scale a runtime panel on those settings
 takes for it — `ConstantPixelSize`, `ConstantPhysicalSize` at `Screen.dpi`, or `ScaleWithScreenSize` with
 its reference resolution and screen match mode; a world-space panel takes 1. It lays the canvas out in
-that panel's units, painted at that scale under the zoom, and makes the canvas the responsive scope under
+that panel's units, painted at that scale under the zoom, and makes the canvas the viewport scope under
 **Full** as a Custom viewport does, remounting the story when the choice changes. So a story's explicit
 `Width`/`Height`, and the breakpoints of a story without one, are read in the panel's units, and the
 status line shows the scale. With the field empty the canvas keeps the editor panel's own scale.
