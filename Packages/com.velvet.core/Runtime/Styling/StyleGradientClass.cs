@@ -609,14 +609,12 @@ namespace Velvet
         }
 
         // A bracketed length for a from-/via-/to- position, read as a list-bracket position is. A bare 0 is
-        // declined: Tailwind's length test requires a unit, and in its own case
-        // (StyleArbitraryValueResolver.SpellsUnitAsTailwindInfers).
+        // declined: Tailwind's length test (TailwindDataTypes.IsLength) requires a unit, and in its own case.
         private static bool TryParseBracketedPixels(string suffix, out float px)
         {
             px = 0f;
             return suffix.Length > 2 && suffix[0] == '[' && suffix[suffix.Length - 1] == ']'
-                && suffix != "[0]"
-                && StyleArbitraryValueResolver.SpellsUnitAsTailwindInfers(suffix.AsSpan(1, suffix.Length - 2))
+                && TailwindDataTypes.IsLength(suffix.AsSpan(1, suffix.Length - 2))
                 && TryParseStopLength(suffix.Substring(1, suffix.Length - 2), out px);
         }
 

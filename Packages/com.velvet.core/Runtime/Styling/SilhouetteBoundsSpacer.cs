@@ -271,9 +271,9 @@ namespace Velvet
             {
                 return false;
             }
-            // TryParseInferredArbitraryPixels already verifies the bracket shape itself, so a non-bracket (or
+            // TryParseBorderWidthPixels already verifies the bracket shape itself, so a non-bracket (or
             // malformed-bracket) token falls straight through to the plain-integer form below.
-            if (StyleArbitraryValueResolver.TryParseInferredArbitraryPixels(s, out width))
+            if (StyleArbitraryValueResolver.TryParseBorderWidthPixels(s, out width))
             {
                 return true;
             }

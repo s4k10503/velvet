@@ -27,3 +27,6 @@
   `calc(1px_-2px)`, subtracts where it was declined, and a function name is read in any case: `CALC(1px_+_2px)`
   is 3px, while `CALC(1px+2px)`, which Tailwind leaves unspaced, is declined as CSS declines it. A space at
   either end of a length (`top-[_calc(1px)]`, `w-[1px_]`) is trimmed as the browser trims it.
+- `border-[thin]`, `border-[medium]` and `border-[thick]` are 1px, 3px and 5px, and `text-[…]` takes the
+  font-size keywords (`text-[x-large]`, `text-[larger]`, …), as Tailwind's type tests hand them to
+  `border-width` and `font-size`.
