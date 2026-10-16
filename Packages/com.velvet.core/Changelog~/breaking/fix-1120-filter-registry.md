@@ -10,6 +10,7 @@
   re-applied the element's classes, and a re-registration left elements on the definition they had.
 - A filter change where the element's filter holds a user `filter-[name:args]` before or after it applies at
   once, under `transition-filter` and under the engine's own filter transition alike, as CSS interpolates a
-  filter list holding a `url()` discretely. Velvet's filter tween ran a custom's arguments between two
+  filter list holding a `url()` discretely. So does the first filter utility written over a stylesheet `filter`
+  holding a custom filter function. Velvet's filter tween ran a custom's arguments between two
   argument sets of one definition, faded a custom in or out from its declared defaults, and tweened a built-in
   filter beside a custom.

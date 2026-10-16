@@ -152,7 +152,8 @@ changes. The native filter types the utilities compose (`blur`, `contrast`, `gra
 A user custom filter is a `url()` reference in CSS's terms, and CSS interpolates a filter list holding one
 discretely. So a change where the element's filter holds a `filter-[name:args]` before or after it applies at
 once under either animator: `filter-[glow:#f00:2]` → `hover:filter-[glow:#00f:6]`, a custom appearing or going,
-and a built-in beside a custom (`blur-0 filter-[glow:2]` → `blur-md filter-[glow:2]`) alike. Such a change
+and a built-in beside a custom (`blur-0 filter-[glow:2]` → `blur-md filter-[glow:2]`) alike. The same holds for
+the first filter utility written over a stylesheet `filter` that holds a custom filter function. Such a change
 stops a filter tween already running on the element.
 
 ### Contract

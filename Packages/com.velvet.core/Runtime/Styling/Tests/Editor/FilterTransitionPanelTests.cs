@@ -418,6 +418,19 @@ namespace Velvet.Tests
             Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(1.25f).Within(1e-5f));
         }
 
+        [Test]
+        public void Given_AUserCustomOnlyInTheShownFilter_When_TheChangeIsJudged_Then_ItIsDiscrete()
+        {
+            // Arrange — the inline list is empty and the element shows a stylesheet's filter holding a user custom.
+            var shown = CustomList(CreateUserDefinition(new FilterParameter(0f)), new FilterParameter(1f));
+
+            // Act
+            var discrete = StyleFilterTransitionDriver.ChangeIsDiscrete(null, shown, BlurList(12f));
+
+            // Assert
+            Assert.That(discrete, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): saturate beside a blur interpolated on the base, which the url() rule keeps.
         [Test]
         public void Given_ASaturateBesideABlur_When_ChannelsBuilt_Then_BothInterpolate()

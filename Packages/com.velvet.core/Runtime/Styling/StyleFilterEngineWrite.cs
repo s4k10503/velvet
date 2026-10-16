@@ -66,8 +66,8 @@ namespace Velvet
                 WritePlain(element, to);
                 return;
             }
-            if (TransitionsWithheld || StyleFilterTransitionDriver.HoldsUrl(element.style.filter.value)
-                || StyleFilterTransitionDriver.HoldsUrl(to))
+            if (TransitionsWithheld
+                || StyleFilterTransitionDriver.ChangeIsDiscrete(element.style.filter.value, element.resolvedStyle.filter, to))
             {
                 WriteSuspended(element, to);
                 return;

@@ -135,7 +135,8 @@ namespace Velvet
                 && TryFindTransition(element, FilterPropertyName, null, out durationMs, out delayMs, out easing);
             // Read the CURRENT applied list as the from-side. During an in-flight tween this is last frame's
             // interpolated list, so a redirect starts from where the eye is — not the tween's original start.
-            if (!runs || !TryBuildChannels(element.style.filter.value, to, out channels))
+            if (!runs || ChangeIsDiscrete(element.style.filter.value, element.resolvedStyle.filter, to)
+                || !TryBuildChannels(element.style.filter.value, to, out channels))
             {
                 // Nothing runs for the tween, or the change does not interpolate: a discrete instant write.
                 if (bound != null)
@@ -419,9 +420,15 @@ namespace Velvet
         // A user filter-[name:args] is CSS's url() reference, and Filter Effects interpolates a list holding one
         // discretely, whatever else the list holds. The first-party brightness/saturate customs are CSS's
         // brightness() and saturate(), which interpolate.
-        internal static bool HoldsUrl(List<FilterFunction>? list)
+        internal static bool HoldsUrl(IEnumerable<FilterFunction>? list)
             => list != null
-                && list.Exists(f => f.type == FilterFunctionType.Custom && !BuiltInFilterDefinitions.IsFirstParty(f.customDefinition));
+                && list.Any(f => f.type == FilterFunctionType.Custom && !BuiltInFilterDefinitions.IsFirstParty(f.customDefinition));
+
+        // The url() rule over a whole change. Before it, the element shows its stylesheet's filter wherever the inline
+        // list is empty, so the shown list is read beside the inline one.
+        internal static bool ChangeIsDiscrete(List<FilterFunction>? inline, IEnumerable<FilterFunction>? shown,
+            List<FilterFunction>? to)
+            => HoldsUrl(inline) || HoldsUrl(shown) || HoldsUrl(to);
 
         // A filter present only in the to-list fades IN from its neutral value; one present only in from fades
         // OUT to it. Matches CSS filter-list padding.
