@@ -273,8 +273,9 @@ namespace Velvet
                 facets.HasFamily = false;
                 return true;
             }
+            // An addr: key keeps its underscores, and takes `\_` for one as any family does.
             facets.Family = family.StartsWith("addr:", StringComparison.Ordinal)
-                ? family
+                ? family.Replace("\\_", "_")
                 : StyleCustomPropertyClass.Decode(family);
             facets.HasFamily = true;
             return true;
