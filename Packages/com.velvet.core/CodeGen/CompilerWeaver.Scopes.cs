@@ -12,12 +12,22 @@ namespace Velvet.CodeGen
     // that calls none): a call or constructor returning a VNode, wherever it stands: an element of a `VNode[]`
     // initializer (what `params VNode?[] children` and `children: new[] { ... }` both compile to), an argument (a
     // single child, a member of a props record), the root.
+    // A scope may also be a delegate built from a lambda that captures variables (`ldloc display; ldftn; newobj`),
+    // cached under the captured variables the lambda reads when it runs, which the compiler hoists into fields of a
+    // display class.
+    // A scope may also be an expression stored once into a local or a captured variable (`var visible =
+    // items.Where(...)`), when nothing can change what it holds after the scope ended: a value type, a string, a
+    // delegate, or an interface exposing no way to change it (IEnumerable<T>, IReadOnlyList<T>, ...). A list or an
+    // array is not one, because the body may write to it afterwards.
     // It is woven only when everything the expression reads is a value compared where it starts:
     //   A parameter it reads is compared. A local it reads is compared when it is a hook value nothing stores to
-    //   after the hook section, or a value type or string. A local it takes nothing from and leaves nothing in for
-    //   what runs after it is its own and is not compared (see ScopeFacts.IsPrivateTo). A local it writes must be its
-    //   own, and an address it takes of a parameter, or of a local that is not its own, must be read at once (see
-    //   ReadsInPlace).
+    //   after the hook section, a value type or string, or the output of a scope of its own stored once before it. A captured variable is read through its display class and
+    //   follows the same rules, and one a lambda of the scope reads is compared whichever it is, provided nothing
+    //   stores to it once the scope began and no lambda writes it. A setter that a hook returns beside its value is
+    //   one object for the life of the component, and is compared as a dependency that never changes. A local it
+    //   takes nothing from and leaves nothing in for what runs after it is its own and is not compared (see
+    //   ScopeFacts.IsPrivateTo). A local it writes must be its own, and an address it takes of a parameter, or of a
+    //   local that is not its own, must be read at once (see ReadsInPlace).
     //   It calls no member of a Ref / MutableRef and no method taking one, and reads no hook value from UseService
     //   or from a custom hook unless value-like: a render reading through one has no value to compare.
     //   It reads no mutable static, and calls only a V factory, a constructor, an instance property accessor
@@ -27,10 +37,11 @@ namespace Velvet.CodeGen
     //   Control flow in it stays inside it and moves forward, nothing outside jumps into it, and nothing
     //   outside runs it twice (no loop around it).
     //   The method has no try / catch / finally.
-    // What is inspected is the expression's own instructions: the fields it reads and each call it makes by the type
-    // it is declared on and by the types of its parameters. A call is not followed into the code it reaches. The
-    // target of a delegate the expression hands on (a method group, a lambda capturing nothing), the override a
-    // virtual call dispatches to, `Func.Invoke` on a delegate it was given and a BCL generic instantiated over a Ref
+    // What is inspected is the expression's own instructions: the fields it reads, each call it makes by the type
+    // it is declared on and by the types of its parameters, and the captured variables a lambda it creates reads.
+    // A call is not followed into the code it reaches. The target of a delegate the expression hands on (a method
+    // group, a lambda capturing nothing), the override a virtual call dispatches to, `Func.Invoke` on a delegate it
+    // was given, the body of a lambda beyond the variables it captures, and a BCL generic instantiated over a Ref
     // (`List<Ref<int>>`, whose members name no Ref in their signatures) are all code or values this does not read.
     // As in React, render code must be pure: an expression that reads something no dependency stands for, through
     // one of those or through a property accessor of an object it holds, shows what it read when it last ran.
@@ -85,12 +96,29 @@ namespace Velvet.CodeGen
             "System.DateTime", "System.DateTimeOffset", "System.Guid", "System.TimeZoneInfo",
         };
 
+        // Interfaces declaring no member that changes what a value holds, so that one kept from an earlier render
+        // is what the expression would build again.
+        private static readonly HashSet<string> ReadOnlyInterfaces = new()
+        {
+            "System.Collections.Generic.IEnumerable`1", "System.Collections.Generic.IReadOnlyCollection`1",
+            "System.Collections.Generic.IReadOnlyList`1", "System.Collections.Generic.IReadOnlyDictionary`2",
+            "System.Collections.Generic.IReadOnlySet`1", "System.Linq.IOrderedEnumerable`1", "System.Linq.ILookup`2",
+            "System.Linq.IGrouping`2",
+        };
+
         private readonly record struct ElementRegion(int Start, int End);
 
-        // Where a region came from.
-        private sealed record ScopeCandidate(ElementRegion Span);
+        private enum ScopeKind
+        {
+            Node,
+            Value,
+        }
 
-        // One value an expression reads, loaded again where the expression starts: a parameter or a local.
+        // Where a region came from. Output: the local or captured variable the value is stored into, once.
+        private sealed record ScopeCandidate(ElementRegion Span, ScopeKind Kind, TypeReference? ResultType, object? Output);
+
+        // One value an expression reads, loaded again where the expression starts: a parameter, a local, or a
+        // field of the display class held in Receiver.
         private sealed class DepSource
         {
             public DepSource(object key, TypeReference type)
@@ -106,6 +134,10 @@ namespace Velvet.CodeGen
             public ParameterDefinition? Parameter { get; init; }
 
             public VariableDefinition? Local { get; init; }
+
+            public FieldReference? Field { get; init; }
+
+            public VariableDefinition? Receiver { get; init; }
         }
 
         private sealed record ScopePlan(ScopeCandidate Candidate, Instruction Start, Instruction Store,
@@ -115,8 +147,13 @@ namespace Velvet.CodeGen
         }
 
         // The slot the gate was granted, and the values passing through a scope's gate and store, which no other
-        // scope's gate or store runs between.
-        private sealed record ScopeLocals(VariableDefinition Slot, VariableDefinition Cached, VariableDefinition Result);
+        // scope's gate or store runs between. A kind no scope of the method has gets no locals.
+        private sealed record ScopeLocals(VariableDefinition Slot, VariableDefinition? Cached,
+            VariableDefinition? Result, VariableDefinition? CachedValue, VariableDefinition? ResultValue);
+
+        private static bool IsDelegateConstructor(MethodReference constructor)
+            => constructor.Name == ".ctor" && constructor.Parameters.Count == 2
+                && constructor.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr;
 
         private static bool IsStackBalanced(MethodBody body) => DepthsBefore(body.Instructions.ToArray()) != null;
 
@@ -131,8 +168,10 @@ namespace Velvet.CodeGen
             // MUTANT_SURVIVES(equivalent, boundary): a region beginning at the boundary begins with the hook call, which no scope may hold.
             foreach (var candidate in FindCandidates(facts).Where(each => each.Span.Start > boundary))
             {
+                if (candidate.Kind == ScopeKind.Value && (context.TryGetMemoizedValue == null || context.StoreMemoizedValue == null)) continue;
                 if (TryPlanCandidate(facts, candidate, plans) is not { } plan) continue;
                 plans.Add(plan);
+                if (candidate.Output != null) facts.AcceptOutput(candidate.Output);
             }
             return plans;
         }
@@ -178,16 +217,17 @@ namespace Velvet.CodeGen
             var found = new Dictionary<ElementRegion, ScopeCandidate>();
             foreach (var span in FindElementRegions(facts.Instructions, facts.Depths))
             {
-                found[span] = new ScopeCandidate(span);
+                found[span] = new ScopeCandidate(span, ScopeKind.Node, null, null);
             }
             for (var i = 0; i < facts.Instructions.Length; i++)
             {
                 if (CandidateEndingAt(facts, i) is { } built) found.TryAdd(built.Span, built);
+                if (CandidateStoredAt(facts, i, found) is { } stored) found[stored.Span] = stored;
             }
             return found.Values.OrderBy(each => each.Span.Start).ThenByDescending(each => each.Span.End).ToList();
         }
 
-        // A call or constructor producing a VNode.
+        // A call or constructor producing a VNode, or a delegate over a lambda of a display class.
         private static ScopeCandidate? CandidateEndingAt(ScopeFacts facts, int index)
         {
             var instr = facts.Instructions[index];
@@ -195,8 +235,32 @@ namespace Velvet.CodeGen
             {
                 return null;
             }
+            var isDelegate = instr.OpCode.Code == Code.Newobj && index > 0 && IsClosureDelegate(facts.Instructions[index - 1], method);
             var produced = instr.OpCode.Code == Code.Newobj ? method.DeclaringType : method.ReturnType;
-            return IsNodeType(produced) && SpanEndingAt(facts, index) is { } span ? new ScopeCandidate(span) : null;
+            var kind = isDelegate ? ScopeKind.Value : IsNodeType(produced) ? ScopeKind.Node : (ScopeKind?)null;
+            return kind != null && SpanEndingAt(facts, index) is { } span
+                ? new ScopeCandidate(span, kind.Value, kind == ScopeKind.Value ? produced : null, null)
+                : null;
+        }
+
+        // `ldftn lambda; newobj Delegate::.ctor(object, native int)` over a lambda of a display class.
+        private static bool IsClosureDelegate(Instruction before, MethodReference constructor)
+            => before.OpCode.Code == Code.Ldftn && before.Operand is MethodReference lambda && IsClosureClass(lambda.DeclaringType)
+                // MUTANT_SURVIVES(unreachable, clause removed): C# follows the ldftn of a display class method with the delegate's constructor.
+                && IsDelegateConstructor(constructor);
+
+        // An expression stored into a variable written nowhere else. A scope of its own whose output the scopes
+        // reading the variable compare, so that the value they read is the same object while its inputs hold.
+        private static ScopeCandidate? CandidateStoredAt(ScopeFacts facts, int index, Dictionary<ElementRegion, ScopeCandidate> found)
+        {
+            var key = facts.StoredKey(index);
+            // MUTANT_SURVIVES(equivalent, boundary): a store at the boundary ends a hook call, and no region ending there starts after the boundary.
+            if (key == null || index <= facts.Boundary || facts.WriteCount(key) != 1) return null;
+            if (SpanEndingAt(facts, index - 1) is not { } span) return null;
+            var type = facts.TypeOfStoreAt(index);
+            if (found.TryGetValue(span, out var existing)) return existing with { Output = key };
+            var kind = IsNodeType(type) ? ScopeKind.Node : IsImmutableType(type) ? ScopeKind.Value : (ScopeKind?)null;
+            return kind == null ? null : new ScopeCandidate(span, kind.Value, kind == ScopeKind.Value ? type : null, key);
         }
 
         // The expression whose last instruction is at `end`: the longest run before it that starts at the depth its
@@ -276,6 +340,24 @@ namespace Velvet.CodeGen
         private static bool IsArrayOrIndirection(TypeReference type)
             => type is ArrayType or ByReferenceType or PointerType or PinnedType;
 
+        // A value type, a string, a delegate or an interface with no mutating member. An array of any of them is
+        // an object the body can write to.
+        private static bool IsImmutableType(TypeReference type)
+        {
+            if (IsArrayOrIndirection(type)) return false;
+            // MUTANT_SURVIVES(unreachable, clause removed): a ref struct is built in place on its local, so no expression a candidate stores yields one; Given_ASpanBuiltOnceFromState_When_Woven_Then_NoInstructionBuildsItOnTheStack pins the build.
+            if (IsValueLike(type) && IsBoxable(type)) return true;
+            if (ReadOnlyInterfaces.Contains(ElementOf(type).FullName)) return true;
+            var current = TryResolve(() => type.Resolve());
+            while (current?.BaseType != null)
+            {
+                if (current.BaseType.FullName == "System.MulticastDelegate") return true;
+                var parent = current.BaseType;
+                current = TryResolve(() => parent.Resolve());
+            }
+            return false;
+        }
+
         private static ScopePlan? TryPlanCandidate(ScopeFacts facts, ScopeCandidate candidate, List<ScopePlan> accepted)
         {
             var region = candidate.Span;
@@ -320,7 +402,9 @@ namespace Velvet.CodeGen
             switch (instr.Operand)
             {
                 case VariableDefinition local:
-                    return ScanLocal(facts, index, local, region, scan);
+                    return IsClosureClass(local.VariableType)
+                        ? ReachesClosureMember(instr, facts.Instructions[index + 1])
+                        : ScanLocal(facts, index, local, region, scan);
                 case ParameterDefinition parameter:
                     scan.Add(facts.ParameterDependency(parameter));
                     return IsBoxable(parameter.ParameterType)
@@ -344,6 +428,14 @@ namespace Velvet.CodeGen
             scan.Add(new DepSource(local, local.VariableType) { Local = local });
             return true;
         }
+
+        // A display class is only ever read through one of its fields or handed to a lambda it creates: anything
+        // else could write a captured variable or read one no dependency stands for.
+        private static bool ReachesClosureMember(Instruction instr, Instruction next)
+            => instr.OpCode.Code == Code.Ldloc && IsClosureMemberAccess(next);
+
+        private static bool IsClosureMemberAccess(Instruction next)
+            => next.OpCode.Code is Code.Ldfld or Code.Ldflda or Code.Ldftn or Code.Ldvirtftn;
 
         // Taking the address of a local or a parameter is a read where nothing can write through it: the field load
         // that follows at once, or an instance call made with no argument on a primitive or an enum, which no instance
@@ -374,7 +466,23 @@ namespace Velvet.CodeGen
             {
                 return IsClosureCache(field) || (code == Code.Ldsfld && IsReadOnlyValue(field));
             }
-            return !IsClosureField(field);
+            return !IsClosureField(field) || ScanClosureField(facts, index, field, region, scan);
+        }
+
+        private static bool ScanClosureField(ScopeFacts facts, int index, FieldReference field, ElementRegion region,
+            ScopeScan scan)
+        {
+            var code = facts.Instructions[index].OpCode.Code;
+            var next = facts.Instructions[index + 1];
+            if (code == Code.Stfld) return false;
+            if (IsParentLink(field)) return IsClosureMemberAccess(next);
+            if (code == Code.Ldflda && !ReadsInPlace(next, field.FieldType)) return false;
+            // MUTANT_SURVIVES(unreachable, literal): a display class belongs to the assembly being woven, which resolves its fields.
+            if (TryResolve(() => field.Resolve()) is not { } definition) return false;
+            var dependency = facts.FieldDependency(definition, direct: true, region);
+            if (dependency == null) return false;
+            scan.Add(dependency);
+            return true;
         }
 
         private static bool ScanMethod(ScopeFacts facts, Instruction instr, MethodReference method, ElementRegion region,
@@ -386,7 +494,30 @@ namespace Velvet.CodeGen
                 scan.OnlyFactoryCalls &= method.DeclaringType.FullName == FactoryTypeFullName;
                 if (!IsRepeatableCall(instr, method)) return false;
             }
+            if (instr.OpCode.Code is Code.Ldftn or Code.Ldvirtftn && IsClosureClass(method.DeclaringType)
+                && !ScanClosureCreation(facts, method, region, scan))
+            {
+                return false;
+            }
             return !TouchesRef(method);
+        }
+
+        // A lambda reads captured variables when it runs, so what a scope holding its creation depends on is what
+        // the lambda reads of them, and the delegate kept from an earlier render reads them from the display class
+        // it was created over.
+        private static bool ScanClosureCreation(ScopeFacts facts, MethodReference lambda, ElementRegion region, ScopeScan scan)
+        {
+            if (TryResolve(() => lambda.Resolve()) is not { } definition || facts.CapturedReadsOf(definition) is not { } reads)
+            {
+                return false;
+            }
+            foreach (var field in reads.Where(facts.IsComponentField).OrderBy(each => each.FullName, System.StringComparer.Ordinal))
+            {
+                var dependency = facts.FieldDependency(field, direct: false, region);
+                if (dependency == null) return false;
+                scan.Add(dependency);
+            }
+            return true;
         }
 
         // A call taken to be a function of its arguments and of what they hold; the header says what that takes on
@@ -455,17 +586,24 @@ namespace Velvet.CodeGen
             VariableDefinition slotLocal)
         {
             if (plans.Count == 0) return;
-            var cached = new VariableDefinition(context.VNode);
-            var result = new VariableDefinition(context.VNode);
-            body.Variables.Add(cached);
-            body.Variables.Add(result);
-            var locals = new ScopeLocals(slotLocal, cached, result);
+            var locals = new ScopeLocals(slotLocal,
+                NewLocalIf(body, plans, ScopeKind.Node, context.VNode), NewLocalIf(body, plans, ScopeKind.Node, context.VNode),
+                NewLocalIf(body, plans, ScopeKind.Value, body.Method.Module.TypeSystem.Object),
+                NewLocalIf(body, plans, ScopeKind.Value, body.Method.Module.TypeSystem.Object));
             foreach (var plan in plans)
             {
                 var deps = new VariableDefinition(new ArrayType(body.Method.Module.TypeSystem.Object));
                 body.Variables.Add(deps);
                 InjectScope(body, context, plan, deps, locals);
             }
+        }
+
+        private static VariableDefinition? NewLocalIf(MethodBody body, List<ScopePlan> plans, ScopeKind kind, TypeReference type)
+        {
+            if (plans.All(plan => plan.Candidate.Kind != kind)) return null;
+            var local = new VariableDefinition(type);
+            body.Variables.Add(local);
+            return local;
         }
 
         // The store goes in and takes the branches that ended the expression first. The hit path jumps to a no-op
@@ -486,16 +624,48 @@ namespace Velvet.CodeGen
         // On a miss the expression's value is committed under the scope, then left on the stack for the store.
         private static List<Instruction> BuildScopeStore(WeaverContext context, ScopePlan plan, VariableDefinition deps,
             ScopeLocals locals)
-            => new List<Instruction>
+            => plan.Candidate.Kind == ScopeKind.Node
+                ? new List<Instruction>
+                {
+                    Instruction.Create(OpCodes.Stloc, locals.Result!),
+                    Instruction.Create(OpCodes.Ldloc, locals.Slot),
+                    Instruction.Create(OpCodes.Ldc_I4, plan.Index),
+                    Instruction.Create(OpCodes.Ldloc, deps),
+                    Instruction.Create(OpCodes.Ldloc, locals.Result!),
+                    Instruction.Create(OpCodes.Call, context.StoreMemoizedScope!),
+                    Instruction.Create(OpCodes.Ldloc, locals.Result!),
+                }
+                : BuildValueStore(context, plan, deps, locals);
+
+        // The value stays on the stack under a copy of it that is committed as an object.
+        private static List<Instruction> BuildValueStore(WeaverContext context, ScopePlan plan, VariableDefinition deps,
+            ScopeLocals locals)
+        {
+            var store = new List<Instruction> { Instruction.Create(OpCodes.Dup) };
+            store.AddRange(Box(plan.Candidate.ResultType!));
+            store.AddRange(new[]
             {
-                Instruction.Create(OpCodes.Stloc, locals.Result),
+                Instruction.Create(OpCodes.Stloc, locals.ResultValue!),
                 Instruction.Create(OpCodes.Ldloc, locals.Slot),
                 Instruction.Create(OpCodes.Ldc_I4, plan.Index),
                 Instruction.Create(OpCodes.Ldloc, deps),
-                Instruction.Create(OpCodes.Ldloc, locals.Result),
-                Instruction.Create(OpCodes.Call, context.StoreMemoizedScope!),
-                Instruction.Create(OpCodes.Ldloc, locals.Result),
-            };
+                Instruction.Create(OpCodes.Ldloc, locals.ResultValue!),
+                Instruction.Create(OpCodes.Call, context.StoreMemoizedValue!),
+            });
+            return store;
+        }
+
+        private static IEnumerable<Instruction> Box(TypeReference type)
+        {
+            if (type.IsValueType) yield return Instruction.Create(OpCodes.Box, type);
+        }
+
+        // What a cached object becomes again: unboxed for a value, cast back for a reference.
+        private static IEnumerable<Instruction> Unbox(TypeReference type)
+        {
+            if (type.IsValueType) yield return Instruction.Create(OpCodes.Unbox_Any, type);
+            else yield return Instruction.Create(OpCodes.Castclass, type);
+        }
 
         // The dependencies are read where the expression starts, which is where it reads them. A miss lands on a
         // no-op ahead of the expression, so that the gate of a scope starting at the same instruction, inserted
@@ -503,6 +673,8 @@ namespace Velvet.CodeGen
         private static List<Instruction> BuildScopeGate(MethodBody body, WeaverContext context, ScopePlan plan,
             VariableDefinition deps, ScopeLocals locals, Instruction landing)
         {
+            var isNode = plan.Candidate.Kind == ScopeKind.Node;
+            var cached = isNode ? locals.Cached! : locals.CachedValue!;
             var miss = Instruction.Create(OpCodes.Nop);
             var gate = new List<Instruction>
             {
@@ -516,13 +688,14 @@ namespace Velvet.CodeGen
                 Instruction.Create(OpCodes.Ldloc, locals.Slot),
                 Instruction.Create(OpCodes.Ldc_I4, plan.Index),
                 Instruction.Create(OpCodes.Ldloc, deps),
-                Instruction.Create(OpCodes.Ldloca, locals.Cached),
-                Instruction.Create(OpCodes.Call, context.TryGetMemoizedScope!),
+                Instruction.Create(OpCodes.Ldloca, cached),
+                Instruction.Create(OpCodes.Call, isNode ? context.TryGetMemoizedScope! : context.TryGetMemoizedValue!),
                 Instruction.Create(OpCodes.Brfalse, miss),
-                Instruction.Create(OpCodes.Ldloc, locals.Cached),
-                Instruction.Create(OpCodes.Br, landing),
-                miss,
+                Instruction.Create(OpCodes.Ldloc, cached),
             });
+            if (!isNode) gate.AddRange(Unbox(plan.Candidate.ResultType!));
+            gate.Add(Instruction.Create(OpCodes.Br, landing));
+            gate.Add(miss);
             return gate;
         }
 
@@ -531,9 +704,19 @@ namespace Velvet.CodeGen
         {
             yield return Instruction.Create(OpCodes.Dup);
             yield return Instruction.Create(OpCodes.Ldc_I4, index);
-            yield return source.Parameter != null
-                ? Instruction.Create(OpCodes.Ldarg, source.Parameter)
-                : Instruction.Create(OpCodes.Ldloc, source.Local!);
+            if (source.Parameter != null)
+            {
+                yield return Instruction.Create(OpCodes.Ldarg, source.Parameter);
+            }
+            else if (source.Local != null)
+            {
+                yield return Instruction.Create(OpCodes.Ldloc, source.Local);
+            }
+            else
+            {
+                yield return Instruction.Create(OpCodes.Ldloc, source.Receiver!);
+                yield return Instruction.Create(OpCodes.Ldfld, source.Field!);
+            }
             if (source.Type.IsValueType || source.Type.IsGenericParameter) yield return Instruction.Create(OpCodes.Box, source.Type);
             yield return Instruction.Create(OpCodes.Stelem_Ref);
         }

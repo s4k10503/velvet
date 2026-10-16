@@ -7,7 +7,7 @@ namespace Velvet.CodeGen
 {
     // Display classes: the class the compiler hoists a variable into when a lambda captures it. A hook value a
     // lambda captures is stored into a field of one, so the shapes below are what keeps a component with a
-    // handler woven at all.
+    // handler woven at all, and the reads of those fields are what a scope compares.
     internal static partial class CompilerWeaver
     {
         private const string ClosureClassPrefix = "<>c__DisplayClass";
@@ -19,13 +19,13 @@ namespace Velvet.CodeGen
             VariableDefinition? Receiver, TypeReference Type, Instruction Stored);
 
         private readonly record struct HookCaptureOutcome(HookCaptureMatch Match, HookCapture Capture,
-            Instruction? Boundary);
+            Instruction? Boundary, object? StableKey);
 
         // OnStack: the element is read and left for whatever uses it next, which the gate copies with a `dup`.
         private readonly record struct TupleElementStore(int Item, Instruction Store, VariableDefinition? Local,
             FieldReference? Field, VariableDefinition? Receiver, TypeReference Type, bool OnStack = default);
 
-        private static readonly HookCaptureOutcome BailOutcome = new(HookCaptureMatch.Bail, default, null);
+        private static readonly HookCaptureOutcome BailOutcome = new(HookCaptureMatch.Bail, default, null, null);
 
         // The value of a hook that no comparison stands for: what UseService returns, and what a custom hook returns
         // unless it is a value, which may be an instance it holds from inside.
@@ -42,6 +42,10 @@ namespace Velvet.CodeGen
 
         private static bool IsParentLink(FieldReference field)
             => field.Name.StartsWith(ClosureParentFieldPrefix, System.StringComparison.Ordinal);
+
+        // A field is named by its definition, so that two references to it from different instructions agree.
+        private static object FieldKey(FieldReference field)
+            => (object?)TryResolve(() => field.Resolve()) ?? field.FullName;
 
         // The one local of a display class type. A body holding two of one class (a scope entered twice) has no
         // local to say which a read means, and no weave names it.
@@ -73,7 +77,7 @@ namespace Velvet.CodeGen
             var type = InCallerTerms(field.FieldType, null, field.DeclaringType as GenericInstanceType);
             // MUTANT_SURVIVES(unreachable, clause removed): the type of a display class field is never one InCallerTerms answers null for.
             return receiver is not null && type is not null && !IsValueTupleType(type)
-                ? new HookCaptureOutcome(HookCaptureMatch.Matched, new HookCapture(null, field, receiver, type, store), store)
+                ? new HookCaptureOutcome(HookCaptureMatch.Matched, new HookCapture(null, field, receiver, type, store), store, null)
                 : BailOutcome;
         }
 
@@ -92,8 +96,9 @@ namespace Velvet.CodeGen
             }
             if (!TupleElementsAreSound(elements, isDirect) || IsTupleReadAgain(cursor, tuple, body)) return BailOutcome;
             var value = elements.First(element => element.Item is 1);
+            var setter = elements.FirstOrDefault(element => element.Item is 2);
             return new HookCaptureOutcome(HookCaptureMatch.Matched, new HookCapture(value.Local, value.Field, value.Receiver, value.Type, value.Store),
-                elements[^1].Store);
+                elements[^1].Store, setter.Local ?? (setter.Field is null ? null : FieldKey(setter.Field)));
         }
 
         private static TupleElementStore? ReadTupleElement(Instruction first, MethodBody body, VariableDefinition tuple)
@@ -151,5 +156,52 @@ namespace Velvet.CodeGen
             => Following(from).FirstOrDefault(instr => References(instr, tuple, body)) is { } reference
                 && !TryGetStlocVariable(reference, body, out _);
 
+        private static bool IsThisLoad(Instruction instr, MethodDefinition lambda)
+            => instr.OpCode.Code is Code.Ldarg_0 || (instr.OpCode.Code is Code.Ldarg or Code.Ldarg_S && ReferenceEquals(instr.Operand, lambda.Body.ThisParameter));
+
+        // The fields of the component's display classes a lambda reads when it runs, taken through the lambdas it
+        // creates in turn; null where it does something with the display class that this does not follow, such as
+        // writing a captured variable, passing the class along or calling a method on it. A lambda is entered once,
+        // so one creating itself reads as unsupported.
+        private static HashSet<FieldDefinition>? CapturedReadsOf(MethodDefinition lambda, Dictionary<MethodDefinition, HashSet<FieldDefinition>?> known)
+        {
+            if (known.TryGetValue(lambda, out var done)) return done;
+            known[lambda] = null;
+            var instructions = lambda.HasBody ? lambda.Body.Instructions.ToList() : new List<Instruction>();
+            var created = instructions.Where(IsClosureCreation).Select(instr => TryResolve(() => ((MethodReference)instr.Operand).Resolve()))
+                .Select(method => method is null ? null : CapturedReadsOf(method, known)).ToList();
+            // MUTANT_SURVIVES(equivalent, clause removed): a link field belongs to a class no scope reads, so IsComponentField drops it from the answer.
+            var fields = instructions.Where(instr => instr is { OpCode.Code: Code.Ldfld or Code.Ldflda, Operand: FieldReference { } field } && !IsParentLink(field))
+                .Select(instr => TryResolve(() => ((FieldReference)instr.Operand).Resolve())).ToList();
+            known[lambda] = lambda.HasThis && created.All(each => each is not null) && fields.All(each => each is not null) && !instructions.Any(instr => BreaksClosureReads(instr, lambda))
+                ? fields.OfType<FieldDefinition>().Concat(created.SelectMany(each => each!)).ToHashSet()
+                : null;
+            return known[lambda];
+        }
+
+        private static bool IsClosureCreation(Instruction instr)
+            => instr is { OpCode.Code: Code.Ldftn or Code.Ldvirtftn, Operand: MethodReference { DeclaringType: var owner } } && IsClosureClass(owner);
+
+        // What a lambda can do with its display class that the reads above do not account for: write a captured
+        // variable, or hand the class on anywhere but a field read, a lambda it creates or a link from a class it creates.
+        private static bool BreaksClosureReads(Instruction instr, MethodDefinition lambda)
+            => IsThisLoad(instr, lambda) ? !IsReceiverOfClosureAccess(instr.Next) : instr switch
+            {
+                { Operand: ParameterDefinition parameter } when ReferenceEquals(parameter, lambda.Body.ThisParameter) => instr.OpCode.Code is Code.Starg or Code.Starg_S or Code.Ldarga or Code.Ldarga_S,
+                { OpCode.Code: Code.Stfld, Operand: FieldReference field } => IsClosureField(field) && !IsParentLink(field),
+                _ => default,
+            };
+
+        private static bool IsReceiverOfClosureAccess(Instruction? next)
+            => next is { OpCode.Code: Code.Ldfld or Code.Ldflda or Code.Ldftn or Code.Ldvirtftn } || (next is { OpCode.Code: Code.Stfld, Operand: FieldReference link } && IsParentLink(link));
+
+        // The fields any lambda writes. A captured variable a lambda writes is shared between the lambdas of one
+        // render and the body, so a lambda kept from an earlier render would write one the later renders do not read.
+        private static HashSet<FieldDefinition> FieldsWrittenByLambdas(MethodDefinition component)
+            => component.DeclaringType.NestedTypes.Where(IsClosureClass).SelectMany(type => type.Methods).Where(method => method.HasBody)
+                .SelectMany(method => method.Body.Instructions)
+                // MUTANT_SURVIVES(equivalent, clause removed): no scope looks up a link field, so counting its stores changes no answer.
+                .Where(instr => instr is { OpCode.Code: Code.Stfld, Operand: FieldReference field } && !IsParentLink(field))
+                .Select(instr => TryResolve(() => ((FieldReference)instr.Operand).Resolve())).OfType<FieldDefinition>().ToHashSet();
     }
 }

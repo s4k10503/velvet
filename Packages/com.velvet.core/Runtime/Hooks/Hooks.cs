@@ -2892,7 +2892,39 @@ namespace Velvet
         /// <param name="result">VNode to cache for subsequent hits; null where the expression built none.</param>
         [EditorBrowsable(EditorBrowsableState.Never)]
         public static void StoreMemoizedScope(int gateSlot, int scope, object?[] deps, VNode? result)
-            => StageScope(gateSlot, scope, deps, result, nameof(StoreMemoizedScope));
+            => StageScope(gateSlot, scope, deps, result, null, nameof(StoreMemoizedScope));
+
+        /// <summary>
+        /// Gate for one reactive scope whose value is not a VNode — a delegate over a lambda that captures
+        /// variables, or a value the body derives — woven in by the build-time compiler transform. It answers as
+        /// <see cref="TryGetMemoizedScope"/> does, for the value the scope stored.
+        /// Do not call by hand.
+        /// When the return value is <c>false</c>, <paramref name="cached"/> is undefined.
+        /// </summary>
+        /// <param name="gateSlot">The slot index <see cref="TryGetMemoizedVNode"/> granted the component this render.</param>
+        /// <param name="scope">The scope's position among the scopes of the component's method.</param>
+        /// <param name="deps">Dependency values read by the scope's expression.</param>
+        /// <param name="cached">Outputs the cached value on a hit; undefined on a miss.</param>
+        /// <returns>True when the previous dependency values are equal and the cached value was returned.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static bool TryGetMemoizedValue(int gateSlot, int scope, object?[] deps, out object? cached)
+        {
+            var hit = TryHitScope(gateSlot, scope, deps);
+            cached = hit?.CachedValue;
+            return hit != null;
+        }
+
+        /// <summary>
+        /// Slot writer API woven in on the miss path of <see cref="TryGetMemoizedValue"/>; the arguments name the
+        /// same scope. A <paramref name="gateSlot"/> of <c>-1</c> stages nothing.
+        /// </summary>
+        /// <param name="gateSlot">The slot index <see cref="TryGetMemoizedVNode"/> granted the component this render.</param>
+        /// <param name="scope">The scope's position among the scopes of the component's method.</param>
+        /// <param name="deps">Dependency values to record for this scope.</param>
+        /// <param name="result">Value to cache for subsequent hits, boxed where it is a value type.</param>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static void StoreMemoizedValue(int gateSlot, int scope, object?[] deps, object? result)
+            => StageScope(gateSlot, scope, deps, null, result, nameof(StoreMemoizedValue));
 
         // The slot of a scope whose committed dependencies equal these, with what it held staged as the settle's
         // baseline so that a discarded attempt's miss is not what the settle promotes, as TryGetMemoizedVNode
@@ -2906,10 +2938,11 @@ namespace Velvet
             if (slot.RunsHooksPastGate || !ObjectIs.AreEqualDeps(slot.LastDeps, deps)) return null;
             slot.NextDeps = slot.LastDeps;
             slot.NextCachedResult = slot.CachedResult;
+            slot.NextCachedValue = slot.CachedValue;
             return slot;
         }
 
-        private static void StageScope(int gateSlot, int scope, object?[] deps, VNode? node, string api)
+        private static void StageScope(int gateSlot, int scope, object?[] deps, VNode? node, object? value, string api)
         {
             if (gateSlot < 0) return;
             var fiber = ResolveUncounted(api);
@@ -2925,6 +2958,7 @@ namespace Velvet
             }
             slot.NextDeps = deps;
             slot.NextCachedResult = node;
+            slot.NextCachedValue = value;
         }
 
         // A hit on the gate, or on a scope enclosing others, skips the scopes inside it, which would keep what a
@@ -2936,6 +2970,7 @@ namespace Velvet
                 var scope = slots[i];
                 scope.NextDeps = scope.LastDeps;
                 scope.NextCachedResult = scope.CachedResult;
+                scope.NextCachedValue = scope.CachedValue;
             }
         }
 

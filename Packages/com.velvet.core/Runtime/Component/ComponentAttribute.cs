@@ -62,10 +62,10 @@ namespace Velvet
         /// and a render whose inputs all compare equal returns the cached tree instead of running the body. On
         /// such a render a difference that comparison does not see — a list mutated in place, a field a value
         /// type's own <c>Equals</c> ignores — does not reach the tree, nor does anything else the body reads. A
-        /// render where only some inputs differ runs the body, and a child of a children list that reads none of
-        /// the changed values is not built again. A child compares the references it reads, so a list or object
-        /// changed in place leaves the child reading it as it was: replace the value, or set this to
-        /// <c>false</c> (<c>Documentation~/memoization.md</c> states which children are cached).
+        /// render where only some inputs differ runs the body, and a scope (a child, a capturing lambda, a
+        /// derived value) that reads none of the changed values is not built again. A scope compares the references
+        /// it reads, so a list or object changed in place leaves the scope reading it as it was: replace the value,
+        /// or set this to <c>false</c> (<c>Documentation~/memoization.md</c> states which scopes are cached).
         /// The cache serves the component's own render; called as a plain method, the body runs uncached.
         /// A component that takes props and calls no hook is keyed on its props alone, and left unwoven where it
         /// also sets <see cref="Memoize"/>; one with neither props nor a hook has nothing to key on and is left

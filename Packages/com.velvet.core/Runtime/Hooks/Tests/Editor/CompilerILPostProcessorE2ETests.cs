@@ -1947,6 +1947,674 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Lambdas and derived values
+
+        private static void Print(string text) => System.Console.Write(text);
+
+        [Component]
+        public static VNode HandlerReadingAStateComponent()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: "add", onClick: () => setCount.Invoke(count + 1)), V.Label(text: count.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerReadingTwoStatesComponent()
+        {
+            var (a, setA) = Hooks.UseState(0);
+            var (b, setB) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: "swap", onClick: () => { setA.Invoke(b); setB.Invoke(a); }), V.Label(text: a.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerWritingACapturedVariableComponent()
+        {
+            var (a, _) = Hooks.UseState(0);
+            var total = 0;
+            return V.Div("root", V.Button(text: a.ToString(), onClick: () => total += a), V.Label(text: a.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerCapturingAParameterComponent(string title)
+        {
+            var (a, _) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: "show", onClick: () => Print(title)), V.Label(text: a.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerInsideAHandlerComponent()
+        {
+            var (a, setA) = Hooks.UseState(0);
+            var (b, _) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: "go", onClick: () => { System.Action inner = () => setA.Invoke(a + b); inner(); }), V.Label(text: b.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedNumberComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var doubled = n * 2;
+            return V.Div("root", V.Label(text: doubled.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedSequenceComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var visible = System.Linq.Enumerable.Where(items, item => item > n);
+            return V.Div("root", V.Label(text: System.Linq.Enumerable.Count(visible).ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedListComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var list = new System.Collections.Generic.List<int> { n };
+            return V.Div("root", V.Label(text: list.Count.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedTwiceComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var doubled = n * 2;
+            doubled = other * 3;
+            return V.Div("root", V.Label(text: doubled.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedDelegateComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            System.Func<int> read = () => n;
+            return V.Div("root", V.Label(text: read().ToString()), V.Label(text: other.ToString()));
+        }
+
+        private static int s_parsedSink;
+
+        private sealed class HolderOfCount
+        {
+            public int Count;
+        }
+
+        private sealed class SetterCarrier : System.Collections.Generic.Dictionary<string, string>
+        {
+            public SetterCarrier(StateUpdater<int> setter)
+            {
+                Add("setter", setter.ToString());
+            }
+        }
+
+        [Component]
+        public static VNode FourParameterLambdaComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            System.Func<int, int, int, int, int> sum = (a, b, c, d) => a + b + c + d + n;
+            return V.Div("root", V.Label(text: sum(1, 2, 3, 4).ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode SelfCreatingLocalFunctionComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            void Tick()
+            {
+                System.Action again = Tick;
+                Print(n.ToString());
+                again();
+            }
+            return V.Div("root", V.Button(text: "go", onClick: Tick), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerCreatingAWritingHandlerComponent()
+        {
+            var (a, _) = Hooks.UseState(0);
+            var total = 0;
+            void Add() => total += a;
+            System.Action outer = () =>
+            {
+                System.Action inner = Add;
+                inner();
+                Print(a.ToString());
+            };
+            return V.Div("root", V.Button(text: "go", onClick: outer), V.Label(text: a.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerCreatingAMethodGroupComponent()
+        {
+            var (a, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            System.Action outer = () =>
+            {
+                System.Action printer = ScopeHandler;
+                printer();
+                Print(a.ToString());
+            };
+            return V.Div("root", V.Button(text: "go", onClick: outer), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerWithANestedCaptureComponent()
+        {
+            var (a, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            System.Action outer = () =>
+            {
+                int local;
+                int.TryParse("1", out local);
+                System.Action inner = () => Print((local + a).ToString());
+                inner();
+            };
+            return V.Div("root", V.Button(text: "go", onClick: outer), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerReadingAnObjectFieldComponent()
+        {
+            var (a, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var holder = new HolderOfCount { Count = 3 };
+            System.Action show = () => Print(holder.Count.ToString() + a);
+            return V.Div("root", V.Button(text: "go", onClick: show), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerReadingAVariableSetLaterComponent()
+        {
+            var (a, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var late = 0;
+            System.Action show = () => Print(late.ToString());
+            late = a;
+            return V.Div("root", V.Button(text: "go", onClick: show), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerReadingAVariableSetByAnOutArgumentComponent()
+        {
+            var (a, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var parsed = 0;
+            System.Action show = () => Print(parsed.ToString() + a);
+            s_parsedSink = int.TryParse("1", out parsed) ? parsed : 0;
+            return V.Div("root", V.Button(text: "go", onClick: show), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildHoldingASetterComponent()
+        {
+            var (a, setA) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            System.Action show = () => Print(a.ToString());
+            return V.Div("root", V.Label(data: new SetterCarrier(setA)), V.Button(text: "go", onClick: show), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedSequenceCapturedByAHandlerComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var visible = System.Linq.Enumerable.Where(new[] { 1, 2, 3 }, item => item > n);
+            System.Action show = () => Print(System.Linq.Enumerable.Count(visible).ToString());
+            return V.Div("root", V.Button(text: "go", onClick: show), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedArrayComponent()
+        {
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var (other, _) = Hooks.UseState(0);
+            var copy = System.Linq.Enumerable.ToArray(items);
+            return V.Div("root", V.Label(text: copy.Length.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerAndASiblingReadingTheSameValueComponent()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: "add", onClick: () => setCount.Invoke(count + 1)), V.Label(text: (count + 1).ToString()));
+        }
+
+        public sealed class ScopeRunner
+        {
+            public void Run()
+            {
+            }
+        }
+
+        [Component]
+        public static VNode DerivedBoundDelegateComponent(ScopeRunner runner)
+        {
+            var (n, _) = Hooks.UseState(0);
+            System.Action run = runner.Run;
+            return V.Div("root", V.Button(text: n.ToString(), onClick: run), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedCopiedListComponent()
+        {
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var (other, _) = Hooks.UseState(0);
+            var copy = new System.Collections.Generic.List<int>(items);
+            return V.Div("root", V.Label(text: copy.Count.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedNewSpanComponent()
+        {
+            var (chars, _) = Hooks.UseState(new char[0]);
+            var (other, _) = Hooks.UseState(0);
+            var span = new System.ReadOnlySpan<char>(chars);
+            return V.Div("root", V.Label(text: span.Length.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingThroughAnOuterDisplayClassComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            System.Action outer = () => Print(n.ToString());
+            {
+                var inner = other;
+                System.Action nested = () => Print(inner.ToString() + n);
+                return V.Div("root", V.Label(text: n.ToString()), V.Label(text: inner.ToString()));
+            }
+        }
+
+        [Component]
+        public static VNode ChildReadingACapturedReferenceComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var tags = new System.Collections.Generic.List<int>();
+            System.Action add = () => tags.Add(n);
+            return V.Div("root", V.Button(text: "add", onClick: add), V.Label(text: tags.Count.ToString()), V.Label(text: n.ToString()));
+        }
+
+        private static string DescribePair((int, int) pair) => pair.Item1.ToString();
+
+        [Component]
+        public static VNode DerivedPairComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var pair = (n, other);
+            System.Action show = () => Print(DescribePair(pair));
+            return V.Div("root", V.Button(text: "go", onClick: show), V.Label(text: other.ToString()));
+        }
+
+        private const string ValueGateName = "TryGetMemoizedValue";
+
+        private static int ValueGatesOf(string component) => CountHookCalls(LoadMethod(component), ValueGateName);
+
+        [Test]
+        public void Given_AHandlerReadingState_When_Woven_Then_TheButtonAndItsSiblingGetAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerReadingAStateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no value gate, so it leaves the lambda to the button here
+        // too.
+        // What it pins is a scope repeating the inputs of the one around it being left out: `return false;` in place
+        // of the comparison at the end of `RepeatsEnclosingScope` gives the lambda a value gate of its own.
+        [Test]
+        public void Given_AHandlerReadingState_When_Woven_Then_TheLambdaIsLeftToTheButtonReadingTheSame()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(HandlerReadingAStateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ALambdaHandedToTheRoot_When_Woven_Then_ItGetsAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(HandlerCapturingAHookValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHandlerWritingACapturedVariable_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerWritingACapturedVariableComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHandlerCapturingAParameter_When_Woven_Then_TheButtonAndItsSiblingGetAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerCapturingAParameterComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AHandlerBuiltInsideAHandler_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerInsideAHandlerComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ASequenceDerivedOnceFromState_When_Woven_Then_TheLambdaAndTheSequenceGetAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedSequenceComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives the child reading the list no scope gate either.
+        // What it pins is a local that is no hook value staying out of the scopes: `true` in place of the hook and
+        // stable key test that ends `CanBeCompared` gives that child a scope gate.
+        [Test]
+        public void Given_AListDerivedOnceFromState_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(DerivedListComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ADelegateDerivedOnceFromState_When_Woven_Then_ItGetsAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedDelegateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no value gate, so it counts none here either.
+        // What it pins is an expression calling nothing being left out of the scopes: removing `!scan.HasCall ||`
+        // from `TryPlanCandidate` gives the number a value gate.
+        [Test]
+        public void Given_ANumberDerivedFromState_When_Woven_Then_NoValueGateIsWoven()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedNumberComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0), "An arithmetic expression calls nothing, so there is nothing to keep");
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives each child reading the number a scope gate too.
+        // What it pins is a local of a value type being compared as it stands: removing `if (IsValueLike(type))
+        // return true;` from `CanBeCompared` leaves the children reading it without one.
+        [Test]
+        public void Given_ANumberDerivedFromState_When_Woven_Then_EveryChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(DerivedNumberComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(3));
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives each child reading the number a scope gate too.
+        // What it pins is the same comparison of a value type: removing `if (IsValueLike(type)) return true;` from
+        // `CanBeCompared` leaves the children reading it without one.
+        [Test]
+        public void Given_ANumberAssignedTwice_When_Woven_Then_EveryChildStillGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(DerivedTwiceComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_ALambdaOfFourParameters_When_Woven_Then_ItGetsAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(FourParameterLambdaComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives the button no scope gate here either.
+        // What it pins is a lambda that creates itself reading as unsupported: `return done ?? new
+        // HashSet<FieldDefinition>();` in place of `return done;` at the top of `CapturedReadsOf` gives the button
+        // one.
+        [Test]
+        public void Given_ALocalFunctionCreatingItself_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(SelfCreatingLocalFunctionComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1), "What a lambda that creates itself reads is never followed to its end");
+        }
+
+        [Test]
+        public void Given_AHandlerCreatingAHandlerThatWrites_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerCreatingAWritingHandlerComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1), "The outer handler runs what the inner one writes");
+        }
+
+        [Test]
+        public void Given_AHandlerCreatingAMethodGroup_When_Woven_Then_ItGetsAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(HandlerCreatingAMethodGroupComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1), "A method group is a delegate over code this does not read, not a display class lambda");
+        }
+
+        [Test]
+        public void Given_AHandlerWhoseInnerHandlerCapturesItsLocal_When_Woven_Then_ItGetsAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(HandlerWithANestedCaptureComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1), "The link to the display class an inner handler captures through is no write");
+        }
+
+        [Test]
+        public void Given_AHandlerReadingAFieldOfACapturedObject_When_Woven_Then_ItGetsAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(HandlerReadingAnObjectFieldComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives the button no scope gate here either.
+        // What it pins is a captured variable stored after the lambda being no dependency: removing `&&
+        // StoresPrecede(field, region.Start)` from `FieldDependency` gives the button one.
+        [Test]
+        public void Given_AHandlerReadingAVariableSetAfterIt_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerReadingAVariableSetLaterComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1), "The variable holds something else when the handler runs than when the scope began");
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives the button no scope gate here either.
+        // What it pins is the same rule for a store made through an out argument: removing `&& StoresPrecede(field,
+        // region.Start)` from `FieldDependency` gives the button one.
+        [Test]
+        public void Given_AHandlerReadingAVariableSetByAnOutArgumentAfterIt_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerReadingAVariableSetByAnOutArgumentComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildHoldingASetter_When_Woven_Then_EveryChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildHoldingASetterComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(4), "A setter is the one object for the life of the component, so it is never a change");
+        }
+
+        [Test]
+        public void Given_ASequenceDerivedFromStateAndCapturedByAHandler_When_Woven_Then_TheLambdaAndTheSequenceGetAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedSequenceCapturedByAHandlerComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no value gate, so it counts none here either.
+        // What it pins is an array being no value to keep: `true` in place of `false` in the `IsArrayOrIndirection`
+        // test of `IsImmutableType` gives it a value gate.
+        [Test]
+        public void Given_AnArrayDerivedOnceFromState_When_Woven_Then_NoValueGateIsWoven()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedArrayComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0), "The body may write to an array afterwards, so it is no value to keep");
+        }
+
+        [Test]
+        public void Given_AHandlerAndASiblingReadingTheSameVariable_When_Woven_Then_BothGetAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerAndASiblingReadingTheSameValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2), "A read of a captured variable after the handler's scope is no write that handler has to stand before");
+        }
+
+        [Test]
+        public void Given_ADelegateBoundToAParameterAndDerivedOnce_When_Woven_Then_ItGetsAValueGate()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedBoundDelegateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no value gate, so it counts none here either.
+        // What it pins is a list being no value to keep: `true` in place of the final `false` of `IsImmutableType`
+        // gives the copy a value gate.
+        [Test]
+        public void Given_AListCopiedOnceFromState_When_Woven_Then_NoValueGateIsWoven()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedCopiedListComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the compiler builds the span the same way whatever the weaver does.
+        // What it pins is the compiler output the declaration in `IsImmutableType` rests on: no `newobj` builds the
+        // span.
+        [Test]
+        public void Given_ASpanBuiltOnceFromState_When_Woven_Then_NoInstructionBuildsItOnTheStack()
+        {
+            // Act
+            var builds = LoadMethod(nameof(DerivedNewSpanComponent)).Body.Instructions.Count(
+                instruction => instruction.OpCode == OpCodes.Newobj && instruction.Operand is MethodReference { DeclaringType.Name: "ReadOnlySpan`1" });
+
+            // Assert
+            Assert.That(builds, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ADelegateDerivedOnceFromState_When_Woven_Then_TheCachedObjectIsCastBackToTheDelegate()
+        {
+            // Act
+            var casts = LoadMethod(nameof(DerivedDelegateComponent)).Body.Instructions.Count(
+                instruction => instruction.OpCode == OpCodes.Castclass && instruction.Operand is TypeReference { Name: "Func`1" });
+
+            // Assert
+            Assert.That(casts, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ChildrenReadingThroughAnOuterDisplayClass_When_Woven_Then_EachGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildReadingThroughAnOuterDisplayClassComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_AChildReadingACapturedReference_When_Woven_Then_OnlyTheOtherChildrenGetAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildReadingACapturedReferenceComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_APairCapturedByAHandlerAndDerivedOnce_When_Woven_Then_TheBuiltValueIsBoxedForTheCache()
+        {
+            // Act
+            var boxes = LoadMethod(nameof(DerivedPairComponent)).Body.Instructions.Count(
+                instruction => instruction.OpCode == OpCodes.Box && instruction.Previous.OpCode == OpCodes.Dup);
+
+            // Assert
+            Assert.That(boxes, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_APairCapturedByAHandlerAndDerivedOnce_When_Woven_Then_TheCachedObjectIsUnboxedOnAHit()
+        {
+            // Act
+            var unboxes = LoadMethod(nameof(DerivedPairComponent)).Body.Instructions.Count(
+                instruction => instruction.OpCode == OpCodes.Unbox_Any);
+
+            // Assert
+            Assert.That(unboxes, Is.EqualTo(1));
+        }
+
+        #endregion
 
         #region More reactive scopes
 

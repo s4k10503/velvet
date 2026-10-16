@@ -8,7 +8,7 @@ namespace Velvet.CodeGen
     internal static partial class CompilerWeaver
     {
         // The variables a scope may read, and where the body touches each, gathered once per method. A variable is
-        // a local, named by the local itself.
+        // a local or a field of a display class, named by the local itself or by the field's definition.
         private sealed class ScopeFacts
         {
             private enum Access
@@ -23,6 +23,11 @@ namespace Velvet.CodeGen
             private readonly Dictionary<VariableDefinition, (int First, int Last)> _spans;
             private readonly Dictionary<object, List<int>> _writes = new();
             private readonly HashSet<object> _hookKeys;
+            private readonly HashSet<object> _outputs = new();
+            private readonly Dictionary<FieldDefinition, ParameterDefinition> _parameterFields = new();
+            private readonly HashSet<string> _closureTypes;
+            private readonly HashSet<FieldDefinition> _lambdaWritten;
+            private readonly Dictionary<MethodDefinition, HashSet<FieldDefinition>?> _reads = new();
             private readonly HashSet<object> _gateKeys = new();
             private readonly Dictionary<VariableDefinition, bool[]> _liveIn = new();
             private readonly Dictionary<Instruction, int> _indexOf = new();
@@ -34,7 +39,7 @@ namespace Velvet.CodeGen
                 Depths = depths;
                 Boundary = boundary;
                 _keys = analysis.Keys;
-                _hookKeys = analysis.HookCaptures.Select(capture => capture.Local).OfType<object>().ToHashSet();
+                _hookKeys = analysis.HookCaptures.Select(CaptureKey).OfType<object>().ToHashSet();
                 for (var i = 0; i < instructions.Length; i++) _indexOf[instructions[i]] = i;
                 _spans = instructions.Select((instr, index) => (Local: instr.Operand as VariableDefinition, Index: index))
                     .Where(touch => touch.Local != null).GroupBy(touch => touch.Local!)
@@ -42,7 +47,11 @@ namespace Velvet.CodeGen
                 Branches = instructions
                     .SelectMany((instr, index) => JumpTargets(instr).Select(target => (Source: index, Target: _indexOf[target])))
                     .ToList();
+                _closureTypes = body.Variables.Where(local => IsClosureClass(local.VariableType))
+                    .Select(local => ElementOf(local.VariableType).FullName).ToHashSet();
+                _lambdaWritten = FieldsWrittenByLambdas(body.Method);
                 CollectWrites();
+                CollectParameterFields();
                 CollectGateKeys(analysis);
             }
 
@@ -54,7 +63,8 @@ namespace Velvet.CodeGen
 
             public List<(int Source, int Target)> Branches { get; }
 
-            private static object? CaptureKey(HookCapture capture) => capture.Local;
+            private static object? CaptureKey(HookCapture capture)
+                => capture.Local ?? (capture.Field == null ? null : FieldKey(capture.Field));
 
             // Every write there is to a variable, so that a scope can tell whether it stands as it was set.
             // Taking an address is one unless the callee is known to read.
@@ -80,8 +90,36 @@ namespace Velvet.CodeGen
                             ? local
                             : null;
                     // MUTANT_SURVIVES(equivalent, clause removed): no scope looks up a link field, so counting its stores changes no answer.
+                    case FieldReference field when IsClosureField(field) && !IsParentLink(field):
+                        return instr.OpCode.Code == Code.Stfld
+                            || (instr.OpCode.Code == Code.Ldflda && !ReadsInPlace(Instructions[index + 1], field.FieldType))
+                            ? FieldKey(field)
+                            : null;
                     default:
                         return null;
+                }
+            }
+
+            // `ldloc display; ldarg n; stfld field` is how a captured parameter is hoisted. The field then holds the
+            // argument for as long as nothing writes either, and reading it is reading the parameter.
+            private void CollectParameterFields()
+            {
+                var assigned = new HashSet<ParameterDefinition>(Instructions
+                    .Where(instr => instr.OpCode.Code is Code.Starg or Code.Starg_S).Select(instr => (ParameterDefinition)instr.Operand));
+                for (var i = 2; i < Instructions.Length; i++)
+                {
+                    if (Instructions[i].OpCode.Code != Code.Stfld || Instructions[i].Operand is not FieldReference field
+                        || IsParentLink(field) || Instructions[i - 1].Operand is not ParameterDefinition parameter
+                        || Instructions[i - 1].OpCode.Code != Code.Ldarg || assigned.Contains(parameter)
+                        || Instructions[i - 2].Operand is not VariableDefinition receiver || !IsClosureClass(receiver.VariableType))
+                    {
+                        continue;
+                    }
+                    if (TryResolve(() => field.Resolve()) is { } definition && WriteCount(definition) == 1
+                        && !_lambdaWritten.Contains(definition))
+                    {
+                        _parameterFields[definition] = parameter;
+                    }
                 }
             }
 
@@ -114,17 +152,77 @@ namespace Velvet.CodeGen
 
             public bool CoversGate(List<DepSource> deps) => _gateKeys.IsSubsetOf(deps.Select(dep => dep.Key));
 
+            public void AcceptOutput(object key) => _outputs.Add(key);
+
+            public int WriteCount(object key) => _writes.TryGetValue(key, out var list) ? list.Count : 0;
+
+            // The variable an instruction stores its whole value into.
+            public object? StoredKey(int index)
+            {
+                var instr = Instructions[index];
+                switch (instr.Operand)
+                {
+                    case VariableDefinition local when instr.OpCode.Code == Code.Stloc && !IsClosureClass(local.VariableType):
+                        return local;
+                    case FieldReference field when instr.OpCode.Code == Code.Stfld && IsClosureField(field) && !IsParentLink(field):
+                        return FieldKey(field);
+                    default:
+                        return null;
+                }
+            }
+
+            public TypeReference TypeOfStoreAt(int index)
+            {
+                var instr = Instructions[index];
+                if (instr.Operand is VariableDefinition local) return local.VariableType;
+                var field = (FieldReference)instr.Operand;
+                return InCallerTerms(field.FieldType, null, field.DeclaringType as GenericInstanceType)
+                    ?? _body.Method.Module.TypeSystem.Object;
+            }
+
             public DepSource ParameterDependency(ParameterDefinition parameter)
                 => new(parameter, parameter.ParameterType) { Parameter = parameter };
 
-            // A variable reads as itself, set once, or as a value type.
+            public bool IsComponentField(FieldDefinition field) => _closureTypes.Contains(field.DeclaringType.FullName);
+
+            public HashSet<FieldDefinition>? CapturedReadsOf(MethodDefinition lambda)
+                => CompilerWeaver.CapturedReadsOf(lambda, _reads);
+
+            // A captured variable as a dependency. A captured parameter is the parameter. Read by the expression
+            // itself it has to be a value the scopes compare (see CanBeCompared); read by a lambda it only has to
+            // stand as it is once the scope has begun, whatever it holds, because the lambda reads it when it runs.
+            public DepSource? FieldDependency(FieldDefinition field, bool direct, ElementRegion region)
+            {
+                if (_parameterFields.TryGetValue(field, out var parameter))
+                {
+                    return IsBoxable(parameter.ParameterType) ? ParameterDependency(parameter) : null;
+                }
+                var receiver = FindClosureLocal(_body, field.DeclaringType);
+                var type = receiver == null ? null : InCallerTerms(field.FieldType, null, receiver.VariableType as GenericInstanceType);
+                if (receiver == null || type == null || !IsBoxable(type)) return null;
+                var comparable = direct
+                    ? CanBeCompared(field, type, region)
+                    : !_lambdaWritten.Contains(field) && StoresPrecede(field, region.Start);
+                if (!comparable) return null;
+                FieldReference reference = receiver.VariableType is GenericInstanceType instance
+                    ? new FieldReference(field.Name, field.FieldType, instance)
+                    : field;
+                return new DepSource(field, type) { Field = reference, Receiver = receiver };
+            }
+
+            // A variable reads as itself, set once, or as the output of a scope.
             public bool CanBeCompared(object key, TypeReference type, ElementRegion region)
             {
                 if (_keys.Uncomparable.Contains(key) || !IsBoxable(type)) return false;
                 if (IsValueLike(type)) return true;
-                return _hookKeys.Contains(key)
+                if (_outputs.Contains(key)) return StoresPrecede(key, region.Start);
+                return (_hookKeys.Contains(key) || _keys.Stable.Contains(key))
                     && !(_writes.TryGetValue(key, out var list) && list.Any(write => write > Boundary));
             }
+
+            private bool StoresPrecede(object key, int start)
+                // MUTANT_SURVIVES(unreachable, boundary): a write pops a value, so none is the first instruction of a region.
+                => !_writes.TryGetValue(key, out var list) || list.All(write => write < start);
 
             // A local whose value the expression neither takes from outside nor leaves for what runs after it: one
             // no instruction outside touches, or one that is stored before it is read on every path through the

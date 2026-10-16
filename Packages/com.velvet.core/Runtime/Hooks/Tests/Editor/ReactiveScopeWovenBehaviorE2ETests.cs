@@ -39,6 +39,7 @@ namespace Velvet.Tests
             s_builds.Clear();
             s_ambient = 0;
             s_setRightText = null;
+            s_seen.Clear();
             s_setLeft = null;
             s_setRight = null;
             s_setCount = null;
@@ -59,6 +60,7 @@ namespace Velvet.Tests
         private static readonly Dictionary<string, int> s_builds = new();
         private static int s_ambient;
         private static Action<string> s_setRightText;
+        private static readonly List<object> s_seen = new();
         private static Action<int> s_setLeft;
         private static Action<int> s_setRight;
         private static Action<int> s_setCount;
@@ -111,6 +113,30 @@ namespace Velvet.Tests
         private static string AmbientLabel(int input) => s_ambient + ":" + input;
 
         #region Components
+
+        [Component]
+        private static VNode StableHandler()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            var (other, setOther) = Hooks.UseState("0");
+            s_setCount = setCount;
+            s_setRightText = setOther;
+            Action onClick = () => s_seen.Add(count);
+            s_seen.Add(onClick);
+            return V.Div("root", V.Button(name: "add", onClick: onClick), V.Label(name: "other", text: other));
+        }
+
+        [Component]
+        private static VNode DerivedSequence()
+        {
+            var (threshold, setThreshold) = Hooks.UseState(1);
+            var (other, setOther) = Hooks.UseState("0");
+            s_setCount = setThreshold;
+            s_setRightText = setOther;
+            var visible = System.Linq.Enumerable.Where(new[] { 1, 2, 3 }, item => item > threshold);
+            s_seen.Add(visible);
+            return V.Div("root", V.Label(name: "other", text: other), V.Label(name: "shown", text: System.Linq.Enumerable.Count(visible).ToString()));
+        }
 
         [Component]
         private static VNode TextChildren()
@@ -388,6 +414,70 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        [Test]
+        public void Given_AHandlerReadingState_When_AnotherTextChanges_Then_TheRenderHandsTheSameDelegate()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(StableHandler, key: "handler"));
+
+            // Act
+            s_setRightText("1");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ReferenceEquals(s_seen[0], s_seen[^1]), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the delegate afresh on every render, so it hands another
+        // one when the state changes too.
+        // What it pins is a changed capture reaching the gate of the lambda: emptying
+        // `plan.Deps.SelectMany(DependencyStore)` in `BuildScopeGate` serves the first delegate again.
+        [Test]
+        public void Given_AHandlerReadingState_When_ThatStateChanges_Then_TheRenderHandsAnotherDelegate()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(StableHandler, key: "handler"));
+
+            // Act
+            s_setCount(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ReferenceEquals(s_seen[0], s_seen[^1]), Is.False);
+        }
+
+        [Test]
+        public void Given_ASequenceDerivedFromState_When_AnotherTextChanges_Then_TheRenderHandsTheSameSequence()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DerivedSequence, key: "sequence"));
+
+            // Act
+            s_setRightText("1");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ReferenceEquals(s_seen[0], s_seen[^1]), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base derives the sequence afresh on every render, so it shows the new
+        // count too.
+        // What it pins is a changed input reaching the gate of the derived value: emptying
+        // `plan.Deps.SelectMany(DependencyStore)` in `BuildScopeGate` serves the first sequence again.
+        [Test]
+        public void Given_ASequenceDerivedFromState_When_ThatStateChanges_Then_TheRenderHandsAnotherSequence()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DerivedSequence, key: "sequence"));
+
+            // Act
+            s_setCount(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("shown"), Is.EqualTo("1"));
+        }
 
         [Test]
         public void Given_TwoChildrenReadingDifferentTexts_When_OneChanges_Then_TheOtherIsNotBuiltAgain()

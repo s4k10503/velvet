@@ -317,7 +317,7 @@ namespace Velvet
         }
 
         // Enumerates the node roots held by the slot lists Unmount DISPOSES (compiler auto-memo
-        // slots — the whole-body tree and each reactive scope's subtree — plus UseMemo / UseRef values
+        // slots — the whole-body tree, each reactive scope's subtree and a list of nodes a scope derived — plus UseMemo / UseRef values
         // that are a node or a list of nodes). A slot with stable inputs re-emits the SAME instance on a
         // later render even when the current committed tree omits it (V.When toggling a memoized
         // subtree), so these roots must survive sweeps while their slot lives — and retire with it when
@@ -335,6 +335,12 @@ namespace Velvet
                     if (slot.NextCachedResult != null && !ReferenceEquals(slot.NextCachedResult, slot.CachedResult))
                     {
                         visitRoot(slot.NextCachedResult);
+                    }
+                    // A derived list of nodes is a root like a UseMemo value; any other value holds none.
+                    if (slot.CachedValue != null) visitRoot(slot.CachedValue);
+                    if (slot.NextCachedValue != null && !ReferenceEquals(slot.NextCachedValue, slot.CachedValue))
+                    {
+                        visitRoot(slot.NextCachedValue);
                     }
                 }
             }

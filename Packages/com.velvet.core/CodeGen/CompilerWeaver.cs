@@ -647,13 +647,14 @@ namespace Velvet.CodeGen
             {
                 direct = TryMatchItem1Deconstruction(next, body, out local, out boundary);
             }
+            object? stable = null;
             if (direct == HookCaptureMatch.NotMatched)
             {
-                direct = TryMatchTwoElementDeconstruction(next, body, isDirect, out local, out boundary);
+                direct = TryMatchTwoElementDeconstruction(next, body, isDirect, out local, out boundary, out stable);
             }
             return direct == HookCaptureMatch.Matched
-                ? new HookCaptureOutcome(direct, new HookCapture(local, null, null, local!.VariableType, boundary!), boundary)
-                : new HookCaptureOutcome(direct, default, null);
+                ? new HookCaptureOutcome(direct, new HookCapture(local, null, null, local!.VariableType, boundary!), boundary, stable)
+                : new HookCaptureOutcome(direct, default, null, null);
         }
 
         // A hook call can be followed directly by whatever reads its value, with no store between. Such a value
@@ -790,10 +791,11 @@ namespace Velvet.CodeGen
         // shape and bailed the whole component — disabling auto-memo for every `var (x, setX) = ...` site.
         private static HookCaptureMatch TryMatchTwoElementDeconstruction(
             Instruction next, MethodBody body, bool isDirect, out VariableDefinition? capturedLocal,
-            out Instruction? newBoundary)
+            out Instruction? newBoundary, out object? stableSetter)
         {
             capturedLocal = null;
             newBoundary = null;
+            stableSetter = null;
             if (next.OpCode != OpCodes.Dup)
             {
                 return HookCaptureMatch.NotMatched;
@@ -825,6 +827,7 @@ namespace Velvet.CodeGen
             }
             capturedLocal = valueLocal;
             newBoundary = setterStore;
+            stableSetter = TryGetStlocVariable(setterStore, body, out var setterLocal) ? setterLocal : null;
             return HookCaptureMatch.Matched;
         }
 
@@ -1474,18 +1477,22 @@ namespace Velvet.CodeGen
             public HookKeys Keys { get; }
         }
 
-        // What the hook section says about the variables it stored into. Uncomparable: the one instance a
-        // stable-reference hook returns for the life of the component, and a reference a custom hook returns, which
-        // may be that instance from inside.
+        // What the hook section says about the variables it stored into, each a local or the field of a display
+        // class. Uncomparable: the one instance a stable-reference hook returns for the life of the component, and a
+        // reference a custom hook returns, which may be that instance from inside. Stable: the setter of a hook's
+        // pair, one object for the life of the component, which a scope compares as a dependency that never changes.
         private sealed class HookKeys
         {
             public HashSet<object> Uncomparable { get; } = new();
 
+            public HashSet<object> Stable { get; } = new();
+
             // A value left on the stack has no variable to name, and no scope reads it.
             public void Record(HookCaptureOutcome outcome, bool uncomparable)
             {
-                var key = outcome.Capture.Local;
+                var key = outcome.Capture.Local ?? (outcome.Capture.Field == null ? null : FieldKey(outcome.Capture.Field));
                 if (uncomparable && key != null) Uncomparable.Add(key);
+                if (outcome.StableKey != null) Stable.Add(outcome.StableKey);
             }
         }
 
@@ -1517,6 +1524,8 @@ namespace Velvet.CodeGen
         // Absent on a Velvet assembly that declares the component gate alone; the body is then woven without scopes.
         public MethodReference? TryGetMemoizedScope { get; init; }
         public MethodReference? StoreMemoizedScope { get; init; }
+        public MethodReference? TryGetMemoizedValue { get; init; }
+        public MethodReference? StoreMemoizedValue { get; init; }
 
         // Resolves the Velvet runtime members the weaver injects calls to. On failure, returns null and
         // reports what could not be resolved through failure so the caller can emit a diagnostic
@@ -1547,6 +1556,8 @@ namespace Velvet.CodeGen
             var store = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedVNode), 3);
             var tryGetScope = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedScope), 4);
             var storeScope = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedScope), 4);
+            var tryGetValue = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedValue), 4);
+            var storeValue = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedValue), 4);
             if (tryGet == null || store == null)
             {
                 failure = $"the memoization methods '{hooksTypeName}.{nameof(Velvet.Hooks.TryGetMemoizedVNode)}' /"
@@ -1562,6 +1573,8 @@ namespace Velvet.CodeGen
                 StoreMemoizedVNode = module.ImportReference(store),
                 TryGetMemoizedScope = tryGetScope == null ? null : module.ImportReference(tryGetScope),
                 StoreMemoizedScope = storeScope == null ? null : module.ImportReference(storeScope),
+                TryGetMemoizedValue = tryGetValue == null ? null : module.ImportReference(tryGetValue),
+                StoreMemoizedValue = storeValue == null ? null : module.ImportReference(storeValue),
             };
         }
 
