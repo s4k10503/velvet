@@ -1573,15 +1573,32 @@ namespace Velvet
                 ClearInline(element, property);
                 return;
             }
+            RemoveLayer(map, property, priority);
+            ResolveAndApply(element, property, map);
+            ReleaseUnusedShownImageWatch(element, map);
+            Reproject(element, map);
+        }
+
+        // Drops the layer at priority for property without resolving the property again, for a caller that
+        // applies a layer for the same property next: the inline value stays what it was until that layer
+        // lands. Not for FilterCustom, whose layers are name-keyed (see Clear).
+        internal static void Withdraw(VisualElement element, ArbitraryProperty property, long priority)
+        {
+            if (s_layers.TryGetValue(element, out var map))
+            {
+                RemoveLayer(map, property, priority);
+                ReleaseUnusedShownImageWatch(element, map);
+            }
+        }
+
+        private static void RemoveLayer(LayerMap map, ArbitraryProperty property, long priority)
+        {
             if (map.TryGetValue(property, out var layers))
             {
                 layers.Remove(priority);
                 map.RemoveArrival(property, priority);
                 if (layers.Count == 0) map.Remove(property);
             }
-            ResolveAndApply(element, property, map);
-            ReleaseUnusedShownImageWatch(element, map);
-            Reproject(element, map);
         }
 
         // Clears the layer an ArbitraryStyle applied, using the parsed value itself rather than just its

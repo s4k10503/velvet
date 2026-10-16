@@ -19,6 +19,10 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 
 Unit names match case-sensitively, so `Q` is upper case and the rest lower.
 
+Swapping one bracketed value for another that writes the same property (`w-[300px]` for `w-[10px]`, with or
+without `!`) leaves the old inline value in place until the new one is written, so a `transition-*` or
+`duration-*` on the element runs between the two.
+
 A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a space. CSS wants a space
 on both sides of a binary `+` or `-`; Tailwind writes `calc(2rem-4px)` and adds the spaces itself, so a
 space on neither side reads as one on both, and `calc(2rem-4px)` and `calc(2rem_-_4px)` are the same

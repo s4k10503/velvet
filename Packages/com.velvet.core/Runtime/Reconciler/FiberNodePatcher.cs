@@ -1630,7 +1630,7 @@ namespace Velvet
                         removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                     }
 
-                    RemoveClass(element, cls);
+                    RemoveOutgoingClass(element, cls, newClasses);
                 }
             }
             foreach (var cls in newClasses)
@@ -1679,7 +1679,7 @@ namespace Velvet
                             removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                         }
 
-                        RemoveClass(element, cls);
+                        RemoveOutgoingClass(element, cls, newClasses);
                     }
                 }
                 foreach (var cls in newClasses)
@@ -1696,6 +1696,56 @@ namespace Velvet
                 _ctx.BufferPool.ReturnClassSet(oldSet);
                 _ctx.BufferPool.ReturnClassSet(newSet);
             }
+        }
+
+        // An inline-resolved class leaving while another class in the incoming list writes the same property
+        // (w-[300px] to w-[10px]) gives up its layer without the property being resolved. DiffClassList's
+        // reapply applies every incoming inline class afterwards, which resolves it. Pinned by
+        // ArbitraryWidthSwapTransitionTests.
+        private static void RemoveOutgoingClass(VisualElement element, string cls, string[] newClasses)
+        {
+            if (InlineWriteOf(cls) is { } outgoing)
+            {
+                if (WritesInlineProperty(newClasses, outgoing.Property))
+                {
+                    StyleArbitraryValueResolver.Withdraw(element, outgoing.Property, outgoing.Priority);
+                    return;
+                }
+            }
+            RemoveClass(element, cls);
+        }
+
+        private static bool WritesInlineProperty(string[] classes, ArbitraryProperty property)
+        {
+            foreach (var cls in classes)
+            {
+                if (InlineWriteOf(cls)?.Property == property)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The property and layer an inline-resolved class writes, or null for one that writes none or whose
+        // layers are not keyed by property (filter-[name:...]).
+        private static (ArbitraryProperty Property, long Priority)? InlineWriteOf(string raw)
+        {
+            if (!TryGetInlineResolvedCore(raw, out var core, out var important))
+            {
+                return null;
+            }
+            if (!StyleArbitraryValueResolver.TryParse(core, out var style))
+            {
+                return null;
+            }
+            if (style.Property == ArbitraryProperty.FilterCustom)
+            {
+                return null;
+            }
+            return (style.Property, important
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base);
         }
 
         // Token families a manipulator (or a side-table config pass) owns outright: none of them ever
