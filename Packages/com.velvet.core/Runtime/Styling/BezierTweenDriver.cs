@@ -483,7 +483,9 @@ namespace Velvet
                 return 0f;
             }
             var now = state.ElapsedSec;
+            // MUTANT_SURVIVES(equivalent, boundary): now is a float, which never equals 1/1000 held as a double.
             var from = now >= VelocitySlopeStepSec ? now - VelocitySlopeStepSec : now;
+            // MUTANT_SURVIVES(equivalent, boundary): the same comparison as the line above.
             var to = now >= VelocitySlopeStepSec ? now : now + VelocitySlopeStepSec;
             try
             {

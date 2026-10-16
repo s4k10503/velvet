@@ -477,28 +477,28 @@ namespace Velvet
 
         /// <summary>
         /// <see cref="InheritVelocity(MotionSpringState, MotionSpringState)"/> for a channel a native transition is
-        /// moving, which the context reads the rate of.
+        /// moving, whose rate <paramref name="nativeVelocity"/> reads for a slot in a unit.
         /// </summary>
-        public static void InheritVelocity(MotionSpringState next, MotionSlotContext context)
+        public static void InheritVelocity(MotionSpringState next, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity)
         {
-            InheritNative(next, next.Opacity, context, ArbitraryProperty.Opacity, LengthUnit.Pixel);
-            InheritNative(next, next.TranslateX, context, ArbitraryProperty.TranslateX, LengthUnit.Pixel);
-            InheritNative(next, next.TranslateY, context, ArbitraryProperty.TranslateY, LengthUnit.Pixel);
-            InheritNative(next, next.Scale, context, ArbitraryProperty.Scale, LengthUnit.Pixel);
-            InheritNative(next, next.Rotate, context, ArbitraryProperty.Rotate, LengthUnit.Pixel);
+            InheritNative(next, next.Opacity, nativeVelocity, ArbitraryProperty.Opacity, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateX, nativeVelocity, ArbitraryProperty.TranslateX, LengthUnit.Pixel);
+            InheritNative(next, next.TranslateY, nativeVelocity, ArbitraryProperty.TranslateY, LengthUnit.Pixel);
+            InheritNative(next, next.Scale, nativeVelocity, ArbitraryProperty.Scale, LengthUnit.Pixel);
+            InheritNative(next, next.Rotate, nativeVelocity, ArbitraryProperty.Rotate, LengthUnit.Pixel);
             if (next.Lengths != null)
             {
                 foreach (var length in next.Lengths)
                 {
-                    InheritNative(next, length.Value, context, length.Property, length.Unit);
+                    InheritNative(next, length.Value, nativeVelocity, length.Property, length.Unit);
                 }
             }
         }
 
-        private static void InheritNative(MotionSpringState next, SpringChannel? channel, MotionSlotContext context,
+        private static void InheritNative(MotionSpringState next, SpringChannel? channel, System.Func<ArbitraryProperty, LengthUnit, float?> nativeVelocity,
             ArbitraryProperty slot, LengthUnit unit)
         {
-            if (channel != null && context.NativeVelocity(slot, unit) is { } velocity)
+            if (channel != null && nativeVelocity(slot, unit) is { } velocity)
             {
                 Release(next, channel, channel.Origin, velocity);
             }

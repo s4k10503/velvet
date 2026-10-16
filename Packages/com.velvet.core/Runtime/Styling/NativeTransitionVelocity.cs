@@ -84,11 +84,10 @@ namespace Velvet
             var from = magnitude(Closed(s_from!, styleType).GetValue(running.Style)!);
             var to = magnitude(Closed(s_to!, styleType).GetValue(running.Style)!);
             if (from == null || to == null) return null;
-            if (duration <= 0f || running.Now < startTime || running.Now >= startTime + duration) return 0f;
+            if (running.Now < startTime || running.Now >= startTime + duration) return 0f;
             var progress = (float)((running.Now - startTime) / duration);
             var before = Mathf.Max(0f, progress - (float)SlopeStep);
             var after = Mathf.Min(1f, progress + (float)SlopeStep);
-            if (after <= before) return 0f;
             return (to.Value - from.Value) * (easing(after) - easing(before)) / (after - before) / duration;
         }
 

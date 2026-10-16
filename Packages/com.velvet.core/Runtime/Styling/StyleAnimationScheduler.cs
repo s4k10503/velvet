@@ -714,7 +714,7 @@ namespace Velvet
             }
             if (state != null && context != null)
             {
-                MotionSpringDriver.InheritVelocity(state, context);
+                MotionSpringDriver.InheritVelocity(state, context.NativeVelocity);
             }
 
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's

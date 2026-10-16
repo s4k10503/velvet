@@ -111,27 +111,16 @@ namespace Velvet
         public bool NativeTransitionRunning(ArbitraryProperty slot) => HasRunningNativeTransition(slot);
 
         // The rate per second a running native transition is moving the slot at, in `unit` for a length; null where
-        // none is, where the slot is a color, or where the engine does not give it up.
+        // none is, where the slot is a color (whose magnitude reads as none), or where the engine does not give it up.
         public float? NativeVelocity(ArbitraryProperty slot, LengthUnit unit)
         {
-            if (_drivenByRunningPlay(slot) || MotionPropertyClassParser.IsColor(slot))
-            {
-                return null;
-            }
-            var owner = Owner(slot);
-            var longhands = StyleArbitraryLonghands.Of(slot);
-            for (var i = 0; i < s_nativePropertyIds.Length; i++)
-            {
-                if (longhands.Contains((StyleLonghand)i) && HasRunningNativeTransition(owner, (StyleLonghand)i))
-                {
-                    return NativeTransitionVelocity.Of(owner, s_nativePropertyIds[i]!,
-                        value => NativeMagnitude(value, slot, unit));
-                }
-            }
-            return null;
+            return TryFindRunningNative(slot, out var longhand)
+                ? NativeTransitionVelocity.Of(Owner(slot), s_nativePropertyIds[(int)longhand]!,
+                    value => NativeMagnitude(value, slot, unit))
+                : null;
         }
 
-        private static float? NativeMagnitude(object value, ArbitraryProperty slot, LengthUnit unit)
+        internal static float? NativeMagnitude(object value, ArbitraryProperty slot, LengthUnit unit)
         {
             switch (value)
             {
@@ -179,8 +168,11 @@ namespace Velvet
             return MotionPropertyClassParser.IsColor(slot) || value.Unit == unit || TryConvert(slot, ref value, unit);
         }
 
-        private bool HasRunningNativeTransition(ArbitraryProperty slot)
+        private bool HasRunningNativeTransition(ArbitraryProperty slot) => TryFindRunningNative(slot, out _);
+
+        private bool TryFindRunningNative(ArbitraryProperty slot, out StyleLonghand found)
         {
+            found = default;
             if (_drivenByRunningPlay(slot)) return false;
             var owner = Owner(slot);
             var longhands = StyleArbitraryLonghands.Of(slot);
@@ -188,7 +180,11 @@ namespace Velvet
             for (var i = 0; i < s_nativePropertyIds.Length; i++)
             {
                 var longhand = (StyleLonghand)i;
-                if (longhands.Contains(longhand) && HasRunningNativeTransition(owner, longhand)) return true;
+                if (longhands.Contains(longhand) && HasRunningNativeTransition(owner, longhand))
+                {
+                    found = longhand;
+                    return true;
+                }
             }
             return false;
         }

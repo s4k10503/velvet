@@ -109,5 +109,30 @@ namespace Velvet.Tests
             // Assert
             Assert.That(startVelocity, Is.EqualTo(0f).Within(1e-6f));
         }
+
+        [Test]
+        public void Given_AnOpacityBezierExitPartWay_When_ALabelSwapsAnEnterOver_Then_TheSpringStartsFromTheExitsFrame()
+        {
+            // Arrange — six frames into a linear fade out, which the swapped-out opacity-0 is not where it is.
+            _scheduler = new StyleAnimationScheduler();
+            var element = new VisualElement();
+            Root.Add(element);
+            var exit = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+                DurationSec = 1f, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
+            };
+            _scheduler.PlayExit(element, exit, null);
+            for (var i = 0; i < 6; i++) Tick();
+            var frame = element.style.opacity.value;
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                new StyleTransitionConfig { Type = TransitionType.Spring });
+            var origin = RunningEnterSpring(element)?.Opacity?.Origin ?? float.NaN;
+
+            // Assert — NaN unless the exit's frame sits between both of its ends.
+            Assert.That(frame > 0.01f && frame < 0.99f ? origin : float.NaN, Is.EqualTo(frame).Within(1e-5f));
+        }
     }
 }
