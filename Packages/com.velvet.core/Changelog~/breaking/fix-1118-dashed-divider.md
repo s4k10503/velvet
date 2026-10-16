@@ -7,8 +7,8 @@
 
 - A `V.Motion` animates a border color one side at a time, as CSS animates the four `border-*-color`
   longhands: sides showing different colors each start from their own, an important color on one side
-  (`!border-t-[#f00]`) keeps that side alone out of the animation, and the per-side bracket forms
-  (`border-t-[#f00]`, `border-x-[#f00]`) animate. A side a `divide-*` color or a dashed divider holds
+  (`!border-t-[#f00]`) keeps that side alone out of the animation, and the per-side forms
+  (`border-t-red-500`, `border-x-[#f00]`, `border-s-red-500`) animate. A side a `divide-*` color or a dashed divider holds
   starts from the color it shows and animates toward a border color class of the child's own where that
   class wins the side. The animation used to land at once wherever the four sides differed, a class
   target landed at once on a side a divider held, and a one-sided important color kept all four

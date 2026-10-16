@@ -303,7 +303,8 @@ resolved start described above.
   Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so
   switching a config between `Tween` and `Spring` never changes which colors the element passes
   through. `border-color` fans out to all four sides, each its own channel, as do the per-side
-  bracket forms (`border-t-[#f00]`, `border-x-[#f00]`).
+  forms (`border-t-red-500`, `border-x-[#f00]`, `border-s-red-500`), a logical side driving the
+  physical side it resolves to.
 - **`border-radius`,** from the `rounded-*` scale and the bracket forms, including the per-side and
   per-corner spellings.
 - **Spacing-scale lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*`
