@@ -209,11 +209,10 @@ namespace Velvet
             for (var i = 1; i < count; i++)
             {
                 var item = found[i];
-                var j = i - 1;
-                while (j >= 0 && (descending ? found[j].Value < item.Value : found[j].Value > item.Value))
+                int j;
+                for (j = i - 1; j >= 0 && (descending ? found[j].Value < item.Value : found[j].Value > item.Value); j--)
                 {
                     found[j + 1] = found[j];
-                    j--;
                 }
                 found[j + 1] = item;
             }
