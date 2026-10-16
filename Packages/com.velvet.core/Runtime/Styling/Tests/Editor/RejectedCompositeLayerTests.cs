@@ -7,10 +7,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies a composed family's rejection across the class lists layered on one element: a family the
-    /// element's own list rejects without a variant holds at its identity under a <c>V.Motion</c> pose and under
-    /// the stylesheet classes the gesture, presence and drag channels add, and a pose that rejects a value holds
-    /// the element's own family at its identity while it applies.
+    /// Specifies a composed family's rejection across the class lists layered on one element: a <c>V.Motion</c>
+    /// pose is read with the element's own list as one list, and a family the own list discards holds at its
+    /// identity under the stylesheet classes the gesture, presence and drag channels add.
     /// </summary>
     internal sealed class RejectedCompositeLayerTests : PanelTestBase
     {
@@ -27,22 +26,27 @@ namespace Velvet.Tests
             var applied = MotionVariantResolver.ResolveAppliedAt(node, "open", out _, out _);
 
             // Assert — opacity-50 is of no rejected family, and stays.
-            Assert.That(string.Join(" ", applied), Is.EqualTo("translate-x-[0] translate-y-[0] opacity-50"));
+            Assert.That(string.Join(" ", applied), Is.EqualTo("opacity-50 translate-x-[0] translate-y-[0]"));
         }
 
-        // GREEN_ON_BASE(characterization): the base had no composed-family rejection, so it kept the pose's class too.
-        [Test]
-        public void Given_ARejectedValueTheOwnListOutranks_When_APoseNamesItsFamily_Then_ThePoseApplies()
+        // A pose's token outranks an own one it ties with on importance, as an animate pose overrides the element's
+        // style, and an important token outranks a plain one whichever list holds it.
+        [TestCase("translate-y-[10]", "translate-y-4", "translate-y-4")]
+        [TestCase("translate-x-4 translate-y-[10]", "translate-y-4", "translate-x-4 translate-y-4")]
+        [TestCase("translate-x-[10] !translate-x-4", "translate-y-4", "!translate-x-4 translate-y-4")]
+        [TestCase("!translate-y-[10]", "translate-y-4", "!translate-x-[0] !translate-y-[0]")]
+        [TestCase("!translate-x-4", "translate-y-[10]", "!translate-x-[0] !translate-y-[0]")]
+        public void Given_AnOwnListAndAPoseOfOneComposedFamily_When_ThePoseApplies_Then_TheyAreReadAsOneList(
+            string own, string pose, string expected)
         {
             // Arrange
-            var node = V.Motion(className: "translate-x-[10] !translate-x-4",
-                variants: new Dictionary<string, MotionVariant> { ["open"] = "translate-y-4" });
+            var node = V.Motion(className: own, variants: new Dictionary<string, MotionVariant> { ["open"] = pose });
 
             // Act
             var applied = MotionVariantResolver.ResolveAppliedAt(node, "open", out _, out _);
 
             // Assert
-            Assert.That(string.Join(" ", applied), Is.EqualTo("translate-x-[10] !translate-x-4 translate-y-4"));
+            Assert.That(string.Join(" ", applied), Is.EqualTo(expected));
         }
 
         [Test]

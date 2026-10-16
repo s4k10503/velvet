@@ -32,9 +32,11 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", tokens), Is.EqualTo(kept));
         }
 
-        // The second case's identity is important, as the important base class it has to outrank there is.
+        // The identity is important where it has to outrank an important base class; the last case spells the
+        // variant's rejected value important as Tailwind does, behind the variant.
         [TestCase("translate-x-4 hover:translate-y-[10]", "translate-x-4 hover:translate-x-[0] hover:translate-y-[0]")]
         [TestCase("!skew-x-6 hover:skew-y-[8]", "!skew-x-6 !hover:skew-x-[0] !hover:skew-y-[0]")]
+        [TestCase("!skew-x-6 hover:!skew-y-[8]", "!skew-x-6 !hover:skew-x-[0] !hover:skew-y-[0]")]
         public void Given_ARejectionBehindAVariant_When_Normalized_Then_TheFamilyIsItsIdentityThereOnly(string classes,
             string kept)
         {

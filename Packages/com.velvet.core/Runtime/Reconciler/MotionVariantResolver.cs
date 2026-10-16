@@ -65,12 +65,16 @@ namespace Velvet
                 return baseClasses;
             }
 
-            var parsed = PoseClasses(node, variant.ClassName);
+            var parsed = StyleCompositeRejection.Layered(baseClasses, V.ParseClassNames(variant.ClassName),
+                out var ownUnder);
             if (parsed.Length == 0)
             {
+                // Without a variant entry the next diff starts from the node's own classes, so those are what
+                // apply; Layered leaves the layer empty only where its winners are all own tokens.
                 variantClasses = Array.Empty<string>();
                 return baseClasses;
             }
+            baseClasses = ownUnder;
 
             parsed = StyleSpacingPrecedence.InlineNarrowerPose(baseClasses, parsed);
             variantClasses = parsed;
@@ -87,18 +91,18 @@ namespace Velvet
             return merged;
         }
 
-        // A pose's classes as they apply over the node's own: a family the node's own list rejects without a
-        // variant holds at its identity under every pose (StyleCompositeRejection.WithoutFamiliesRejectedIn).
-        // Every pose a node applies — resting, enter, exit — is read through here.
+        // A pose's classes as they apply over the node's own (StyleCompositeRejection.Layered). The enter and exit
+        // plays read a pose through here; ResolveAppliedAt reads the resting one through Layered itself, since it
+        // also applies the node's own classes as they stand under the pose.
         public static string[] PoseClasses(MotionNode node, string? className)
-            => StyleCompositeRejection.WithoutFamiliesRejectedIn(node.ClassNames ?? Array.Empty<string>(),
-                V.ParseClassNames(className));
+            => StyleCompositeRejection.Layered(node.ClassNames ?? Array.Empty<string>(), V.ParseClassNames(className),
+                out _);
 
-        // PoseClasses as the class string a transition carries: the string as written where nothing is taken out.
+        // PoseClasses as the class string a transition carries: the string as written where nothing is changed.
         public static string PoseClassName(MotionNode node, string? className)
         {
             var parsed = V.ParseClassNames(className);
-            var applied = StyleCompositeRejection.WithoutFamiliesRejectedIn(node.ClassNames ?? Array.Empty<string>(), parsed);
+            var applied = StyleCompositeRejection.Layered(node.ClassNames ?? Array.Empty<string>(), parsed, out _);
             return ReferenceEquals(applied, parsed) ? className ?? string.Empty : string.Join(" ", applied);
         }
 

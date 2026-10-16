@@ -111,9 +111,9 @@ namespace Velvet
         // variants, so `sm:p-13 sm:pt-2` is judged apart from `p-13 pt-2`, and `hover:focus:` is `focus:hover:`.
         internal static string[] Normalize(string[] tokens)
         {
-            var rejected = StyleCompositeRejection.RejectedEverywhere(tokens);
-            var normalized = NormalizeSpacing(StyleCompositeRejection.WithoutRejectedComposites(tokens));
-            StyleCompositeRejection.Remember(normalized, rejected);
+            var composed = StyleCompositeRejection.WithoutRejectedComposites(tokens);
+            var normalized = NormalizeSpacing(composed);
+            StyleCompositeRejection.Remember(normalized, tokens, composed);
             return normalized;
         }
 
