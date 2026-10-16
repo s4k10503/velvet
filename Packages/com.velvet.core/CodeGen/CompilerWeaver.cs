@@ -376,6 +376,7 @@ namespace Velvet.CodeGen
 
             if (LambdaWritesACapturedHookValue(method, hookPipedLocals))
             {
+                // MUTANT_SURVIVES(equivalent, literal): `true` hands the caller an unset analysis; InjectMemoization throws on it, the catch restores the body and returns false, and only the warning it adds differs.
                 return false;
             }
 
