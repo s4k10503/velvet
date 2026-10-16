@@ -102,6 +102,9 @@ namespace Velvet
             // still on screen and stages those settles again.
             public List<Action>? AfterRemovals;
             public List<Action>? PutBackRemovals;
+            // What a presence's drops of this walk dispose once the walk is known to commit, ahead of the removals:
+            // the fibers under a dropped ghost's anchor, which an abort leaves standing with the leaves.
+            public List<Action>? BeforeRemovals;
         }
 
         internal readonly record struct CommittedLeaf(int OldIndex, bool Linear, ChildKey Key);
@@ -242,6 +245,7 @@ namespace Velvet
                 removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
+                    if (commit.BeforeRemovals != null) foreach (var dispose in commit.BeforeRemovals) dispose();
                     FinalizeGeneralCommit(commit);
                     ApplyOffscreenChanges(commit);
                     if (commit.AfterRemovals != null) foreach (var retire in commit.AfterRemovals) retire();
@@ -2345,8 +2349,18 @@ namespace Velvet
             // recurse into the ghost's subtree (the Motion's PreviousTree was cleared), so its
             // inline fibers escape the orphan sweep. Dispose them explicitly via the tracked anchor
             // before the diff removes the leaves — otherwise a same-key re-entry would re-pair the
-            // undisposed fiber as a zombie whose local state updates no longer re-render.
-            DisposeExitedGhostFibers(state, key);
+            // undisposed fiber as a zombie whose local state updates no longer re-render. Only once the walk
+            // commits: an abort leaves the leaves on screen, and the next walk drops them.
+            if (commit == null)
+            {
+                DisposeExitedGhostFibers(state, key);
+            }
+            else if (state.ExitAnchors.Remove(key, out var anchor))
+            {
+                (commit.BeforeRemovals ??= new List<Action>()).Add(
+                    () => _ctx.ComponentRegistry.DisposeFibersUnder(new HashSet<VisualElement> { anchor }));
+                (commit.PutBackRemovals ??= new List<Action>()).Add(() => state.ExitAnchors[key] = anchor);
+            }
             if (commit != null)
             {
                 NotePresenceRemovalPutBack(commit, state, key, node);

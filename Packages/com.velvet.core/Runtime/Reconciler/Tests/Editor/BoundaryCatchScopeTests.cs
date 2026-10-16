@@ -97,6 +97,7 @@ namespace Velvet.Tests
             s_abortedExits = 0;
             s_abortedExitChild = () => V.Label(text: "a", key: "a");
             s_abortedExitCallback = () => s_abortedExits++;
+            s_ghostCleanups = 0;
             s_setPoolGhostTick = null;
             s_setSuspendedTick = null;
             s_suspendedExits = 0;
@@ -2122,6 +2123,35 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_abortedExits, Is.EqualTo(1));
+        }
+
+        // A component under the ghost's element stands with the leaves the abort left on screen.
+        [Test]
+        public void Given_AGhostWhoseDropAnAbortedRenderSkipped_When_ThatRenderEnds_Then_AComponentUnderItIsNotDisposed()
+        {
+            // Arrange
+            s_abortedExitChild = () => V.Div(key: "a", children: new VNode[] { V.Component(GhostEffectRender, key: "g") });
+            using var mounted = V.Mount(_root, V.Component(AbortedDropHostRender, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
+            s_setAbortedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setAbortedExitTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_ghostCleanups, Is.EqualTo(0));
+        }
+
+        private static int s_ghostCleanups;
+
+        [Component(Compiler = false)]
+        private static VNode GhostEffectRender()
+        {
+            Hooks.UseEffect(() => (Action)(() => s_ghostCleanups++), Array.Empty<object>());
+            return V.Label(text: "g");
         }
 
         // The boundary aborts the walk only once the presence's child is gone from its children, in the render the
