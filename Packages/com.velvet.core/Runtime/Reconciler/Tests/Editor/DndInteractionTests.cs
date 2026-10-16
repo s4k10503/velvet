@@ -31,6 +31,7 @@ namespace Velvet.Tests
         private static readonly List<string> s_ended = new();
         private static readonly List<string> s_overRankings = new();
         private static readonly List<string> s_endedRankings = new();
+        private static string s_receivedAttachOrder;
         private static int s_cancelCount;
         private static StateUpdater<bool> s_setShowSource;
         private static StateUpdater<bool> s_setAltDraggingClass;
@@ -49,6 +50,7 @@ namespace Velvet.Tests
             s_ended.Clear();
             s_overRankings.Clear();
             s_endedRankings.Clear();
+            s_receivedAttachOrder = null;
             s_cancelCount = 0;
             s_setShowSource = default;
             s_setAltDraggingClass = default;
@@ -1055,14 +1057,26 @@ namespace Velvet.Tests
         }
 
         // "b" mounts before "c" and unmounts, then "d" mounts over "c"'s rect, so "d" reuses the slot "b"
-        // vacated in the context's droppable dictionary.
+        // vacated in the context's droppable dictionary. The strategy records the ids it receives and
+        // whether their attach orders strictly increase, which holds only if each candidate carries its own
+        // order — a sort over equal orders would leave that false whatever sequence it returned.
         [Component]
         private static VNode ChurnedDroppablesScene()
         {
             var (stage, setStage) = Hooks.UseState(0);
             s_setStage = setStage;
             return V.DndContext(
-                onDragEnd: e => s_ended.Add(e.Over?.Id),
+                collisionDetection: (in DndCollisionQuery query) =>
+                {
+                    var increasing = true;
+                    for (var i = 1; i < query.Droppables.Count; i++)
+                    {
+                        increasing &= query.Droppables[i - 1].Order < query.Droppables[i].Order;
+                    }
+                    s_receivedAttachOrder = string.Join(",", query.Droppables.Select(d => d.Id))
+                        + (increasing ? " increasing" : " not increasing");
+                    return DndCollisions.RectIntersection(in query);
+                },
                 activation: new DragActivation(Distance: 4f),
                 className: "w-[300px] h-[300px]",
                 name: "scope",
@@ -1151,7 +1165,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADroppableMountedAfterAnotherUnmountedBeforeTheOtherTiedOne_When_TheDragEnds_Then_TheEarlierRegisteredTiedDroppableIsTheOverTarget()
+        public void Given_ADroppableMountedAfterAnotherUnmountedBeforeTheOtherTiedOne_When_TheDragMoves_Then_TheStrategyReceivesTheTiedPairInAttachOrder()
         {
             // Arrange — "c" and "d" share one rect and tie.
             Mount(ChurnedDroppablesScene);
@@ -1166,10 +1180,9 @@ namespace Velvet.Tests
 
             // Act
             SendPointerMove(item, new Vector2(190, 20));
-            SendPointerUp(item, new Vector2(190, 20));
 
             // Assert
-            Assert.That(s_ended, Is.EqualTo(new[] { "c" }));
+            Assert.That(s_receivedAttachOrder, Is.EqualTo("c,d increasing"));
         }
 
         #region Collision strategies (pure functions, no panel)
