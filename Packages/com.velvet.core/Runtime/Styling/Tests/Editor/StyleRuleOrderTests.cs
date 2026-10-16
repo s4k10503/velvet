@@ -43,6 +43,27 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", forward) + "|" + string.Join(",", reversed), Is.EqualTo("0,1|1,0"));
         }
 
+        // Tailwind has no rotate-n6 or duration-fast: the class stands for -rotate-6 and duration-100, which
+        // Tailwind 4.3.3 emits ahead of rotate-6 and duration-150.
+        [TestCase("rotate-n6", "rotate-6")]
+        [TestCase("rotate-n180", "rotate-0")]
+        [TestCase("hover:rotate-n6", "hover:rotate-6")]
+        [TestCase("!rotate-n6", "!rotate-6")]
+        [TestCase("rotate-n6!", "rotate-6!")]
+        [TestCase("duration-fast", "duration-150")]
+        [TestCase("duration-normal", "duration-200")]
+        [TestCase("duration-slow", "duration-300")]
+        public void Given_AClassNamedOtherwiseThanTheUtilityItStandsFor_When_Ordered_Then_ItSortsAsThatUtility(
+            string earlier, string later)
+        {
+            // Act
+            var forward = StyleRuleOrder.OrdinalsOf(new[] { earlier, later });
+            var reversed = StyleRuleOrder.OrdinalsOf(new[] { later, earlier });
+
+            // Assert
+            Assert.That(string.Join(",", forward) + "|" + string.Join(",", reversed), Is.EqualTo("0,1|1,0"));
+        }
+
         // GREEN_ON_BASE(characterization): the base already orders these pairs as Tailwind 4.3.3 emits them.
         [TestCase("scale-100", "scale-x-50")]
         [TestCase("text-sm", "text-[14px]")]

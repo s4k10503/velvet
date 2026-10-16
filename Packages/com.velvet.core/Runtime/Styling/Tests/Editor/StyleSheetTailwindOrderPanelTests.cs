@@ -50,6 +50,17 @@ namespace Velvet.Tests
             Assert.That(leaf.resolvedStyle.width, Is.EqualTo(16f));
         }
 
+        [TestCase("rotate-6 rotate-n6")]
+        [TestCase("rotate-n6 rotate-6")]
+        public void Given_ARotationBesideItsNegatedClass_When_LaidOut_Then_TheOneTailwindEmitsLaterHoldsTheAngle(string className)
+        {
+            // Act
+            var leaf = MountAndResolve(className);
+
+            // Assert — Tailwind emits -rotate-6 ahead of rotate-6.
+            Assert.That(leaf.resolvedStyle.rotate.angle.ToDegrees(), Is.EqualTo(6f).Within(1e-3f));
+        }
+
         [TestCase("p-1 p-px")]
         [TestCase("p-px p-1")]
         public void Given_TwoPaddingsOfTheScale_When_LaidOut_Then_TheStepTailwindEmitsLaterHoldsThePadding(string className)

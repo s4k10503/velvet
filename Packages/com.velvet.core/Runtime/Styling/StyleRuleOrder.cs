@@ -203,7 +203,8 @@ namespace Velvet
                     }
                 }
                 var (properties, count) = PropertySortOf(leaf);
-                return new SortKey(values, properties, count, token);
+                var candidate = string.Concat(token.Substring(0, token.Length - leaf.Length), TailwindSpellingOf(leaf));
+                return new SortKey(values, properties, count, candidate);
             }
 
             public int CompareTo(SortKey other)
@@ -316,6 +317,41 @@ namespace Velvet
         private static string SelectorOf(string token, string? payload)
             => token.Substring(0, Math.Max(0, token.Length - (payload?.Length ?? 0) - 1));
 
+        // The bundled classes whose name is Velvet's own, with the Tailwind utility each stands for: Tailwind orders by
+        // the name it gives the utility, so rotate-n6 sorts as -rotate-6 and the duration names as the steps they equal.
+        // InlineSheetOrderTests holds the values against the sheets.
+        private static readonly (string Name, string Tailwind)[] s_spelledOtherwise =
+        {
+            ("duration-fast", "duration-100"),
+            ("duration-normal", "duration-150"),
+            ("duration-slow", "duration-200"),
+        };
+
+        private const string NegatedRotatePrefix = "rotate-n";
+
+        // utility as Tailwind spells it, its important modifier kept where it stood.
+        private static string TailwindSpellingOf(string utility)
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(utility, out var important);
+            var spelled = core;
+            foreach (var (name, tailwind) in s_spelledOtherwise)
+            {
+                if (core == name)
+                {
+                    spelled = tailwind;
+                }
+            }
+            if (core.StartsWith(NegatedRotatePrefix, StringComparison.Ordinal))
+            {
+                spelled = string.Concat("-rotate-", core.Substring(NegatedRotatePrefix.Length));
+            }
+            if (!important)
+            {
+                return spelled;
+            }
+            return utility[0] == '!' ? string.Concat("!", spelled) : string.Concat(spelled, "!");
+        }
+
         internal static int TailwindIndexOf(string property) => Array.IndexOf(s_tailwindPropertyOrder, property);
 
         // Two utilities written without a variant, ordered as Tailwind emits them: negative when a is emitted
@@ -340,6 +376,15 @@ namespace Velvet
         // pins the order against what Tailwind emits.
         private const int ScaleClassDeclarations = 4;
         private const int ScaleAxisDeclarations = 2;
+
+        private static int ScaleDeclarationsOf(bool inline, ArbitraryProperty property)
+            => !inline ? ScaleClassDeclarations
+                : property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY ? ScaleAxisDeclarations : 1;
+
+        // A named size (text-lg) and a slash size (text-lg/7, text-[14px]/6) declare line-height beside font-size.
+        private static bool DeclaresLineHeight(StyleLonghandSet set, bool inline, string core)
+            => set.Contains(StyleLonghand.FontSize)
+                && (!inline || StyleNamedTextSize.TryParseSlashFontSize(core, out _));
 
         // The Tailwind property-order indexes of what the utility writes, ascending, and how many declarations
         // Tailwind counts for it: its longhands, plus the line-height a named or slash text size also declares, except
@@ -369,7 +414,7 @@ namespace Velvet
             }
             var order = new List<int>();
             var count = 0;
-            if (set.Contains(StyleLonghand.FontSize) && (!inline || StyleNamedTextSize.TryParseSlashFontSize(core, out _)))
+            if (DeclaresLineHeight(set, inline, core))
             {
                 // MUTANT_SURVIVES(equivalent): without this index, count still puts named sizes before a lone
                 // font-size. RuleOrderCascadeBoundaryTests pins the font-size-only sets and adjacent line-height index.
@@ -414,8 +459,7 @@ namespace Velvet
             }
             if (set.Contains(StyleLonghand.Scale))
             {
-                count = !inline ? ScaleClassDeclarations
-                    : property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY ? ScaleAxisDeclarations : 1;
+                count = ScaleDeclarationsOf(inline, property);
             }
             order.Sort();
             return (order, count);

@@ -374,7 +374,7 @@ namespace Velvet.Tests
             Assert.That(string.Join("; ", unread), Is.Empty);
         }
 
-        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the names StyleInlineSheetOrder gives them, which agree on the base too.
+        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the names StyleRuleOrder sorts them by, which agree on the base too.
         // Change `.rotate-n6 { rotate: -6deg; }` to `rotate: -7deg;` in `_transforms.uss` and this is what reddens.
         [Test]
         public void Given_TheNegatedRotateClasses_When_TheirSheetRulesAreRead_Then_EachWritesTheNegativeOfTheDegreesItsNameGives()
@@ -394,7 +394,7 @@ namespace Velvet.Tests
             Assert.That((degrees.Length > 0, string.Join("; ", wrong)), Is.EqualTo((true, string.Empty)));
         }
 
-        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the names StyleInlineSheetOrder gives them, which agree on the base too.
+        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the names StyleRuleOrder sorts them by, which agree on the base too.
         // Change `--duration-fast: 0.1s;` to `0.2s` in `_tokens.uss` and this is what reddens.
         [TestCase("fast", "100", "0.1s")]
         [TestCase("normal", "150", "0.15s")]

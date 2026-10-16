@@ -76,6 +76,25 @@ namespace Velvet.Tests
             Assert.That(Summary(misordered), Is.Empty);
         }
 
+        [TestCase("rotate-n6", "rotate-6")]
+        [TestCase("rotate-n180", "rotate-0")]
+        [TestCase("duration-fast", "duration-150")]
+        [TestCase("duration-normal", "duration-200")]
+        [TestCase("duration-slow", "duration-300")]
+        public void Given_AClassNamedOtherwiseThanTheUtilityItStandsFor_When_TheSheetsAreRead_Then_ItIsDeclaredWhereThatUtilitySorts(
+            string earlier, string later)
+        {
+            // Arrange
+            StyleUtilityProperties.TryGet(earlier, out var first);
+            StyleUtilityProperties.TryGet(later, out var second);
+
+            // Act
+            var declaredFirst = first.CascadePosition < second.CascadePosition;
+
+            // Assert
+            Assert.That(declaredFirst, Is.True);
+        }
+
         [Test]
         public void Given_FlexGridAndHidden_When_Ordered_Then_TheyRunInTailwindsDisplayOrder()
         {

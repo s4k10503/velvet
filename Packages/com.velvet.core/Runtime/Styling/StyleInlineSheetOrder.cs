@@ -15,18 +15,6 @@ namespace Velvet
     // bundled class that writes part of it.
     internal static class StyleInlineSheetOrder
     {
-        // The bundled classes whose name is Velvet's own, with the Tailwind utility each stands for: Tailwind orders by
-        // the name it gives the utility, so rotate-n6 sorts as -rotate-6 and the duration names as the steps they equal.
-        // InlineSheetOrderTests holds the values against the sheets.
-        private static readonly (string Name, string Tailwind)[] s_spelledOtherwise =
-        {
-            ("duration-fast", "duration-100"),
-            ("duration-normal", "duration-150"),
-            ("duration-slow", "duration-200"),
-        };
-
-        private const string NegatedRotatePrefix = "rotate-n";
-
         // The families cut down to a token per longhand, with the prefix their bracket value follows and the token
         // each longhand is written by.
         private static readonly (ArbitraryProperty Property, string Prefix, (StyleLonghand Longhand, string Side)[] Sides)[] s_splits =
@@ -67,7 +55,7 @@ namespace Velvet
                 var covered = StyleLonghandSet.Empty;
                 foreach (var (index, classWritten) in classes)
                 {
-                    if (StyleRuleOrder.CompareUtilities(TailwindNameOf(tokens[index]), tokens[i]) > 0)
+                    if (StyleRuleOrder.CompareUtilities(tokens[index], tokens[i]) > 0)
                     {
                         covered = covered.Union(classWritten);
                     }
@@ -131,20 +119,6 @@ namespace Velvet
                 return left.ToArray();
             }
             return null;
-        }
-
-        private static string TailwindNameOf(string cls)
-        {
-            foreach (var (name, tailwind) in s_spelledOtherwise)
-            {
-                if (cls == name)
-                {
-                    return tailwind;
-                }
-            }
-            return cls.StartsWith(NegatedRotatePrefix, StringComparison.Ordinal)
-                ? "-rotate-" + cls.Substring(NegatedRotatePrefix.Length)
-                : cls;
         }
 
         // A bundled class that holds its longhands unconditionally. No bundled class name is claimed by

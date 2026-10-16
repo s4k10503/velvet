@@ -190,7 +190,7 @@ style; taking the class away brings it back. One they write only in part keeps t
 and radius families the class is written inline (above), and a border width is cut down to the sides the classes leave,
 so `border-[3px] border-l-4` and `border-l-4 border-[3px]` give the left side 4px and the other three 3px. A few
 bundled classes carry Velvet's own name for a Tailwind utility and sort by that utility: `rotate-n6` as `-rotate-6`,
-and `duration-fast`, `duration-normal` and `duration-slow` as `duration-100`, `duration-150` and `duration-200`.
+and `duration-fast`, `duration-normal` and `duration-slow` as `duration-100`, `duration-150` and `duration-200`. The sheets declare them there too, so `rotate-6 rotate-n6` gives 6 degrees.
 
 This orders one inline token against the classes beside it. Only plain base tokens take part: a variant, an important
 token and a class gated on a state are ranked by their own layer. Where a class is written inline beside a second
