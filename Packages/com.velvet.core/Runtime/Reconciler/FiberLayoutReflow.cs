@@ -24,10 +24,12 @@ namespace Velvet
 
         // Lays out the panels a read by the fiber's layout effects or handles can reach.
         internal static void LayOutFor(ReconcilerContext ctx, ComponentFiber fiber)
+            // MUTANT_SURVIVES(unreachable): the flag is read only in LayOut's catch, which no panel the suite mounts reaches.
             => LayOut(ctx, fiber.MountPoint?.panel, fiber, ownerIsLifecycle: true);
 
         // Lays out the panels a callback ref attached to element, rendered by owner, can read.
         internal static void LayOutFor(ReconcilerContext ctx, VisualElement element, ComponentFiber? owner)
+            // MUTANT_SURVIVES(unreachable): the flag is read only in LayOut's catch, which no panel the suite mounts reaches.
             => LayOut(ctx, element.panel, owner, ownerIsLifecycle: false);
 
         internal static bool ReadsLayout(ComponentFiber fiber)
