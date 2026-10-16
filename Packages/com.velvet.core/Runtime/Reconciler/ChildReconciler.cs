@@ -283,8 +283,8 @@ namespace Velvet
         // Reconcile, which may enqueue more Portals (nested case) — they flow into
         // the same queue and are drained in FIFO order until empty so each Portal mounts at
         // target.childCount that already reflects every earlier-drained Portal's contribution.
-        // Called exclusively by Reconciler.Reconcile's top-level finally so the
-        // single-top-level-loop invariant holds across nested PatchPortal recursion.
+        // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
+        // finally both reach, so the single-top-level-loop invariant holds across nested PatchPortal recursion.
         internal void DrainPendingPortalMounts()
         {
             HashSet<ComponentFiber>? childFibersBefore = null;
