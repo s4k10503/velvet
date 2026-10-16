@@ -25,8 +25,8 @@ namespace Velvet.Tests
     /// container: with a sibling on each side, both stay and the subtree that threw goes.</item>
     /// <item>Where the pass that catches is itself re-placing the boundary, the rest of that pass commits and
     /// the fallback takes the rows it gives the boundary; where such a pass has already committed and a later
-    /// render of the thrower throws, the rows rewritten are the ones it placed. Where the catch is of an element
-    /// callback's error, which aborts that pass, the rows rewritten are the ones the container still holds.</item>
+    /// render of the thrower throws, the rows rewritten are the ones it placed. An element callback's error
+    /// raised while that pass creates an element is caught the same way.</item>
     /// <item>A catch inside its parent's render leaves the rest of that render to commit: a sibling behind the
     /// boundary, one inside a child that re-rendered in that render, and the fallback a Suspense behind the
     /// boundary is showing keep their state and their effect.</item>
@@ -748,15 +748,15 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
-        // An element callback's error still aborts the pass, and the rows its fallback takes are what this pins.
         [Test]
-        public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItAbortsOnACallbackError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItCatchesAnElementCallbackError_Then_TheFallbackTakesTheRowsThatPassGaveIt()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
             s_movedThrowsInCallback = true;
+            // The callback fails while the pass creates the element, so the boundary catches it in the walk as it
+            // catches a render error, and the pass commits around the fallback.
 
             // Act
             s_movedSetOrder.Invoke(1);
@@ -765,18 +765,18 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
-                Is.EqualTo("moved-fallback,moved-ahead"));
+                Is.EqualTo("moved-ahead,moved-fallback"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
-        // An element callback's error still aborts the pass, and the rows its fallback takes are what this pins.
         [Test]
-        public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItAbortsOnACallbackError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItCatchesAnElementCallbackError_Then_TheFallbackTakesTheRowsThatPassGaveIt()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ShrinkHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
             s_movedThrowsInCallback = true;
+            // The callback fails while the pass creates the element, so the boundary catches it in the walk as it
+            // catches a render error, and the pass commits around the fallback.
 
             // Act
             s_movedSetLeading.Invoke(1);
@@ -785,18 +785,18 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
-                Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
+                Is.EqualTo("moved-lead0,moved-fallback"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
-        // An element callback's error still aborts the pass, and the rows its fallback takes are what this pins.
         [Test]
-        public void Given_APassAddingRowsAheadOfTheBoundary_When_ItAbortsOnACallbackError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        public void Given_APassAddingRowsAheadOfTheBoundary_When_ItCatchesAnElementCallbackError_Then_TheFallbackTakesTheRowsThatPassGaveIt()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(GrowHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
             s_movedThrowsInCallback = true;
+            // The callback fails while the pass creates the element, so the boundary catches it in the walk as it
+            // catches a render error, and the pass commits around the fallback.
 
             // Act
             s_movedSetGrow.Invoke(3);
@@ -805,7 +805,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
-                Is.EqualTo("moved-lead0,moved-fallback"));
+                Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
         }
 
         [Test]
