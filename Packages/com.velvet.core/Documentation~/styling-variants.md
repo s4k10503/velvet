@@ -109,13 +109,15 @@ come off, and go back on the moment they stop losing.
 
 Four consequences worth knowing:
 
-- **Two bundled base utilities on one property are ordered as Tailwind emits them.** The bundled stylesheets
+- **Two bundled base utilities that resolve through the stylesheet and write one property are ordered as Tailwind emits them.** The bundled stylesheets
   declare their utilities in that order — the property order Tailwind sorts by, then the candidate names
   compared with digits as numbers and ahead of letters — so the one Tailwind emits later wins whichever is
   written first: `w-px w-4` and `w-4 w-px` both give 1px, `p-1 p-px` gives 1px, `bg-red-500 bg-blue-500`
   gives red, and `flex hidden` hides. Marking one important (below) overrides the order.
   `StyleSheetTailwindOrderTests` fails when a rule's place in a sheet stops agreeing with it. The `anim-*`
-  presets are the exception: the animation scheduler applies them to outrank the utilities they animate.
+  presets are the exception: the animation scheduler applies them to outrank the utilities they animate. So are the
+  utilities Velvet resolves inline in C#, which go to the last class written — the font facets
+  (`font-light font-bold`, `not-italic italic`) among them.
 - **A payload only displaces a class whose properties it wholly covers.** A base utility writing
   something the payload does not keeps its place, and the two then settle their shared properties in
   Tailwind's order. That is reliable where one set contains the other — `size-8 md:w-4` resolves the

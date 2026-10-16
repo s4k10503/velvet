@@ -553,6 +553,24 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already reads a flex-nowrap marker alone as no wrap.
+        // What reddens it is the flex-nowrap marker answering "wrap" in StyleGapManipulator.WrapMarker, which
+        // puts the row on the half-margin path.
+        [Test]
+        public void Given_FlexNowrapAlone_When_ReconciledOffPanel_Then_TheLeadingMarginPathApplies()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row flex-nowrap gap-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
         [TestCase("flex flex-row flex-wrap flex-nowrap gap-4")]
         [TestCase("flex flex-row flex-nowrap flex-wrap gap-4")]
         public void Given_FlexWrapBesideFlexNowrap_When_ReconciledOffPanel_Then_TheHalfMarginPolyfillApplies(

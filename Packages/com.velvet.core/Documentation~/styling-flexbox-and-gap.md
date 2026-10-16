@@ -28,7 +28,7 @@ variant payload outranks the base utility on the properties they share, whatever
 declares them in; see
 [styling-variants.md](styling-variants.md#variants-and-the-uss-cascade) for the rule and its limits.
 
-Two family-specific facts survive that:
+Two family-specific facts apply on top of that:
 
 - **Two direction utilities at the same priority are ordered as Tailwind emits them**, and `_layout.uss`
   declares them `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse`, so

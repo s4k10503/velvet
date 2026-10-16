@@ -126,8 +126,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoDirectionUtilitiesAtOnePriority_When_OneIsMarkedImportant_Then_ItWinsInsteadOfTheLaterRule()
         {
-            // Arrange — nothing ranks two base utilities against each other, so _layout.uss decides and the
-            // row family, declared last, takes it. The bang is the only thing that can change that.
+            // Arrange — the variant ranking does not separate two base utilities, so the order _layout.uss
+            // declares them in, which is Tailwind's, decides and the row family, declared last, takes it. The bang
+            // is the only thing that can change that.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode?[]
             {
                 V.Div(name: "plain", className: "flex-row flex-col"),
