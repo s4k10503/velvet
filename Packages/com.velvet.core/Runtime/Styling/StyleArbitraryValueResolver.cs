@@ -72,6 +72,22 @@ namespace Velvet
             return true;
         }
 
+        // TryParseLayer for a reader that orders tokens without applying them (StyleInlineSheetOrder, StyleFamilyOrder):
+        // a filter-[name] naming nothing registered stays unwarned, for the pass that applies the token to report.
+        internal static bool TryParseLayerQuietly(string className, out ArbitraryStyle result)
+        {
+            var was = StyleFilterValueParser.QuietUnregistered;
+            StyleFilterValueParser.QuietUnregistered = true;
+            try
+            {
+                return TryParseLayer(className, out result);
+            }
+            finally
+            {
+                StyleFilterValueParser.QuietUnregistered = was;
+            }
+        }
+
         // Parses using IndexOf + string operations rather than regex — a per-class hot path.
         public static bool TryParse(string className, out ArbitraryStyle result)
         {

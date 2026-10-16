@@ -197,6 +197,66 @@ bundled classes carry Velvet's own name for a Tailwind utility and sort by that 
 and `duration-fast`, `duration-normal` and `duration-slow` as `duration-100`, `duration-150` and `duration-200`. The sheets declare them there too, so `rotate-6 rotate-n6` gives 6 degrees.
 
 This orders one inline token against the classes beside it. Only plain base tokens take part: a variant, an important
-token and a class gated on a state are ranked by their own layer. Where a class is written inline beside a second
-inline token of the same property (`size-[10px] w-[20px] w-4`), the two inline writers of that property go to the last
-one written, which this section does not change.
+token and a class gated on a state are ranked by their own layer. Two inline tokens of one property are ordered in
+the next section.
+
+### Two inline utilities of one property
+
+Two base utilities that both resolve inline and write the same property are ordered as Tailwind emits them, whichever
+is written first: `w-[1px] w-[2px]` and `w-[2px] w-[1px]` both give 2px, `w-1/2 w-[10px]` gives 10px,
+`bg-red-500/50 bg-[#ff0000]` gives the half-transparent red, `border-b-red-500 border-b-[#0000ff]` leaves the bottom
+border red, and `scale-[1.5] scale-[2]`, `translate-x-[4px] translate-x-[8px]`, `opacity-[.3] opacity-[.7]` and
+`blur-[2px] blur-[4px]` give the second value. The important layer is ordered the same way (`!w-[1px] !w-[2px]` gives
+2px), and a custom filter is told apart by its registered name, so two different names are both kept. A token of
+another property and a token in another layer are left as written (`!w-[1px] w-[2px]`), and a variant token is ranked
+by the position of its own rule ([styling-variants.md](styling-variants.md)).
+
+The earlier token is left out of the class list, so it writes no style; taking the later one away brings it back, and
+taking the earlier one away changes nothing. A border width bracket that later inline tokens write in part is cut down
+to the sides they leave, as it is for a class above: `border-[3px] border-t-[4px]` and `border-t-[4px] border-[3px]`
+give the top 4px and the other three 3px.
+
+A stylesheet class that is written inline beside a narrower inline utility (`pt-2` beside `p-[3px]`, `w-4` beside
+`size-[10px]`) is ordered against the other writers of its property by the name it was written with, not by the
+inline form it becomes: `size-[10px] w-[10px] w-4` gives a 10px width, since Tailwind emits `w-[10px]` after `w-4`,
+where the inline form `w-[16px]` would sort after it. The same holds behind a variant and under `!`.
+
+A slash text size (`text-[14px]/6`) is not left out for a later plain font size (`text-[16px]`), because its line
+height is read off the token. Tailwind emits the slash form first, since it declares font size and line height, so
+the plain size holds the font size and the slash token the line height in either order:
+`text-[16px] text-[14px]/6` and `text-[14px]/6 text-[16px]` give 16px with the 6-step line height, and
+`text-sm/6 text-lg/7` gives the `text-sm` size with the `/6` line height.
+
+### Utilities a C# resolver folds from the class list
+
+A few families have no inline layer to settle a pair: a resolver reads the whole class list and ends on the last
+token of each slot. Their base tokens are put in the order Tailwind emits them, in the positions they hold, so the
+token the fold ends on is the one Tailwind emits last whichever is written first. Tailwind sorts two utilities by
+the first property they differ on, then by the one with more declarations, then by the candidate name, digits compared
+as numbers and a bracket ahead of a letter. Most utilities of one slot declare the same properties, so the name decides;
+the exceptions are named in the list:
+
+- the font facets: `font-light font-bold` and `font-bold font-light` both give light, `not-italic italic` gives not
+  italic, `font-[700] font-[600]` gives 700, `font-light font-[700]` gives light, `font-sans font-mono` gives sans;
+  `bold-italic` sorts as its name, which Tailwind has no utility for;
+- the text effects: `uppercase lowercase` gives upper case, `underline overline` gives underline, `text-pretty
+  text-balance` gives pretty, `leading-6 leading-4` gives the 6 step, with `whitespace-*` and the named and slash
+  sizes in the same list;
+- `z-20 z-10` gives 20, `grid-cols-3 grid-cols-2` three columns, `gap-x-4 gap-2` a 4 horizontal gap with a 2
+  vertical one, `space-x-*` and `space-y-*`, and `divide-*`;
+- `shadow-*` and `drop-shadow-*`, which declare box-shadow and filter (Tailwind v4's `property-order.ts` lists box-shadow, the ring's before the outline's, ahead of filter), so `shadow-lg drop-shadow-sm` gives the drop
+  shadow; `ring-*` and `outline-*`, outline being emitted after the ring, so `ring-0 outline-2` gives a 2px outline;
+  `skew-*`, `pointer-events-none` and `pointer-events-auto`, `border-solid` and the other line styles, and
+  `animate-*`;
+- the gradient shape, where a keyword or integer `bg-linear-*` counts three declarations to the two of the others
+  and is emitted first ([styling-gradients.md](styling-gradients.md)), beside its `from-` / `via-` / `to-` stops;
+- `clip-path-none` and `clip-path-[…]`, `bg-[addr:…]`, `animate-gradient`, `animate-shimmer` and `animate-hue`, which
+  Tailwind has no utility for, so the candidate name orders them.
+
+Tokens of the two importances are ordered apart, as the resolvers fold them. A variant payload is appended after the
+base tokens by the variant gate and keeps its place there. The nine-slice insets (`slice-*`) and `bold-italic` also have no Tailwind utility; the insets write overlapping
+longhands, so they follow the sort key instead: more longhands first, then the
+candidate name, which puts `slice-[…]` ahead of `slice-y-[…]` ahead of `slice-t-[…]` whichever is written first.
+
+This is a change from the last token written: `not-italic italic`, `underline overline`, `text-pretty text-balance`
+and `uppercase lowercase` used to end on their second class.

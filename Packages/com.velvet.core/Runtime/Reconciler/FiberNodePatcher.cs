@@ -1424,6 +1424,9 @@ namespace Velvet
             {
                 ReapplyOrderedInlineValues(element, oldClasses, newClasses);
             }
+            // Last: the readers of the live list (StyleClipPathClass.TryExtractLive, LiveClasses) end on the last
+            // token of a family, and a token added by this diff sits behind the ones already there.
+            StyleFamilyOrder.RestoreLiveOrder(element, newClasses);
             return true;
         }
 

@@ -10,7 +10,7 @@
   one emitted later it still wins (`w-4 w-[10px]` gives 10px, `scale-100 -scale-[0.5]` the inline scale). An inline
   token that the later classes write in full is no longer written; the class stays on the element. One they write in
   part keeps the rest: `border-[3px] border-l-4` gives the left border 4px and the other sides 3px, where the
-  bracket gave all four 3px. Variants, the `!` modifier and two utilities that both resolve inline are unchanged.
+  bracket gave all four 3px. Variants and the `!` modifier are unchanged.
 - The bundled classes that carry Velvet's own name for a Tailwind utility are declared where Tailwind's name sorts:
   `rotate-n6` and the other `rotate-n<N>` classes ahead of `rotate-0`, as `-rotate-6` is emitted ahead of `rotate-6`, and
   `duration-fast`, `duration-normal` and `duration-slow` beside `duration-100`, `duration-150` and `duration-200`.

@@ -396,6 +396,33 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base already warns once per unregistered name.
+        [Test]
+        public void Given_AnUnregisteredCustomFilterNameParsedTwice_When_Parsed_Then_ItWarnsOnce()
+        {
+            // Arrange
+            var warnings = 0;
+            void CountWarning(string message, string stack, LogType type)
+            {
+                if (type == LogType.Warning && message.Contains("[VelvetFilters] \"twice-unregistered\" is not registered")) warnings++;
+            }
+            Application.logMessageReceived += CountWarning;
+
+            // Act
+            try
+            {
+                StyleArbitraryValueResolver.TryParse("filter-[twice-unregistered:1]", out _);
+                StyleArbitraryValueResolver.TryParse("filter-[twice-unregistered:2]", out _);
+            }
+            finally
+            {
+                Application.logMessageReceived -= CountWarning;
+            }
+
+            // Assert
+            Assert.That(warnings, Is.EqualTo(1));
+        }
+
         [Test]
         public void Given_AMalformedArgument_When_Parsed_Then_TheTokenIsNotClaimed()
         {
