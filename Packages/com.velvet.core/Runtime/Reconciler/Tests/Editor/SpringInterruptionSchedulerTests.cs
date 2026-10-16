@@ -94,6 +94,8 @@ namespace Velvet.Tests
             Assert.That(startVelocity, Is.EqualTo(-1f).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base hands a bezier's spring no velocity at all, so it starts at rest
+        // there as well; the case pins that a paused playback hands none on.
         [Test]
         public void Given_AnOpacityBezierOnAHeldPlayback_When_ALabelChangeSendsItBackWithASpring_Then_TheNewSpringStartsAtRest()
         {

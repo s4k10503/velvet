@@ -43,34 +43,7 @@ namespace Velvet
             if (!Resolves || owner.panel == null) return null;
             try
             {
-                var system = s_system!.GetValue(owner.panel);
-                if (system == null || s_valuesByProperty!.GetValue(system) is not IDictionary byProperty
-                    || !byProperty.Contains(propertyId)) return null;
-                var values = byProperty[propertyId]!;
-                var running = Closed(s_running!, ClosedValues(values)).GetValue(values);
-                if (running == null) return null;
-                var set = running.GetType();
-                var args = new object[] { owner, propertyId, 0 };
-                if (!(bool)Closed(s_indexOf!, set).Invoke(running, args)) return null;
-                var index = (int)args[2];
-                var timing = ((Array)Closed(s_timing!, set).GetValue(running)!).GetValue(index)!;
-                var style = ((Array)Closed(s_style!, set).GetValue(running)!).GetValue(index)!;
-                var timingType = timing.GetType();
-                var styleType = style.GetType();
-                var startTime = (double)Closed(s_start!, timingType).GetValue(timing)!;
-                var duration = (float)Closed(s_duration!, timingType).GetValue(timing)!;
-                var easing = (Func<float, float>)Closed(s_easing!, timingType).GetValue(timing)!;
-                var now = (double)s_time!.GetValue(system)!;
-                var from = magnitude(Closed(s_from!, styleType).GetValue(style)!);
-                var to = magnitude(Closed(s_to!, styleType).GetValue(style)!);
-                if (from == null || to == null) return null;
-                if (duration <= 0f || now < startTime || now >= startTime + duration) return 0f;
-                var progress = (float)((now - startTime) / duration);
-                var before = Mathf.Max(0f, progress - (float)SlopeStep);
-                var after = Mathf.Min(1f, progress + (float)SlopeStep);
-                if (after <= before) return 0f;
-                var slope = (easing(after) - easing(before)) / (after - before);
-                return (to.Value - from.Value) * slope / duration;
+                return Locate(owner, propertyId) is { } running ? RateOf(running, magnitude) : null;
             }
             catch (Exception exception) when (exception is TargetInvocationException or TargetException
                 or ArgumentException or MemberAccessException or NotSupportedException or InvalidCastException
@@ -78,6 +51,45 @@ namespace Velvet
             {
                 return null;
             }
+        }
+
+        // The animation system's record of the transition: the timing and style entries and the time it last updated.
+        private sealed record Running(object Timing, object Style, double Now);
+
+        private static Running? Locate(VisualElement owner, object propertyId)
+        {
+            var system = s_system!.GetValue(owner.panel);
+            if (system == null || s_valuesByProperty!.GetValue(system) is not IDictionary byProperty
+                || !byProperty.Contains(propertyId)) return null;
+            var values = byProperty[propertyId]!;
+            var running = Closed(s_running!, ClosedValues(values)).GetValue(values);
+            if (running == null) return null;
+            var set = running.GetType();
+            var args = new object[] { owner, propertyId, 0 };
+            if (!(bool)Closed(s_indexOf!, set).Invoke(running, args)) return null;
+            var index = (int)args[2];
+            return new Running(
+                ((Array)Closed(s_timing!, set).GetValue(running)!).GetValue(index)!,
+                ((Array)Closed(s_style!, set).GetValue(running)!).GetValue(index)!,
+                (double)s_time!.GetValue(system)!);
+        }
+
+        private static float? RateOf(Running running, Func<object, float?> magnitude)
+        {
+            var timingType = running.Timing.GetType();
+            var startTime = (double)Closed(s_start!, timingType).GetValue(running.Timing)!;
+            var duration = (float)Closed(s_duration!, timingType).GetValue(running.Timing)!;
+            var easing = (Func<float, float>)Closed(s_easing!, timingType).GetValue(running.Timing)!;
+            var styleType = running.Style.GetType();
+            var from = magnitude(Closed(s_from!, styleType).GetValue(running.Style)!);
+            var to = magnitude(Closed(s_to!, styleType).GetValue(running.Style)!);
+            if (from == null || to == null) return null;
+            if (duration <= 0f || running.Now < startTime || running.Now >= startTime + duration) return 0f;
+            var progress = (float)((running.Now - startTime) / duration);
+            var before = Mathf.Max(0f, progress - (float)SlopeStep);
+            var after = Mathf.Min(1f, progress + (float)SlopeStep);
+            if (after <= before) return 0f;
+            return (to.Value - from.Value) * (easing(after) - easing(before)) / (after - before) / duration;
         }
 
         private static Type ClosedValues(object values)
@@ -89,10 +101,53 @@ namespace Velvet
             throw new ArgumentException("Not a Values<T>.", nameof(values));
         }
 
+        private const BindingFlags Declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance
+            | BindingFlags.DeclaredOnly;
+
+        // The member of a closed generic type that an open definition's member stands for, matched by metadata token.
         private static FieldInfo Closed(FieldInfo open, Type closedDeclaring)
-            => FieldInfo.GetFieldFromHandle(open.FieldHandle, closedDeclaring.TypeHandle);
+        {
+            foreach (var field in closedDeclaring.GetFields(Declared))
+            {
+                if (field.MetadataToken == open.MetadataToken) return field;
+            }
+            throw new ArgumentException($"{open.Name} is not a field of {closedDeclaring}.");
+        }
 
         private static MethodInfo Closed(MethodInfo open, Type closedDeclaring)
-            => (MethodInfo)MethodBase.GetMethodFromHandle(open.MethodHandle, closedDeclaring.TypeHandle)!;
+        {
+            foreach (var method in closedDeclaring.GetMethods(Declared))
+            {
+                if (method.MetadataToken == open.MetadataToken) return method;
+            }
+            throw new ArgumentException($"{open.Name} is not a method of {closedDeclaring}.");
+        }
+
+        /// <summary>
+        /// The names of the generic members that do not close over a float animation, which a rename or a retyped
+        /// container shows as here before it shows as a velocity that never arrives.
+        /// </summary>
+        internal static string[] Unclosed()
+        {
+            if (!Resolves) return new[] { "an unresolved member" };
+            var unclosed = new System.Collections.Generic.List<string>();
+            void Check(string name, Action close)
+            {
+                try { close(); }
+                catch (Exception exception) when (exception is ArgumentException or NullReferenceException
+                    or InvalidOperationException) { unclosed.Add(name); }
+            }
+            var values = s_running!.DeclaringType!.MakeGenericType(typeof(float));
+            var running = Closed(s_running, values).FieldType;
+            var timing = Closed(s_timing!, running).FieldType.GetElementType()!;
+            var style = Closed(s_style!, running).FieldType.GetElementType()!;
+            Check(nameof(s_indexOf), () => Closed(s_indexOf!, running));
+            Check(nameof(s_start), () => Closed(s_start!, timing));
+            Check(nameof(s_duration), () => Closed(s_duration!, timing));
+            Check(nameof(s_easing), () => Closed(s_easing!, timing));
+            Check(nameof(s_from), () => Closed(s_from!, style));
+            Check(nameof(s_to), () => Closed(s_to!, style));
+            return unclosed.ToArray();
+        }
     }
 }

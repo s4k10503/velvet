@@ -71,6 +71,20 @@ namespace Velvet.Tests
             Assert.That(resolved, Is.EqualTo((true, false)));
         }
 
+        // The declarations above resolve the open generic definitions; the velocity read closes them over the
+        // animation's value type, which is where a retyped container would break it.
+        [Test]
+        public void Given_TheStyleAnimationMembers_When_ClosedOverAFloatAnimation_Then_NoneIsLeftOpen()
+        {
+            // Arrange — nothing beyond the declarations.
+
+            // Act
+            var unclosed = NativeTransitionVelocity.Unclosed();
+
+            // Assert
+            Assert.That(string.Join(", ", unclosed), Is.Empty);
+        }
+
         [Test]
         public void Given_AFieldDeclaredWithTheAnyShape_When_ItsNameIsNotThere_Then_NothingIsFound()
         {
