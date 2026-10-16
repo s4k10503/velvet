@@ -57,7 +57,7 @@ namespace Velvet.CodeGen
             public List<(int Source, int Target)> Branches { get; }
 
             // Every write there is to a variable, so that a scope can tell whether it stands as it was set.
-            // Taking an address counts as one.
+            // Taking an address is one unless the callee is known to read.
             private void CollectWrites()
             {
                 for (var i = 0; i < Instructions.Length; i++)
