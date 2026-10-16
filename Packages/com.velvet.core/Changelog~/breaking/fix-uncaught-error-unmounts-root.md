@@ -14,6 +14,9 @@
   It used to go to the boundaries above, replacing the boundary that had just caught.
 - An error a cleanup throws in a component whose ancestor is already being torn down reaches the nearest
   boundary still mounted. It was dropped without a report, which happened to the children of a `V.VirtualList` row.
+- A scheduled render runs the `UseEffect` effects earlier commits left pending before it renders, as React flushes
+  passive effects before it renders again. A component an update removed before the frame boundary used to lose
+  its pending effects; they now run, and their cleanups run at the removal.
 - `MountOptions` takes every option as an `init` property, as React's `createRoot` takes them as properties of one
   object: `new MountOptions(handler)` is written `new MountOptions { OnCaughtError = handler }`.
 

@@ -484,6 +484,11 @@ namespace Velvet
             _draining = true;
             try
             {
+                // React flushes the pending passive effects of earlier commits before it renders again
+                // (ReactFiberRootScheduler's performSyncWorkOnRoot and its scheduler task), so an effect whose
+                // component this drain's render removes has run, and is cleaned up, rather than dropped. Ahead of
+                // the copy below, so the updates those effects request render in this drain.
+                if (openedWave && !(_reconcileActiveProbe?.Invoke() ?? false)) _flushPassiveEffects?.Invoke();
                 _drainBuffer.Clear();
                 _drainBuffer.AddRange(order);
                 order.Clear();
@@ -604,9 +609,8 @@ namespace Velvet
         }
 
         // Flushes a prior commit's pending passive effects, driven by the discrete-event boundary so an
-        // effect runs before that event's render — NOT from the mount / commit-phase FlushImmediate
-        // callers, which must leave passive effects pending for the scheduler tick. Gated like
-        // FlushImmediate so it never re-enters a live drain / reconcile.
+        // effect runs at the event even where the event renders nothing. Gated like FlushImmediate so it never
+        // re-enters a live drain / reconcile.
         internal void FlushPendingPassiveEffects()
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
