@@ -33,13 +33,15 @@ namespace Velvet
             SettleSec = settleSec;
         }
 
-        public static DurationSpring Derive(float? durationSec, float? bounce)
+        // velocity: what Framer's spring hands findSpring, the value's velocity in units per second negated and
+        // divided by 1000 (spring's getSpringOptions call); MotionSpringDriver.PhysicsAt converts it.
+        public static DurationSpring Derive(float? durationSec, float? bounce, double velocity = 0.0)
         {
             var dampingRatio = Clamp(1.0 - (bounce.HasValue ? Widen(bounce.Value) : DefaultBounce),
                 MinDampingRatio, MaxDampingRatio);
             var duration = Clamp(durationSec.HasValue ? Widen(durationSec.Value) : DefaultDurationSec,
                 MinDurationSec, MaxDurationSec);
-            var undampedFreq = ApproximateRoot(dampingRatio, duration, 5.0 / duration);
+            var undampedFreq = ApproximateRoot(dampingRatio, duration, velocity, 5.0 / duration);
             if (double.IsNaN(undampedFreq))
             {
                 return new DurationSpring(DefaultStiffness, DefaultDamping, double.IsNaN(duration) ? null : duration);
@@ -59,43 +61,65 @@ namespace Velvet
 
         // Newton's method from the same initial guess and for the same fixed iteration count as Framer, so a root
         // the iteration does not converge on is the same root.
-        private static double ApproximateRoot(double dampingRatio, double duration, double initialGuess)
+        private static double ApproximateRoot(double dampingRatio, double duration, double velocity,
+            double initialGuess)
         {
             var result = initialGuess;
             for (var i = 1; i < RootIterations; i++)
             {
-                result -= Envelope(result, dampingRatio, duration) / Derivative(result, dampingRatio, duration);
+                result -= Envelope(result, dampingRatio, duration, velocity)
+                    / Derivative(result, dampingRatio, duration, velocity);
             }
             return result;
         }
 
-        private static double Envelope(double undampedFreq, double dampingRatio, double duration)
+        private static double Envelope(double undampedFreq, double dampingRatio, double duration, double velocity)
         {
             if (dampingRatio < 1.0)
             {
                 var exponentialDecay = undampedFreq * dampingRatio;
                 var delta = exponentialDecay * duration;
-                return SafeMin - (exponentialDecay / AngularFreq(undampedFreq, dampingRatio) * Math.Exp(-delta));
+                return SafeMin
+                    - ((exponentialDecay - velocity) / AngularFreq(undampedFreq, dampingRatio) * Math.Exp(-delta));
             }
-            return -SafeMin + (Math.Exp(-undampedFreq * duration) * ((undampedFreq * duration) + 1.0));
+            return -SafeMin + (Math.Exp(-undampedFreq * duration) * (((undampedFreq - velocity) * duration) + 1.0));
         }
 
-        private static double Derivative(double undampedFreq, double dampingRatio, double duration)
+        private static double Derivative(double undampedFreq, double dampingRatio, double duration, double velocity)
         {
             if (dampingRatio < 1.0)
             {
                 var exponentialDecay = undampedFreq * dampingRatio;
                 var delta = exponentialDecay * duration;
+                var d = (delta * velocity) + velocity;
                 var e = dampingRatio * dampingRatio * undampedFreq * undampedFreq * duration;
                 var f = Math.Exp(-delta);
                 var g = AngularFreq(undampedFreq * undampedFreq, dampingRatio);
-                var factor = -Envelope(undampedFreq, dampingRatio, duration) + SafeMin > 0.0 ? -1.0 : 1.0;
-                return factor * (-e * f) / g;
+                var factor = -Envelope(undampedFreq, dampingRatio, duration, velocity) + SafeMin > 0.0 ? -1.0 : 1.0;
+                return factor * ((d - e) * f) / g;
             }
-            return Math.Exp(-undampedFreq * duration) * (-undampedFreq * duration * duration);
+            return Math.Exp(-undampedFreq * duration) * ((velocity - undampedFreq) * duration * duration);
         }
 
         private static double AngularFreq(double undampedFreq, double dampingRatio)
             => undampedFreq * Math.Sqrt(1.0 - (dampingRatio * dampingRatio));
+    }
+
+    /// <summary>
+    /// The duration and bounce a spring's physics come from (<see cref="StyleTransitionConfig.Bounce"/>), kept so a
+    /// channel released with a velocity solves for its own physics, as Framer Motion's spring does per value.
+    /// </summary>
+    internal readonly struct DurationSpringDescription
+    {
+        public DurationSpringDescription(float? durationSec, float? bounce)
+        {
+            DurationSec = durationSec;
+            Bounce = bounce;
+        }
+
+        public float? DurationSec { get; }
+        public float? Bounce { get; }
+
+        public DurationSpring At(double velocity) => DurationSpring.Derive(DurationSec, Bounce, velocity);
     }
 }

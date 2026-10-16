@@ -88,6 +88,10 @@ namespace Velvet.Tests
         // Mounts at pose a, starts the play to pose b, and lets it run six frames.
         private (MountedTree Mounted, VisualElement Motion) MidwayToB(string from, string to,
             StyleTransitionConfig transition)
+            => MidwayToB(new MotionVariant(from), new MotionVariant(to), transition);
+
+        private (MountedTree Mounted, VisualElement Motion) MidwayToB(MotionVariant from, MotionVariant to,
+            StyleTransitionConfig transition)
         {
             s_labels = new LabelStore();
             s_variants = new Dictionary<string, MotionVariant> { ["a"] = from, ["b"] = to };
@@ -152,6 +156,52 @@ namespace Velvet.Tests
 
             // Assert — carried, its velocity takes it a little further for a frame; started from rest it would
             // already be falling, and started from pose b it would be near 100.
+            Assert.That(Read(m, "translate-x") - drawn, Is.InRange(0.01f, 20f));
+        }
+
+        // The play to pose b runs on one driver and the one back to pose a on the other: each pose names its own.
+        [TestCase(TransitionType.Bezier, "opacity-0", "opacity-100", "opacity", 0f, 1f)]
+        [TestCase(TransitionType.Bezier, "translate-x-[0px]", "translate-x-[100px]", "translate-x", 0f, 100f)]
+        [TestCase(TransitionType.Bezier, "w-[0px]", "w-[100px]", "width", 0f, 100f)]
+        [TestCase(TransitionType.Bezier, "bg-[#000000]", "bg-[#ffffff]", "background-red", 0f, 1f)]
+        [TestCase(TransitionType.Spring, "opacity-0", "opacity-100", "opacity", 0f, 1f)]
+        [TestCase(TransitionType.Spring, "translate-x-[0px]", "translate-x-[100px]", "translate-x", 0f, 100f)]
+        [TestCase(TransitionType.Spring, "w-[0px]", "w-[100px]", "width", 0f, 100f)]
+        [TestCase(TransitionType.Spring, "bg-[#000000]", "bg-[#ffffff]", "background-red", 0f, 1f)]
+        public void Given_AMotionMidwayToItsLabelOnOneDriver_When_TheLabelFlipsBackOnTheOther_Then_ItContinuesFromTheValueItWasDrawnAt(
+            TransitionType toB, string from, string to, string channel, float low, float high)
+        {
+            // Arrange
+            var (toBTransition, backTransition) = toB == TransitionType.Bezier ? (s_bezier, s_physics) : (s_physics, s_bezier);
+            var (mounted, m) = MidwayToB(new MotionVariant(from, backTransition), new MotionVariant(to, toBTransition),
+                toBTransition);
+            using var _ = mounted;
+            var drawn = Read(m, channel);
+
+            // Act — the flip and one frame of the play it starts.
+            FlipBackToA(mounted);
+            Ticks(1);
+
+            // Assert — as the same-driver case above: still near the value drawn, where a restart from pose b is
+            // most of the travel away.
+            var midway = drawn > low + 0.01f * (high - low) && drawn < high - 0.01f * (high - low);
+            Assert.That(midway ? Read(m, channel) : float.NaN, Is.EqualTo(drawn).Within(0.1f * (high - low)));
+        }
+
+        [Test]
+        public void Given_AMotionMovingTowardItsLabelOnABezier_When_TheLabelFlipsBackOnASpring_Then_ItKeepsMovingThatWayForAFrame()
+        {
+            // Arrange — the spring back takes the velocity of the bezier's curve where it stands.
+            var (mounted, m) = MidwayToB(new MotionVariant("translate-x-[0px]", s_physics),
+                new MotionVariant("translate-x-[100px]", s_bezier), s_bezier);
+            using var _ = mounted;
+            var drawn = Read(m, "translate-x");
+
+            // Act
+            FlipBackToA(mounted);
+            Ticks(1);
+
+            // Assert — started at rest it would already be falling, and started from pose b it would be near 100.
             Assert.That(Read(m, "translate-x") - drawn, Is.InRange(0.01f, 20f));
         }
 

@@ -105,13 +105,22 @@ namespace Velvet
         // duration describes, and null where its physics alone decide.
         internal double? SpringSettleSec => SpringIsInstant ? 0.0 : TakesDurationSpring ? FromDuration.SettleSec : null;
 
+        // What a channel released with a velocity solves its own physics from, null where the physics knobs or
+        // an instant spring leave nothing to solve.
+        internal DurationSpringDescription? SpringDescription
+            => !SpringIsInstant && TakesDurationSpring ? new DurationSpringDescription(_durationSec, Bounce) : null;
+
         // Framer's animateMotionValue makes a transition with a zero duration and no repeat delay instant before it
         // reads the type, so a spring given a duration of exactly 0 and no repeat delay is, physics knobs or not.
         // An instant animation still waits out its delay, so only one with none lands at once (SpringLandsAtOnce); a
         // delayed one holds its start and lands when the delay ends.
         internal bool SpringIsInstant => Type == TransitionType.Spring && _durationSec == 0f && RepeatDelaySec == 0f;
 
-        internal bool SpringLandsAtOnce => SpringIsInstant && DelaySec <= 0f;
+        internal bool SpringLandsAtOnce => SpringLandsAtOnceAfter(0f);
+
+        // additionalDelaySec: the stagger a caller adds to DelaySec, which an instant spring waits out as well.
+        internal bool SpringLandsAtOnceAfter(float additionalDelaySec)
+            => SpringIsInstant && DelaySec + additionalDelaySec <= 0f;
 
         // The transition a sequence step plays this one on. Framer's sequence hands a spring's duration to the
         // spring itself rather than making it instant, and the spring holds a zero duration at 0.01 s, which a
@@ -310,7 +319,11 @@ namespace Velvet
         /// no spring-animatable channel at all, which still plays through the spring machinery (completing on its
         /// own, deferred, rather than being pre-empted by an instant-removal gate keyed on this flag).
         /// </summary>
-        internal bool HasExitAnimation => Type == TransitionType.Spring ? !SpringLandsAtOnce : DurationSec > 0f;
+        internal bool HasExitAnimation => HasExitAnimationAfter(0f);
+
+        // As HasExitAnimation, for an exit a caller delays by additionalDelaySec beyond DelaySec.
+        internal bool HasExitAnimationAfter(float additionalDelaySec)
+            => Type == TransitionType.Spring ? !SpringLandsAtOnceAfter(additionalDelaySec) : DurationSec > 0f;
 
         // Parsed class-name array caches (lazily initialized).
         private string[]? _enterFromClasses;

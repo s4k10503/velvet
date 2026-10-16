@@ -156,16 +156,19 @@ namespace Velvet
             // A spring landing at once plays as the zero-duration tween its DurationSec already is. An instant one
             // with a delay still to wait plays as a spring that ends where it starts moving. Neither repeats, as
             // Framer's instant animation does not.
-            var landsAtOnce = config.SpringLandsAtOnce;
+            var landsAtOnce = config.SpringLandsAtOnceAfter(additionalDelaySec);
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
                 landsAtOnce ? TransitionType.Tween : config.Type, config.Stiffness, config.Damping, config.Mass,
                 config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses,
-                playback, config.SpringIsInstant ? default : MotionRepeat.Of(config), config.SpringSettleSec);
+                playback, config.SpringIsInstant ? default : MotionRepeat.Of(config), config.SpringSettleSec,
+                config.SpringDescription);
         }
 
-        internal static bool RunsOnSwap(StyleTransitionConfig config)
-            => (config.Type == TransitionType.Spring && !config.SpringLandsAtOnce)
+        // additionalDelaySec, here and in LandsAtOnce: the stagger the caller hands the play, which an instant
+        // spring waits out before it lands.
+        internal static bool RunsOnSwap(StyleTransitionConfig config, float additionalDelaySec = 0f)
+            => (config.Type == TransitionType.Spring && !config.SpringLandsAtOnceAfter(additionalDelaySec))
                 || (config.Type == TransitionType.Bezier && config.DurationSec != 0f)
                 || TweensOnSwap(config);
 
@@ -174,9 +177,10 @@ namespace Velvet
 
         // A swap on such a config plays nothing: it lands the properties its pose names (LandNamedProperties) and
         // moves no classes. A bezier's zero duration is its None, and a spring's (SpringLandsAtOnce).
-        internal static bool LandsAtOnce(StyleTransitionConfig config)
+        internal static bool LandsAtOnce(StyleTransitionConfig config, float additionalDelaySec = 0f)
             => config.Type == TransitionType.Tween ? !IsPlayableDuration(config.DurationSec)
-                : config.Type == TransitionType.Bezier ? config.DurationSec == 0f : config.SpringLandsAtOnce;
+                : config.Type == TransitionType.Bezier ? config.DurationSec == 0f
+                : config.SpringLandsAtOnceAfter(additionalDelaySec);
 
         internal bool IsSwapPending(VisualElement element, Action onSwap)
             // MUTANT_SURVIVES(unreachable): a registered hold's swap is always the element's pending enter.
@@ -203,7 +207,8 @@ namespace Velvet
             TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f,
             float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
             Action? onSwap = null, string[]? appliedClasses = null, MotionPlayback? playback = null,
-            MotionRepeat repeat = default, double? springSettleSec = null)
+            MotionRepeat repeat = default, double? springSettleSec = null,
+            DurationSpringDescription? springDescription = null)
         {
             if (element == null)
             {
@@ -230,7 +235,7 @@ namespace Velvet
             WarnRepeatNotPlayed(type, repeat);
             if (type == TransitionType.Spring)
             {
-                StartSpringVariant(in play, stiffness, damping, mass, springSettleSec);
+                StartSpringVariant(in play, stiffness, damping, mass, springSettleSec, springDescription);
                 return;
             }
 
@@ -474,12 +479,13 @@ namespace Velvet
 
             WarnRepeatNotPlayed(config.Type, play.Repeat);
             // A spring landing at once takes the zero-duration path below.
-            if (config.Type == TransitionType.Spring && !config.SpringLandsAtOnce)
+            if (config.Type == TransitionType.Spring && !config.SpringLandsAtOnceAfter(additionalDelaySec))
             {
                 // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
                 // detached by a keyed reorder (see the tween exit's own ScheduleOnHost below) and this exit must
                 // still eventually complete so the reconciler's ghost-removal re-render fires.
-                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass, config.SpringSettleSec);
+                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass, config.SpringSettleSec,
+                    config.SpringDescription);
                 return;
             }
 
@@ -681,7 +687,7 @@ namespace Velvet
         // placed into the tree (GeneralPathReconciler) — so BOTH, like a presence exit, can start while still
         // detached (see PlayExit's own ScheduleOnHost/AttachToPanelEvent for the same rationale on the exit side).
         private void StartSpringVariant(in VariantPlay play, float stiffness, float damping, float mass,
-            double? settleSec)
+            double? settleSec, DurationSpringDescription? description)
         {
             // Copied out because a local function cannot capture an `in` parameter.
             var element = play.Element;
@@ -706,12 +712,11 @@ namespace Velvet
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
             var state = ValidateSpringParameters(stiffness, damping, mass)
-                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec)
+                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description)
                 : null;
-            // A spring this one interrupts hands on its velocity, and an enter its drawn values too, read before the
-            // cancel below ends it.
-            var interrupted = map.GetValueOrDefault(element)?.Spring;
-            if (state != null && interrupted != null)
+            // A spring or bezier play this one interrupts hands on its velocity, and to an enter its drawn values too,
+            // read before the cancel below ends it.
+            if (state != null && Drawn(map.GetValueOrDefault(element)) is { } interrupted)
             {
                 MotionSpringDriver.ContinueFrom(state, interrupted, fromDrawn: !isExit);
             }
@@ -849,6 +854,13 @@ namespace Velvet
 
         private bool DrivesTween(float durationSec) => !Clock.StepsOnPanelTime && IsPlayableDuration(durationSec);
 
+        // What the spring or bezier play pending draws, its velocity on the clock the play is shown on: a play on a
+        // playback moves by its rate, and not at all while it is paused.
+        private static MotionDrawnValues? Drawn(PendingAnimation? pending)
+            => pending?.Spring is { } spring ? MotionSpringDriver.Drawn(spring)
+                : pending?.Bezier is { } bezier ? BezierTweenDriver.Drawn(bezier, pending.Playback?.Scale(1f) ?? 1f)
+                : null;
+
         // The bezier driver's half of a play, shared by a Bezier (StartBezierVariant) and a driven Tween. planFrom /
         // planTo: the classes the plan is read from, where a preset's tokens stand in for its classes. create: the
         // state for the resolved plan, null to land the classes and complete at once. startDelaySec: how long the
@@ -875,11 +887,11 @@ namespace Velvet
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
             // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
             var state = create(plan);
-            // A variant enter interrupting one this driver runs starts from the values it drew, as a spring's does
+            // A variant enter interrupting a spring or bezier play starts from the values it drew, as a spring's does
             // (StartSpringVariant). A classic preset enter's from-classes are its own start, which Framer, having
             // no such enter, has nothing to say about. Read before the cancel below ends it.
             if (state != null && !play.IsExit && !removesToClasses
-                && map.GetValueOrDefault(element)?.Bezier is { } interrupted)
+                && Drawn(map.GetValueOrDefault(element)) is { } interrupted)
             {
                 BezierTweenDriver.ContinueFrom(state, interrupted);
             }
@@ -1531,9 +1543,10 @@ namespace Velvet
         // A zero-duration pose lands the properties it names: the enter or reversal still running on the element
         // stops animating them and keeps animating the rest. The caller runs this before it writes the pose, so
         // an inline value it writes is timed by the transition this leaves (InlineStyleTransitionTimingTests).
-        internal void LandNamedProperties(VisualElement element, string[] poseClasses, StyleTransitionConfig config)
+        internal void LandNamedProperties(VisualElement element, string[] poseClasses, StyleTransitionConfig config,
+            float additionalDelaySec = 0f)
         {
-            if (!LandsAtOnce(config) || !_pendingEnters.TryGetValue(element, out var pending))
+            if (!LandsAtOnce(config, additionalDelaySec) ||!_pendingEnters.TryGetValue(element, out var pending))
             {
                 return;
             }

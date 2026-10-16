@@ -397,58 +397,102 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Starts each channel of <paramref name="next"/> that <paramref name="interrupted"/> also drives from the
-        /// value <paramref name="interrupted"/> draws it at, the bezier sibling of
-        /// <see cref="MotionSpringDriver.ContinueFrom"/> less the velocity a tween does not carry. A length in
-        /// another unit keeps its own start.
+        /// What each channel of <paramref name="state"/> shows and how fast it is moving, the curve's slope at the
+        /// play's time times <paramref name="timeScale"/>, the play's seconds per second on screen; a color carries
+        /// no velocity, as Framer Motion tracks none for one, and a finished play none at all.
         /// </summary>
-        public static void ContinueFrom(BezierTweenState next, BezierTweenState interrupted)
+        public static MotionDrawnValues Drawn(BezierTweenState state, float timeScale)
         {
-            var shared = SharedEased(interrupted);
-            Continue(next.Opacity, interrupted, interrupted.Opacity, shared);
-            Continue(next.TranslateX, interrupted, interrupted.TranslateX, shared);
-            Continue(next.TranslateY, interrupted, interrupted.TranslateY, shared);
-            Continue(next.Scale, interrupted, interrupted.Scale, shared);
-            Continue(next.Rotate, interrupted, interrupted.Rotate, shared);
-            if (next.Lengths != null && interrupted.Lengths != null)
+            var now = state.ElapsedSec;
+            var before = now >= DrawnSlopeStepSec ? now - DrawnSlopeStepSec : now;
+            var after = now >= DrawnSlopeStepSec ? now : now + DrawnSlopeStepSec;
+            var moving = now < state.EndSec ? timeScale / (after - before) : 0f;
+
+            float At(BezierTweenChannel channel, float timeSec, ArbitraryProperty? length)
+            {
+                state.ElapsedSec = timeSec;
+                var shared = SharedEased(state);
+                var value = length is { } property
+                    ? MotionPropertyInterpolation.LerpLength(property, channel.From, channel.To, Eased(state, channel, shared))
+                    : Value(state, channel, shared);
+                state.ElapsedSec = now;
+                return value;
+            }
+
+            (float, float)? Of(BezierTweenChannel? channel, ArbitraryProperty? length = null)
+                => channel == null ? null
+                    : (At(channel, now, length), (At(channel, after, length) - At(channel, before, length)) * moving);
+
+            var drawn = new MotionDrawnValues
+            {
+                Opacity = Of(state.Opacity), TranslateX = Of(state.TranslateX), TranslateY = Of(state.TranslateY),
+                Scale = Of(state.Scale), Rotate = Of(state.Rotate),
+            };
+            if (state.Colors != null)
+            {
+                drawn.Colors = new List<(ArbitraryProperty, Color)>(state.Colors.Count);
+                foreach (var c in state.Colors)
+                {
+                    drawn.Colors.Add((c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, At(c.Progress, now, null))));
+                }
+            }
+            if (state.Lengths != null)
+            {
+                drawn.Lengths = new List<(ArbitraryProperty, LengthUnit, float, float)>(state.Lengths.Count);
+                foreach (var l in state.Lengths)
+                {
+                    var (value, velocity) = Of(l.Value, l.Property)!.Value;
+                    drawn.Lengths.Add((l.Property, l.Unit, value, velocity));
+                }
+            }
+            return drawn;
+        }
+
+        private const float DrawnSlopeStepSec = 1f / 1000f;
+
+        /// <summary>
+        /// Starts each channel of <paramref name="next"/> that <paramref name="interrupted"/> draws from the value
+        /// drawn, the bezier sibling of <see cref="MotionSpringDriver.ContinueFrom"/> less the velocity a tween does
+        /// not carry. A length in another unit keeps its own start.
+        /// </summary>
+        public static void ContinueFrom(BezierTweenState next, MotionDrawnValues interrupted)
+        {
+            Continue(next.Opacity, interrupted.Opacity);
+            Continue(next.TranslateX, interrupted.TranslateX);
+            Continue(next.TranslateY, interrupted.TranslateY);
+            Continue(next.Scale, interrupted.Scale);
+            Continue(next.Rotate, interrupted.Rotate);
+            if (next.Lengths != null)
             {
                 foreach (var length in next.Lengths)
                 {
-                    var match = interrupted.Lengths.Find(l => l.Property == length.Property && l.Unit == length.Unit);
-                    if (match != null)
+                    if (interrupted.LengthOf(length.Property, length.Unit) is { } drawn && drawn.SameUnit)
                     {
-                        var drawn = MotionPropertyInterpolation.LerpLength(match.Property, match.Value.From,
-                            match.Value.To, Eased(interrupted, match.Value, shared));
-                        length.Value.From = length.Value.RestingTarget = drawn;
+                        length.Value.From = length.Value.RestingTarget = drawn.Value;
                     }
                 }
             }
-            if (next.Colors == null || interrupted.Colors == null)
+            if (next.Colors == null)
             {
                 return;
             }
             for (var i = 0; i < next.Colors.Count; i++)
             {
                 var color = next.Colors[i];
-                var match = interrupted.Colors.Find(c => c.Property == color.Property);
-                if (match == null)
+                if (interrupted.ColorOf(color.Property) is { } drawn)
                 {
-                    continue;
+                    var continued = new BezierColorChannel(color.Property, drawn, color.To);
+                    continued.Progress.Timing = color.Progress.Timing;
+                    next.Colors[i] = continued;
                 }
-                var drawn = new BezierColorChannel(color.Property,
-                    MotionPropertyInterpolation.LerpColor(match.From, match.To, Value(interrupted, match.Progress, shared)),
-                    color.To);
-                drawn.Progress.Timing = color.Progress.Timing;
-                next.Colors[i] = drawn;
             }
         }
 
-        private static void Continue(BezierTweenChannel? next, BezierTweenState interrupted,
-            BezierTweenChannel? channel, float shared)
+        private static void Continue(BezierTweenChannel? next, (float Value, float Velocity)? interrupted)
         {
-            if (next != null && channel != null)
+            if (next != null && interrupted is { } drawn)
             {
-                next.From = next.RestingTarget = Value(interrupted, channel, shared);
+                next.From = next.RestingTarget = drawn.Value;
             }
         }
 

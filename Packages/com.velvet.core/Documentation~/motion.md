@@ -274,7 +274,11 @@ new StyleTransitionConfig
   Framer Motion's spring by the time since the play started. **Interrupting a running spring — a
   label change mid-spring, or an exit cancelled mid-flight — releases a new one from the current
   value *and velocity***, as Framer starts an interrupted value's next animation. A spring that
-  interrupts a bezier play starts at rest, since a bezier play keeps no velocity. An exit whose delta resolves no channel at all completes immediately.
+  interrupts a bezier play does the same, with the velocity of the bezier's curve where it stands
+  (none while a playback holds it paused). An exit whose delta resolves no channel at all completes
+  immediately.
+- A spring its `DurationSec` describes (below) released with a velocity solves its stiffness and
+  damping for that velocity, channel by channel, as Framer's `findSpring` does for each value.
 - A spring setting none of `Stiffness`, `Damping` and `Mass` can be described by `DurationSec` and
   `Bounce` instead, as Framer's spring `duration` and `bounce` describe one: `Bounce` is how far it
   overshoots (0 not at all, 0.3 when left null), and the stiffness and damping are the ones Framer's
@@ -283,8 +287,9 @@ new StyleTransitionConfig
   pass), a `layoutId` move on it included. Any of the three physics knobs takes precedence over both.
 - A `DurationSec` of exactly 0 makes any spring instant, physics knobs or not, as Framer makes a
   transition with a zero duration and no `repeatDelay` instant: it lands on its pose once its
-  `DelaySec` has run, at once where it has none, so a presence removes a child whose undelayed exit is
-  such a spring at once. It repeats nothing. A `RepeatDelaySec` above 0 keeps it a spring, as Framer's
+  `DelaySec` and the stagger its play is given (`StaggerChildrenSec` / `DelayChildrenSec`, or
+  `V.AnimatePresence`'s) have run, at once where both are none, so a presence with no `staggerSec` or
+  `delayChildrenSec` removes a child whose undelayed exit is such a spring at once. It repeats nothing. A `RepeatDelaySec` above 0 keeps it a spring, as Framer's
   does. Outside these two cases a spring's play ends when its slowest channel's spring has run the
   duration Framer measures for it (see *Repeating a play*), so a frame that arrives late moves the
   spring as far as the time it covers.
@@ -295,11 +300,11 @@ new StyleTransitionConfig
 ## Driven channels (Spring and Bezier)
 
 Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
-classes and the element's classes left in place. An enter or label change that interrupts a running
-enter or label change on the same driver — a Spring after a Spring, or a Bezier or a Tween on a clock
-other than the panel's (*Clocks*) after either of those two — starts
-each channel the two share from the value it is drawn at, as Framer animates every value from the one
-it has; a length the two hold in different units keeps the start below. Otherwise an explicit
+classes and the element's classes left in place. An enter or label change on a Spring or a Bezier that
+interrupts a running Spring or Bezier enter or label change — a Tween on a clock other than the
+panel's (*Clocks*) counting as a Bezier on either side — starts each channel the two share from the
+value it is drawn at, as Framer animates every value from the one it has, whichever transition either
+plays on; a length the two hold in different units keeps the start below. Otherwise an explicit
 swapped-out value takes priority as the
 start. Otherwise, on a mounted element, the start is the current inline value, including a running
 Spring or Bezier frame, or the resolved value when no inline value is set. If a native transition is

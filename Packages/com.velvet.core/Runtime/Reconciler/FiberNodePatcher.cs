@@ -548,33 +548,6 @@ namespace Velvet
             // merged array's tail by position (see ResolveApplied's own doc for why that would be fragile).
             var previous = RestingClassSet(element, oldNode.ClassNames);
             var variantApplied = newVariantClasses.Length > 0;
-            // Decided before the class-driven sync rather than beside the play below, because a tween swap
-            // changes what that sync may write (ResolveInlineHold), and a zero-duration one what the element's
-            // running play still animates as the sync writes (LandNamedProperties).
-            var playedTransition = ResolvePlayedSwap(element, swapTransition, previous.VariantClasses,
-                newVariantClasses);
-            var old = OldSet(previous, newVariantClasses);
-            var appliedOld = old.Merged;
-            var oldVariantClasses = old.VariantClasses;
-            if (playedTransition != null)
-            {
-                _ctx.StyleAnimationScheduler.LandNamedProperties(element, newVariantClasses, playedTransition);
-            }
-            var (syncOld, syncNew, onSwap) = ResolveInlineHold(element, newNode.ClassNames,
-                new MotionAppliedClassSet(appliedOld, oldVariantClasses),
-                new MotionAppliedClassSet(appliedNew, newVariantClasses), playedTransition);
-            // Keep an entry only while a variant is applied; drop it when a variant→no-variant transition happens
-            // (the diff above still uses the stored old classes to REMOVE the now-stale variant utilities).
-            if (variantApplied)
-            {
-                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedNew, newVariantClasses,
-                    old.Carried);
-            }
-            else
-            {
-                _ctx.MotionAppliedClasses.Remove(element);
-            }
-
             // staggerChildren/delayChildren propagation (plain variant-tree orchestration — no AnimatePresence
             // required): this node FOLLOWS the ambient label (no own Animate opting it out) and an ancestor
             // Motion is currently orchestrating THIS render (its own active label just changed and its
@@ -586,10 +559,39 @@ namespace Velvet
             // node establishes below for its OWN children (see ResolveChildOrchestration): this node's own swap
             // does not start until extraDelaySec has elapsed, so a child frame it establishes must measure its
             // claims from that same origin, not from render-commit time as if this node's swap were immediate.
+            // Claimed before the class-driven sync, since whether an instant spring swap lands at once depends on
+            // it (StyleTransitionConfig.SpringLandsAtOnceAfter).
             var extraDelaySec = 0f;
             if (MotionVariantResolver.IsVariantChild(newNode) && ambientOrchestration != null)
             {
                 extraDelaySec = ambientOrchestration.ClaimNextChildDelaySec();
+            }
+            // Decided before the class-driven sync rather than beside the play below, because a tween swap
+            // changes what that sync may write (ResolveInlineHold), and a zero-duration one what the element's
+            // running play still animates as the sync writes (LandNamedProperties).
+            var playedTransition = ResolvePlayedSwap(element, swapTransition, previous.VariantClasses,
+                newVariantClasses);
+            var old = OldSet(previous, newVariantClasses);
+            var appliedOld = old.Merged;
+            var oldVariantClasses = old.VariantClasses;
+            if (playedTransition != null)
+            {
+                _ctx.StyleAnimationScheduler.LandNamedProperties(element, newVariantClasses, playedTransition,
+                    extraDelaySec);
+            }
+            var (syncOld, syncNew, onSwap) = ResolveInlineHold(element, newNode.ClassNames,
+                new MotionAppliedClassSet(appliedOld, oldVariantClasses),
+                new MotionAppliedClassSet(appliedNew, newVariantClasses), playedTransition, extraDelaySec);
+            // Keep an entry only while a variant is applied; drop it when a variant→no-variant transition happens
+            // (the diff above still uses the stored old classes to REMOVE the now-stale variant utilities).
+            if (variantApplied)
+            {
+                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedNew, newVariantClasses,
+                    old.Carried);
+            }
+            else
+            {
+                _ctx.MotionAppliedClasses.Remove(element);
             }
 
             var childLabel = MotionVariantResolver.LabelForChildren(newNode, motionAmbient);
@@ -663,7 +665,7 @@ namespace Velvet
                     playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap,
                     appliedClasses: appliedNew, playback: playback);
             }
-            RemoveStaleInlineTokens(element, playedTransition, oldVariantClasses,
+            RemoveStaleInlineTokens(element, playedTransition, extraDelaySec, oldVariantClasses,
                 new MotionAppliedClassSet(appliedNew, newVariantClasses));
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
@@ -694,9 +696,9 @@ namespace Velvet
         // ends the property at the play's target (MotionZeroDurationLandingTests). It is carried instead, so the
         // next label change diffs it and its layer away as the old pose's (MotionAppliedClassSet.Carried).
         private void RemoveStaleInlineTokens(VisualElement element, StyleTransitionConfig? playedTransition,
-            string[] oldVariantClasses, MotionAppliedClassSet next)
+            float extraDelaySec, string[] oldVariantClasses, MotionAppliedClassSet next)
         {
-            if (playedTransition != null && !StyleAnimationScheduler.LandsAtOnce(playedTransition))
+            if (playedTransition != null && !StyleAnimationScheduler.LandsAtOnce(playedTransition, extraDelaySec))
             {
                 return;
             }
@@ -766,10 +768,10 @@ namespace Velvet
         // rather than moved behind a transition written ahead of them, so they land at the swap itself: with
         // the pose's USS classes, and in the stagger slot, which delays the swap and not the transition. The
         // enters hold the same way (HoldInlineForEnter) and the exit writes at its swap too (PlanInlineExit).
-        // swapTransition is null when no swap plays this render.
+        // swapTransition is null when no swap plays this render; extraDelaySec is the stagger the swap is played with.
         private (string[] syncOld, string[] syncNew, Action? onSwap) ResolveInlineHold(VisualElement element,
             string[]? baseClasses, MotionAppliedClassSet previous, MotionAppliedClassSet next,
-            StyleTransitionConfig? swapTransition)
+            StyleTransitionConfig? swapTransition, float extraDelaySec)
         {
             var oldVariantClasses = previous.VariantClasses;
             var newVariantClasses = next.VariantClasses;
@@ -787,7 +789,7 @@ namespace Velvet
                 }
             }
 
-            if (swapTransition != null && StyleAnimationScheduler.RunsOnSwap(swapTransition))
+            if (swapTransition != null && StyleAnimationScheduler.RunsOnSwap(swapTransition, extraDelaySec))
             {
                 // The pose this swap starts from, not a hold's HeldTokens: where this swap interrupts one that
                 // had not swapped, that pose was never written, and this sync writes it so the new swap starts
@@ -843,9 +845,9 @@ namespace Velvet
         // animate's inline-resolved tokens are held for the swap. Returns the play's onSwap, or null when the
         // enter holds nothing.
         internal Action? HoldInlineForEnter(VisualElement element, string[]? baseClasses, string[] fromVariantClasses,
-            StyleTransitionConfig transition)
+            StyleTransitionConfig transition, float additionalDelaySec)
         {
-            if (!StyleAnimationScheduler.RunsOnSwap(transition))
+            if (!StyleAnimationScheduler.RunsOnSwap(transition, additionalDelaySec))
             {
                 return null;
             }

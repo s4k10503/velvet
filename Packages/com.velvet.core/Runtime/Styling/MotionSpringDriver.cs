@@ -33,6 +33,10 @@ namespace Velvet
         // background color. Framer's x, y, scale and rotate are values of their own, which it keeps on its main
         // thread.
         public bool Acceleratable;
+        // The physics a spring its duration describes solves for this channel's start velocity, and for the
+        // opposite one a mirrored pass is released with; null where the state's own apply.
+        public (float Stiffness, float Damping)? Physics;
+        public (float Stiffness, float Damping)? MirroredPhysics;
 
         public SpringChannel(float initialValue, float target)
         {
@@ -114,6 +118,9 @@ namespace Velvet
         // the rest thresholds are not consulted, as Framer Motion's spring resolved from a duration ends. 0 for an
         // instant spring, which lands once its delay has run.
         public double? SettleSec;
+        // StyleTransitionConfig.SpringDescription: where set, a channel released with a velocity solves its own
+        // physics (SpringChannel.Physics), as Framer's findSpring reads the value's velocity.
+        public DurationSpringDescription? Description;
 
         // A play samples each channel's spring by the time since it started, as Framer Motion's generator does. A
         // double, since an endless repeat adds to it for as long as the play runs.
@@ -145,7 +152,8 @@ namespace Velvet
         /// should treat this exactly like a zero-duration tween: land the classes and complete immediately).
         /// </summary>
         public static MotionSpringState? Create(MotionSpringClassParser.SpringPlan plan, float stiffness, float damping,
-            float mass, MotionRepeat repeat = default, double? settleSec = null)
+            float mass, MotionRepeat repeat = default, double? settleSec = null,
+            DurationSpringDescription? description = null)
         {
             if (plan.IsEmpty)
             {
@@ -154,6 +162,7 @@ namespace Velvet
             var state = new MotionSpringState
             {
                 Stiffness = stiffness, Damping = damping, Mass = mass, Repeat = repeat, SettleSec = settleSec,
+                Description = description,
             };
             if (plan.Opacity is { } o) state.Opacity = new SpringChannel(o.from, o.to) { Acceleratable = true };
             if (plan.TranslateX is { } tx) state.TranslateX = new SpringChannel(tx.from, tx.to);
@@ -196,6 +205,8 @@ namespace Velvet
                 && state.Repeat.DelaySec == 0f;
             c.Scale = (c.Normalized || accelerated) && travel != 0f ? 100f / System.Math.Abs(travel) : 1f;
             c.StartVelocity = c.Normalized ? 0f : accelerated ? System.Math.Sign(travel) * velocity : velocity * c.Scale;
+            c.Physics = PhysicsAt(state, c.StartVelocity);
+            c.MirroredPhysics = PhysicsAt(state, -c.StartVelocity);
             // A spring with a settle time runs exactly that long on the main thread, and on the browser for the
             // easing Framer samples from it, which ends at the first sample at or past it.
             var pass = state.SettleSec is { } settleSec
@@ -218,6 +229,19 @@ namespace Velvet
                 }
             }
             return float.PositiveInfinity;
+        }
+
+        // The physics a spring its duration describes solves for when released with `velocity`, the velocity the
+        // driver hands the spring's solution: Framer's spring hands findSpring the value's velocity negated and in
+        // thousandths (its getSpringOptions call). At rest the state's own physics are already that solution.
+        private static (float Stiffness, float Damping)? PhysicsAt(MotionSpringState state, float velocity)
+        {
+            if (state.Description is not { } description || velocity == 0f)
+            {
+                return null;
+            }
+            var spring = description.At(-velocity / 1000.0);
+            return (spring.Stiffness, spring.Damping);
         }
 
         // Framer Motion's calcGeneratorDuration over a spring resolved from a duration, which reports done at that
@@ -432,13 +456,17 @@ namespace Velvet
                 ? elapsedSec
                 : state.Repeat.PassTime(elapsedSec, channel.PassSec, out mirrored);
             return mirrored
-                ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, state)
-                : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, state);
+                ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, state,
+                    channel.MirroredPhysics)
+                : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, state,
+                    channel.Physics);
         }
 
         private static float SampleSpring(float from, float to, float scale, float velocity, double t,
-            MotionSpringState state)
-            => SampleSpring(from, to, scale, velocity, t, (state.Stiffness, state.Damping, state.Mass), state.SettleSec);
+            MotionSpringState state, (float Stiffness, float Damping)? physics)
+            => SampleSpring(from, to, scale, velocity, t,
+                physics is { } own ? (own.Stiffness, own.Damping, state.Mass) : (state.Stiffness, state.Damping, state.Mass),
+                state.SettleSec);
 
         // Framer Motion's spring generator released at `from` toward `to` with `velocity` on the scaled travel: the
         // target once it rests, or, for one resolved from a duration (settleSec), once that duration has run.
@@ -452,68 +480,95 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Releases each channel of <paramref name="next"/> that <paramref name="interrupted"/> also drives with the
-        /// velocity that channel was moving at, as Framer Motion starts a value's new animation with the motion
-        /// value's velocity, and, where <paramref name="fromDrawn"/>, from the value it was drawn at too, as Framer
-        /// starts it from the motion value. A color carries no velocity, as Framer tracks none for one, and starts
-        /// at the color drawn. A length in another unit keeps its own start.
+        /// What each channel of <paramref name="state"/> shows and the velocity it is moving at, which a color
+        /// carries none of, as Framer tracks none for one.
+        /// </summary>
+        public static MotionDrawnValues Drawn(MotionSpringState state)
+        {
+            static (float, float)? Of(SpringChannel? c) => c == null ? null : (c.Integrator.Value, c.Integrator.Velocity);
+            var drawn = new MotionDrawnValues
+            {
+                Opacity = Of(state.Opacity), TranslateX = Of(state.TranslateX), TranslateY = Of(state.TranslateY),
+                Scale = Of(state.Scale), Rotate = Of(state.Rotate),
+            };
+            if (state.Colors != null)
+            {
+                drawn.Colors = new List<(ArbitraryProperty, Color)>(state.Colors.Count);
+                foreach (var c in state.Colors)
+                {
+                    drawn.Colors.Add((c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)));
+                }
+            }
+            if (state.Lengths != null)
+            {
+                drawn.Lengths = new List<(ArbitraryProperty, LengthUnit, float, float)>(state.Lengths.Count);
+                foreach (var l in state.Lengths)
+                {
+                    drawn.Lengths.Add((l.Property, l.Unit, l.Value.Integrator.Value, l.Value.Integrator.Velocity));
+                }
+            }
+            return drawn;
+        }
+
+        /// <summary>
+        /// Releases each channel of <paramref name="next"/> that <paramref name="interrupted"/> draws with the
+        /// velocity it is moving at, as Framer Motion starts a value's new animation with the motion value's
+        /// velocity, and, where <paramref name="fromDrawn"/>, from the value drawn too, as Framer starts it from the
+        /// motion value. A color starts at the color drawn, with no velocity. A length in another unit keeps its
+        /// own start.
         /// </summary>
         /// <remarks>
         /// An exit passes <paramref name="fromDrawn"/> false: its channels' <see cref="SpringChannel.RestingTarget"/>
         /// is the pose a cancelled exit heads back to, which a continued start would replace.
         /// </remarks>
-        public static void ContinueFrom(MotionSpringState next, MotionSpringState interrupted, bool fromDrawn)
+        public static void ContinueFrom(MotionSpringState next, MotionDrawnValues interrupted, bool fromDrawn)
         {
             Continue(next, next.Opacity, interrupted.Opacity, fromDrawn);
             Continue(next, next.TranslateX, interrupted.TranslateX, fromDrawn);
             Continue(next, next.TranslateY, interrupted.TranslateY, fromDrawn);
             Continue(next, next.Scale, interrupted.Scale, fromDrawn);
             Continue(next, next.Rotate, interrupted.Rotate, fromDrawn);
-            if (next.Lengths != null && interrupted.Lengths != null)
+            if (next.Lengths != null)
             {
                 foreach (var length in next.Lengths)
                 {
-                    var match = interrupted.Lengths.Find(l => l.Property == length.Property);
-                    Continue(next, length.Value, match?.Value, fromDrawn && match?.Unit == length.Unit);
+                    if (interrupted.LengthOf(length.Property, length.Unit) is { } drawn)
+                    {
+                        Continue(next, length.Value, (drawn.Value, drawn.Velocity), fromDrawn && drawn.SameUnit);
+                    }
                 }
             }
-            if (!fromDrawn || next.Colors == null || interrupted.Colors == null)
+            if (!fromDrawn || next.Colors == null)
             {
                 return;
             }
             for (var i = 0; i < next.Colors.Count; i++)
             {
                 var color = next.Colors[i];
-                var match = interrupted.Colors.Find(c => c.Property == color.Property);
-                if (match == null)
+                if (interrupted.ColorOf(color.Property) is { } drawn)
                 {
-                    continue;
+                    var continued = new SpringColorChannel(color.Property, drawn, color.To);
+                    Release(next, continued.Progress, 0f, 0f);
+                    next.Colors[i] = continued;
                 }
-                var drawn = new SpringColorChannel(color.Property,
-                    MotionPropertyInterpolation.LerpColor(match.From, match.To, match.Progress.Integrator.Value),
-                    color.To);
-                Release(next, drawn.Progress, 0f, 0f);
-                next.Colors[i] = drawn;
             }
         }
 
-        private static void Continue(MotionSpringState next, SpringChannel? channel, SpringChannel? interrupted,
-            bool fromDrawn)
+        private static void Continue(MotionSpringState next, SpringChannel? channel,
+            (float Value, float Velocity)? interrupted, bool fromDrawn)
         {
-            if (channel == null || interrupted == null)
+            if (channel == null || interrupted is not { } drawn)
             {
                 return;
             }
-            var velocity = interrupted.Integrator.Velocity;
             if (fromDrawn)
             {
-                var drawn = interrupted.Integrator.Value;
                 // Where the play starts, which a cancel holding it returns to (StartValues), and what the first
                 // write before the tick shows (ApplyCurrentValues).
-                channel.RestingTarget = drawn;
-                channel.Integrator.Set(drawn, velocity);
+                channel.RestingTarget = drawn.Value;
+                channel.Integrator.Set(drawn.Value, drawn.Velocity);
             }
-            Release(next, channel, fromDrawn ? interrupted.Integrator.Value : channel.Origin, velocity);
+            Release(next, channel, fromDrawn ? drawn.Value : channel.Origin, drawn.Velocity);
         }
 
         // Whether the play ends on its from-values rather than its to-values (MotionRepeat.EndsAtFrom).

@@ -10,8 +10,9 @@ namespace Velvet.Tests
     /// Pins a spring described by <see cref="StyleTransitionConfig.DurationSec"/> and
     /// <see cref="StyleTransitionConfig.Bounce"/>: the physics it resolves to, the precedence of the physics knobs
     /// over both, the copies that must carry what the caller set, a zero duration making any spring instant, and a
-    /// play that ends once its duration has passed. Each expected stiffness and damping is the one Framer Motion
-    /// 12's <c>getSpringOptions</c> returns for the same <c>duration</c> (in milliseconds) and <c>bounce</c>.
+    /// play that ends once its duration has passed. Each expected stiffness and damping is Framer Motion 12's
+    /// <c>findSpring</c> formulas evaluated for the same <c>duration</c> (in milliseconds), <c>bounce</c> and,
+    /// where a case names one, velocity.
     /// </summary>
     [TestFixture]
     internal sealed class MotionSpringDurationTests
@@ -142,6 +143,134 @@ namespace Velvet.Tests
 
             // Assert — getSpringOptions({ duration: 1 }).
             Assert.That(physics, Is.EqualTo(new[] { 968186.45f, 1377.5505f }).Within(1e-3).Percent);
+        }
+
+        [Test]
+        public void Given_ASpringDescribedByADurationAndABounce_When_SolvedForAVelocity_Then_ItsPhysicsAreTheOnesThatVelocityGives()
+        {
+            // Arrange — findSpring's underdamped envelope and derivative both read the velocity; the expected pair
+            // is its formulas evaluated for duration 0.5 s, bounce 0.25 and velocity -0.2, against 351.78 / 28.13
+            // at rest.
+            var description = new DurationSpringDescription(0.5f, 0.25f);
+
+            // Act
+            var spring = description.At(-0.2);
+
+            // Assert
+            Assert.That(new[] { spring.Stiffness, spring.Damping },
+                Is.EqualTo(new[] { 353.18960f, 28.190009f }).Within(1e-3).Percent);
+        }
+
+        [Test]
+        public void Given_ACriticallyDampedSpringDescribedByADuration_When_SolvedForAVelocity_Then_ItsPhysicsAreTheOnesThatVelocityGives()
+        {
+            // Arrange — the critically damped branch, bounce 0, for duration 0.8 s and velocity -0.5, against
+            // 133.21 / 23.08 at rest.
+            var description = new DurationSpringDescription(0.8f, 0f);
+
+            // Act
+            var spring = description.At(-0.5);
+
+            // Assert
+            Assert.That(new[] { spring.Stiffness, spring.Damping },
+                Is.EqualTo(new[] { 134.43614f, 23.189320f }).Within(1e-3).Percent);
+        }
+
+        [Test]
+        public void Given_ASpringItsDurationDescribes_When_AChannelIsReleasedWithAVelocity_Then_ItSolvesItsPhysicsForThatVelocity()
+        {
+            // Arrange — a translate moving at 200 px/s, which Framer's spring hands findSpring as -0.2.
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-[0px]" }, new[] { "translate-x-[100px]" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 351.77878f, damping: 28.13365f, mass: 1f,
+                settleSec: 0.5, description: new DurationSpringDescription(0.5f, 0.25f))!;
+            var moving = new MotionDrawnValues { TranslateX = (40f, 200f), TranslateY = (0f, 0f) };
+
+            // Act
+            MotionSpringDriver.ContinueFrom(state, moving, fromDrawn: true);
+
+            // Assert — NaN where the channel kept the state's own physics.
+            var physics = state.TranslateX!.Physics;
+            Assert.That(new[] { physics?.Stiffness ?? float.NaN, physics?.Damping ?? float.NaN },
+                Is.EqualTo(new[] { 353.18960f, 28.190009f }).Within(1e-3).Percent);
+        }
+
+        [Test]
+        public void Given_AnInstantSpring_When_AskedWhetherASwapStaggeredOnItLandsAtOnce_Then_ItDoesNot()
+        {
+            // Arrange — Framer's instant animation waits out the delay a stagger adds as it waits out its own.
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f };
+
+            // Act
+            var landsAtOnce = StyleAnimationScheduler.LandsAtOnce(config, additionalDelaySec: 0.1f);
+
+            // Assert
+            Assert.That(landsAtOnce, Is.False);
+        }
+
+        [Test]
+        public void Given_AnInstantSpring_When_AskedWhetherASwapStaggeredOnItRunsOnSwap_Then_ItDoes()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f };
+
+            // Act
+            var runsOnSwap = StyleAnimationScheduler.RunsOnSwap(config, additionalDelaySec: 0.1f);
+
+            // Assert
+            Assert.That(runsOnSwap, Is.True);
+        }
+
+        [Test]
+        public void Given_AnInstantSpring_When_AskedWhetherAStaggeredExitOnItAnimates_Then_ItDoes()
+        {
+            // Arrange
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f };
+
+            // Act
+            var animates = config.HasExitAnimationAfter(0.1f);
+
+            // Assert
+            Assert.That(animates, Is.True);
+        }
+
+        [Test]
+        public void Given_AnInstantSpringVariantEnterGivenAStagger_When_TimePassesTheStagger_Then_ItCompletesOnceTheStaggerHasRun()
+        {
+            // Arrange — a 0.2 s stagger: 160 ms is inside it, 320 ms past it.
+            var element = AttachedElement("opacity-100");
+            var scheduler = new StyleAnimationScheduler();
+            var completed = false;
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f },
+                onComplete: () => completed = true, additionalDelaySec: 0.2f);
+
+            // Act
+            Ticks(10);
+            var completedDuringStagger = completed;
+            Ticks(10);
+
+            // Assert
+            Assert.That((completedDuringStagger, completed), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AnInstantSpringVariantExitGivenAStagger_When_TimePassesTheStagger_Then_ItCompletesOnceTheStaggerHasRun()
+        {
+            // Arrange
+            var element = AttachedElement("opacity-100");
+            var scheduler = new StyleAnimationScheduler();
+            var completed = false;
+            var exit = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0f }
+                .WithExitClasses("opacity-100", "opacity-0");
+            scheduler.PlayExit(element, exit, () => completed = true, restoreFromOnCancel: true, additionalDelaySec: 0.2f);
+
+            // Act
+            Ticks(10);
+            var completedDuringStagger = completed;
+            Ticks(10);
+
+            // Assert
+            Assert.That((completedDuringStagger, completed), Is.EqualTo((false, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base ignores a spring's duration, so its damping stays 10 too.
