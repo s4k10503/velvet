@@ -4734,6 +4734,38 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeadMixingRotateUnderAPoseTweenThatASpinStartedOn_When_ItsRulesTurnIt_Then_TheTurnIsTakenAtOnce()
+        {
+            // Arrange — the bundled sheet; "a" swapping to its second pose on a second's tween, whose list names rotate,
+            // in the render that moves it under "card" from "b", at rotate-45, 300px right; five frames on "a" starts
+            // spinning, which takes rotate out of that list after the move has read its timing there.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_aId, s_aLeft, s_aMounted, s_bMounted) = ("solo", 20, true, true);
+            (s_bLeft, s_bTransition, s_sharedClasses, s_bClasses) = (300, s_slowTween, "", "rotate-45");
+            (s_aVariants, s_aPose) = (s_shade, "dark");
+            s_aTransition = new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.Linear, Layout = s_slowTween };
+            using var mounted = MountAAlone();
+            (s_aId, s_aLeft, s_aPose) = ("card", 0, "light");
+            RenderShared(mounted);
+            for (var i = 0; i < 5; i++) Tick();
+            s_aClasses = "animate-spin";
+            RenderShared(mounted);
+            for (var i = 0; i < 3; i++) Tick();
+
+            // Act — a class turns "a" a quarter round while it spins; two frames on.
+            s_aClasses = "animate-spin rotate-90";
+            RenderShared(mounted);
+            for (var i = 0; i < 2; i++) Tick();
+
+            // Assert — mixed from "b"'s rotate to its own at the quarter turn, the spin driving rotate taking the turn at
+            // once rather than on the second the pose tween's list gave rotate.
+            var a = Root.Q<VisualElement>("a");
+            var progress = 1f - TranslateX(a) / 300f;
+            var drawn = mounted.Root.Reconciler.Context.LayoutIdProjections[a].DrawnRotate;
+            Assert.That(drawn, Is.EqualTo(Mathf.LerpUnclamped(45f, 90f, progress)).Within(1f));
+        }
+
+        [Test]
         public void Given_ALeadMixingRotateUnderAPoseTween_When_ASpinStarts_Then_ItsTurnIsAddedToTheMix()
         {
             // Arrange — the bundled sheet; "a" swapping to its second pose on a second's tween in the render that moves it

@@ -840,7 +840,7 @@ namespace Velvet
         {
             if (!ctx.LayoutIdFollows.Remove(element, out var visibility)) return;
             // Taken out of a list a variant swap wrote since Follow, whose `all` would carry the write below
-            // (Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleIsShownAgain).
+            // (Given_AClosingModalWithATitle_When_ItComesBackMidExit_Then_ItsTitleDoesNotFadeAgain).
             MotionNativeTransitionGuard.ExcludeFromHeldList(element, s_visibility);
             if (ctx.LayoutIdProjections.GetValueOrDefault(element)?.Leader != null) End(element, ctx);
             element.style.visibility = visibility;
@@ -1244,7 +1244,8 @@ namespace Velvet
                 _reversingStart = reverses ? Target : Value;
                 (_from, Target, _elapsedSec, _curve) = (Value, target, 0f, null);
                 // Before the held list, since a driver takes the property out of it, and one that started after the list
-                // was read here leaves it holding the timing it had.
+                // was read here leaves it holding the timing it had
+                // (Given_ALeadMixingRotateUnderAPoseTweenThatASpinStartedOn_When_ItsRulesTurnIt_Then_TheTurnIsTakenAtOnce).
                 (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
                     : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
                     : (_heldDurationSec, _heldDelaySec, _heldEasing);
