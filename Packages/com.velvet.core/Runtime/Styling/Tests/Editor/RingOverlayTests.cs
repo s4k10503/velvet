@@ -133,6 +133,23 @@ namespace Velvet.Tests
             Assert.That((hostedAtRest, RingOverlayIn(btn.parent) != null), Is.EqualTo((true, false)));
         }
 
+        [TestCase("focus:ring-2 focus:ring-4")]
+        [TestCase("focus:ring-4 focus:ring-2")]
+        public void Given_TwoRingWidthsBehindOneVariant_When_Focused_Then_TheOneTailwindEmitsLastWins(string rings)
+        {
+            // Arrange — both tokens apply at one priority, which a rule's place in Tailwind's order breaks.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Button(name: "btn", className: "w-[80px] h-[30px] " + rings, text: "ok"));
+            var btn = _window.rootVisualElement.Q<VisualElement>("btn");
+            ForcePanelUpdate(btn.panel);
+
+            // Act
+            using (var e = FocusEvent.GetPooled()) { btn.SimulateEvent(e); }
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(btn)?.Spec.Ring.Width, Is.EqualTo((float?)4f));
+        }
+
         // Geometry
 
         [Test]
