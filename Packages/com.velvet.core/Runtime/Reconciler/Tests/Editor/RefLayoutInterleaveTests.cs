@@ -1052,5 +1052,37 @@ namespace Velvet.Tests
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("a:null,b:set"));
         }
+
+        [Test]
+        public void Given_AnElementAndOneOfItsChildren_When_TheTreeAsksWhetherTheParentPrecedesTheChild_Then_ItDoesNot()
+        {
+            // Arrange — the child lies inside the parent, so the parent's walk completes after it
+            var parent = new VisualElement();
+            var child = new VisualElement();
+            parent.Add(child);
+            var tree = new LogicalElementTree(new ReconcilerContext());
+
+            // Act
+            var precedes = tree.Precedes(parent, child);
+
+            // Assert
+            Assert.That(precedes, Is.False);
+        }
+
+        [Test]
+        public void Given_AnElementAndOneOfItsChildren_When_TheTreeAsksWhetherTheChildPrecedesTheParent_Then_ItDoes()
+        {
+            // Arrange
+            var parent = new VisualElement();
+            var child = new VisualElement();
+            parent.Add(child);
+            var tree = new LogicalElementTree(new ReconcilerContext());
+
+            // Act
+            var precedes = tree.Precedes(child, parent);
+
+            // Assert
+            Assert.That(precedes, Is.True);
+        }
     }
 }
