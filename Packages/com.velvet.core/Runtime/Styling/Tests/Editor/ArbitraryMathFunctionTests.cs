@@ -232,7 +232,6 @@ namespace Velvet.Tests
         [TestCase("calc(1px---1px)")]
         [TestCase("calc(20.px)")]
         [TestCase("calc(2e)")]
-        [TestCase("calc(1PX)")]
         public void Given_AMalformedMathFunction_When_ParsedAsAnArbitraryTop_Then_TheClassIsDeclined(string length)
         {
             // Act

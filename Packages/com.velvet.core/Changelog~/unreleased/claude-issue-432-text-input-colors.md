@@ -14,3 +14,10 @@
   - while a selection utility applies and the field holds focus and a non-empty selection, the
     selected text is drawn again above UI Toolkit's selection highlight, so an opaque highlight reads
     as a background.
+
+### Fixed
+
+- A bracketed length's unit is read in any case, as CSS reads it, so `w-[10PX]`, `top-[1IN]`, `w-[2EM]`
+  and `leading-[1.5EM]` apply where they used to leave the class inert. `border-*`, `text-*`, `ring-*`,
+  `outline-*`, `ring-offset-*` and `from-*` / `via-*` / `to-*` still take a length only in Tailwind's case,
+  as Tailwind does, except inside a math function or behind `text-[length:…]`.

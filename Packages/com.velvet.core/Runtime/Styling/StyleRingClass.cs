@@ -178,10 +178,10 @@ namespace Velvet
 
             // Offset: ring-offset-{N} / outline-offset-{N}. (A color suffix here is the offset-color fill,
             // which Velvet does not model yet; an unrecognized offset suffix is ignored.)
-            if (TryMatchPrefix(cls, "ring-offset-", out var ringOffSuffix)
-                || TryMatchPrefix(cls, "outline-offset-", out ringOffSuffix))
+            var isRingOffset = TryMatchPrefix(cls, "ring-offset-", out var ringOffSuffix);
+            if (isRingOffset || TryMatchPrefix(cls, "outline-offset-", out ringOffSuffix))
             {
-                if (TryParseWidthValue(ringOffSuffix, out var off))
+                if (TryParseWidthValue(ringOffSuffix, inferred: isRingOffset, out var off))
                 {
                     slots.Offset = off;
                 }
@@ -219,7 +219,7 @@ namespace Velvet
                 return;
             }
 
-            if (TryParseWidthValue(ringSuffix, out var w))
+            if (TryParseWidthValue(ringSuffix, inferred: true, out var w))
             {
                 slots.HasIntent = true;
                 slots.IsOutline = isOutlineFamily;
@@ -253,7 +253,9 @@ namespace Velvet
         }
 
         // A width is either a preset (0/1/2/4/8) or an arbitrary [Npx] (px only — a ring width is pixels).
-        private static bool TryParseWidthValue(string? suffix, out float width)
+        // inferred: whether Tailwind reads this prefix's bracket as a length or a colour
+        // (StyleArbitraryValueResolver.SpellsUnitAsTailwindInfers); outline-offset- takes a length alone.
+        private static bool TryParseWidthValue(string? suffix, bool inferred, out float width)
         {
             width = 0f;
             if (string.IsNullOrEmpty(suffix))
@@ -264,7 +266,9 @@ namespace Velvet
             {
                 return true;
             }
-            return StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out width);
+            return inferred
+                ? StyleArbitraryValueResolver.TryParseInferredArbitraryPixels(suffix.AsSpan(), out width)
+                : StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out width);
         }
 
         // A color is a palette token (red-500 / white / black) or an arbitrary [<color>].

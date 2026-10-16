@@ -3,7 +3,8 @@
 Every utility that takes a colour in brackets reads it with one grammar: `bg-[…]`, `text-[…]` and
 `border-[…]` and their opacity modifier (`bg-[…]/50`), `ring-[…]` and `outline-[…]`, `divide-[…]`,
 `shadow-[…]` and `drop-shadow-[…]`, the gradient stops (`from-[…]`, `via-[…]`, `to-[…]` and the colours of
-a stop list), and the colour argument of a custom filter (`filter-[name:…]`). An underscore stands for a
+a stop list), a text input's `caret-[…]`, `selection:bg-[…]` and `selection:text-[…]` and their opacity
+modifier, and the colour argument of a custom filter (`filter-[name:…]`). An underscore stands for a
 space: `bg-[rgb(255_0_0_/_50%)]` is `rgb(255 0 0 / 50%)`.
 
 ## Accepted forms
