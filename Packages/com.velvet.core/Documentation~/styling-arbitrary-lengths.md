@@ -147,7 +147,8 @@ different properties and share a corner the later holds it whichever comes first
 `rounded-b-lg rounded-l-sm` both give the bottom-left 8px, and a logical radius gives way to the physical one over
 its corner. A stylesheet radius class that Tailwind emits after an inline one it overlaps is written inline, as
 below: `rounded-r-lg rounded-se-[2px]` leaves the top-right at 8px. Two utilities of one family
-(`rounded-md rounded-lg`) write one property and are not ordered by this rule. In a `V.Motion` pose, a base radius
+(`rounded-md rounded-lg`) write one property, and the stylesheet declares them in Tailwind's order: both
+spellings give `rounded-md`. In a `V.Motion` pose, a base radius
 the pose partly overlaps keeps only the corners the pose leaves: `rounded-l-[4px]` under a `rounded-t-[16px]` pose
 is `rounded-bl-[4px]`.
 

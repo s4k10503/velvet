@@ -96,7 +96,7 @@ for the light set, a `.dark` rule for the dark one.
 
 **A variant payload beats a base utility that writes the same USS properties, in either direction,
 whatever order the bundled stylesheet declares them in.** `bg-white dark:bg-neutral-900`,
-`w-full md:w-64`, `items-center md:items-start` and `flex flex-row md:flex-col` all do what they
+`w-full md:w-64`, `items-start md:items-center` and `flex flex-row md:flex-col` all do what they
 read like.
 
 Velvet cannot lean on the cascade for that. A payload is realized by adding the bare utility to the
@@ -109,12 +109,17 @@ come off, and go back on the moment they stop losing.
 
 Four consequences worth knowing:
 
-- **Two base utilities on one property still tie by declaration order.** They are ranked by nothing, so
-  the stylesheet decides. Marking one important (below) breaks the tie.
+- **Two bundled base utilities on one property are ordered as Tailwind emits them.** The bundled stylesheets
+  declare their utilities in that order — the property order Tailwind sorts by, then the candidate names
+  compared with digits as numbers and ahead of letters — so the one Tailwind emits later wins whichever is
+  written first: `w-px w-4` and `w-4 w-px` both give 1px, `p-1 p-px` gives 1px, `bg-red-500 bg-blue-500`
+  gives red, and `flex hidden` hides. Marking one important (below) overrides the order.
+  `StyleSheetTailwindOrderTests` fails when a rule's place in a sheet stops agreeing with it. The `anim-*`
+  presets are the exception: the animation scheduler applies them to outrank the utilities they animate.
 - **A payload only displaces a class whose properties it wholly covers.** A base utility writing
-  something the payload does not keeps its place, and the two then settle their shared properties by
-  declaration order. That is reliable where one set contains the other — `size-8 md:w-4` resolves the
-  width correctly, because every utility is declared before the narrower ones its set contains — and
+  something the payload does not keeps its place, and the two then settle their shared properties in
+  Tailwind's order. That is reliable where one set contains the other — `size-8 md:w-4` resolves the
+  width correctly, because Tailwind emits `size-8` ahead of `w-4` — and
   unreliable where the sets merely overlap. `rounded-l` and `rounded-t` share one corner and neither
   contains the other, so `rounded-l md:rounded-t` can be a silent no-op. The important modifier does
   not rescue it: the base is still uncontained, so it still applies. Write one class, or use the

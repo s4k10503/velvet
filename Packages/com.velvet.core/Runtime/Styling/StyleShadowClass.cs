@@ -269,7 +269,7 @@ namespace Velvet
         // rounded-l-* / rounded-tl-* classes that affect the top-left corner, mirroring the
         // --radius-* token scale. The shader has a single uniform corner radius, so the top-left
         // corner is taken as representative. Of the matching classes the one Tailwind emits last wins, as
-        // StyleSpacingPrecedence ranks them, and the last written of two that set the same corners. Returns false for
+        // StyleSpacingPrecedence ranks them and StyleRuleOrder.CompareUtilities orders two that set the same corners. Returns false for
         // rounded-full / arbitrary radii (those resolve via resolvedStyle.borderTopLeftRadius
         // once laid out) and when no rounding class is present.
         public static bool TryResolveCornerRadius(string[]? classNames, out float radius)
@@ -282,6 +282,7 @@ namespace Velvet
 
             var found = false;
             var heldRank = int.MinValue;
+            var heldClass = string.Empty;
             foreach (var cls in classNames)
             {
                 if (string.IsNullOrEmpty(cls))
@@ -337,10 +338,11 @@ namespace Velvet
                     continue;
                 }
                 var rank = StyleSpacingPrecedence.RankOf(property);
-                if (rank >= heldRank)
+                if (rank > heldRank || (rank == heldRank && StyleRuleOrder.CompareUtilities(heldClass, cls) <= 0))
                 {
                     radius = r;
                     heldRank = rank;
+                    heldClass = cls;
                     found = true;
                 }
             }

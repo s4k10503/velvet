@@ -30,10 +30,10 @@ declares them in; see
 
 Two family-specific facts survive that:
 
-- **Two direction utilities at the same priority still tie**, and `_layout.uss` declares them
-  `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse`, so a literal
-  `"flex-col flex-row"` lays out as a row. Write one, or mark the winner important —
-  `"flex-row !flex-col"` lays out as a column. Neither Tailwind nor Velvet has a bracket form for the
+- **Two direction utilities at the same priority are ordered as Tailwind emits them**, and `_layout.uss`
+  declares them `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse`, so
+  `"flex-col flex-row"` and `"flex-row flex-col"` both lay out as a row. Write one, or mark the winner
+  important — `"flex-row !flex-col"` lays out as a column. Neither Tailwind nor Velvet has a bracket form for the
   direction: Tailwind's `flex-[…]` is the `flex` shorthand, so its `flex-[column]` writes a declaration
   the browser drops, and Velvet's changes nothing either.
 - **`.flex` and `.grid` set `flex-direction: row` alongside `display`**, so a direction utility never
@@ -264,7 +264,7 @@ changes which edges wrap spaces, only non-wrap's single leading/trailing edge ch
 Wrap is read from the same element the direction is (see "Which element the verdict is read from" above),
 and in the same shape, for the same staleness reason: an inline `flex-wrap` first, then the `flex-wrap` /
 `flex-nowrap` / `flex-wrap-reverse` class markers (by `_layout.uss` declaration order —
-`flex-wrap-reverse` beats `flex-nowrap` beats `flex-wrap` when more than one is present), then
+`flex-wrap-reverse` beats `flex-wrap` beats `flex-nowrap` when more than one is present), then
 `resolvedStyle.flexWrap` whenever none of those three is present. Unlike the direction scan there is no
 further "a direction class implies a default" tier: `flex` / `flex-row(-reverse)` / `flex-col(-reverse)`
 say nothing about `flex-wrap`, and since nearly every real container carries one, counting them as

@@ -553,22 +553,21 @@ namespace Velvet.Tests
                 Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already lets flex-nowrap outrank flex-wrap, the order
-        // _layout.uss declares them in. What reddens it is the flex-nowrap marker answering "wrap" in
-        // StyleGapManipulator.WrapMarker, which puts the row on the half-margin path.
-        [Test]
-        public void Given_FlexWrapBesideFlexNowrap_When_ReconciledOffPanel_Then_TheLeadingMarginPathApplies()
+        [TestCase("flex flex-row flex-wrap flex-nowrap gap-4")]
+        [TestCase("flex flex-row flex-nowrap flex-wrap gap-4")]
+        public void Given_FlexWrapBesideFlexNowrap_When_ReconciledOffPanel_Then_TheHalfMarginPolyfillApplies(
+            string className)
         {
-            // Arrange
+            // Arrange — _layout.uss declares flex-nowrap ahead of flex-wrap, as Tailwind emits them.
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { Row("flex flex-row flex-wrap flex-nowrap gap-4", 3) };
+            var tree = new VNode[] { Row(className, 3) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var container = Container(scope.Root);
 
             // Assert
-            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+            AssertFourSideMargin(container[0], Half4, "child[0] under flex-wrap beside flex-nowrap");
         }
 
         [Test]
