@@ -498,11 +498,12 @@ no event, because every mutant it measures costs the whole suite on two trees.
 ```bash
 gh workflow run kill-set.yml --ref main \
   -f files="Packages/com.velvet.core/Runtime/Foo/Bar.cs Packages/com.velvet.core/Runtime/Foo/Baz.cs" \
+  -f lines="Packages/com.velvet.core/Runtime/Foo/Bar.cs:120-260 Packages/com.velvet.core/Runtime/Foo/Baz.cs:40-180" \
   -f assemblies="Velvet.Tests.Foo.Editor" -f base=main -f head=my-pruning-branch -f platform=EditMode
 ```
 
 `files` names the production sources whose mutants the removed cases could have been killing, each taken
-whole. `head` must leave them, and `Assets/MutantSchemata`, byte-identical to the merge base, or the plan
+whole unless `lines` restricts it. `head` must leave them, and `Assets/MutantSchemata`, byte-identical to the merge base, or the plan
 refuses: the campaign's runner is tracked in the project and switches with the tree, so a pull request that
 changes it is not a pruning. The plan also refuses a path that is not a mutable package source, so a
 mistyped path fails the run rather than passing over nothing. `assemblies` is the test assemblies of the
@@ -512,6 +513,14 @@ still kill reads as lost, and leaving it empty measures the whole suite. `base` 
 request merges into, resolved to its merge base with `head` by `scripts/ci/change_base.py`. The `scripts/`
 that run are the head's own on both trees, so a head cut before `kill-set.yml` landed has no such
 tooling. A run is one platform over one list of files: a pull request that needs more starts more runs.
+`lines` is optional: space-separated `PATH:FIRST-LAST` ranges of the named files, which keep only the mutants
+on those lines. The filter runs where the list is made, so the plan, every shard and both trees measure the
+same filtered list, and the capacity check below is on that count. The plan prints what each range keeps,
+what each file keeps of its own mutants, and the total. It fails for a range outside its file or reversed,
+for a path `files` did not name or skipped, for a file named in `files` that has no range, and for any
+single range that keeps no mutant. Choose the ranges from the members the deleted cases reach, and cover
+every member a deleted case can reach: a mutant left outside the ranges is one the comparison never asks
+about, and a removed case can have been the only one to kill it.
 Listing the mutants needs no editor:
 
 ```bash
@@ -541,16 +550,20 @@ deleted cases.
 
 Pruning trips two other checks as well:
 
-- **Removing a `[TestCase]` row changes the method's own text.** `base_red_check.py` reads a case's span
-  as the attribute lines above the method as well as its body, so the method is posed to the base run, where
-  its remaining rows pass; it needs a refactor declaration above it. Deleting a whole case poses nothing, since a case the branch no longer has is not one it wrote.
+- **Adding or changing a line in a `[TestCase]` method poses it; deleting a row alone does not.** `base_red_check.py` poses a
+  case when a line the branch added or changed lands inside the case's span, which includes the
+  attribute lines above the method. A deleted row is a hunk with no added line (`changed_lines_by_file`
+  reads it as zero lines), so a pruning that only removes rows poses nothing. Where the same pull
+  request also adds or changes a line of the method, its body or an attribute line, and not only a comment, the method is posed to the base run, where
+  the remaining rows pass, and it needs a refactor declaration above it. Deleting a whole case poses
+  nothing either.
 - **A deleted case's lines in `scripts/test_quality/neuter_holes.txt` and
   `scripts/test_quality/assume_gate_baseline.txt` have to go with it.** `Test ▸ test-quality` runs
   `neuter_check.py --audit`, which fails an entry for a case its fixture no longer declares, and
   `assume_gate_check.py`, which fails an entry the scan no longer finds. A case with no line in either
   needs nothing there.
 
-The first one's declaration reads, above the method:
+A declaration for a method that is posed reads, above it:
 
 ```csharp
 // GREEN_ON_BASE(refactor): the remaining rows are cases this method already ran.
