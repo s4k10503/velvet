@@ -358,7 +358,8 @@ namespace Velvet
             {
                 return false;
             }
-            color.C1 = Math.Max(color.C1, 0);
+            // Both of Chromium's parsers clamp a comma-syntax saturation at each end, whatever its spelling.
+            color.C1 = Math.Clamp(color.C1, 0, 100);
             return TryParseLegacyAlpha(parts, ref color);
         }
 
@@ -407,16 +408,64 @@ namespace Velvet
                 }
                 color[i] = ClampAtParse(space, i, value);
             }
-            if (alphaToken == null)
+            if (alphaToken != null)
             {
-                return true;
+                if (!TryParseComponent(alphaToken, 1, out var alpha))
+                {
+                    return false;
+                }
+                color.Alpha = Math.Clamp(alpha, 0, 1);
             }
-            if (!TryParseComponent(alphaToken, 1, out var alpha))
+            if (space == CssColorSpace.Hsl && IsPlainHsl(tokens, alphaToken))
             {
-                return false;
+                color.C1 = Math.Min(color.C1, 100);
             }
-            color.Alpha = Math.Clamp(alpha, 0, 1);
             return true;
+        }
+
+        // Chromium clamps a space-syntax saturation to 100% only on the fast path it reads a plain colour with: a
+        // decimal hue with an optional angle unit, two decimal percentages and a decimal alpha, each without an
+        // exponent, a '+' or a none. A colour with any component spelled another way reaches its general parser, which
+        // leaves the saturation unclamped above. Pinned by
+        // Given_AnHslSaturationAbove100_When_Parsed_Then_ItClampsWhereChromiumReadsItPlain
+        // and Given_AnHslSaturationAbove100_When_ChromiumDeclinesItsFastPath_Then_ItStaysUnclamped.
+        private static bool IsPlainHsl(string[] tokens, string? alpha)
+        {
+            return IsPlainHue(tokens[0])
+                && IsPlainPercent(tokens[1])
+                && IsPlainPercent(tokens[2])
+                && (alpha == null || IsPlainDecimal(alpha, true));
+        }
+
+        private static bool IsPlainHue(string token)
+        {
+            var end = token.Length;
+            for (; end > 0 && char.IsLetter(token[end - 1]); end--)
+            {
+            }
+            return IsPlainDecimal(token.Substring(0, end), true);
+        }
+
+        private static bool IsPlainPercent(string token)
+        {
+            return token.EndsWith("%", StringComparison.Ordinal)
+                && IsPlainDecimal(token.Substring(0, token.Length - 1), false);
+        }
+
+        // An optional '-', digits and an optional fraction; a number with no digits before its point is plain only
+        // where bareFraction allows it. The parser has read every component as a number or as none before this
+        // looks, so a point is always followed by digits.
+        private static bool IsPlainDecimal(string token, bool bareFraction)
+        {
+            var i = token.Length > 0 && token[0] == '-' ? 1 : 0;
+            var whole = SkipDigits(token, ref i);
+            var fraction = 0;
+            if (i < token.Length && token[i] == '.')
+            {
+                i++;
+                fraction = SkipDigits(token, ref i);
+            }
+            return i == token.Length && (whole > 0 || (bareFraction && fraction > 0));
         }
 
         private static double ClampAtParse(CssColorSpace space, int index, double value)
@@ -523,15 +572,13 @@ namespace Velvet
             {
                 return false;
             }
-            // A hue at or past double's largest, which an overflowing literal reads as, is 0deg, as Chromium reads it.
-            var hue = number * scale;
-            degrees = Math.Abs(hue) < double.MaxValue ? CssColorMath.NormalizeHue(hue) : 0;
+            degrees = CssColorMath.NormalizeHue(number * scale);
             return true;
         }
 
-        // A literal past double's range reads as double's largest of its sign, which a channel then clamps, as
-        // Chromium reads one: Mono's parser declines such a literal and .NET's returns an infinity, so neither
-        // result is kept.
+        // A literal past float's range reads as float's largest of its sign, as Chromium's tokenizer reads one,
+        // so a hue of 1e300 is the hue of 3.4028235e38 and every component clamps from the same end. Mono's parser
+        // declines a literal past double's range and .NET's returns an infinity; both read as the largest.
         private static bool TryParseNumber(string token, out double value)
         {
             value = 0;
@@ -539,14 +586,12 @@ namespace Velvet
             {
                 return false;
             }
-            // MUTANT_SURVIVES(unreachable): Mono's parser returns no infinity for a CSS <number> (measured on
-            // Mono 6.8), so on Mono only the decline reaches the largest. On .NET's own parser, which returns one,
-            // the hsl(90_1e999%_50%) row of Given_ALiteralPastDoublesRange_When_Parsed_Then_ItReadsAsChromiumReadsIt
-            // fails without the infinity clause.
-            if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out value) || double.IsInfinity(value))
+            var largest = (double)float.MaxValue;
+            if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
             {
-                value = token[0] == '-' ? -double.MaxValue : double.MaxValue;
+                parsed = token[0] == '-' ? -largest : largest;
             }
+            value = Math.Clamp(parsed, -largest, largest);
             return true;
         }
 
