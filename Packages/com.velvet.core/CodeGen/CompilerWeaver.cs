@@ -275,7 +275,14 @@ namespace Velvet.CodeGen
                     return false;
                 }
 
-                InjectMemoization(method, analysis, context);
+                // MUTANT_SURVIVES(equivalent, boundary): a body with no scope is the gate alone, which the check finds balanced.
+                if (InjectMemoization(method, analysis, context, withScopes: true) > 0 && !IsStackBalanced(method.Body))
+                {
+                    // MUTANT_SURVIVES(unreachable): the weave inserts balanced runs into a body the model read as consistent.
+                    snapshot.Restore();
+                    // MUTANT_SURVIVES(unreachable): only a body failing the check reaches this call.
+                    InjectMemoization(method, analysis, context, withScopes: false);
+                }
                 return true;
             }
             catch (System.Exception exception)
@@ -1243,14 +1250,15 @@ namespace Velvet.CodeGen
             }
         }
 
-        private static void InjectMemoization(MethodDefinition method, HookAnalysis analysis, WeaverContext context)
+        private static int InjectMemoization(MethodDefinition method, HookAnalysis analysis, WeaverContext context,
+            bool withScopes)
         {
             var body = method.Body;
             var module = method.Module;
             var il = body.GetILProcessor();
 
             body.SimplifyMacros();
-            var plans = context.TryGetMemoizedScope != null && context.StoreMemoizedScope != null
+            var plans = withScopes && context.TryGetMemoizedScope != null && context.StoreMemoizedScope != null
                 ? PlanScopes(body, analysis, context)
                 : new List<ScopePlan>();
 
@@ -1388,6 +1396,7 @@ namespace Velvet.CodeGen
             }
 
             body.OptimizeMacros();
+            return plans.Count;
         }
 
         // The handle the gate matches against the method the rendering fiber renders, which for a generic method or

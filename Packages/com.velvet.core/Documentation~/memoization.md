@@ -10,16 +10,16 @@ The compiler transform (`[Component(Compiler = true)]`, the default) caches a co
 [Component]
 static VNode Dashboard()
 {
-    var (title, setTitle) = Hooks.UseState("");
+    var (count, setCount) = Hooks.UseState(0);
     var (name, setName) = Hooks.UseState("");
     return V.Div("root",
-        V.Label(text: title),       // built again when title changes
-        V.Label(text: name),        // built again when name changes
-        V.Label(text: "Static"));   // built once
+        V.Label(text: $"Clicks: {count}"),   // built again when count changes
+        V.Label(text: name),                 // built again when name changes
+        V.Label(text: "Static"));            // built once
 }
 ```
 
-A scope is an element of a children list that is a call or constructor returning a `VNode`.
+A scope is a call or constructor returning a `VNode`, wherever it stands: an element of a children list, a single child, a member of a props record, an arm of a conditional, the returned root.
 
 A scope sits at any depth: one inside a scope that is built again keeps its own cache. One reading nothing is cached once it calls nothing but `V` factories. A scope the render did not reach, because an early `return` came first, keeps what it last built. A scope starting after the component's last hook call is woven; in a body that calls no hook, any scope is.
 
@@ -28,9 +28,12 @@ A scope sits at any depth: one inside a scope that is built again keeps its own 
 Dependencies are compared as [react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means) states for the gate. A scope is compared on:
 
 - the parameters it reads;
-- the hook values it reads (`UseState`, `UseReducer`, `UseMemo`, `UseCallback`, `UseContext`, `UseStore`, …), where the body does not store to the local after the last hook call.
+- the hook values it reads (`UseState`, `UseReducer`, `UseMemo`, `UseCallback`, `UseContext`, `UseStore`, …), where the body does not store to the local after the last hook call;
+- the locals it reads of a value type or `string`, by value.
 
-A scope compares the references it reads, as React Compiler's does. A list, dictionary or object held in state, context or props and changed in place (`items.Add(x)` followed by a state update, a property written on a context object) counts as unchanged, so the scope reading it keeps what it built before. Replace the value (a new list, a new object) as in React, or opt the component out with `[Component(Compiler = false)]`.
+A local only the scope itself uses is not compared.
+
+A scope compares the references it reads, as React Compiler's does. A list, dictionary or object held in state, context or props and changed in place (`items.Add(x)` followed by a state update, a property written on a context object) counts as unchanged, so the scope reading it keeps what it built before. Replace the value (a new list, a new object) as in React, or opt the component out with `[Component(Compiler = false)]`. An instance property accessor of a type in `System.Diagnostics` or `System.Threading` (`Stopwatch.Elapsed`) is the exception: a scope calling one is not cached. Any other instance property accessor is read like the value it belongs to, so a getter that returns something other than a function of its object's state is not seen to change.
 
 The weaver reads the calls an expression itself makes and does not follow them: the target of a delegate the expression hands on, the override a virtual call reaches. As in React, render code must be pure; an expression that reads something no dependency stands for through one of those shows what it read when it last ran.
 
@@ -39,10 +42,12 @@ The weaver reads the calls an expression itself makes and does not follow them: 
 A scope is not cached, and is built as it was before scopes, where it:
 
 - calls a member of a `Ref<T>` or `MutableRef<T>`, or a method taking one, reads a `UseService` value, or reads a reference a custom hook returns;
-- reads a `static` field or calls anything but a `V` factory or a constructor. A method of your own that builds a child is not cached; make it a component or cache its result with `Hooks.UseMemo`;
-- reads a local that holds anything but a hook value;
-- writes a local, or passes the address of one to a call;
+- reads a `static` field, other than a `readonly` one of a value type or `string`, or calls anything but a `V` factory, a constructor, an instance property accessor outside `System.Diagnostics` and `System.Threading`, or a member of `System`, `System.Collections`, `System.Collections.Generic`, `System.Linq`, `System.Text` or `System.Runtime.CompilerServices`. Of those, calls on `Random` and `Environment` are left out, and the static members of `DateTime`, `DateTimeOffset`, `Guid` and `TimeZoneInfo`. A method of your own that builds a child is not cached; make it a component or cache its result with `Hooks.UseMemo`;
+- reads a local of another kind, such as a list, a `VNode` or a delegate built in the body outside a scope of its own;
+- writes a local that code outside it also uses, such as a variable a later child reads, or passes the address of such a local to a call;
 - sits in a loop, or in a method with `try`, `catch` or `finally`.
+
+A body whose weave fails the stack-discipline check is woven with its gate alone.
 
 ### Where it stays short of React Compiler
 

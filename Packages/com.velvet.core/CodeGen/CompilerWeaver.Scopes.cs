@@ -8,15 +8,22 @@ namespace Velvet.CodeGen
     // Reactive scopes: below a component's own gate, an expression is cached on the values it reads, as React
     // Compiler's reactive scopes are, so a render that changes one input builds again what reads it and hands the
     // reconciler the same instances for the rest.
-    // A scope is one element of a `VNode[]` initializer (what `params VNode?[] children` and
-    // `children: new[] { ... }` both compile to) that is a call or constructor returning a VNode, after the last hook
-    // call (anywhere in a body that calls none).
+    // A scope is one expression that leaves one value on the stack, after the last hook call (anywhere in a body
+    // that calls none): a call or constructor returning a VNode, wherever it stands: an element of a `VNode[]`
+    // initializer (what `params VNode?[] children` and `children: new[] { ... }` both compile to), an argument (a
+    // single child, a member of a props record), the root.
     // It is woven only when everything the expression reads is a value compared where it starts:
     //   A parameter it reads is compared. A local it reads is compared when it is a hook value nothing stores to
-    //   after the hook section. A local it writes, or takes the address of, is not compared.
+    //   after the hook section, or a value type or string. A local it takes nothing from and leaves nothing in for
+    //   what runs after it is its own and is not compared (see ScopeFacts.IsPrivateTo). A local it writes must be its
+    //   own, and an address it takes of a parameter, or of a local that is not its own, must be read at once (see
+    //   ReadsInPlace).
     //   It calls no member of a Ref / MutableRef and no method taking one, and reads no hook value from UseService
     //   or from a custom hook unless value-like: a render reading through one has no value to compare.
-    //   It reads no static, and calls only a V factory or a constructor.
+    //   It reads no mutable static, and calls only a V factory, a constructor, an instance property accessor
+    //   outside the namespaces named in StatefulAccessorNamespaces, or a member of the BCL namespaces named in
+    //   PureNamespaces, other than a member of the types named in AmbientStateTypes and the static members of those
+    //   in AmbientStateStaticTypes.
     //   Control flow in it stays inside it and moves forward, nothing outside jumps into it, and nothing
     //   outside runs it twice (no loop around it).
     //   The method has no try / catch / finally.
@@ -25,13 +32,22 @@ namespace Velvet.CodeGen
     // target of a delegate the expression hands on (a method group, a lambda capturing nothing), the override a
     // virtual call dispatches to, `Func.Invoke` on a delegate it was given and a BCL generic instantiated over a Ref
     // (`List<Ref<int>>`, whose members name no Ref in their signatures) are all code or values this does not read.
-    // An expression reading nothing is cached only when everything it calls is a V factory. One inside a scope
-    // is left to it. Anything else is built on every miss of the gate, as before.
+    // As in React, render code must be pure: an expression that reads something no dependency stands for, through
+    // one of those or through a property accessor of an object it holds, shows what it read when it last ran.
+    // An expression reading nothing is cached only when everything it calls is a V factory. One whose
+    // dependencies equal those of the scope enclosing it is left to that scope, and so is the tree the body
+    // returns when it reads every input of the component's gate: it would miss wherever the gate misses. Anything
+    // else is built on every miss of the gate, as before. The weave is checked afterwards against the stack
+    // discipline, and a method failing the check is woven again without scopes (see TryWeaveMethod).
     internal static partial class CompilerWeaver
     {
         private static readonly string RefTypeFullName = typeof(Velvet.Ref<>).FullName!;
         private static readonly string MutableRefTypeFullName = typeof(Velvet.MutableRef<>).FullName!;
         private static readonly string FactoryTypeFullName = typeof(Velvet.V).FullName!;
+
+        // The class the compiler declares the cache fields for method group conversions in; the IL case
+        // Given_AChildHandingOnAMethodGroup_When_Woven_Then_EachChildGetsAScopeGate fails when it is not this name.
+        private const string MethodGroupCacheClass = "<>O";
 
         // What an expression cannot hold and still be re-run from its dependencies alone.
         private static readonly HashSet<Code> ScopeForbiddenCodes = new()
@@ -39,6 +55,34 @@ namespace Velvet.CodeGen
             Code.Calli, Code.Localloc, Code.Jmp, Code.Ret, Code.Throw, Code.Rethrow, Code.Starg,
             Code.Leave, Code.Endfinally, Code.Endfilter, Code.Arglist, Code.Mkrefany, Code.Refanyval,
             Code.Refanytype, Code.Cpblk, Code.Initblk, Code.Tail, Code.Break,
+        };
+
+        private static readonly HashSet<string> PureNamespaces = new()
+        {
+            "System", "System.Collections", "System.Collections.Generic", "System.Linq", "System.Text",
+            "System.Runtime.CompilerServices",
+        };
+
+        // Instance property accessors are read like the value they belong to, except in these namespaces: a Stopwatch
+        // advances without a render, so a child reading one is built on every render the gate misses.
+        private static readonly HashSet<string> StatefulAccessorNamespaces = new()
+        {
+            "System.Diagnostics", "System.Threading",
+        };
+
+        // No call on these types is repeatable: an instance of Random advances its generator, and a member of
+        // Environment reads the process. The static members of the types below are not repeatable either: they read
+        // the clock (DateTime.Now, DateTimeOffset.UtcNow), the time zone (TimeZoneInfo.Local) or mint a value
+        // (Guid.NewGuid). Their instance members are not excluded. A type not listed is covered by the rule that
+        // render code is pure.
+        private static readonly HashSet<string> AmbientStateTypes = new()
+        {
+            "System.Random", "System.Environment",
+        };
+
+        private static readonly HashSet<string> AmbientStateStaticTypes = new()
+        {
+            "System.DateTime", "System.DateTimeOffset", "System.Guid", "System.TimeZoneInfo",
         };
 
         private readonly record struct ElementRegion(int Start, int End);
@@ -73,6 +117,8 @@ namespace Velvet.CodeGen
         // The slot the gate was granted, and the values passing through a scope's gate and store, which no other
         // scope's gate or store runs between.
         private sealed record ScopeLocals(VariableDefinition Slot, VariableDefinition Cached, VariableDefinition Result);
+
+        private static bool IsStackBalanced(MethodBody body) => DepthsBefore(body.Instructions.ToArray()) != null;
 
         private static List<ScopePlan> PlanScopes(MethodBody body, HookAnalysis analysis, WeaverContext context)
         {
@@ -128,7 +174,47 @@ namespace Velvet.CodeGen
         // Outermost first, so that a scope is always planned before the scopes inside it, and a value a scope stores
         // is a scope's output before the scopes reading it.
         private static List<ScopeCandidate> FindCandidates(ScopeFacts facts)
-            => FindElementRegions(facts.Instructions, facts.Depths).Select(span => new ScopeCandidate(span)).ToList();
+        {
+            var found = new Dictionary<ElementRegion, ScopeCandidate>();
+            foreach (var span in FindElementRegions(facts.Instructions, facts.Depths))
+            {
+                found[span] = new ScopeCandidate(span);
+            }
+            for (var i = 0; i < facts.Instructions.Length; i++)
+            {
+                if (CandidateEndingAt(facts, i) is { } built) found.TryAdd(built.Span, built);
+            }
+            return found.Values.OrderBy(each => each.Span.Start).ThenByDescending(each => each.Span.End).ToList();
+        }
+
+        // A call or constructor producing a VNode.
+        private static ScopeCandidate? CandidateEndingAt(ScopeFacts facts, int index)
+        {
+            var instr = facts.Instructions[index];
+            if (instr.OpCode.Code is not (Code.Call or Code.Callvirt or Code.Newobj) || instr.Operand is not MethodReference method)
+            {
+                return null;
+            }
+            var produced = instr.OpCode.Code == Code.Newobj ? method.DeclaringType : method.ReturnType;
+            return IsNodeType(produced) && SpanEndingAt(facts, index) is { } span ? new ScopeCandidate(span) : null;
+        }
+
+        // The expression whose last instruction is at `end`: the longest run before it that starts at the depth its
+        // operands start at, never dips below it, and has no jump across its edge. A conditional expression is
+        // entered at its test, and a run starting after the test has a jump into it.
+        private static ElementRegion? SpanEndingAt(ScopeFacts facts, int end)
+        {
+            if (end < 0 || Pushes(facts.Instructions[end]) != 1) return null;
+            var last = facts.Instructions[end];
+            var baseDepth = facts.Depths[end] - Pops(last);
+            for (var start = end; start >= 0 && facts.Depths[start] >= baseDepth; start--)
+            {
+                if (facts.Depths[start] != baseDepth) continue;
+                var candidate = new ElementRegion(start, end);
+                if (!facts.Branches.Any(branch => BranchBreaksRegion(branch.Source, branch.Target, candidate))) return candidate;
+            }
+            return null;
+        }
 
         // Outermost first, so that a scope is always planned before the scopes inside it. `dup; ldc.i4 index` is what
         // puts an array element's index on the stack in an array initializer: the first element follows the
@@ -168,18 +254,50 @@ namespace Velvet.CodeGen
             }
         }
 
+        // An array of nodes, or a by-reference one, resolves to the node type it holds and is not a node.
+        private static bool IsNodeType(TypeReference type)
+        {
+            if (type.IsPrimitive || type.MetadataType == MetadataType.Void || IsArrayOrIndirection(type)
+                // MUTANT_SURVIVES(equivalent, logic): no type of System derives from a node, so resolving one finds none; the clause only spares the resolving.
+                || type.FullName.StartsWith("System.", System.StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var current = TryResolve(() => type.Resolve());
+            while (current != null)
+            {
+                if (current.FullName == VNodeFullName) return true;
+                var parent = current.BaseType;
+                current = parent == null ? null : TryResolve(() => parent.Resolve());
+            }
+            return false;
+        }
+
+        private static bool IsArrayOrIndirection(TypeReference type)
+            => type is ArrayType or ByReferenceType or PointerType or PinnedType;
+
         private static ScopePlan? TryPlanCandidate(ScopeFacts facts, ScopeCandidate candidate, List<ScopePlan> accepted)
         {
             var region = candidate.Span;
             var scan = new ScopeScan();
-            if (facts.Branches.Any(branch => BranchBreaksRegion(branch.Source, branch.Target, region))
+            if (accepted.Any(each => each.Region.End == region.End)
+                || facts.Branches.Any(branch => BranchBreaksRegion(branch.Source, branch.Target, region))
                 || !Enumerable.Range(region.Start, region.End - region.Start + 1).All(i => ScanInstruction(facts, i, region, scan))
-                || !scan.HasCall || (scan.Deps.Count == 0 && !scan.OnlyFactoryCalls))
+                || !scan.HasCall || (scan.Deps.Count == 0 && !scan.OnlyFactoryCalls)
+                || RepeatsEnclosingScope(accepted, region, scan.Deps)
+                || (facts.FlowsIntoReturn(region.End + 1) && facts.CoversGate(scan.Deps)))
             {
                 return null;
             }
             return new ScopePlan(candidate, facts.Instructions[region.Start], facts.Instructions[region.End + 1], scan.Deps,
                 accepted.Count);
+        }
+
+        private static bool RepeatsEnclosingScope(List<ScopePlan> accepted, ElementRegion region, List<DepSource> deps)
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): a region enclosing another starts earlier and ends later, so equal bounds never decide.
+            var outer = accepted.LastOrDefault(each => each.Region.Start <= region.Start && each.Region.End >= region.End);
+            return outer != null && outer.Deps.Select(dep => dep.Key).ToHashSet().SetEquals(deps.Select(dep => dep.Key));
         }
 
         // A jump from inside goes forward, to a place in the region or to the store that ends it. One from outside
@@ -205,7 +323,8 @@ namespace Velvet.CodeGen
                     return ScanLocal(facts, index, local, region, scan);
                 case ParameterDefinition parameter:
                     scan.Add(facts.ParameterDependency(parameter));
-                    return IsBoxable(parameter.ParameterType) && instr.OpCode.Code != Code.Ldarga;
+                    return IsBoxable(parameter.ParameterType)
+                        && (instr.OpCode.Code != Code.Ldarga || ReadsInPlace(facts.Instructions[index + 1], parameter.ParameterType));
                 case FieldReference field:
                     return ScanField(facts, index, field, region, scan);
                 case MethodReference method:
@@ -219,16 +338,42 @@ namespace Velvet.CodeGen
             ScopeScan scan)
         {
             var code = facts.Instructions[index].OpCode.Code;
-            if (code is Code.Stloc or Code.Ldloca || !facts.CanBeCompared(local, local.VariableType, region)) return false;
+            if (facts.IsPrivateTo(local, region)) return true;
+            if (code == Code.Stloc || !facts.CanBeCompared(local, local.VariableType, region)) return false;
+            if (code == Code.Ldloca && !ReadsInPlace(facts.Instructions[index + 1], local.VariableType)) return false;
             scan.Add(new DepSource(local, local.VariableType) { Local = local });
             return true;
+        }
+
+        // Taking the address of a local or a parameter is a read where nothing can write through it: the field load
+        // that follows at once, or an instance call made with no argument on a primitive or an enum, which no instance
+        // method changes, which is the call that follows (or the constrained prefix to it); and the same of a
+        // primitive or enum field, whose address is taken first. An address passed as an argument, as `out var n`
+        // does, is not.
+        private static bool ReadsInPlace(Instruction next, TypeReference type)
+        {
+            if (next.OpCode.Code == Code.Ldfld) return true;
+            if (next.OpCode.Code == Code.Ldflda) return IsPrimitiveOrEnum(((FieldReference)next.Operand).FieldType) && CallsInPlace(next.Next);
+            return IsPrimitiveOrEnum(type) && CallsInPlace(next);
+        }
+
+        private static bool CallsInPlace(Instruction instr) => instr.OpCode.Code == Code.Constrained || CallsWithoutArguments(instr);
+
+        private static bool CallsWithoutArguments(Instruction instr)
+        {
+            if (instr.OpCode.Code != Code.Call && instr.OpCode.Code != Code.Callvirt) return false;
+            var method = (MethodReference)instr.Operand;
+            return method.HasThis && !method.HasParameters;
         }
 
         private static bool ScanField(ScopeFacts facts, int index, FieldReference field, ElementRegion region, ScopeScan scan)
         {
             var instr = facts.Instructions[index];
             var code = instr.OpCode.Code;
-            if (code is Code.Ldsfld or Code.Ldsflda or Code.Stsfld) return false;
+            if (code is Code.Ldsfld or Code.Ldsflda or Code.Stsfld)
+            {
+                return IsClosureCache(field) || (code == Code.Ldsfld && IsReadOnlyValue(field));
+            }
             return !IsClosureField(field);
         }
 
@@ -244,10 +389,21 @@ namespace Velvet.CodeGen
             return !TouchesRef(method);
         }
 
-        // A call taken to be a function of its arguments. Any other may read state no dependency names, which a
-        // miss of the gate alone would have refreshed.
+        // A call taken to be a function of its arguments and of what they hold; the header says what that takes on
+        // trust. Any other may read state no dependency names, which a miss of the gate alone would have refreshed.
         private static bool IsRepeatableCall(Instruction instr, MethodReference method)
-            => instr.OpCode.Code == Code.Newobj || method.DeclaringType.FullName == FactoryTypeFullName;
+        {
+            var declaring = method.DeclaringType;
+            while (declaring is TypeSpecification specification) declaring = specification.ElementType;
+            var ambient = AmbientStateTypes.Contains(declaring.FullName)
+                || (!method.HasThis && AmbientStateStaticTypes.Contains(declaring.FullName));
+            return instr.OpCode.Code == Code.Newobj
+                || declaring.FullName == FactoryTypeFullName
+                || (method.HasThis && !StatefulAccessorNamespaces.Contains(declaring.Namespace)
+                    && (method.Name.StartsWith("get_", System.StringComparison.Ordinal)
+                        || method.Name.StartsWith("set_", System.StringComparison.Ordinal)))
+                || (PureNamespaces.Contains(declaring.Namespace) && !ambient);
+        }
 
         private static bool TouchesRef(MethodReference method)
             => IsRefType(method.DeclaringType) || method.Parameters.Any(parameter => IsRefType(parameter.ParameterType));
@@ -259,9 +415,22 @@ namespace Velvet.CodeGen
             return type.FullName == RefTypeFullName || type.FullName == MutableRefTypeFullName;
         }
 
+        // The compiler's cache for a lambda that captures nothing, or for a method group converted to a delegate: a
+        // field written once, holding a delegate.
+        private static bool IsClosureCache(FieldReference field)
+            => field.DeclaringType.Name.StartsWith("<>c", System.StringComparison.Ordinal)
+                || field.DeclaringType.Name == MethodGroupCacheClass;
+
+        private static bool IsReadOnlyValue(FieldReference field)
+            => TryResolve(() => field.Resolve())?.IsInitOnly == true && IsValueLike(field.FieldType);
+
         // A type whose value is an immutable snapshot: comparing it under Object.is is comparing what an expression
         // reads of it.
         private static bool IsValueLike(TypeReference type) => type.IsValueType || type.MetadataType == MetadataType.String;
+
+        private static bool IsPrimitiveOrEnum(TypeReference type)
+            => (type.MetadataType >= MetadataType.Boolean && type.MetadataType <= MetadataType.Double)
+                || TryResolve(() => type.Resolve())?.IsEnum == true;
 
         // A value that can be boxed into the dependency array and compared there: all but a ref struct. One that cannot
         // be resolved is not.
@@ -299,16 +468,19 @@ namespace Velvet.CodeGen
             }
         }
 
-        // The store goes in and takes the branches that ended the expression first, so the hit path's own jump to
-        // the store instruction is not among them.
+        // The store goes in and takes the branches that ended the expression first. The hit path jumps to a no-op
+        // after the store rather than to the instruction that followed the expression, because a scope starting at
+        // that instruction puts its gate ahead of it, and the hit would skip the gate.
         private static void InjectScope(MethodBody body, WeaverContext context, ScopePlan plan, VariableDefinition deps,
             ScopeLocals locals)
         {
             var il = body.GetILProcessor();
+            var landing = Instruction.Create(OpCodes.Nop);
             var store = BuildScopeStore(context, plan, deps, locals);
+            store.Add(landing);
             RetargetBranches(body, plan.Store, store[0]);
             foreach (var instruction in store) il.InsertBefore(plan.Store, instruction);
-            foreach (var instruction in BuildScopeGate(body, context, plan, deps, locals)) il.InsertBefore(plan.Start, instruction);
+            foreach (var instruction in BuildScopeGate(body, context, plan, deps, locals, landing)) il.InsertBefore(plan.Start, instruction);
         }
 
         // On a miss the expression's value is committed under the scope, then left on the stack for the store.
@@ -325,9 +497,11 @@ namespace Velvet.CodeGen
                 Instruction.Create(OpCodes.Ldloc, locals.Result),
             };
 
-        // The dependencies are read where the expression starts, which is where it reads them.
+        // The dependencies are read where the expression starts, which is where it reads them. A miss lands on a
+        // no-op ahead of the expression, so that the gate of a scope starting at the same instruction, inserted
+        // after this one, is the first thing the miss reaches.
         private static List<Instruction> BuildScopeGate(MethodBody body, WeaverContext context, ScopePlan plan,
-            VariableDefinition deps, ScopeLocals locals)
+            VariableDefinition deps, ScopeLocals locals, Instruction landing)
         {
             var miss = Instruction.Create(OpCodes.Nop);
             var gate = new List<Instruction>
@@ -346,7 +520,7 @@ namespace Velvet.CodeGen
                 Instruction.Create(OpCodes.Call, context.TryGetMemoizedScope!),
                 Instruction.Create(OpCodes.Brfalse, miss),
                 Instruction.Create(OpCodes.Ldloc, locals.Cached),
-                Instruction.Create(OpCodes.Br, plan.Store),
+                Instruction.Create(OpCodes.Br, landing),
                 miss,
             });
             return gate;
