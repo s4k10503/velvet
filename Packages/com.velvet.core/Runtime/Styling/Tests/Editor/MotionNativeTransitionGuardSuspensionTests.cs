@@ -43,6 +43,8 @@ namespace Velvet.Tests
             Assert.That(suspended, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base sheet already declares transition-none after
+        // transition-transform. Declaring transition-transform last instead reddens it.
         [Test]
         public void Given_TransitionTransformThenTransitionNone_When_ATranslatePlayRuns_Then_NothingIsSuspended()
         {
