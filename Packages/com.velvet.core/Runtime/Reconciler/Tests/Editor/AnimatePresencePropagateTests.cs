@@ -60,6 +60,7 @@ namespace Velvet.Tests
         private static int s_outerCompleted;
         private static int s_innerCompleted;
         private static float s_innerDurationSec;
+        private static float s_innerStaggerSec;
         private static readonly List<string> s_order = new();
 
         private EditorPanelSimulator _sim;
@@ -86,6 +87,7 @@ namespace Velvet.Tests
             s_outerCompleted = 0;
             s_innerCompleted = 0;
             s_innerDurationSec = 0.3f;
+            s_innerStaggerSec = 0f;
             s_order.Clear();
         }
 
@@ -121,11 +123,28 @@ namespace Velvet.Tests
             transition: new StyleTransitionConfig { DurationSec = s_innerDurationSec });
 
         // The inner presence's child for a key: the Motion itself, or a Motion one element below the keyed child.
-        private static VNode InnerChild(string key) => s_innerChild switch
+        private static VNode InnerChild(string key) => key switch
+        {
+            // Plays nothing when it leaves.
+            "q" => V.Motion(name: "inner-q", key: key, transition: StyleTransitionConfig.None),
+            // Rests at a pose of its own when mounted leaving, so the swap to its exit pose is readable.
+            "s" => V.Motion(name: "inner-s", key: key, variants: s_staged, initial: "start", animate: "visible",
+                exit: "hidden", transition: new StyleTransitionConfig { DurationSec = s_innerDurationSec }),
+            _ => InnerChildOfKind(key),
+        };
+
+        private static readonly Dictionary<string, MotionVariant> s_staged = new()
+        {
+            ["start"] = "pose-start",
+            ["visible"] = "pose-rest",
+            ["hidden"] = "pose-exit",
+        };
+
+        private static VNode InnerChildOfKind(string key) => s_innerChild switch
         {
             "motion" => TimedMotion("inner-" + key, key),
             "nested" => V.Div(key: key, children: new[] { TimedMotion("inner-" + key, null) }),
-            // Plays no exit, so its removal is immediate.
+            // Plays no exit, so it settles after the commit that removes it.
             "plain" => V.Div(name: "inner-" + key, key: key),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_innerChild), s_innerChild, null),
         };
@@ -137,7 +156,7 @@ namespace Velvet.Tests
             {
                 children.Add(InnerChild(key.ToString()));
             }
-            return V.AnimatePresence(key: "inner", propagate: propagate, onExitComplete: () =>
+            return V.AnimatePresence(key: "inner", propagate: propagate, staggerSec: s_innerStaggerSec, onExitComplete: () =>
                 {
                     s_innerCompleted++;
                     s_order.Add("inner");
@@ -563,6 +582,26 @@ namespace Velvet.Tests
             Assert.That((added != null && added.ClassListContains("opacity-0"),
                     added != null && added.ClassListContains("opacity-100")),
                 Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AKeyMountedLeavingWithNothingToPlay_When_AnotherMountsLeavingAfterIt_Then_TheOtherTakesTheFirstStaggerSlot()
+        {
+            // Arrange — a half-second stagger between the inner presence's exits.
+            s_innerStaggerSec = 0.5f;
+            using var mounted = MountSettled("wrapper");
+            s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            Frames(2);
+
+            // Act — "q" and then "s" mount leaving; three frames are well inside the half-second second slot.
+            s_innerKeys.Set("xqs");
+            Drain(mounted);
+            Frames(3);
+
+            // Assert — "s" has swapped to its exit pose, which it would not yet have in the second slot.
+            var staged = Root.Q<VisualElement>("inner-s");
+            Assert.That(staged != null && staged.ClassListContains("pose-exit"), Is.True);
         }
 
         [TestCase("wrapper")]

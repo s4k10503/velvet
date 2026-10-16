@@ -2156,8 +2156,7 @@ namespace Velvet
             state.ExitAnchors[key] = anchor;
             state.Exiting.Add(key);
             pass.NextCommitted.Add((key, node));
-            StartPresenceExit(in pass, key, node, anchor, motionElement, motion);
-            pass.Tally.ExitIndex++;
+            if (StartPresenceExit(in pass, key, node, anchor, motionElement, motion)) pass.Tally.ExitIndex++;
         }
 
         // Framer's usePresence(propagate): whether the enclosing presence's keyed child this presence sits in is
