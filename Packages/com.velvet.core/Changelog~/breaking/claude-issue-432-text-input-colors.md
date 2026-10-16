@@ -47,7 +47,8 @@
   `inset-shadow-[5PX]`), a ring, shadow, inset-ring or inset-shadow colour whose opacity modifier lies outside
   0–100% (`shadow-red-500/150`), and a `shadow-*` size's modifier outside it beside a shadow colour discard the
   element's box-shadow, as the browser discards it; an outline colour outside it is the text colour. A
-  `shadow-[color:…]` is a colour, never a size.
+  `shadow-[color:…]` is a colour, never a size. A background colour outside it (`bg-red-500/150`) leaves the
+  background transparent, where the class was ignored.
 - An outline paints over the content around it, as CSS paints it after the rest of its stacking context, where
   a later sibling's face covered it. `ring-inset` paints inside the padding box under the element's children
   and text, where it painted over them across the border box.

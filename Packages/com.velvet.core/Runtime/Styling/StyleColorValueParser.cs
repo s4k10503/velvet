@@ -192,7 +192,14 @@ namespace Velvet
             }
             if (!TryParseColorValue(className, prefixLen, out var color))
             {
-                return false;
+                // bg-red-500/150: the color-mix() Tailwind writes is invalid once computed, which leaves
+                // background-color at its initial transparent, over any colour an earlier rule gave it.
+                if (property != ArbitraryProperty.BackgroundColor
+                    || VerdictOfColourValue(className, prefixLen) != ColourVerdict.Rejected)
+                {
+                    return false;
+                }
+                color = Color.clear;
             }
 
             result = new ArbitraryStyle(property, color);

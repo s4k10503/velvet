@@ -186,12 +186,15 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OpacityModifierAbove100_When_Parsed_Then_Declines()
+        public void Given_ABackgroundOpacityModifierAbove100_When_Parsed_Then_TheBackgroundIsTransparent()
         {
-            // Act + Assert — an out-of-range percent is not a recognized utility (declines, no clamp).
-            Assert.That(StyleArbitraryValueResolver.TryParse("bg-red-500/150", out _), Is.False);
-        }
+            // Act — Tailwind writes color-mix(… 150%, transparent), invalid once computed, so background-color takes
+            // its initial transparent: Chromium computes rgba(0, 0, 0, 0) for bg-blue-500 bg-red-500/150.
+            var ok = StyleArbitraryValueResolver.TryParse("bg-red-500/150", out var s);
 
+            // Assert
+            Assert.That((ok, s.Property, s.Color), Is.EqualTo((true, ArbitraryProperty.BackgroundColor, Color.clear)));
+        }
         [Test]
         public void Given_AspectRatioWithSlashInBracket_When_Parsed_Then_TreatedAsRatioNotModifier()
         {

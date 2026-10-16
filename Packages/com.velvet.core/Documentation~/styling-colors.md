@@ -55,8 +55,9 @@ The functions follow CSS Color 4:
   quarter. It takes the forms Tailwind generates: a number in steps of 0.25 (`/50`, `/2.25`), a bracketed
   fraction (`/[0.3]`) or a bracketed percentage (`/[33.3%]`). A percentage outside 0–100% leaves the
   `color-mix()` invalid: a ring, shadow, inset-ring or inset-shadow colour carrying one discards the element's
-  box-shadow, an outline colour falls back to the text colour, and a `shadow-*` size's own colour clamps to an
-  alpha of 0 or 1.
+  box-shadow, an outline colour falls back to the text colour, a background colour leaves the background
+  transparent over any colour an earlier class gave it, and a `shadow-*` size's own colour clamps to an alpha of 0
+  or 1.
 
 ## Where Velvet differs from CSS
 
