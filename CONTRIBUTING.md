@@ -515,11 +515,12 @@ that run are the head's own on both trees, so a head cut before `kill-set.yml` l
 tooling. A run is one platform over one list of files: a pull request that needs more starts more runs.
 `lines` is optional: space-separated `PATH:FIRST-LAST` ranges of the named files, which keep only the mutants
 on those lines. The filter runs where the list is made, so the plan, every shard and both trees measure the
-same filtered list, the plan prints how many of the file's mutants it kept, and the capacity check below
-is on that count. A range outside its file, a path `files` does not name, and a filter that keeps no mutant
-each fail the plan. Choose the ranges from the members the deleted cases reach, and cover every member a
-deleted case can reach: a mutant left outside the ranges is one the comparison never asks about, and a
-removed case can have been the only one to kill it.
+same filtered list, and the capacity check below is on that count. The plan prints what each range keeps,
+what each file keeps of its own mutants, and the total. It fails for a range outside its file or reversed,
+for a path `files` did not name or skipped, for a file named in `files` that has no range, and for any
+single range that keeps no mutant. Choose the ranges from the members the deleted cases reach, and cover
+every member a deleted case can reach: a mutant left outside the ranges is one the comparison never asks
+about, and a removed case can have been the only one to kill it.
 Listing the mutants needs no editor:
 
 ```bash
@@ -549,11 +550,11 @@ deleted cases.
 
 Pruning trips two other checks as well:
 
-- **Editing a `[TestCase]` method poses it; deleting a row alone does not.** `base_red_check.py` poses a
+- **Adding or changing a line in a `[TestCase]` method poses it; deleting a row alone does not.** `base_red_check.py` poses a
   case when a line the branch added or changed lands inside the case's span, which includes the
   attribute lines above the method. A deleted row is a hunk with no added line (`changed_lines_by_file`
   reads it as zero lines), so a pruning that only removes rows poses nothing. Where the same pull
-  request also edits the method or an attribute line, the method is posed to the base run, where
+  request also adds or changes a line of the method, its body or an attribute line, and not only a comment, the method is posed to the base run, where
   the remaining rows pass, and it needs a refactor declaration above it. Deleting a whole case poses
   nothing either.
 - **A deleted case's lines in `scripts/test_quality/neuter_holes.txt` and

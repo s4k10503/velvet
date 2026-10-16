@@ -11293,17 +11293,38 @@ class LineRangeTests(unittest.TestCase):
         self.assertEqual((code, "mutants=4" in campaign.printed, [record["line"] for record in emitted]),
                          (0, True, [5, 6, 7, 8]))
 
-    def test_Given_ARangeOutsideTheFileOrHoldingNoMutant_When_Planned_Then_ItIsRefused(self):
+    def test_Given_ARangeOutsideTheFile_When_Planned_Then_ItIsRefused(self):
         # Arrange
         campaign = StubbedCampaign(body=probe_body(12))
-        source = campaign.source
 
         # Act
-        outside = campaign.run("--plan", "--lines", "{}:5-999".format(source))
-        empty = campaign.run("--plan", "--lines", "{}:1-4".format(source))
+        code = campaign.run("--plan", "--lines", "{}:5-999".format(campaign.source))
 
         # Assert
-        self.assertEqual(("outside" in str(outside), "no mutant" in str(empty)), (True, True))
+        self.assertIn("outside", str(code))
+
+    def test_Given_ARangeHoldingNoMutant_When_Planned_Then_ItIsRefused(self):
+        # Arrange — lines 1 to 4 are the namespace and class braces.
+        campaign = StubbedCampaign(body=probe_body(12))
+
+        # Act
+        code = campaign.run("--plan", "--lines", "{}:1-4".format(campaign.source))
+
+        # Assert
+        self.assertIn("no mutant", str(code))
+
+    def test_Given_ANamedFileWithNoRange_When_Planned_Then_ItIsRefusedRatherThanDroppedUnasked(self):
+        # Arrange — the second file would otherwise keep none of its mutants and the run would still plan.
+        campaign = StubbedCampaign(body=probe_body(12))
+        second = campaign.project / "Packages/com.velvet.core/Runtime/Other.cs"
+        second.write_text(probe_body(3))
+
+        # Act
+        code = campaign.drive("--files", str(campaign.source), str(second), "--plan",
+                              "--lines", "{}:5-8".format(campaign.source))
+
+        # Assert
+        self.assertIn("gives no range", str(code))
 
 
 class KillSetShardTests(unittest.TestCase):
