@@ -1160,7 +1160,9 @@ namespace Velvet
 
         // An error out of the disposal of what a boundary's failed output mounted goes to the boundaries above it: the
         // rows of the boundary that caught are being replaced, so it declines the error as it declines one out of its
-        // own fallback's content, and the abort a catch of it would raise would release the elements around it.
+        // own fallback's content, and the abort a catch of it would raise would release the elements around it. That
+        // sets FallbackContentFailed, which both callers clear before they read it: ExpandBoundaryInline and
+        // FiberErrorBoundary.ShowCaughtFallback each set it false ahead of the fallback's render.
         private static void DisposingFailedOutputOf(ComponentFiber boundary, Action dispose)
         {
             boundary.IsShowingFallback = true;
@@ -1171,7 +1173,6 @@ namespace Velvet
             finally
             {
                 boundary.IsShowingFallback = false;
-                boundary.FallbackContentFailed = false;
             }
         }
 
@@ -2367,16 +2368,14 @@ namespace Velvet
             state.Exiting.Remove(key);
             pass.Tally.RemovedInstantThisRender = true;
             if (HoldsAMotion(state, key)) pass.Tally.RemovedAMotionThisRender = true;
-            var commit = pass.Walk.Commit;
-            if (commit != null) NotePresenceRemovalPutBack(commit, state, key, node);
+            // The new side of a walk is only ReconcileGeneral's, which gives it a commit; the structural walks that
+            // have none (ExpandInlineForReconcile) read the old side, which returns before it reaches a presence's
+            // children.
+            var commit = pass.Walk.Commit!;
+            NotePresenceRemovalPutBack(commit, state, key, node);
             // Same as the finished-exit drop: leave the committed set, then retire.
             RemovePresenceCommittedEntry(state.Committed, key);
             RetirePresenceKeyEntries(state, key);
-            if (commit == null)
-            {
-                FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), pass.BoundaryFiber);
-                return;
-            }
             // The removed tree is the baseline the next walk reproduces while the leaves are still on screen.
             var boundary = pass.BoundaryFiber;
             (commit.AfterRemovals ??= new List<Action>()).Add(
