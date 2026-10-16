@@ -376,6 +376,8 @@ namespace Velvet
         internal static bool IsSpacingOrRadiusProperty(ArbitraryProperty property)
             => IsSpacingProperty(property) || RadiusCornersOf.ContainsKey(property);
 
+        internal static bool IsRadiusProperty(ArbitraryProperty property) => RadiusCornersOf.ContainsKey(property);
+
         private const string RadiusUtilityName = "rounded";
 
         // A stylesheet class of a spacing or radius family and the inline token that resolves to the same thing: a
