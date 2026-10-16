@@ -95,7 +95,10 @@ namespace Velvet
 
         /// <summary>True for the color-valued properties, whose channel interpolates a <see cref="UnityEngine.Color"/>.</summary>
         internal static bool IsColor(ArbitraryProperty property)
-            => property is ArbitraryProperty.TextColor or ArbitraryProperty.BackgroundColor or ArbitraryProperty.BorderColor;
+            => property is ArbitraryProperty.TextColor or ArbitraryProperty.BackgroundColor or ArbitraryProperty.BorderColor
+                or ArbitraryProperty.BorderTopColor or ArbitraryProperty.BorderRightColor
+                or ArbitraryProperty.BorderBottomColor or ArbitraryProperty.BorderLeftColor
+                or ArbitraryProperty.BorderXColor or ArbitraryProperty.BorderYColor;
 
         /// <summary>
         /// True when the magnitude of <paramref name="property"/> can legitimately go negative (a pulled-in
@@ -127,6 +130,9 @@ namespace Velvet
             var drivable = new[]
             {
                 ArbitraryProperty.TextColor, ArbitraryProperty.BackgroundColor, ArbitraryProperty.BorderColor,
+                ArbitraryProperty.BorderTopColor, ArbitraryProperty.BorderRightColor,
+                ArbitraryProperty.BorderBottomColor, ArbitraryProperty.BorderLeftColor,
+                ArbitraryProperty.BorderXColor, ArbitraryProperty.BorderYColor,
 
                 ArbitraryProperty.Width, ArbitraryProperty.Height, ArbitraryProperty.MinWidth,
                 ArbitraryProperty.MinHeight, ArbitraryProperty.MaxWidth, ArbitraryProperty.MaxHeight,

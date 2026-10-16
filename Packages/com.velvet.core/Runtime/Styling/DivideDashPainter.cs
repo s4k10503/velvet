@@ -151,6 +151,11 @@ namespace Velvet
             return true;
         }
 
+        // Whether child's dash masks slot over a color written inline by the child's own code (TakeOver).
+        internal static bool MasksOwnColor(VisualElement child, HeldSlot slot)
+            => s_bound.TryGetValue(child, out var binding) && StyleDivideManipulator.ColorSlot(binding.Edge) == slot
+                && binding.Inline.HasValue;
+
         internal static bool IsMask(StyleColor color)
             => color.keyword == StyleKeyword.Undefined && SilhouetteFace.IsSentinel(color.value);
 

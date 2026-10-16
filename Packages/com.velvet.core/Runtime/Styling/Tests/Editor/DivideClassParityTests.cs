@@ -1825,8 +1825,34 @@ namespace Velvet.Tests
             var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, MotionSlotContext.Read(child, from, to, _ => false));
 
             // Assert
-            Assert.That(plan.Colors?.Find(channel => channel.Property == ArbitraryProperty.BorderColor).From,
+            Assert.That(plan.Colors?.Find(channel => channel.Property == ArbitraryProperty.BorderRightColor).From,
                 Is.EqualTo((Color?)gray200));
+        }
+
+        [TestCase("divide-x divide-gray-200", ArbitraryProperty.BorderTopColor)]
+        [TestCase("divide-x divide-dashed divide-gray-200", ArbitraryProperty.BorderRightColor)]
+        [TestCase("divide-x divide-dashed", ArbitraryProperty.BorderRightColor)]
+        public void Given_ADividedChild_When_APaletteBorderColorEnterNamesNoStart_Then_TheHeldEdgeIsDriven(string divide,
+            ArbitraryProperty edge)
+        {
+            // Arrange — a divide color's hold, or the dash's mask, on edge; both give way to a class of the child's own.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "flex flex-row " + divide, children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]"),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            var from = System.Array.Empty<string>();
+            var to = new[] { "border-blue-500" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, MotionSlotContext.Read(child, from, to, _ => false));
+
+            // Assert
+            Assert.That(plan.Colors?.Exists(channel => channel.Property == edge), Is.True);
         }
 
         [Test]

@@ -692,8 +692,7 @@ namespace Velvet
             var restingTranslate = element.style.translate.value;
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
                 restingTranslate.x.value, restingTranslate.y.value,
-                MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot))
-                    ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses));
+                SlotContext(element, fromClasses, toClasses));
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
@@ -861,8 +860,7 @@ namespace Velvet
             var restingTranslate = element.style.translate.value;
             var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
                 restingTranslate.x.value, restingTranslate.y.value,
-                MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot))
-                    ?? MotionSlotContext.ReadImportant(element, planFrom, planTo));
+                SlotContext(element, planFrom, planTo));
             plan = StartFromHeld(element, plan, planFrom, planTo);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
@@ -1339,6 +1337,12 @@ namespace Velvet
                 ReleaseHeld(element);
             }
         }
+
+        // What a play on element between fromClasses and toClasses is planned against, read before its swap lands;
+        // MotionPlaySpan reads it too, so a span counts the channels the play has.
+        internal MotionSlotContext SlotContext(VisualElement element, string[]? fromClasses, string[]? toClasses)
+            => MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot))
+                ?? MotionSlotContext.ReadImportant(element, fromClasses, toClasses);
 
         // A held play counts, so the slots it holds read as its values rather than as resting inline holders.
         private bool DrivenByRunningPlay(VisualElement element, ArbitraryProperty slot)

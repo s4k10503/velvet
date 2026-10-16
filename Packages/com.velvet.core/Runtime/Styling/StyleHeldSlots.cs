@@ -97,6 +97,9 @@ namespace Velvet
 
         public bool IsHeld(HeldSlot slot) => (_mask & Bit(slot)) != 0;
 
+        // A held mask, or a hold that gives way to any declaration of the element's own.
+        public bool HoldsForContainer(HeldSlot slot) => (_mask & (_masks | (_yieldMask & ~_importantOnlyMask)) & Bit(slot)) != 0;
+
         public bool IsDriven(HeldSlot slot) => (_driven & Bit(slot)) != 0;
 
         public bool HoldsAny(int slots) => (_mask & slots) != 0;

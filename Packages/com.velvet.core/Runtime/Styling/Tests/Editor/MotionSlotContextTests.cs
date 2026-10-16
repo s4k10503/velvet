@@ -255,17 +255,16 @@ namespace Velvet.Tests
 
             // Act
             var plan = Resolve(element, new string[0], new[] { "border-[#0000ff]" });
-            var channel = plan.Colors?.Find(c => c.Property == ArbitraryProperty.BorderColor);
+            var channel = plan.Colors?.Find(c => c.Property == ArbitraryProperty.BorderTopColor);
 
             // Assert
             Assert.That((channel?.From, !nativeTransition || paint != element.style.borderTopColor.value),
                 Is.EqualTo(((Color?)(nativeTransition ? paint : Color.red), true)));
         }
 
-        // GREEN_ON_BASE(characterization, nativeHolder=false): the base already leaves target-only colors undriven.
         [TestCase(false)]
         [TestCase(true)]
-        public void Given_CurrentBorderColorsWithAnIncompatibleEdge_When_OnlyTheTargetNamesBorderColor_Then_NoUniformChannelIsBuilt(bool nativeHolder)
+        public void Given_CurrentBorderColorsThatDifferByEdge_When_OnlyTheTargetNamesBorderColor_Then_EachEdgeStartsFromItsOwn(bool nativeHolder)
         {
             // Arrange
             var element = MountInFixedParent();
@@ -297,8 +296,16 @@ namespace Velvet.Tests
             // Act
             var plan = Resolve(element, new string[0], new[] { nativeHolder ? "border-black" : "border-[#0000ff]" });
 
-            // Assert
-            Assert.That((plan.Colors, control), Is.EqualTo(((List<MotionSpringClassParser.ColorChannelPlan>)null, true)));
+            // Assert — under border-black the right edge's inline color of the element's own outranks the class.
+            Assert.That((ColorFrom(plan, ArbitraryProperty.BorderTopColor), ColorFrom(plan, ArbitraryProperty.BorderRightColor),
+                    control),
+                Is.EqualTo(nativeHolder ? ((Color?)painted.borderTopColor, (Color?)null, true) : (Color.red, Color.blue, true)));
+        }
+
+        private static Color? ColorFrom(MotionSpringClassParser.SpringPlan plan, ArbitraryProperty property)
+        {
+            var index = plan.Colors?.FindIndex(channel => channel.Property == property) ?? -1;
+            return index >= 0 ? plan.Colors![index].From : null;
         }
 
         [TestCase(0.75f, false)]
@@ -1061,6 +1068,46 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(plan.Lengths, Is.Null);
+        }
+
+        [Test]
+        public void Given_AnImportantTopBorderColorOfTheElementsOwn_When_ABorderColorSwapIsResolved_Then_OnlyTheTopEdgeIsLeftOut()
+        {
+            // Arrange
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "border-t-[#ff0000]",
+                StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+
+            // Act
+            var plan = Resolve(element, new[] { "border-[#000000]" }, new[] { "border-[#0000ff]" });
+
+            // Assert
+            Assert.That((ColorFrom(plan, ArbitraryProperty.BorderTopColor), ColorFrom(plan, ArbitraryProperty.BorderRightColor)),
+                Is.EqualTo(((Color?)null, (Color?)Color.black)));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_AnImportantWidthOfTheElementsOwn_When_ABeforeChildrenWidthSwapOrchestrates_Then_ChildrenWaitOnlyForItsDelay(
+            TransitionType type)
+        {
+            // Arrange — the important width keeps the swap's only channel out of the play, so the play lands at once.
+            var element = MountInFixedParent();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "w-[40px]", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var swap = new StyleTransitionConfig
+            {
+                Type = type, DurationSec = 0.5f, DelaySec = 0.1f, When = TransitionWhen.BeforeChildren,
+            };
+            var from = new[] { "w-[10px]" };
+            var to = new[] { "w-[120px]" };
+
+            // Act
+            var frame = FiberNodePatcher.ResolveChildOrchestration(V.Motion(), swap, childLabelChanged: true,
+                ambientOrchestration: null, extraDelaySec: 0f, from, to, element, new StyleAnimationScheduler());
+            var delay = frame?.ClaimNextChildDelaySec() ?? float.NaN;
+
+            // Assert
+            Assert.That(delay, Is.EqualTo(0.1f).Within(1e-5f));
         }
 
         [TestCase(TransitionType.Spring)]

@@ -97,7 +97,7 @@ namespace Velvet
                     || HoldsBorderEdge(owner, StyleLonghand.BorderRightColor, style.borderRightColor)
                     || HoldsBorderEdge(owner, StyleLonghand.BorderBottomColor, style.borderBottomColor)
                     || HoldsBorderEdge(owner, StyleLonghand.BorderLeftColor, style.borderLeftColor)
-                : TryReadInline(slot, out _) && !HasRunningNativeTransition(slot);
+                : TryReadInline(slot, out _) && !HasRunningNativeTransition(slot) && OwnsInline(owner, longhands);
             if (!hasInline) return false;
             foreach (var property in _inlineBySwap)
             {
@@ -110,7 +110,25 @@ namespace Velvet
         }
 
         private static bool HoldsBorderEdge(VisualElement owner, StyleLonghand longhand, StyleColor inline)
-            => inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(owner, longhand);
+            => inline.keyword == StyleKeyword.Undefined && !HasRunningNativeTransition(owner, longhand)
+                && OwnsInline(owner, StyleLonghandSet.Of(longhand));
+
+        // An inline value a container holds for the element (StyleArbitraryValueResolver.HoldsForContainer) is not
+        // one of the element's own, so it holds no slot against the element's own classes, which it gives way to;
+        // a dash mask over a color of the element's own still stands for that color.
+        private static bool OwnsInline(VisualElement owner, StyleLonghandSet longhands)
+        {
+            foreach (var held in HeldSlotGroups.EverySlot)
+            {
+                if (longhands.Contains(HeldSlotGroups.LonghandOf(held))
+                    && StyleArbitraryValueResolver.HoldsForContainer(owner, held)
+                    && !DivideDashPainter.MasksOwnColor(owner, held))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         public bool HasImportantInlineOutsideSwap(ArbitraryProperty slot)
             => StyleArbitraryValueResolver.HasImportantInlineOutside(_element,
@@ -241,6 +259,14 @@ namespace Velvet
                     return Color(slot, style.color, out value);
                 case ArbitraryProperty.BackgroundColor:
                     return Color(slot, style.backgroundColor, out value);
+                case ArbitraryProperty.BorderTopColor:
+                    return EdgeColor(slot, StyleLonghand.BorderTopColor, style.borderTopColor, out value);
+                case ArbitraryProperty.BorderRightColor:
+                    return EdgeColor(slot, StyleLonghand.BorderRightColor, style.borderRightColor, out value);
+                case ArbitraryProperty.BorderBottomColor:
+                    return EdgeColor(slot, StyleLonghand.BorderBottomColor, style.borderBottomColor, out value);
+                case ArbitraryProperty.BorderLeftColor:
+                    return EdgeColor(slot, StyleLonghand.BorderLeftColor, style.borderLeftColor, out value);
                 case ArbitraryProperty.BorderTopWidth:
                     return Float(slot, style.borderTopWidth, out value);
                 case ArbitraryProperty.BorderRightWidth:
@@ -278,6 +304,18 @@ namespace Velvet
                     return true;
                 case ArbitraryProperty.BackgroundColor:
                     value = new ArbitraryStyle(slot, resolved.backgroundColor);
+                    return true;
+                case ArbitraryProperty.BorderTopColor:
+                    value = new ArbitraryStyle(slot, resolved.borderTopColor);
+                    return true;
+                case ArbitraryProperty.BorderRightColor:
+                    value = new ArbitraryStyle(slot, resolved.borderRightColor);
+                    return true;
+                case ArbitraryProperty.BorderBottomColor:
+                    value = new ArbitraryStyle(slot, resolved.borderBottomColor);
+                    return true;
+                case ArbitraryProperty.BorderLeftColor:
+                    value = new ArbitraryStyle(slot, resolved.borderLeftColor);
                     return true;
                 default:
                     return s_resolvedLengths.TryGetValue(slot, out var read) && Pixels(slot, read(resolved), out value);
@@ -326,6 +364,17 @@ namespace Velvet
         {
             value = new ArbitraryStyle(slot, style.value, LengthUnit.Pixel);
             return style.keyword == StyleKeyword.Undefined;
+        }
+
+        // A masked edge reads as the color its dash takes.
+        private bool EdgeColor(ArbitraryProperty slot, StyleLonghand longhand, StyleColor style, out ArbitraryStyle value)
+        {
+            if (DivideDashPainter.IsMask(style) && DivideDashPainter.TryReadPainted(_element, longhand, out var painted))
+            {
+                value = new ArbitraryStyle(slot, painted);
+                return true;
+            }
+            return Color(slot, style, out value);
         }
 
         private static bool Color(ArbitraryProperty slot, StyleColor style, out ArbitraryStyle value)

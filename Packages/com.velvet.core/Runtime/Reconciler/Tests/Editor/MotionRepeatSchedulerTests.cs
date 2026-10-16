@@ -224,6 +224,8 @@ namespace Velvet.Tests
             Assert.That(warnings, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base already waits out every pass of a bezier swap; the opacity pair
+        // only gives the swap a channel, without which it now lands at once.
         [Test]
         public void Given_BeforeChildrenOnARepeatingBezierSwap_When_AChildClaimsItsSlot_Then_ItWaitsOutEveryPass()
         {
@@ -236,13 +238,15 @@ namespace Velvet.Tests
 
             // Act
             var frame = FiberNodePatcher.ResolveChildOrchestration(V.Motion(), swap, childLabelChanged: true,
-                ambientOrchestration: null, extraDelaySec: 0f);
+                ambientOrchestration: null, extraDelaySec: 0f, new[] { "opacity-0" }, new[] { "opacity-100" });
             var delay = frame?.ClaimNextChildDelaySec() ?? float.NaN;
 
             // Assert
             Assert.That(delay, Is.EqualTo(1.35f).Within(1e-5f));
         }
 
+        // GREEN_ON_BASE(characterization): the base already never ends an endlessly repeating bezier swap's wait;
+        // the opacity pair only gives the swap a channel, without which it now lands at once.
         [Test]
         public void Given_BeforeChildrenOnAnEndlesslyRepeatingSwap_When_AChildClaimsItsSlot_Then_ItsWaitNeverRunsOut()
         {
@@ -255,7 +259,7 @@ namespace Velvet.Tests
 
             // Act
             var frame = FiberNodePatcher.ResolveChildOrchestration(V.Motion(), swap, childLabelChanged: true,
-                ambientOrchestration: null, extraDelaySec: 0f);
+                ambientOrchestration: null, extraDelaySec: 0f, new[] { "opacity-0" }, new[] { "opacity-100" });
             var delay = frame?.ClaimNextChildDelaySec() ?? float.NaN;
 
             // Assert

@@ -302,7 +302,8 @@ resolved start described above.
   (`bg-red-500`), the alpha modifier (`bg-red-500/50`) and the bracket forms (`bg-[#1e293b]`).
   Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so
   switching a config between `Tween` and `Spring` never changes which colors the element passes
-  through. `border-color` fans out to all four sides.
+  through. `border-color` fans out to all four sides, each its own channel, as do the per-side
+  bracket forms (`border-t-[#f00]`, `border-x-[#f00]`).
 - **`border-radius`,** from the `rounded-*` scale and the bracket forms, including the per-side and
   per-corner spellings.
 - **Spacing-scale lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*`
@@ -335,8 +336,9 @@ resolved start described above.
   including when an update reorders existing tokens.
   Classes left in place participate in the cascade of the slots named by the delta. A resting inline
   value keeps its slot over a plain stylesheet utility, so `pt-[2px]` beside a `p-0` → `p-8` swap keeps its top edge. Running
-  custom frames and native targets supply current values instead of ordinary resting holders;
-  inactive inline border edges still block a uniform stylesheet border-color channel. Resting
+  custom frames and native targets supply current values instead of ordinary resting holders, and
+  so do a `space-*` margin, a `divide-*` color or width that is not important, and a dashed divider's masked edge, each of
+  which gives way to the element's own classes. Resting
   important holders keep their priority, while an important inline holder the swap replaces can change.
   Inline values hold their slots over surviving stylesheet utilities; between two stylesheet utilities
   the one the stylesheet declares later holds it, wherever the two sit in the class string. So `p-8 pt-2` animates the top edge toward `pt-2` and the
@@ -352,9 +354,8 @@ resolved start described above.
   gradients are baked silhouette paints; `filter-*` transitions by its own path
   ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
   parser, so a ratio change snaps.
-- A target-only uniform scale or border color lands instantly when the sampled x/y scale values
-  or border edge colors differ. The edge a `divide-dashed` or `divide-dotted` divider draws is sampled
-  as the color its dash takes.
+- A target-only uniform scale lands instantly when the sampled x and y scale values differ. The edge
+  a `divide-dashed` or `divide-dotted` divider draws is sampled as the color its dash takes.
 - **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`) **and per-axis `scale-x-` /
   `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
   Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands
