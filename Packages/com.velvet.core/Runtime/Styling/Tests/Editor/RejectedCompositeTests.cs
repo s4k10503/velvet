@@ -9,22 +9,33 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class RejectedCompositeTests
     {
-        [TestCase("translate-x-4 translate-y-[10]", "")]
-        [TestCase("scale-x-[2] scale-y-[2px]", "")]
-        [TestCase("scale-50 scale-x-[abc]", "")]
-        [TestCase("skew-x-6 skew-y-[10]", "")]
-        [TestCase("blur-sm brightness-[abc]", "")]
-        [TestCase("drop-shadow-lg blur-[2]", "")]
-        [TestCase("blur-[-2px]", "")]
-        [TestCase("blur-sm p-4 hue-rotate-[45]", "p-4")]
-        [TestCase("translate-x-4 hover:translate-y-[10]", "translate-x-4")]
-        public void Given_AFamilyHoldingARejectedValue_When_Normalized_Then_TheFamilyIsDropped(string classes, string kept)
+        [TestCase("translate-x-4 translate-y-[10]", "translate-x-[0] translate-y-[0]")]
+        [TestCase("scale-x-[2] scale-y-[2px]", "scale-x-[1] scale-y-[1]")]
+        [TestCase("scale-50 scale-x-[abc]", "scale-x-[1] scale-y-[1]")]
+        [TestCase("skew-x-6 skew-y-[10]", "skew-x-[0] skew-y-[0]")]
+        [TestCase("blur-sm brightness-[abc]", "blur-[0] brightness-[1] contrast-[1] grayscale-[0] hue-rotate-[0] invert-[0] saturate-[1] sepia-[0]")]
+        [TestCase("drop-shadow-lg blur-[2]", "blur-[0] brightness-[1] contrast-[1] grayscale-[0] hue-rotate-[0] invert-[0] saturate-[1] sepia-[0] drop-shadow-none")]
+        [TestCase("blur-[-2px]", "blur-[0] brightness-[1] contrast-[1] grayscale-[0] hue-rotate-[0] invert-[0] saturate-[1] sepia-[0]")]
+        [TestCase("blur-sm p-4 hue-rotate-[45]", "blur-[0] brightness-[1] contrast-[1] grayscale-[0] hue-rotate-[0] invert-[0] saturate-[1] sepia-[0] p-4")]
+        [TestCase("translate-y-[10] hover:translate-x-4", "translate-x-[0] translate-y-[0]")]
+        [TestCase("!translate-y-[10] translate-x-4", "!translate-x-[0] !translate-y-[0]")]
+        public void Given_AFamilyHoldingARejectedValue_When_Normalized_Then_TheFamilyIsItsIdentity(string classes, string kept)
         {
             // Act
             var tokens = StyleSpacingPrecedence.Normalize(classes.Split(' '));
 
             // Assert
             Assert.That(string.Join(" ", tokens), Is.EqualTo(kept));
+        }
+
+        [Test]
+        public void Given_ARejectionBehindAVariant_When_Normalized_Then_TheFamilyIsItsIdentityThereOnly()
+        {
+            // Act
+            var tokens = StyleSpacingPrecedence.Normalize(new[] { "translate-x-4", "hover:translate-y-[10]" });
+
+            // Assert
+            Assert.That(string.Join(" ", tokens), Is.EqualTo("translate-x-4 hover:translate-x-[0] hover:translate-y-[0]"));
         }
 
         // GREEN_ON_BASE(characterization): every value here is one the browser takes, so the base kept them too.

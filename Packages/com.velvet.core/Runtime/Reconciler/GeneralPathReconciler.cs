@@ -2594,7 +2594,7 @@ namespace Velvet
                 // anchor's does; an inherited one names nothing this Motion can play.
                 exitTransition = hasPose ? pose.Transition ?? motion.Transition
                     : motion.Exit != null ? motion.Transition : null;
-                exitPoseClass = hasPose ? pose.ClassName : null;
+                exitPoseClass = hasPose ? MotionVariantResolver.PoseClassName(motion, pose.ClassName) : null;
                 if (exitTransition?.HasExitAnimation == true)
                 {
                     if (!ReferenceEquals(motion, walk.Anchor))
@@ -2602,7 +2602,7 @@ namespace Velvet
                         plays = 1;
                         walk.Into?.Add(new ReconcilerContext.PresenceDescendantExit(element,
                             hasPose
-                                ? exitTransition.WithExitClasses(RestingVariantClass(element), pose.ClassName ?? string.Empty)
+                                ? exitTransition.WithExitClasses(RestingVariantClass(element), exitPoseClass!)
                                 : exitTransition,
                             RestoresResting: hasPose,
                             DelaySec: claimSec));
@@ -3586,8 +3586,8 @@ namespace Velvet
             }
 
             motion.Variants.TryGetValue(animateLabel, out var to);
-            fromClasses = V.ParseClassNames(from.ClassName);
-            toClasses = V.ParseClassNames(to.ClassName ?? string.Empty);
+            fromClasses = MotionVariantResolver.PoseClasses(motion, from.ClassName);
+            toClasses = MotionVariantResolver.PoseClasses(motion, to.ClassName);
             transition = to.Transition ?? motion.Transition;
             return transition != null;
         }
@@ -3621,8 +3621,8 @@ namespace Velvet
             }
 
             motion.Variants.TryGetValue(motion.Animate, out var resting);
-            restingClass = resting.ClassName ?? string.Empty;
-            exitClass = exit.ClassName ?? string.Empty;
+            restingClass = MotionVariantResolver.PoseClassName(motion, resting.ClassName);
+            exitClass = MotionVariantResolver.PoseClassName(motion, exit.ClassName);
             transition = exit.Transition ?? motion.Transition;
             return true;
         }
