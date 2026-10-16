@@ -91,7 +91,8 @@ namespace Velvet
                         && cls.StartsWith(name, System.StringComparison.Ordinal))
                     {
                         family = candidate;
-                        if (!StyleColorValueParser.TryParseColorValue(cls, name.Length + 1, out var color))
+                        if (StyleColorValueParser.HintSelectsNonColour("border", StyleArbitraryValueResolver.TypeHintOf(cls))
+                            || !StyleColorValueParser.TryParseColorValue(cls, name.Length + 1, out var color))
                         {
                             return false;
                         }

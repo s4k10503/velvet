@@ -157,7 +157,7 @@ namespace Velvet
         {
             spec = default;
             wantShadow = false;
-            if (string.IsNullOrEmpty(cls))
+            if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }

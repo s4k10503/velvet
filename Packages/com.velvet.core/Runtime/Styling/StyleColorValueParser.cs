@@ -15,13 +15,22 @@ namespace Velvet
         // outright (bg- with a non-color value, so the caller falls through to the background image
         // resolver); null when not a color match and the caller should fall through to the length-based
         // path (text-/border- with a non-color value, or the negated form — '-' never applies to a color).
-        internal static bool? TryParseColorPrefix(string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        // A type hint picks the branch Tailwind's tests would have: one HintSelectsNonColour names skips the colour,
+        // and any other makes the value a colour or nothing.
+        internal static bool? TryParseColorPrefix(
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, string? hint, out ArbitraryStyle result)
         {
             result = default;
             if (negate)
             {
                 return null;
             }
+            var root = prefix.Substring(0, prefix.Length - 1);
+            if (HintSelectsNonColour(root, hint))
+            {
+                return prefix == "bg-" ? false : null;
+            }
+            var colourOnly = hint != null;
 
             // text-[...] is overloaded: a color value wins, otherwise it falls through to font-size.
             if (prefix == "text-")
@@ -31,7 +40,7 @@ namespace Velvet
                     result = new ArbitraryStyle(ArbitraryProperty.TextColor, textColor);
                     return true;
                 }
-                return null;
+                return colourOnly ? false : null;
             }
 
             // bg-[...] is color-only here; a non-color value (e.g. bg-[addr:...]) rejects.
@@ -54,11 +63,26 @@ namespace Velvet
                     result = new ArbitraryStyle(ArbitraryProperty.BorderColor, borderColor);
                     return true;
                 }
-                return null;
+                return colourOnly ? false : null;
             }
 
             return null;
         }
+
+        // Whether a type hint picks a branch other than the colour for a utility Tailwind types, named by its root:
+        // the hints its switch handles before the colour default.
+        internal static bool HintSelectsNonColour(string root, string? hint)
+            => hint != null && root switch
+            {
+                "text" => hint is "length" or "percentage" or "absolute-size" or "relative-size",
+                "border" or "border-t" or "border-r" or "border-b" or "border-l" or "border-x" or "border-y"
+                    or "border-s" or "border-e" => hint is "length" or "line-width",
+                "bg" => hint is "percentage" or "position" or "bg-size" or "length" or "size" or "image" or "url",
+                "ring" or "ring-offset" or "inset-ring" => hint == "length",
+                "outline" => hint is "length" or "number" or "percentage",
+                "from" or "via" or "to" => hint is "length" or "percentage",
+                _ => false,
+            };
 
         // Internal so the shadow, ring, divide, gradient and filter grammars share the one colour grammar, which
         // TryParseCssColor owns.
@@ -155,7 +179,8 @@ namespace Velvet
                 return false;
             }
 
-            if (ColorModifierSlashIndex(className, prefixLen) == -1)
+            if (ColorModifierSlashIndex(className, prefixLen) == -1
+                || HintSelectsNonColour(className.Substring(0, prefixLen - 1), StyleArbitraryValueResolver.TypeHintOf(className)))
             {
                 return false;
             }

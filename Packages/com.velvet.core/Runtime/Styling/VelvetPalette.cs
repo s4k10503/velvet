@@ -314,7 +314,9 @@ namespace Velvet
             }
             if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
-                return StyleColorValueParser.TryParseColor(inner, out color);
+                // A type hint is dropped here: the caller has already chosen the colour branch.
+                return StyleArbitraryValueResolver.TrySplitTypeHint(inner, out _, out inner)
+                    && StyleColorValueParser.TryParseColor(inner, out color);
             }
             return TryGet(suffix, out color);
         }

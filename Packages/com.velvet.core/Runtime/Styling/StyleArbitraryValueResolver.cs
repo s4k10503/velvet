@@ -81,10 +81,6 @@ namespace Velvet
                 return false;
             }
 
-            var written = className;
-            className = StyleNamedTextSize.WithoutLengthHint(className);
-            var lengthHinted = !ReferenceEquals(className, written);
-
             if (StyleBorderSideColor.TryParse(className, out result)
                 || StyleLogicalUtilities.TryParse(className, out result))
             {
@@ -103,7 +99,7 @@ namespace Velvet
 
             // text-<size>/<leading> and text-[<length>]/<leading> set the font-size here because no USS rule can spell the suffix;
             // StyleTextEffectClass reads the same token for its line height.
-            if (StyleNamedTextSize.TryParseSlashFontSize(written, out result))
+            if (StyleNamedTextSize.TryParseSlashFontSize(className, out result))
             {
                 return true;
             }
@@ -143,13 +139,77 @@ namespace Velvet
                 return false;
             }
 
-            return TryParseBracketValue(prefix, valueSpan, negate, lengthHinted, out result);
+            // filter-[name:args] is Velvet's custom-filter call, not a type hint.
+            string? hint = null;
+            if (prefix != "filter-" && !TrySplitTypeHint(valueSpan, out hint, out valueSpan))
+            {
+                return false;
+            }
+
+            return TryParseBracketValue(prefix, valueSpan, negate, hint, out result);
         }
 
-        // lengthHinted: the class carried Tailwind's `length:` type hint, which skips the type tests
-        // TailwindReadsAsLength mirrors.
+        // Tailwind's type hint: a run of a-z and '-' closed by ':' at the start of a bracket (`[length:2PX]`). It
+        // replaces the type tests of a utility that has them and is dropped by every other, which writes the value
+        // after it. False when the run is empty or leaves no value, which Tailwind reads as no utility.
+        internal static bool TrySplitTypeHint(ReadOnlySpan<char> inner, out string? hint, out ReadOnlySpan<char> value)
+        {
+            hint = null;
+            value = inner;
+            for (var i = 0; i < inner.Length; i++)
+            {
+                var c = inner[i];
+                if (c == ':')
+                {
+                    hint = inner.Slice(0, i).ToString();
+                    value = inner.Slice(i + 1);
+                    return i > 0 && !value.Trim("_ ".AsSpan()).IsEmpty;
+                }
+                if (c != '-' && (c < 'a' || c > 'z'))
+                {
+                    break;
+                }
+            }
+            return true;
+        }
+
+        // The type hint in a class's bracket, or null when it has none.
+        internal static string? TypeHintOf(string cls)
+        {
+            var open = cls.IndexOf('[');
+            var close = cls.LastIndexOf(']');
+            return open >= 0 && close > open && TrySplitTypeHint(cls.AsSpan(open + 1, close - open - 1), out var hint, out _)
+                ? hint
+                : null;
+        }
+
+        // WithoutTypeHint as a Try: false where the hint is malformed.
+        internal static bool TryDropTypeHint(string cls, out string plain)
+        {
+            var dropped = WithoutTypeHint(cls);
+            plain = dropped ?? cls;
+            return dropped != null;
+        }
+
+        // A class whose bracket is written through by Tailwind, with its type hint dropped: `gap-[length:8px]` is
+        // `gap-[8px]`. Null when the hint is malformed, which Tailwind reads as no utility.
+        internal static string? WithoutTypeHint(string cls)
+        {
+            var open = cls.IndexOf('[');
+            var close = cls.LastIndexOf(']');
+            if (open < 0 || close <= open)
+            {
+                return cls;
+            }
+            if (!TrySplitTypeHint(cls.AsSpan(open + 1, close - open - 1), out var hint, out var value))
+            {
+                return null;
+            }
+            return hint == null ? cls : string.Concat(cls.Substring(0, open + 1), value.ToString(), cls.Substring(close));
+        }
+
         private static bool TryParseBracketValue(
-            string prefix, ReadOnlySpan<char> valueSpan, bool negate, bool lengthHinted, out ArbitraryStyle result)
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, string? hint, out ArbitraryStyle result)
         {
             result = default;
 
@@ -170,7 +230,7 @@ namespace Velvet
             // value). bg- is color-only, so a non-color bg- value rejects (false) and the call site falls
             // through to StyleBackgroundImageResolver.
             {
-                var color = StyleColorValueParser.TryParseColorPrefix(prefix, valueSpan, negate, out result);
+                var color = StyleColorValueParser.TryParseColorPrefix(prefix, valueSpan, negate, hint, out result);
                 if (color.HasValue) return color.Value;
             }
 
@@ -214,7 +274,7 @@ namespace Velvet
             }
 
             if (!TryGetProperty(prefix, out var property)
-                || (!lengthHinted && !TailwindReadsAsLength(property, valueSpan)))
+                || !TailwindReadsAsLength(property, valueSpan, hint))
             {
                 return false;
             }
@@ -254,15 +314,20 @@ namespace Velvet
         // Where Tailwind reads a bracket as either a length or a colour, whether its type tests take this one for
         // the length; a value they do not is written as a colour, which a browser discards. Every other property
         // here takes the bracket as written.
-        private static bool TailwindReadsAsLength(ArbitraryProperty property, ReadOnlySpan<char> value)
+        // A type hint replaces the tests: StyleColorValueParser.HintSelectsNonColour names the hints that pick
+        // the length.
+        private static bool TailwindReadsAsLength(ArbitraryProperty property, ReadOnlySpan<char> value, string? hint)
             => property switch
             {
                 ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth or ArbitraryProperty.BorderRightWidth
                     or ArbitraryProperty.BorderBottomWidth or ArbitraryProperty.BorderLeftWidth
-                    => TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsNumber(value)
-                        || TailwindDataTypes.IsLineWidthKeyword(value),
-                ArbitraryProperty.FontSize => TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsPercentage(value)
-                    || TailwindDataTypes.IsFontSizeKeyword(value),
+                    => hint != null ? StyleColorValueParser.HintSelectsNonColour("border", hint)
+                        : TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsNumber(value)
+                            || TailwindDataTypes.IsLineWidthKeyword(value),
+                ArbitraryProperty.FontSize
+                    => hint != null ? StyleColorValueParser.HintSelectsNonColour("text", hint)
+                        : TailwindDataTypes.IsLength(value) || TailwindDataTypes.IsPercentage(value)
+                            || TailwindDataTypes.IsFontSizeKeyword(value),
                 _ => true,
             };
 
@@ -3243,19 +3308,31 @@ namespace Velvet
         };
 
         // TryParseArbitraryPixels where Tailwind reads the bracket as either a length or a colour (ring-, ring-offset-):
-        // its length test decides, and hands `2PX` or a bare `2` to the colour branch, which a browser discards.
+        // its length test, or a `length:` hint, decides, and hands `2PX` or a bare `2` to the colour branch.
         internal static bool TryParseInferredArbitraryPixels(ReadOnlySpan<char> suffix, out float px)
         {
             px = 0f;
-            return TryStripBrackets(suffix, 0, out var inner) && TailwindDataTypes.IsLength(inner)
-                && TryParseArbitraryPixels(suffix, out px);
+            if (!TryStripBrackets(suffix, 0, out var inner) || !TrySplitTypeHint(inner, out var hint, out inner))
+            {
+                return false;
+            }
+            return (hint != null ? hint == "length" : TailwindDataTypes.IsLength(inner)) && TryParsePixels(inner, out px);
+        }
+
+        // A non-negative pixel length, the grammar TryParseArbitraryPixels reads inside its bracket.
+        internal static bool TryParsePixels(ReadOnlySpan<char> inner, out float px)
+        {
+            var parsed = TryParseValue(inner, out px, out var unit) && unit == LengthUnit.Pixel && px >= 0f;
+            px = parsed ? px : 0f;
+            return parsed;
         }
 
         // A border-[…] width as TryParseBracketValue reads it, for a reader that has to agree with the width applied.
         internal static bool TryParseBorderWidthPixels(ReadOnlySpan<char> suffix, out float px)
         {
             px = 0f;
-            if (!TryStripBrackets(suffix, 0, out var inner) || !TailwindReadsAsLength(ArbitraryProperty.BorderWidth, inner))
+            if (!TryStripBrackets(suffix, 0, out var inner) || !TrySplitTypeHint(inner, out var hint, out inner)
+                || !TailwindReadsAsLength(ArbitraryProperty.BorderWidth, inner, hint))
             {
                 return false;
             }
@@ -3263,7 +3340,7 @@ namespace Velvet
             {
                 return true;
             }
-            return TryParseArbitraryPixels(suffix, out px);
+            return TryParsePixels(inner, out px);
         }
 
         // The pixels in one of the absolute units, for StyleLengthExpression's dimensions.
