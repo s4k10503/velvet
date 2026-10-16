@@ -350,7 +350,7 @@ namespace Velvet
             OpenOwedSettleWindow(out var enclosing);
             try
             {
-                FlushFiber(fiber, timeSlicedBudgetMs);
+                FlushFiber(fiber, timeSlicedBudgetMs, endsEnclosingCommit: enclosing != null);
             }
             finally
             {
@@ -393,7 +393,10 @@ namespace Velvet
             }
         }
 
-        private static void FlushFiber(ComponentFiber fiber, double timeSlicedBudgetMs)
+        // endsEnclosingCommit: the flush runs inside an enclosing flush's owed window, ahead of that flush's own
+        // effect commit, so the follow-up commit that ends a flush is the enclosing one's to run: it would take the
+        // enclosing flush's refs ahead of its insertion effects and layout cleanups.
+        private static void FlushFiber(ComponentFiber fiber, double timeSlicedBudgetMs, bool endsEnclosingCommit)
         {
             if (!fiber.IsMounted) return;
             if (!fiber.IsDirty)
@@ -553,7 +556,7 @@ namespace Velvet
                 FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
                 FlushCompletedTransitionIndicator(fiber);
             }
-            FiberEffects.CommitStrandedLayoutWork(context!);
+            if (!endsEnclosingCommit) FiberEffects.CommitStrandedLayoutWork(context!);
         }
 
         private static void SettleCompletedTransition(ComponentFiber fiber)
