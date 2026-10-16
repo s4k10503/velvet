@@ -10,8 +10,8 @@ own config as the default a pose overrides** (and the instant opt-out; see the l
 The `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …) and
 `whileHoverClass` / `whileTapClass` gestures are covered in the README; everything below uses
 **variants**. The gesture channels apply their classes as `hover:`, `active:` and `focus:` payloads, after
-the className's own rules at those ranks, and the classes a play applies while it runs carry ordinary USS
-utilities only — see [styling-variants.md](styling-variants.md#payloads-velvet-realises-itself). While a
+the className's own rules at those ranks, and the classes a play applies while it runs apply every utility a
+className does — see [styling-variants.md](styling-variants.md#payloads-velvet-realises-itself). While a
 play shows its classes, on any driver, they outrank the element's own utilities, bracket values and
 `StyleOverrides`, a divider's or space margin's value on the same edge, variant payloads and the gesture
 channels, as a CSS animation's declarations do, and lose to an important utility, behind a variant or not.

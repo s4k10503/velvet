@@ -439,13 +439,10 @@ Tailwind ranks above that: `focus:` or `active:` against `whileHoverClass`, `dis
 against any of the three, a stacked rule such as `dark:hover:`, and an important utility. The element's
 own value comes back when the state goes off. Bracket values apply through them, and so do `shadow-*`,
 `ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`:
-`whileHoverClass: "shadow-lg"` paints a shadow while hovered. The transient enter
-/ exit classes an `AnimatePresence` play applies for the duration of an animation write their utilities
-straight onto the live class list without telling the reconciler, and carry only a utility backed by a
-plain USS rule — `bg-red-500`, `opacity-50`, `px-4`, `border-red-500`, `scale-105`, `rotate-3`. Read that
-as the list in the first paragraph above versus everything else, not as whole categories: `gap-4` is
-spacing and `skew-x-6` is a transform, yet both are in that list and neither works there. A `V.Motion`'s
-resting `variants` classes go through the reconciler and are unaffected.
+`whileHoverClass: "shadow-lg"` paints a shadow while hovered. The classes a play shows for the duration of
+an animation — a `V.Motion` pose's, an `AnimatePresence` enter or exit class — apply the same set, and a
+pose's class the play takes off for that duration stops applying until it is back: `EnterFromClass:
+"gap-4 shadow-lg w-[40px]"` spaces, shadows and sizes the element until the enter swaps it out.
 
 **`[&>*]:` on a UI Toolkit composite lands on the control's own parts.** The walk is over whatever the
 container redirects its children into. A `V.ScrollView` redirects, so the payload reaches the children

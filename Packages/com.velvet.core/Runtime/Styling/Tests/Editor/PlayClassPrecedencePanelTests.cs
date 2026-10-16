@@ -259,5 +259,80 @@ namespace Velvet.Tests
             // Assert — the hover class is taken off while the play's class shows, and put back once it rests.
             Assert.That((swapped, element.ClassListContains("opacity-50")), Is.EqualTo((false, true)));
         }
+
+        private ReconcilerContext Context => _mounted.Root.Reconciler.Context;
+
+        [Test]
+        public void Given_AnEnterShowingAShadowClass_When_ItPlays_Then_TheShadowPaintsUntilItEnds()
+        {
+            // Arrange
+            var element = MountOnFakeClock(ClassicEnter("", "shadow-lg", "opacity-100"));
+            var during = Context.ShadowBindings.ContainsKey(element);
+
+            // Act
+            Step(element);
+            Step(element);
+
+            // Assert
+            Assert.That((during, Context.ShadowBindings.ContainsKey(element)), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnEnterShowingAGapClass_When_ItPlays_Then_TheGapAppliesUntilItEnds()
+        {
+            // Arrange
+            var element = MountOnFakeClock(V.AnimatePresence(children: new VNode[]
+            {
+                V.Motion(key: "b", name: "b", className: "flex flex-row w-[60px] h-[20px]",
+                    transition: new StyleTransitionConfig
+                    {
+                        DurationSec = 0.2f, EnterFromClass = "gap-4", EnterToClass = "opacity-100",
+                    },
+                    children: new VNode[] { V.Div("w-[10px] h-[10px]"), V.Div("w-[10px] h-[10px]") }),
+            }));
+            var during = Context.GapManipulators.ContainsKey(element);
+
+            // Act
+            Step(element);
+            Step(element);
+
+            // Assert
+            Assert.That((during, Context.GapManipulators.ContainsKey(element)), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnEnterShowingABracketWidth_When_ItPlays_Then_TheWidthAppliesUntilItsSwap()
+        {
+            // Arrange
+            var element = MountOnFakeClock(ClassicEnter("", "w-[40px]", "opacity-100"));
+            var during = element.style.width.value.value;
+
+            // Act
+            Step(element);
+
+            // Assert — ClassicEnter's own w-[20px] holds the width once the play's class is gone.
+            Assert.That((during, element.style.width.value.value), Is.EqualTo((40f, 20f)));
+        }
+
+        [Test]
+        public void Given_AVariantEnterIntoAShadowedPose_When_ItPlays_Then_TheShadowPaintsOnlyOnceThePoseIsShown()
+        {
+            // Arrange — the resting pose carries the shadow and the pose entered from does not, so the shadow
+            // waits for the swap, as the pose's class does.
+            var poses = new Dictionary<string, MotionVariant>
+            {
+                ["hidden"] = "opacity-0", ["visible"] = "opacity-100 shadow-lg",
+            };
+            var element = MountOnFakeClock(V.Motion(name: "b", className: "w-[20px] h-[20px]",
+                variants: poses, initial: "hidden", animate: "visible", transition: Tween()));
+            var during = Context.ShadowBindings.ContainsKey(element);
+
+            // Act
+            Step(element);
+            Step(element);
+
+            // Assert
+            Assert.That((during, Context.ShadowBindings.ContainsKey(element)), Is.EqualTo((false, true)));
+        }
     }
 }

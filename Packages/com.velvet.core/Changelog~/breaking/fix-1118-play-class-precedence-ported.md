@@ -28,6 +28,11 @@
 - A `V.Motion` draws `shadow-*`, `skew-*` and `border-dashed` / `border-dotted`, from its className, its
   variants and the `while*Class` and drag channels, as any element does. It used to draw none of them, and
   logged a warning for a shadow.
+- The classes a play shows — a `V.Motion` pose's, an `AnimatePresence` enter or exit class — apply bracket
+  values and the utilities Velvet realises itself (`gap-*`, `shadow-*`, `ring-*`, `skew-*`, gradients,
+  `animate-*`, `border-dashed`, `uppercase`, …) while the play shows them, and one of the latter that the
+  element's resting pose carries stops applying while the play has the pose's class off. A play's class used
+  to apply only a utility backed by a plain USS rule.
 
 ### Fixed
 

@@ -61,6 +61,10 @@ namespace Velvet
 
         // Set once by the mount before its first render, which is what lets a mount enter take it.
         internal MotionClock Clock { get; set; } = MotionClock.Realtime;
+
+        // The reconciler whose elements this plays on, which a play's class tells of the gate tokens it moves
+        // (StyleAnimationClassUtils). Null for a scheduler built outside one.
+        internal ReconcilerContext? Context { get; set; }
         private bool _retainsClock;
 
         // A mount's own clock. One other than Realtime keeps MotionClock's element record live until ReleaseClock.
@@ -283,9 +287,10 @@ namespace Velvet
             }, out var timing);
             if (variantMode)
             {
-                StyleAnimationClassUtils.RemoveClasses(element, toClasses);
+                StyleAnimationClassUtils.RemoveClasses(element, toClasses, ctx: Context);
             }
-            StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Animation);
+            StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Animation, Context,
+                realiseInline: !variantMode);
 
             // Step 2: swap classes on the next frame (fires the CSS transition).
             var pending = new PendingAnimation
@@ -396,8 +401,9 @@ namespace Velvet
             }
 
             pending.SwapAhead = false;
-            StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
-            StyleAnimationClassUtils.AddClasses(element, toClasses, StyleLayerPriority.Animation);
+            StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses, ctx: Context);
+            StyleAnimationClassUtils.AddClasses(element, toClasses, StyleLayerPriority.Animation, Context,
+                realiseInline: !variantMode);
             RunOnSwap(pending);
             // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so its
             // ring band fades in lockstep with it.
@@ -418,11 +424,11 @@ namespace Velvet
                 {
                     if (!variantMode)
                     {
-                        StyleAnimationClassUtils.RemoveClasses(element, toClasses);
+                        StyleAnimationClassUtils.RemoveClasses(element, toClasses, ctx: Context);
                     }
                     else
                     {
-                        StyleAnimationClassUtils.Rest(element, toClasses);
+                        StyleAnimationClassUtils.Rest(element, toClasses, Context);
                     }
                     // Target is opaque now — stop the co-fade and release the band's inline opacity.
                     RingCoFadeCoordinator.EndRingCoFade(completed);
@@ -523,7 +529,8 @@ namespace Velvet
                 DelayOffsetSec = delayOffsetSec, AllProperties = restoreFromOnCancel,
                 PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null,
             }, out var timing);
-            StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Animation);
+            StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Animation, Context,
+                realiseInline: !restoreFromOnCancel);
 
             // Step 2: swap classes on the next frame.
             var pending = new PendingAnimation
@@ -616,8 +623,9 @@ namespace Velvet
                 return;
             }
 
-            StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
-            StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!, StyleLayerPriority.Animation);
+            StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses, ctx: Context);
+            StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!, StyleLayerPriority.Animation, Context,
+                realiseInline: pending.RestingClasses == null);
             RunOnSwap(pending);
             // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
             // stable host so its ring band fades out in lockstep (and keeps ticking through any
@@ -718,9 +726,9 @@ namespace Velvet
             // Land the classes at rest either way — nothing recognized to animate (or invalid spring
             // parameters) degrades to a plain, instantaneous class swap (the spring equivalent of a
             // zero-duration tween).
-            StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+            StyleAnimationClassUtils.RemoveClasses(element, fromClasses, ctx: Context);
             StyleAnimationClassUtils.AddClasses(element, toClasses,
-                state == null ? StyleLayerPriority.Base : StyleLayerPriority.Animation);
+                state == null ? StyleLayerPriority.Base : StyleLayerPriority.Animation, Context);
             play.OnSwap?.Invoke();
 
             if (state == null)
@@ -874,9 +882,9 @@ namespace Velvet
 
             CancelPending(map, element, animateReversal: play.IsExit);
 
-            StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+            StyleAnimationClassUtils.RemoveClasses(element, fromClasses, ctx: Context);
             StyleAnimationClassUtils.AddClasses(element, toClasses,
-                state == null ? StyleLayerPriority.Base : StyleLayerPriority.Animation);
+                state == null ? StyleLayerPriority.Base : StyleLayerPriority.Animation, Context);
             play.OnSwap?.Invoke();
 
             if (state == null)
@@ -1064,7 +1072,7 @@ namespace Velvet
             // this element carries none, the common case).
             RingCoFadeCoordinator.EndRingCoFade(pending);
             MotionSpringDriver.ClearInlineOverrides(element, state);
-            StyleAnimationClassUtils.Rest(element, pending.ToClasses);
+            StyleAnimationClassUtils.Rest(element, pending.ToClasses, Context);
             ReapplyMotionOwnedInlineValues(element);
             ReassertHeld(element);
             state.OnSettled?.Invoke();
@@ -1139,10 +1147,10 @@ namespace Velvet
             RingCoFadeCoordinator.EndRingCoFade(pending);
             if (pending.RemovesToClasses)
             {
-                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses, ctx: Context);
             }
             BezierTweenDriver.ClearInlineOverrides(element, state);
-            StyleAnimationClassUtils.Rest(element, pending.ToClasses);
+            StyleAnimationClassUtils.Rest(element, pending.ToClasses, Context);
             ReapplyMotionOwnedInlineValues(element);
             ReassertHeld(element);
             state.OnSettled?.Invoke();
@@ -1333,7 +1341,7 @@ namespace Velvet
             {
                 BezierTweenDriver.ClearInlineOverrides(element, held.Bezier!);
             }
-            StyleAnimationClassUtils.Rest(element, held.ToClasses);
+            StyleAnimationClassUtils.Rest(element, held.ToClasses, Context);
             ReapplyMotionOwnedInlineValues(element);
             held.Playback!.Untrack(held);
         }
@@ -1980,15 +1988,15 @@ namespace Velvet
                 // Remove the off-panel deferred-attach callback if it never fired (cancel-before-attach), else it
                 // and its captured PendingAnimation linger on the element across pool reuse.
                 if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
-                StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses, keptClasses);
-                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses, keptClasses);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses, keptClasses, Context);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses, keptClasses, Context);
                 // A variant exit's FromClasses ARE the resting state (variants[animate]); cancelling the exit
                 // (key re-added mid-exit) must return the element to that resting variant rather than strip it.
                 // Re-add after the removals so the element is left in its resting state and stays consistent with
                 // the MotionAppliedClasses cache (which still records the resting class as applied).
                 if (pending.RestingClasses != null)
                 {
-                    StyleAnimationClassUtils.AddClasses(element, pending.RestingClasses);
+                    StyleAnimationClassUtils.AddClasses(element, pending.RestingClasses, ctx: Context);
                 }
                 // Interrupted enter / exit: the target returns to its resting (opaque) state, so stop this
                 // tween's co-fade and release the band's inline opacity back to the cascade.
