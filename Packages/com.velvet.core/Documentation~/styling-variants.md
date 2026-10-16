@@ -324,6 +324,11 @@ the element the renderer applies that opacity to.
 An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
 `overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.
 
+`skew-<n>`, `-skew-<n>` and `skew-[…]` shear both axes by one angle. They compose with `skew-x-*` and
+`skew-y-*` as Tailwind's `skewX() skewY()` does, so x is also stretched by 1 + tan θx · tan θy, and a
+per-axis class outranks `skew-<n>` on its axis wherever either is written: `skew-6 skew-x-12` and
+`skew-x-12 skew-6` both give 12° on x and 6° on y.
+
 **Where `skew-*` deviates from CSS.** UI Toolkit's transform carries rotation, scale and translation and
 no shear, so a skew here is not a transform: the caster's own face is repainted sheared in its generated
 content, and each direct in-flow child is seated with an inline `translate` that puts its centroid where

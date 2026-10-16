@@ -44,9 +44,9 @@ tests — `length` or `line-width` for `border-*`; `length`, `percentage`, `abso
 `text-[length:16PX]` is 16px, `bg-[color:#f00]/50` a half-transparent red, and `border-[color:2px]` inert.
 `filter-[name:args]` is Velvet's custom-filter call, not a hint ([styling-filters.md](styling-filters.md)).
 
-An angle (`rotate-[…]`, `skew-x-[…]`, `hue-rotate-[…]`, a gradient's) is read in `deg`, `grad`, `rad` or `turn`,
+An angle (`rotate-[…]`, `skew-[…]`, `skew-x-[…]`, `hue-rotate-[…]`, a gradient's) is read in `deg`, `grad`, `rad` or `turn`,
 and a time (`duration-[…]`, `animate-spin-[…]` and the other loops) in `ms` or `s`, each in any case. A bare number
-is read only where the CSS property Tailwind writes takes one: `0` in `skew-x-[…]`, `hue-rotate-[…]` and
+is read only where the CSS property Tailwind writes takes one: `0` in `skew-[…]`, `skew-x-[…]`, `hue-rotate-[…]` and
 `bg-linear-[…]`, and none in `rotate-[…]`, whose `rotate` property takes no bare `0`, or in a time.
 
 A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a space. CSS wants a space

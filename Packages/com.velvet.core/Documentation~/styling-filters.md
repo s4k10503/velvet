@@ -48,6 +48,23 @@ animates like any other property: `transition-all`, a bare `duration-*`, and the
 `transition-filter` class all tween it — see [Transitions](#transitions) for which of the two
 animators runs and why it matters.
 
+## `backdrop-*` is not available
+
+Velvet has no `backdrop-blur-*`, `backdrop-brightness-*` or other `backdrop-*` utility, and such a class does
+nothing. CSS `backdrop-filter` filters what is painted behind an element, and on a screen-space UI Toolkit 6000.3
+panel under URP no shader drawn for an element can read that:
+
+- An element with a `filter` is drawn, with its descendants, into its own render tree, and each filter pass
+  samples only that tree's texture as `_MainTex` (RenderTreeCompositor.ExecuteDrawOperation_PostOrder in
+  UnityEngine.UIElementsModule). The tree around it, which holds what is behind, is drawn after it.
+- The rest of the panel is drawn in one URP raster pass, "Draw UIToolkit/uGUI Overlay" (or its
+  "- Offscreen" form), whose only colour attachment is the target being drawn to and which declares no input
+  attachment (DrawScreenSpaceUIPass), so a material drawn in it cannot sample what the elements before it
+  painted.
+
+A panel that renders into a `targetTexture` is drawn outside that pass, and Velvet has no `backdrop-*` there
+either.
+
 ## Custom filters: `VelvetFilters` + `filter-[name:args]`
 
 Unity 6.3 lets you author your own filter as a `FilterFunctionDefinition` — a ScriptableObject

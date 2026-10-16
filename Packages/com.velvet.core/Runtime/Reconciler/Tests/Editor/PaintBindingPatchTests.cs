@@ -410,6 +410,41 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APlainSkewClass_When_Reconciled_Then_TheBindingCarriesTheAngleOnBothAxes()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "skew-6", name: "card") });
+
+            // Act
+            var spec = scope.Reconciler.Context.SkewBindings.TryGetValue(scope.Root[0], out var binding)
+                ? binding.Spec
+                : new SkewSpec(float.NaN, float.NaN, null, null);
+
+            // Assert
+            Assert.That((spec.XDeg, spec.YDeg), Is.EqualTo((6f, 6f)));
+        }
+
+        [Test]
+        public void Given_APlainSkew_When_APerAxisSkewIsAddedByPatch_Then_ItTakesOverOnlyItsAxis()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: "skew-6", name: "card") };
+            Mount(scope, oldTree);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, oldTree,
+                new VNode[] { V.Div(className: "skew-6 skew-x-12", name: "card") });
+
+            // Assert
+            var spec = scope.Reconciler.Context.SkewBindings.TryGetValue(scope.Root[0], out var binding)
+                ? binding.Spec
+                : new SkewSpec(float.NaN, float.NaN, null, null);
+            Assert.That((spec.XDeg, spec.YDeg), Is.EqualTo((12f, 6f)));
+        }
+
+        [Test]
         public void Given_ASkewedElement_When_TheClassIsRemovedByPatch_Then_TheBindingIsUntracked()
         {
             // Arrange

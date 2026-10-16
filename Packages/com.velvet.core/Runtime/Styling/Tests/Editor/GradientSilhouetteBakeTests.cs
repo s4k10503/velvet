@@ -129,6 +129,37 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_BothSkewAxes_When_Baked_Then_APointOnlyTheComposedShearCoversIsFilled()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU silhouette bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange — a square 64px box under tanX = tanY = 0.5, sampled 42px right of and 30px below the
+            // centre. skewX·skewY carries the upright point (27, 16.5) there, inside the box; a single
+            // skew(θx, θy) would carry (36, 12) there, outside it.
+            var tex = GradientSilhouetteBaker.Bake(RedToBlueDown(), 64f, 64f, 0.5f, 0.5f, Vector4.zero);
+            var alpha = float.NaN;
+            if (tex != null)
+            {
+                alpha = tex.GetPixel((tex.width / 2) + 42, (tex.height / 2) - 30).a;
+                Object.DestroyImmediate(tex);
+            }
+
+            // Assert
+            Assert.That(alpha, Is.GreaterThan(0.9f));
+        }
+
+        [Test]
+        public void Given_BothSkewAxes_When_SizingTheBake_Then_TheQuadWidensByTheComposedTerm()
+        {
+            // Arrange / Act — skewX·skewY scales x by 1 + tanX·tanY on top of the slant: 64 · 0.25 = 16px here.
+            GradientSilhouetteBaker.QuadSize(64f, 64f, 0.5f, 0.5f, out var composedW, out _);
+            GradientSilhouetteBaker.QuadSize(64f, 64f, 0.5f, 0f, out var slantW, out _);
+
+            // Assert
+            Assert.That(composedW - slantW, Is.EqualTo(16));
+        }
+
+        [Test]
         public void Given_ASkewXAngle_When_SizingTheBake_Then_TheQuadWidensToHoldTheSlant()
         {
             // Arrange / Act — a skew-x shear shifts the top/bottom edges, widening the bounding box by

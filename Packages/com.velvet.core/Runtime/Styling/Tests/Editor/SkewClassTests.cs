@@ -6,10 +6,10 @@ namespace Velvet.Tests
     /// Specifies two bare <c>TryExtract</c>-shaped className parsers, colocated because the border-style tests
     /// mirror the skew-class tests' shape (no SetUp, plain static parser calls, last-token-wins cascade).
     /// <list type="bullet">
-    /// <item>The <c>skew-x-*</c> / <c>skew-y-*</c> utility parser (<see cref="StyleSkewClass"/>): the numeric
-    /// scale is degrees (<c>skew-x-6</c>), a leading dash negates (<c>-skew-x-6</c>), the arbitrary form requires
-    /// the unit (<c>skew-x-[8.5deg]</c>), the cascade is last-wins per axis, and <c>skew-x-0</c> is a recognized
-    /// reset.</item>
+    /// <item>The <c>skew-x-*</c> / <c>skew-y-*</c> / <c>skew-*</c> utility parser (<see cref="StyleSkewClass"/>):
+    /// the numeric scale is degrees (<c>skew-x-6</c>), a leading dash negates (<c>-skew-x-6</c>), the arbitrary
+    /// form requires the unit (<c>skew-x-[8.5deg]</c>), the cascade is last-wins per axis, <c>skew-x-0</c> is a
+    /// recognized reset, and <c>skew-6</c> writes both axes beneath any per-axis class.</item>
     /// <item>The <c>border-dashed</c> / <c>border-dotted</c> / <c>border-solid</c> utility parser
     /// (<see cref="StyleBorderStyleClass"/>): dashed / dotted are ACTIVE (a painted outline), border-solid is a
     /// recognized RESET (it overrides an earlier dashed / dotted, keeping the native solid border), and the
@@ -137,6 +137,102 @@ namespace Velvet.Tests
 
             // Assert — equal, so ApplySkewOnPatch's steady-state guard fires (no per-patch re-parse thrash).
             Assert.That(winnerX, Is.EqualTo(spec.SourceX));
+        }
+
+        // --- skew-<n>: both axes ---
+
+        [Test]
+        public void Given_APlainSkew_When_Extracted_Then_BothAxesTakeTheAngle()
+        {
+            // Arrange
+            var classes = new[] { "skew-6" };
+
+            // Act
+            StyleSkewClass.TryExtract(classes, out var spec);
+
+            // Assert
+            Assert.That((spec.XDeg, spec.YDeg), Is.EqualTo((6f, 6f)));
+        }
+
+        [Test]
+        public void Given_ANegatedPlainSkew_When_Extracted_Then_BothAxesAreNegated()
+        {
+            // Arrange
+            var classes = new[] { "-skew-6" };
+
+            // Act
+            StyleSkewClass.TryExtract(classes, out var spec);
+
+            // Assert
+            Assert.That((spec.XDeg, spec.YDeg), Is.EqualTo((-6f, -6f)));
+        }
+
+        [Test]
+        public void Given_APlainSkewBracket_When_Extracted_Then_BothAxesTakeTheAngleInItsUnit()
+        {
+            // Arrange
+            var classes = new[] { "skew-[.25turn]" };
+
+            // Act
+            StyleSkewClass.TryExtract(classes, out var spec);
+
+            // Assert
+            Assert.That(new[] { spec.XDeg, spec.YDeg }, Is.EqualTo(new[] { 90f, 90f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_APerAxisSkewWrittenBeforeAPlainSkew_When_Extracted_Then_ThePerAxisOneHoldsItsAxis()
+        {
+            // Arrange — Tailwind emits skew-<n> ahead of skew-x-*, so skew-x-12 wins its axis wherever it is written.
+            var classes = new[] { "skew-x-12", "skew-6" };
+
+            // Act
+            StyleSkewClass.TryExtract(classes, out var spec);
+
+            // Assert
+            Assert.That((spec.XDeg, spec.YDeg), Is.EqualTo((12f, 6f)));
+        }
+
+        [Test]
+        public void Given_APlainSkewThatIsNoWholeNumberOfDegrees_When_Extracted_Then_ItIsDeclined()
+        {
+            // Act — Tailwind takes a bare skew value only as a positive integer, and a bracket only as an angle or 0.
+            var fraction = StyleSkewClass.TryExtract(new[] { "skew-1.5" }, out _);
+            var bareBracket = StyleSkewClass.TryExtract(new[] { "skew-[8]" }, out _);
+            var whole = StyleSkewClass.TryExtract(new[] { "skew-2" }, out _);
+
+            // Assert
+            Assert.That((fraction, bareBracket, whole), Is.EqualTo((false, false, true)));
+        }
+
+        [Test]
+        public void Given_APlainSkewBesideAPerAxisSkew_When_ProbedAndExtracted_Then_EachAxisWinnerMatchesItsSource()
+        {
+            // Arrange — the patch fast path compares the probe's winners against the spec's sources per axis.
+            var classes = new[] { "skew-6", "skew-x-12" };
+
+            // Act
+            StyleSkewClass.TryGetWinningSkewClasses(classes, out var winnerX, out var winnerY);
+            StyleSkewClass.TryExtract(classes, out var spec);
+
+            // Assert
+            Assert.That($"{winnerX}|{winnerY}|{spec.SourceX}|{spec.SourceY}",
+                Is.EqualTo("skew-x-12|skew-6|skew-x-12|skew-6"));
+        }
+
+        [Test]
+        public void Given_APlainSkewBesideARejectedPerAxisBracket_When_Normalized_Then_NoSkewIsWanted()
+        {
+            // Arrange — skew-<n> and skew-x-[…] write one transform declaration, which a bare 8 invalidates.
+            var rejected = StyleSpacingPrecedence.Normalize(new[] { "skew-6", "skew-x-[8]" });
+            var accepted = StyleSpacingPrecedence.Normalize(new[] { "skew-6", "skew-x-[0]" });
+
+            // Act
+            var wantRejected = StyleSkewClass.TryExtract(rejected, out _);
+            var wantAccepted = StyleSkewClass.TryExtract(accepted, out _);
+
+            // Assert
+            Assert.That((wantRejected, wantAccepted), Is.EqualTo((false, true)));
         }
 
         // --- border-dashed / border-dotted / border-solid utility parser ---

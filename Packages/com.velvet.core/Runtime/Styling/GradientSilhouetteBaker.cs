@@ -79,13 +79,14 @@ namespace Velvet
         }
 #endif
 
-        // The sheared bounding-box pixel size for an element of (w,h) skewed by (tanX,tanY): a skew-x shifts
-        // the top/bottom edges by ±tanX·h/2, widening x by |tanX|·h (and symmetrically for y). The AA margin
-        // keeps the soft edge inside the texture. Public so the caller can size the draw quad to match.
+        // The sheared bounding-box pixel size for an element of (w,h) skewed by (tanX,tanY), as
+        // SilhouetteBoundsSpacer.ShearedAabb sizes it. The AA margin keeps the soft edge inside the texture.
+        // Public so the caller can size the draw quad to match.
         internal static void QuadSize(float w, float h, float tanX, float tanY, out int quadW, out int quadH)
         {
-            quadW = Mathf.Clamp(Mathf.CeilToInt(w + (Mathf.Abs(tanX) * h) + (2f * Margin)), 8, 2048);
-            quadH = Mathf.Clamp(Mathf.CeilToInt(h + (Mathf.Abs(tanY) * w) + (2f * Margin)), 8, 2048);
+            var aabb = SilhouetteBoundsSpacer.ShearedAabb(w, h, tanX, tanY);
+            quadW = Mathf.Clamp(Mathf.CeilToInt(aabb.width + (2f * Margin)), 8, 2048);
+            quadH = Mathf.Clamp(Mathf.CeilToInt(aabb.height + (2f * Margin)), 8, 2048);
         }
 
         // Bakes the silhouette for one element. Returns null (caller paints nothing) when there is no

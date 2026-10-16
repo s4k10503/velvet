@@ -28,11 +28,20 @@ namespace Velvet
         public bool Active => XDeg != 0f || YDeg != 0f;
     }
 
-    // Parses Velvet's skew utility classes: skew-x-6 / -skew-x-6 (the numeric
-    // suffix is DEGREES) and the arbitrary form skew-x-[8deg] / -skew-x-[8deg],
-    // same for skew-y-*. skew-x-0 is a recognized reset (it overrides an earlier skew-x-6 in the
-    // cascade). Same shape as StyleClipPathClass: a cheap gate plus a cascade-correct extractor
-    // (last recognized class per axis wins).
+    internal enum SkewAxis
+    {
+        Both,
+        X,
+        Y,
+    }
+
+    // Parses the skew utilities as Tailwind writes them: skew-x-6 / -skew-x-6 (the numeric suffix is DEGREES),
+    // the arbitrary form skew-x-[8deg], the same for skew-y-*, and skew-6 / -skew-6 / skew-[8deg], which write
+    // both axes. skew-x-0 is a recognized reset (it overrides an earlier skew-x-6 in the cascade). Same shape as
+    // StyleClipPathClass: a cheap gate plus a cascade-correct extractor.
+    //
+    // A per-axis utility outranks skew-<n> on its axis wherever either is written, since Tailwind emits skew-<n>
+    // ahead of skew-x-* and skew-y-* in its sheet; within one of the three families the last class written wins.
     //
     // PARITY NOTE: CSS transform: skewX() shears the element AND its descendants. UI Toolkit's
     // transform supports only translate / rotate / scale — shear is unrepresentable — so Velvet's
@@ -46,6 +55,7 @@ namespace Velvet
     {
         private const string XPrefix = "skew-x-";
         private const string YPrefix = "skew-y-";
+        private const string BothPrefix = "skew-";
 
         // True when cls is a skew utility this layer owns (recognized or not-yet-valid).
         public static bool IsSkewClass(string? cls)
@@ -55,8 +65,7 @@ namespace Velvet
                 return false;
             }
             var body = cls[0] == '-' ? cls.Substring(1) : cls;
-            return body.StartsWith(XPrefix, StringComparison.Ordinal)
-                || body.StartsWith(YPrefix, StringComparison.Ordinal);
+            return body.StartsWith(BothPrefix, StringComparison.Ordinal);
         }
 
         // Cheap early-out gate: true when ANY class is a skew utility.
@@ -89,21 +98,28 @@ namespace Velvet
             {
                 return false;
             }
+            string? winnerBoth = null;
             foreach (var cls in classNames)
             {
-                if (!TryParse(cls, out var isX, out _))
+                if (!TryParse(cls, out var axis, out _))
                 {
                     continue;
                 }
-                if (isX)
+                switch (axis)
                 {
-                    winnerX = cls;
-                }
-                else
-                {
-                    winnerY = cls;
+                    case SkewAxis.X:
+                        winnerX = cls;
+                        break;
+                    case SkewAxis.Y:
+                        winnerY = cls;
+                        break;
+                    default:
+                        winnerBoth = cls;
+                        break;
                 }
             }
+            winnerX ??= winnerBoth;
+            winnerY ??= winnerBoth;
             return winnerX != null || winnerY != null;
         }
 
@@ -118,35 +134,50 @@ namespace Velvet
                 return false;
             }
 
-            float x = 0f, y = 0f;
-            string? sourceX = null, sourceY = null;
+            float x = 0f, y = 0f, both = 0f;
+            string? sourceX = null, sourceY = null, sourceBoth = null;
             foreach (var cls in classNames)
             {
-                if (!TryParse(cls, out var isX, out var deg))
+                if (!TryParse(cls, out var axis, out var deg))
                 {
                     continue;
                 }
-                if (isX)
+                switch (axis)
                 {
-                    x = deg;
-                    sourceX = cls;
+                    case SkewAxis.X:
+                        x = deg;
+                        sourceX = cls;
+                        break;
+                    case SkewAxis.Y:
+                        y = deg;
+                        sourceY = cls;
+                        break;
+                    default:
+                        both = deg;
+                        sourceBoth = cls;
+                        break;
                 }
-                else
-                {
-                    y = deg;
-                    sourceY = cls;
-                }
+            }
+            if (sourceX == null && sourceBoth != null)
+            {
+                x = both;
+                sourceX = sourceBoth;
+            }
+            if (sourceY == null && sourceBoth != null)
+            {
+                y = both;
+                sourceY = sourceBoth;
             }
 
             spec = new SkewSpec(x, y, sourceX, sourceY);
             return spec.Active;
         }
 
-        // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<angle>] (+ y variants).
+        // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<angle>] (+ the y and both-axes forms).
         // Returns false for anything else (the cascade ignores unrecognized tokens).
-        internal static bool TryParse(string? cls, out bool isX, out float deg)
+        internal static bool TryParse(string? cls, out SkewAxis axis, out float deg)
         {
-            isX = false;
+            axis = SkewAxis.Both;
             deg = 0f;
             if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
@@ -158,12 +189,17 @@ namespace Velvet
             string suffix;
             if (body.StartsWith(XPrefix, StringComparison.Ordinal))
             {
-                isX = true;
+                axis = SkewAxis.X;
                 suffix = body.Substring(XPrefix.Length);
             }
             else if (body.StartsWith(YPrefix, StringComparison.Ordinal))
             {
+                axis = SkewAxis.Y;
                 suffix = body.Substring(YPrefix.Length);
+            }
+            else if (body.StartsWith(BothPrefix, StringComparison.Ordinal))
+            {
+                suffix = body.Substring(BothPrefix.Length);
             }
             else
             {
