@@ -229,7 +229,7 @@ namespace Velvet
         {
             reading = default;
             var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
-            if (StyleSpacingPrecedence.VariantsLength(core) != 0
+            if (StyleSpacingPrecedence.VariantsLength(core) != 0 // MUTANT_SURVIVES(equivalent, clause removed): Given_EveryClassTheBundledStylesheetsDefine_When_ParsedAsALayer_Then_NoneIsOneTheInlineGateRefuses holds that the parser takes no class a stylesheet defines and the gate refuses; the clause spares a plain class the parse.
                 || !StyleArbitraryValueResolver.IsInlineResolved(core)
                 || !StyleArbitraryValueResolver.TryParseLayerQuietly(core, out var style))
             {
