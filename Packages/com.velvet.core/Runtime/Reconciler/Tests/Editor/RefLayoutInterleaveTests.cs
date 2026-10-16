@@ -901,6 +901,8 @@ namespace Velvet.Tests
             return new List<string>(s_log);
         }
 
+        // GREEN_ON_BASE(characterization): the base runs a component's insertion effects before it attaches the ref of an
+        // element the component rendered.
         [Test]
         public void Given_AFlushWhoseSettledTransitionOwesAnotherComponentARender_When_TheFlushedComponentHasAnInsertionEffectAndARef_Then_TheInsertionEffectRunsBeforeTheRefAttaches()
         {
@@ -947,6 +949,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base attaches the ref of a Motion whose enter plays nothing before the
+        // enter completes. It attaches every ref of a pass at the pass's end, ahead of the enter completions.
         [Test]
         public void Given_AMotionWhoseEnterPlaysNothing_When_ADrainMountsIt_Then_ItsRefAttachesBeforeItsEnterCompletes()
         {
@@ -990,6 +994,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base finds the ref of a row the flush rendered set in the host's layout
+        // effect. It attaches every ref of a pass ahead of every layout effect.
         [Test]
         public void Given_AHostWhoseFlushRendersAVirtualListRow_When_TheHostsLayoutEffectRuns_Then_TheRowsRefIsAlreadySet()
         {
