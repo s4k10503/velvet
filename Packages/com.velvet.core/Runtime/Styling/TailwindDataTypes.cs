@@ -121,13 +121,17 @@ namespace Velvet
             return end;
         }
 
+        // A for over the string's length, so no edit to the loop body can leave it spinning.
         private static int Digits(string value, int at)
         {
-            while (at < value.Length && value[at] >= '0' && value[at] <= '9')
+            for (var i = at; i < value.Length; i++)
             {
-                at++;
+                if (value[i] < '0' || value[i] > '9')
+                {
+                    return i;
+                }
             }
-            return at;
+            return Math.Max(at, value.Length);
         }
 
         private static string Decode(ReadOnlySpan<char> bracket) => bracket.ToString().Replace('_', ' ');
