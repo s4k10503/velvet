@@ -30,6 +30,21 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", applied), Is.EqualTo("translate-x-[0] translate-y-[0] opacity-50"));
         }
 
+        // GREEN_ON_BASE(characterization): the base had no composed-family rejection, so it kept the pose's class too.
+        [Test]
+        public void Given_ARejectedValueTheOwnListOutranks_When_APoseNamesItsFamily_Then_ThePoseApplies()
+        {
+            // Arrange
+            var node = V.Motion(className: "translate-x-[10] !translate-x-4",
+                variants: new Dictionary<string, MotionVariant> { ["open"] = "translate-y-4" });
+
+            // Act
+            var applied = MotionVariantResolver.ResolveAppliedAt(node, "open", out _, out _);
+
+            // Assert
+            Assert.That(string.Join(" ", applied), Is.EqualTo("translate-x-[10] !translate-x-4 translate-y-4"));
+        }
+
         [Test]
         public void Given_APoseRejectingAValue_When_Mounted_Then_TheOwnTranslationIsHeldAtZero()
         {

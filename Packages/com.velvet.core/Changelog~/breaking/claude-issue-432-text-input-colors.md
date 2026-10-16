@@ -16,7 +16,8 @@
   no colour leaves its stop transparent, and a rejected position returns the stop to its initial one.
 - A value the browser rejects in one utility of a family Tailwind composes through one declaration — translate,
   per-axis and uniform scale, skew, the filters — leaves the family at its identity wherever the rejecting class
-  applies, as the browser discards the shared declaration: `translate-x-4 translate-y-[10]` no longer translates
+  wins its property, as the browser discards the shared declaration, while one that an important class, a class
+  behind a variant or a class Tailwind emits later outranks takes nothing (`skew-x-[8] !skew-x-6` skews): `translate-x-4 translate-y-[10]` no longer translates
   along x, `translate-y-[10] hover:translate-x-4` does not translate on hover either, nor under a `V.Motion`
   pose or a `whileHoverClass` naming the family, and
   `drop-shadow-lg blur-[2]` no longer draws its drop shadow. `blur-[-2px]` is declined.
