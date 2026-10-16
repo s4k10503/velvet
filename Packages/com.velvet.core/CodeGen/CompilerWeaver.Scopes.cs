@@ -32,9 +32,10 @@ namespace Velvet.CodeGen
     //   must be read at once (see ReadsInPlace).
     //   It calls no member of a Ref / MutableRef and no method taking one, and reads no hook value from UseService
     //   or from a custom hook unless value-like: a render reading through one has no value to compare.
-    //   It reads no mutable static, and calls only a V factory, a constructor, an instance property accessor or
-    //   a member of the BCL namespaces named in PureNamespaces, other than a member of the types named in
-    //   AmbientStateTypes and the static members of those in AmbientStateStaticTypes.
+    //   It reads no mutable static, and calls only a V factory, a constructor, an instance property accessor
+    //   outside the namespaces named in StatefulAccessorNamespaces, or a member of the BCL namespaces named in
+    //   PureNamespaces, other than a member of the types named in AmbientStateTypes and the static members of those
+    //   in AmbientStateStaticTypes.
     //   Control flow in it stays inside it and moves forward, nothing outside jumps into it, and nothing
     //   outside runs it twice (no loop around it).
     //   The method has no try / catch / finally.
@@ -57,6 +58,10 @@ namespace Velvet.CodeGen
         private static readonly string MutableRefTypeFullName = typeof(Velvet.MutableRef<>).FullName!;
         private static readonly string FactoryTypeFullName = typeof(Velvet.V).FullName!;
 
+        // The class the compiler declares the cache fields for method group conversions in; the IL case
+        // Given_AChildHandingOnAMethodGroup_When_Woven_Then_EachChildGetsAScopeGate fails when it is not this name.
+        private const string MethodGroupCacheClass = "<>O";
+
         // What an expression cannot hold and still be re-run from its dependencies alone.
         private static readonly HashSet<Code> ScopeForbiddenCodes = new()
         {
@@ -71,11 +76,18 @@ namespace Velvet.CodeGen
             "System.Runtime.CompilerServices",
         };
 
+        // Instance property accessors are read like the value they belong to, except in these namespaces: a Stopwatch
+        // advances without a render, so a child reading one is built on every render the gate misses.
+        private static readonly HashSet<string> StatefulAccessorNamespaces = new()
+        {
+            "System.Diagnostics", "System.Threading",
+        };
+
         // No call on these types is repeatable: an instance of Random advances its generator, and a member of
         // Environment reads the process. The static members of the types below are not repeatable either: they read
         // the clock (DateTime.Now, DateTimeOffset.UtcNow), the time zone (TimeZoneInfo.Local) or mint a value
-        // (Guid.NewGuid). Their instance members are not excluded. Every type here has a case in
-        // ReactiveScopeWovenBehaviorE2ETests; a type not listed is covered by the rule that render code is pure.
+        // (Guid.NewGuid). Their instance members are not excluded. A type not listed is covered by the rule that
+        // render code is pure.
         private static readonly HashSet<string> AmbientStateTypes = new()
         {
             "System.Random", "System.Environment",
@@ -408,16 +420,19 @@ namespace Velvet.CodeGen
             return outer != null && outer.Deps.Select(dep => dep.Key).ToHashSet().SetEquals(deps.Select(dep => dep.Key));
         }
 
-        // A jump from inside goes forward, to a place in the region or to the store that ends it. One from
-        // outside lands in neither, and none from after the region goes back across it.
+        // A jump from inside goes forward, to a place in the region or to the store that ends it. One from before
+        // the region may land on its first instruction, as falling in would, and is sent to the gate there (see
+        // InjectScopes); one that lands anywhere else in the region or on its store has skipped part of it, and
+        // none from after the region goes back across it.
         private static bool BranchBreaksRegion(int source, int target, ElementRegion region)
         {
             var store = region.End + 1;
             // MUTANT_SURVIVES(unreachable, boundary): an element expression neither begins nor ends with a jump, and none jumps to itself.
             if (source >= region.Start && source <= region.End) return target <= source || target > store;
+            if (target == region.Start) return source > region.End;
             // MUTANT_SURVIVES(unreachable, boundary): only the index load falls into the first instruction, and nothing outside jumps to the store.
             if (target >= region.Start && target <= store) return true;
-            // MUTANT_SURVIVES(equivalent, boundary): a jump from the last instruction or to the first was decided by the two tests above.
+            // MUTANT_SURVIVES(equivalent, boundary): a jump from the last instruction or to the first was decided by the tests above.
             return source > region.End && target < region.Start;
         }
 
@@ -555,8 +570,9 @@ namespace Velvet.CodeGen
                 || (!method.HasThis && AmbientStateStaticTypes.Contains(declaring.FullName));
             return instr.OpCode.Code == Code.Newobj
                 || declaring.FullName == FactoryTypeFullName
-                || (method.HasThis && (method.Name.StartsWith("get_", System.StringComparison.Ordinal)
-                    || method.Name.StartsWith("set_", System.StringComparison.Ordinal)))
+                || (method.HasThis && !StatefulAccessorNamespaces.Contains(declaring.Namespace)
+                    && (method.Name.StartsWith("get_", System.StringComparison.Ordinal)
+                        || method.Name.StartsWith("set_", System.StringComparison.Ordinal)))
                 || (PureNamespaces.Contains(declaring.Namespace) && !ambient);
         }
 
@@ -570,9 +586,11 @@ namespace Velvet.CodeGen
             return type.FullName == RefTypeFullName || type.FullName == MutableRefTypeFullName;
         }
 
-        // The compiler's cache for a lambda that captures nothing: a field written once, holding a delegate.
+        // The compiler's cache for a lambda that captures nothing, or for a method group converted to a delegate: a
+        // field written once, holding a delegate.
         private static bool IsClosureCache(FieldReference field)
-            => field.DeclaringType.Name.StartsWith("<>c", System.StringComparison.Ordinal);
+            => field.DeclaringType.Name.StartsWith("<>c", System.StringComparison.Ordinal)
+                || field.DeclaringType.Name == MethodGroupCacheClass;
 
         private static bool IsReadOnlyValue(FieldReference field)
             => TryResolve(() => field.Resolve())?.IsInitOnly == true && IsValueLike(field.FieldType);
@@ -612,11 +630,15 @@ namespace Velvet.CodeGen
                 NewLocalIf(body, plans, ScopeKind.Node, context.VNode), NewLocalIf(body, plans, ScopeKind.Node, context.VNode),
                 NewLocalIf(body, plans, ScopeKind.Value, body.Method.Module.TypeSystem.Object),
                 NewLocalIf(body, plans, ScopeKind.Value, body.Method.Module.TypeSystem.Object));
+            var entered = new HashSet<Instruction>();
             foreach (var plan in plans)
             {
                 var deps = new VariableDefinition(new ArrayType(body.Method.Module.TypeSystem.Object));
                 body.Variables.Add(deps);
-                InjectScope(body, context, plan, deps, locals);
+                var gate = InjectScope(body, context, plan, deps, locals);
+                // Plans are numbered outermost first, so the first of those starting at one instruction owns the
+                // first gate a jump into that instruction has to reach.
+                if (entered.Add(plan.Start)) RetargetBranches(body, plan.Start, gate);
             }
         }
 
@@ -628,16 +650,22 @@ namespace Velvet.CodeGen
             return local;
         }
 
-        // The store goes in and takes the branches that ended the expression first, so the hit path's own jump to
-        // the store instruction is not among them.
-        private static void InjectScope(MethodBody body, WeaverContext context, ScopePlan plan, VariableDefinition deps,
+        // The store goes in and takes the branches that ended the expression first. The hit path jumps to a no-op
+        // after the store rather than to the instruction that followed the expression, because a scope starting at
+        // that instruction puts its gate ahead of it, and the hit would skip the gate. Returns the first instruction
+        // of the gate, which is where a jump into the start of the expression has to land.
+        private static Instruction InjectScope(MethodBody body, WeaverContext context, ScopePlan plan, VariableDefinition deps,
             ScopeLocals locals)
         {
             var il = body.GetILProcessor();
+            var landing = Instruction.Create(OpCodes.Nop);
             var store = BuildScopeStore(context, plan, deps, locals);
+            store.Add(landing);
             RetargetBranches(body, plan.Store, store[0]);
             foreach (var instruction in store) il.InsertBefore(plan.Store, instruction);
-            foreach (var instruction in BuildScopeGate(body, context, plan, deps, locals)) il.InsertBefore(plan.Start, instruction);
+            var gate = BuildScopeGate(body, context, plan, deps, locals, landing);
+            foreach (var instruction in gate) il.InsertBefore(plan.Start, instruction);
+            return gate[0];
         }
 
         // On a miss the expression's value is committed under the scope, then left on the stack for the store.
@@ -690,7 +718,7 @@ namespace Velvet.CodeGen
         // no-op ahead of the expression, so that the gate of a scope starting at the same instruction, inserted
         // after this one, is the first thing the miss reaches.
         private static List<Instruction> BuildScopeGate(MethodBody body, WeaverContext context, ScopePlan plan,
-            VariableDefinition deps, ScopeLocals locals)
+            VariableDefinition deps, ScopeLocals locals, Instruction landing)
         {
             var isNode = plan.Candidate.Kind == ScopeKind.Node;
             var cached = isNode ? locals.Cached! : locals.CachedValue!;
@@ -713,7 +741,7 @@ namespace Velvet.CodeGen
                 Instruction.Create(OpCodes.Ldloc, cached),
             });
             if (!isNode) gate.AddRange(Unbox(plan.Candidate.ResultType!));
-            gate.Add(Instruction.Create(OpCodes.Br, plan.Store));
+            gate.Add(Instruction.Create(OpCodes.Br, landing));
             gate.Add(miss);
             return gate;
         }

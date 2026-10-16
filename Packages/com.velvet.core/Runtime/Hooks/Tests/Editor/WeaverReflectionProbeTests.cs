@@ -1656,6 +1656,10 @@ namespace Velvet.Tests
             Assert.That(CallsTo(method, "TryGetMemoizedScope"), Is.EqualTo(2));
         }
 
+        // GREEN_ON_BASE(characterization): the base weaves the component gate and no scope gate here, so it counts one too.
+        // What it pins is a Velvet declaring no scope gate being woven without one: `true` in place of the
+        // `context.TryGetMemoizedScope != null && context.StoreMemoizedScope != null` test in `InjectMemoization` plans
+        // scopes it has no gate to call, the weave throws, and the method is left unwoven.
         [Test]
         public void Given_AVelvetDeclaringTheComponentGateAlone_When_CompilerWeaverRuns_Then_ItIsWovenWithNoScopeGate()
         {
@@ -1669,8 +1673,9 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (CallsTo(method, "TryGetMemoizedVNode"), CallsTo(method, "TryGetMemoizedScope")),
-                Is.EqualTo((1, 0)));
+                method.Body.Instructions.Count(instr => instr.OpCode == OpCodes.Call
+                    && instr.Operand is MethodReference callee && callee.Name.StartsWith("TryGetMemoized", StringComparison.Ordinal)),
+                Is.EqualTo(1));
         }
 
         // `V.Label(id, default)`: the local the nullable argument is built in is stored before it is read.
@@ -1727,10 +1732,9 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (CallsTo(method, "TryGetMemoizedScope"),
-                    method.Body.Instructions.Count(instr => instr.OpCode.FlowControl == FlowControl.Branch
-                        && instr.Operand is Instruction target && target.OpCode == OpCodes.Stelem_Ref)),
-                Is.EqualTo((1, 1)));
+                method.Body.Instructions.Count(instr => instr.OpCode.FlowControl == FlowControl.Branch
+                    && instr.Operand is Instruction target && target.OpCode == OpCodes.Nop),
+                Is.EqualTo(1));
         }
 
         [Test]

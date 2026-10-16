@@ -1169,7 +1169,7 @@ namespace Velvet.Tests
 
         private static string DescribeScopeInput(int value) => s_scopeMutable + ":" + value;
 
-        [Component]
+[Component]
         public static VNode TwoIndependentChildrenComponent()
         {
             var (left, _) = Hooks.UseState(0);
@@ -1177,7 +1177,7 @@ namespace Velvet.Tests
             return V.Div("root", V.Label(text: left.ToString()), V.Label(text: right.ToString()));
         }
 
-        [Component]
+[Component]
         public static VNode NestedIndependentChildrenComponent()
         {
             var (a, _) = Hooks.UseState(0);
@@ -1187,7 +1187,7 @@ namespace Velvet.Tests
                 V.Label(text: b.ToString()));
         }
 
-        [Component]
+[Component]
         public static VNode ChildReadingAMutableRefComponent()
         {
             var (n, _) = Hooks.UseState(0);
@@ -1195,21 +1195,21 @@ namespace Velvet.Tests
             return V.Div("root", V.Label(text: counter.Current.ToString()), V.Label(text: n.ToString()));
         }
 
-        [Component]
+[Component]
         public static VNode ChildReadingAMutableStaticComponent()
         {
             var (n, _) = Hooks.UseState(0);
             return V.Div("root", V.Label(text: s_scopeMutable + ":" + n), V.Label(text: n.ToString()));
         }
 
-        [Component]
+[Component]
         public static VNode ChildCallingAFixtureMethodComponent()
         {
             var (n, _) = Hooks.UseState(0);
             return V.Div("root", V.Label(text: DescribeScopeInput(n)), V.Label(text: n.ToString()));
         }
 
-        [Component]
+                                                [Component]
         public static VNode ChildReadingTheClockComponent()
         {
             var (n, _) = Hooks.UseState(0);
@@ -1263,6 +1263,17 @@ namespace Velvet.Tests
         public static VNode PropsOnlyChildrenComponent(GreetProps p)
         {
             return V.Div("root", V.Label(text: p.Name), V.Label(text: "fixed"));
+        }
+
+        private static void ScopeHandler()
+        {
+        }
+
+        [Component]
+        public static VNode ChildWithAMethodGroupHandlerComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Button(text: n.ToString(), onClick: ScopeHandler), V.Label(text: n.ToString()));
         }
 
         public interface IScopeService
@@ -1441,7 +1452,7 @@ namespace Velvet.Tests
                 V.Label(text: b.ToString()));
         }
 
-        [Test]
+                                [Test]
         public void Given_TwoChildrenReadingDifferentStates_When_Woven_Then_EachGetsItsOwnScopeGate()
         {
             // Act
@@ -1451,7 +1462,7 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(2));
         }
 
-        [Test]
+[Test]
         public void Given_ChildrenNestedInAChildReadingBoth_When_Woven_Then_EveryChildGetsAScopeGate()
         {
             // Act
@@ -1461,7 +1472,7 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(4), "The group, the two labels in it and the label beside it");
         }
 
-        [Test]
+[Test]
         public void Given_AChildReadingAMutableRef_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {
             // Act
@@ -1471,11 +1482,21 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(1));
         }
 
-        [Test]
+[Test]
         public void Given_AChildReadingAMutableStatic_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {
             // Act
             var gates = CountHookCalls(LoadMethod(nameof(ChildReadingAMutableStaticComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+[Test]
+        public void Given_AChildCallingAMethodOfTheFixture_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildCallingAFixtureMethodComponent)), ScopeGateName);
 
             // Assert
             Assert.That(gates, Is.EqualTo(1));
@@ -1592,6 +1613,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AChildHandingOnAMethodGroup_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildWithAMethodGroupHandlerComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2), "The button, whose handler is read from the compiler's cache field, and the label");
+        }
+
+        [Test]
         public void Given_AChildBuiltFromAMutableRef_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {
             // Act
@@ -1659,17 +1690,7 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(2), "The group and the label beside it; the two labels in the group read what it reads");
         }
 
-        [Test]
-        public void Given_AChildCallingAMethodOfTheFixture_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
-        {
-            // Act
-            var gates = CountHookCalls(LoadMethod(nameof(ChildCallingAFixtureMethodComponent)), ScopeGateName);
-
-            // Assert
-            Assert.That(gates, Is.EqualTo(1));
-        }
-
-        [Test]
+                [Test]
         public void Given_AChildReadingTheClock_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {
             // Act

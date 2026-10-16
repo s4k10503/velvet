@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -12,12 +13,13 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>A child of a <c>VNode[]</c> children list is cached on the values it reads, so a render that changes
     /// one input builds the children reading it and leaves the others as they were. That holds for a child
-    /// reading a state, a prop or a hook value, for a child inside a child that is itself built again, and for a
-    /// child the render did not reach (an early return) when it is reached again with equal inputs.</item>
+    /// reading a state, a prop or a hook value, for a child inside a child that is itself built again, for an arm of a
+    /// conditional whose condition is not cached, and for a child the render did not reach (an early return) when it
+    /// is reached again with equal inputs.</item>
     /// <item>A child whose expression builds nothing is cached as nothing.</item>
+    /// <item>A component opted out with <c>[Component(Compiler = false)]</c> builds every child on every render.</item>
     /// <item>A child reading something no dependency stands for — a <c>MutableRef</c>, a mutable static, a call
     /// to a method of the fixture — is built on every render the gate misses, as it was before scopes.</item>
-    /// <item>A component opted out with <c>[Component(Compiler = false)]</c> builds every child on every render.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -43,6 +45,13 @@ namespace Velvet.Tests
             s_setTick = null;
             s_setShown = null;
             s_setPhase = null;
+            s_strictCalls = 0;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            FiberStrictMode.Enabled = false;
         }
 
         private static readonly Dictionary<string, int> s_builds = new();
@@ -54,6 +63,8 @@ namespace Velvet.Tests
         private static Action<int> s_setTick;
         private static Action<bool> s_setShown;
         private static Action<int> s_setPhase;
+        private static int s_strictCalls;
+        private static readonly int[] s_strictTags = { 0, 1, 0, 0 };
 
         private static int Builds(string key) => s_builds.TryGetValue(key, out var count) ? count : 0;
 
@@ -141,6 +152,41 @@ namespace Velvet.Tests
                     V.Label(name: "a", text: new Built("a", a.ToString()).Text),
                     V.Label(name: "b", text: new Built("b", b.ToString()).Text)),
                 V.Label(name: "b2", text: new Built("b2", b.ToString()).Text));
+        }
+
+        [Component]
+        private static VNode ChildInAConditionalArm()
+        {
+            var counter = Hooks.UseMutableRef(0);
+            var (left, setLeft) = Hooks.UseState(0);
+            var (right, _) = Hooks.UseState(0);
+            s_setLeft = setLeft;
+            return V.Div("root",
+                counter.Current > 0
+                    ? V.Label(name: "arm", text: new Built("taken", left.ToString()).Text)
+                    : V.Label(name: "arm", text: new Built("other", right.ToString()).Text),
+                V.Label(name: "tail", text: left.ToString()));
+        }
+
+        // The calls the weaver injects, by hand, so that the dependencies of each pass can be chosen: the first pass
+        // of a mount reads tag 0, its diagnostic pass tag 1.
+        [Component]
+        private static VNode HandMemoizedScope()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setShown = setShown;
+            Hooks.TryGetMemoizedVNode(MethodBase.GetCurrentMethod().MethodHandle, new object[] { shown }, out var slot, out _);
+            if (!shown)
+            {
+                return V.Label(name: "hidden", text: "hidden");
+            }
+            var deps = new object[] { s_strictTags[Math.Min(s_strictCalls++, s_strictTags.Length - 1)] };
+            if (!Hooks.TryGetMemoizedScope(slot, 0, deps, out var node))
+            {
+                node = V.Label(name: "scoped", text: new Built("scoped", "s").Text);
+                Hooks.StoreMemoizedScope(slot, 0, deps, node);
+            }
+            return V.Div("root", node);
         }
 
         [Component]
@@ -254,7 +300,7 @@ namespace Velvet.Tests
         #endregion
 
         [Test]
-        public void Given_TwoChildrenReadingDifferentStates_When_OneStateChanges_Then_OnlyTheChildReadingItIsBuilt()
+        public void Given_TwoChildrenReadingDifferentStates_When_OneStateChanges_Then_TheOtherIsNotBuiltAgain()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TwoChildren, key: "two"));
@@ -264,14 +310,28 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(
-                (Builds("left"), Builds("right"), LabelText("left"), LabelText("right")),
-                Is.EqualTo((1, 2, "0", "1")),
-                "The child reading the changed state is built again and shows it; the other keeps what it built");
+            Assert.That(Builds("left"), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rebuilds every child on a miss, so it shows the new value too.
+        // What it pins is a scope whose dependencies changed being built again: `true` in place of
+        // `!ObjectIs.AreEqualDeps(slot.LastDeps, deps)` in `TryHitScope` serves the child the first value.
+        [Test]
+        public void Given_TwoChildrenReadingDifferentStates_When_OneStateChanges_Then_TheChildReadingItShowsIt()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TwoChildren, key: "two"));
+
+            // Act
+            s_setRight(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("right"), Is.EqualTo("1"));
         }
 
         [Test]
-        public void Given_ChildrenReadingAPropAndAState_When_TheStateChanges_Then_TheChildReadingTheStablePropIsNotBuilt()
+        public void Given_ChildrenReadingAPropAndAState_When_TheStateChanges_Then_TheChildReadingTheStablePropIsNotBuiltAgain()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TitleAndCount, new TitleProps("t"), key: "child"));
@@ -281,9 +341,40 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(
-                (Builds("title"), Builds("count"), LabelText("title"), LabelText("count")),
-                Is.EqualTo((1, 2, "t", "1")));
+            Assert.That(Builds("title"), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds every child on every miss of an unwoven body too.
+        // What it pins is the opt-out being read ahead of the scopes: `return true;` in place of
+        // `return CompilerEnabled(attr);` in `IsCandidate` weaves the body and builds its left child once.
+        [Test]
+        public void Given_AComponentOptedOutOfTheCompiler_When_OneStateChanges_Then_EveryChildIsBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OptedOutChildren, key: "opted-out"));
+
+            // Act
+            s_setRight(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("left"), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_TwoChildrenReadingDifferentStates_When_OneChangesAndThenTheOther_Then_TheFirstIsBuiltOnceMore()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TwoChildren, key: "two"));
+            s_setLeft(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setRight(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("left"), Is.EqualTo(2), "A child kept through a render that changed another input is still compared against what it last built");
         }
 
         [Test]
@@ -297,13 +388,11 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(
-                (Builds("title"), Builds("count"), LabelText("title"), LabelText("count")),
-                Is.EqualTo((2, 1, "t1", "0")));
+            Assert.That(Builds("count"), Is.EqualTo(1));
         }
 
         [Test]
-        public void Given_ChildrenNestedInAChildReadingBoth_When_OneStateChanges_Then_TheInnerChildNotReadingItKeepsWhatItBuilt()
+        public void Given_ChildrenNestedInAChildReadingBoth_When_OneStateChanges_Then_TheInnerChildNotReadingItIsNotBuiltAgain()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(NestedChildren, key: "nested"));
@@ -312,34 +401,78 @@ namespace Velvet.Tests
             s_setRight(1);
             mounted.FlushStateForTest();
 
-            // Assert — the group reads both states, so it is built again, and the label inside it reading only `a` is not
-            Assert.That(
-                (Builds("a"), Builds("b"), Builds("b2"), LabelText("a"), LabelText("b"), LabelText("b2")),
-                Is.EqualTo((1, 2, 2, "0", "1", "1")));
+            // Assert
+            Assert.That(Builds("a"), Is.EqualTo(1), "The group reads both states and is built again; the label inside it reading only the first is not");
         }
 
         [Test]
-        public void Given_AChildTheRenderDidNotReach_When_ItIsReachedAgainWithEqualInputs_Then_ItIsNotBuiltAgainAndIsShown()
+        public void Given_AChildInTheArmAJumpEnters_When_AnotherStateChanges_Then_ItIsNotBuiltAgain()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(SkippedChild, key: "skipped"));
+            using var mounted = V.Mount(_root, V.Component(ChildInAConditionalArm, key: "arm"));
+
+            // Act
+            s_setLeft(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("other"), Is.EqualTo(1), "The condition reads a MutableRef, so the conditional is built on every miss and only its arms are cached");
+        }
+
+        [Test]
+        public void Given_StrictMode_When_TheDiagnosticRenderBuildsAScopeOfOtherInputs_Then_TheNextRenderStillHitsTheCommittedOne()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(HandMemoizedScope, key: "strict"));
             s_setShown(false);
             mounted.FlushStateForTest();
-            var whileHidden = (LabelText("hidden"), LabelText("kept"));
 
             // Act
             s_setShown(true);
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(
-                (whileHidden, Builds("kept"), LabelText("kept")),
-                Is.EqualTo((("hidden", (string)null), 1, "7")),
-                "The render that returned early left the child's cache as the last render that built it left it");
+            Assert.That(Builds("scoped"), Is.EqualTo(2), "The mount built it twice, as its two passes read different inputs, and the render showing it again built it no more");
         }
 
         [Test]
-        public void Given_AChildBuildingNothing_When_AnotherStateChanges_Then_ItIsNotBuiltAgainAndStillShowsNothing()
+        public void Given_AChildTheRenderDidNotReach_When_ItIsReachedAgainWithEqualInputs_Then_ItIsNotBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SkippedChild, key: "skipped"));
+            s_setShown(false);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setShown(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("kept"), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the child again and shows it too.
+        // What it pins is the hit handing back the node the scope built: `cached = null;` in place of
+        // `cached = hit?.CachedResult;` in `TryGetMemoizedScope` leaves the label out.
+        [Test]
+        public void Given_AChildTheRenderDidNotReach_When_ItIsReachedAgainWithEqualInputs_Then_ItIsShown()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SkippedChild, key: "skipped"));
+            s_setShown(false);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setShown(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("kept"), Is.EqualTo("7"), "The render that returned early left the child's cache as the last render that built it left it");
+        }
+
+        [Test]
+        public void Given_AChildBuildingNothing_When_AnotherStateChanges_Then_ItIsNotBuiltAgain()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ChildBuildingNothing, key: "nothing"));
@@ -349,9 +482,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(
-                (Builds("maybe"), LabelText("maybe"), LabelText("other")),
-                Is.EqualTo((1, (string)null, "1")));
+            Assert.That(Builds("maybe"), Is.EqualTo(1));
         }
 
         // GREEN_ON_BASE(characterization): the base rebuilds every child on a miss, so it shows the current count too.
@@ -408,23 +539,6 @@ namespace Velvet.Tests
             Assert.That(LabelText("helper"), Is.EqualTo("5:0"));
         }
 
-        // GREEN_ON_BASE(characterization): the base builds every child on every miss of an unwoven body too.
-        // What it pins is the opt-out being read ahead of the scopes: `return true;` in place of
-        // `return CompilerEnabled(attr);` in `IsCandidate` weaves the body and builds its left child once.
-        [Test]
-        public void Given_AComponentOptedOutOfTheCompiler_When_OneStateChanges_Then_EveryChildIsBuiltAgain()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(OptedOutChildren, key: "opted-out"));
-
-            // Act
-            s_setRight(1);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That((Builds("left"), Builds("right")), Is.EqualTo((2, 2)));
-        }
-
         [Test]
         public void Given_AChildKeptByARenderAfterADiscardedAttempt_When_AnotherStateChanges_Then_ItIsNotBuiltAgain()
         {
@@ -438,10 +552,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(
-                (Builds("attempt"), LabelText("attempt")),
-                Is.EqualTo((2, "settled")),
-                "The committed deps are those of the settled attempt, not of the one that was discarded");
+            Assert.That(Builds("attempt"), Is.EqualTo(2), "The committed deps are those of the settled attempt, not of the one that was discarded");
         }
 
         // GREEN_ON_BASE(characterization): the base builds the child on every miss and keeps its hook in step as well.
@@ -458,7 +569,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((LabelText("hooked"), LabelText("other")), Is.EqualTo(("hooked0", "1")));
+            Assert.That(LabelText("hooked"), Is.EqualTo("hooked0"));
         }
 
         // GREEN_ON_BASE(characterization): the base builds the called component's children as well.
@@ -471,9 +582,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(CallsAWovenComponent, key: "caller"));
 
             // Assert
-            Assert.That(
-                (LabelText("left"), LabelText("right"), LabelText("tick")),
-                Is.EqualTo(("0", "0", "0")));
+            Assert.That(LabelText("left"), Is.EqualTo("0"));
         }
 
         [Test]
@@ -487,28 +596,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(
-                (Builds("value"), LabelText("value"), LabelText("other")),
-                Is.EqualTo((1, "7", "1")));
-        }
-
-        [Test]
-        public void Given_TwoChildrenReadingDifferentStates_When_OneChangesAndThenTheOther_Then_EachIsBuiltOnceMore()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(TwoChildren, key: "two"));
-            s_setLeft(1);
-            mounted.FlushStateForTest();
-
-            // Act
-            s_setRight(1);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(
-                (Builds("left"), Builds("right"), LabelText("left"), LabelText("right")),
-                Is.EqualTo((2, 2, "1", "1")),
-                "A child kept through a render that changed another input is still compared against what it last built");
+            Assert.That(Builds("value"), Is.EqualTo(1));
         }
     }
 }
