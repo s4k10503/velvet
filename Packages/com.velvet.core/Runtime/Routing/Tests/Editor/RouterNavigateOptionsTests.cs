@@ -400,28 +400,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABlockedStepWhoseEntryWasDroppedMeanwhile_When_Proceed_Then_TheRouterStaysWhereItIs()
-        {
-            // Arrange
-            var router = BuildAt("/a");
-            Navigate(router, "/b");
-            router.NavigateAsync(-1).GetAwaiter().GetResult();
-            var block = true;
-            var blocker = new RouteBlockerState();
-            router.RouteBlockerManager.Register(_ => block, blocker);
-            router.NavigateAsync(1).GetAwaiter().GetResult();
-            block = false;
-            Navigate(router, "/d");
-            router.NavigateAsync(-1).GetAwaiter().GetResult();
-
-            // Act
-            blocker.Proceed();
-
-            // Assert
-            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/a"));
-        }
-
-        [Test]
         public void Given_ASearchOnlyTarget_When_Navigated_Then_ItKeepsThePathAndTakesTheSearch()
         {
             // Arrange

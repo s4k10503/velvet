@@ -464,9 +464,9 @@ namespace Velvet.Tests
             SitesAcrossGuardedAssemblies(ValueAnsweringRangeArms);
 
         /// <summary>
-        /// The three switches whose catch-all still answers with a value, each for a reason this branch
-        /// could not remove. The list is a floor to work down, not a budget: an entry leaving it is a
-        /// tightening, and one arriving is the failure this case exists for.
+        /// The switch whose catch-all still answers with a value, for a reason this branch could not remove.
+        /// The list is a floor to work down, not a budget: an entry leaving it is a tightening, and one
+        /// arriving is the failure this case exists for.
         /// <para>
         /// <c>AllowsNegativeLength</c> keeps its discard because neither rewrite is worth making. Naming
         /// <c>ArbitraryProperty</c>'s members costs one branching decision each, which VEL501 refuses at
@@ -475,18 +475,14 @@ namespace Velvet.Tests
         /// <c>Then_NoneAnswersARangeOfMembers</c> is what keeps that one from arriving unnoticed.
         /// </para>
         /// <para>
-        /// The two <c>Router</c> switches could be named, and naming them would move a public failure. A
-        /// mode outside the enum is reported by the commit's own switch, and these two are what carry it
-        /// there; arms here would raise it earlier, before the attempt has published itself in
-        /// <c>Router.Navigation</c>. Where the router should reject such a cast is a question for the router rather than for
-        /// this reading.
+        /// The router's own two catch-all switches over <c>NavigationMode</c> are gone: a step is named by the
+        /// entry it lands on rather than by its mode, so the only switch left over the mode is the commit's,
+        /// whose default arm throws.
         /// </para>
         /// </summary>
         private static readonly string[] KnownValueAnsweringSites =
         {
             "MotionPropertyClassParser.cs (ArbitraryProperty)",
-            "Router.cs (NavigationMode)",
-            "Router.cs (NavigationMode)",
         };
 
         [Test]
@@ -536,7 +532,7 @@ internal static class Sample
 
         // GREEN_ON_BASE(characterization): the reading is the branch's and travels with this file, so it
         // answers the same on either side. What it is for is the case above, whose list the branch works
-        // down to three and which would agree with a shorter one just as readily with the reading broken.
+        // down to one and which would agree with a shorter one just as readily with the reading broken.
         [Test]
         public void Given_ACatchAllAnsweringWithAValue_When_TheSwitchIsRead_Then_ItIsReported()
         {

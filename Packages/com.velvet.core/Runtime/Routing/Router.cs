@@ -15,7 +15,7 @@ namespace Velvet
         private readonly RouteTree _routeTree;
         private readonly RouteLoaderRunner _loaderRunner;
         private readonly List<HistoryEntry> _history = new();
-        private readonly System.Random _keyRandom = new();
+        private System.Random? _keyRandom;
         private readonly RouteBlockerManager _blockerManager = new();
         private int _historyIndex = -1;
         private Dictionary<string?, object> _loaderData = new();
@@ -340,7 +340,8 @@ namespace Velvet
                 : VelvetTask.FromResult(NavigationResult.Cancelled);
 
         // The path, the state and the key of a step all come from the entry it lands on, so the visit names that
-        // entry by index and key, and the attempt is refused if the entry is no longer there when it starts.
+        // entry by index. No navigation can commit between a step being blocked and released, because any
+        // commit resets the Blocker and a released step's Proceed with it, so the entry is still there.
         private VelvetTask<NavigationResult> LandOn(int landing, CancellationToken cancellationToken)
         {
             var entry = _history[landing];
@@ -349,7 +350,7 @@ namespace Velvet
                 landing > _historyIndex ? NavigationMode.Forward : NavigationMode.Back,
                 cancellationToken,
                 submission: null,
-                Visit.Step(landing, entry.Key));
+                Visit.Step(landing));
         }
 
         /// <summary>
@@ -461,22 +462,9 @@ namespace Velvet
             return RouteQuery.BuildQuery(kept);
         }
 
-        // Refused here rather than inside the attempt, for the reason EntryIsGone gives.
         private VelvetTask<NavigationResult> Begin(
             string? path, NavigationMode mode, CancellationToken cancellationToken, Submission? submission, Visit visit) =>
-            EntryIsGone(visit)
-                ? VelvetTask.FromResult(NavigationResult.Cancelled)
-                : NavigateInternalAsync(path, mode, cancellationToken, initiator: null, submission, visit);
-
-        // Refusing the step before the navigation starts, rather than partway through it, is what makes
-        // NavigateAsync and GoBack/GoForward agree on everything the refusal skips: no in-flight attempt
-        // cancelled out from under its caller, and no Navigation left to put back. A step released by a Blocker
-        // is asked again here, when the history may have changed under it.
-        // No mode is named: one outside the enum has to reach the commit, whose own switch answers it with
-        // ArgumentOutOfRangeException, the router's one report of such a cast and the one
-        // RouterUnfinishedNavigationTests reaches the commit's unwind through.
-        private bool EntryIsGone(Visit visit) =>
-            visit.IsStep && !(HasEntryAt(visit.Landing) && _history[visit.Landing].Key == visit.LandingKey);
+            NavigateInternalAsync(path, mode, cancellationToken, initiator: null, submission, visit);
 
         private bool HasEntryAt(int index) => index >= 0 && index < _history.Count;
 
@@ -486,23 +474,21 @@ namespace Velvet
         {
             internal readonly object? State;
             internal readonly int Landing;
-            internal readonly string? LandingKey;
+            internal readonly bool IsStep;
             // Filled in by NavigateInternalAsync, which is what hands NavigateCore a mode and a visit as one.
             internal readonly NavigationMode Mode;
 
-            private Visit(object? state, int landing, string? landingKey, NavigationMode mode)
+            private Visit(object? state, int landing, bool isStep, NavigationMode mode)
             {
                 State = state;
                 Landing = landing;
-                LandingKey = landingKey;
+                IsStep = isStep;
                 Mode = mode;
             }
 
-            internal bool IsStep => LandingKey != null;
-
-            internal static Visit Push(object? state) => new(state, -1, null, NavigationMode.Push);
-            internal static Visit Step(int landing, string key) => new(null, landing, key, NavigationMode.Push);
-            internal Visit In(NavigationMode mode) => new(State, Landing, LandingKey, mode);
+            internal static Visit Push(object? state) => new(state, -1, false, NavigationMode.Push);
+            internal static Visit Step(int landing) => new(null, landing, true, NavigationMode.Push);
+            internal Visit In(NavigationMode mode) => new(State, Landing, IsStep, mode);
         }
 
         private readonly struct HistoryEntry
@@ -1220,13 +1206,15 @@ namespace Velvet
         // entry of this router already holds.
         private string NewKey()
         {
+            // Created on the first key, which a router that only ever holds its first entry never needs.
+            var random = _keyRandom ??= new System.Random();
             var chars = new char[8];
             string key;
             do
             {
                 for (var i = 0; i < chars.Length; i++)
                 {
-                    chars[i] = KeyAlphabet[_keyRandom.Next(KeyAlphabet.Length)];
+                    chars[i] = KeyAlphabet[random.Next(KeyAlphabet.Length)];
                 }
                 key = new string(chars);
             }
