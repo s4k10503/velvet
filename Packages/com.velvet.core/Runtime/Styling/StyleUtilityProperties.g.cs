@@ -441,7 +441,7 @@ namespace Velvet
             new StyleUtilityRule(new StyleLonghandSet(0x0000000000000000UL, 0x0000000000010000UL), StyleUtilityGate.None),
             new StyleUtilityRule(new StyleLonghandSet(0x0000000000000000UL, 0x0000000000040000UL), StyleUtilityGate.None, keywords: new StyleLonghandSet(0x0000000000000000UL, 0x0000000000040000UL)),
             new StyleUtilityRule(new StyleLonghandSet(0x0001200000000000UL, 0x0000000000000000UL), StyleUtilityGate.None, keywords: new StyleLonghandSet(0x0001200000000000UL, 0x0000000000000000UL)),
-            new StyleUtilityRule(new StyleLonghandSet(0x0006800000000000UL, 0x0000000000000000UL), StyleUtilityGate.None),
+            new StyleUtilityRule(new StyleLonghandSet(0x0006800000000000UL, 0x0000000000000000UL), StyleUtilityGate.None, percentages: new StyleLonghandSet(0x0000800000000000UL, 0x0000000000000000UL)),
             new StyleUtilityRule(new StyleLonghandSet(0x0006800000000000UL, 0x0000000000000000UL), StyleUtilityGate.None, keywords: new StyleLonghandSet(0x0000800000000000UL, 0x0000000000000000UL)),
             new StyleUtilityRule(new StyleLonghandSet(0x0001000000000000UL, 0x0000000000000000UL), StyleUtilityGate.None, keywords: new StyleLonghandSet(0x0001000000000000UL, 0x0000000000000000UL)),
             new StyleUtilityRule(new StyleLonghandSet(0x0008000000000000UL, 0x0000000000000000UL), StyleUtilityGate.None, keywords: new StyleLonghandSet(0x0008000000000000UL, 0x0000000000000000UL)),
