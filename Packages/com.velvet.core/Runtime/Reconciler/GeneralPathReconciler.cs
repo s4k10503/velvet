@@ -95,8 +95,11 @@ namespace Velvet
             // Every old-leaf lookup of this walk goes through it; LogicalSlotCursor owns what it saves and when
             // it falls back.
             public LogicalSlotCursor OldSlots;
-            // The committed children a presence of this walk removed at once, put back where an abort skips the
-            // removals: the next walk reads the presence's committed set to find the leaves still on screen.
+            // What a presence's instant removals of this walk keep until the removals run: the retirement of the
+            // removed trees, applied once FinalizeGeneralCommit has removed their leaves, and the put-back of the
+            // presence's per-key records, applied where the walk throws or an abort skips the removals, since the
+            // next walk reads those records to find the leaves still on screen.
+            public List<Action>? AfterRemovals;
             public List<Action>? PutBackRemovals;
         }
 
@@ -177,6 +180,7 @@ namespace Velvet
                 Placements = pool.RentPlacementList(),
             };
             var owner = _ctx.FiberStack.Current;
+            var removalsRan = false;
             try
             {
                 if (commit.OldKeys.Count == 0)
@@ -234,22 +238,16 @@ namespace Velvet
                 // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
-                var removalsRan = !_ctx.IsAborted;
+                removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
                     FinalizeGeneralCommit(commit);
                     ApplyOffscreenChanges(commit);
+                    if (commit.AfterRemovals != null) foreach (var retire in commit.AfterRemovals) retire();
                 }
                 else
                 {
                     RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
-                    // A completion that waits on the removals has nothing to follow, and the presences get back the
-                    // children they removed at once.
-                    _ctx.DropCompletionsRemovedBy(commit);
-                    if (commit.PutBackRemovals != null)
-                    {
-                        for (var i = commit.PutBackRemovals.Count - 1; i >= 0; i--) commit.PutBackRemovals[i]();
-                    }
                     // The fibers KeepFibersTheStoppedWalkLeft kept stand as the screen does, which is what this
                     // puts their offscreen state back to.
                     RestoreWhatTheSuspensesWrote(commit);
@@ -259,6 +257,16 @@ namespace Velvet
             }
             finally
             {
+                // Whether the walk threw or an abort skipped the removals, a completion that waits on them has nothing
+                // to follow.
+                if (!removalsRan)
+                {
+                    _ctx.DropCompletionsRemovedBy(commit);
+                    if (commit.PutBackRemovals != null)
+                    {
+                        for (var i = commit.PutBackRemovals.Count - 1; i >= 0; i--) commit.PutBackRemovals[i]();
+                    }
+                }
                 pool.ReturnPlacementList(commit.Placements);
                 pool.Return(commit.OldKeyMap);
                 pool.ReturnOrphanedIndexSet(commit.UsedOldIndices);
@@ -1106,6 +1114,8 @@ namespace Velvet
                 _ctx.PendingCompletions.RemoveRange(
                     completionsBefore, _ctx.PendingCompletions.Count - completionsBefore);
                 DisposingFailedOutputOf(boundary, () => DropFibersTheFailedOutputAdded(walk, fibersBefore));
+                // A boundary above that caught an error out of the disposal has replaced this one with its fallback.
+                if (boundary.IsDisposed) return;
                 ForgetOldRowsOf(commit, boundary);
                 // What the failed output recorded against the boundary itself, for an AnimatePresence or a
                 // Suspense it rendered directly; its descendants' records go with the fibers dropped above.
@@ -1150,12 +1160,19 @@ namespace Velvet
 
         // An error out of the disposal of what a boundary's failed output mounted goes to the boundaries above it: the
         // rows of the boundary that caught are being replaced, so it declines the error as it declines one out of its
-        // own fallback's content, and the abort a catch of it would raise would release the elements around it. The
-        // flag stays set for the fallback's own render, which both callers go on to, and is cleared there.
+        // own fallback's content, and the abort a catch of it would raise would release the elements around it.
         private static void DisposingFailedOutputOf(ComponentFiber boundary, Action dispose)
         {
             boundary.IsShowingFallback = true;
-            dispose();
+            try
+            {
+                dispose();
+            }
+            finally
+            {
+                boundary.IsShowingFallback = false;
+                boundary.FallbackContentFailed = false;
+            }
         }
 
         // React unmounts a boundary's children before it renders the fallback, so no old row of the boundary is
@@ -2351,16 +2368,48 @@ namespace Velvet
             pass.Tally.RemovedInstantThisRender = true;
             if (HoldsAMotion(state, key)) pass.Tally.RemovedAMotionThisRender = true;
             var commit = pass.Walk.Commit;
-            if (commit != null)
-            {
-                var index = state.Committed.FindIndex(entry => entry.key == key);
-                (commit.PutBackRemovals ??= new List<Action>()).Add(
-                    () => state.Committed.Insert(Math.Min(index, state.Committed.Count), (key, node)));
-            }
+            if (commit != null) NotePresenceRemovalPutBack(commit, state, key, node);
             // Same as the finished-exit drop: leave the committed set, then retire.
             RemovePresenceCommittedEntry(state.Committed, key);
             RetirePresenceKeyEntries(state, key);
-            FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), pass.BoundaryFiber);
+            if (commit == null)
+            {
+                FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), pass.BoundaryFiber);
+                return;
+            }
+            // The removed tree is the baseline the next walk reproduces while the leaves are still on screen.
+            var boundary = pass.BoundaryFiber;
+            (commit.AfterRemovals ??= new List<Action>()).Add(
+                () => FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundary));
+        }
+
+        // Records what RemoveGhostAtOnce is about to take from the presence's state, so a walk whose removals never
+        // run gives the next walk the committed child it still has on screen.
+        private static void NotePresenceRemovalPutBack(
+            GeneralCommitState commit, ReconcilerContext.PresenceBoundaryState state, string key, VNode node)
+        {
+            var index = state.Committed.FindIndex(entry => entry.key == key);
+            state.MotionElements.TryGetValue(key, out var motionElement);
+            state.ChildRoots.TryGetValue(key, out var roots);
+            state.ExitWaits.TryGetValue(key, out var wait);
+            var leavingMount = state.LeavingMounts.Contains(key);
+            (commit.PutBackRemovals ??= new List<Action>()).Add(() =>
+            {
+                if (index >= 0)
+                {
+                    state.Committed.Insert(Math.Min(index, state.Committed.Count), (key, node));
+                }
+                // MUTANT_SURVIVES(equivalent, equality): nothing reads this record for a key that is removed at once, and
+                // the retry removes it at once again, which retires the record.
+                if (motionElement != null) state.MotionElements[key] = motionElement;
+                if (roots != null) state.ChildRoots[key] = roots;
+                // MUTANT_SURVIVES(equivalent, equality): an exit wait belongs to a key whose exit plays, and this key's
+                // did not.
+                if (wait != null) state.ExitWaits[key] = wait;
+                // MUTANT_SURVIVES(equivalent, line removed): a key mounted leaving has an exit that plays, and this
+                // key's did not.
+                if (leavingMount) state.LeavingMounts.Add(key);
+            });
         }
 
         // Whether removing key plays an exit at all: its anchor's, a descendant Motion's, or the removal of a

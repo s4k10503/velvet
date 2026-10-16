@@ -95,9 +95,22 @@ namespace Velvet.Tests
             s_setAbortedEnterTick = null;
             s_setAbortedExitTick = null;
             s_abortedExits = 0;
+            s_abortedExitChild = () => V.Label(text: "a", key: "a");
+            s_abortedExitCallback = () => s_abortedExits++;
+            s_setPoolGhostTick = null;
+            s_setSuspendedTick = null;
+            s_suspendedExits = 0;
+            s_suspendedSource = new VelvetTaskCompletionSource<int>();
+            s_setFlakyTick = null;
+            s_unsubscribeThrows = false;
+            s_outerSuspends = false;
+            s_setDisposedTick = null;
             s_setOrderedExitTick = null;
             s_exitOrder.Clear();
         }
+
+        [TearDown]
+        public void TearDown() => LogAssert.ignoreFailingMessages = false;
 
         private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
 
@@ -1973,11 +1986,14 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Component(AbortingBoundaryRender, tick, key: "o"),
-                V.AnimatePresence(key: "p", onExitComplete: () => s_abortedExits++,
-                    children: tick == 0 ? new VNode[] { V.Label(text: "a", key: "a") } : Array.Empty<VNode>()),
+                V.AnimatePresence(key: "p", onExitComplete: () => s_abortedExitCallback(),
+                    children: tick == 0 ? new VNode[] { s_abortedExitChild() } : Array.Empty<VNode>()),
                 V.Label(text: "tail:" + tick),
             });
         }
+
+        private static Func<VNode> s_abortedExitChild;
+        private static Action s_abortedExitCallback;
 
         // A subscription the failed output made is released when the boundary catches, and its unsubscribe fails.
         [Test]
@@ -2029,6 +2045,245 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode SubscribedFailureHostRender()
             => V.Div(children: new VNode[] { V.Component(SubscribedFailureBoundaryRender, key: "boundary") });
+
+        // The Motion the skipped removal took is still found by the retry, so its completion is the Motion's: logged.
+        [Test]
+        public void Given_AMotionChildWhoseRemovalAnAbortedRenderSkipped_When_TheHostRendersAgainAndOnExitCompleteFails_Then_NoBoundaryTakesTheError()
+        {
+            // Arrange
+            s_abortedExitChild = () => V.Motion(key: "a", transition: StyleTransitionConfig.None,
+                children: new VNode[] { V.Label(text: "m") });
+            s_abortedExitCallback = () => throw new InvalidOperationException("Exit complete throw");
+            using var mounted = V.Mount(_root, V.Component(MotionRoutedRootRender, key: "root"), CaughtErrors.Unlogged);
+            s_setAbortedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Exit complete throw");
+
+            // Act
+            s_setAbortedExitTick.Invoke(2);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(Texts().Contains("q-fallback"), Is.False);
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode MotionRoutedRootRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "q-fallback"));
+            return V.Component(AbortedExitHostRender, key: "host");
+        }
+
+        // The presence's owner is an inline child the host's pass re-renders, and the boundary that aborts comes after it.
+        [Test]
+        public void Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsInstantRemovalIsPutBack_Then_ThePutBackNodeKeepsItsPropsBag()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PoolGhostHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setPoolGhostTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            var committed = mounted.Root.Reconciler.Context.PresenceStates.Values.Single().Committed;
+            Assert.That(
+                (committed.Count, committed.Count == 1 && committed[0].node is ElementNode { Props: { } props }
+                    && VNodePoolTestAccess.IsRentedOutForTest(props)),
+                Is.EqualTo((1, true)));
+        }
+
+        private static Action<int> s_setPoolGhostTick;
+
+        [Component(Compiler = false)]
+        private static VNode PresenceOwnerRender(int tick)
+            => V.AnimatePresence(key: "p",
+                children: tick == 0 ? new VNode[] { V.Label(text: "a", key: "a") } : Array.Empty<VNode>());
+
+        [Component(Compiler = false)]
+        private static VNode PoolGhostHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setPoolGhostTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(PresenceOwnerRender, tick, key: "p"),
+                V.Component(AbortingBoundaryRender, tick, key: "o"),
+                V.Label(text: "tail:" + tick),
+            });
+        }
+
+        // A walk that threw before its removals ran completes nothing and leaves the child to the next render.
+        [Test]
+        public void Given_ARenderThatSuspendsBesideAPresenceWithNoSuspenseAbove_When_ItRemovedAChild_Then_TheExitCompletesOnceWhenTheReadResolves()
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            using var mounted = V.Mount(_root, V.Component(SuspendedRemovalHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setSuspendedTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            var afterTheSuspendedRender = s_suspendedExits;
+            s_suspendedSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((afterTheSuspendedRender, s_suspendedExits, Texts().Split(',').Contains("a")),
+                Is.EqualTo((0, 1, false)));
+        }
+
+        private static Action<int> s_setSuspendedTick;
+        private static int s_suspendedExits;
+        private static VelvetTaskCompletionSource<int> s_suspendedSource;
+
+        [Component(Compiler = false)]
+        private static VNode SuspendedReaderRender(int tick)
+        {
+            var value = Hooks.Use<int>(_ => tick > 0 ? s_suspendedSource.Task : VelvetTask.FromResult(0), tick);
+            return V.Label(text: "read:" + value);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SuspendedRemovalHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setSuspendedTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.AnimatePresence(key: "p", onExitComplete: () => s_suspendedExits++,
+                    children: tick == 0 ? new VNode[] { V.Label(text: "a", key: "a") } : Array.Empty<VNode>()),
+                V.Component(SuspendedReaderRender, tick, key: "reader"),
+            });
+        }
+
+        // The boundary that declined an error out of a disposal still catches the next render's error.
+        [Test]
+        public void Given_AnAncestorWhoseFallbackSuspendsOnAnErrorOutOfADisposal_When_TheInnerBoundaryRendersAgain_Then_ItCatchesAgain()
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            using var mounted = V.Mount(_root, V.Component(FlakyHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            s_unsubscribeThrows = true;
+            s_outerSuspends = true;
+            try
+            {
+                s_setFlakyTick.Invoke(1);
+                mounted.FlushStateForTest();
+            }
+            catch (Exception)
+            {
+                // the suspended attempt may leave the flush; the retry below is what is read
+            }
+            s_unsubscribeThrows = false;
+            s_outerSuspends = false;
+
+            // Act
+            s_setFlakyTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("fallback"));
+        }
+
+        private static Action<int> s_setFlakyTick;
+        private static bool s_unsubscribeThrows;
+        private static bool s_outerSuspends;
+
+        [Component(Compiler = false)]
+        private static VNode FlakySubscribingRender()
+        {
+            Hooks.UseSyncExternalStore(
+                _ => () =>
+                {
+                    if (s_unsubscribeThrows) throw new InvalidOperationException("Unsubscribe throw");
+                },
+                () => 0);
+            return V.Label(text: "subscribed");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode FlakyInnerBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            if (tick == 0) return V.Label(text: "healthy");
+            return V.Fragment(new VNode[]
+            {
+                V.Component(FlakySubscribingRender, key: "subscribing"),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode FlakyOuterBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ =>
+            {
+                if (s_outerSuspends) throw FiberSuspendSignal.Instance;
+                return V.Label(text: "outer-fallback");
+            });
+            return V.Component(FlakyInnerBoundaryRender, tick, key: "inner");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode FlakyHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setFlakyTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(FlakyOuterBoundaryRender, tick, key: "outer") });
+        }
+
+        // An ancestor that replaced the boundary during the disposal leaves the boundary's fallback unexpanded.
+        [Test]
+        public void Given_AnAncestorBoundaryThatCatchesAnErrorOutOfAnInnerBoundarysDisposal_When_TheInnerBoundaryMountsOnAnUpdate_Then_ItsFallbackLeavesNoPresenceState()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DisposedInnerHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_throws = true;
+            s_unsubscribeThrows = true;
+
+            // Act
+            s_setDisposedTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((Texts(), mounted.Root.Reconciler.Context.PresenceStates.Count), Is.EqualTo(("outer-fallback", 0)));
+        }
+
+        private static Action<int> s_setDisposedTick;
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode PresenceFallbackBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.AnimatePresence(key: "fallback-presence",
+                children: new VNode[] { V.Label(text: "inner-fallback", key: "f") }));
+            return V.Fragment(new VNode[]
+            {
+                V.Component(FlakySubscribingRender, key: "subscribing"),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode DisposedOuterBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return tick == 0 ? V.Label(text: "ok") : V.Component(PresenceFallbackBoundaryRender, key: "inner");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DisposedInnerHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setDisposedTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(DisposedOuterBoundaryRender, tick, key: "outer") });
+        }
 
         [Test]
         public void Given_APresenceWhoseChildLeavesWithNothingToAnimate_When_ARenderRemovesItBesideALayoutEffect_Then_OnExitCompleteRunsAfterThatLayoutEffect()
