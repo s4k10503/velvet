@@ -848,6 +848,156 @@ namespace Velvet.Tests
             Assert.That((string.Join(",", s_log), s_lastWatchedTick), Is.EqualTo(("reader:null", 1)));
         }
 
+        // Owns the same write as OwedSibling and logs the order of a re-rendered component's own commit: the
+        // ref callback is a new delegate at every render, and the component's insertion and layout effects have no
+        // dependencies, so each runs at every render.
+        [Component(Compiler = false)]
+        private static VNode OwedLoggedSibling()
+        {
+            s_siblingFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            Hooks.UseInsertionEffect((Func<Action>)(() =>
+            {
+                s_log.Add("insertion");
+                return null;
+            }));
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_log.Add("layout");
+                return () => s_log.Add("layout-cleanup");
+            }));
+            return V.Div(refCallback: element =>
+            {
+                s_log.Add("attach");
+                return null;
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OwedLoggedRoot()
+        {
+            var (_, start) = Hooks.UseTransition();
+            s_start = start;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(OwedHolder, key: "holder"),
+                V.Component(OwedLoggedSibling, key: "sibling"),
+            });
+        }
+
+        private List<string> FlushTheOwedSiblingAndReadTheLog()
+        {
+            using var mounted = V.Mount(_root, V.Component(OwedLoggedRoot, key: "root"));
+            var sibling = s_siblingFiber;
+            s_start.Invoke(() =>
+            {
+                s_add.Invoke("sent");
+                s_setTick.Invoke(1);
+            });
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_log.Clear();
+            FiberWorkLoop.FlushState(sibling);
+            return new List<string>(s_log);
+        }
+
+        [Test]
+        public void Given_AFlushWhoseSettledTransitionOwesAnotherComponentARender_When_TheFlushedComponentHasAnInsertionEffectAndARef_Then_TheInsertionEffectRunsBeforeTheRefAttaches()
+        {
+            // Act
+            var log = FlushTheOwedSiblingAndReadTheLog();
+
+            // Assert
+            Assert.That(log.FindAll(entry => entry == "insertion" || entry == "attach"),
+                Is.EqualTo(new[] { "insertion", "attach" }));
+        }
+
+        [Test]
+        public void Given_AFlushWhoseSettledTransitionOwesAnotherComponentARender_When_TheFlushedComponentsRefCallbackChanges_Then_ItsLayoutCleanupRunsBeforeTheNewRefAttaches()
+        {
+            // Act
+            var log = FlushTheOwedSiblingAndReadTheLog();
+
+            // Assert
+            Assert.That(log.FindAll(entry => entry == "layout-cleanup" || entry == "attach"),
+                Is.EqualTo(new[] { "layout-cleanup", "attach" }));
+        }
+
+        [Component]
+        private static VNode NoOpEnterHost()
+            => V.Div(children: new VNode[]
+            {
+                V.AnimatePresence(initial: false, children: new VNode[]
+                {
+                    V.Motion(key: "m", transition: StyleTransition.Fade,
+                        onEnterComplete: () => s_log.Add("enter-complete"),
+                        refCallback: element =>
+                        {
+                            s_log.Add("attach");
+                            return null;
+                        }),
+                }),
+            });
+
+        [Test]
+        public void Given_AMotionWhoseEnterPlaysNothing_When_ItMounts_Then_ItsRefAttachesBeforeItsEnterCompletes()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(NoOpEnterHost, key: "host"));
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("attach,enter-complete"));
+        }
+
+        [Component]
+        private static VNode RefRow()
+            => V.Label(name: "row-a", text: "a", refCallback: s_rowRefs["a"].SetElement);
+
+        // The list renders no row until the host's state is written, and the effect has no dependencies, so it runs
+        // in the commit of that write.
+        [Component(Compiler = false)]
+        private static VNode ListHostReadingARowRef()
+        {
+            s_siblingFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_log.Add("host:" + (s_rowRefs["a"].Current != null ? "set" : "null"));
+                return null;
+            }));
+            return V.Div(children: new VNode[]
+            {
+                V.VirtualList(
+                    items: tick == 0 ? Array.Empty<string>() : new[] { "a" },
+                    keySelector: item => item,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(RefRow, key: item),
+                    overscan: 0,
+                    key: "list"),
+            });
+        }
+
+        [Test]
+        public void Given_AHostWhoseFlushRendersAVirtualListRow_When_TheHostsLayoutEffectRuns_Then_TheRowsRefIsAlreadySet()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the host's render renders a range.
+            s_rowRefs["a"] = new Ref<VisualElement>();
+            using var mounted = V.Mount(_root, V.Component(ListHostReadingARowRef, key: "host"));
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()], 50f);
+            var host = s_siblingFiber;
+            s_setTick.Invoke(1);
+            s_log.Clear();
+
+            // Act
+            FiberWorkLoop.FlushState(host);
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("host:set"));
+        }
+
         [Component]
         private static VNode RowProbe(string id)
         {

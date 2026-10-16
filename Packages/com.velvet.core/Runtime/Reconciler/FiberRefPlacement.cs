@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -40,7 +39,8 @@ namespace Velvet
     // A setup belongs to the component that rendered its element. It follows the fibers below that component
     // which lie before the element and precedes the rest, together with the component itself and everything after
     // it in the batch. Where the element sits among the owner's child fibers is read off the elements, in
-    // LogicalElementTree's tree. A setup whose owner is not in the batch follows every fiber of it.
+    // LogicalElementTree's tree. A setup whose owner is not in the batch (a row a range render committed in the
+    // middle of the pass) precedes its nearest ancestor that is, and follows every fiber when none is.
     internal static class FiberRefPlacement
     {
         internal static List<LayoutStep> Interleave(
@@ -64,7 +64,8 @@ namespace Velvet
             {
                 if (gaps.TryGetValue(slot, out var gap))
                 {
-                    SortByTreeOrder(gap, tree);
+                    // MUTANT_SURVIVES(equivalent, guard removed): the sort leaves a queue that is already in tree order as it is, and the guard spares its comparisons.
+                    if (tree.HasPortalRows) SortByTreeOrder(gap, tree);
                     foreach (var entry in gap) steps.Add(new LayoutStep(entry));
                 }
                 if (slot < ordered.Count) steps.Add(new LayoutStep(slot));
@@ -110,44 +111,29 @@ namespace Velvet
             {
                 var owner = entry.Owner;
                 if (owner == null) return _ordered.Count;
-                if (!_indexOf.TryGetValue(owner, out var slot)) return _ordered.Count;
-                var leading = LeadingChildren(owner, entry.Element);
-                while (slot > 0 && BranchUnder(owner, _ordered[slot - 1].Fiber) >= leading) slot--;
+                if (!_indexOf.TryGetValue(owner, out var slot)) return SlotBeforeNearestAncestor(owner);
+                while (slot > 0 && LiesAfter(owner, _ordered[slot - 1].Fiber, entry.Element)) slot--;
                 return slot;
             }
 
-            // How many of the owner's child fibers lie before the element. They are in document order, so those
-            // that do are a prefix of them.
-            private int LeadingChildren(ComponentFiber owner, VisualElement element)
+            private int SlotBeforeNearestAncestor(ComponentFiber owner)
             {
-                var children = ChildrenOf(owner);
-                var low = 0;
-                var high = children.Count;
-                while (low < high)
+                for (var ancestor = owner.Parent; ancestor != null; ancestor = ancestor.Parent)
                 {
-                    var middle = (low + high) >> 1;
-                    if (LiesBefore(children[middle], element)) low = middle + 1;
-                    else high = middle;
+                    if (_indexOf.TryGetValue(ancestor, out var slot)) return slot;
                 }
-                return low;
+                return _ordered.Count;
             }
 
-            // The index, among the owner's children, of the child that holds the fiber; -1 for a fiber not below the
-            // owner.
-            private static int BranchUnder(ComponentFiber owner, ComponentFiber fiber)
+            // Whether the fiber is below the owner, under a child fiber of it that does not lie before the element.
+            // The child fibers that do are a prefix of them, in document order.
+            private bool LiesAfter(ComponentFiber owner, ComponentFiber fiber, VisualElement element)
             {
-                for (var f = fiber; f.Parent != null; f = f.Parent)
+                for (var branch = fiber; branch.Parent != null; branch = branch.Parent)
                 {
-                    if (ReferenceEquals(f.Parent, owner)) return ChildrenOf(owner).IndexOf(f);
+                    if (ReferenceEquals(branch.Parent, owner)) return !LiesBefore(branch, element);
                 }
-                return -1;
-            }
-
-            private static List<ComponentFiber> ChildrenOf(ComponentFiber fiber)
-            {
-                var children = new List<ComponentFiber>();
-                for (var child = fiber.Child; child != null; child = child.Sibling) children.Add(child);
-                return children;
+                return false;
             }
 
             // Whether everything the child fiber rendered completes before the element does: the element holds it,
@@ -174,6 +160,8 @@ namespace Velvet
         private readonly Dictionary<VisualElement, VisualElement> _standInOf = new();
         private readonly Dictionary<VisualElement, List<(VisualElement Placeholder, int Start, int Length)>> _portalsOf
             = new();
+        private readonly List<VisualElement> _chainA = new();
+        private readonly List<VisualElement> _chainB = new();
 
         internal LogicalElementTree(ReconcilerContext ctx)
         {
@@ -192,6 +180,10 @@ namespace Velvet
             }
         }
 
+        // Whether a Portal's rows are among the tree's: the only elements whose setups the queue can list ahead of
+        // ones that precede them.
+        internal bool HasPortalRows => _portalsOf.Count != 0;
+
         // The Portal placeholder whose rows the fiber is the top level of, or null for a fiber that is not.
         internal VisualElement? PortalOf(ComponentFiber fiber)
         {
@@ -205,7 +197,7 @@ namespace Velvet
         // or holds it, or sits in a row at or past end, or comes after parent in the tree.
         internal bool RowsBefore(VisualElement parent, int end, VisualElement element)
         {
-            var chain = ChainOf(element);
+            var chain = ChainOf(element, _chainA);
             var at = chain.IndexOf(parent);
             if (at > 0) return end <= LogicalSlotOf(chain[at - 1]);
             if (at == 0) return true;
@@ -215,8 +207,8 @@ namespace Velvet
         // Whether the walk completes a before b: a is inside b, or comes earlier in the tree.
         internal bool Precedes(VisualElement a, VisualElement b)
         {
-            var chainA = ChainOf(a);
-            var chainB = ChainOf(b);
+            var chainA = ChainOf(a, _chainA);
+            var chainB = ChainOf(b, _chainB);
             var ia = chainA.Count - 1;
             var ib = chainB.Count - 1;
             while (ia > 0 && ib > 0 && ReferenceEquals(chainA[ia - 1], chainB[ib - 1]))
@@ -233,13 +225,15 @@ namespace Velvet
         // branches under their lowest common ancestor, and a branch is a physical child of it, or a row of the one
         // Portal target it stands for.
         private static bool SiblingPrecedes(VisualElement a, VisualElement b)
-            => ReferenceEquals(
-                a.hierarchy.parent.Children().First(child => ReferenceEquals(child, a) || ReferenceEquals(child, b)), a);
+        {
+            var parent = a.hierarchy.parent;
+            return parent.IndexOf(a) < parent.IndexOf(b);
+        }
 
         // The element and each parent it has in this tree, up to the root.
-        private List<VisualElement> ChainOf(VisualElement element)
+        private List<VisualElement> ChainOf(VisualElement element, List<VisualElement> chain)
         {
-            var chain = new List<VisualElement>();
+            chain.Clear();
             for (var e = element; e != null; e = ParentOf(e)) chain.Add(e);
             return chain;
         }

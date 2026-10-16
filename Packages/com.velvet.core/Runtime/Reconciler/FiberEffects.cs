@@ -167,6 +167,9 @@ namespace Velvet
                 }
                 CommitLayoutBatch(ctx, null, s_noRoots);
             }
+            // Enters that played nothing, which a pass left to complete once its refs attach
+            // (Reconciler.FinishTopLevelPass).
+            ctx.RunPendingEnterCompletions();
             // What is left undelivered is held by a parked pass or names a boundary that is gone, which nothing
             // delivers.
             ctx.PendingCaughtErrorReports.RemoveAll(static report => !report.Boundary.IsMounted);
@@ -274,7 +277,7 @@ namespace Velvet
                 var ordered = TakeBatch(ctx, scope, roots);
                 // The pass that rides this commit left it the cleanups of the refs it replaces, which run ahead of
                 // every cleanup of the layout effects and so of every setup.
-                ctx.DetachReplacedRefs();
+                ctx.DetachReplacedRefs(scope);
                 // A fiber a cleanup's catch unmounts in this pass has had these lists cleared by its unmount.
                 for (var i = 0; i < ordered.Count; i++)
                 {

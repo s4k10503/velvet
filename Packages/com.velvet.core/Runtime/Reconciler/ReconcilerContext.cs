@@ -1742,7 +1742,7 @@ namespace Velvet
                     if (i == batchEnd)
                     {
                         batchEnd = _pendingRefAttaches.Count;
-                        RunReplacedRefCleanups(i, batchEnd);
+                        RunReplacedRefCleanups(i, batchEnd, null);
                     }
                     var (element, callback, _, pass) = _pendingRefAttaches[i];
                     // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
@@ -1767,13 +1767,14 @@ namespace Velvet
 
         // Runs the cleanup of each ref a queued setup replaces, bar those of a parked pass, ahead of the setups of
         // a layout commit: the commit calls it first, and a cleanup already run leaves nothing for a second call.
-        internal void DetachReplacedRefs()
+        // scope is the one the commit's TakeRefAttaches reads, so a commit detaches the refs it goes on to attach.
+        internal void DetachReplacedRefs(ComponentFiber? scope)
         {
             if (!CanRunRefSetups) return;
             _drainingRefAttaches = true;
             try
             {
-                RunReplacedRefCleanups(0, _pendingRefAttaches.Count);
+                RunReplacedRefCleanups(0, _pendingRefAttaches.Count, scope);
             }
             finally
             {
@@ -1791,6 +1792,10 @@ namespace Velvet
 
         private static readonly List<PendingRefAttach> s_noRefAttaches = new();
 
+        // scope null is every setup. Otherwise it is the fiber being committed and what lies below it.
+        private static bool IsInRefScope(ComponentFiber? owner, ComponentFiber? scope)
+            => scope == null || (owner != null && IsAtOrBelow(owner, scope));
+
         // The setups a layout commit attaches, in queue order: those no parked pass holds, owned by scope or by a
         // component below it, or by any component when scope is null. A commit rooted at a fiber leaves the rest
         // to the commit that has the rest of their pass: a render owed ahead of a pass's own commit
@@ -1800,14 +1805,14 @@ namespace Velvet
         internal List<PendingRefAttach> TakeRefAttaches(ComponentFiber? scope)
         {
             if (_pendingRefAttaches.Count == 0 || !CanRunRefSetups) return s_noRefAttaches;
-            var taken = new List<PendingRefAttach>();
+            List<PendingRefAttach>? taken = null;
             foreach (var entry in _pendingRefAttaches)
             {
                 if (!IsAttachable(entry)) continue;
-                if (scope != null && (entry.Owner == null || !IsAtOrBelow(entry.Owner, scope))) continue;
-                taken.Add(new PendingRefAttach(entry.Element!, entry.Owner));
+                if (!IsInRefScope(entry.Owner, scope)) continue;
+                (taken ??= new List<PendingRefAttach>()).Add(new PendingRefAttach(entry.Element!, entry.Owner));
             }
-            return taken;
+            return taken ?? s_noRefAttaches;
         }
 
         // Whether a setup waits for a commit that has no fiber of its own to bring. Read only where
@@ -1890,7 +1895,7 @@ namespace Velvet
             }
         }
 
-        private void RunReplacedRefCleanups(int start, int end)
+        private void RunReplacedRefCleanups(int start, int end, ComponentFiber? scope)
         {
             for (var i = start; i < end; i++)
             {
@@ -1900,6 +1905,7 @@ namespace Velvet
                 if (element == null || callback == null) continue;
                 // The batch's own setup loop skips this entry too, so its old ref stays as it is.
                 if (pass is { HasPendingWork: true }) continue;
+                if (!IsInRefScope(owner, scope)) continue;
                 if (!RefCallbacks.TryGetValue(element, out var installed)) continue;
                 var replaced = installed.Cleanup;
                 if (replaced == null) continue;

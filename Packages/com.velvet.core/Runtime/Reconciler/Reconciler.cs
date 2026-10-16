@@ -353,7 +353,10 @@ namespace Velvet
                 // DrainRefAttaches asks each entry's own pass instead. A pass whose caller commits layout work
                 // leaves the cleanups of the refs it replaces and its setups to that commit.
                 _ctx.DrainRefAttaches();
-                _ctx.RunPendingEnterCompletions();
+                // A setup the drain left to the layout commit attaches before the enters complete, as a ref is
+                // set by the time an enter that plays nothing reports; the commit's end completes them
+                // (FiberEffects.CommitStrandedLayoutWork).
+                if (!_ctx.HasAttachableRefs()) _ctx.RunPendingEnterCompletions();
             }
         }
 
