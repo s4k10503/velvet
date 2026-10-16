@@ -705,15 +705,9 @@ namespace Velvet
             }
         }
 
-        private async VelvetTask<NavigationResult> NavigateCore(
-            string? target,
-            Visit visit,
-            CancellationToken cancellationToken,
-            PendingNavigation? initiator,
-            RouteCancellationSource? takeover,
-            Submission? submission)
+        // What ends an attempt before its target is read; null lets it go on.
+        private NavigationResult? RefuseBeforeStart(PendingNavigation? initiator)
         {
-            var mode = visit.Mode;
             if (_disposed)
             {
                 return NavigationResult.Cancelled;
@@ -731,6 +725,76 @@ namespace Velvet
             {
                 EndInitiatorsNavigation(initiator);
                 return NavigationResult.Error;
+            }
+
+            return null;
+        }
+
+        // Takes the attempt's claim on Navigation; null when a newer navigation displaced it while the
+        // predecessor was being cancelled.
+        private PendingNavigation? ClaimAttempt(RouteCancellationSource? takeover, Visit visit)
+        {
+            // Everything past the Blocker an attempt does to the router at large happens on this side of
+            // the match, and that is the point of taking the claim here: an attempt that matches no route
+            // must not dispossess one still under way in a guard or a loader, because that attempt is the
+            // only one able to put Navigation back and the only one its token belongs to.
+            // Taken before the predecessor is cancelled, as Dispose retires the claim before its Cancel: a
+            // predecessor that unwinds inside the cancel has lost the claim by then, so it does not end the
+            // navigation this one is about to publish in its place.
+            var sequence = ++_navigationSequence;
+            if (takeover != null)
+            {
+                // Installed before the predecessor is cancelled, as RouteLoaderRunner.BeginRound installs a
+                // round: a navigation that a cancellation callback starts inside that cancel displaces this
+                // one, and this one ends there.
+                var displaced = _activeNavigation;
+                _activeNavigation = takeover;
+                // Contained on RouteLoaderRunner.Retire's terms: a predecessor parked on an Await loader
+                // runs its round under a token linked to the one cancelled here, so that round's Loaders
+                // have their cancellation callbacks run from here.
+                try
+                {
+                    displaced?.Cancel();
+                }
+                catch (Exception cancellationFailure)
+                {
+                    FiberLogger.LogException(nameof(Router), cancellationFailure);
+                }
+                if (!ReferenceEquals(_activeNavigation, takeover))
+                {
+                    return null;
+                }
+            }
+            return new PendingNavigation(sequence, visit.IsStep ? visit.Landing : _historyIndex, redirects: 0);
+        }
+
+        // The commit of a navigation that changes only the fragment: the history entry and the location move,
+        // and the loader state stays as it is.
+        private NavigationResult CommitHashChange(
+            RouterLocation location, IReadOnlyList<RouteMatch> matches, NavigationMode mode, PendingNavigation pending)
+        {
+            CommitHistoryEntry(location, mode, pending);
+            CurrentLocation = location;
+            CommitAction(matches, null);
+            _blockerManager.ResetAll();
+            PublishNavigation(NavigationLifecycle.Idle, null, null);
+            AnnounceLocation(location);
+            return NavigationResult.Success;
+        }
+
+        private async VelvetTask<NavigationResult> NavigateCore(
+            string? target,
+            Visit visit,
+            CancellationToken cancellationToken,
+            PendingNavigation? initiator,
+            RouteCancellationSource? takeover,
+            Submission? submission)
+        {
+            var mode = visit.Mode;
+            var refused = RefuseBeforeStart(initiator);
+            if (refused.HasValue)
+            {
+                return refused.Value;
             }
 
             if (target == null)
@@ -769,40 +833,13 @@ namespace Velvet
             }
             else
             {
-                // Everything past the Blocker an attempt does to the router at large happens on this side of
-                // the match, and that is the point of taking the claim here: an attempt that matches no route
-                // must not dispossess one still under way in a guard or a loader, because that attempt is the
-                // only one able to put Navigation back and the only one its token belongs to.
-                // Taken before the predecessor is cancelled, as Dispose retires the claim before its Cancel: a
-                // predecessor that unwinds inside the cancel has lost the claim by then, so it does not end the
-                // navigation this one is about to publish in its place.
-                var sequence = ++_navigationSequence;
-                if (takeover != null)
+                var claimed = ClaimAttempt(takeover, visit);
+                if (!claimed.HasValue)
                 {
-                    // Installed before the predecessor is cancelled, as RouteLoaderRunner.BeginRound installs a
-                    // round: a navigation that a cancellation callback starts inside that cancel displaces this
-                    // one, and this one ends there.
-                    var displaced = _activeNavigation;
-                    _activeNavigation = takeover;
-                    // Contained on RouteLoaderRunner.Retire's terms: a predecessor parked on an Await loader
-                    // runs its round under a token linked to the one cancelled here, so that round's Loaders
-                    // have their cancellation callbacks run from here.
-                    try
-                    {
-                        displaced?.Cancel();
-                    }
-                    catch (Exception cancellationFailure)
-                    {
-                        FiberLogger.LogException(nameof(Router), cancellationFailure);
-                    }
-                    if (!ReferenceEquals(_activeNavigation, takeover))
-                    {
-                        return NavigationResult.Cancelled;
-                    }
+                    return NavigationResult.Cancelled;
                 }
-                pending = new PendingNavigation(sequence, visit.IsStep ? visit.Landing : _historyIndex, redirects: 0);
+                pending = claimed.Value;
             }
-
             // Built here rather than at the commit so the phases below have a destination to publish while
             // they run, and reused as the committed location so the two are one object.
             var location = BuildLocation(path, hash, matches, visit);
@@ -810,13 +847,7 @@ namespace Velvet
             // a hash change at once. A redirect is never one, its target being the Guard's.
             if (!initiator.HasValue && IsHashChangeOnly(path, hash, submission))
             {
-                CommitHistoryEntry(location, mode, pending);
-                CurrentLocation = location;
-                CommitAction(matches, null);
-                _blockerManager.ResetAll();
-                PublishNavigation(NavigationLifecycle.Idle, null, null);
-                AnnounceLocation(location);
-                return NavigationResult.Success;
+                return CommitHashChange(location, matches, mode, pending);
             }
 
             // A redirect keeps its initiator's submission on show while it loads, as React Router's navigation
