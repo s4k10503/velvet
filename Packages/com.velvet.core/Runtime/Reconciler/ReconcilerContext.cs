@@ -1371,15 +1371,44 @@ namespace Velvet
         internal int SuspensePrimaryDepth => _suspensePrimaries.Count;
 
         // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again.
-        internal void OpenSuspensePrimary(bool retains) => _suspensePrimaries.Add(new SuspensePrimaryFrame(retains, false));
+        internal void OpenSuspensePrimary(bool retains) => _suspensePrimaries.Add(new SuspensePrimaryFrame(retains));
 
-        // Returns whether the primary suspended, at its own expansion or where HoldSuspendInPrimary held it.
-        internal bool CloseSuspensePrimary()
+        // Returns whether the primary suspended, at its own expansion or where HoldSuspendInPrimary held it. The
+        // renders the primary made come back through renders, for the caller that decides whether the Suspense
+        // shows them (ResolveSuspenseRenders).
+        internal bool CloseSuspensePrimary(out List<SuspenseRender>? renders)
         {
             var last = _suspensePrimaries.Count - 1;
             var frame = _suspensePrimaries[last];
             _suspensePrimaries.RemoveAt(last);
+            renders = frame.Renders;
             return frame.Suspended;
+        }
+
+        // Whether the Suspense walking the innermost open primary decides, once its walk ends, whether a render
+        // made in it commits: only a primary that retains what it had committed has one to keep or give up, since
+        // one that discards its children has committed nothing of them.
+        internal bool IsInRetainingSuspensePrimary => _suspensePrimaries.Count > 0 && _suspensePrimaries[^1].Retains;
+
+        internal void RecordSuspenseRender(SuspenseRender render)
+            => (_suspensePrimaries[^1].Renders ??= new List<SuspenseRender>()).Add(render);
+
+        // The Suspense that walked a primary says whether it shows the renders the primary made. One that shows
+        // its children commits them, unless a retaining primary around it is still open to decide for them; one that
+        // suspends gives them all up. A walk that throws before this is reached resolves none.
+        internal void ResolveSuspenseRenders(List<SuspenseRender>? renders, bool discard)
+        {
+            if (renders == null) return;
+            if (!discard && IsInRetainingSuspensePrimary)
+            {
+                (_suspensePrimaries[^1].Renders ??= new List<SuspenseRender>()).AddRange(renders);
+                return;
+            }
+            foreach (var render in renders)
+            {
+                if (discard) FiberHookCommit.DiscardSuspenseRender(render);
+                else FiberHookCommit.CommitSuspenseRender(render);
+            }
         }
 
         // Whether the innermost open primary takes a suspend where it is raised rather than at its own expansion,
@@ -1392,10 +1421,16 @@ namespace Velvet
             return true;
         }
 
-        internal void MarkSuspensePrimarySuspended()
-            => _suspensePrimaries[^1] = _suspensePrimaries[^1] with { Suspended = true };
+        internal void MarkSuspensePrimarySuspended() => _suspensePrimaries[^1].Suspended = true;
 
-        private readonly record struct SuspensePrimaryFrame(bool Retains, bool Suspended);
+        private sealed class SuspensePrimaryFrame
+        {
+            internal SuspensePrimaryFrame(bool retains) => Retains = retains;
+
+            internal bool Retains { get; }
+            internal bool Suspended { get; set; }
+            internal List<SuspenseRender>? Renders { get; set; }
+        }
 
         // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
         // ended — see CompleteEnterAfterThePass.

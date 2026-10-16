@@ -123,13 +123,28 @@ namespace Velvet
         // discarded attempt cannot break callback referential stability or force a memo rebuild.
         internal static void CommitSettledHookDeps(ComponentFiber fiber)
         {
+            CommitSettledValues(fiber);
+            CommitSettledEffects(fiber);
+        }
+
+        // The context reads, callbacks and memos of the settle. A render a Suspense primary has yet to show commits
+        // these with the render, so that the StrictMode double render that follows it compares against them as it
+        // does for any render.
+        internal static void CommitSettledValues(ComponentFiber fiber)
+        {
             fiber.CommitStagedDependencies();
-            HookEffectExecutor.CommitEffectDeps(fiber.LayoutEffects);
-            HookEffectExecutor.CommitEffectDeps(fiber.InsertionEffects);
-            HookEffectExecutor.CommitEffectDeps(fiber.Effects);
             FiberHookCommit.CommitCallbackSlots(fiber.CallbackSlots);
             FiberHookCommit.CommitMemoSlots(fiber.MemoSlots);
             FiberHookCommit.CommitMemoValueSlots(fiber.MemoValueSlots);
+        }
+
+        // The effect deps and blockers of the settle, which a render a Suspense primary has yet to show commits once
+        // the Suspense decides (FiberHookCommit.CommitSuspenseRender).
+        internal static void CommitSettledEffects(ComponentFiber fiber)
+        {
+            HookEffectExecutor.CommitEffectDeps(fiber.LayoutEffects);
+            HookEffectExecutor.CommitEffectDeps(fiber.InsertionEffects);
+            HookEffectExecutor.CommitEffectDeps(fiber.Effects);
             // UseImperativeHandle defers its entire commit (ref swap, factory invocation, parent ref write,
             // LastDeps advance) to the layout phase (RunImperativeHandleSlots) so (a) the factory observes
             // child element / handle refs attached during the same subtree commit (imperative
