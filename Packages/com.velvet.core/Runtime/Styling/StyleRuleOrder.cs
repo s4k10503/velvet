@@ -23,7 +23,7 @@ namespace Velvet
             "margin-inline", "margin-block", "margin-inline-start", "margin-inline-end",
             "margin-block-start", "margin-block-end", "margin-top", "margin-right",
             "margin-bottom", "margin-left", "display", "aspect-ratio", "height", "max-height", "min-height", "width",
-            "max-width", "min-width", "flex-shrink", "flex-grow", "flex-basis", "transform-origin", "translate",
+            "max-width", "min-width", "flex", "flex-shrink", "flex-grow", "flex-basis", "transform-origin", "translate",
             "scale", "rotate", "cursor", "flex-direction", "flex-wrap", "align-content", "align-items",
             "justify-content", "align-self", "overflow", "border-radius", "border-start-start-radius", "border-start-end-radius",
             "border-end-end-radius", "border-end-start-radius", "border-top-left-radius", "border-top-right-radius",
@@ -64,6 +64,7 @@ namespace Velvet
                 (new[] { StyleLonghand.BorderLeftWidth, StyleLonghand.BorderRightWidth }, "border-inline-width"),
                 (new[] { StyleLonghand.BorderTopWidth, StyleLonghand.BorderBottomWidth }, "border-block-width"),
                 (new[] { StyleLonghand.BorderTopColor, StyleLonghand.BorderRightColor, StyleLonghand.BorderBottomColor, StyleLonghand.BorderLeftColor }, "border-color"),
+                (new[] { StyleLonghand.FlexGrow, StyleLonghand.FlexShrink, StyleLonghand.FlexBasis }, "flex"),
             };
             var indexes = new (StyleLonghandSet, int)[sets.Length];
             for (var i = 0; i < sets.Length; i++)

@@ -5,8 +5,9 @@ using System.Collections.Generic;
 namespace Velvet
 {
     // Tailwind emits a shorthand ahead of the longhands it contains, so pt-2 beats p-13 whichever is written
-    // first: padding, margin, inset and size/width/height sort that way in property-order.ts. Two utilities
-    // of one family at one priority are therefore ordered here by that property order, in the place a border
+    // first: padding, margin, inset, size/width/height and flex/flex-grow/flex-shrink/flex-basis sort that way in
+    // property-order.ts. Two utilities of one family at one priority are therefore ordered here by that property
+    // order, in the place a border
     // side colour already is (StyleBorderSideColor.CompareCascade), instead of by which arrived last. The radius
     // families take part too, ranked by the order StyleRuleOrder gives their tokens.
     //
@@ -48,6 +49,10 @@ namespace Velvet
             // size-* declares width and height, and property-order.ts sorts height first, so it ahead of both w-*
             // and h-*: the first property it differs from w-* on is height, and from h-* the extra width.
             ranks[(int)ArbitraryProperty.Size] = ranks[(int)ArbitraryProperty.Height] - 1;
+            Set(ranks, ArbitraryProperty.Flex, "flex");
+            Set(ranks, ArbitraryProperty.FlexShrink, "flex-shrink");
+            Set(ranks, ArbitraryProperty.FlexGrow, "flex-grow");
+            Set(ranks, ArbitraryProperty.FlexBasis, "flex-basis");
             SetRadiusRanks(ranks);
             return ranks;
         }
@@ -279,7 +284,7 @@ namespace Velvet
 
         private static bool SameLayer(Reading a, Reading z) => a.Important == z.Important && a.VariantSet == z.VariantSet;
 
-        // Whether any token can be a spacing or radius utility: the Motion paths ask it of every pose on every render, and
+        // Whether any token can be a spacing, radius or flex utility: the Motion paths ask it of every pose on every render, and
         // build the readings only where it holds.
         private static bool MayHoldSpacing(string[] tokens)
         {
@@ -299,6 +304,7 @@ namespace Velvet
             var payload = variantsLength == 0 ? core : core.Substring(variantsLength);
             return StyleArbitraryValueResolver.StartsWithSpacingPrefix(payload)
                 || StyleArbitraryValueResolver.StartsWithRadiusPrefix(payload)
+                || StyleArbitraryValueResolver.StartsWithFlexPrefix(payload)
                 || StyleLogicalUtilities.SortPropertiesOf(payload) != null;
         }
 
@@ -419,7 +425,7 @@ namespace Velvet
             }
             if (StyleArbitraryValueResolver.IsInlineResolved(payload)
                 && StyleArbitraryValueResolver.TryParseLayer(payload, out var style)
-                && StyleArbitraryValueResolver.IsSpacingOrRadiusProperty(style.Property))
+                && StyleArbitraryValueResolver.IsSpacingRadiusOrFlexProperty(style.Property))
             {
                 reading = new Reading
                 {

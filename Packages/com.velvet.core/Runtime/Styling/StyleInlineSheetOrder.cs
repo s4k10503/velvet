@@ -159,7 +159,7 @@ namespace Velvet
             }
             property = style.Property;
             if (StyleLogicalUtilities.SortPropertiesOf(core) != null
-                && StyleArbitraryValueResolver.IsSpacingOrRadiusProperty(property))
+                && StyleArbitraryValueResolver.IsSpacingRadiusOrFlexProperty(property))
             {
                 return false;
             }
