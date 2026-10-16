@@ -502,9 +502,9 @@ namespace Velvet
         public AnimatePresenceMode Mode { get; init; } = AnimatePresenceMode.Sync;
 
         /// <summary>
-        /// Invoked once when every in-flight exit animation has finished (the exiting set empties).
-        /// Not fired when an exit is cancelled by the key re-entering,
-        /// nor for children removed without an exit animation.
+        /// Invoked once when every in-flight exit has completed (the exiting set empties), an exit with nothing to
+        /// animate after the commit that removed its child. Not fired when an exit is cancelled by the key
+        /// re-entering.
         /// </summary>
         public Action? OnExitComplete { get; init; }
 

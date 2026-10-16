@@ -282,7 +282,7 @@ new StyleTransitionConfig
   Framer Motion's spring by the time since the play started. **Interrupting a running spring — a
   label change mid-spring, or an exit cancelled mid-flight — releases a new one from the current
   value *and velocity***, as Framer starts an interrupted value's next animation. A spring that
-  interrupts a bezier play starts at rest, since a bezier play keeps no velocity. An exit whose delta resolves no channel at all completes immediately.
+  interrupts a bezier play starts at rest, since a bezier play keeps no velocity. An exit whose delta resolves no channel at all completes after the commit of the render that removed its child, as an exit with nothing to animate does.
 - `DurationSec` is ignored for springs — settling time comes from the physics. A play ends when its
   slowest channel's spring has run the duration Framer measures for it (see *Repeating a play*),
   so a frame that arrives late moves the spring as far as the time it covers.

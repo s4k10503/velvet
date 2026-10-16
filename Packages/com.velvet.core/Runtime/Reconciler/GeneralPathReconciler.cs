@@ -2030,10 +2030,10 @@ namespace Velvet
                 // completion's bookkeeping immediately would have that same Clear() wipe the ExitComplete entry
                 // it just added, so the re-render it schedules finds the ghost "not complete" again, replays
                 // PlayExit, and repeats forever. state.Expanding tracks whether this pass is under way; a
-                // completion that fires meanwhile is queued on the state and drained once the pass's bookkeeping
-                // has run, so its ExitComplete.Add survives into the render it schedules — a genuinely async
-                // completion finds Expanding already false (this method returned long before it fires) and
-                // runs immediately, unchanged.
+                // completion that fires meanwhile is queued on the state and, once the pass's bookkeeping has
+                // run, staged to settle after this walk's commit, as Framer Motion settles an exit whose value it
+                // cannot animate from the instant animation it plays instead, on a frame after that commit. A
+                // genuinely async completion finds Expanding already false and runs immediately, unchanged.
                 state.Expanding = true;
                 var tally = new PresencePassTally { AnimatedExitCount = exitCount };
                 var pass = new PresenceExpansion
@@ -2074,13 +2074,23 @@ namespace Velvet
                 foreach (var entry in nextCommitted) state.Committed.Add(entry);
                 state.ExitComplete.Clear();
 
-                // This pass's own bookkeeping has settled — a completion queued above can now run safely: its
-                // ExitComplete.Add survives past this point instead of being wiped by the Clear() just above.
+                // This pass's own bookkeeping has settled — a completion queued above is staged now, so its
+                // ExitComplete.Add lands after the Clear() just above.
                 state.Expanding = false;
                 if (state.DeferredCompletions is { } deferred)
                 {
                     state.DeferredCompletions = null;
-                    foreach (var completion in deferred) completion();
+                    foreach (var (key, settle) in deferred)
+                    {
+                        if (commit == null)
+                        {
+                            settle();
+                            continue;
+                        }
+                        var pending = new ReconcilerContext.PendingSettle(settle);
+                        state.PendingSettles[key] = pending;
+                        StagePendingSettle(state, commit, boundaryFiber, key, pending);
+                    }
                 }
 
                 // Marked here rather than beside stateKey above, so an expansion that unwound is not
@@ -2770,7 +2780,7 @@ namespace Velvet
             // during an expansion of its own, is queued instead of run inline.
             void Settled()
             {
-                if (state.Expanding) (state.DeferredCompletions ??= new List<Action>()).Add(runExitComplete);
+                if (state.Expanding) (state.DeferredCompletions ??= new()).Add((key, runExitComplete));
                 else runExitComplete();
             }
 

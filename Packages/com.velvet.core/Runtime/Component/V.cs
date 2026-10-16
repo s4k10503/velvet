@@ -2503,7 +2503,8 @@ namespace Velvet
 
         /// <summary>
         /// Container that supports mount / unmount animations.
-        /// When a keyed child becomes null, removal is deferred until the exit animation completes.
+        /// When a keyed child becomes null, removal is deferred until its exit completes, and always to a later
+        /// render than the one that removed it.
         /// </summary>
         /// <param name="children">Child VNodes whose enter / exit transitions are tracked.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -2515,8 +2516,8 @@ namespace Velvet
         /// exit and enter; <see cref="AnimatePresenceMode.Wait"/> holds a brand-new child back until in-flight
         /// exits finish (suited to single-child route / screen swaps); <see cref="AnimatePresenceMode.PopLayout"/>
         /// pulls an exiting child out of layout flow so still-present siblings reflow immediately.</param>
-        /// <param name="onExitComplete">Invoked once when every in-flight exit animation has finished;
-        /// not fired for cancelled exits or animation-less removals.</param>
+        /// <param name="onExitComplete">Invoked once the exits of the removed children have all completed, an exit
+        /// with nothing to animate after the commit that removed its child; not fired for cancelled exits.</param>
         /// <param name="propagate">Set on an inner presence: while the enclosing presence's keyed child holding it is
         /// leaving, every child of this presence exits too, and the enclosing presence keeps that child mounted until
         /// they have completed. A presence between the two that does not propagate stops it.</param>

@@ -79,6 +79,7 @@ namespace Velvet.Tests
             s_store = null;
             s_withInitial = false;
             s_boxed = false;
+            s_exitCompletions = 0;
         }
 
         [TearDown]
@@ -183,8 +184,29 @@ namespace Velvet.Tests
             }
             return V.Div(name: "host", children: new VNode[]
             {
-                V.AnimatePresence(key: "presence", children: children.ToArray()),
+                V.AnimatePresence(key: "presence", onExitComplete: () => s_exitCompletions++, children: children.ToArray()),
             });
+        }
+
+        private static int s_exitCompletions;
+
+        [Test]
+        public void Given_ASpringExitWithNoChannelToDrive_When_TheKeyIsRemoved_Then_OnExitCompleteRunsOnlyAfterThatRendersCommit()
+        {
+            // Arrange — the spring's exit plays nothing, as Framer Motion plays an instant animation for a value it
+            // cannot animate, which completes on a frame after the commit.
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedExitHost, key: "host"));
+
+            // Act
+            store.Set("");
+            mounted.FlushStateForTest();
+            var afterTheRemovingRender = s_exitCompletions;
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((afterTheRemovingRender, s_exitCompletions), Is.EqualTo((0, 1)));
         }
 
         // A variant Motion with no exit label: its removal plays the classic exit of this spring, whose class

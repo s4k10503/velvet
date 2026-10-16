@@ -2256,9 +2256,10 @@ namespace Velvet
             public readonly HashSet<string> LeavingMounts = new();
 
             // Whether an expansion of this presence is under way, and the exit completions that fired meanwhile,
-            // which run once it has finished its bookkeeping (GeneralPathReconciler.ExpandAnimatePresenceInline).
+            // each with its key, staged once it has finished its bookkeeping
+            // (GeneralPathReconciler.ExpandAnimatePresenceInline).
             public bool Expanding;
-            public List<System.Action>? DeferredCompletions;
+            public List<(string Key, System.Action Settle)>? DeferredCompletions;
 
             // Whether the key is on its way out, not yet dropped: an exit running, or finished and awaiting the
             // render that drops it.
