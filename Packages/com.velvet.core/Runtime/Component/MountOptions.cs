@@ -6,18 +6,12 @@ namespace Velvet
     /// Options passed to <see cref="V.Mount(UnityEngine.UIElements.VisualElement, VNode, MountOptions)"/>, as
     /// React's <c>createRoot</c> takes an options object.
     /// </summary>
-    /// <param name="OnCaughtError">
-    /// Called when an error boundary in this tree catches an error — React's <c>onCaughtError</c>. It is
-    /// called in the commit that shows the boundary's fallback, after the fallback's layout effects and before
-    /// those of the boundary's ancestors; a boundary that an ancestor boundary replaces before that commit
-    /// reports nothing. A boundary that a time-sliced transition mounted or re-rendered, catching before the
-    /// transition completes, reports in the commit that completes it, after its own layout effects.
-    /// It receives the caught exception and an <see cref="ErrorInfo"/> naming the boundary and carrying the
-    /// component stack. When null, the error is logged with <c>Debug.LogException</c>, together with the
-    /// boundary's name and the component stack. An exception the handler throws is logged and does not
-    /// reach the tree.
-    /// </param>
-    public sealed record MountOptions(Action<Exception, ErrorInfo>? OnCaughtError = null)
+    /// <remarks>
+    /// Each option is an <c>init</c> property, as each is a property of React's options object. React's
+    /// <c>onRecoverableError</c> has no counterpart: Velvet neither hydrates nor retries a failed render
+    /// synchronously, which are the two recoveries React reports through it.
+    /// </remarks>
+    public sealed record MountOptions
     {
         /// <summary>
         /// The clock this tree's motion advances on, from its first render on.
@@ -25,6 +19,19 @@ namespace Velvet
         /// clock of the application's own keeps that motion in step with game time. See <see cref="Velvet.MotionClock"/>.
         /// </summary>
         public MotionClock MotionClock { get; init; } = MotionClock.Realtime;
+
+        /// <summary>
+        /// Called when an error boundary in this tree catches an error — React's <c>onCaughtError</c>. It is
+        /// called in the commit that shows the boundary's fallback, after the fallback's layout effects and before
+        /// those of the boundary's ancestors; a boundary that an ancestor boundary replaces before that commit
+        /// reports nothing. A boundary that a time-sliced transition mounted or re-rendered, catching before the
+        /// transition completes, reports in the commit that completes it, after its own layout effects.
+        /// It receives the caught exception and an <see cref="ErrorInfo"/> naming the boundary and carrying the
+        /// component stack. When null, the error is logged with <c>Debug.LogException</c>, together with the
+        /// boundary's name and the component stack. An exception the handler throws is logged and does not
+        /// reach the tree.
+        /// </summary>
+        public Action<Exception, ErrorInfo>? OnCaughtError { get; init; }
 
         /// <summary>
         /// Called when the tree unmounts for an error no error boundary in it caught — React's

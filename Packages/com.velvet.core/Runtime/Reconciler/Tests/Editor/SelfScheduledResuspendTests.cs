@@ -55,7 +55,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(
-                _root, V.Component(ErrorBoundaryRender, key: "error-boundary"), new MountOptions((_, _) => { }));
+                _root, V.Component(ErrorBoundaryRender, key: "error-boundary"), new MountOptions { OnCaughtError = (_, _) => { } });
             var scheduler = mounted.GetSchedulerForTest();
             s_setOwn.Invoke(1);
             scheduler.DrainImmediateForTest();

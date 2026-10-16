@@ -2007,7 +2007,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(SwapCleanupBoundaryRender, key: "boundary"),
-                new MountOptions((exception, _) => s_swapReports.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => s_swapReports.Add(exception.Message) });
             mounted.FlushEffectsForTest();
 
             // Act — the catch swaps the fallback in, which unmounts the child whose cleanup throws
@@ -2026,7 +2026,7 @@ namespace Velvet.Tests
         {
             // Arrange — the viewport height a geometry pass would have left, so the host's re-render renders a row
             using var mounted = V.Mount(_root, V.Component(ListBoundaryRender, key: "boundary"),
-                new MountOptions((exception, _) => s_swapReports.Add(exception.Message)));
+                new MountOptions { OnCaughtError = (exception, _) => s_swapReports.Add(exception.Message) });
             typeof(FiberVirtualListController)
                 .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()], 50f);
@@ -2681,7 +2681,7 @@ namespace Velvet.Tests
             // Arrange — the update mounts the boundary beside a memoized reader whose read is still pending
             var reports = 0;
             using var mounted = V.Mount(_root, V.Component(InsidePendingHostRender, key: "host"),
-                new MountOptions((_, _) => reports++));
+                new MountOptions { OnCaughtError = (_, _) => reports++ });
             s_insideThrows = true;
             s_setStoppedTick.Invoke(1);
             mounted.FlushStateForTest();
@@ -2861,7 +2861,7 @@ namespace Velvet.Tests
             // Arrange — the primary holds a memoized reader that bails while its read is still pending
             var reports = 0;
             using var mounted = V.Mount(_root, V.Div(children: new VNode[] { V.Component(OuterCatchBoundaryRender, key: "outer") }),
-                new MountOptions((_, _) => reports++));
+                new MountOptions { OnCaughtError = (_, _) => reports++ });
 
             // Act
             s_setOuterCatchTick.Invoke(1);

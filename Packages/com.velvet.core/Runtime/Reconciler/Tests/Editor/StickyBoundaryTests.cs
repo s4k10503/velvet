@@ -265,7 +265,7 @@ namespace Velvet.Tests
 
             // Act
             using var mounted = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"),
-                new MountOptions((_, _) => reports++));
+                new MountOptions { OnCaughtError = (_, _) => reports++ });
             mounted.FlushEffectsForTest();
 
             // Assert — the Suspense fallback is read with it, since a primary that never suspended reports its catch

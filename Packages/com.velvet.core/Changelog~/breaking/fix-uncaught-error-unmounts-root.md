@@ -12,6 +12,10 @@
   that failed, is now that boundary's own, as React's commit-phase capture starts at the nearest mounted ancestor:
   it is reported to `OnCaughtError` after the error the boundary caught, and the fallback renders again with it.
   It used to go to the boundaries above, replacing the boundary that had just caught.
+- An error a cleanup throws in a component whose ancestor is already being torn down reaches the nearest
+  boundary still mounted. It was dropped without a report, which happened to the children of a `V.VirtualList` row.
+- `MountOptions` takes every option as an `init` property, as React's `createRoot` takes them as properties of one
+  object: `new MountOptions(handler)` is written `new MountOptions { OnCaughtError = handler }`.
 
 ### Added
 

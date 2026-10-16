@@ -358,7 +358,7 @@ namespace Velvet.Tests
         public void Given_AnErrorBoundaryCatchingInTheRenderThatHidItsSuspensesPrimary_When_ALaterRenderCreatesALabel_Then_TheLabelIsDisplayed()
         {
             // Arrange — the catch takes back the hidden primary's rows, whose elements go back to the pool
-            using var mounted = V.Mount(_root, V.Component(GhostHostRender, key: "ghost-host"), new MountOptions((_, _) => { }));
+            using var mounted = V.Mount(_root, V.Component(GhostHostRender, key: "ghost-host"), new MountOptions { OnCaughtError = (_, _) => { } });
             s_ghostThrows = true;
             s_setGhostTick.Invoke(1);
             mounted.FlushStateForTest();
@@ -379,7 +379,7 @@ namespace Velvet.Tests
             // Arrange
             var reports = 0;
             using var mounted = V.Mount(_root, V.Div(children: new VNode[] { V.Component(CatchBoundaryRender, key: "outer") }),
-                new MountOptions((_, _) => reports++));
+                new MountOptions { OnCaughtError = (_, _) => reports++ });
 
             // Act
             s_setCatchTick.Invoke(1);
@@ -689,7 +689,7 @@ namespace Velvet.Tests
         {
             // Arrange — the boundary beside the Suspense catches a failing ref cleanup in the pass that reveals,
             // which stops that pass after the Suspense recorded the reveal
-            using var mounted = V.Mount(_root, V.Component(AbortHostRender, key: "abort-host"), new MountOptions((_, _) => { }));
+            using var mounted = V.Mount(_root, V.Component(AbortHostRender, key: "abort-host"), new MountOptions { OnCaughtError = (_, _) => { } });
             var container = _root.Q<VisualElement>("container");
             var primary = _root.Q<VisualElement>("primary");
             Resuspend(mounted);

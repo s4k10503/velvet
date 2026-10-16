@@ -219,7 +219,7 @@ namespace Velvet.Tests
         {
             // Arrange — the starter sits under a boundary of its own, which the fault is thrown to
             using var mounted = V.Mount(_root, V.Component(ActionHostRender, key: "action-host"),
-                new MountOptions((_, _) => { }));
+                new MountOptions { OnCaughtError = (_, _) => { } });
             var gate = new VelvetTaskCompletionSource();
             s_childStart.Invoke(async () =>
             {
