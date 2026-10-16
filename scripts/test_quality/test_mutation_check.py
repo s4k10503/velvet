@@ -8112,6 +8112,21 @@ class ShardCeilingTests(unittest.TestCase):
         # Assert
         self.assertEqual(within, (True, True))
 
+    def test_Given_TheShardJobsMarkerStep_When_ItsCommandsAreRead_Then_LogsIsHandedBackBeforeTheMarkerIsWritten(self):
+        # Arrange — the docker steps run as root and leave Logs/mutation-playmode-shard owned by it, so a
+        # host-side write into it is refused unless the runner user takes the directory back first.
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
+        step = job.partition("- name: Measure PlayMode")[2].partition("- uses: actions/upload-artifact")[0]
+        commands = step.partition("- if: always()")[2]
+
+        # Act
+        chown = commands.find('sudo chown -R "$(id -u):$(id -g)" Logs')
+        write = commands.find("> Logs/mutation-playmode-shard/")
+
+        # Assert
+        self.assertEqual((chown >= 0, 0 <= chown < write), (True, True))
+
     def test_Given_TheShardJobsPlayModeStep_When_ItsCommandIsRead_Then_ItMeasuresItsOwnShardsSurvivorsInOneShard(self):
         # Arrange — the pass runs in the EditMode shard's job, over the survivors of that shard alone: another
         # shard's survivors would be measured twice, and no `--shard 0/1` would make the run decide the campaign.
