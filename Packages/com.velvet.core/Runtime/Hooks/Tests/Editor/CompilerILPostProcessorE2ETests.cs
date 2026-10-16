@@ -1384,7 +1384,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures the pair of a custom hook
         // unwoven too.
         // What it pins is the second element being taken for a setter only from a hook of the library: dropping `&&
-        // (setters is 0 || (isDirect && setters is 1))` from `TupleElementsAreSound` weaves it.
+        // (setters is 0 || (stableSecond && setters is 1))` from `TupleElementsAreSound` weaves it.
         [Test]
         public void Given_ACustomHookPairAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
         {
@@ -1454,12 +1454,67 @@ namespace Velvet.Tests
             Assert.That(pops, Is.EqualTo(0), "The gate sits after the store of the last element, not between the read and the store");
         }
 
+        [Component]
+        public static VNode StoreTupleSelectorComponent()
+        {
+            var (first, second) = Hooks.UseStore(s_firstStore, value => (value, value + 1));
+            return V.Label(text: first.ToString() + second);
+        }
+
+        [Component]
+        public static VNode HandlerCapturingAStoreTupleComponent()
+        {
+            var (first, second) = Hooks.UseStore(s_firstStore, value => (value, value + 1));
+            return V.Button(text: "go", onClick: () => System.Console.Write(first + second));
+        }
+
+        [Component]
+        public static VNode HandlerReassigningAHookValueComponent()
+        {
+            var (count, _) = Hooks.UseState(0);
+            return V.Button(text: "add", onClick: () => { count++; });
+        }
+
+        [Test]
+        public void Given_AStoreWhoseSelectorReturnsAPair_When_Woven_Then_IsLeftUnwoven()
+        {
+            // Act
+            var woven = IsWoven(LoadMethod(nameof(StoreTupleSelectorComponent)));
+
+            // Assert
+            Assert.That(woven, Is.False, "The second element of a store's selected pair is a value of the selector's, not a setter");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures a hook value unwoven,
+        // whatever the hook returns.
+        // What it pins is the second element of a pair being left out of the gate for four hooks only: `isDirect` in
+        // place of `isDirect && StableSecondElementHookNames.Contains(hookTarget!.Name)` in `TryScanHookSection`
+        // weaves it.
+        [Test]
+        public void Given_AHandlerCapturingAStoreWhosePairIsSelected_When_Woven_Then_IsLeftUnwoven()
+        {
+            // Act
+            var woven = IsWoven(LoadMethod(nameof(HandlerCapturingAStoreTupleComponent)));
+
+            // Assert
+            Assert.That(woven, Is.False, "The second element of a store's selected pair is a value of the selector's, not a setter");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures a hook value unwoven,
+        // whatever the handler does to it.
+        // What it pins is a handler that assigns the captured value being refused: `if (false)` in place of the
+        // `LambdaWritesACapturedHookValue` test in `TryAnalyze` weaves it.
+        [Test]
+        public void Given_AHandlerReassigningAHookValue_When_Woven_Then_IsLeftUnwoven()
+        {
+            // Act
+            var woven = IsWoven(LoadMethod(nameof(HandlerReassigningAHookValueComponent)));
+
+            // Assert
+            Assert.That(woven, Is.False, "A handler that assigns the variable makes it other than what the gate compared");
+        }
+
         #endregion
-
-
-
-
-
 
         #region Bailed shapes (left unwoven)
 
