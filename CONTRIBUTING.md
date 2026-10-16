@@ -175,7 +175,9 @@ question, and under one nearly everything survives. `--platform` is not one of t
 suite, just a different one — so it reads declarations, and the platform is part of the verdict
 records' key so that a kill a PlayMode run took is never kept for an EditMode one. `--survivors-of`
 takes a run on one platform as the first of two passes: the run on the other platform measures only
-that run's survivors and decides over both, which is the decision CI takes.
+that run's survivors and decides over both, which is the decision CI takes. `--survivors-shard K/N`
+narrows what is read to the mutants the first run's shard K of N was dealt, which is how a shard's job
+measures the survivors of its own mutants on the other platform.
 
 **A changed line is asked about once.** A line can generate several mutants — `a <= b && c` has a
 boundary flip, a logic flip and a clause removal — and the campaign keeps one of them, so its cost
@@ -238,12 +240,16 @@ not. `Mutation campaign ▸ mutation-shard` then measures every mutant in up to 
 test assemblies first where those are cheap, and against the whole EditMode suite wherever that did
 not kill it, which
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
-owns. Once every one of those jobs has passed, `Mutation campaign ▸ mutation-playmode-plan` counts
-the mutants they left surviving, and `Mutation campaign ▸ mutation-playmode-shard` measures only those
-against the whole
-PlayMode suite, in up to ten jobs of its own. That pass has a ceiling of its own, and over it the
-pass is refused: EditMode tests for the survivors bring the count under it, since the count is of
-EditMode survivors and no PlayMode test lowers it, and otherwise the pull request is split.
+owns. When a job's EditMode pass has ended, the same job counts the mutants it left surviving and
+measures only those against the whole PlayMode suite, on the same runner and licence: the PlayMode pass
+starts as soon as its own shard's EditMode pass ends, rather than after the slowest shard's, and adds no
+job. An account's concurrent hosted jobs are few, and a job added for the PlayMode pass would queue
+behind the EditMode shards and behind another pull request's campaign. That pass has a ceiling of its
+own, `SHARD_CEILING["PlayMode"]` survivors in one shard, and over it the job fails after uploading its
+EditMode records: EditMode tests for the survivors bring the count under it, since no PlayMode test
+lowers it, and otherwise the pull request is split. A PlayMode pass runs only where its job's EditMode
+pass passed. The job's 360 minutes, the most a hosted job runs, hold the EditMode step's 180, the PlayMode step's 165
+and 15 for the checkout, restore and uploads around them; `ShardCeilingTests` holds each step to its platform's ceiling.
 `Mutation campaign ▸ mutation-verdict` reads both passes' records and the kills the plan reused, and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
 a mutant nothing measured fails it, and a survivor of the EditMode pass that no PlayMode shard
 recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
@@ -300,7 +306,7 @@ record that cannot be read in full — a ledger that is missing, expired, listed
 is only a measurement owed. The plan's summary says how many verdicts were reused and, for each mutant it
 measures again, why. A reused kill reaches no shard: the plan writes its decision into the
 artifact that carries the mutant list, every later job hands it back with `--reuse`, and the shards, the
-PlayMode plan and the shard count are dealt over the mutants not reused, and the ceiling above counts
+shard count is dealt over the mutants not reused, and the ceiling above counts
 only those. A kill
 the PlayMode pass took is reused like an EditMode one, and neither pass is asked about it. The verdict
 job reads each reused kill against its own tree rather than trusting the plan's file, and a kill whose
@@ -363,14 +369,15 @@ for any campaign, and the merge run it dispatches is settle's. `refuse/merge_unp
 not read the citation, which a merge by hand therefore skips.
 
 **Every shard measures the plan's list, and a shard that did not report is not a survivor.**
-`mutation-plan` writes the mutant list it counted (`--emit-mutants`) and each shard, the PlayMode plan
-and the verdict job hand it back (`--mutants`): a tree that generates another list refuses to run, rather than dealing its
+`mutation-plan` writes the mutant list it counted (`--emit-mutants`) and each shard and the verdict job
+hand it back (`--mutants`): a tree that generates another list refuses to run, rather than dealing its
 indices to other mutants. A shard that died, was cancelled or timed its baseline out records nothing,
 and the verdict job names it under `not measured`, with the shard's number: that is neither a
 survivor nor a stale declaration, and a declaration over a mutant of such a shard is not reported
 stale. An EditMode shard that died is named the same way, with the heading `EditMode`; its mutants are
-in no PlayMode pass's list, and no PlayMode shard is named then, since that pass is skipped when an
-EditMode shard fails. The run still fails. Re-running only the failed jobs of the run completes it: the shard
+in no PlayMode pass's list, and no PlayMode shard is named then, since a job runs its PlayMode pass only
+after its EditMode pass passed. A PlayMode pass is named by the EditMode shard whose job ran it, and
+`Mutation PlayMode shard N` is that job's. The run still fails. Re-running only the failed jobs of the run completes it: the shard
 artifacts upload with `overwrite`, and the verdict job decides again over every record.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
@@ -387,9 +394,9 @@ below were measured before sessions, over launches alone; how many mutants a dif
 measured in that section, against the window it names. A mutant's launch-compile-run measured
 100–118 s on a developer machine against a 94 s baseline. `--plan` makes one EditMode shard for every six mutants, as many as ten, and the deal
 sets how many each holds, up to `SHARD_CEILING`; it stops adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
-before its first mutant; a PlayMode shard takes one, since the pass waits on its slowest shard and
-each of its mutants costs more than twice an EditMode one measured on the same run, which pays a
-shard's pull, activation and baseline once a survivor rather than once a pair for a pass of up to ten. Measured over 121 EditMode shards of the 100 pull-request runs
+before its first mutant; the PlayMode pass of a shard's survivors pays its own activation and baseline in the same job, not an image pull, and each of its mutants costs more than twice an EditMode one measured on the same run.
+
+**Shard count under an account's concurrent-job cap.** GitHub Free runs 20 hosted jobs at once across the whole account, and one pull request's `Test` is about five of them while its campaign holds one for the plan, one for the Library and one per shard. With two pull requests open, `Test` takes about ten and leaves ten for both campaigns, so each runs about five shards at a time until `Test` ends, and ten after. `MAX_SHARDS` stays at ten: with one pull request open there are free jobs for ten shards, and with two they queue behind each other rather than slowing the others down, while a shard of fewer mutants pays the same pull, activation and baseline for less work. This follows from the timings below and the cap; no run of two campaigns has been timed. A cap is a reason not to add a PlayMode job per survivor, which is why that pass runs in the shard's own job. Measured over 121 EditMode shards of the 100 pull-request runs
 completed on 2026-09-26 and 2026-09-27, before a mutant was narrowed, a shard spent a median of 98 s
 before activating, 82 s of it pulling the image, 36 s activating and 211 s on its baseline, and its
 645 mutants took a median of 190 s. Over the 461 EditMode baselines those runs uploaded, the
