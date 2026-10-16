@@ -98,6 +98,9 @@ namespace Velvet
         public static long WithRule(long priority, int declaration)
             => priority | System.Math.Min(System.Math.Max(declaration + 1, 0), RuleMask);
 
+        // The rank a layer's key carries, without the rule's place.
+        public static long RankOf(long key) => key & ~RuleMask;
+
         #region Important
         // The important band (!utility / utility!) sits above every ordinary rank while important-versus-
         // important keeps the ordinary order: hover:!w-[10px] beats !w-[20px], the same way hover:w-[10px] beats
@@ -288,6 +291,12 @@ namespace Velvet
         // or a base layer and a hover layer of the SAME name, never clobber each other. The Custom field
         // on ArbitraryStyle carries the resolved definition and parsed arguments; Value/Unit/Color are unused.
         FilterCustom,     // filter-[dissolve:0.4] -> filter: <custom function>(0.4) (payload = Custom)
+        // drop-shadow-md / drop-shadow-[0_2px_4px_#000] -> one drop-shadow function per shadow (payload =
+        // DropShadow), composed after the s_filterOrder members and before the customs.
+        FilterDropShadow,
+        // drop-shadow-red-500/50 -> the colour every drop-shadow takes where Tailwind's colour variable reaches
+        // it (Color).
+        FilterDropShadowColor,
         #endregion
 
         // Size shorthand (StyleLength; fans out to width + height, like Inset).
@@ -350,6 +359,8 @@ namespace Velvet
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
         // null for every other property.
         public CustomFilterValue? Custom { get; }
+        // Payload for FilterDropShadow; null for every other property.
+        public DropShadowValue? DropShadow { get; }
         // A length an element has to measure (em, a viewport unit, a percentage beside a pixel length), for a
         // property PropertySetters writes; Value and Unit then carry nothing. Null for every other result.
         public StyleLengthExpression? Expression { get; }
@@ -391,6 +402,7 @@ namespace Velvet
             Value4 = 0f;
             Color = default;
             Custom = null;
+            DropShadow = null;
             Expression = null;
         }
 
@@ -409,6 +421,7 @@ namespace Velvet
             Value4 = 0f;
             Color = default;
             Custom = null;
+            DropShadow = null;
             Expression = null;
         }
 
@@ -428,6 +441,7 @@ namespace Velvet
             Value4 = 0f;
             Color = default;
             Custom = null;
+            DropShadow = null;
             Expression = null;
         }
 
@@ -458,6 +472,7 @@ namespace Velvet
             Value3 = 0f;
             Value4 = 0f;
             Custom = null;
+            DropShadow = null;
             Expression = null;
         }
 
@@ -469,6 +484,7 @@ namespace Velvet
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
             Custom = custom;
+            DropShadow = null;
             Expression = null;
             Value = 0f;
             Unit = LengthUnit.Pixel;
@@ -479,11 +495,55 @@ namespace Velvet
             Color = default;
         }
 
+        // Creates a FilterDropShadow result.
+        public ArbitraryStyle(ArbitraryProperty property, DropShadowValue dropShadow)
+            : this(property, auto: default)
+        {
+            DropShadow = dropShadow;
+        }
+
         // Creates a length result only the element it is written to can measure (see ApplyInline).
         public ArbitraryStyle(ArbitraryProperty property, StyleLengthExpression expression)
             : this(property, 0f, LengthUnit.Pixel)
         {
             Expression = expression;
+        }
+    }
+
+    // A drop-shadow-* size token's shadows. Literal marks the tokens whose Tailwind rule writes the shadows'
+    // own colours into the filter, whatever a drop-shadow colour token says; Alpha is the /N modifier, which
+    // also scales that colour token's colour.
+    internal sealed class DropShadowValue
+    {
+        public readonly DropShadowLayer[] Shadows;
+        public readonly bool Literal;
+        public readonly float? Alpha;
+
+        public DropShadowValue(DropShadowLayer[] shadows, bool literal, float? alpha)
+        {
+            Shadows = shadows;
+            Literal = literal;
+            Alpha = alpha;
+        }
+    }
+
+    // One drop-shadow() function: the offset and standard deviation in pixels, and the colour.
+    internal readonly struct DropShadowLayer
+    {
+        // currentcolor, its alpha a factor on the element's colour: the compose reads the colour as it writes.
+        public static readonly Color CurrentColor = new(float.NaN, 0f, 0f, 1f);
+
+        public readonly float X;
+        public readonly float Y;
+        public readonly float Deviation;
+        public readonly Color Color;
+
+        public DropShadowLayer(float x, float y, float deviation, Color color)
+        {
+            X = x;
+            Y = y;
+            Deviation = deviation;
+            Color = color;
         }
     }
 

@@ -122,6 +122,12 @@ namespace Velvet
                 return true;
             }
 
+            // The drop-shadow family takes a modifier after its bracket, which the bracket path below rejects.
+            if (StyleFilterValueParser.TryParseDropShadow(className, out result))
+            {
+                return true;
+            }
+
             var negate = className.Length > 0 && className[0] == '-';
             var offset = negate ? 1 : 0;
 
@@ -2260,36 +2266,9 @@ namespace Velvet
             return false;
         }
 
-        // Prefixes classifying a core token as part of the composed filter family (the built-in filter
-        // utilities' bracket forms plus filter-[name:…] customs) without resolving it — the class-diff
-        // reapply's skip decision must not itself pay the parse it is avoiding.
-        private static readonly string[] s_filterFamilyTokenPrefixes = BuildFilterFamilyTokenPrefixes();
-
-        private static string[] BuildFilterFamilyTokenPrefixes()
-        {
-            var families = StyleFilterValueParser.BuiltInFamilyNames;
-            var prefixes = new string[families.Length + 1];
-            for (var i = 0; i < families.Length; i++)
-            {
-                prefixes[i] = families[i] + "-[";
-            }
-            prefixes[families.Length] = "filter-[";
-            return prefixes;
-        }
-
-        // True for tokens whose resolved property lands in the composed filter family. Purely
-        // syntactic on the bracket prefix: cheap enough to gate a skip without parsing the value.
-        internal static bool IsFilterFamilyToken(string core)
-        {
-            foreach (var prefix in s_filterFamilyTokenPrefixes)
-            {
-                if (core.StartsWith(prefix, System.StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+        // True for tokens whose resolved property lands in the composed filter family, named presets included.
+        // Purely syntactic, so the class-diff reapply's skip decision does not pay the parse it is avoiding.
+        internal static bool IsFilterFamilyToken(string core) => StyleFilterValueParser.IsFilterLeaf(core);
 
         // Applies the winning layer for a property. Translate and scale are special: their axis layers share
         // one inline `translate` / `scale`, so their winners must be composed before that write.
@@ -2614,8 +2593,6 @@ namespace Velvet
             }
         }
 
-        // The filter members share one source of truth with the compose order (s_filterOrder), so a new
-        // filter added there is automatically recognized here — no parallel membership list to keep in sync.
         private static bool IsFilter(ArbitraryProperty p) => s_filterSet.Contains(p);
 
         // CSS composes filter functions left-to-right into one `filter` property; UITK matches (one
@@ -2634,9 +2611,14 @@ namespace Velvet
             ArbitraryProperty.FilterSepia,
         };
 
-        // Built from s_filterOrder (declared after it so the textual static-init order is satisfied) so the
-        // filter set is single-sourced — see IsFilter.
-        private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder);
+        // s_filterOrder's members plus the drop-shadow pair, whose two stacks AppendDropShadows reads together
+        // rather than one function per property. Declared after s_filterOrder so the textual static-init order
+        // is satisfied.
+        private static readonly HashSet<ArbitraryProperty> s_filterSet = new(s_filterOrder)
+        {
+            ArbitraryProperty.FilterDropShadow,
+            ArbitraryProperty.FilterDropShadowColor,
+        };
 
         // Writes the filter the element's layers compose, variant layers included, or clears it where none remain.
         internal static void RecomposeFilter(VisualElement element)
@@ -2665,6 +2647,7 @@ namespace Velvet
                     (functions ??= new List<FilterFunction>()).Add(fn);
                 }
             }
+            AppendDropShadows(element, map, ref functions);
             // Customs compose AFTER every built-in, in first-application order — each entry contributing
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
             // SortedList wins" rule the built-ins use above, just keyed by name instead of by
@@ -2695,6 +2678,94 @@ namespace Velvet
             {
                 StyleFilterEngineWrite.Write(element, functions);
             }
+        }
+
+        // Tailwind's drop-shadow utilities write variables rather than the filter. A size writes
+        // --tw-drop-shadow-size, its colours reading --tw-drop-shadow-color, and a colour writes that colour, scaled by
+        // the --tw-drop-shadow-alpha a size's modifier writes. --tw-drop-shadow, which the filter reads, is written by
+        // all of them: a literal size writes its own shadows, none writes an empty one, and every other token
+        // var(--tw-drop-shadow-size), which none leaves to the size under it. At one rank the colour's rule sorts
+        // after the others and wins, so the comparison reads ranks alone, never the rule's place in a key.
+        private static void AppendDropShadows(VisualElement element, LayerMap map, ref List<FilterFunction>? functions)
+        {
+            if (!map.TryGetValue(ArbitraryProperty.FilterDropShadow, out var sizes) || sizes.Count == 0)
+            {
+                return;
+            }
+            var definition = BuiltInFilterDefinitions.DropShadow;
+            if (definition == null || sizes.Values[sizes.Count - 1].DropShadow is not { } top)
+            {
+                return;
+            }
+            Color? variable = null;
+            var colorWrites = false;
+            if (map.TryGetValue(ArbitraryProperty.FilterDropShadowColor, out var colors) && colors.Count > 0)
+            {
+                var color = colors.Values[colors.Count - 1].Color;
+                color.a *= AlphaVariable(sizes) ?? 1f;
+                variable = color;
+                colorWrites = StyleLayerPriority.RankOf(colors.Keys[colors.Count - 1])
+                    >= StyleLayerPriority.RankOf(sizes.Keys[sizes.Count - 1]);
+            }
+            var literal = top.Literal && !colorWrites;
+            var size = literal ? top : SizeVariable(sizes);
+            if (size == null)
+            {
+                return;
+            }
+            foreach (var shadow in size.Shadows)
+            {
+                var color = shadow.Color;
+                if (!literal)
+                {
+                    if (variable != null)
+                    {
+                        color = variable.Value;
+                    }
+                    else if (size.Alpha != null)
+                    {
+                        color.a = size.Alpha.Value;
+                    }
+                }
+                if (float.IsNaN(color.r))
+                {
+                    var current = element.resolvedStyle.color;
+                    current.a *= color.a;
+                    color = current;
+                }
+                var function = new FilterFunction(definition!);
+                function.AddParameter(new FilterParameter(shadow.X));
+                function.AddParameter(new FilterParameter(shadow.Y));
+                function.AddParameter(new FilterParameter(shadow.Deviation));
+                function.AddParameter(new FilterParameter(color));
+                (functions ??= new List<FilterFunction>()).Add(function);
+            }
+        }
+
+        // The highest layer writing --tw-drop-shadow-size, which none does not.
+        private static DropShadowValue? SizeVariable(SortedList<long, ArbitraryStyle> sizes)
+        {
+            for (var i = sizes.Count - 1; i >= 0; i--)
+            {
+                if (sizes.Values[i].DropShadow is { Shadows: { Length: > 0 } } size)
+                {
+                    return size;
+                }
+            }
+            return null;
+        }
+
+        // The highest layer declaring a modifier: a size without one leaves --tw-drop-shadow-alpha alone.
+        private static float? AlphaVariable(SortedList<long, ArbitraryStyle> sizes)
+        {
+            for (var i = sizes.Count - 1; i >= 0; i--)
+            {
+                if (sizes.Values[i].DropShadow?.Alpha is { } alpha)
+                {
+                    return alpha;
+                }
+            }
+            return null;
         }
 
         // Builds the FilterFunction for a filter-[name:args] custom filter. The public
