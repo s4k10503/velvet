@@ -487,6 +487,75 @@ record from a narrowed sweep it would replace the rest with them, which is refus
 rather than after. A floor catches a collapse, not a thinning — a record rewritten to eighteen
 fixtures of one line each still passes.
 
+**A pull request that only deletes tests is checked by comparing kills, not by the campaign.** Mutants are
+placed in package sources outside `Tests/` and `TestUtilities/`, so a pull request that touches nothing
+else has none: its campaign reports no mutable change and passes whatever it removed. What such a pull
+request claims is that every removed case was redundant, and that is a statement about two trees over the
+same production source: each mutant the base tree's tests killed is killed by what the head leaves.
+`.github/workflows/kill-set.yml` measures it. It is dispatched by hand, is required by nothing, and runs on
+no event, because every mutant it measures costs the whole suite on two trees.
+
+```bash
+gh workflow run kill-set.yml --ref main \
+  -f files="Packages/com.velvet.core/Runtime/Foo/Bar.cs Packages/com.velvet.core/Runtime/Foo/Baz.cs" \
+  -f assemblies="Velvet.Tests.Foo.Editor" -f base=main -f head=my-pruning-branch -f platform=EditMode
+```
+
+`files` names the production sources whose mutants the removed cases could have been killing, each taken
+whole. `head` must leave them, and `Assets/MutantSchemata`, byte-identical to the merge base, or the plan
+refuses: the campaign's runner is tracked in the project and switches with the tree, so a pull request that
+changes it is not a pruning. The plan also refuses a path that is not a mutable package source, so a
+mistyped path fails the run rather than passing over nothing. `assemblies` is the test assemblies of the
+removed cases and of whatever is meant to keep killing what they killed: a kill by an assembly left out
+of it is not made on either tree, so a mutant the removed cases killed and only an omitted assembly would
+still kill reads as lost, and leaving it empty measures the whole suite. `base` is the branch the pull
+request merges into, resolved to its merge base with `head` by `scripts/ci/change_base.py`. The `scripts/`
+that run are the head's own on both trees, so a head cut before `kill-set.yml` landed has no such
+tooling. A run is one platform over one list of files: a pull request that needs more starts more runs.
+Listing the mutants needs no editor:
+
+```bash
+python3 scripts/test_quality/mutation_check.py --files <the same paths> --list
+```
+
+The plan refuses a list over the campaign's own ceiling, `SHARD_CEILING` mutants a shard in at most
+`MAX_SHARDS` shards, because the sizing is the campaign's: each shard job measures one tree, as a
+`mutation-shard` job measures its step, and `ShardCeilingTests` charges both alike. The measuring step
+passes `--timeout` at three times the longest baseline measured, which `HANG_MARGIN` makes the least at which
+a hang reads as one.
+
+Each shard is measured on the head and on the base, in two jobs, by the default campaign: narrowed to an
+area or to the cases that ran the site first, and on the whole suite wherever that did not kill. The
+diff job, which runs only if every shard passed, runs `scripts/test_quality/kill_set_diff.py` over the two
+sets of records. It matches mutants by file, line, column and rewrite and never by index, and compares
+verdicts only. It fails, and names each one, when a mutant the base killed is not killed on the head — a
+survivor, or a verdict that measured nothing — and a mutant that outlived `--timeout` on the base is a kill
+the head has to match with a kill or a timeout. It cannot make the comparison, and says so, when a
+mutant has a record on one tree only, when a base verdict is neither a kill nor a survivor nor a
+non-mutant (an uncompilable mutant, for one), and when the base killed none and so proved nothing. A kill
+the head makes that the base did not is reported and passes.
+
+Say in the pull request body which `files` and `assemblies` were measured, the run's link, and the summary
+line the diff job prints (`N mutant(s); killed on the base: …, lost on the head: 0, …`), beside the
+deleted cases.
+
+Pruning trips two other checks as well:
+
+- **Removing a `[TestCase]` row changes the method's own text.** `base_red_check.py` reads a case's span
+  as the attribute lines above the method as well as its body, so the method is posed to the base run, where
+  its remaining rows pass; it needs a refactor declaration above it. Deleting a whole case poses nothing, since a case the branch no longer has is not one it wrote.
+- **A deleted case's lines in `scripts/test_quality/neuter_holes.txt` and
+  `scripts/test_quality/assume_gate_baseline.txt` have to go with it.** `Test ▸ test-quality` runs
+  `neuter_check.py --audit`, which fails an entry for a case its fixture no longer declares, and
+  `assume_gate_check.py`, which fails an entry the scan no longer finds. A case with no line in either
+  needs nothing there.
+
+The first one's declaration reads, above the method:
+
+```csharp
+// GREEN_ON_BASE(refactor): the remaining rows are cases this method already ran.
+```
+
 ### Checking that a new test could have failed
 
 Both instruments above ask what happens when the production code is broken on purpose.
