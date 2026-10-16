@@ -31,8 +31,8 @@ namespace Velvet.Tests
     /// answering with a VALUE is the silence, because the member added tomorrow gets that value and the
     /// build stays green. A catch-all that THROWS is left alone. It defeats CS8509 the same way, and the
     /// exemption is deliberate: the wrong answer becomes a stack trace at the first call instead of a
-    /// value nobody traces back. The switches whose catch-all still answers with a value are named one by
-    /// one in <c>KnownValueAnsweringSites</c>, with what stands in the way of each.
+    /// value nobody traces back. The switch whose catch-all still answers with a value is named in
+    /// <c>Then_OnlyTheKnownSitesAnswerACatchAllWithAValue</c>, with what stands in the way of it.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -328,7 +328,7 @@ namespace Velvet.Tests
         // falls into it and the build stays green. Where named arms hold the top instead, that member is
         // uncovered and CS8509 fails the build. This reports the shape either way rather than telling the
         // two apart, which is what scopes it to a range arm.
-        // KnownValueAnsweringSites says which switch reaches for the shape and why.
+        // Then_OnlyTheKnownSitesAnswerACatchAllWithAValue says which switch reaches for the shape and why.
         private static readonly Regex RangeArmPattern = new(@"(?<![\w])[<>]=?", RegexOptions.Compiled);
 
         // The guard clause, matched on the word boundary rather than on a trailing space, so `_ when(x)`
@@ -463,28 +463,19 @@ namespace Velvet.Tests
         private static (List<string> Sites, int Examined) RangeAnsweringSites() =>
             SitesAcrossGuardedAssemblies(ValueAnsweringRangeArms);
 
-        /// <summary>
-        /// The switch whose catch-all still answers with a value, for a reason this branch could not remove.
-        /// The list is a floor to work down, not a budget: an entry leaving it is a tightening, and one
-        /// arriving is the failure this case exists for.
-        /// <para>
-        /// <c>AllowsNegativeLength</c> keeps its discard because neither rewrite is worth making. Naming
-        /// <c>ArbitraryProperty</c>'s members costs one branching decision each, which VEL501 refuses at
-        /// its cap of 20. Grouping the unnamed ones behind a range arm fits under the cap and answers the
-        /// member added tomorrow exactly as the discard does, so the silence would outlive the rewrite —
-        /// <c>Then_NoneAnswersARangeOfMembers</c> is what keeps that one from arriving unnoticed.
-        /// </para>
-        /// <para>
-        /// The router's own two catch-all switches over <c>NavigationMode</c> are gone: a step is named by the
-        /// entry it lands on rather than by its mode, so the only switch left over the mode is the commit's,
-        /// whose default arm throws.
-        /// </para>
-        /// </summary>
-        private static readonly string[] KnownValueAnsweringSites =
-        {
-            "MotionPropertyClassParser.cs (ArbitraryProperty)",
-        };
-
+        // The switch whose catch-all still answers with a value, for a reason this branch could not remove.
+        // The roster is a floor to work down, not a budget: an entry leaving it is a tightening, and one
+        // arriving is the failure this case exists for.
+        //
+        // AllowsNegativeLength keeps its discard because neither rewrite is worth making. Naming
+        // ArbitraryProperty's members costs one branching decision each, which VEL501 refuses at its cap of
+        // 20. Grouping the unnamed ones behind a range arm fits under the cap and answers the member added
+        // tomorrow exactly as the discard does, so the silence would outlive the rewrite —
+        // Then_NoneAnswersARangeOfMembers is what keeps that one from arriving unnoticed.
+        //
+        // The router's own two catch-all switches over NavigationMode are gone: a step is named by the
+        // entry it lands on rather than by its mode, so the only switch left over the mode is the commit's,
+        // whose default arm throws.
         [Test]
         public void Given_EveryProductionSwitchOverAPackageEnum_When_ItsArmsAreRead_Then_OnlyTheKnownSitesAnswerACatchAllWithAValue()
         {
@@ -494,11 +485,11 @@ namespace Velvet.Tests
             // Assert — the floor rides along because an enum set that came back empty, or a source tree
             // that read as none, reports nothing and would otherwise pass having measured nothing.
             Assert.That((examined >= 12, string.Join("\n", sites.OrderBy(site => site, StringComparer.Ordinal))),
-                Is.EqualTo((true, string.Join("\n", KnownValueAnsweringSites))));
+                Is.EqualTo((true, "MotionPropertyClassParser.cs (ArbitraryProperty)")));
         }
 
         // GREEN_ON_BASE(characterization): no switch on either side rests on a range arm, so the case is a
-        // ratchet against the rewrite KnownValueAnsweringSites declines rather than a report on this branch.
+        // ratchet against the rewrite the roster case above declines rather than a report on this branch.
         [Test]
         public void Given_EveryProductionSwitchOverAPackageEnum_When_ItsArmsAreRead_Then_NoneAnswersARangeOfMembers()
         {
@@ -532,7 +523,7 @@ internal static class Sample
 
         // GREEN_ON_BASE(characterization): the reading is the branch's and travels with this file, so it
         // answers the same on either side. What it is for is the case above, whose list the branch works
-        // down to one and which would agree with a shorter one just as readily with the reading broken.
+        // down to three and which would agree with a shorter one just as readily with the reading broken.
         [Test]
         public void Given_ACatchAllAnsweringWithAValue_When_TheSwitchIsRead_Then_ItIsReported()
         {
