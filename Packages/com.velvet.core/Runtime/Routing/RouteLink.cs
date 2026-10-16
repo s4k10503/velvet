@@ -12,18 +12,24 @@ namespace Velvet
             string? Name,
             VNode?[]? Children,
             bool Replace,
-            FiberEventBinding[]? Events = null);
+            FiberEventBinding[]? Events = null,
+            object? State = null,
+            RelativeRoutingType Relative = RelativeRoutingType.Route);
 
         [Component]
         public static VNode Render(Props p)
         {
-            var navigate = Hooks.UseNavigate(p.Replace);
+            var navigate = Hooks.UseNavigate();
             var onClick = Hooks.UseCallback<Action<ClickedEvent>>(
                 click =>
                 {
-                    if (!click.DefaultPrevented) navigate(p.To).Forget();
+                    if (!click.DefaultPrevented)
+                    {
+                        navigate(p.To, new NavigateOptions { Replace = p.Replace, State = p.State, Relative = p.Relative })
+                            .Forget();
+                    }
                 },
-                p.To, navigate);
+                p.To, navigate, p.Replace, p.State, p.Relative);
 
             // React Router's Link calls the caller's onClick and navigates only when that left the event's
             // default unprevented, so the navigation is bound after every binding the caller passed, on the
@@ -56,6 +62,8 @@ namespace Velvet
             public bool Replace { get; init; }
             public bool CaseSensitive { get; init; }
             public FiberEventBinding[]? Events { get; init; }
+            public object? State { get; init; }
+            public RelativeRoutingType Relative { get; init; }
         }
 
         [Component]
@@ -65,7 +73,7 @@ namespace Velvet
             var router = Hooks.UseContext(RouterContext.Router);
             var baseRouteIndex = Hooks.UseBaseRouteIndex();
             // Resolved first, because the click path takes p.To through this same Router call to navigate.
-            var target = router.ResolvePath(p.To, baseRouteIndex) ?? p.To;
+            var target = router.ResolvePath(p.To, baseRouteIndex, p.Relative) ?? p.To;
             // Standing in for a missing location with the empty string was rejected: it goes through the same
             // normalisation as the target, where an empty path is the root, so a link to "/" came out as the
             // current page of a tree that has no current page.
@@ -78,7 +86,7 @@ namespace Velvet
             // Keep click navigation owned by RouteLink after deriving the effective class here.
             return V.Component(
                 RouteLink.Render,
-                new RouteLink.Props(p.To, p.Text, className, p.Name, p.Children, p.Replace, p.Events));
+                new RouteLink.Props(p.To, p.Text, className, p.Name, p.Children, p.Replace, p.Events, p.State, p.Relative));
         }
 
         private static bool IsActive(string? currentPath, string resolvedTo, bool end, bool caseSensitive)
@@ -108,7 +116,8 @@ namespace Velvet
             {
                 return "/";
             }
-            var stripped = RouteQuery.StripQuery(path);
+            var hashAt = path.IndexOf('#');
+            var stripped = RouteQuery.StripQuery(hashAt < 0 ? path : path.Substring(0, hashAt));
             if (stripped.Length > 1)
             {
                 stripped = stripped.TrimEnd('/');

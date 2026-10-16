@@ -216,6 +216,44 @@ does. A pathless layout, whose path is empty too, is not an index route.
 - A mutation submitted to the location already committed replaces that history entry, unless its action
   fails or `Replace` says otherwise, as React Router's does.
 
+## Navigating
+
+`Hooks.UseNavigate()` is `useNavigate()`, returning a `NavigateFunction` that is `navigate`:
+
+```csharp
+var navigate = Hooks.UseNavigate();
+navigate("/users/7");
+navigate("/users/7", new NavigateOptions { Replace = true, State = draft });
+navigate("..", new NavigateOptions { Relative = RelativeRoutingType.Path });
+navigate(-1);
+```
+
+- `Replace` replaces the current history entry instead of pushing one. `Router.NavigateAsync(path, options)` and
+  `Router.NavigateAsync(delta)` are the same calls without a component.
+- `State` is stored on the new entry and read back from `RouterLocation.State`; it is null when the call passed none.
+  A step along the history lands on the state its entry was created with, and a navigation a blocker held back
+  carries its state through `Proceed`. A guard redirect carries none, as a redirect in React Router creates a
+  location of its own.
+- `Relative` chooses what a relative target resolves against. `RelativeRoutingType.Route`, the default, drops one
+  matched route for each `..`, anchored at the route level of the component that called the hook;
+  `RelativeRoutingType.Path` drops one segment of the current URL path for each, as React Router's
+  `relative: "path"` does. An absolute target ignores it.
+- `navigate(delta)` moves `delta` entries along the history, negative back and positive forward, and options passed
+  with it are ignored. A delta past either end lands on that end entry, as a memory history's `go` clamps its index.
+  It answers `NavigationResult.Cancelled` when there is no entry in that direction to move to, as `Router.GoBack` and
+  `Router.GoForward` do at the ends, and when the delta is zero.
+- `V.Link`, `V.NavLink` and `V.Navigate` take `state` and `relative` beside `replace`. `V.NavLink` resolves its target
+  with the same `relative` to decide whether it is active, and ignores the fragment of the target for that.
+
+A target may end in a `#fragment`. `RouterLocation.Path` holds the path and its query without it, `RouterLocation.Hash`
+holds it with its `#` (the empty string when there is none), and it takes no part in matching, in which loaders run
+again, or in what a route sees. A target that is only a fragment keeps the current path and drops its query, as React
+Router resolves an empty pathname.
+
+`RouterLocation.Key` identifies the entry: `"default"` for the first the router holds, and a value unique within the
+router for every push or replace after it, replacing the first entry included. A step along the history brings back
+the key of the entry it lands on, so a key read from `Hooks.UseLocation` names the entry whichever way it was reached.
+
 ## Router state
 
 A `Router` keeps the location it has committed apart from the navigation in flight, as React Router's
@@ -265,6 +303,14 @@ where the blocker sits. A submission a guard redirects reaches the target runnin
 **No URL.** There is no browser to own the address bar, so `Router` is `createMemoryRouter`'s
 counterpart and holds its own history stack, which grows without a bound as a memory history's does.
 `Router.NavigateAsync` states how long a redirect chain may be.
+
+**Navigate options.** `NavigateOptions` offers `Replace`, `State`, `Relative` and `PreventScrollReset`. The last is read
+by nothing, because the router has no scroll restoration for it to configure; it is there so a call written against
+React Router's options compiles, and `V.Link` and `V.NavLink` do not take it. `flushSync` and `viewTransition` are not
+offered; they configure browser behaviours with no counterpart in this router. `navigate(0)` answers `Cancelled`
+where a browser's `go(0)` reloads the page. `State` is any object, held by reference and not cloned, where the browser
+clones it into the history entry. `Key` is a counter formatted in hexadecimal, where React Router's is a random string;
+only its being unique is specified.
 
 ## Also see
 

@@ -35,8 +35,25 @@ namespace Velvet
 
     public sealed class RouterLocation
     {
-        /// <summary>The path, including its query string.</summary>
+        internal RouterLocation Copy() => (RouterLocation)MemberwiseClone();
+
+        /// <summary>The path, including its query string and excluding the hash.</summary>
         public string? Path { get; init; }
+        /// <summary>
+        /// The fragment with its leading <c>#</c>, or the empty string when there is none: React Router's
+        /// <c>location.hash</c>. It plays no part in route matching.
+        /// </summary>
+        public string Hash { get; init; } = string.Empty;
+        /// <summary>
+        /// What the navigation that produced this location carried in <see cref="NavigateOptions.State"/>;
+        /// null when it carried none. A history step brings back the state its entry was created with.
+        /// </summary>
+        public object? State { get; init; }
+        /// <summary>
+        /// Identifies the history entry: <c>"default"</c> for the first, and a value unique within the router for
+        /// every push or replace after it. A history step brings back the key of the entry it lands on.
+        /// </summary>
+        public string Key { get; init; } = "default";
         /// <summary>Path parameters captured across the full matched branch.</summary>
         public IReadOnlyDictionary<string, string> Params { get; init; } = null!;
         /// <summary>Hierarchical list of matched routes (parent first).</summary>
