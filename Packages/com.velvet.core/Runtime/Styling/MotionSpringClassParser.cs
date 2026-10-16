@@ -187,7 +187,8 @@ namespace Velvet
         /// Builds the spring plan for a from/to class-array swap — see <see cref="PairAxis"/> for the five fixed
         /// axes and <see cref="PairProperties"/> for the property channels. <paramref name="context"/>, when the
         /// element is attached to a panel, includes resting holders for the delta's slots and supplies the
-        /// start where no explicit from-side value wins. Translate x/y compose onto one
+        /// start where no explicit from-side value wins; one read off a panel includes only the element's own
+        /// important holders. Translate x/y compose onto one
         /// inline style, so naming one axis forces a channel for the other, which rests at <paramref
         /// name="restingTranslateX"/> / <paramref name="restingTranslateY"/> — the element's own inline translate,
         /// read by the caller before the swap lands.
@@ -199,12 +200,13 @@ namespace Velvet
             var from = Scan(fromClasses, context, written);
             var to = Scan(toClasses, context, written);
 
+            var reading = context is { Attached: true } ? context : null;
             var plan = new SpringPlan();
-            PairProperties(in from, in to, context, ref plan);
-            plan.Opacity = PairAxis(in from, in to, ArbitraryProperty.Opacity, 1f, context);
-            PairTranslate(in from, in to, restingTranslateX, restingTranslateY, context, ref plan);
-            plan.Scale = PairAxis(in from, in to, ArbitraryProperty.Scale, 1f, context);
-            plan.Rotate = PairAxis(in from, in to, ArbitraryProperty.Rotate, 0f, context);
+            PairProperties(in from, in to, reading, ref plan);
+            plan.Opacity = PairAxis(in from, in to, ArbitraryProperty.Opacity, 1f, reading);
+            PairTranslate(in from, in to, restingTranslateX, restingTranslateY, reading, ref plan);
+            plan.Scale = PairAxis(in from, in to, ArbitraryProperty.Scale, 1f, reading);
+            plan.Rotate = PairAxis(in from, in to, ArbitraryProperty.Rotate, 0f, reading);
             return plan;
         }
 
@@ -534,13 +536,20 @@ namespace Velvet
         {
             foreach (var cls in context.RestingClasses())
             {
-                Claim(cls, 0, claims, in importantClasses);
+                if (context.Attached || cls.StartsWith("!", StringComparison.Ordinal))
+                {
+                    Claim(cls, 0, claims, in importantClasses);
+                }
             }
             for (var i = 0; i < claims.Length; i++)
             {
                 if (context.HasImportantInlineOutsideSwap(s_slots[i]))
                 {
                     claims[i] = new SlotClaim { Claimed = true, Precedence = long.MaxValue };
+                    continue;
+                }
+                if (!context.Attached)
+                {
                     continue;
                 }
                 // MUTANT_SURVIVES(equivalent, boundary): resting claims never equal this lower inline rank before the comparison.

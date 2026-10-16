@@ -15,11 +15,17 @@ namespace Velvet
         private readonly HashSet<ArbitraryProperty> _inlineBySwap = new();
         private readonly HashSet<ArbitraryProperty> _importantInlineBySwap = new();
 
-        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay)
+        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay,
+            bool attached)
         {
             _element = element;
             _drivenByRunningPlay = drivenByRunningPlay;
+            Attached = attached;
         }
+
+        // False for ReadImportant's: a play planned off a panel takes from it only the important declarations of the
+        // element's own, and reads no current value and no other resting holder.
+        public bool Attached { get; }
 
         public static MotionSlotContext? Read(VisualElement element, string[]? fromClasses, string[]? toClasses,
             Func<ArbitraryProperty, bool> drivenByRunningPlay)
@@ -28,7 +34,16 @@ namespace Velvet
             {
                 return null;
             }
-            var context = new MotionSlotContext(element, drivenByRunningPlay);
+            return Swapping(new MotionSlotContext(element, drivenByRunningPlay, attached: true), fromClasses, toClasses);
+        }
+
+        // An important declaration of the element's own holds its slot through a play on a panel or off one, as
+        // !important outranks an animation in CSS.
+        public static MotionSlotContext ReadImportant(VisualElement element, string[]? fromClasses, string[]? toClasses)
+            => Swapping(new MotionSlotContext(element, static _ => false, attached: false), fromClasses, toClasses);
+
+        private static MotionSlotContext Swapping(MotionSlotContext context, string[]? fromClasses, string[]? toClasses)
+        {
             context.NoteSwapped(fromClasses);
             context.NoteSwapped(toClasses);
             return context;
@@ -283,9 +298,10 @@ namespace Velvet
             return top.Equals(right) && top.Equals(bottom) && top.Equals(left);
         }
 
-        private static Color ReadBorderEdge(VisualElement owner, bool native, StyleLonghand longhand, StyleColor inline, Color resolved)
-            => native && HasRunningNativeTransition(owner, longhand) || inline.keyword != StyleKeyword.Undefined
-                ? resolved : inline.value;
+        private Color ReadBorderEdge(VisualElement owner, bool native, StyleLonghand longhand, StyleColor inline, Color resolved)
+            => DivideDashPainter.IsMask(inline) && DivideDashPainter.TryReadPainted(_element, longhand, out var painted) ? painted
+                : native && HasRunningNativeTransition(owner, longhand) || inline.keyword != StyleKeyword.Undefined
+                    ? resolved : inline.value;
 
         private bool TryConvert(ArbitraryProperty slot, ref ArbitraryStyle value, LengthUnit unit)
         {

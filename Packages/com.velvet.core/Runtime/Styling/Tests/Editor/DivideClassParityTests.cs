@@ -1805,6 +1805,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AColoredDashedDivideRow_When_ADividedChildsBorderColorEnterNamesNoStart_Then_ItStartsFromTheDashColor()
+        {
+            // Arrange
+            ColorUtility.TryParseHtmlString("#e5e7eb", out var gray200);
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "flex flex-row divide-x divide-dashed divide-gray-200", children: new VNode[]
+                {
+                    V.Div(className: "w-[20px] h-[20px]"),
+                    V.Div(name: "b", className: "w-[20px] h-[20px]"),
+                    V.Div(className: "w-[20px] h-[20px]"),
+                }));
+            var child = _window.rootVisualElement.Q("b");
+            ForcePanelUpdate(child.panel);
+            var from = System.Array.Empty<string>();
+            var to = new[] { "border-[#0000ff]" };
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(from, to, 0f, 0f, MotionSlotContext.Read(child, from, to, _ => false));
+
+            // Assert
+            Assert.That(plan.Colors?.Find(channel => channel.Property == ArbitraryProperty.BorderColor).From,
+                Is.EqualTo((Color?)gray200));
+        }
+
+        [Test]
         public void Given_ADashTakingAThemeColorClass_When_TheChildsHoverRuleApplies_Then_TheDashTakesItsColor()
         {
             // Arrange — the pseudo-state is set directly: no pointer reaches an EditMode panel.

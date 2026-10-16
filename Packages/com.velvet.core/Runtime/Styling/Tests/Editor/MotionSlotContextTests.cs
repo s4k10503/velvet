@@ -1063,6 +1063,43 @@ namespace Velvet.Tests
             Assert.That(plan.Lengths, Is.Null);
         }
 
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_AnImportantWidthOfAnOffPanelElementsOwn_When_AWidthEnterStarts_Then_TheImportantWidthStands(TransitionType type)
+        {
+            // Arrange — a Motion's enter plays while it mounts, before the element is on a panel.
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "w-[80px]", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var scheduler = new StyleAnimationScheduler();
+
+            // Act
+            scheduler.PlayVariantEnter(element, new[] { "w-[10px]" }, new[] { "w-[120px]" }, 1f, EasingMode.Linear, 0f,
+                type: type);
+            var width = element.style.width.value.value;
+            scheduler.CancelAll();
+
+            // Assert
+            Assert.That(width, Is.EqualTo(80f));
+        }
+
+        [TestCase(TransitionType.Spring)]
+        [TestCase(TransitionType.Bezier)]
+        public void Given_AnImportantPaddingEdgeClassOfAnOffPanelElementsOwn_When_APaddingEnterStarts_Then_ThatEdgeKeepsTheImportantValue(TransitionType type)
+        {
+            // Arrange — pt-8 is a class, which no inline layer stands for, and writes one edge of the four p-4 does.
+            var element = new VisualElement();
+            StyleClassProjection.Add(element, "pt-8", StyleLayerPriority.ImportantOf(StyleLayerPriority.Base));
+            var scheduler = new StyleAnimationScheduler();
+
+            // Act
+            scheduler.PlayVariantEnter(element, new[] { "p-0" }, new[] { "p-4" }, 1f, EasingMode.Linear, 0f, type: type);
+            var top = element.style.paddingTop.value.value;
+            scheduler.CancelAll();
+
+            // Assert
+            Assert.That(top, Is.EqualTo(32f));
+        }
+
         [Test]
         public void Given_EmptyTokensAroundALengthTarget_When_ResolvedWithContext_Then_TheEmptyTokensAreIgnored()
         {

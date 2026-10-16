@@ -353,7 +353,8 @@ resolved start described above.
   ([styling-filters.md](styling-filters.md#transitions)); `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
   parser, so a ratio change snaps.
 - A target-only uniform scale or border color lands instantly when the sampled x/y scale values
-  or border edge colors differ.
+  or border edge colors differ. The edge a `divide-dashed` or `divide-dotted` divider draws is sampled
+  as the color its dash takes.
 - **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`) **and per-axis `scale-x-` /
   `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
   Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands

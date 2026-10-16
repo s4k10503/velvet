@@ -138,6 +138,19 @@ namespace Velvet
             }
         }
 
+        // The color the dash on child's edge for longhand is painted in, short of a transition toward it (Advance).
+        internal static bool TryReadPainted(VisualElement child, StyleLonghand longhand, out Color color)
+        {
+            if (!s_bound.TryGetValue(child, out var binding)
+                || HeldSlotGroups.LonghandOf(StyleDivideManipulator.ColorSlot(binding.Edge)) != longhand)
+            {
+                color = default;
+                return false;
+            }
+            color = PaintColor(binding);
+            return true;
+        }
+
         internal static bool IsMask(StyleColor color)
             => color.keyword == StyleKeyword.Undefined && SilhouetteFace.IsSentinel(color.value);
 
