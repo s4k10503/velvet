@@ -57,9 +57,13 @@ namespace Velvet
         // reversed.
         public readonly bool Reverse;
 
+        // A width each child measures (divide-x-[1em]) in place of Width; null where it is in pixels.
+        public readonly StyleLengthExpression? WidthMeasured;
+
         public DivideSpec(DivideAxis axis, float width, Color? color, BorderLineStyle style, bool reverse,
-            DivideImportance important)
+            DivideImportance important, StyleLengthExpression? widthMeasured = null)
         {
+            WidthMeasured = widthMeasured;
             Axis = axis;
             Width = width;
             HasColor = color.HasValue;
@@ -134,6 +138,7 @@ namespace Velvet
             var foundAxis = false;
             var axis = DivideAxis.Horizontal;
             var width = 0f;
+            StyleLengthExpression? widthMeasured = null;
             var hasColor = false;
             var color = default(Color);
             var style = BorderLineStyle.Solid;
@@ -165,13 +170,14 @@ namespace Velvet
                         yReverse = true;
                     }
                 }
-                else if (TryParseAxisWidth(cls, out var a, out var w))
+                else if (TryParseAxisWidth(cls, out var a, out var w, out var measured))
                 {
                     if (Outranks(important, ref axisImportant))
                     {
                         foundAxis = true;
                         axis = a;
                         width = w;
+                        widthMeasured = measured;
                     }
                 }
                 else if (TryParseStyle(cls, out var st))
@@ -202,7 +208,7 @@ namespace Velvet
             var reverse = axis == DivideAxis.Horizontal ? xReverse : yReverse;
             var importance = (axisImportant ? DivideImportance.Width : DivideImportance.None)
                 | (hasColor && colorImportant ? DivideImportance.Color : DivideImportance.None);
-            spec = new DivideSpec(axis, width, hasColor ? color : null, style, reverse, importance);
+            spec = new DivideSpec(axis, width, hasColor ? color : null, style, reverse, importance, widthMeasured);
             return true;
         }
 
@@ -259,10 +265,12 @@ namespace Velvet
         }
 
         // divide-x / divide-y, divide-x-{0,2,4,8}, divide-x-[Npx] (and the y forms).
-        private static bool TryParseAxisWidth(string cls, out DivideAxis axis, out float width)
+        private static bool TryParseAxisWidth(string cls, out DivideAxis axis, out float width,
+            out StyleLengthExpression? measured)
         {
             axis = DivideAxis.Horizontal;
             width = 0f;
+            measured = null;
             if (!StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
@@ -302,7 +310,8 @@ namespace Velvet
             // is rejected (only px / unitless is meaningful). TryParseArbitraryPixels already verifies the
             // bracket shape itself, so a non-bracket suffix falls straight through to the preset scale below
             // without needing its own duplicate guard here.
-            if (StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out width))
+            if (StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out width)
+                || StyleArbitraryValueResolver.TryParseMeasuredPixels(suffix.AsSpan(), out measured))
             {
                 return true;
             }

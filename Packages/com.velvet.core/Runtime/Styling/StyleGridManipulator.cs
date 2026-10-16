@@ -12,14 +12,22 @@ namespace Velvet
         public readonly float ColumnGap;
         public readonly float RowGap;
         public readonly SpaceSpec Space;
+        // A gap the container measures in place of ColumnGap or RowGap; null where it is in pixels.
+        public readonly StyleLengthExpression? ColumnGapMeasured;
+        public readonly StyleLengthExpression? RowGapMeasured;
 
-        public GridSpec(int columns, float columnGap, float rowGap, SpaceSpec space)
+        public GridSpec(int columns, float columnGap, float rowGap, SpaceSpec space,
+            StyleLengthExpression? columnGapMeasured = null, StyleLengthExpression? rowGapMeasured = null)
         {
             Columns = columns;
             ColumnGap = columnGap;
             RowGap = rowGap;
             Space = space;
+            ColumnGapMeasured = columnGapMeasured;
+            RowGapMeasured = rowGapMeasured;
         }
+
+        public bool IsMeasured => ColumnGapMeasured != null || RowGapMeasured != null || Space.IsMeasured;
     }
 
     // Framework-level CSS-Grid polyfill. UI Toolkit (6000.3) has no `display: grid` — its layout is a Flexbox
@@ -70,6 +78,13 @@ namespace Velvet
         private int _lastSignature;
         private bool _hasSignature;
 
+        // The gaps as the container measures them, read at the start of each Apply.
+        private float _columnGap;
+        private float _rowGap;
+
+        // Re-applies once what a measured gap or margin reads has moved; null while the spec measures none.
+        private RelativeLengthPoll? _poll;
+
         public StyleGridManipulator(ReconcilerContext ctx, GridSpec spec)
         {
             _ctx = ctx;
@@ -80,6 +95,13 @@ namespace Velvet
         public void UpdateSpec(GridSpec spec)
         {
             _spec = spec;
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply);
+            _hasSignature = false;
+            Apply();
+        }
+
+        private void Reapply()
+        {
             _hasSignature = false;
             Apply();
         }
@@ -88,11 +110,13 @@ namespace Velvet
         {
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply);
             Apply();
         }
 
         protected override void UnregisterCallbacksFromTarget()
         {
+            StyleRelativeLengths.SyncPoll(ref _poll, target, false, Reapply);
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
@@ -119,6 +143,8 @@ namespace Velvet
                 return;
             }
 
+            _columnGap = StyleRelativeLengths.MeasureOr(target, _spec.ColumnGapMeasured, _spec.ColumnGap);
+            _rowGap = StyleRelativeLengths.MeasureOr(target, _spec.RowGapMeasured, _spec.RowGap);
             // Resolved content width of the row; 0 / NaN off-panel before the first layout.
             var width = container.contentRect.width;
             var hasWidth = width > 0f && !float.IsNaN(width);
@@ -134,7 +160,7 @@ namespace Velvet
 
             var n = _spec.Columns < 1 ? 1 : _spec.Columns;
             var colWidth = hasWidth
-                ? Mathf.Max(0f, (width - (n - 1) * _spec.ColumnGap) / n - WrapSafetyPx)
+                ? Mathf.Max(0f, (width - (n - 1) * _columnGap) / n - WrapSafetyPx)
                 : 0f;
 
             var lastIndex = StyleOutOfFlowChild.LastSpacedIndex(container);
@@ -152,10 +178,10 @@ namespace Velvet
                 var col = logicalIndex % n;
                 var row = logicalIndex / n;
                 var spaced = i != lastIndex;
-                var spaceX = spaced ? _spec.Space.X : 0f;
-                var spaceY = spaced ? _spec.Space.Y : 0f;
-                var left = col == 0 ? 0f : _spec.ColumnGap;
-                var top = row == 0 ? 0f : _spec.RowGap;
+                var spaceX = spaced ? StyleRelativeLengths.MeasureOr(child, _spec.Space.XMeasured, _spec.Space.X) : 0f;
+                var spaceY = spaced ? StyleRelativeLengths.MeasureOr(child, _spec.Space.YMeasured, _spec.Space.Y) : 0f;
+                var left = col == 0 ? 0f : _columnGap;
+                var top = row == 0 ? 0f : _rowGap;
                 var right = 0f;
                 var bottom = 0f;
                 if (_spec.Space.XReverse)
@@ -269,8 +295,8 @@ namespace Velvet
             {
                 var hash = 17;
                 hash = hash * 31 + _spec.Columns;
-                hash = hash * 31 + _spec.ColumnGap.GetHashCode();
-                hash = hash * 31 + _spec.RowGap.GetHashCode();
+                hash = hash * 31 + _columnGap.GetHashCode();
+                hash = hash * 31 + _rowGap.GetHashCode();
                 hash = hash * 31 + Mathf.RoundToInt(width);
                 var count = container.childCount;
                 hash = hash * 31 + count;

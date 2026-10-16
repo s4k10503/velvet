@@ -117,6 +117,7 @@ namespace Velvet
                     {
                         LeadingUnit.Em => leading.Value * element.resolvedStyle.fontSize,
                         LeadingUnit.EmLength => leading.Value * e.resolvedStyle.fontSize,
+                        LeadingUnit.Measured => ResolveMeasured(leading, e) is { Unit: LeadingUnit.Pixel } px ? px.Value : float.NaN,
                         _ => leading.Value,
                     };
                 }
@@ -155,7 +156,8 @@ namespace Velvet
         {
             ctx.TextEffects.TryGetValue(element, out var previous);
             var own = StyleTextEffectClass.Parse(classNames);
-            LeadingLengthProbe.Sync(ctx, element, own.Leading?.Unit == LeadingUnit.EmLength);
+            LeadingLengthProbe.Sync(ctx, element, own.Leading?.Unit is LeadingUnit.EmLength or LeadingUnit.Measured,
+                own.Leading?.Unit == LeadingUnit.Measured);
             if (own.IsEmpty)
             {
                 ctx.TextEffects.Remove(element);
@@ -337,6 +339,10 @@ namespace Velvet
             {
                 leading = ResolveEmLength(ctx, leading.Value, leadingOwner!);
             }
+            else if (leading?.Unit == LeadingUnit.Measured)
+            {
+                leading = ResolveMeasured(leading.Value, leadingOwner!);
+            }
             var preserves = whitespace == WhitespaceCollapseKind.PreLine
                 || collapseClass == WhiteSpace.Pre || collapseClass == WhiteSpace.PreWrap;
             var write = ResolveWrite(wraps, whitespace, preserves);
@@ -386,6 +392,13 @@ namespace Velvet
             }
             return new LeadingValue(LeadingUnit.Pixel, leading.Value * probe.FontSize);
         }
+
+        // CSS computes a line-height length on the element that declares it; its percentage is of that element's
+        // font size. Until the element can be measured the value stays Measured, which writes no tag.
+        private static LeadingValue ResolveMeasured(LeadingValue leading, VisualElement owner)
+            => StyleRelativeLengths.TryMeasure(owner, leading.Measured!, owner.resolvedStyle.fontSize, out var px)
+                ? new LeadingValue(LeadingUnit.Pixel, px)
+                : leading;
 
         // Attaches the line-breaking manipulator to a leaf whose resolved text-wrap-style asks for one and
         // takes it off one whose no longer does. Null when the leaf has none.

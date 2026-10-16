@@ -216,8 +216,10 @@ The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.
 as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-height`'s values: a
 unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
 (`leading-[150%]`), and `px`, `rem` (1rem = 16px, as `w-[…]` takes it) or an absolute unit (`in`, `cm`,
-`mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. A math function is read where it
-comes to one of those pixel lengths or one percentage
+`mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. Any other length, a viewport or
+font-relative unit or a math function reading one (`leading-[2ch]`, `leading-[calc(1em+2px)]`), is measured on
+the element declaring it, its percentage of that element's font size, and emits the pixels it comes to there,
+measured again as it moves; until the element is on a panel it sets no line height
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A negative value, any other unit, or a
 malformed value is ignored. A bare spacing step (`leading-6`, `leading-13`, `leading-4.5`, `leading-px`) emits
 `<line-height=Npx>` at the px value the spacing scale gives that step, as Tailwind's

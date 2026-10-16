@@ -101,7 +101,18 @@ namespace Velvet
             }
             if (prefix == "blur-")
             {
-                if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var blurPx, out var blurUnit) || blurUnit != LengthUnit.Pixel) return false;
+                if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var blurPx, out var blurUnit))
+                {
+                    // A radius the element measures, which takes no percentage.
+                    if (!StyleLengthExpression.TryParse(valueSpan, out var expression) || expression!.ReadsPercentage
+                        || valueSpan.Trim("_ ".AsSpan())[0] == '-')
+                    {
+                        return false;
+                    }
+                    result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, expression.AtLeast(0f));
+                    return true;
+                }
+                if (blurUnit != LengthUnit.Pixel) return false;
                 result = new ArbitraryStyle(ArbitraryProperty.FilterBlur,
                     StyleArbitraryValueResolver.ClampMathResult(valueSpan, blurPx, 0f), LengthUnit.Pixel);
                 return true;

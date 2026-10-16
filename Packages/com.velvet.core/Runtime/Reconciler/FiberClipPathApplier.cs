@@ -213,6 +213,7 @@ namespace Velvet
             // the wrapper + the bake cache, so a later state change re-applies a cached shape with no re-bake.
             if (binding.Spec == null)
             {
+                StyleRelativeLengths.SyncPoll(ref binding.Poll, element, false, () => { });
                 binding.DetachBackground();
                 binding.Wrapper.style.visibility = StyleKeyword.Null;
                 // No mask ⇒ no clipping at all: drop overflow:hidden so an unclipped (e.g. hover-only) element
@@ -229,18 +230,32 @@ namespace Velvet
                 return;
             }
 
+            // A shape with lengths the element measures is baked as measured, and again once they move.
+            var spec = binding.Spec;
+            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, spec.HasMeasured, () => SyncMask(element, binding));
+            if (spec.HasMeasured)
+            {
+                if (!StyleRelativeLengths.TryBasisOf(element, out var basis))
+                {
+                    return;
+                }
+                spec = spec.MeasuredOn(basis);
+            }
+
             var sizeUnchanged = Mathf.Abs(width - binding.BakedWidth) < 0.5f
-                && Mathf.Abs(height - binding.BakedHeight) < 0.5f;
+                && Mathf.Abs(height - binding.BakedHeight) < 0.5f
+                && (!binding.Spec.HasMeasured || spec.Source == binding.MeasuredSource);
             if (sizeUnchanged)
             {
                 return;
             }
+            binding.MeasuredSource = binding.Spec.HasMeasured ? spec.Source : null;
 
             // Stretch-invariant (all-percentage) shapes scale linearly with the box: rescale the
             // existing bake via background-size instead of re-tessellating a new VectorImage —
             // a size animation then re-bakes zero times instead of once per frame.
-            if (binding.Image != null && binding.Spec.StretchInvariant
-                && ClipPathVectorImageBaker.TryComputeBounds(binding.Spec, width, height, out var stretched))
+            if (binding.Image != null && spec.StretchInvariant
+                && ClipPathVectorImageBaker.TryComputeBounds(spec, width, height, out var stretched))
             {
                 binding.Bounds = stretched;
                 binding.BakedWidth = width;
@@ -252,7 +267,7 @@ namespace Velvet
             // GetOrBake reuses a cached VectorImage for this (spec, size) — so toggling a state variant back
             // to a previously-seen shape is an O(1) lookup, not a re-tessellation. The cache owns the image
             // (destroyed on teardown), so a switch never destroys the outgoing shape.
-            if (!binding.GetOrBake(binding.Spec, width, height, out var image, out var bounds))
+            if (!binding.GetOrBake(spec, width, height, out var image, out var bounds))
             {
                 // CSS: an empty basic shape clips EVERYTHING (css-shapes-1 even reduces over-100%
                 // inset() offsets to a zero-area box). Hide the subtree rather than dropping the

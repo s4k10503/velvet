@@ -28,14 +28,35 @@ namespace Velvet
     {
         public readonly float Value;
         public readonly bool IsPercent;
+        // Pixels added to a percentage (calc(100%_-_10px)); 0 otherwise.
+        public readonly float AddedPx;
+        // A length the element measures (a font-relative or viewport unit), affine in its percentage; Value,
+        // IsPercent and AddedPx carry nothing until ClipPathSpec.MeasuredOn reads it.
+        public readonly StyleLengthExpression? Measured;
 
-        public ClipPathLength(float value, bool isPercent)
+        public ClipPathLength(float value, bool isPercent, float px = 0f, StyleLengthExpression? measured = null)
         {
             Value = value;
             IsPercent = isPercent;
+            AddedPx = px;
+            Measured = measured;
         }
 
-        public float Resolve(float basis) => IsPercent ? Value * 0.01f * basis : Value;
+        public float Resolve(float basis) => (IsPercent ? Value * 0.01f * basis : Value) + AddedPx;
+
+        // Whether the length is a percentage alone, which scales with the box.
+        public bool ScalesWithBox => IsPercent && AddedPx == 0f && Measured == null;
+
+        // This length as the element measures it, as a percentage plus pixels.
+        public ClipPathLength MeasuredOn(in RelativeLengthBasis basis)
+        {
+            if (Measured == null)
+            {
+                return this;
+            }
+            Measured.SplitPercentage(basis, out var fraction, out var px);
+            return fraction != 0f ? new ClipPathLength(fraction * 100f, true, px) : new ClipPathLength(px, false);
+        }
 
         public static ClipPathLength Percent(float value) => new(value, true);
         public static ClipPathLength Px(float value) => new(value, false);
@@ -77,6 +98,35 @@ namespace Velvet
         // radius resolves against the diagonal and its side keywords couple both axes); px lengths
         // and inset round radii (min-axis basis) also pin the shape to absolute pixels.
         public bool StretchInvariant;
+
+        // Whether a length holds a font-relative or viewport unit, which MeasuredOn resolves.
+        public bool HasMeasured;
+
+        // This spec with every length the element measures resolved on it, under a Source that carries the
+        // resolved values, so the bake cache keys the shape as measured; this spec where it measures none.
+        public ClipPathSpec MeasuredOn(RelativeLengthBasis basis)
+        {
+            if (!HasMeasured)
+            {
+                return this;
+            }
+            var copy = (ClipPathSpec)MemberwiseClone();
+            copy.HasMeasured = false;
+            var key = new System.Text.StringBuilder(Source);
+            ClipPathLength Read(ClipPathLength length)
+            {
+                var read = length.MeasuredOn(basis);
+                key.Append('|').Append(read.Value).Append(read.IsPercent ? "%" : "px").Append(read.AddedPx);
+                return read;
+            }
+            copy.PolygonPoints = PolygonPoints == null ? null : System.Array.ConvertAll(PolygonPoints, Read);
+            copy.CornerRadii = CornerRadii == null ? null : System.Array.ConvertAll(CornerRadii, Read);
+            (copy.RadiusX, copy.RadiusY, copy.CenterX, copy.CenterY) = (Read(RadiusX), Read(RadiusY), Read(CenterX), Read(CenterY));
+            (copy.InsetTop, copy.InsetRight, copy.InsetBottom, copy.InsetLeft) =
+                (Read(InsetTop), Read(InsetRight), Read(InsetBottom), Read(InsetLeft));
+            copy.Source = key.ToString();
+            return copy;
+        }
     }
 
     // Parses Velvet's clip-path-[…] utility into a ClipPathSpec.
@@ -237,6 +287,7 @@ namespace Velvet
                 return false;
             }
             spec!.Source = cls;
+            spec.HasMeasured = HoldsMeasured(spec);
             wantClip = true;
             return true;
         }
@@ -302,7 +353,7 @@ namespace Velvet
                 {
                     return false;
                 }
-                stretchInvariant &= points[i * 2].IsPercent && points[(i * 2) + 1].IsPercent;
+                stretchInvariant &= points[i * 2].ScalesWithBox && points[(i * 2) + 1].ScalesWithBox;
             }
 
             spec = new ClipPathSpec
@@ -361,9 +412,9 @@ namespace Velvet
             }
             // ellipse() resolves per axis, so it stretches linearly when the center is % and each
             // radius is either a % length or a side keyword (min/max of %-center distances).
-            spec.StretchInvariant = spec.CenterX.IsPercent && spec.CenterY.IsPercent
-                && (spec.RadiusXExtent != ClipPathExtent.Length || spec.RadiusX.IsPercent)
-                && (spec.RadiusYExtent != ClipPathExtent.Length || spec.RadiusY.IsPercent);
+            spec.StretchInvariant = spec.CenterX.ScalesWithBox && spec.CenterY.ScalesWithBox
+                && (spec.RadiusXExtent != ClipPathExtent.Length || spec.RadiusX.ScalesWithBox)
+                && (spec.RadiusYExtent != ClipPathExtent.Length || spec.RadiusY.ScalesWithBox);
             return true;
         }
 
@@ -393,7 +444,7 @@ namespace Velvet
                 {
                     return false;
                 }
-                stretchInvariant &= edgeValues[i].IsPercent;
+                stretchInvariant &= edgeValues[i].ScalesWithBox;
             }
             // CSS 1-4 value shorthand: top, right, bottom, left.
             ExpandShorthand(edgeValues, out var top, out var right, out var bottom, out var left);
@@ -540,18 +591,40 @@ namespace Velvet
             return true;
         }
 
+        private static bool HoldsMeasured(ClipPathSpec spec)
+        {
+            static bool Any(ClipPathLength[]? lengths) => lengths != null && Array.Exists(lengths, l => l.Measured != null);
+            return Any(spec.PolygonPoints) || Any(spec.CornerRadii)
+                || Any(new[]
+                {
+                    spec.RadiusX, spec.RadiusY, spec.CenterX, spec.CenterY,
+                    spec.InsetTop, spec.InsetRight, spec.InsetBottom, spec.InsetLeft,
+                });
+        }
+
         // Delegates to the shared utility length grammar (px/%/bare-number, InvariantCulture,
         // finite only) so clip-path values can never drift from w-[…]-style arbitrary values.
         private static bool TryParseLength(string token, out ClipPathLength length)
         {
             length = default;
             var span = token.AsSpan().Trim();
-            if (span.Length == 0 ||
-                !StyleArbitraryValueResolver.TryParseValue(span, out var value, out var unit))
+            if (span.Length == 0)
             {
                 return false;
             }
-            length = new ClipPathLength(value, unit == LengthUnit.Percent);
+            if (StyleArbitraryValueResolver.TryParseValue(span, out var value, out var unit))
+            {
+                length = new ClipPathLength(value, unit == LengthUnit.Percent);
+                return true;
+            }
+            // A percentage beside a length, or a length the element measures, each affine in the percentage.
+            if (!StyleLengthExpression.TryParse(span, out var expression) || !expression!.IsAffine)
+            {
+                return false;
+            }
+            length = !expression.TrySplitPercentage(out var fraction, out var px) ? new ClipPathLength(0f, false, 0f, expression)
+                : fraction != 0f ? new ClipPathLength(fraction * 100f, true, px)
+                : new ClipPathLength(px, false);
             return true;
         }
 

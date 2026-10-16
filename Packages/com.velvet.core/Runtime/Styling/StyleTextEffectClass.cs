@@ -98,6 +98,9 @@ namespace Velvet
         Em,
         EmLength,
         Pixel,
+        // A length the declaring element measures (a viewport or font-relative unit, a math function reading
+        // one), carried in LeadingValue.Measured until StyleTextEffectResolver measures it to Pixel.
+        Measured,
     }
 
     // A resolved leading-* value: the numeric multiplier/length plus which unit it is in. Nullable
@@ -109,14 +112,17 @@ namespace Velvet
     {
         public readonly LeadingUnit Unit;
         public readonly float Value;
+        public readonly StyleLengthExpression? Measured;
 
-        public LeadingValue(LeadingUnit unit, float value)
+        public LeadingValue(LeadingUnit unit, float value, StyleLengthExpression? measured = null)
         {
             Unit = unit;
             Value = value;
+            Measured = measured;
         }
 
-        public bool Equals(LeadingValue other) => Unit == other.Unit && Value == other.Value;
+        public bool Equals(LeadingValue other)
+            => Unit == other.Unit && Value == other.Value && ReferenceEquals(Measured, other.Measured);
         public override bool Equals(object obj) => obj is LeadingValue o && Equals(o);
         public override int GetHashCode() => unchecked((Unit.GetHashCode() * 397) ^ Value.GetHashCode());
     }
@@ -467,7 +473,13 @@ namespace Velvet
             var inner = cls.AsSpan(prefix.Length, cls.Length - prefix.Length - 1);
             if (!TryParseLineHeight(inner, out var amount, out var unit))
             {
-                return false;
+                // A length the declaring element measures; a negative one is none, as line-height takes none.
+                if (!StyleLengthExpression.TryParse(inner, out var expression) || inner.Trim("_ ".AsSpan())[0] == '-')
+                {
+                    return false;
+                }
+                leading = new LeadingValue(LeadingUnit.Measured, 0f, expression!.AtLeast(0f));
+                return true;
             }
             if (amount < 0f)
             {
@@ -625,6 +637,11 @@ namespace Velvet
         private static string ApplyLeading(string text, LeadingValue? leading)
         {
             if (leading == null)
+            {
+                return text;
+            }
+            // A length the element has not measured yet sets no line height until it has.
+            if (leading.Value.Unit == LeadingUnit.Measured)
             {
                 return text;
             }

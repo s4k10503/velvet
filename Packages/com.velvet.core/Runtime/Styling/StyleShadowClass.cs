@@ -25,13 +25,31 @@ namespace Velvet
         {
         }
 
-        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX)
+        // The x, y, blur and spread lengths the element measures (a font-relative or viewport unit), each null
+        // where the matching field is written in pixels; null throughout for a preset.
+        public readonly StyleLengthExpression?[]? Measured;
+
+        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX,
+            StyleLengthExpression?[]? measured = null)
         {
             Color = color;
             Blur = blur;
             OffsetY = offsetY;
             Spread = spread;
             OffsetX = offsetX;
+            Measured = measured;
+        }
+
+        // This spec with the lengths element measures in pixels; this spec while it is on no panel.
+        public ShadowSpec MeasuredOn(VisualElement element)
+        {
+            if (Measured == null || !StyleRelativeLengths.TryBasisOf(element, out var basis))
+            {
+                return this;
+            }
+            var measured = Measured;
+            float At(int i, float written) => measured[i] is { } e ? e.Evaluate(basis) : written;
+            return new ShadowSpec(Color, At(2, Blur), At(1, OffsetY), At(3, Spread), At(0, OffsetX));
         }
     }
 
@@ -262,6 +280,7 @@ namespace Velvet
             var tokens = StyleGradientClass.SplitTopLevel(body.Replace('_', ' '), ' ');
             tokens.RemoveAll(t => t.Length == 0);
             var lengths = new float[4]; // x, y, blur, spread
+            StyleLengthExpression?[]? measured = null;
             var lengthCount = 0;
             var color = ShadowColor(0.20f); // the bare-shadow DEFAULT tint
             var hasColor = false;
@@ -276,6 +295,13 @@ namespace Velvet
                         return false; // more than four box-shadow lengths is malformed
                     }
                     lengths[lengthCount++] = value;
+                }
+                else if (lengthCount < 4 && StyleLengthExpression.TryParse(token.AsSpan(), out var expression)
+                    && !expression!.ReadsPercentage)
+                {
+                    // A length the element measures; a blur takes none below zero, as the browser takes none.
+                    (measured ??= new StyleLengthExpression?[4])[lengthCount] = lengthCount == 2 ? expression.AtLeast(0f) : expression;
+                    lengthCount++;
                 }
                 else if (!hasColor && StyleColorValueParser.TryParseColor(token.AsSpan(), out var parsedColor))
                 {
@@ -294,7 +320,7 @@ namespace Velvet
             }
 
             // x, y, blur, spread — collapse onto the single-softness SDF shadow.
-            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0]);
+            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0], measured);
             return true;
         }
 

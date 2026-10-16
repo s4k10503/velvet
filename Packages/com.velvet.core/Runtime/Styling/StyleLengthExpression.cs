@@ -40,6 +40,8 @@ namespace Velvet
         }
 
         public float Em => Font.Em;
+
+        public RelativeLengthBasis WithPercent(float percent) => new(Font, Root, percent, ViewportWidth, ViewportHeight);
     }
 
     // The type a math function comes to, where a percentage is its own (StyleLengthExpression.TypeOf).
@@ -144,6 +146,17 @@ namespace Velvet
             pixels = split ? Evaluate(new RelativeLengthBasis(0f, 0f, 0f, 0f)) : 0f;
             fraction = split ? (Evaluate(new RelativeLengthBasis(0f, 100f, 0f, 0f)) - pixels) / 100f : 0f;
             return split;
+        }
+
+        // Whether this is affine in its percentage basis, so SplitPercentage can read it on an element.
+        public bool IsAffine => _affine;
+
+        // The pixels and the fraction of the percentage basis this comes to on an element measured as basis
+        // measures it; meaningful where IsAffine holds.
+        public void SplitPercentage(in RelativeLengthBasis basis, out float fraction, out float pixels)
+        {
+            pixels = Evaluate(basis.WithPercent(0f));
+            fraction = (Evaluate(basis.WithPercent(100f)) - pixels) / 100f;
         }
 
         // The value before CSS's top-level rules: a NaN or an infinity a term produced is carried as it is.

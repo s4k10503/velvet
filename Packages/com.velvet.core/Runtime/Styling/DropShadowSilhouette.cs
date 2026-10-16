@@ -40,6 +40,9 @@ namespace Velvet
         public float BorderLeft;
         public float BorderTop;
 
+        // Re-measures a spec with lengths the element measures, once what they measure has moved.
+        public RelativeLengthPoll? Poll;
+
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
@@ -156,8 +159,28 @@ namespace Velvet
             }
 
             s_byElement.AddOrUpdate(element, binding);
+            SyncPoll(element, binding);
             element.MarkDirtyRepaint();
             return binding;
+        }
+
+        // Starts the re-measuring poll while the spec holds a length the element measures, and stops it after.
+        private static void SyncPoll(VisualElement element, DropShadowBinding binding)
+        {
+            if (binding.Spec.Measured == null)
+            {
+                binding.Poll?.Stop();
+                binding.Poll = null;
+                return;
+            }
+            binding.Poll ??= new RelativeLengthPoll(element, e =>
+            {
+                if (binding.Poll != null && binding.Poll.Moved())
+                {
+                    SyncBoundsSpacer(e, binding);
+                    e.MarkDirtyRepaint();
+                }
+            });
         }
 
         // Unregisters the callbacks, releases the face suppression (so a pooled / detached upright caster
@@ -165,6 +188,8 @@ namespace Velvet
         // prior consumer's shadow. The baked textures are cached process-wide and are NOT destroyed here.
         public static void Detach(VisualElement element, DropShadowBinding binding)
         {
+            binding.Poll?.Stop();
+            binding.Poll = null;
             element.generateVisualContent -= binding.OnGenerate;
             if (binding.OnGeometryChanged != null)
             {
@@ -201,7 +226,7 @@ namespace Velvet
             var aabb = default(Rect);
             if (SilhouetteBoundsSpacer.TryGetLayoutSize(element, out var w, out var h))
             {
-                var spec = binding.Spec;
+                var spec = binding.Spec.MeasuredOn(element);
                 var pad = DropShadowBaker.QuantizePx(spec.Blur) + DropShadowBaker.ExtraPadding
                     + DropShadowBaker.QuantizePx(spec.Spread);
                 var quad = new Rect(-pad + spec.OffsetX, -pad + spec.OffsetY, w + (2f * pad), h + (2f * pad));
@@ -229,6 +254,7 @@ namespace Velvet
             in DropShadowSyncRequest request, bool canReleaseFace)
         {
             binding.Spec = request.Spec;
+            SyncPoll(element, binding);
             binding.ClassNames = request.ClassNames;
             binding.SkewXDeg = request.SkewXDeg;
             ResolveCornerRadius(element, binding);
@@ -333,7 +359,7 @@ namespace Velvet
         private static void DrawShadowQuad(MeshGenerationContext mgc, VisualElement ve, DropShadowBinding binding,
             float w, float h)
         {
-            var spec = binding.Spec;
+            var spec = binding.Spec.MeasuredOn(ve);
             var alpha = spec.Color.a;
             if (alpha <= 0.004f)
             {

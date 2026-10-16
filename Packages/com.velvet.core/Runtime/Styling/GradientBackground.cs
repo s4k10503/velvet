@@ -20,6 +20,8 @@ namespace Velvet
         public Texture2D? Texture;
         public (GradientSpec, BoxKey)? Held;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
+        // Re-reads the classes once what a length they hold measures has moved; null while they hold none.
+        public RelativeLengthPoll? Poll;
     }
 
     // The box a texture is baked for, as the cache keys it. A is the quantized aspect, or the whole-pixel
@@ -404,6 +406,7 @@ namespace Velvet
         // Clear, which the caller runs when it also wants the background gone.
         public static void Detach(VisualElement element, GradientBinding binding)
         {
+            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, false, () => { });
             Unwatch(element, binding);
             Release(binding);
         }
@@ -614,10 +617,8 @@ namespace Velvet
                 for (var i = 0; i < stops.Length; i++)
                 {
                     var stop = stops[i];
-                    placed[i] = new GradientStop(stop.Color,
-                        float.IsNaN(stop.PositionPx) ? stop.Position : stop.PositionPx / length,
-                        float.NaN,
-                        float.IsNaN(stop.HintPx) ? stop.Hint : stop.HintPx / length);
+                    placed[i] = new GradientStop(stop.Color, Place(stop.Position, stop.PositionPx, length), float.NaN,
+                        Place(stop.Hint, stop.HintPx, length));
                 }
                 stops = StyleGradientClass.FixUp(placed);
             }
@@ -635,6 +636,10 @@ namespace Velvet
             }
             return resolved;
         }
+
+        // A position of fraction of the line plus px pixels along it, either NaN where it was not written.
+        private static float Place(float fraction, float px, float length)
+            => float.IsNaN(px) ? fraction : (float.IsNaN(fraction) ? 0f : fraction) + (px / length);
 
         // The length in pixels of what a stop position of 100% is: a linear gradient's line, a radial's
         // ray along x; a conic has no length.

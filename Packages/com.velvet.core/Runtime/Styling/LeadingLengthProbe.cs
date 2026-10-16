@@ -24,6 +24,10 @@ namespace Velvet
         // NaN until UI Toolkit has resolved the element's style.
         public float FontSize { get; private set; } = float.NaN;
 
+        // Re-resolves the text once what a measured leading reads (a viewport or font-relative unit) has moved;
+        // null for an em or percentage leading, which the font size alone moves.
+        private RelativeLengthPoll? _poll;
+
         private LeadingLengthProbe(ReconcilerContext ctx, VisualElement element)
         {
             _ctx = ctx;
@@ -32,7 +36,7 @@ namespace Velvet
             _onGeometryChanged = _ => Refresh();
         }
 
-        public static void Sync(ReconcilerContext ctx, VisualElement element, bool wanted)
+        public static void Sync(ReconcilerContext ctx, VisualElement element, bool wanted, bool measured = false)
         {
             ctx.LeadingLengthProbes.TryGetValue(element, out var probe);
             if (wanted && probe == null)
@@ -42,6 +46,11 @@ namespace Velvet
                 element.AddToClassList(MarkerClass);
                 element.RegisterCallback(probe._onStyleResolved);
                 element.RegisterCallback(probe._onGeometryChanged);
+            }
+            if (wanted)
+            {
+                StyleRelativeLengths.SyncPoll(ref probe!._poll, element, measured,
+                    () => StyleTextEffectResolver.Reapply(ctx, element));
                 return;
             }
             if (!wanted && probe != null)
@@ -52,6 +61,7 @@ namespace Velvet
 
         public static void Detach(ReconcilerContext ctx, VisualElement element, LeadingLengthProbe probe)
         {
+            StyleRelativeLengths.SyncPoll(ref probe._poll, element, false, () => { });
             // MUTANT_SURVIVES(equivalent, line removed): a callback left registered only re-resolves text
             // the resolver then resolves to the same string and white-space.
             element.UnregisterCallback(probe._onStyleResolved);

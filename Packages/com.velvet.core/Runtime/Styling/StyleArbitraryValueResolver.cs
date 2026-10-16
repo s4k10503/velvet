@@ -411,14 +411,18 @@ namespace Velvet
             ["x-large"] = 24f, ["xx-large"] = 32f, ["xxx-large"] = 48f,
         };
 
-        // A length only an element can measure — em, a viewport unit, or a math function mixing a percentage
-        // with a pixel length — is carried unresolved to ApplyInline, and only for the properties PropertySetters
-        // writes, whose setters name the axis their percentage is taken of.
+        // A length only an element can measure — a font-relative or viewport unit, or a math function mixing a
+        // percentage with a pixel length — is carried unresolved to ApplyInline: for the properties PropertySetters
+        // writes, whose setters name the axis their percentage is taken of, and without a percentage for a border
+        // width, which takes none, and a radius, whose percentage UI Toolkit takes of one side where CSS takes it
+        // of each.
         private static bool TryParseRelativeLength(
             ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (!PropertySetters.ContainsKey(property) || !StyleLengthExpression.TryParse(valueSpan, out var expression)
+            var measurable = PropertySetters.ContainsKey(property) || IsBorderWidth(property) || RadiusCornersOf.ContainsKey(property);
+            if (!measurable || !StyleLengthExpression.TryParse(valueSpan, out var expression)
+                || (!PropertySetters.ContainsKey(property) && expression!.ReadsPercentage)
                 || (!negate && MinimumOf(property) == 0f && !IsMathFunction(valueSpan) && valueSpan.Trim("_ ".AsSpan())[0] == '-'))
             {
                 return false;
@@ -2438,6 +2442,10 @@ namespace Velvet
         // one inline `translate` / `scale`, so their winners must be composed before that write.
         private static void ResolveAndApply(VisualElement element, ArbitraryProperty property, LayerMap map)
         {
+            if (TryWinningLayer(map, property, out var measured) && measured.Expression != null)
+            {
+                map.RelativePoll ??= new RelativeLengthPoll(element, ReresolveRelativeLengths);
+            }
             if (property == ArbitraryProperty.TranslateX || property == ArbitraryProperty.TranslateY)
             {
                 ApplyCombinedTranslate(element, map);
@@ -2459,13 +2467,9 @@ namespace Velvet
                 ApplyTransitionDuration(element, map);
                 return;
             }
-            if (!TryWinningLayer(map, property, out var winner))
+            if (!TryWinningLayer(map, property, out _))
             {
                 ClearInline(element, property);
-            }
-            else if (winner.Expression != null)
-            {
-                map.RelativePoll ??= new RelativeLengthPoll(element, ReresolveRelativeLengths);
             }
             var rewritten = ResolveSharedLonghands(element, property, map);
             ReassertHolds(element, map, HeldSlotGroups.SlotsOf(property) | rewritten);
@@ -2685,9 +2689,26 @@ namespace Velvet
                 element.style.translate = StyleKeyword.Null;
                 return;
             }
-            var x = hasX ? new Length(xw.Value, xw.Unit) : new Length(0f);
-            var y = hasY ? new Length(yw.Value, yw.Unit) : new Length(0f);
+            // A translate's percentage is of the element's own box.
+            if (!TryAxisLength(element, hasX, xw, element.layout.width, out var x)
+                || !TryAxisLength(element, hasY, yw, element.layout.height, out var y))
+            {
+                return;
+            }
             element.style.translate = new Translate(x, y);
+        }
+
+        // One axis of a translate: none, the length written, or what the element measures it to, false until it can.
+        private static bool TryAxisLength(VisualElement element, bool has, in ArbitraryStyle winner, float box, out Length length)
+        {
+            if (!has || winner.Expression == null)
+            {
+                length = has ? new Length(winner.Value, winner.Unit) : new Length(0f);
+                return true;
+            }
+            var measured = StyleRelativeLengths.TryMeasure(element, winner.Expression, box, out var px);
+            length = new Length(px);
+            return measured;
         }
 
         private static void ApplyCombinedScale(VisualElement element, LayerMap map)
@@ -2803,7 +2824,14 @@ namespace Velvet
                 {
                     continue;
                 }
-                if (BuildFilter(prop, layers.Values[layers.Count - 1].Value) is { } fn)
+                var winner = layers.Values[layers.Count - 1];
+                var amount = winner.Value;
+                // A blur the element measures waits for it, as an inline length does.
+                if (winner.Expression != null && !StyleRelativeLengths.TryMeasure(element, winner.Expression, 0f, out amount))
+                {
+                    continue;
+                }
+                if (BuildFilter(prop, amount) is { } fn)
                 {
                     (functions ??= new List<FilterFunction>()).Add(fn);
                 }
@@ -2932,8 +2960,7 @@ namespace Velvet
                     element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
                     return;
                 case ArbitraryProperty.TransformOrigin:
-                    element.style.transformOrigin = new TransformOrigin(
-                        new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2), style.Value3);
+                    WriteTransformOrigin(element, style);
                     return;
                 // opacity-[..] is a unitless factor (0..1), written through the slot a layoutId crossfade shares.
                 case ArbitraryProperty.Opacity:
@@ -2988,8 +3015,12 @@ namespace Velvet
 
             if (FloatSetters.TryGetValue(style.Property, out var floatSetters))
             {
+                if (!TryMeasuredValue(element, style, out var measured))
+                {
+                    return;
+                }
                 var width = style.Keyword == StyleKeyword.Undefined
-                    ? new StyleFloat(style.Value)
+                    ? new StyleFloat(measured)
                     : new StyleFloat(style.Keyword);
                 var fs = ClipPathLayoutBox.StyleFor(element, style.Property);
                 foreach (var setter in floatSetters)
@@ -3001,7 +3032,10 @@ namespace Velvet
 
             if (RadiusCornersOf.TryGetValue(style.Property, out var corners))
             {
-                CornerRadiusFit.SetInline(element, corners, new Length(style.Value, style.Unit));
+                if (TryMeasuredValue(element, style, out var radius))
+                {
+                    CornerRadiusFit.SetInline(element, corners, new Length(radius, style.Expression == null ? style.Unit : LengthUnit.Pixel));
+                }
                 return;
             }
 
@@ -3011,6 +3045,30 @@ namespace Velvet
             }
 
             WriteLength(element, ClipPathLayoutBox.BoxFor(element, style.Property).style, style, setters);
+        }
+
+        // The value written, or what the element measures its expression to, which takes no percentage; false
+        // until the element can.
+        private static bool TryMeasuredValue(VisualElement element, in ArbitraryStyle style, out float value)
+        {
+            value = style.Value;
+            return style.Expression == null || StyleRelativeLengths.TryMeasure(element, style.Expression, 0f, out value);
+        }
+
+        // A transform origin the element measures takes its percentages of the element's own box.
+        private static void WriteTransformOrigin(VisualElement element, in ArbitraryStyle style)
+        {
+            if (style.Expression == null)
+            {
+                element.style.transformOrigin = new TransformOrigin(
+                    new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2), style.Value3);
+                return;
+            }
+            if (StyleRelativeLengths.TryMeasure(element, style.Expression, element.layout.width, out var x)
+                && StyleRelativeLengths.TryMeasure(element, style.Expression2!, element.layout.height, out var y))
+            {
+                element.style.transformOrigin = new TransformOrigin(new Length(x), new Length(y), style.Value3);
+            }
         }
 
         // A relative length is measured per setter, since each carries its own axis and its own stand-in for an
@@ -3336,6 +3394,22 @@ namespace Velvet
                 return false;
             }
             return (hint != null ? hint == "length" : TailwindDataTypes.IsLength(inner)) && TryParsePixels(inner, out px);
+        }
+
+        // A bracketed length only an element can measure (a font-relative or viewport unit), where
+        // TryParseArbitraryPixels reads a pixel length: never a percentage, and never a negative literal unless
+        // allowNegative, nor below zero then.
+        internal static bool TryParseMeasuredPixels(ReadOnlySpan<char> suffix, out StyleLengthExpression? expression,
+            bool allowNegative = false)
+        {
+            expression = null;
+            if (!TryStripBrackets(suffix, 0, out var inner) || !StyleLengthExpression.TryParse(inner, out var parsed)
+                || parsed!.ReadsPercentage || (!allowNegative && !IsMathFunction(inner) && inner.Trim("_ ".AsSpan())[0] == '-'))
+            {
+                return false;
+            }
+            expression = allowNegative ? parsed : parsed.AtLeast(0f);
+            return true;
         }
 
         // A non-negative pixel length, the grammar TryParseArbitraryPixels reads inside its bracket.

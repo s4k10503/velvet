@@ -41,7 +41,7 @@ namespace Velvet
         {
             GradientSpec gradient = default;
             var has = StyleGradientClass.HasGradientClass(classNames)
-                && StyleGradientClass.TryExtract(classNames, out gradient);
+                && StyleGradientClass.TryExtract(classNames, element, out gradient, out _);
             SkewSilhouette.SetGradient(element, binding, has, gradient);
         }
 

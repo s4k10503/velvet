@@ -302,6 +302,8 @@ namespace Velvet
         {
             public bool Ok;
             public Shape Shape;
+            // Whether the class held a length an element measures, whose reading depends on the element.
+            public bool Measured;
         }
 
         // The accumulated reading of one of the from-/via-/to- utilities.
@@ -321,6 +323,8 @@ namespace Velvet
             public float PositionPx;
             public bool IsColor;
             public Color Color;
+            // Whether the suffix held a length an element measures (see ActivatorReading.Measured).
+            public bool Measured;
         }
 
         // ApplyGradientOnPatch re-extracts on every patch of a gradient element, so each reading of a class
@@ -423,6 +427,56 @@ namespace Velvet
         // A stop list's stops are followed by the from-/via-/to- stops when one of them names a colour (see
         // ResolveStops).
         public static bool TryExtract(string[] classNames, out GradientSpec spec)
+            => TryExtract(classNames, null, out spec, out _);
+
+        // As above, with the lengths an element measures (a font-relative or viewport unit) read on element; such
+        // a length is declined without one. measured says whether any class read one, so the caller can read
+        // the classes again once what it measures moves.
+        public static bool TryExtract(string[] classNames, VisualElement? element, out GradientSpec spec, out bool measured)
+        {
+            s_basis = element != null && StyleRelativeLengths.TryBasisOf(element, out var basis) ? basis : null;
+            s_measuredRead = false;
+            try
+            {
+                return TryExtractClasses(classNames, out spec);
+            }
+            finally
+            {
+                measured = s_measuredRead;
+                s_basis = null;
+                s_measuredRead = false;
+            }
+        }
+
+        // What a length an element measures is read against while TryExtract runs, null where it is given none;
+        // and whether a class held one, which keeps that class's reading out of the memos.
+        [ThreadStatic] private static RelativeLengthBasis? s_basis;
+        [ThreadStatic] private static bool s_measuredRead;
+
+        // A length or a length-percentage affine in its percentage, as a fraction of its basis plus pixels; one
+        // reading a font-relative or viewport unit is measured on s_basis, and declined where there is none.
+        private static bool TryMeasuredLength(string token, out float fraction, out float px)
+        {
+            fraction = 0f;
+            px = 0f;
+            if (!StyleLengthExpression.TryParse(token.AsSpan(), out var expression) || !expression!.IsAffine)
+            {
+                return false;
+            }
+            if (expression.TrySplitPercentage(out fraction, out px))
+            {
+                return true;
+            }
+            s_measuredRead = true;
+            if (s_basis is not { } basis)
+            {
+                return false;
+            }
+            expression.SplitPercentage(basis, out fraction, out px);
+            return true;
+        }
+
+        private static bool TryExtractClasses(string[] classNames, out GradientSpec spec)
         {
             spec = default;
             if (classNames == null)
@@ -535,11 +589,19 @@ namespace Velvet
             {
                 return false;
             }
-            if (!s_activators.TryGet(cls, out var reading))
+            if (!s_activators.TryGet(cls, out var reading) || (reading.Measured && s_basis != null))
             {
+                var before = s_measuredRead;
+                s_measuredRead = false;
                 reading.Ok = TryParseActivator(cls, out reading.Shape);
-                s_activators.Add(cls, reading);
+                reading.Measured = s_measuredRead;
+                s_measuredRead |= before;
+                if (!reading.Measured || s_basis == null)
+                {
+                    s_activators.Add(cls, reading);
+                }
             }
+            s_measuredRead |= reading.Measured;
             shape = reading.Shape;
             return reading.Ok;
         }
@@ -550,11 +612,19 @@ namespace Velvet
         // initialPosition: the stop's registered initial position, which a position the browser rejects falls back to.
         private static void ReadStop(string cls, int prefixLength, float initialPosition, ref UtilityStop stop)
         {
-            if (!s_stopTokens.TryGet(cls, out var token))
+            if (!s_stopTokens.TryGet(cls, out var token) || (token.Measured && s_basis != null))
             {
+                var before = s_measuredRead;
+                s_measuredRead = false;
                 token = ParseStopToken(cls.Substring(prefixLength));
-                s_stopTokens.Add(cls, token);
+                token.Measured = s_measuredRead;
+                s_measuredRead |= before;
+                if (!token.Measured || s_basis == null)
+                {
+                    s_stopTokens.Add(cls, token);
+                }
             }
+            s_measuredRead |= token.Measured;
             if (token.IsPosition)
             {
                 var rejected = float.IsNaN(token.Position) && float.IsNaN(token.PositionPx);
@@ -673,14 +743,29 @@ namespace Velvet
             {
                 return new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px };
             }
-            // A length Tailwind's tests take that the line cannot place (`from-[2em]`) is a position here too.
+            // A length Tailwind's tests take that the element measures, or that adds a percentage to a length, is a
+            // position too: what is left of one the element cannot measure yet is no stop.
             if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
                 && (TailwindDataTypes.IsLength(inner) || TailwindDataTypes.IsPercentage(inner)))
             {
-                return default;
+                return TryMeasuredLength(inner.ToString(), out var fraction, out var measuredPx)
+                    ? PositionToken(fraction, measuredPx)
+                    : default;
             }
             return ColourStopToken(suffix);
         }
+
+        // A position as a fraction of the line plus pixels.
+        private static StopToken PositionToken(float fraction, float px)
+        {
+            var (position, positionPx) = AsStopPosition(fraction, px);
+            return new StopToken { IsPosition = true, Position = position, PositionPx = positionPx };
+        }
+
+        // A stop's Position and PositionPx for a fraction of the line plus pixels: NaN for the part that is zero,
+        // pixels alone where both are.
+        private static (float Position, float PositionPx) AsStopPosition(float fraction, float px)
+            => fraction == 0f ? (float.NaN, px) : px == 0f ? (fraction, float.NaN) : (fraction, px);
 
         // Tailwind registers the stop colours as <color> with a transparent initial value, so a bracket it writes
         // as a colour and the browser rejects leaves the stop transparent rather than unset.
@@ -711,8 +796,10 @@ namespace Velvet
                 return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
             }
             // A position the browser rejects is the registered initial one: both NaN, which ReadStop reads so.
-            return TryParseStopLength(plain.Substring(1, plain.Length - 2), out var px)
+            var inner = plain.Substring(1, plain.Length - 2);
+            return TryParseStopLength(inner, out var px)
                 ? new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px }
+                : TryMeasuredLength(inner, out var fraction, out var measuredPx) ? PositionToken(fraction, measuredPx)
                 : new StopToken { IsPosition = true, Position = float.NaN, PositionPx = float.NaN };
         }
 
@@ -959,7 +1046,17 @@ namespace Velvet
                 return ok;
             }
             fraction = float.NaN;
-            return TryParseStopLength(token, out px);
+            if (TryParseStopLength(token, out px))
+            {
+                return true;
+            }
+            // A length the element measures, or a percentage beside a length.
+            if (!TryMeasuredLength(token, out var measuredFraction, out var measuredPx))
+            {
+                return false;
+            }
+            (fraction, px) = AsStopPosition(measuredFraction, measuredPx);
+            return true;
         }
 
         // A palette name or [bracketed] value as from-/via-/to- take it, or a bare CSS colour, which is how a
@@ -1144,7 +1241,15 @@ namespace Velvet
 
         // A non-negative length, as a radius is: TryParseStopLength's grammar without the sign.
         private static bool TryParsePixelLength(string token, out float px)
-            => TryParseStopLength(token, out px) && px >= 0f;
+        {
+            if (TryParseStopLength(token, out px))
+            {
+                return px >= 0f;
+            }
+            // A radius the element measures; one adding a percentage to a length has no single unit here.
+            var measured = TryMeasuredLength(token, out var fraction, out px);
+            return measured && fraction == 0f && px >= 0f;
+        }
 
         // A non-negative length or percentage: pixels as written, a percentage as a fraction of the box.
         private static bool TryParseLengthPercentage(string token, out float value, out bool percent)
@@ -1310,8 +1415,7 @@ namespace Velvet
                 offset = unit == LengthUnit.Percent ? new Offset(value / 100f, 0f) : new Offset(0f, value);
                 return true;
             }
-            if (StyleLengthExpression.TryParse(token.AsSpan(), out var expression)
-                && expression!.TrySplitPercentage(out var fraction, out var pixels))
+            if (TryMeasuredLength(token, out var fraction, out var pixels))
             {
                 offset = new Offset(fraction, pixels);
                 return true;

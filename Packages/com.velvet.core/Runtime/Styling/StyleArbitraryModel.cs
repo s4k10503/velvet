@@ -353,6 +353,8 @@ namespace Velvet
         // A length an element has to measure (em, a viewport unit, a percentage beside a pixel length), for a
         // property PropertySetters writes; Value and Unit then carry nothing. Null for every other result.
         public StyleLengthExpression? Expression { get; }
+        // TransformOrigin's y where the element has to measure it, as Expression is its x; null otherwise.
+        public StyleLengthExpression? Expression2 { get; }
         // True for the `auto` keyword of a length property; Value and Unit then carry nothing.
         public bool Auto { get; }
         // A StyleOverrides member's keyword value (Initial, None, …), written as the keyword in place of the
@@ -484,6 +486,14 @@ namespace Velvet
             : this(property, 0f, LengthUnit.Pixel)
         {
             Expression = expression;
+        }
+
+        // Creates a pair-valued result the element measures (TransformOrigin), with a z in pixels.
+        public ArbitraryStyle(ArbitraryProperty property, StyleLengthExpression x, StyleLengthExpression y, float z)
+            : this(property, 0f, LengthUnit.Pixel, 0f, LengthUnit.Pixel, z)
+        {
+            Expression = x;
+            Expression2 = y;
         }
     }
 

@@ -3562,11 +3562,11 @@ namespace Velvet
             }
 
             var hasGrid = StyleGridClass.TryExtract(classNames, out var columns);
-            StyleGridClass.ExtractGaps(classNames, out var columnGap, out var rowGap);
+            StyleGridClass.ExtractGaps(classNames, out var columnGap, out var rowGap, out var columnMeasured, out var rowMeasured);
             var space = StyleGapClass.ExtractSpaceSpec(classNames);
 
             Configure<GridOp, StyleGridManipulator>(element, hasGrid,
-                new GridOp(new GridSpec(columns, columnGap, rowGap, space)));
+                new GridOp(new GridSpec(columns, columnGap, rowGap, space, columnMeasured, rowMeasured)));
         }
 
         // A scope whose mode moved, or that came or went, can change what an enclosing scope's walk reaches, so

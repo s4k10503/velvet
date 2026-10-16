@@ -129,7 +129,14 @@ namespace Velvet
             out ArbitraryStyle result)
         {
             result = default;
-            if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var tValue, out var tUnit)) return false;
+            if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var tValue, out var tUnit))
+            {
+                // A length the element measures: a font-relative or viewport unit, or a percentage of its own box
+                // beside a length.
+                if (!StyleLengthExpression.TryParse(valueSpan, out var expression)) return false;
+                result = new ArbitraryStyle(property, negate ? expression!.Negated() : expression!);
+                return true;
+            }
             if (negate) tValue = -tValue;
             result = new ArbitraryStyle(property, tValue, tUnit);
             return true;
@@ -145,48 +152,37 @@ namespace Velvet
             result = default;
             if (negate) return false;
 
-            var first = valueSpan.IndexOf('_');
-            if (first == -1)
+            // Words outside parentheses, so a math function's own spaces stay in its word.
+            var parts = StyleGradientClass.SplitTopLevel(valueSpan.ToString(), '_');
+            if (parts.Count == 1)
             {
-                if (!TryParseOriginComponent(valueSpan, out var only)) return false;
+                if (!TryParseOriginComponent(parts[0].AsSpan(), out var only)) return false;
                 // A lone vertical keyword is the y, and CSS leaves the other axis at 50% — not at the stated
                 // value, which would make origin-[0px] the top-left corner instead of the left edge's middle.
-                result = only.Kind == OriginKind.Vertical
-                    ? new ArbitraryStyle(ArbitraryProperty.TransformOrigin, 50f, LengthUnit.Percent, only.Value, only.Unit)
-                    : new ArbitraryStyle(ArbitraryProperty.TransformOrigin, only.Value, only.Unit, 50f, LengthUnit.Percent);
-                return true;
+                return only.Kind == OriginKind.Vertical
+                    ? TryOrigin(s_centre, only, 0f, out result)
+                    : TryOrigin(only, s_centre, 0f, out result);
             }
 
-            var rest = valueSpan[(first + 1)..];
-            var second = rest.IndexOf('_');
             var z = 0f;
-            if (second != -1)
+            if (parts.Count == 3)
             {
-                // The z is a length and never a percentage or a keyword; a fourth component fails its parse.
-                if (!StyleArbitraryValueResolver.TryParseValue(rest[(second + 1)..], out z, out var zUnit))
+                // The z is a length and never a percentage or a keyword.
+                if (!StyleArbitraryValueResolver.TryParseValue(parts[2].AsSpan(), out z, out var zUnit) || zUnit == LengthUnit.Percent)
                 {
                     return false;
                 }
-                if (zUnit == LengthUnit.Percent)
-                {
-                    return false;
-                }
-                rest = rest[..second];
             }
-
-            if (!TryParseOriginComponent(valueSpan[..first], out var a))
-            {
-                return false;
-            }
-            if (!TryParseOriginComponent(rest, out var b))
+            if (parts.Count > 3
+                || !TryParseOriginComponent(parts[0].AsSpan(), out var a)
+                || !TryParseOriginComponent(parts[1].AsSpan(), out var b))
             {
                 return false;
             }
 
             if (a.Kind != OriginKind.Vertical && b.Kind != OriginKind.Horizontal)
             {
-                result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, a.Value, a.Unit, b.Value, b.Unit, z);
-                return true;
+                return TryOrigin(a, b, z, out result);
             }
 
             // The swapped order is CSS's keyword-only pair (top left); a length on either side of it is not.
@@ -195,8 +191,33 @@ namespace Velvet
             {
                 return false;
             }
-            result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, b.Value, b.Unit, a.Value, a.Unit, z);
+            return TryOrigin(b, a, z, out result);
+        }
+
+        private static readonly OriginComponent s_centre = new(OriginKind.Center, 50f, LengthUnit.Percent);
+
+        // An origin of x and y, in the units written, or as expressions the element measures where either is one.
+        private static bool TryOrigin(OriginComponent x, OriginComponent y, float z, out ArbitraryStyle result)
+        {
+            if (x.Expression == null && y.Expression == null)
+            {
+                result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, x.Value, x.Unit, y.Value, y.Unit, z);
+                return true;
+            }
+            result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, ExpressionOf(x), ExpressionOf(y), z);
             return true;
+        }
+
+        private static StyleLengthExpression ExpressionOf(OriginComponent component)
+        {
+            if (component.Expression != null)
+            {
+                return component.Expression;
+            }
+            var text = component.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+                + (component.Unit == LengthUnit.Percent ? "%" : "px");
+            StyleLengthExpression.TryParse(text.AsSpan(), out var expression);
+            return expression!;
         }
 
         private enum OriginKind
@@ -209,16 +230,19 @@ namespace Velvet
 
         private readonly struct OriginComponent
         {
-            public OriginComponent(OriginKind kind, float value, LengthUnit unit)
+            public OriginComponent(OriginKind kind, float value, LengthUnit unit, StyleLengthExpression? expression = null)
             {
                 Kind = kind;
                 Value = value;
                 Unit = unit;
+                Expression = expression;
             }
 
             public OriginKind Kind { get; }
             public float Value { get; }
             public LengthUnit Unit { get; }
+            // A length the element measures (a font-relative or viewport unit, a percentage beside a length).
+            public StyleLengthExpression? Expression { get; }
         }
 
         private static readonly (string Keyword, OriginKind Kind, float Percent)[] s_originKeywords =
@@ -240,13 +264,14 @@ namespace Velvet
                     return true;
                 }
             }
-            if (!StyleArbitraryValueResolver.TryParseValue(span, out var value, out var unit))
+            if (StyleArbitraryValueResolver.TryParseValue(span, out var value, out var unit))
             {
-                component = default;
-                return false;
+                component = new OriginComponent(OriginKind.Length, value, unit);
+                return true;
             }
-            component = new OriginComponent(OriginKind.Length, value, unit);
-            return true;
+            var measured = StyleLengthExpression.TryParse(span, out var expression);
+            component = new OriginComponent(OriginKind.Length, 0f, LengthUnit.Pixel, expression);
+            return measured;
         }
     }
 }
