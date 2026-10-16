@@ -51,7 +51,7 @@ namespace Velvet.Tests
             => element.parent != null
                 && element.parent.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass);
 
-        // The ring band is a sibling of the ringed element, not a child of a wrapper, so it is found by its
+        // The ring overlay is a sibling of the ringed element, not a child of a wrapper, so it is found by its
         // marker rather than at a fixed index.
         private static VisualElement RingOverlayIn(VisualElement host)
         {
@@ -64,6 +64,9 @@ namespace Velvet.Tests
             }
             return null;
         }
+
+        // The ring's own band, which the overlay holds beside the offset fill and the outline.
+        private static VisualElement RingBandIn(VisualElement host) => RingOverlayIn(host)?.Q<VisualElement>("velvet-ring-band");
 
         private static void Mount(ReconcilerScope scope, VNode[] tree)
             => scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
@@ -501,20 +504,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That(RingOverlayIn(scope.Root).style.borderTopWidth.value, Is.EqualTo(2f));
-        }
-
-        [Test]
-        public void Given_BareRing_When_Reconciled_Then_OverlayUsesDefaultBlueRingColor()
-        {
-            using var scope = new ReconcilerScope();
-            // Tailwind's default ring color is blue-500 at 0.5 alpha (the palette token resolves opaque).
-            VelvetPalette.TryResolveColorToken("blue-500", out var blue);
-            blue.a = 0.5f;
-
-            Mount(scope, new VNode[] { V.Div(className: "ring", name: "card") });
-
-            Assert.That(RingOverlayIn(scope.Root).style.borderTopColor.value, Is.EqualTo(blue));
+            Assert.That(RingBandIn(scope.Root)?.style.borderTopWidth.value, Is.EqualTo((float?)2f));
         }
 
         [Test]
@@ -525,7 +515,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2 ring-red-500", name: "card") });
 
-            Assert.That(RingOverlayIn(scope.Root).style.borderRightColor.value, Is.EqualTo(red));
+            Assert.That(RingBandIn(scope.Root)?.style.borderRightColor.value, Is.EqualTo((Color?)red));
         }
 
         [Test]

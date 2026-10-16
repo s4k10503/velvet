@@ -14,6 +14,10 @@
   - while a selection utility applies and the field holds focus and a non-empty selection, the
     selected text is drawn again above UI Toolkit's selection highlight, so an opaque highlight reads
     as a background.
+- `shadow-<colour>` and `shadow-[<colour>]`, with an opacity modifier (`shadow-red-500/50`), colour the
+  `shadow-*` beside them, as Tailwind's `--tw-shadow-color` does.
+- `ring-offset-<colour>` colours the offset fill, and a ring, ring-offset or outline colour takes an opacity
+  modifier (`ring-red-500/50`).
 
 ### Fixed
 

@@ -308,8 +308,15 @@ an opaque full-bleed child, where CSS paints an inset box-shadow under the eleme
 A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `ring-<n>`, `ring-[…]`, `outline`
 (1px), `outline-<n>` and `outline-[…]`. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
 colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A band whose
-family names no colour is drawn in the element's text colour and follows it as it changes. Velvet still
-draws one band where CSS draws a ring and an outline together.
+family names no colour is drawn in the element's text colour and follows it as it changes. A ring and an
+outline on one element are two bands, each with its own width, colour and offset, the outline drawn over the
+ring: `ring-4 outline-2` is a 4px ring under a 2px outline.
+
+`ring-offset-<n>` fills the gap with `--tw-ring-offset-color`, white unless `ring-offset-<colour>` names
+another, and the ring spreads across the offset under that fill, as Tailwind composes them into one
+box-shadow — so `ring-offset-transparent` shows the ring's colour across the offset. The box-shadow a
+`shadow-*` writes carries the fill too: `shadow-lg ring-offset-2` draws a 2px white band and no ring, while
+`ring-offset-2` alone draws nothing.
 
 What the ringed element's own subtree would carry reaches the band as well. Its transform —
 `translate-*`, `scale-*`, `rotate-*` about any `origin-*`, a transition or a `V.Motion` animating those,

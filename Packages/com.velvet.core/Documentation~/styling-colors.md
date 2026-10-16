@@ -7,6 +7,11 @@ a stop list), a text input's `caret-[…]`, `selection:bg-[…]` and `selection:
 modifier, and the colour argument of a custom filter (`filter-[name:…]`). An underscore stands for a
 space: `bg-[rgb(255_0_0_/_50%)]` is `rgb(255 0 0 / 50%)`.
 
+A shadow colour, `shadow-<colour>` or a `shadow-[…]` holding a colour, opacity modifier included
+(`shadow-red-500/50`), is Tailwind's `--tw-shadow-color`: it replaces the colour of the `shadow-*` size beside
+it, whichever comes first, a `shadow-[…]` size's own colour included, and draws nothing alone. A
+`drop-shadow-*` keeps its own colour.
+
 ## Accepted forms
 
 | Form | Example |

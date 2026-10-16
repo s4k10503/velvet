@@ -138,12 +138,23 @@ namespace Velvet
             }
 
             var found = false;
+            var foundBoxShadow = false;
+            var colorSet = false;
+            var color = default(Color);
             // A box-shadow the browser discards takes every shadow-* with it; a drop-shadow is a filter and stays.
             var discarded = StyleRingClass.DiscardsBoxShadow(classNames);
             foreach (var cls in classNames)
             {
                 if (discarded && cls != null && (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal)))
                 {
+                    continue;
+                }
+                // A shadow colour is --tw-shadow-color, its own property, so it neither replaces nor cancels the
+                // shadow beside it, whichever comes first.
+                if (TryParseShadowColor(cls!, out var parsedColor))
+                {
+                    colorSet = true;
+                    color = parsedColor;
                     continue;
                 }
                 if (TryParse(cls!, out var parsed, out var wantShadow))
@@ -153,10 +164,36 @@ namespace Velvet
                     if (wantShadow)
                     {
                         spec = parsed;
+                        foundBoxShadow = cls == "shadow" || cls!.StartsWith("shadow-", StringComparison.Ordinal);
                     }
                 }
             }
+            // A box-shadow size writes its colour as var(--tw-shadow-color, <its own>), so a shadow colour
+            // replaces the size's colour, the alpha included. A drop-shadow reads its own colour property.
+            if (found && foundBoxShadow && colorSet)
+            {
+                spec = new ShadowSpec(color, spec.Blur, spec.OffsetY, spec.Spread, spec.OffsetX);
+            }
             return found;
+        }
+
+        // shadow-<colour> and shadow-[<colour>], Tailwind's --tw-shadow-color branch, with an optional opacity
+        // modifier. A bracket is a colour where its hint is `color`, or where it has none and holds a colour.
+        internal static bool TryParseShadowColor(string cls, out Color color)
+        {
+            color = default;
+            const int start = 7; // "shadow-"
+            if (string.IsNullOrEmpty(cls) || !cls.StartsWith("shadow-", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            if (StyleArbitraryValueResolver.TryStripBrackets(cls, start, out var inner))
+            {
+                return StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
+                    && (hint == null || hint == "color")
+                    && StyleColorValueParser.TryParseColor(inner, out color);
+            }
+            return StyleColorValueParser.TryParseColorValue(cls, start, out color);
         }
 
         private static bool TryParse(string cls, out ShadowSpec spec, out bool wantShadow)
@@ -218,10 +255,12 @@ namespace Velvet
             return false;
         }
 
-        // Whether cls is a box-shadow utility Tailwind generates: shadow, a preset, shadow-none or a bracket.
+        // Whether cls is a box-shadow utility Tailwind generates: shadow, a preset, shadow-none or a bracket that is
+        // not a shadow colour.
         internal static bool DeclaresBoxShadow(string cls)
             => cls == "shadow" || (cls.StartsWith("shadow-", StringComparison.Ordinal)
-                && (cls == "shadow-none" || Presets.ContainsKey(cls.Substring("shadow-".Length)) || cls["shadow-".Length] == '['));
+                && (cls == "shadow-none" || Presets.ContainsKey(cls.Substring("shadow-".Length))
+                    || (cls["shadow-".Length] == '[' && !TryParseShadowColor(cls, out _))));
 
         // Whether cls is a shadow-[…] Tailwind writes as a box-shadow value that the browser rejects because it
         // holds a bare non-zero number (`shadow-[0_4_8_#000]`).

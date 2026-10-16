@@ -24,6 +24,13 @@
   drawn in the element's text colour, as v4's `var(--tw-ring-color, currentcolor)` and `outline-color`'s
   initial value are, where it was blue-500 (at half alpha for a ring). A colour class alone (`ring-red-500`) no
   longer draws a ring, and a ring colour no longer colours an outline.
+- A ring and an outline on one element draw two bands, as the browser draws box-shadow and outline, where
+  they shared one band, its width and its offset: `ring-4 outline-2` is a 4px ring under a 2px outline where
+  it was a single 2px band, and `outline-offset-*` no longer moves a ring.
+- `ring-offset-<n>` fills the offset in white, Tailwind's default `--tw-ring-offset-color`, where it left the
+  gap transparent, and the ring's colour spreads under that fill as Tailwind's box-shadow composes it. A
+  `shadow-*` beside `ring-offset-<n>` draws the fill too. `ring-none`, which Tailwind does not generate, no
+  longer cancels a ring.
 - `grid-cols-[5]` leaves the class inert, as the browser rejects the `grid-template-columns: 5` Tailwind writes
   for it; it used to lay out five columns. `grid-cols-[repeat(5,minmax(0,1fr))]`, the list `grid-cols-5` writes,
   is five columns.

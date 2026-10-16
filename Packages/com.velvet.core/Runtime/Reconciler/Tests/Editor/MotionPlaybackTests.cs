@@ -329,8 +329,10 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = OnPanel("ringed");
-            var band = RingOverlay.Attach(element, new RingSpec(width: 2f, color: UnityEngine.Color.red, offset: 0f,
-                inset: false), Array.Empty<string>()).Overlay;
+            var band = RingOverlay.Attach(element,
+                new RingSpec(hasRing: true, new RingBand(2f, 0f, UnityEngine.Color.red, currentColor: false), hasOffsetFill: false,
+                    default, inset: false, outline: default),
+                Array.Empty<string>()).Overlay;
             _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(delaySec: 0.2f),
                 playback: new MotionPlayback());
             Ticks(11);
@@ -1002,8 +1004,10 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = OnPanel("ringed");
-            var band = RingOverlay.Attach(element, new RingSpec(width: 2f, color: Color.red, offset: 0f,
-                inset: false), Array.Empty<string>()).Overlay;
+            var band = RingOverlay.Attach(element,
+                new RingSpec(hasRing: true, new RingBand(2f, 0f, Color.red, currentColor: false), hasOffsetFill: false,
+                    default, inset: false, outline: default),
+                Array.Empty<string>()).Overlay;
             var playback = new MotionPlayback();
             _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
             Ticks(5);
@@ -1105,8 +1109,10 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = OnPanel("ringed");
-            var band = RingOverlay.Attach(element, new RingSpec(width: 2f, color: Color.red, offset: 0f,
-                inset: false), Array.Empty<string>()).Overlay;
+            var band = RingOverlay.Attach(element,
+                new RingSpec(hasRing: true, new RingBand(2f, 0f, Color.red, currentColor: false), hasOffsetFill: false,
+                    default, inset: false, outline: default),
+                Array.Empty<string>()).Overlay;
             var playback = new MotionPlayback();
             _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
             Ticks(5);

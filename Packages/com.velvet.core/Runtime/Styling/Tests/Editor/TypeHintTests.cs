@@ -80,7 +80,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { "ring-[length:5PX]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Width : float.NaN, Is.EqualTo(5f));
+            Assert.That(ok ? spec.Ring.Width : float.NaN, Is.EqualTo(5f));
         }
 
         [Test]
@@ -90,7 +90,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { "ring-2", "ring-[color:#ff0000]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Color : Color.clear, Is.EqualTo(Color.red));
+            Assert.That(ok ? spec.Ring.Color : Color.clear, Is.EqualTo(Color.red));
         }
 
         [TestCase("outline-[length:2PX]", 2f)]
@@ -101,18 +101,18 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { utility }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Width : float.NaN, Is.EqualTo(width));
+            Assert.That(ok ? spec.Outline.Width : float.NaN, Is.EqualTo(width));
         }
 
-        [TestCase("ring-offset-[length:5PX]")]
-        [TestCase("outline-offset-[length:5px]")]
-        public void Given_AHintedOffset_When_Extracted_Then_ItIsThatOffset(string utility)
+        [TestCase("ring", "ring-offset-[length:5PX]")]
+        [TestCase("outline", "outline-offset-[length:5px]")]
+        public void Given_AHintedOffset_When_Extracted_Then_ItIsThatOffset(string band, string utility)
         {
             // Act
-            StyleRingClass.TryExtract(new[] { "ring", utility }, out var spec);
+            StyleRingClass.TryExtract(new[] { band, utility }, out var spec);
 
             // Assert
-            Assert.That(spec.Offset, Is.EqualTo(5f));
+            Assert.That(band == "ring" ? spec.Ring.Offset : spec.Outline.Offset, Is.EqualTo(5f));
         }
 
         [Test]

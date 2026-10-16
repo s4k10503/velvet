@@ -10,14 +10,25 @@ namespace Velvet
     // list (the geometry sync re-resolves the corner radius from it) and the resolved spec.
     internal sealed class RingBinding
     {
+        // Covers the element's box and carries its transform, opacity, visibility and display; the bands are its
+        // children, in CSS's paint order: the ring's box-shadow, the offset fill over it, the outline over both.
         public readonly VisualElement Overlay;
+        public readonly VisualElement RingElement;
+        public readonly VisualElement OffsetElement;
+        public readonly VisualElement OutlineElement;
         public string[] ClassNames = null!;
         public RingSpec Spec;
         public EventCallback<GeometryChangedEvent>? OnGeometry;
         public EventCallback<AttachToPanelEvent>? OnAttach;
         public IVisualElementScheduledItem? StateTick;
 
-        public RingBinding(VisualElement overlay) => Overlay = overlay;
+        public RingBinding(VisualElement overlay, VisualElement ringElement, VisualElement offsetElement, VisualElement outlineElement)
+        {
+            Overlay = overlay;
+            RingElement = ringElement;
+            OffsetElement = offsetElement;
+            OutlineElement = outlineElement;
+        }
     }
 
     /// <summary>
@@ -74,6 +85,21 @@ namespace Velvet
         // divide manipulators all skip it without any of them learning about rings.
         internal const string MarkerClass = "velvet-ring-overlay";
         internal const string OverlayName = "velvet-ring-overlay";
+        internal const string RingBandName = "velvet-ring-band";
+        internal const string OffsetBandName = "velvet-ring-offset-band";
+        internal const string OutlineBandName = "velvet-outline-band";
+
+        private static VisualElement NewBand(VisualElement overlay, string name)
+        {
+            var band = new VisualElement
+            {
+                name = name,
+                pickingMode = PickingMode.Ignore,
+                style = { position = Position.Absolute, backgroundColor = Color.clear },
+            };
+            overlay.Add(band);
+            return band;
+        }
 
         public static RingBinding Attach(VisualElement element, RingSpec spec, string[] classNames)
         {
@@ -85,8 +111,9 @@ namespace Velvet
             };
             overlay.AddToClassList(MarkerClass);
 
-            var binding = new RingBinding(overlay) { ClassNames = classNames, Spec = spec };
-            ApplySpec(overlay, spec, element);
+            var binding = new RingBinding(overlay, NewBand(overlay, RingBandName), NewBand(overlay, OffsetBandName),
+                NewBand(overlay, OutlineBandName)) { ClassNames = classNames, Spec = spec };
+            ApplySpec(binding, element);
 
             binding.OnGeometry = _ => Place(element, binding);
             element.RegisterCallback(binding.OnGeometry);
@@ -143,7 +170,7 @@ namespace Velvet
         {
             binding.Spec = spec;
             binding.ClassNames = classNames;
-            ApplySpec(binding.Overlay, spec, element);
+            ApplySpec(binding, element);
             Place(element, binding);
         }
 
@@ -164,23 +191,34 @@ namespace Velvet
             s_byElement.Remove(element);
         }
 
-        // Native border on all four sides is the whole band; its geometry (position / size / radii) is set by
-        // SyncGeometry once the element is laid out.
-        private static void ApplySpec(VisualElement overlay, RingSpec spec, VisualElement element)
+        // A native border on all four sides is the whole of each band; its geometry (position / size / radii) is
+        // set by SyncGeometry once the element is laid out. The ring's border spans its offset as well as its
+        // width, as Tailwind's ring spread does, so a translucent offset fill shows the ring through it.
+        private static void ApplySpec(RingBinding binding, VisualElement element)
         {
-            overlay.style.borderTopWidth = spec.Width;
-            overlay.style.borderRightWidth = spec.Width;
-            overlay.style.borderBottomWidth = spec.Width;
-            overlay.style.borderLeftWidth = spec.Width;
-            ApplyColor(overlay, spec.CurrentColor ? element.resolvedStyle.color : spec.Color);
+            var spec = binding.Spec;
+            var text = element.resolvedStyle.color;
+            ApplyBand(binding.RingElement, spec.RingSpread, spec.Ring.CurrentColor ? text : spec.Ring.Color);
+            ApplyBand(binding.OffsetElement, spec.OffsetSpread, spec.OffsetColor);
+            ApplyBand(binding.OutlineElement, spec.Outline.Width, spec.Outline.CurrentColor ? text : spec.Outline.Color);
         }
 
-        private static void ApplyColor(VisualElement overlay, Color color)
+        private static void ApplyBand(VisualElement band, float width, Color color)
         {
-            overlay.style.borderTopColor = color;
-            overlay.style.borderRightColor = color;
-            overlay.style.borderBottomColor = color;
-            overlay.style.borderLeftColor = color;
+            band.style.display = width > 0f ? DisplayStyle.Flex : DisplayStyle.None;
+            band.style.borderTopWidth = width;
+            band.style.borderRightWidth = width;
+            band.style.borderBottomWidth = width;
+            band.style.borderLeftWidth = width;
+            ApplyColor(band, color);
+        }
+
+        private static void ApplyColor(VisualElement band, Color color)
+        {
+            band.style.borderTopColor = color;
+            band.style.borderRightColor = color;
+            band.style.borderBottomColor = color;
+            band.style.borderLeftColor = color;
         }
 
         // Re-homes the overlay onto the element's CURRENT parent and re-sizes it. The host is re-derived on
@@ -221,13 +259,12 @@ namespace Velvet
             SyncElementState(element, binding);
         }
 
-        // Sizes and positions the overlay over the element's laid-out box. Outset (the default): the band sits
-        // OUTSIDE the element edge by Offset, so the overlay inflates by (Offset + Width) per side and each
-        // outer corner radius is that corner's radius plus the same amount. Inset (ring-inset): the overlay
-        // matches the element's box exactly, at the element's own radii.
+        // Sets the overlay over the element's laid-out box, and each band around it. Outset, a band's box inflates
+        // by the band's spread per side (an outline's offset plus its width) and each outer corner radius is that
+        // corner's radius plus the same amount. Inset (ring-inset, which takes the ring and its offset fill and
+        // not the outline), a band matches the element's box at the element's own radii.
         private static void SyncGeometry(VisualElement element, RingBinding binding, VisualElement host)
         {
-            var overlay = binding.Overlay;
             var spec = binding.Spec;
 
             var width = element.resolvedStyle.width;
@@ -252,33 +289,47 @@ namespace Velvet
             if (float.IsNaN(hostBorderLeft)) hostBorderLeft = 0f;
             if (float.IsNaN(hostBorderTop)) hostBorderTop = 0f;
 
-            var grow = spec.Inset ? 0f : spec.Offset + spec.Width;
-            overlay.style.left = originX - grow - hostBorderLeft;
-            overlay.style.top = originY - grow - hostBorderTop;
-            overlay.style.width = width + (grow * 2f);
-            overlay.style.height = height + (grow * 2f);
+            var overlay = binding.Overlay.style;
+            overlay.left = originX - hostBorderLeft;
+            overlay.top = originY - hostBorderTop;
+            overlay.width = width;
+            overlay.height = height;
 
-            var outerGrow = spec.Inset ? 0f : spec.Offset + spec.Width;
-            ResolveRadii(element, binding, out var tl, out var tr, out var br, out var bl);
-            overlay.style.borderTopLeftRadius = tl + outerGrow;
-            overlay.style.borderTopRightRadius = tr + outerGrow;
-            overlay.style.borderBottomRightRadius = br + outerGrow;
-            overlay.style.borderBottomLeftRadius = bl + outerGrow;
+            ResolveRadii(element, binding, out var radii);
+            PlaceBand(binding.RingElement, spec.Inset ? 0f : spec.RingSpread, width, height, radii);
+            PlaceBand(binding.OffsetElement, spec.Inset ? 0f : spec.OffsetSpread, width, height, radii);
+            PlaceBand(binding.OutlineElement, spec.Outline.Offset + spec.Outline.Width, width, height, radii);
         }
 
-        // Gives the band what the element's own subtree would have given it had it been inside: its opacity,
-        // visibility and display, and its transform, pivoting where the element pivots. The overlay's box
-        // starts (Offset + Width) up and left of the element's for an outset band, so the element's pivot sits
-        // that much further into the overlay. The resolved values are pixels, so a percentage translate stays
-        // a fraction of the element's box rather than becoming one of the larger overlay's.
+        // Positions a band against the overlay, whose box is the element's.
+        private static void PlaceBand(VisualElement band, float grow, float width, float height, Vector4 radii)
+        {
+            var style = band.style;
+            style.left = -grow;
+            style.top = -grow;
+            style.width = width + (grow * 2f);
+            style.height = height + (grow * 2f);
+            style.borderTopLeftRadius = radii.x + grow;
+            style.borderTopRightRadius = radii.y + grow;
+            style.borderBottomRightRadius = radii.z + grow;
+            style.borderBottomLeftRadius = radii.w + grow;
+        }
+
+        // Gives the bands what the element's own subtree would have given them had they been inside: its opacity,
+        // visibility and display, and its transform, pivoting where the element pivots. The overlay's box is the
+        // element's, so the bands, which reach outside it, turn about the element's pivot rather than their own.
         private static void SyncElementState(VisualElement element, RingBinding binding)
         {
             var rs = element.resolvedStyle;
             var style = binding.Overlay.style;
             // A band in the element's text colour follows it as it changes, as currentcolor does.
-            if (binding.Spec.CurrentColor)
+            if (binding.Spec.Ring.CurrentColor)
             {
-                ApplyColor(binding.Overlay, rs.color);
+                ApplyColor(binding.RingElement, rs.color);
+            }
+            if (binding.Spec.Outline.CurrentColor)
+            {
+                ApplyColor(binding.OutlineElement, rs.color);
             }
             style.opacity = rs.opacity;
             style.visibility = rs.visibility;
@@ -287,10 +338,9 @@ namespace Velvet
             {
                 return; // pre-layout: a percentage pivot has no box to resolve against yet
             }
-            var grow = binding.Spec.Inset ? 0f : binding.Spec.Offset + binding.Spec.Width;
             var origin = rs.transformOrigin;
             var translate = rs.translate;
-            style.transformOrigin = new TransformOrigin(origin.x + grow, origin.y + grow, origin.z);
+            style.transformOrigin = new TransformOrigin(origin.x, origin.y, origin.z);
             style.translate = new Translate(translate.x, translate.y, translate.z);
             style.scale = rs.scale;
             style.rotate = rs.rotate;
@@ -304,21 +354,19 @@ namespace Velvet
         // takes the top-left as representative, see StyleShadowClass.TryResolveCornerRadius) and would round
         // all four corners of a `rounded-tl-lg` band. That fallback stays whole-element, so a per-corner
         // class is approximated until the first geometry event replaces it with the resolved values.
-        private static void ResolveRadii(VisualElement element, RingBinding binding,
-            out float tl, out float tr, out float br, out float bl)
+        // radii is top-left, top-right, bottom-right, bottom-left as x, y, z, w.
+        private static void ResolveRadii(VisualElement element, RingBinding binding, out Vector4 radii)
         {
             var rs = element.resolvedStyle;
-            tl = Sane(rs.borderTopLeftRadius);
-            tr = Sane(rs.borderTopRightRadius);
-            br = Sane(rs.borderBottomRightRadius);
-            bl = Sane(rs.borderBottomLeftRadius);
-            if (element.panel != null && (tl > 0f || tr > 0f || br > 0f || bl > 0f))
+            radii = new Vector4(Sane(rs.borderTopLeftRadius), Sane(rs.borderTopRightRadius),
+                Sane(rs.borderBottomRightRadius), Sane(rs.borderBottomLeftRadius));
+            if (element.panel != null && (radii.x > 0f || radii.y > 0f || radii.z > 0f || radii.w > 0f))
             {
                 return;
             }
             if (StyleRingClass.TryResolveCornerRadius(binding.ClassNames, out var classRadius))
             {
-                tl = tr = br = bl = classRadius;
+                radii = new Vector4(classRadius, classRadius, classRadius, classRadius);
             }
         }
 

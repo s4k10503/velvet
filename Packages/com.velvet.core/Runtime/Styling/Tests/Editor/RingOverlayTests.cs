@@ -43,6 +43,15 @@ namespace Velvet.Tests
                 : null;
         }
 
+        // The ring's band and the outline's, each a child of the overlay BandFor finds. Named rather than read
+        // off RingOverlay's constants, so a tree that draws no such child reports null here instead of failing
+        // to build.
+        private static VisualElement RingBandFor(VisualElement element)
+            => BandFor(element)?.Q<VisualElement>("velvet-ring-band");
+
+        private static VisualElement OutlineBandFor(VisualElement element)
+            => BandFor(element)?.Q<VisualElement>("velvet-outline-band");
+
         // How far along x a band paints from the element it rings. worldBound and not layout because layout
         // is the pre-transform box, and the element's OWN transform is the thing this reading exists to
         // catch: read from layout, a translated element and a still one both measure -4.
@@ -51,11 +60,11 @@ namespace Velvet.Tests
         // difference exactly and this helper cannot see one at all. An ancestor SCALE does not cancel — it
         // multiplies the difference, so scale-150 over a ring-4 band reads -6 and not -4.
         private static float BandOffsetX(VisualElement element)
-            => BandFor(element).worldBound.x - element.worldBound.x;
+            => RingBandFor(element).worldBound.x - element.worldBound.x;
 
         // The same reading along y, with the same scope.
         private static float BandOffsetY(VisualElement element)
-            => BandFor(element).worldBound.y - element.worldBound.y;
+            => RingBandFor(element).worldBound.y - element.worldBound.y;
 
         private VisualElement MountRinged(string className)
         {
@@ -133,10 +142,10 @@ namespace Velvet.Tests
             // Arrange & Act — an arbitrary rounded-[12px] resolves through resolvedStyle rather than the
             // rounded-* class scale, and the band's OUTER radius is that radius plus the ring width.
             var card = MountRinged("w-[100px] h-[40px] rounded-[12px] ring-4");
-            var overlay = RingOverlayIn(card.parent);
+            var band = RingBandFor(card);
 
             // Assert
-            Assert.That(overlay?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)16f));
+            Assert.That(band?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)16f));
         }
 
         [Test]
@@ -146,11 +155,11 @@ namespace Velvet.Tests
             // for the whole element (top-left representative), so an arbitrary rounded-tl-[12px] never reaches
             // it and would pass even with the fallback rounding all four corners. rounded-tl-lg does reach it.
             var card = MountRinged("w-[100px] h-[40px] rounded-tl-lg ring-4");
-            var overlay = RingOverlayIn(card.parent);
+            var band = RingBandFor(card);
 
             // Assert — top-left carries the radius plus the ring width; top-right carries the ring width only.
             // rounded-lg is 8px.
-            Assert.That((overlay?.resolvedStyle.borderTopLeftRadius, overlay?.resolvedStyle.borderTopRightRadius),
+            Assert.That((band?.resolvedStyle.borderTopLeftRadius, band?.resolvedStyle.borderTopRightRadius),
                 Is.EqualTo(((float?)12f, (float?)4f)));
         }
 
@@ -253,8 +262,42 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert — the card's own red is the class taking effect.
-            Assert.That((card.resolvedStyle.color, BandFor(card).resolvedStyle.borderTopColor),
-                Is.EqualTo((Color.red, Color.red)));
+            Assert.That((card.resolvedStyle.color, RingBandFor(card)?.resolvedStyle.borderTopColor),
+                Is.EqualTo((Color.red, (Color?)Color.red)));
+        }
+
+        // A ring and an outline on one element are two bands, as the box-shadow and the outline CSS draws.
+
+        [Test]
+        public void Given_ARingAndAnOutlineWithTheirOwnOffsets_When_LaidOut_Then_EachBandSitsAtItsOwnDistance()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] ring-2 ring-offset-4 outline-2 outline-offset-1");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — the ring spreads its offset plus its width, 6px; the outline its own offset plus its width,
+            // 3px. Rounded because .Within() does not reach the members of a ValueTuple; both are whole pixels.
+            Assert.That(
+                (RingBandFor(card) is { } ring ? Mathf.Round(ring.worldBound.x - card.worldBound.x) : float.NaN,
+                    OutlineBandFor(card) is { } outline ? Mathf.Round(outline.worldBound.x - card.worldBound.x) : float.NaN),
+                Is.EqualTo((-6f, -3f)));
+        }
+
+        [Test]
+        public void Given_AnOutlineNamingNoColourBesideARingColour_When_LaidOut_Then_TheOutlineIsTheTextColour()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] ring-2 ring-[#0000ff] outline-2 text-[#ff0000]");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — each band takes its own family's colour: the ring the blue it names, the outline the text.
+            Assert.That(
+                (RingBandFor(card)?.resolvedStyle.borderTopColor, OutlineBandFor(card)?.resolvedStyle.borderTopColor),
+                Is.EqualTo(((Color?)Color.blue, (Color?)Color.red)));
         }
 
         [Test]

@@ -72,7 +72,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { "ring", "ring-[5PX]", "ring-[#ff0000]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Color : Color.clear, Is.EqualTo(Color.red));
+            Assert.That(ok ? spec.Ring.Color : Color.clear, Is.EqualTo(Color.red));
         }
 
         // GREEN_ON_BASE(characterization): a drop-shadow is a filter, which the base drew beside any ring as this does.
