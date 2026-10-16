@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using BigInteger = System.Numerics.BigInteger;
 using UnityEngine;
 
 namespace Velvet
@@ -106,17 +107,11 @@ namespace Velvet
 
         private static double IntersectionRatio(Rect entry, Rect target)
         {
-            double left = Math.Max(target.xMin, entry.xMin);
-            double top = Math.Max(target.yMin, entry.yMin);
-            double right = Math.Min(target.xMax, entry.xMax);
-            double bottom = Math.Min(target.yMax, entry.yMax);
-            if (!(left < right && top < bottom))
-            {
-                return 0;
-            }
+            double width = Math.Min(target.xMax, entry.xMax) - Math.Max(target.xMin, entry.xMin);
+            double height = Math.Min(target.yMax, entry.yMax) - Math.Max(target.yMin, entry.yMin);
+            var intersectionArea = Math.Max(0, width) * Math.Max(0, height);
             double targetArea = (double)target.width * target.height;
             double entryArea = (double)entry.width * entry.height;
-            var intersectionArea = (right - left) * (bottom - top);
             return RoundToFourDecimals(intersectionArea / (targetArea + entryArea - intersectionArea));
         }
 
@@ -135,8 +130,39 @@ namespace Velvet
             return Math.Sqrt(dx * dx + dy * dy);
         }
 
+        // JavaScript's toFixed(4) on the exact binary value, halves going up — not Math.Round, which is not
+        // exact-decimal. The two rounding cases in DndInteractionTests pin it.
         private static double RoundToFourDecimals(double value)
-            => Math.Round(value, 4, MidpointRounding.AwayFromZero);
+        {
+            if (!(value > 0) || double.IsInfinity(value))
+            {
+                return value;
+            }
+            var bits = BitConverter.DoubleToInt64Bits(value);
+            var exponent = (int)((bits >> 52) & 0x7FF);
+            var mantissa = bits & 0xFFFFFFFFFFFFFL;
+            if (exponent == 0)
+            {
+                exponent = 1;
+            }
+            else
+            {
+                mantissa |= 1L << 52;
+            }
+            exponent -= 1075;
+            var scaled = new BigInteger(mantissa) * 10000;
+            BigInteger rounded;
+            if (exponent >= 0)
+            {
+                rounded = scaled << exponent;
+            }
+            else
+            {
+                var shift = -exponent;
+                rounded = ((scaled << 1) + (BigInteger.One << shift)) >> (shift + 1);
+            }
+            return (double)rounded / 10000.0;
+        }
 
         // Insertion sort, so an equal pair stays in registration order.
         private static DndCollision[] Rank(DndCollision[] found, int count, bool descending)

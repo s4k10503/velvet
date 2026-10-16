@@ -1168,6 +1168,35 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARatioWhoseDoubleSitsJustBelowAFifthDecimalHalf_When_RectIntersectionRuns_Then_ItRoundsDownLikeToFixed()
+        {
+            // Arrange — the overlap is 7 of a union of 20000, so the ratio is the double nearest 0.00035,
+            // which lies below the half; (7 / 20000).toFixed(4) is "0.0003".
+            var query = Query(new Rect(0, 0, 100, 100), Vector2.zero,
+                Candidate("strip", new Rect(93, 99, 10007, 1)));
+
+            // Act
+            var ranked = DndCollisions.RectIntersection(in query);
+
+            // Assert
+            Assert.That(Values(ranked), Is.EqualTo("0.0003"));
+        }
+
+        [Test]
+        public void Given_AMeanCornerDistanceOfAnExactFifthDecimalHalf_When_ClosestCornersRuns_Then_ItRoundsUpLikeToFixed()
+        {
+            // Arrange — every corner pair is 1.03125 (33/32) apart, an exactly representable half;
+            // (1.03125).toFixed(4) is "1.0313" and round-half-to-even would give 1.0312.
+            var query = Query(s_active, Vector2.zero, Candidate("a", new Rect(1.03125f, 0, 10, 10)));
+
+            // Act
+            var ranked = DndCollisions.ClosestCorners(in query);
+
+            // Assert
+            Assert.That(Values(ranked), Is.EqualTo("1.0313"));
+        }
+
+        [Test]
         public void Given_ACandidateCarryingData_When_RectIntersectionRuns_Then_TheCollisionCarriesThatData()
         {
             // Arrange
