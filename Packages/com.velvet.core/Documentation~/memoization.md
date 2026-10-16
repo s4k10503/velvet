@@ -1,8 +1,59 @@
-# Memoization with `[MemoizeMethod]`
+# Memoization
 
-This guide covers the `[MemoizeMethod]` attribute — Velvet's partial-method-level memoization driven by the Source Generator. For component-level memoization (`React.memo` equivalent), use `[Component(Memoize = true)]`.
+This guide covers two things: the reactive scopes the build-time compiler transform caches a component's children in, and the `[MemoizeMethod]` attribute — Velvet's partial-method-level memoization driven by the Source Generator. For component-level memoization (`React.memo` equivalent), use `[Component(Memoize = true)]`.
 
-## Overview
+## Automatic reactive scopes
+
+The compiler transform (`[Component(Compiler = true)]`, the default) caches a component twice. Its gate caches the whole tree on the component's props and hook values, and a render whose inputs all compare equal returns that tree. Below the gate, each child of a `VNode[]` children list is cached on the values it reads, so a render that changes one input builds the children reading it and hands the reconciler the same `VNode` instances for the rest, which the reconciler skips. That is React Compiler's reactive scope, cut at the children of the returned tree.
+
+```csharp
+[Component]
+static VNode Dashboard()
+{
+    var (count, setCount) = Hooks.UseState(0);
+    var (name, setName) = Hooks.UseState("");
+    return V.Div("root",
+        V.Label(text: $"Clicks: {count}"),   // built again when count changes
+        V.Label(text: name),                 // built again when name changes
+        V.Label(text: "Static"));            // built once
+}
+```
+
+A child sits in a scope of its own at any depth: a child inside a child that is built again keeps its own cache. A child reading nothing is cached once it calls nothing but `V` factories. A scope the render did not reach, because an early `return` came first, keeps what it last built.
+
+### What a child is compared on
+
+Dependencies are compared as [react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means) states for the gate. A child is compared on:
+
+- the parameters it reads;
+- the hook values it reads (`UseState`, `UseReducer`, `UseMemo`, `UseCallback`, `UseContext`, `UseStore`, …), where the body does not store to the local after the last hook call;
+- the locals it reads of a value type or `string`, by value.
+
+A local only the child itself uses is not compared.
+
+### What is built on every render the gate misses
+
+A child is not cached, and is built as it was before scopes, where it:
+
+- calls a member of a `Ref<T>` or `MutableRef<T>`, or a method taking one, reads a `UseService` value, or reads a reference a custom hook returns;
+- reads a `static` field, other than a `readonly` one of a value type or `string`, or calls anything but a `V` factory, a constructor, an instance property accessor, or a member of `System`, `System.Collections`, `System.Collections.Generic`, `System.Linq`, `System.Text` or `System.Runtime.CompilerServices`. The members of the types that read the clock, the random source or the process are left out: Random, Environment, Console, GC, Activator and AppDomain whole, and the static members of DateTime, DateTimeOffset, Guid, TimeZoneInfo, DateOnly and TimeOnly. A method of your own that builds a child is not cached; make it a component or cache its result with `Hooks.UseMemo`;
+- reads a local of another kind, such as a list, a `VNode` or a delegate built in the body, or a variable a lambda captures;
+- writes a local that code outside it also uses, such as a variable a later child reads, or passes the address of such a local to a call;
+- sits in a loop, or in a method with `try`, `catch` or `finally`.
+
+No diagnostic reports a child left uncached, as none reports a component left unwoven.
+
+### Where it stays short of React Compiler
+
+- The cut is at the elements of a children list. A value the body derives (a filtered list, a string two children read) is computed again on every render the gate misses, and a child reading a derived list is built again. `Hooks.UseMemo` caches such a value.
+- Each scope allocates its dependency array on every render, hit or miss.
+- A child component keeps its own gate, and `[Component(Memoize = true)]` its props bail.
+
+`[Component(Compiler = false)]` opts a component out of the gate and every scope.
+
+## `[MemoizeMethod]`
+
+### Overview
 
 Annotate a partial method declaration with `[MemoizeMethod]` and the SG generates a `V.Memoized(...)` wrapper body whose deps are auto-extracted from the method parameters. Write the actual implementation in a sibling method with the `_Impl` suffix.
 
@@ -23,7 +74,7 @@ public static partial class HomePage
 
 The generator emits a wrapper that calls `V.Memoized` with a deps array holding each parameter, each type argument of a generic method and, where `_Impl` is an instance method, the instance the method is called on, so a render reuses the result cached at the method's position only while those values are unchanged — [react-migration.md](react-migration.md#what-a-position-is) states what a position is. A method with none of these to key on — no parameter, not generic, and a static `_Impl` — passes an explicitly empty deps array — see [react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means) for what each spelling of a dependency list means.
 
-## What the declaration may carry
+### What the declaration may carry
 
 The generated wrapper repeats the declaration's signature, so any number of parameters, type parameters with their constraints, `in` and `params` parameters, an extension method's `this`, and the `new`, `virtual`, `override`, `sealed`, `readonly` and `unsafe` modifiers all carry over, and so does an interface as the containing type. How each parameter is keyed:
 
@@ -47,11 +98,11 @@ The rest follow from what the wrapper is: a `V.Memoized(...)` call that returns 
 - An instance member of a struct is `readonly`, and the struct is not a `ref struct` (VEL011): a lambda in a struct cannot capture `this`, so the factory calls `_Impl` on a copy, and a write to that copy would be lost; a ref struct cannot be copied anywhere the factory can reach.
 - The body lives in `<MethodName>_Impl` (VEL009 when the partial declaration carries one): the declaration with a body is the implementing half, and C# accepts only one.
 
-## Use inside the Runtime asmdef
+### Use inside the Runtime asmdef
 
 `[MemoizeMethod]` works in any partial class inside `Velvet.asmdef`. The Generator DLL is placed at `Runtime/Plugins/Generators/Velvet.SourceGenerators.dll` and Unity applies it automatically via the `RoslynAnalyzer` label.
 
-## Diagnostic IDs
+### Diagnostic IDs
 
 | ID | Trigger |
 |----|---------|

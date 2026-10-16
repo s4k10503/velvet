@@ -317,10 +317,11 @@ namespace Velvet
         }
 
         // Enumerates the node roots held by the slot lists Unmount DISPOSES (compiler auto-memo
-        // slots — whole-body trees — plus UseMemo / UseRef values that are a node or a list of
-        // nodes). A slot with stable inputs re-emits the SAME instance on a later render even when
-        // the current committed tree omits it (V.When toggling a memoized subtree), so these roots
-        // must survive sweeps while their slot lives — and retire with it when it is disposed.
+        // slots — the whole-body tree and each reactive scope's subtree — plus UseMemo / UseRef values
+        // that are a node or a list of nodes). A slot with stable inputs re-emits the SAME instance on a
+        // later render even when the current committed tree omits it (V.When toggling a memoized
+        // subtree), so these roots must survive sweeps while their slot lives — and retire with it when
+        // it is disposed.
         private static void VisitDisposableSlotRoots(ComponentFiber fiber, Action<object> visitRoot)
         {
             var memoSlots = fiber.MemoSlots;

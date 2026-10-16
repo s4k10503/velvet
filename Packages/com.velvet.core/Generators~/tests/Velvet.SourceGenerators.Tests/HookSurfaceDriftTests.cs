@@ -67,6 +67,10 @@ namespace Velvet.SourceGenerators.Tests
                 "auto-memoization plumbing whose deps array the ILPP weaver emits",
             ["Velvet.Hooks.StoreMemoizedVNode"] =
                 "auto-memoization plumbing whose deps array the ILPP weaver emits",
+            ["Velvet.Hooks.TryGetMemoizedScope"] =
+                "auto-memoization plumbing whose deps array the ILPP weaver emits",
+            ["Velvet.Hooks.StoreMemoizedScope"] =
+                "auto-memoization plumbing whose deps array the ILPP weaver emits",
         };
 
         /// <summary>

@@ -31,6 +31,9 @@ namespace Velvet.Tests
     /// positional slot is exactly the expected names (no more, no fewer, no duplicates), and structurally, every
     /// public <c>Use*</c> hook whose implementation allocates a positional slot is present in that list — the
     /// ILPP weaver reads the list directly, so an omission is silently invisible to it rather than caught here.</item>
+    /// <item>Reactive-scope shapes assembled by hand: two children whose calls share one local, which a scope
+    /// leaves out of its dependencies, and a child whose two arms meet at the element store, which its commit
+    /// has to sit before. A Velvet declaring the component gate alone is woven with no scope gate.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -1555,6 +1558,214 @@ namespace Velvet.Tests
                 }
             }
             return false;
+        }
+
+        // --- Reactive scope probes ---
+        //
+        // A scope may leave a local out of its dependencies when its own expression stores it before reading it
+        // and nothing reads the value after. These bodies are assembled by hand to hold two children whose
+        // calls reach one local that way, `ldloca; initobj; ldloc` for an optional nullable argument, since no
+        // compiled fixture of this assembly is certain to share a local between two calls.
+
+        private static TypeDefinition AddFactoryType(ModuleDefinition module, out MethodDefinition label, out MethodDefinition div)
+        {
+            var vnode = module.GetType("Velvet.VNode");
+            var factory = new TypeDefinition("Velvet", "V",
+                Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Abstract
+                | Mono.Cecil.TypeAttributes.Sealed | Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
+            module.Types.Add(factory);
+            label = AddStaticMethod(factory, "Label", vnode, module.TypeSystem.String, module.ImportReference(typeof(int?)));
+            div = AddStaticMethod(factory, "Div", vnode, module.TypeSystem.String, new ArrayType(vnode));
+            return factory;
+        }
+
+        private static void AddScopeGates(ModuleDefinition module)
+        {
+            var hooks = module.GetType("Velvet.Hooks");
+            var vnode = module.GetType("Velvet.VNode");
+            var deps = new ArrayType(module.TypeSystem.Object);
+            AddStaticMethod(hooks, "TryGetMemoizedScope", module.TypeSystem.Boolean,
+                module.TypeSystem.Int32, module.TypeSystem.Int32, deps, new ByReferenceType(vnode));
+            AddStaticMethod(hooks, "StoreMemoizedScope", module.TypeSystem.Void,
+                module.TypeSystem.Int32, module.TypeSystem.Int32, deps, vnode);
+        }
+
+        private static MethodDefinition AddStaticMethod(TypeDefinition type, string name, TypeReference returns,
+            params TypeReference[] parameters)
+        {
+            var method = new MethodDefinition(name,
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, returns);
+            foreach (var parameter in parameters)
+            {
+                method.Parameters.Add(new ParameterDefinition(parameter));
+            }
+            type.Methods.Add(method);
+            return method;
+        }
+
+        // `var id = Hooks.UseId(null); return V.Div("root", V.Label(id, default), V.Label(id, default));`
+        private static MethodDefinition AssembleTwoLabelsSharingATemporary(ModuleDefinition module,
+            MethodDefinition component, MethodReference useId, MethodReference label, MethodReference div)
+        {
+            var optional = module.ImportReference(typeof(int?));
+            var id = new VariableDefinition(module.TypeSystem.String);
+            var temporary = new VariableDefinition(optional);
+            component.Body.Variables.Add(id);
+            component.Body.Variables.Add(temporary);
+            var il = component.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc, id));
+            il.Append(Instruction.Create(OpCodes.Ldstr, "root"));
+            il.Append(Instruction.Create(OpCodes.Ldc_I4, 2));
+            il.Append(Instruction.Create(OpCodes.Newarr, component.ReturnType));
+            foreach (var index in new[] { 0, 1 })
+            {
+                il.Append(Instruction.Create(OpCodes.Dup));
+                il.Append(Instruction.Create(OpCodes.Ldc_I4, index));
+                il.Append(Instruction.Create(OpCodes.Ldloc, id));
+                il.Append(Instruction.Create(OpCodes.Ldloca, temporary));
+                il.Append(Instruction.Create(OpCodes.Initobj, optional));
+                il.Append(Instruction.Create(OpCodes.Ldloc, temporary));
+                il.Append(Instruction.Create(OpCodes.Call, label));
+                il.Append(Instruction.Create(OpCodes.Stelem_Ref));
+            }
+            il.Append(Instruction.Create(OpCodes.Call, div));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(component);
+            return component;
+        }
+
+        private static int CallsTo(MethodDefinition method, string name)
+            => method.Body.Instructions.Count(instr => instr.OpCode == OpCodes.Call
+                && instr.Operand is MethodReference callee && callee.Name == name);
+
+        [Test]
+        public void Given_TwoChildrenSharingATemporaryInitializedAtEachCall_When_CompilerWeaverRuns_Then_EachGetsAScopeGate()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("SharedTemporaryProbe", out var method, out var useId, out _, out _);
+            AddFactoryType(module, out var label, out var div);
+            AddScopeGates(module);
+            AssembleTwoLabelsSharingATemporary(module, method, useId, label, div);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(CallsTo(method, "TryGetMemoizedScope"), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AVelvetDeclaringTheComponentGateAlone_When_CompilerWeaverRuns_Then_ItIsWovenWithNoScopeGate()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("GateAloneProbe", out var method, out var useId, out _, out _);
+            AddFactoryType(module, out var label, out var div);
+            AssembleTwoLabelsSharingATemporary(module, method, useId, label, div);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(
+                (CallsTo(method, "TryGetMemoizedVNode"), CallsTo(method, "TryGetMemoizedScope")),
+                Is.EqualTo((1, 0)));
+        }
+
+        // `V.Label(id, default)`: the local the nullable argument is built in is stored before it is read.
+        private static void AppendLabelCall(ILProcessor il, VariableDefinition id, VariableDefinition temporary,
+            TypeReference optional, MethodReference label)
+        {
+            il.Append(Instruction.Create(OpCodes.Ldloc, id));
+            il.Append(Instruction.Create(OpCodes.Ldloca, temporary));
+            il.Append(Instruction.Create(OpCodes.Initobj, optional));
+            il.Append(Instruction.Create(OpCodes.Ldloc, temporary));
+            il.Append(Instruction.Create(OpCodes.Call, label));
+        }
+
+        [Test]
+        public void Given_AChildWhoseTwoArmsMeetAtTheStore_When_CompilerWeaverRuns_Then_OnlyTheCacheHitJumpsPastTheCommit()
+        {
+            // Arrange — `new[] { id != null ? V.Label(id, default) : V.Label(id, default) }`, the arms joined by a jump to the
+            // element store itself, which a conditional expression left on the stack lowers to.
+            using var module = BuildHookShapeProbeModule("MeetingArmsProbe", out var method, out var useId, out _, out _);
+            AddFactoryType(module, out var label, out var div);
+            AddScopeGates(module);
+            var optional = module.ImportReference(typeof(int?));
+            var id = new VariableDefinition(module.TypeSystem.String);
+            var temporary = new VariableDefinition(optional);
+            method.Body.Variables.Add(id);
+            method.Body.Variables.Add(temporary);
+            var il = method.Body.GetILProcessor();
+            var secondArm = Instruction.Create(OpCodes.Ldloc, id);
+            var store = Instruction.Create(OpCodes.Stelem_Ref);
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc, id));
+            il.Append(Instruction.Create(OpCodes.Ldstr, "root"));
+            il.Append(Instruction.Create(OpCodes.Ldc_I4, 1));
+            il.Append(Instruction.Create(OpCodes.Newarr, method.ReturnType));
+            il.Append(Instruction.Create(OpCodes.Dup));
+            il.Append(Instruction.Create(OpCodes.Ldc_I4, 0));
+            il.Append(Instruction.Create(OpCodes.Ldloc, id));
+            il.Append(Instruction.Create(OpCodes.Brtrue, secondArm));
+            AppendLabelCall(il, id, temporary, optional, label);
+            il.Append(Instruction.Create(OpCodes.Br, store));
+            il.Append(secondArm);
+            il.Append(Instruction.Create(OpCodes.Ldloca, temporary));
+            il.Append(Instruction.Create(OpCodes.Initobj, optional));
+            il.Append(Instruction.Create(OpCodes.Ldloc, temporary));
+            il.Append(Instruction.Create(OpCodes.Call, label));
+            il.Append(store);
+            il.Append(Instruction.Create(OpCodes.Call, div));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(
+                (CallsTo(method, "TryGetMemoizedScope"),
+                    method.Body.Instructions.Count(instr => instr.OpCode.FlowControl == FlowControl.Branch
+                        && instr.Operand is Instruction target && target.OpCode == OpCodes.Stelem_Ref)),
+                Is.EqualTo((1, 1)));
+        }
+
+        [Test]
+        public void Given_AChildWhoseOnlyLocalIsPassedByAddressAtItsStart_When_CompilerWeaverRuns_Then_ItGetsAScopeGate()
+        {
+            // Arrange — `new[] { V.Adopt(out var held) }`: the address is the first thing the element does.
+            using var module = BuildHookShapeProbeModule("AddressFirstProbe", out var method, out var useId, out _, out _);
+            AddFactoryType(module, out _, out var div);
+            AddScopeGates(module);
+            var optional = module.ImportReference(typeof(int?));
+            var adopt = AddStaticMethod(module.GetType("Velvet.V"), "Adopt", method.ReturnType, new ByReferenceType(optional));
+            var held = new VariableDefinition(optional);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            method.Body.Variables.Add(held);
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldstr, "root"));
+            il.Append(Instruction.Create(OpCodes.Ldc_I4, 1));
+            il.Append(Instruction.Create(OpCodes.Newarr, method.ReturnType));
+            il.Append(Instruction.Create(OpCodes.Dup));
+            il.Append(Instruction.Create(OpCodes.Ldc_I4, 0));
+            il.Append(Instruction.Create(OpCodes.Ldloca, held));
+            il.Append(Instruction.Create(OpCodes.Call, adopt));
+            il.Append(Instruction.Create(OpCodes.Stelem_Ref));
+            il.Append(Instruction.Create(OpCodes.Call, div));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(CallsTo(method, "TryGetMemoizedScope"), Is.EqualTo(1));
         }
     }
 }

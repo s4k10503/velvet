@@ -43,6 +43,8 @@ namespace Velvet.CodeGen
     // coverage; no diagnostic is emitted for a bailout. A body whose processing throws is restored to what it was
     // and reported as a warning, so a defect here costs one component its memoization rather than the build.
     // The goal is "memoize less but never wrong".
+    // Below the gate, the child VNode expressions of the returned tree are cached each on the values it reads, as
+    // CompilerWeaver.Scopes.cs states.
     // An open virtual / interface dispatch outside the BCL / Unity carve-out is opaque rather than a bail: an
     // override composing a hook can live in an assembly this scan never sees, so whether it reaches one is
     // decided where it runs. Ahead of the gate it bails the method, since a hook there would feed the body a
@@ -53,7 +55,7 @@ namespace Velvet.CodeGen
     // model.
     // A body that already contains a Velvet.Hooks.TryGetMemoizedVNode call (a hand-written memoization,
     // e.g. in a test fixture) is skipped so the weaver does not memoize it a second time.
-    internal static class CompilerWeaver
+    internal static partial class CompilerWeaver
     {
         // This assembly references Velvet, so every name it matches against is taken from the type system
         // rather than spelled out: a rename on the runtime side then fails to compile here instead of
@@ -272,7 +274,14 @@ namespace Velvet.CodeGen
                     return false;
                 }
 
-                InjectMemoization(method, analysis, context);
+                // MUTANT_SURVIVES(equivalent, boundary): a body with no scope is the gate alone, which the check finds balanced.
+                if (InjectMemoization(method, analysis, context, withScopes: true) > 0 && !IsStackBalanced(method.Body))
+                {
+                    // MUTANT_SURVIVES(unreachable): the weave inserts balanced runs into a body the model read as consistent.
+                    snapshot.Restore();
+                    // MUTANT_SURVIVES(unreachable): only a body failing the check reaches this call.
+                    InjectMemoization(method, analysis, context, withScopes: false);
+                }
                 return true;
             }
             catch (System.Exception exception)
@@ -356,7 +365,8 @@ namespace Velvet.CodeGen
 
             var hookPipedLocals = new List<(VariableDefinition? Local, TypeReference Type, Instruction Stored)>();
             var hookCalls = new List<Instruction>();
-            if (!TryScanHookSection(body, reach, hookPipedLocals, hookCalls,
+            var uncomparableLocals = new HashSet<VariableDefinition>();
+            if (!TryScanHookSection(body, reach, hookPipedLocals, hookCalls, uncomparableLocals,
                     out var lastHookBoundary))
             {
                 return false;
@@ -375,7 +385,7 @@ namespace Velvet.CodeGen
                 // No hook call: the gate keys on the parameters alone and goes ahead of the first instruction, so
                 // it precedes every return and every protected region, and a hit's early return skips no hook
                 // call. The checks below have nothing to find.
-                analysis = new HookAnalysis(hookPipedLocals, null, returns, 0);
+                analysis = new HookAnalysis(hookPipedLocals, null, returns, 0, uncomparableLocals);
                 return !RequestsPropsBail(method);
             }
 
@@ -417,7 +427,7 @@ namespace Velvet.CodeGen
             }
 
             analysis = new HookAnalysis(hookPipedLocals, lastHookBoundary, returns,
-                StackDepthAfter(body, lastHookBoundary));
+                StackDepthAfter(body, lastHookBoundary), uncomparableLocals);
             return true;
         }
 
@@ -557,7 +567,7 @@ namespace Velvet.CodeGen
         // boundary means the body reached no hook at all.
         private static bool TryScanHookSection(MethodBody body, HookReachFold reach,
             List<(VariableDefinition? Local, TypeReference Type, Instruction Stored)> hookPipedLocals,
-            List<Instruction> hookCalls,
+            List<Instruction> hookCalls, HashSet<VariableDefinition> uncomparableLocals,
             out Instruction? lastHookBoundary)
         {
             lastHookBoundary = null;
@@ -598,6 +608,7 @@ namespace Velvet.CodeGen
                 if (capture == HookCaptureMatch.Matched)
                 {
                     hookPipedLocals.Add((local!, local!.VariableType, boundary!));
+                    if (IsUncomparableHookValue(hookTarget!, isDirect, local)) uncomparableLocals.Add(local);
                     lastHookBoundary = boundary;
                     continue;
                 }
@@ -1232,13 +1243,17 @@ namespace Velvet.CodeGen
             }
         }
 
-        private static void InjectMemoization(MethodDefinition method, HookAnalysis analysis, WeaverContext context)
+        private static int InjectMemoization(MethodDefinition method, HookAnalysis analysis, WeaverContext context,
+            bool withScopes)
         {
             var body = method.Body;
             var module = method.Module;
             var il = body.GetILProcessor();
 
             body.SimplifyMacros();
+            var plans = withScopes && context.TryGetMemoizedScope != null && context.StoreMemoizedScope != null
+                ? PlanScopes(body, analysis)
+                : new List<ScopePlan>();
 
             var vnodeType = context.VNode;
             var objectType = module.TypeSystem.Object;
@@ -1366,7 +1381,9 @@ namespace Velvet.CodeGen
                 RetargetBranches(body, returnInstr, preReturn[0]);
             }
 
+            InjectScopes(body, plans, context, slotLocal);
             body.OptimizeMacros();
+            return plans.Count;
         }
 
         // The handle the gate matches against the method the rendering fiber renders, which for a generic method or
@@ -1428,17 +1445,23 @@ namespace Velvet.CodeGen
             public HookAnalysis(IReadOnlyList<(VariableDefinition? Local, TypeReference Type, Instruction Stored)> hookCaptures,
                 Instruction? lastHookBoundary,
                 IReadOnlyList<Instruction> returns,
-                int stackDepthAtGate)
+                int stackDepthAtGate,
+                HashSet<VariableDefinition> uncomparableLocals)
             {
                 HookCaptures = hookCaptures;
                 LastHookBoundary = lastHookBoundary;
                 Returns = returns;
                 StackDepthAtGate = stackDepthAtGate;
+                UncomparableLocals = uncomparableLocals;
             }
             public IReadOnlyList<(VariableDefinition? Local, TypeReference Type, Instruction Stored)> HookCaptures { get; }
             public Instruction? LastHookBoundary { get; }
             public IReadOnlyList<Instruction> Returns { get; }
             public int StackDepthAtGate { get; }
+
+            // Hook values a scope never compares: the one instance a stable-reference hook returns for the life of
+            // the component, and a reference a custom hook returns, which may be that instance from inside.
+            public HashSet<VariableDefinition> UncomparableLocals { get; }
         }
     }
 
@@ -1447,6 +1470,10 @@ namespace Velvet.CodeGen
         public required TypeReference VNode { get; init; }
         public required MethodReference TryGetMemoizedVNode { get; init; }
         public required MethodReference StoreMemoizedVNode { get; init; }
+
+        // Absent on a Velvet assembly that declares the component gate alone; the body is then woven without scopes.
+        public MethodReference? TryGetMemoizedScope { get; init; }
+        public MethodReference? StoreMemoizedScope { get; init; }
 
         // Resolves the Velvet runtime members the weaver injects calls to. On failure, returns null and
         // reports what could not be resolved through failure so the caller can emit a diagnostic
@@ -1475,6 +1502,8 @@ namespace Velvet.CodeGen
 
             var tryGet = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedVNode), 4);
             var store = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedVNode), 3);
+            var tryGetScope = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedScope), 4);
+            var storeScope = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedScope), 4);
             if (tryGet == null || store == null)
             {
                 failure = $"the memoization methods '{hooksTypeName}.{nameof(Velvet.Hooks.TryGetMemoizedVNode)}' /"
@@ -1488,6 +1517,8 @@ namespace Velvet.CodeGen
                 VNode = module.ImportReference(vnodeType),
                 TryGetMemoizedVNode = module.ImportReference(tryGet),
                 StoreMemoizedVNode = module.ImportReference(store),
+                TryGetMemoizedScope = tryGetScope == null ? null : module.ImportReference(tryGetScope),
+                StoreMemoizedScope = storeScope == null ? null : module.ImportReference(storeScope),
             };
         }
 
