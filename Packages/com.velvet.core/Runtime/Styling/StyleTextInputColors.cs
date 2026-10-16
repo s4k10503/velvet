@@ -243,7 +243,7 @@ namespace Velvet
 
             if (!suffix.StartsWith(Current, System.StringComparison.Ordinal))
             {
-                return StyleColorValueParser.TryParseColorSuffix(suffix, out color);
+                return StyleColorValueParser.TryParseColorValue(suffix, 0, out color);
             }
 
             color = input.resolvedStyle.color;

@@ -117,6 +117,9 @@ namespace Velvet.Tests
         private static VNode OpacityHost() => Field("caret-red-500/50");
 
         [Component]
+        private static VNode TranslucentOpacityHost() => Field("caret-[#ff000080]/50");
+
+        [Component]
         private static VNode CurrentHost()
         {
             var (declared, setDeclared) = Hooks.UseState(true);
@@ -328,6 +331,16 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Caret(field), Is.EqualTo(Palette("red-500", 0.5f)));
+        }
+
+        [Test]
+        public void Given_ATranslucentCaretColorWithAnOpacityModifier_When_ItMounts_Then_TheModifierScalesItsAlpha()
+        {
+            // Arrange / Act
+            var field = Mount(TranslucentOpacityHost);
+
+            // Assert
+            Assert.That(Caret(field), Is.EqualTo((Color32)new Color(1f, 0f, 0f, 128f / 255f * 0.5f)));
         }
 
         [Test]
