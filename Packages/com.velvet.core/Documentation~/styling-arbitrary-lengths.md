@@ -89,11 +89,13 @@ that is no colour (`from-[1IN]`) leaves its stop transparent, and a position tha
 
 Tailwind composes four more families through one declaration each: `translate-*`; `scale-x-*`, `scale-y-*` and
 the uniform `scale-<n>` (a bracketed `scale-[…]` is written as `scale` alone); `skew-*`; and the filters, `blur-*`
-to `sepia-*`, `hue-rotate-*` and `drop-shadow-*`. A value the browser rejects in one of them drops every utility
-of its family with the same variants and importance, as the browser drops the declaration they share:
-`translate-x-4 translate-y-[10]` translates nowhere, `blur-sm brightness-[abc]` filters nothing, and
-`drop-shadow-lg blur-[2]` loses its drop shadow, while `translate-x-4 hover:translate-y-[10]` keeps its
-translation until hovered. A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
+to `sepia-*`, `hue-rotate-*` and `drop-shadow-*`. A value the browser rejects in one of them leaves the family
+at its identity — no translation, a scale of 1, no skew, no filter — wherever the rejecting class applies, as the
+browser discards the declaration they share: `translate-x-4 translate-y-[10]` translates nowhere,
+`blur-sm brightness-[abc]` filters nothing, and `drop-shadow-lg blur-[2]` loses its drop shadow. A rejection
+without a variant holds under every variant (`translate-y-[10] hover:translate-x-4` never translates), and one
+behind a variant holds while the variant does (`translate-x-4 hover:translate-y-[10]` translates until hovered).
+A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
 
 ## Lengths only an element can measure
 

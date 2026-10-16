@@ -7,9 +7,13 @@ namespace Velvet
     // Tailwind writes translate-*, scale-x-* / scale-y-* and the uniform scale-*, skew-*, and the filter
     // utilities as custom properties that one declaration per family composes (translate: var(--tw-translate-x)
     // var(--tw-translate-y), filter: var(--tw-blur,) var(--tw-brightness,) …). A value the browser rejects in one
-    // of them makes that declaration invalid at computed-value time, so the family's other utilities go with it, as
-    // measured in Chromium against Tailwind's own CSS; RejectedCompositeTests pins the families. A family is judged
-    // within the tokens of one variant prefix and importance, the scope its declaration is written at.
+    // of them makes that declaration invalid at computed-value time, and every rule of the family reads the same
+    // custom property, so the family is gone wherever the rejecting rule applies, as measured in Chromium against
+    // Tailwind's own CSS; RejectedCompositeTests pins it. A rejection without a variant applies always, so it
+    // takes the family under every variant too. One behind a variant applies while that variant does, so the
+    // family's tokens there are replaced by the family's identity values, which outrank the base tokens while the
+    // variant holds. A while*Class, pose or transition list is normalized on its own, so a rejection in the
+    // element's own list does not reach it.
     internal static class StyleCompositeRejection
     {
         private enum Family
@@ -21,16 +25,31 @@ namespace Velvet
             Filter,
         }
 
-        // tokens without every token of a family one of whose tokens in the same variant set and importance holds a
-        // value the browser rejects; tokens itself when there is none.
+        // The tokens that write each family's identity: what the family's declaration computes to when no
+        // utility of it applies.
+        private static readonly string[][] s_identity =
+        {
+            Array.Empty<string>(),
+            new[] { "translate-x-[0]", "translate-y-[0]" },
+            new[] { "scale-x-[1]", "scale-y-[1]" },
+            new[] { "skew-x-[0]", "skew-y-[0]" },
+            new[]
+            {
+                "blur-[0]", "brightness-[1]", "contrast-[1]", "grayscale-[0]", "hue-rotate-[0]", "invert-[0]",
+                "saturate-[1]", "sepia-[0]",
+            },
+        };
+
+        // tokens with each family whose tokens hold a value the browser rejects written as that family's identity at
+        // the variants where the rejection applies; tokens itself when there is none.
         internal static string[] WithoutRejectedComposites(string[] tokens)
         {
-            HashSet<(string Scope, Family Family)>? rejected = null;
+            HashSet<(string Variants, Family Family)>? rejected = null;
             foreach (var token in tokens)
             {
-                if (TryRead(token, out var scope, out var family, out var isRejected) && isRejected)
+                if (TryRead(token, out var variants, out var family, out _, out var isRejected) && isRejected)
                 {
-                    (rejected ??= new HashSet<(string, Family)>()).Add((scope, family));
+                    (rejected ??= new HashSet<(string, Family)>()).Add((variants, family));
                 }
             }
             if (rejected == null)
@@ -38,28 +57,60 @@ namespace Velvet
                 return tokens;
             }
             var kept = new List<string>(tokens.Length);
+            var written = new HashSet<(string, Family)>();
             foreach (var token in tokens)
             {
-                if (!(TryRead(token, out var scope, out var family, out _) && rejected.Contains((scope, family))))
+                if (!TryRead(token, out var variants, out var family, out var important, out _))
                 {
                     kept.Add(token);
+                    continue;
+                }
+                // A base rejection takes the family under every variant; the identity is written once, at the base.
+                var at = rejected.Contains((string.Empty, family)) ? string.Empty
+                    : rejected.Contains((variants, family)) ? variants
+                    : null;
+                if (at == null)
+                {
+                    kept.Add(token);
+                }
+                else if (written.Add((at, family)))
+                {
+                    var prefix = (important ? "!" : string.Empty) + at;
+                    foreach (var identity in s_identity[(int)family])
+                    {
+                        kept.Add(prefix + identity);
+                    }
+                    // A drop shadow is part of the filter, so one elsewhere in the list goes with it.
+                    if (family == Family.Filter && Array.Exists(tokens, IsDropShadow))
+                    {
+                        kept.Add(prefix + "drop-shadow-none");
+                    }
                 }
             }
             return kept.ToArray();
         }
 
-        private static bool TryRead(string token, out string scope, out Family family, out bool rejected)
+        private static bool IsDropShadow(string token)
         {
-            scope = string.Empty;
+            var core = StyleArbitraryValueResolver.StripImportant(token, out _);
+            var payload = core.Substring(StyleSpacingPrecedence.VariantsLength(core));
+            return payload == "drop-shadow" || payload.StartsWith("drop-shadow-", StringComparison.Ordinal);
+        }
+
+        private static bool TryRead(string token, out string variants, out Family family, out bool important,
+            out bool rejected)
+        {
+            variants = string.Empty;
             family = Family.None;
             rejected = false;
+            important = false;
             if (string.IsNullOrEmpty(token))
             {
                 return false;
             }
-            var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
-            var variants = StyleSpacingPrecedence.VariantsLength(core);
-            var payload = core.Substring(variants);
+            var core = StyleArbitraryValueResolver.StripImportant(token, out important);
+            var length = StyleSpacingPrecedence.VariantsLength(core);
+            var payload = core.Substring(length);
             if (!StyleArbitraryValueResolver.TryDropTypeHint(payload, out payload))
             {
                 return false;
@@ -70,7 +121,7 @@ namespace Velvet
             {
                 return false;
             }
-            scope = (important ? "!" : string.Empty) + core.Substring(0, variants);
+            variants = core.Substring(0, length);
             var open = body.IndexOf('[');
             if (open > 0 && body[body.Length - 1] == ']')
             {
