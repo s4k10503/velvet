@@ -8058,9 +8058,9 @@ class ShardCeilingTests(unittest.TestCase):
         # Arrange — derived from the job timeout rather than read back from the constant: a shard of this many
         # fits whether it makes the reach run, its reach run never finishes, or it is on main's path.
         mutant, setup = 561, 201 + 486 + 12 + 900
-        largest = max(count for count in range(1, 40)
-                      if all(self.fits("mutation-shard", "EditMode", mutant, setup, arm=arm, count=count)
-                             for arm in ("reach", "failed", "small")), default=0)
+        largest = max((count for count in range(1, 40)
+                       if all(self.fits("mutation-shard", "EditMode", mutant, setup, arm=arm, count=count)
+                              for arm in ("reach", "failed", "small"))), default=0)
 
         # Act
         stated = mutation_check.SHARD_CEILING["EditMode"]
