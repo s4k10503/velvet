@@ -4,20 +4,21 @@
 A pull request that only deletes tests places no mutant of its own, so the mutation campaign has
 nothing to measure for it. What it claims instead is that the cases it removed were redundant: every
 mutant they killed is killed by what remains. That is a statement about two trees over the same
-production source, and this reads it off two `mutation_check.py --run-out --output` directories, one
-measured on each tree over the same `--files`.
+production source, and this reads it off two `mutation_check.py --output` directories, one measured
+on each tree over the same `--files`.
 
     python3 scripts/test_quality/kill_set_diff.py BASE_DIR HEAD_DIR
 
 Mutants are matched by what they are -- file, line, column and the rewrite -- and never by index,
 because an index is only a mutant's while the list is the same list. The two lists must be the same:
-a mutant on one side only was generated from different production source, and a comparison over the
-rest says nothing about it. A verdict the head did not take, or took without killing, is a lost kill
-as a survivor is: a kill that was not measured is not one that stands.
+a mutant with a record on one side only is a record that is missing or production source that differs,
+and a comparison over the rest says nothing about it. A head verdict that is not a kill where the base's was is a lost kill, a
+survivor and an unmeasured mutant alike: a kill that was not measured is not one that stands.
 
-Exit status: 0 where no kill was lost, 1 where one was, 2 where the comparison itself cannot be made
-(a list that differs, a record that cannot be read, or a base that killed nothing and so proves
-nothing).
+Exit status: 0 where no kill was lost, 1 where one was, 2 where the comparison itself cannot be made:
+a mutant with a record on one tree only, a record that cannot be read, a base verdict that is neither a
+kill, a survivor nor a non-mutant (so nothing is known of what the head owes), or a base that killed
+nothing and so proves nothing.
 """
 
 import argparse
@@ -32,13 +33,17 @@ LOST = 1
 UNCOMPARABLE = 2
 
 # What each kind of base kill needs of the head: a mutant a case killed has to be killed by a case, and
-# one the suite hung or crashed on is held by any of the three stopped readings.
-STOPPED = (mutation_check.KILLED, mutation_check.HUNG, mutation_check.CRASHED)
+# one the suite hung or crashed on, or that outlived --timeout, is held by any stopped reading. A run
+# whose --timeout is under HANG_MARGIN times its baseline reads every hang as TIMED_OUT.
+STOPPED = (mutation_check.KILLED, mutation_check.HUNG, mutation_check.CRASHED, mutation_check.TIMED_OUT)
 ACCEPTED = {
     mutation_check.KILLED: (mutation_check.KILLED,),
     mutation_check.HUNG: STOPPED,
     mutation_check.CRASHED: STOPPED,
+    mutation_check.TIMED_OUT: STOPPED,
 }
+# Base verdicts that owe the head nothing.
+UNOWED = mutation_check.SURVIVING + (mutation_check.INAPPLICABLE,)
 
 KILLERS_LISTED = 5
 
@@ -73,8 +78,10 @@ def describe(key):
 
 
 def compare(base, head):
-    """(lost, gained, only_base, only_head, base_kills): the keys of each reading, over two record maps."""
-    lost, gained = [], []
+    """(lost, gained, only_base, only_head, base_kills, unreadable): the keys of each reading, over two
+    record maps. `unreadable` is the common mutants whose base verdict owes the head nothing and is no kill
+    either, such as an uncompilable one."""
+    lost, gained, unreadable = [], [], []
     base_kills = 0
     for key in sorted(set(base) & set(head)):
         was, now = base[key]["verdict"], head[key]["verdict"]
@@ -82,9 +89,11 @@ def compare(base, head):
             base_kills += 1
             if now not in ACCEPTED[was]:
                 lost.append(key)
-        elif now in ACCEPTED:
+        elif was not in UNOWED:
+            unreadable.append(key)
+        elif was in mutation_check.SURVIVING and now == mutation_check.KILLED:
             gained.append(key)
-    return lost, gained, sorted(set(base) - set(head)), sorted(set(head) - set(base)), base_kills
+    return lost, gained, sorted(set(base) - set(head)), sorted(set(head) - set(base)), base_kills, unreadable
 
 
 def killers_line(record):
@@ -97,11 +106,17 @@ def killers_line(record):
 def report(base, head):
     """(exit status, the report's lines)."""
     lines = []
-    lost, gained, only_base, only_head, base_kills = compare(base, head)
+    lost, gained, only_base, only_head, base_kills, unreadable = compare(base, head)
     if only_base or only_head:
-        lines.append("The two trees do not generate the same mutants, so this compares nothing:")
+        lines.append("These mutants have a record on one tree only, a missing record or production source "
+                     "that differs, so this compares nothing:")
         lines.extend("  only in base: " + describe(key) for key in only_base)
         lines.extend("  only in head: " + describe(key) for key in only_head)
+        return UNCOMPARABLE, lines
+    if unreadable:
+        lines.append("The base's verdict for these is neither a kill nor a survivor, so what the head owes "
+                     "is not known:")
+        lines.extend("  {} on the base: {}".format(describe(key), base[key]["verdict"]) for key in unreadable)
         return UNCOMPARABLE, lines
     if not base_kills:
         lines.append("The base killed none of its {} mutant(s), so nothing here can be lost. Read the "

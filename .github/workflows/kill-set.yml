@@ -3,11 +3,11 @@ name: Kill set
 # Proves that a pull request which only deletes tests loses no mutant kill. The mutation campaign places
 # no mutant for such a change, so it proves nothing for it; this measures the mutants of the production
 # files named in `files` on the pull request's merge base and again on its head, and fails when a mutant
-# the base's tests killed survives on the head. CONTRIBUTING.md ▸ Checking that the tests can fail owns
-# when to run it and what the pull request body says about the result.
+# the base's tests killed is not killed on the head. CONTRIBUTING.md ▸ Checking that the tests can fail
+# owns when to run it and what the pull request body says about the result.
 #
-# Dispatched by hand, never by an event, and no branch-protection rule requires it. Not a run on every
-# pull request: a shard measures each of its mutants against the whole suite on two trees.
+# Dispatched by hand, never by an event, and no branch-protection rule requires it. A run is one
+# platform over one list of files; a pull request that needs more starts more runs.
 on:
   workflow_dispatch:
     inputs:
@@ -33,11 +33,6 @@ on:
           - EditMode
           - PlayMode
 
-# A newer dispatch for the same head replaces the one still measuring it.
-concurrency:
-  group: kill-set-${{ inputs.head }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
@@ -45,8 +40,7 @@ permissions:
 env:
   PYTHONDONTWRITEBYTECODE: "1"
 
-# The shard job's two measuring steps are timed by KillSetShardTests against RUN_OUT_CEILING, and the job
-# holds both and what surrounds them.
+# The shard job's measuring step is timed by KillSetShardTests against the campaign's SHARD_CEILING.
 jobs:
   # Same reading as test.yml's job of this name.
   license-check:
@@ -69,9 +63,9 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # The two commits, and the mutants every shard measures on both. The list comes from the head's tree
-  # and each shard hands it back to mutation_check.py on the base's, which refuses a tree that generates
-  # another: the sources are the same on both refs, and a pull request that changes one of the files
-  # measures a production change rather than a pruning, so it is refused here.
+  # and each shard hands it back to mutation_check.py on its own tree, which refuses a tree that
+  # generates another. A pull request that changes one of the files, or the runner the campaign
+  # installs in the project, measures a production change rather than a pruning, so it is refused here.
   # ---------------------------------------------------------------------------
   plan:
     name: Kill set (plan)
@@ -103,13 +97,14 @@ jobs:
           set -eu
           set -f
           # shellcheck disable=SC2086
-          if ! git diff --quiet "$BASE" HEAD -- $FILES; then
-            echo "::error::the head changes a file to be measured, so the two trees would not generate the same mutants"
-            git diff --stat "$BASE" HEAD -- $FILES
+          if ! git diff --quiet "$BASE" HEAD -- $FILES Assets/MutantSchemata; then
+            echo "::error::the head changes a file to be measured or the campaign's runner, so the two trees would not be measured alike"
+            git diff --stat "$BASE" HEAD -- $FILES Assets/MutantSchemata
             exit 1
           fi
 
-      # A plan of no mutants proves nothing, so it fails here rather than passing the way a campaign's does.
+      # A plan of no mutants proves nothing, and a named file the campaign skips is a mistyped path or a
+      # test file, so either fails here rather than passing the way a campaign's plan does.
       - id: plan
         env:
           BASE: ${{ steps.base.outputs.sha }}
@@ -120,11 +115,15 @@ jobs:
           set -f
           # shellcheck disable=SC2086
           python3 scripts/test_quality/mutation_check.py --base "$BASE" --files $FILES --platform "$PLATFORM" \
-            --run-out --plan --emit-mutants mutants.json > plan.txt 2>&1
+            --plan --emit-mutants mutants.json > plan.txt 2>&1
           status=$?
           cat plan.txt
           { echo '### Kill set plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           [ "$status" -eq 0 ] || exit "$status"
+          if grep -q '^skipping ' plan.txt; then
+            echo "::error::a named file is not a mutable package source"
+            exit 1
+          fi
           grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
           if [ "$(sed -n 's/^mutants=//p' plan.txt)" = 0 ]; then
             echo "::error::no mutant was generated from these files"
@@ -181,37 +180,32 @@ jobs:
           key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
 
   # ---------------------------------------------------------------------------
-  # One job per shard measures its dealt mutants on the head tree and then, on the same runner, on the
-  # base tree, and uploads each tree's verdict records. The job count is the shard count, which the plan
-  # caps at mutation_check.MAX_SHARDS, and `max-parallel` keeps it to half the account's twenty
-  # concurrent jobs.
+  # One job measures one shard's mutants on one tree, so a shard costs the campaign's own
+  # mutation-shard step and the campaign's SHARD_CEILING holds for it. Two trees a shard doubles the jobs;
+  # `max-parallel` keeps them to half the account's twenty concurrent jobs.
   #
-  # The tooling is copied out of the head's checkout before either tree is measured and run from the
-  # copy, so the switch to the base tree changes the project and nothing that measures it.
+  # The tooling is the head's own on both trees, archived out of it beside the project. The project is the
+  # tree's, runner included: Assets/MutantSchemata is tracked, which is why the plan refuses a head that
+  # changes it.
   # ---------------------------------------------------------------------------
   shard:
-    name: Kill set (shard ${{ matrix.shard }})
+    name: Kill set (${{ matrix.tree }} shard ${{ matrix.shard }})
     needs: [license-check, plan, library]
     if: needs.license-check.outputs.has_license == 'true' && needs.plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
-    # The two measuring steps' timeouts and the checkout, restore, tree switch and uploads around them;
-    # KillSetShardTests holds each step's timeout against its platform's ceiling.
-    timeout-minutes: 360
+    # The measuring step's timeout and the checkout, restore and upload around it; KillSetShardTests holds
+    # the step against the campaign's ceiling.
+    timeout-minutes: 195
     strategy:
       fail-fast: false
       max-parallel: 10
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.shards) }}
-    env:
-      MUTANTS: ${{ needs.plan.outputs.mutants }}
-      SHARDS: ${{ needs.plan.outputs.shards }}
-      FILES: ${{ inputs.files }}
-      ASSEMBLIES: ${{ inputs.assemblies }}
-      PLATFORM: ${{ inputs.platform }}
+        tree: [head, base]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.plan.outputs.head }}
+          ref: ${{ matrix.tree == 'head' && needs.plan.outputs.head || needs.plan.outputs.base }}
           fetch-depth: 0
           lfs: true
 
@@ -230,19 +224,27 @@ jobs:
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
-      - name: Copy the tooling out of the project
+      - name: Archive the head's tooling
+        env:
+          HEAD: ${{ needs.plan.outputs.head }}
         run: |
           mkdir -p "$RUNNER_TEMP/tools"
-          cp -r scripts "$RUNNER_TEMP/tools/scripts"
+          git archive "$HEAD" scripts | tar -x -C "$RUNNER_TEMP/tools"
 
-      - name: Measure head
-        timeout-minutes: 165
+      # --timeout is HANG_MARGIN times the longest baseline measured, so that a hang reads as one.
+      # safe.directory names the workspace alone, for the reason mutation.yml's measuring steps give.
+      - name: Measure
+        timeout-minutes: 180
         env:
-          BASE: ${{ steps.base.outputs.sha }}
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        # safe.directory names the workspace alone, for the reason mutation.yml's measuring steps give.
+          BASE: ${{ steps.base.outputs.sha }}
+          MUTANTS: ${{ needs.plan.outputs.mutants }}
+          SHARDS: ${{ needs.plan.outputs.shards }}
+          FILES: ${{ inputs.files }}
+          ASSEMBLIES: ${{ inputs.assemblies }}
+          PLATFORM: ${{ inputs.platform }}
         run: |
           set -f
           version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
@@ -256,63 +258,20 @@ jobs:
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u /tools/scripts/test_quality/ci_mutation_shard.py -- \
               --base "$BASE" --files $FILES ${ASSEMBLIES:+--assemblies "$ASSEMBLIES"} --platform "$PLATFORM" \
-              --run-out --max "$MUTANTS" --mutants Logs/kill-set-list/mutants.json \
+              --timeout 1470 --max "$MUTANTS" --mutants Logs/kill-set-list/mutants.json \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
-              --output Logs/kill-set-head
+              --output Logs/kill-set-${{ matrix.tree }}
 
+      # A shard that wrote no record fails its upload, and one that wrote some is complete or failed above.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
         with:
-          name: Kill set head shard ${{ matrix.shard }}
-          path: Logs/kill-set-head/mutant-*.json
-          if-no-files-found: warn
-          overwrite: true
-
-      # As root, which the docker steps leave the workspace owned by. Library and Logs are untracked and stay.
-      - name: Switch to the base tree
-        env:
-          BASE: ${{ steps.base.outputs.sha }}
-        run: sudo git -c safe.directory="$GITHUB_WORKSPACE" checkout --force --detach "$BASE"
-
-      - name: Measure base
-        timeout-minutes: 165
-        env:
-          BASE: ${{ steps.base.outputs.sha }}
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        run: |
-          set -f
-          version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
-          # shellcheck disable=SC2086
-          docker run --rm --init --workdir /github/workspace \
-            --volume "$GITHUB_WORKSPACE:/github/workspace" \
-            --volume "$RUNNER_TEMP/tools:/tools:ro" \
-            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
-            --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0=/github/workspace \
-            --env PYTHONDONTWRITEBYTECODE=1 \
-            "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
-            python3 -u /tools/scripts/test_quality/ci_mutation_shard.py -- \
-              --base "$BASE" --files $FILES ${ASSEMBLIES:+--assemblies "$ASSEMBLIES"} --platform "$PLATFORM" \
-              --run-out --max "$MUTANTS" --mutants Logs/kill-set-list/mutants.json \
-              --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
-              --output Logs/kill-set-base
-
-      # The runner user reads what the docker steps wrote as root, but cannot write into it.
-      - if: always()
-        run: sudo chown -R "$(id -u):$(id -g)" Logs
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: Kill set base shard ${{ matrix.shard }}
-          path: Logs/kill-set-base/mutant-*.json
-          if-no-files-found: warn
+          name: Kill set ${{ matrix.tree }} shard ${{ matrix.shard }}
+          path: Logs/kill-set-${{ matrix.tree }}/mutant-*.json
+          if-no-files-found: error
           overwrite: true
 
   # ---------------------------------------------------------------------------
-  # The comparison. Run only where every shard passed: a shard that failed on one tree leaves the mutants
-  # it was dealt out of both, and the lists left would still agree.
+  # The comparison, run only where every shard of both trees passed.
   # ---------------------------------------------------------------------------
   diff:
     name: Kill set (diff)

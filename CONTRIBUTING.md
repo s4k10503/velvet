@@ -502,29 +502,38 @@ gh workflow run kill-set.yml --ref main \
 ```
 
 `files` names the production sources whose mutants the removed cases could have been killing, each taken
-whole, and `head` must leave them byte-identical to the merge base or the plan refuses. `assemblies` is
-the test assemblies of the removed cases and of whatever is meant to keep killing what they killed: a
-kill by an assembly left out of it is not made on either tree, so a mutant the removed cases killed and
-only an omitted assembly would still kill reads as lost, and leaving it empty measures the whole suite.
-`base` is the branch the pull request merges into, resolved to its merge base with `head` by
-`scripts/ci/change_base.py`. The tooling that runs is the head's own, so a head cut before `kill-set.yml`
-and `--run-out` landed has neither. Listing the mutants needs no editor:
+whole. `head` must leave them, and `Assets/MutantSchemata`, byte-identical to the merge base, or the plan
+refuses: the campaign's runner is tracked in the project and switches with the tree, so a pull request that
+changes it is not a pruning. The plan also refuses a path that is not a mutable package source, so a
+mistyped path fails the run rather than passing over nothing. `assemblies` is the test assemblies of the
+removed cases and of whatever is meant to keep killing what they killed: a kill by an assembly left out
+of it is not made on either tree, so a mutant the removed cases killed and only an omitted assembly would
+still kill reads as lost, and leaving it empty measures the whole suite. `base` is the branch the pull
+request merges into, resolved to its merge base with `head` by `scripts/ci/change_base.py`. The `scripts/`
+that run are the head's own on both trees, so a head cut before `kill-set.yml` landed has no such
+tooling. A run is one platform over one list of files: a pull request that needs more starts more runs.
+Listing the mutants needs no editor:
 
 ```bash
 python3 scripts/test_quality/mutation_check.py --files <the same paths> --list
 ```
 
-One shard takes `RUN_OUT_CEILING` of the mutants listed (14 on EditMode, 7 on PlayMode), in at most ten shards, and
-the plan refuses a list over that.
+The plan refuses a list over the campaign's own ceiling, `SHARD_CEILING` mutants a shard in at most
+`MAX_SHARDS` shards, because the sizing is the campaign's: each shard job measures one tree, as a
+`mutation-shard` job measures its step, and `ShardCeilingTests` charges both alike. The measuring step
+passes `--timeout` at three times the longest baseline measured, which `HANG_MARGIN` makes the least at which
+a hang reads as one.
 
-Each shard measures the mutants it is dealt on the head and then on the base, in two steps of one job, with
-`--run-out`: no stage stops at its first failing case and none is narrowed to an area or to the cases that
-ran the site, so a mutant's killers are every case of the scope the campaign runs that failed on it. The
-diff job runs `scripts/test_quality/kill_set_diff.py` over the two sets of records, matching mutants by
-file, line, column and rewrite and never by index. It fails, and names each one, when a mutant the base
-killed is not killed on the head — a survivor, or a verdict that measured nothing — and when the two trees
-do not generate the same mutants, or the base killed none and so proved nothing. A kill the head makes
-that the base did not is reported and passes.
+Each shard is measured on the head and on the base, in two jobs, by the default campaign: narrowed to an
+area or to the cases that ran the site first, and on the whole suite wherever that did not kill. The
+diff job, which runs only if every shard passed, runs `scripts/test_quality/kill_set_diff.py` over the two
+sets of records. It matches mutants by file, line, column and rewrite and never by index, and compares
+verdicts only. It fails, and names each one, when a mutant the base killed is not killed on the head — a
+survivor, or a verdict that measured nothing — and a mutant that outlived `--timeout` on the base is a kill
+the head has to match with a kill or a timeout. It cannot make the comparison, and says so, when a
+mutant has a record on one tree only, when a base verdict is neither a kill nor a survivor nor a
+non-mutant (an uncompilable mutant, for one), and when the base killed none and so proved nothing. A kill
+the head makes that the base did not is reported and passes.
 
 Say in the pull request body which `files` and `assemblies` were measured, the run's link, and the summary
 line the diff job prints (`N mutant(s); killed on the base: …, lost on the head: 0, …`), beside the

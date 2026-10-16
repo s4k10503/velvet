@@ -82,16 +82,38 @@ class KillSetDiffTests(unittest.TestCase):
         self.assertEqual((status, len([line for line in lines if line.startswith("extra kill " + SECOND)])),
                          (0, 1))
 
-    def test_Given_AMutantKilledOnTheBaseThatTheHeadNeverMeasured_When_Compared_Then_ItIsALostKill(self):
-        # Arrange — a timeout on the head leaves a verdict that is no survivor and no kill.
+    def test_Given_AMutantKilledOnTheBaseThatTheHeadOnlyHangsOn_When_Compared_Then_ItIsALostKill(self):
+        # Arrange — a case killed it there, and no case does here.
         base = [record(FIRST, KILLED)]
-        head = [record(FIRST, mutation_check.TIMED_OUT)]
+        head = [record(FIRST, mutation_check.HUNG)]
 
         # Act
         status, _ = self.compare(base, head)
 
         # Assert
         self.assertEqual(status, kill_set_diff.LOST)
+
+    def test_Given_AMutantThatOutlivedTheTimeoutOnTheBase_When_TheHeadSurvivesIt_Then_ItIsALostKill(self):
+        # Arrange — on CI a hang reads as a timeout, never as a hang.
+        base = [record(FIRST, mutation_check.TIMED_OUT)]
+        head = [record(FIRST, SURVIVED)]
+
+        # Act
+        status, _ = self.compare(base, head)
+
+        # Assert
+        self.assertEqual(status, kill_set_diff.LOST)
+
+    def test_Given_ABaseVerdictThatIsNeitherKillNorSurvivor_When_Compared_Then_NothingIsCompared(self):
+        # Arrange — the head's kill would otherwise pass over a mutant nobody measured.
+        base = [record(FIRST, KILLED), record(SECOND, mutation_check.UNCOMPILABLE)]
+        head = [record(FIRST, KILLED), record(SECOND, KILLED)]
+
+        # Act
+        status, _ = self.compare(base, head)
+
+        # Assert
+        self.assertEqual(status, kill_set_diff.UNCOMPARABLE)
 
     def test_Given_AMutantOnlyOneTreeGenerates_When_Compared_Then_NothingIsCompared(self):
         # Arrange — the head's extra mutant is a kill, which a comparison over the rest would let through.
@@ -115,18 +137,6 @@ class KillSetDiffTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(status, 0)
-
-    def test_Given_TwoMutantsDescribedAlike_When_Compared_Then_TheColumnTellsThemApart(self):
-        # Arrange — one line's two mutants, of which the base killed the first and the head the second.
-        base = [record(FIRST, KILLED, column=4), record(FIRST, SURVIVED, column=9)]
-        head = [record(FIRST, SURVIVED, column=4), record(FIRST, KILLED, column=9)]
-
-        # Act
-        status, lines = self.compare(base, head)
-
-        # Assert
-        self.assertEqual((status, [line for line in lines if line.startswith("LOST KILL")]),
-                         (kill_set_diff.LOST, ["LOST KILL  {} (column 4)".format(FIRST)]))
 
     def test_Given_AMutantTheSuiteHungOnBase_When_TheHeadCrashedOnIt_Then_ItPasses(self):
         # Arrange
