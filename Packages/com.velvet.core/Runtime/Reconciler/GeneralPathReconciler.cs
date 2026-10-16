@@ -1,7 +1,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -2357,11 +2356,9 @@ namespace Velvet
             {
                 DisposeExitedGhostFibers(state, key);
             }
-            else if (state.ExitAnchors.Remove(key, out var anchor))
+            else
             {
-                (commit.BeforeRemovals ??= new List<Action>()).Add(
-                    () => _ctx.ComponentRegistry.DisposeFibersUnder(new HashSet<VisualElement> { anchor }));
-                (commit.PutBackRemovals ??= new List<Action>()).Add(() => state.ExitAnchors[key] = anchor);
+                DisposeGhostFibersOnceCommitted(commit, state, key);
             }
             if (commit != null)
             {
@@ -2540,7 +2537,7 @@ namespace Velvet
             string key,
             MotionNode? anchor,
             List<ReconcilerContext.PresenceDescendantExit>? into,
-            StrongBox<bool>? instantTarget = null)
+            System.Runtime.CompilerServices.StrongBox<bool>? instantTarget = null)
         {
             if (!state.ChildRoots.TryGetValue(key, out var roots)) return 0;
             var walk = new DescendantExitWalk { Roots = roots, Anchor = anchor, Into = into, InstantTarget = instantTarget };
@@ -2564,7 +2561,7 @@ namespace Velvet
             internal MotionNode? Anchor { get; init; }
             internal List<ReconcilerContext.PresenceDescendantExit>? Into { get; init; }
             // Set when a descendant's exit names a target it reaches instantly (QuietExitPhase).
-            internal StrongBox<bool>? InstantTarget { get; init; }
+            internal System.Runtime.CompilerServices.StrongBox<bool>? InstantTarget { get; init; }
         }
 
         // inheritedExit is the exit label an ancestor Motion hands down and frame the orchestration an
@@ -2811,7 +2808,7 @@ namespace Velvet
 
             var anchorPlays = ResolveExitTransition(ghostMotionNode)?.HasExitAnimation == true;
             var descendants = new List<ReconcilerContext.PresenceDescendantExit>();
-            var instantTarget = new StrongBox<bool>();
+            var instantTarget = new System.Runtime.CompilerServices.StrongBox<bool>();
             CollectDescendantExits(state, key, ghostMotionNode, descendants, instantTarget);
             var inners = PresencesRunningExitsUnder(state, key);
             if (!anchorPlays && descendants.Count == 0 && inners == null)
@@ -3035,12 +3032,7 @@ namespace Velvet
                 pending.Staging = null;
                 state.PendingSettles[key] = pending;
             });
-            if (state.ExitAnchors.Remove(key, out var anchor))
-            {
-                (commit.BeforeRemovals ??= new List<Action>()).Add(
-                    () => _ctx.ComponentRegistry.DisposeFibersUnder(new HashSet<VisualElement> { anchor }));
-                (commit.PutBackRemovals ??= new List<Action>()).Add(() => state.ExitAnchors[key] = anchor);
-            }
+            DisposeGhostFibersOnceCommitted(commit, state, key);
             if (wasExiting || wasExitComplete) ReleaseDescendantExits(state, key);
             RemovePresenceCommittedEntry(state.Committed, key);
             RetirePresenceKeyEntries(state, key);
@@ -3476,6 +3468,17 @@ namespace Velvet
             anchor.style.transitionDuration = savedDuration;
             anchor.style.transitionTimingFunction = savedTimingFunction;
             anchor.style.transitionDelay = savedDelay;
+        }
+
+        // DisposeExitedGhostFibers for a walk, once it is known to commit; one whose removals never run puts the
+        // anchor back.
+        private void DisposeGhostFibersOnceCommitted(
+            GeneralCommitState commit, ReconcilerContext.PresenceBoundaryState state, string key)
+        {
+            if (!state.ExitAnchors.Remove(key, out var anchor)) return;
+            (commit.BeforeRemovals ??= new List<Action>()).Add(
+                () => _ctx.ComponentRegistry.DisposeFibersUnder(new HashSet<VisualElement> { anchor }));
+            (commit.PutBackRemovals ??= new List<Action>()).Add(() => state.ExitAnchors[key] = anchor);
         }
 
         // Disposes the inline/wrapper fibers mounted under an exit-completed ghost's anchor element. Needed
