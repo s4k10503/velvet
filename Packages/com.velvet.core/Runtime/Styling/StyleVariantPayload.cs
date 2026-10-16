@@ -97,6 +97,10 @@ namespace Velvet
                     box = dest;
                     boxChanged |= payloadGated;
                 }
+                if (StyleInputBoxSurface.TryGetBoxText(dest, core, out var boxText))
+                {
+                    ToggleResolvedPayload(boxText, payload, on, effectivePriority, ctx, declaration);
+                }
 
                 // A clip-path payload (hover:clip-path-[…], dark:/first:clip-path-[…], …) was just toggled as a class,
                 // but UITK has no clip-path property — the class alone does nothing. Re-resolve the element's

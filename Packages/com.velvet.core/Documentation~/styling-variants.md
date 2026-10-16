@@ -462,7 +462,7 @@ these to the box:
 - the text colour (`text-<color>`, `text-[<color>]`) and `opacity-*`;
 - the text styling: `font-*`, `italic`, the text size (`text-sm`, `text-[14px]`), the alignment
   (`text-left` / `-center` / `-right`), `tracking-*`, and the text effects (`uppercase`, `underline`,
-  `leading-*`, `whitespace-*`, …);
+  `leading-*`, `whitespace-*`, …), and `truncate`, whose clip and ellipsis are the input text's;
 - the transforms (`translate-*`, `rotate-*`, `scale-*`, `skew-*`, `origin-*`) and `animate-*`;
 - the caret and selection colours, `caret-*`, `selection:bg-*` and `selection:text-*`.
 

@@ -38,6 +38,9 @@ namespace Velvet
             StyleLonghand.UnityParagraphSpacing, StyleLonghand.LetterSpacing, StyleLonghand.WordSpacing,
             StyleLonghand.TextShadow, StyleLonghand.TextOverflow, StyleLonghand.WhiteSpace);
 
+        private static readonly StyleLonghandSet s_textOverflowLonghands = MotionNativeTransitionGuard.SetOf(
+            StyleLonghand.TextOverflow, StyleLonghand.UnityTextOverflowPosition);
+
         private static readonly StyleLonghandSet s_transitionLonghands = MotionNativeTransitionGuard.SetOf(
             StyleLonghand.TransitionProperty, StyleLonghand.TransitionDuration, StyleLonghand.TransitionDelay,
             StyleLonghand.TransitionTimingFunction);
@@ -138,6 +141,20 @@ namespace Velvet
         {
             box = null!;
             return PlacementOfCore(core) == Placement.Both && IsControl(target) && TryGetBox(target, out box);
+        }
+
+        // The element inside a box that draws its text, which a text-overflow utility lands on as well, since the
+        // ellipsis CSS draws ends the input's own text.
+        public static bool TryGetBoxText(VisualElement box, string core, out VisualElement text)
+        {
+            text = null!;
+            if (!IsBox(box) || !LonghandsOf(core).Overlaps(s_textOverflowLonghands))
+            {
+                return false;
+            }
+            var found = box.Q<TextElement>();
+            text = found!;
+            return found != null;
         }
 
         // The element a relational lookup starts from: a box looks for its sources as the control does, so a
