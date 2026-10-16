@@ -485,7 +485,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(Builds("attempt"), Is.EqualTo(3), "The committed deps are those of the settled attempt, not of the one that was discarded");
+            Assert.That(Builds("attempt"), Is.EqualTo(3), "Three builds are the mount, the discarded attempt and the settled one; the render that changes another text adds none");
         }
 
         [Test]
@@ -501,7 +501,24 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(Builds("attempt"), Is.EqualTo(2), "The attempt the gate hit over left no staging for the settle to promote");
+            Assert.That(Builds("attempt"), Is.EqualTo(2), "Two builds are the mount and the attempt the gate then hit over; the render that changes another text adds none");
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the child afresh on every miss, so it shows the settled text too.
+        // What it pins is each attempt of a render starting its scopes from what is committed: removing
+        // `scope.NextCachedResult = scope.CachedResult;` from `RestageScopes` commits the node the discarded attempt built.
+        [Test]
+        public void Given_ATextChildStagedByAnAttemptTheGateThenHitsOver_When_TheRenderSettles_Then_ItShowsTheTextThatSettled()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RevertedTextAttempt, key: "reverted-text"));
+
+            // Act
+            s_setPhaseText("b");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("attempt"), Is.EqualTo("a"));
         }
 
         // GREEN_ON_BASE(characterization): the base builds the called component's children as well.

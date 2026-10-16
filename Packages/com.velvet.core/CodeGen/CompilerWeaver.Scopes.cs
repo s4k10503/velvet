@@ -114,8 +114,8 @@ namespace Velvet.CodeGen
             public ElementRegion Region => Candidate.Span;
         }
 
-        // The slot the gate was granted, and the values passing through a scope's gate and store, which no other
-        // scope's gate or store runs between.
+        // The slot the gate was granted, and the locals each scope's gate and store pass a value through; each is
+        // read within the few instructions after the one that wrote it, so the scopes share them.
         private sealed record ScopeLocals(VariableDefinition Slot, VariableDefinition Cached, VariableDefinition Result);
 
         private static bool IsStackBalanced(MethodBody body) => DepthsBefore(body.Instructions.ToArray()) != null;
@@ -171,8 +171,6 @@ namespace Velvet.CodeGen
         private static IEnumerable<Instruction> JumpTargets(Instruction instr)
             => instr.Operand as Instruction[] ?? (instr.Operand is Instruction target ? new[] { target } : System.Array.Empty<Instruction>());
 
-        // Outermost first, so that a scope is always planned before the scopes inside it, and a value a scope stores
-        // is a scope's output before the scopes reading it.
         private static List<ScopeCandidate> FindCandidates(ScopeFacts facts)
         {
             var found = new Dictionary<ElementRegion, ScopeCandidate>();
@@ -326,16 +324,15 @@ namespace Velvet.CodeGen
                     return IsBoxable(parameter.ParameterType)
                         && (instr.OpCode.Code != Code.Ldarga || ReadsInPlace(facts.Instructions[index + 1], parameter.ParameterType));
                 case FieldReference field:
-                    return ScanField(facts, index, field, region, scan);
+                    return ScanField(facts, index, field);
                 case MethodReference method:
-                    return ScanMethod(facts, instr, method, region, scan);
+                    return ScanMethod(instr, method, scan);
                 default:
                     return true;
             }
         }
 
-        private static bool ScanLocal(ScopeFacts facts, int index, VariableDefinition local, ElementRegion region,
-            ScopeScan scan)
+        private static bool ScanLocal(ScopeFacts facts, int index, VariableDefinition local, ElementRegion region, ScopeScan scan)
         {
             var code = facts.Instructions[index].OpCode.Code;
             if (facts.IsPrivateTo(local, region)) return true;
@@ -366,7 +363,7 @@ namespace Velvet.CodeGen
             return method.HasThis && !method.HasParameters;
         }
 
-        private static bool ScanField(ScopeFacts facts, int index, FieldReference field, ElementRegion region, ScopeScan scan)
+        private static bool ScanField(ScopeFacts facts, int index, FieldReference field)
         {
             var instr = facts.Instructions[index];
             var code = instr.OpCode.Code;
@@ -377,8 +374,7 @@ namespace Velvet.CodeGen
             return !IsClosureField(field);
         }
 
-        private static bool ScanMethod(ScopeFacts facts, Instruction instr, MethodReference method, ElementRegion region,
-            ScopeScan scan)
+        private static bool ScanMethod(Instruction instr, MethodReference method, ScopeScan scan)
         {
             if (instr.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj)
             {

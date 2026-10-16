@@ -442,6 +442,26 @@ namespace Velvet.Tests
                 "A pair read with its second element is keyed on the first alone, which holds only while the second is reference-stable");
         }
 
+        [Test]
+        public void Given_TheHooksWhoseSecondElementIsLeftOutOfTheGate_When_Listed_Then_TheseAreStateReducerTransitionAndOptimistic()
+        {
+            // Arrange
+            var codeGenAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == CodeGenAssemblyName);
+            Assume.That(codeGenAssembly, Is.Not.Null,
+                "Precondition: the Unity.Velvet.CodeGen assembly is loaded in the editor domain");
+            var names = codeGenAssembly!
+                .GetType(CompilerWeaverTypeFullName, throwOnError: true)!
+                .GetField("StableSecondElementHookNames", BindingFlags.NonPublic | BindingFlags.Static)
+                ?.GetValue(null) as System.Collections.Generic.HashSet<string>;
+
+            // Act
+            var listed = string.Join(",", (names ?? new System.Collections.Generic.HashSet<string>()).OrderBy(name => name, StringComparer.Ordinal));
+
+            // Assert
+            Assert.That(listed, Is.EqualTo("UseOptimistic,UseReducer,UseState,UseTransition"));
+        }
+
         // The warnings the weaver raises for a body it failed to process, as opposed to one it declined.
         private static int FailureWarnings(IEnumerable<string> messages)
             => messages.Count(message => message.Contains("the IL post-processor threw"));
@@ -1558,6 +1578,7 @@ namespace Velvet.Tests
             return false;
         }
 
+
         // --- Reactive scope probes ---
         //
         // A scope may leave a local out of its dependencies when its own expression stores it before reading it
@@ -1574,6 +1595,7 @@ namespace Velvet.Tests
             module.Types.Add(factory);
             label = AddStaticMethod(factory, "Label", vnode, module.TypeSystem.String, module.ImportReference(typeof(int?)));
             div = AddStaticMethod(factory, "Div", vnode, module.TypeSystem.String, new ArrayType(vnode));
+            AddStaticMethod(factory, "Caption", vnode, module.TypeSystem.String, module.TypeSystem.String);
             return factory;
         }
 
@@ -1632,6 +1654,35 @@ namespace Velvet.Tests
             il.Append(Instruction.Create(OpCodes.Ret));
             AssignSequentialOffsets(component);
             return component;
+        }
+
+        // `var id = Hooks.UseId(null); return V.Div("root", V.Caption(id, id), V.Caption(id, id));`: two children a
+        // Velvet declaring the scope gate would cache.
+        private static void AssembleTwoCaptionsReadingAHookValue(ModuleDefinition module, MethodDefinition component,
+            MethodReference useId, TypeDefinition factory, MethodReference div)
+        {
+            var caption = factory.Methods.Single(each => each.Name == "Caption");
+            var id = new VariableDefinition(module.TypeSystem.String);
+            component.Body.Variables.Add(id);
+            var il = component.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc, id));
+            il.Append(Instruction.Create(OpCodes.Ldstr, "root"));
+            il.Append(Instruction.Create(OpCodes.Ldc_I4, 2));
+            il.Append(Instruction.Create(OpCodes.Newarr, component.ReturnType));
+            foreach (var index in new[] { 0, 1 })
+            {
+                il.Append(Instruction.Create(OpCodes.Dup));
+                il.Append(Instruction.Create(OpCodes.Ldc_I4, index));
+                il.Append(Instruction.Create(OpCodes.Ldloc, id));
+                il.Append(Instruction.Create(OpCodes.Ldloc, id));
+                il.Append(Instruction.Create(OpCodes.Call, caption));
+                il.Append(Instruction.Create(OpCodes.Stelem_Ref));
+            }
+            il.Append(Instruction.Create(OpCodes.Call, div));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(component);
         }
 
         private static int CallsTo(MethodDefinition method, string name)
@@ -1774,14 +1825,14 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base weaves the component gate and no scope gate here, so it counts one too.
         // What it pins is a Velvet declaring no scope gate being woven without one: `true` in place of the
         // `context.TryGetMemoizedScope != null && context.StoreMemoizedScope != null` test in `InjectMemoization` plans
-        // scopes it has no gate to call, the weave throws, and the method is left unwoven.
+        // scopes it has no gate to call, and the method is left unwoven.
         [Test]
         public void Given_AVelvetDeclaringTheComponentGateAlone_When_CompilerWeaverRuns_Then_ItIsWovenWithNoScopeGate()
         {
             // Arrange
             using var module = BuildHookShapeProbeModule("GateAloneProbe", out var method, out var useId, out _, out _);
-            AddFactoryType(module, out var label, out var div);
-            AssembleTwoLabelsSharingATemporary(module, method, useId, label, div);
+            var factory = AddFactoryType(module, out _, out var div);
+            AssembleTwoCaptionsReadingAHookValue(module, method, useId, factory, div);
 
             // Act
             InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);

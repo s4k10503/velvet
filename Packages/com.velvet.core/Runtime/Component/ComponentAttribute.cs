@@ -63,7 +63,7 @@ namespace Velvet
         /// such a render a difference that comparison does not see — a list mutated in place, a field a value
         /// type's own <c>Equals</c> ignores — does not reach the tree, nor does anything else the body reads. A
         /// render where only some inputs differ runs the body, and a child of a children list that reads none of
-        /// the changed values is not built again. A child compares the references it reads, so a list or object
+        /// the changed values is not built again where it is one of the children cached. A child compares the references it reads, so a list or object
         /// changed in place leaves the child reading it as it was: replace the value, or set this to
         /// <c>false</c> (<c>Documentation~/memoization.md</c> states which children are cached).
         /// The cache serves the component's own render; called as a plain method, the body runs uncached.
