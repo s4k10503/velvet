@@ -25,8 +25,9 @@ namespace Velvet.CodeGen
     // target of a delegate the expression hands on (a method group, a lambda capturing nothing), the override a
     // virtual call dispatches to, `Func.Invoke` on a delegate it was given and a BCL generic instantiated over a Ref
     // (`List<Ref<int>>`, whose members name no Ref in their signatures) are all code or values this does not read.
-    // An expression reading nothing is cached only when everything it calls is a V factory. One inside a scope
-    // is left to it. Anything else is built on every miss of the gate, as before.
+    //   It leaves out no optional parameter of a nullable value type (`bool? enabled = null`).
+    // An expression reading nothing is cached only when everything it calls is a V factory. Anything else is
+    // built on every miss of the gate, as before.
     internal static partial class CompilerWeaver
     {
         private static readonly string RefTypeFullName = typeof(Velvet.Ref<>).FullName!;
@@ -65,13 +66,10 @@ namespace Velvet.CodeGen
         }
 
         private sealed record ScopePlan(ScopeCandidate Candidate, Instruction Start, Instruction Store,
-            List<DepSource> Deps, int Index)
-        {
-            public ElementRegion Region => Candidate.Span;
-        }
+            List<DepSource> Deps, int Index);
 
-        // The slot the gate was granted, and the values passing through a scope's gate and store, which no other
-        // scope's gate or store runs between.
+        // The slot the gate was granted, and the locals each scope's gate and store pass a value through; each is
+        // read within the few instructions after the one that wrote it, so the scopes share them.
         private sealed record ScopeLocals(VariableDefinition Slot, VariableDefinition Cached, VariableDefinition Result);
 
         private static List<ScopePlan> PlanScopes(MethodBody body, HookAnalysis analysis, WeaverContext context)
@@ -125,8 +123,6 @@ namespace Velvet.CodeGen
         private static IEnumerable<Instruction> JumpTargets(Instruction instr)
             => instr.Operand as Instruction[] ?? (instr.Operand is Instruction target ? new[] { target } : System.Array.Empty<Instruction>());
 
-        // Outermost first, so that a scope is always planned before the scopes inside it, and a value a scope stores
-        // is a scope's output before the scopes reading it.
         private static List<ScopeCandidate> FindCandidates(ScopeFacts facts)
             => FindElementRegions(facts.Instructions, facts.Depths).Select(span => new ScopeCandidate(span)).ToList();
 
@@ -173,7 +169,7 @@ namespace Velvet.CodeGen
             var region = candidate.Span;
             var scan = new ScopeScan();
             if (facts.Branches.Any(branch => BranchBreaksRegion(branch.Source, branch.Target, region))
-                || !Enumerable.Range(region.Start, region.End - region.Start + 1).All(i => ScanInstruction(facts, i, region, scan))
+                || !Enumerable.Range(region.Start, region.End - region.Start + 1).All(i => ScanInstruction(facts, i, scan))
                 || !scan.HasCall || (scan.Deps.Count == 0 && !scan.OnlyFactoryCalls))
             {
                 return null;
@@ -195,36 +191,35 @@ namespace Velvet.CodeGen
             return source > region.End && target < region.Start;
         }
 
-        private static bool ScanInstruction(ScopeFacts facts, int index, ElementRegion region, ScopeScan scan)
+        private static bool ScanInstruction(ScopeFacts facts, int index, ScopeScan scan)
         {
             var instr = facts.Instructions[index];
             if (ScopeForbiddenCodes.Contains(instr.OpCode.Code)) return false;
             switch (instr.Operand)
             {
                 case VariableDefinition local:
-                    return ScanLocal(facts, index, local, region, scan);
+                    return ScanLocal(facts, index, local, scan);
                 case ParameterDefinition parameter:
                     scan.Add(facts.ParameterDependency(parameter));
                     return IsBoxable(parameter.ParameterType) && instr.OpCode.Code != Code.Ldarga;
                 case FieldReference field:
-                    return ScanField(facts, index, field, region, scan);
+                    return ScanField(facts, index, field);
                 case MethodReference method:
-                    return ScanMethod(facts, instr, method, region, scan);
+                    return ScanMethod(instr, method, scan);
                 default:
                     return true;
             }
         }
 
-        private static bool ScanLocal(ScopeFacts facts, int index, VariableDefinition local, ElementRegion region,
-            ScopeScan scan)
+        private static bool ScanLocal(ScopeFacts facts, int index, VariableDefinition local, ScopeScan scan)
         {
             var code = facts.Instructions[index].OpCode.Code;
-            if (code is Code.Stloc or Code.Ldloca || !facts.CanBeCompared(local, local.VariableType, region)) return false;
+            if (code is Code.Stloc or Code.Ldloca || !facts.CanBeCompared(local, local.VariableType)) return false;
             scan.Add(new DepSource(local, local.VariableType) { Local = local });
             return true;
         }
 
-        private static bool ScanField(ScopeFacts facts, int index, FieldReference field, ElementRegion region, ScopeScan scan)
+        private static bool ScanField(ScopeFacts facts, int index, FieldReference field)
         {
             var instr = facts.Instructions[index];
             var code = instr.OpCode.Code;
@@ -232,8 +227,7 @@ namespace Velvet.CodeGen
             return !IsClosureField(field);
         }
 
-        private static bool ScanMethod(ScopeFacts facts, Instruction instr, MethodReference method, ElementRegion region,
-            ScopeScan scan)
+        private static bool ScanMethod(Instruction instr, MethodReference method, ScopeScan scan)
         {
             if (instr.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj)
             {

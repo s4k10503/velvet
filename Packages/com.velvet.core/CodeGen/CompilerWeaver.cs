@@ -107,6 +107,17 @@ namespace Velvet.CodeGen
             nameof(Velvet.Hooks.UseMutableRef),
         };
 
+        // The hooks whose pair has a second element that is the same object on every render. A pair read with its
+        // second element is keyed on the first alone, which holds only for these; the second element of any other
+        // hook (UseStore with a tuple selector, say) is a value of the caller's that can change by itself.
+        private static readonly HashSet<string> StableSecondElementHookNames = new()
+        {
+            nameof(Velvet.Hooks.UseState),
+            nameof(Velvet.Hooks.UseReducer),
+            nameof(Velvet.Hooks.UseTransition),
+            nameof(Velvet.Hooks.UseOptimistic),
+        };
+
         // SAFE void hooks. These run for their side effect only and return nothing, so there is no value to
         // capture into the deps array. They are admitted because they cannot drive a re-render through a return
         // value at all: their effect (or imperative handle assignment) runs every render the body is rebuilt, and
@@ -365,6 +376,11 @@ namespace Velvet.CodeGen
                 return false;
             }
 
+            if (LambdaWritesACapturedHookValue(method, hookPipedLocals))
+            {
+                return false;
+            }
+
             if (hookPipedLocals.Count == 0 && method.Parameters.Count == 0)
             {
                 // No parameter and no value hook: the deps array would be empty, so TryGetMemoizedVNode would
@@ -593,7 +609,7 @@ namespace Velvet.CodeGen
                     return false;
                 }
 
-                var outcome = TryCaptureHookResult(next, body, isDirect);
+                var outcome = TryCaptureHookResult(next, body, isDirect && StableSecondElementHookNames.Contains(hookTarget!.Name));
                 if (outcome.Match == HookCaptureMatch.Bail)
                 {
                     return false;
@@ -623,11 +639,11 @@ namespace Velvet.CodeGen
         // instruction, and the first one that recognizes the shape owns the verdict — including a Bail,
         // which means the shape matched but is unsound and a later matcher must not get to claim it.
         // A tuple held in a temporary is claimed ahead of TryMatchDirectCapture, which refuses a whole tuple.
-        private static HookCaptureOutcome TryCaptureHookResult(Instruction next, MethodBody body, bool isDirect)
+        private static HookCaptureOutcome TryCaptureHookResult(Instruction next, MethodBody body, bool stableSecond)
         {
             if (TryGetStlocVariable(next, body, out var temporary) && IsValueTupleType(temporary.VariableType))
             {
-                return TryMatchTupleTemp(next, body, isDirect, temporary);
+                return TryMatchTupleTemp(next, body, stableSecond, temporary);
             }
             if (next.OpCode == OpCodes.Stfld)
             {
@@ -642,7 +658,7 @@ namespace Velvet.CodeGen
             }
             if (direct == HookCaptureMatch.NotMatched)
             {
-                direct = TryMatchTwoElementDeconstruction(next, body, isDirect, out local, out boundary);
+                direct = TryMatchTwoElementDeconstruction(next, body, stableSecond, out local, out boundary);
             }
             return direct == HookCaptureMatch.Matched
                 ? new HookCaptureOutcome(direct, new HookCapture(local, null, null, local!.VariableType, boundary!), boundary)
@@ -782,7 +798,7 @@ namespace Velvet.CodeGen
         // Item2 has to be consumed before the gate runs). Without this branch the leading `dup` matched no
         // shape and bailed the whole component — disabling auto-memo for every `var (x, setX) = ...` site.
         private static HookCaptureMatch TryMatchTwoElementDeconstruction(
-            Instruction next, MethodBody body, bool isDirect, out VariableDefinition? capturedLocal,
+            Instruction next, MethodBody body, bool stableSecond, out VariableDefinition? capturedLocal,
             out Instruction? newBoundary)
         {
             capturedLocal = null;
@@ -807,12 +823,12 @@ namespace Velvet.CodeGen
                 newBoundary = rest;
                 return HookCaptureMatch.Matched;
             }
-            // Item2 is read, so it is left out of the deps only where it cannot change: the allow-listed pairs
-            // (UseState, UseReducer, UseTransition, UseOptimistic) have a reference-stable second element, while
-            // a custom hook's, or a non-positional Velvet.Hooks member's, can change between renders.
+            // Item2 is read, so it is left out of the deps only where it cannot change: the hooks named in
+            // StableSecondElementHookNames have a reference-stable second element, while any other hook's can
+            // change between renders.
             var setterStore = rest?.Next;
             // MUTANT_SURVIVES(unreachable, clause removed): a body ends in ret, so an instruction follows the Item2 read and `setterStore` is never null here.
-            if (!isDirect || !IsFieldLoad(rest, "Item2") || setterStore == null || !IsValueConsumingStore(setterStore))
+            if (!stableSecond || !IsFieldLoad(rest, "Item2") || setterStore == null || !IsValueConsumingStore(setterStore))
             {
                 return HookCaptureMatch.Bail;
             }
@@ -1360,8 +1376,6 @@ namespace Velvet.CodeGen
                 }
             }
 
-            // Ahead of the returns' commit, so that a scope whose value is returned stores before the gate does and
-            // a hit on it jumps to the gate's commit.
             InjectScopes(body, plans, context, slotLocal);
 
             // Inject Store + reload at every return path so all `Ret` instructions

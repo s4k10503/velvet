@@ -790,26 +790,30 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Returns a navigate function that pushes (or, when <paramref name="replace"/> is true, replaces)
-        /// the given target path. The target may be
+        /// Returns React Router's <c>navigate</c>: <c>navigate(to, options)</c> pushes (or, with
+        /// <see cref="NavigateOptions.Replace"/>, replaces) the target path, and <c>navigate(delta)</c> moves
+        /// along the history stack. The target may be
         /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>). Relative targets
         /// resolve from the calling component's enclosing Outlet route level. Without one, the router uses
         /// the current leaf route level when matches exist; otherwise it uses the current URL path, or the
-        /// root before the first location. Navigation is driven by the router <c>V.RouterProvider</c>
+        /// root before the first location. <see cref="NavigateOptions.Relative"/> set to
+        /// <see cref="RelativeRoutingType.Path"/> drops URL segments of that route's pathname instead of whole
+        /// routes. Navigation is driven by the router <c>V.RouterProvider</c>
         /// publishes above the caller.
         /// </summary>
-        /// <returns>A stable delegate <c>navigate(to)</c>; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
+        /// <returns>A stable delegate; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
         /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
         /// caller.</exception>
-        public static Func<string, VelvetTask<NavigationResult>> UseNavigate(bool replace = false)
+        public static NavigateFunction UseNavigate()
         {
             _ = Resolve("UseNavigate");
             var router = UseRouterOrThrow("UseNavigate");
-            var mode = replace ? NavigationMode.Replace : NavigationMode.Push;
             var baseRouteIndex = UseBaseRouteIndex();
-            return UseCallback<Func<string, VelvetTask<NavigationResult>>>(
-                to => router.NavigateAsync(to, mode, baseRouteIndex),
-                router, mode, baseRouteIndex);
+            return UseCallback<NavigateFunction>(
+                (to, options) => to.IsDelta
+                    ? router.NavigateAsync(to.Delta)
+                    : router.NavigateAsync(to.To!, options, baseRouteIndex),
+                router, baseRouteIndex);
         }
 
         // Called by the hooks whose React Router counterparts refuse to run outside a router. UseParams,

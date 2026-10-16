@@ -1,9 +1,9 @@
 ### Changed
 
-- A component's automatic memoization now also caches, below the component's own gate, each child of a children
-  list on the values it reads, as React Compiler's reactive scopes do, where it cached the component's tree as a
-  whole and nothing below it. A child is a call of a `V` factory or a constructor whose arguments are parameters
-  and hook values. A render that changes one input builds again only the children reading it and hands the
+- A component's automatic memoization now also caches, below the component's own gate, the children of a children
+  list on the values they read, as React Compiler's reactive scopes do, where it cached the component's tree as a
+  whole and nothing below it. A child cached is a call of a `V` factory or a constructor whose arguments are
+  parameters and hook values and that leaves out no optional parameter of a nullable value type (`bool? enabled`). A render that changes one input builds again only the children reading it and hands the
   reconciler the same `VNode` instances for the rest, which it skips. A constructor a child's expression calls no
   longer runs on a render where none of the values the child reads changed.
   A scope compares the references it reads, so a list, dictionary or object held in state, context or props and

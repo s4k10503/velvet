@@ -440,6 +440,26 @@ namespace Velvet.Tests
                 "A pair read with its second element is keyed on the first alone, which holds only while the second is reference-stable");
         }
 
+        [Test]
+        public void Given_TheHooksWhoseSecondElementIsLeftOutOfTheGate_When_Listed_Then_TheseAreStateReducerTransitionAndOptimistic()
+        {
+            // Arrange
+            var codeGenAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == CodeGenAssemblyName);
+            Assume.That(codeGenAssembly, Is.Not.Null,
+                "Precondition: the Unity.Velvet.CodeGen assembly is loaded in the editor domain");
+            var names = codeGenAssembly!
+                .GetType(CompilerWeaverTypeFullName, throwOnError: true)!
+                .GetField("StableSecondElementHookNames", BindingFlags.NonPublic | BindingFlags.Static)
+                ?.GetValue(null) as System.Collections.Generic.HashSet<string>;
+
+            // Act
+            var listed = string.Join(",", (names ?? new System.Collections.Generic.HashSet<string>()).OrderBy(name => name, StringComparer.Ordinal));
+
+            // Assert
+            Assert.That(listed, Is.EqualTo("UseOptimistic,UseReducer,UseState,UseTransition"));
+        }
+
         // The warnings the weaver raises for a body it failed to process, as opposed to one it declined.
         private static int FailureWarnings(IEnumerable<string> messages)
             => messages.Count(message => message.Contains("the IL post-processor threw"));

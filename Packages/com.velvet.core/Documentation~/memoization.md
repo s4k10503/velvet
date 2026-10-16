@@ -19,7 +19,7 @@ static VNode Dashboard()
 }
 ```
 
-A scope is an element of a children list that is a call or constructor returning a `VNode`.
+A scope is an element of a children list that is a call of a `V` factory or a constructor returning a `VNode`, whose arguments are parameters and hook values, and that leaves out no optional parameter of a nullable value type (`bool? enabled`, `float? value`).
 
 A scope sits at any depth: one inside a scope that is built again keeps its own cache. One reading nothing is cached once it calls nothing but `V` factories. A scope the render did not reach, because an early `return` came first, keeps what it last built. A scope starting after the component's last hook call is woven; in a body that calls no hook, any scope is.
 
@@ -40,7 +40,7 @@ A scope is not cached, and is built as it was before scopes, where it:
 
 - calls a member of a `Ref<T>` or `MutableRef<T>`, or a method taking one, reads a `UseService` value, or reads a reference a custom hook returns;
 - reads a `static` field or calls anything but a `V` factory or a constructor. A method of your own that builds a child is not cached; make it a component or cache its result with `Hooks.UseMemo`;
-- reads a local that holds anything but a hook value;
+- reads a local that holds anything but a hook value, or leaves out an optional parameter of a nullable value type such as `bool? enabled`;
 - writes a local, or passes the address of one to a call;
 - sits in a loop, or in a method with `try`, `catch` or `finally`.
 

@@ -38,10 +38,8 @@ namespace Velvet.CodeGen
 
             public List<(int Source, int Target)> Branches { get; }
 
-            private static object? CaptureKey(HookCapture capture) => capture.Local;
-
             // Every write there is to a variable, so that a scope can tell whether it stands as it was set.
-            // Taking an address is one unless the callee is known to read.
+            // Taking an address counts as one.
             private void CollectWrites()
             {
                 for (var i = 0; i < Instructions.Length; i++)
@@ -60,7 +58,6 @@ namespace Velvet.CodeGen
                 {
                     case VariableDefinition local when !IsClosureClass(local.VariableType):
                         return instr.OpCode.Code is Code.Stloc or Code.Ldloca ? local : null;
-                    // MUTANT_SURVIVES(equivalent, clause removed): no scope looks up a link field, so counting its stores changes no answer.
                     default:
                         return null;
                 }
@@ -70,7 +67,7 @@ namespace Velvet.CodeGen
                 => new(parameter, parameter.ParameterType) { Parameter = parameter };
 
             // A variable reads as itself, set once.
-            public bool CanBeCompared(object key, TypeReference type, ElementRegion region)
+            public bool CanBeCompared(object key, TypeReference type)
             {
                 if (_keys.Uncomparable.Contains(key) || !IsBoxable(type)) return false;
                 return _hookKeys.Contains(key)
