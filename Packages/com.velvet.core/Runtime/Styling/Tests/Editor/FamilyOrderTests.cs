@@ -69,7 +69,7 @@ namespace Velvet.Tests
         [TestCase("bg-conic from-red-500", "from-red-500 bg-conic")]
         [TestCase("bg-conic via-green-500", "via-green-500 bg-conic")]
         [TestCase("bg-conic to-red-500", "to-red-500 bg-conic")]
-        [TestCase("bg-conic -bg-linear-45", "-bg-linear-45 bg-conic")]
+        [TestCase("bg-linear-to-r -bg-linear-45", "-bg-linear-45 bg-linear-to-r")]
         [TestCase("drop-shadow-sm shadow-lg", "shadow-lg drop-shadow-sm")]
         [TestCase("outline-2 ring-0", "ring-0 outline-2")]
         [TestCase("!outline-2 !ring-0", "!ring-0 !outline-2")]
