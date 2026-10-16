@@ -100,7 +100,8 @@ namespace Velvet
             return aRank < 0 || zRank < 0 ? StyleBorderSideColor.CompareCascade(a, z) : aRank.CompareTo(zRank);
         }
 
-        // tokens without a composite family the browser discards (StyleCompositeRejection), without the inline token a
+        // tokens without a composite family the browser discards (StyleCompositeRejection), with the skew utilities in
+        // Tailwind's order (StyleSkewClass.InTailwindOrder), without the inline token a
         // later stylesheet class writes in full, and with a border width cut down to
         // the sides such classes leave (StyleInlineSheetOrder), and with each stylesheet-backed spacing class that an inline utility of an overlapping family stands
         // beside rewritten to its inline form (pt-2 as pt-[8px], mx-auto as mx-[auto], w-full as w-[100%]), and
@@ -123,6 +124,7 @@ namespace Velvet
             {
                 return tokens;
             }
+            tokens = StyleSkewClass.InTailwindOrder(tokens);
             // Before the readings, so a token this drops is not one a class is rewritten inline to outrank.
             tokens = StyleInlineSheetOrder.WithoutOutrankedInline(tokens);
             if (!Array.Exists(tokens, IsStylesheetClassOrLogical))

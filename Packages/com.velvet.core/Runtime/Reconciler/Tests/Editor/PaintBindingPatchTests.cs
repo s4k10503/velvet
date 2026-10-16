@@ -445,6 +445,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoSkewXStepsWrittenLargerFirst_When_Reconciled_Then_TheLargerStepHoldsTheAxis()
+        {
+            // Arrange — Tailwind emits skew-x-12 after skew-x-6, so it wins wherever it is written.
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "skew-x-12 skew-x-6", name: "card") });
+
+            // Act
+            var xDeg = scope.Reconciler.Context.SkewBindings.TryGetValue(scope.Root[0], out var binding)
+                ? binding.Spec.XDeg
+                : float.NaN;
+
+            // Assert
+            Assert.That(xDeg, Is.EqualTo(12f));
+        }
+
+        [Test]
         public void Given_ASkewedElement_When_TheClassIsRemovedByPatch_Then_TheBindingIsUntracked()
         {
             // Arrange

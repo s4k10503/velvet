@@ -41,7 +41,8 @@ namespace Velvet
     // StyleClipPathClass: a cheap gate plus a cascade-correct extractor.
     //
     // A per-axis utility outranks skew-<n> on its axis wherever either is written, since Tailwind emits skew-<n>
-    // ahead of skew-x-* and skew-y-* in its sheet; within one of the three families the last class written wins.
+    // ahead of skew-x-* and skew-y-* in its sheet. Within one of the three families the extractors take the last
+    // token, which InTailwindOrder makes the one Tailwind emits last.
     //
     // PARITY NOTE: CSS transform: skewX() shears the element AND its descendants. UI Toolkit's
     // transform supports only translate / rotate / scale — shear is unrepresentable — so Velvet's
@@ -66,6 +67,42 @@ namespace Velvet
             }
             var body = cls[0] == '-' ? cls.Substring(1) : cls;
             return body.StartsWith(BothPrefix, StringComparison.Ordinal);
+        }
+
+        // tokens with their variantless skew utilities put in Tailwind's order, in the positions they already hold, so
+        // the last of a family is the one Tailwind emits last: skew-x-6 skew-x-12 and skew-x-12 skew-x-6 both end on
+        // skew-x-12, and -skew-6 sorts ahead of skew-6. A variant payload is appended after these by the variant gate
+        // and keeps its place there. tokens itself when nothing moves.
+        internal static string[] InTailwindOrder(string[] tokens)
+        {
+            System.Collections.Generic.List<int>? members = null;
+            for (var i = 0; i < tokens.Length; i++)
+            {
+                if (IsSkewClass(tokens[i]))
+                {
+                    (members ??= new System.Collections.Generic.List<int>()).Add(i);
+                }
+            }
+            if (members == null || members.Count < 2)
+            {
+                return tokens;
+            }
+            var ordered = new System.Collections.Generic.List<string>(members.Count);
+            foreach (var member in members)
+            {
+                ordered.Add(tokens[member]);
+            }
+            // List.Sort is not stable; two equal candidates are the same string, so their order cannot show.
+            ordered.Sort(StyleCandidateOrder.Compare);
+            string[]? placed = null;
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                if (!string.Equals(ordered[i], tokens[members[i]], StringComparison.Ordinal))
+                {
+                    (placed ??= (string[])tokens.Clone())[members[i]] = ordered[i];
+                }
+            }
+            return placed ?? tokens;
         }
 
         // Cheap early-out gate: true when ANY class is a skew utility.

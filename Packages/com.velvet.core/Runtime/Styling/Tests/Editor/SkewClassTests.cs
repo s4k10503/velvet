@@ -8,7 +8,7 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The <c>skew-x-*</c> / <c>skew-y-*</c> / <c>skew-*</c> utility parser (<see cref="StyleSkewClass"/>):
     /// the numeric scale is degrees (<c>skew-x-6</c>), a leading dash negates (<c>-skew-x-6</c>), the arbitrary
-    /// form requires the unit (<c>skew-x-[8.5deg]</c>), the cascade is last-wins per axis, <c>skew-x-0</c> is a
+    /// form requires the unit (<c>skew-x-[8.5deg]</c>), the extractor takes the last token per axis of a list Normalize has put in Tailwind's order, <c>skew-x-0</c> is a
     /// recognized reset, and <c>skew-6</c> writes both axes beneath any per-axis class.</item>
     /// <item>The <c>border-dashed</c> / <c>border-dotted</c> / <c>border-solid</c> utility parser
     /// (<see cref="StyleBorderStyleClass"/>): dashed / dotted are ACTIVE (a painted outline), border-solid is a
@@ -75,7 +75,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoSkewXClasses_When_Extracted_Then_TheLaterWins()
         {
-            // Arrange — CSS cascade: later classes win.
+            // Arrange — the extractor takes the last token it is handed; Normalize is what puts them in Tailwind's order.
             var classes = new[] { "skew-x-6", "-skew-x-12" };
 
             // Act
@@ -233,6 +233,56 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((wantRejected, wantAccepted), Is.EqualTo((false, true)));
+        }
+
+        // --- one skew family written twice: Tailwind's sheet order ---
+
+        // The angle each skew of classes resolves to after Normalize, written in that order and then reversed.
+        private static string BothOrders(string first, string second)
+        {
+            StyleSkewClass.TryExtract(StyleSpacingPrecedence.Normalize(new[] { first, second }), out var written);
+            StyleSkewClass.TryExtract(StyleSpacingPrecedence.Normalize(new[] { second, first }), out var reversed);
+            return $"{written.XDeg},{written.YDeg} | {reversed.XDeg},{reversed.YDeg}";
+        }
+
+        [Test]
+        public void Given_TwoSkewXStepsInEitherOrder_When_Normalized_Then_TheLargerStepWins()
+        {
+            // Act — Tailwind orders the two by candidate name, comparing the digit runs as numbers.
+            var angles = BothOrders("skew-x-12", "skew-x-6");
+
+            // Assert
+            Assert.That(angles, Is.EqualTo("12,0 | 12,0"));
+        }
+
+        [Test]
+        public void Given_ASkewXBracketAndAStepInEitherOrder_When_Normalized_Then_TheBracketWins()
+        {
+            // Act — `[` follows every digit in character code, so Tailwind emits the bracket after the step.
+            var angles = BothOrders("skew-x-[10deg]", "skew-x-6");
+
+            // Assert
+            Assert.That(angles, Is.EqualTo("10,0 | 10,0"));
+        }
+
+        [Test]
+        public void Given_ASkewYAndItsNegationInEitherOrder_When_Normalized_Then_ThePositiveOneWins()
+        {
+            // Act — the negated candidate sorts first, so Tailwind emits the positive one after it.
+            var angles = BothOrders("skew-y-6", "-skew-y-6");
+
+            // Assert
+            Assert.That(angles, Is.EqualTo("0,6 | 0,6"));
+        }
+
+        [Test]
+        public void Given_APlainSkewAndItsNegationInEitherOrder_When_Normalized_Then_ThePositiveOneWins()
+        {
+            // Act
+            var angles = BothOrders("skew-6", "-skew-6");
+
+            // Assert
+            Assert.That(angles, Is.EqualTo("6,6 | 6,6"));
         }
 
         // --- border-dashed / border-dotted / border-solid utility parser ---
