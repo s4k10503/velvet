@@ -27,8 +27,10 @@ or column and 512 by 512 for any other, and again when the element's size crosse
 | `bg-radial-[{shape} {size} at_{position}]` | `circle` or `ellipse`; `closest-side`, `closest-corner`, `farthest-side`, `farthest-corner`, or radii: a circle's length, an ellipse's two lengths or percentages (`circle_40px`, `ellipse_50%_1in`), a length being a non-negative `px`, `rem` or absolute unit, or a math function that comes to one |
 | `bg-conic` / `bg-conic-{n}` / `bg-conic-[from_{angle}]` | conic, sweeping clockwise from a start angle; a bracket without `from` names none |
 
-A position is keywords (`top`, `left`, `center`, …) or percentages, which may lie outside the box, x before y: `at_top_left`,
-`at_25%_75%`. A utility class interpolates in OKLab, as Tailwind's do, and a trailing `/srgb`, `/srgb-linear`, `/oklab`, `/oklch`, `/lab`, `/lch` or `/hsl`
+A position is CSS's `<position>`: one value, two (x before y, or two keywords in either order), or two edge
+keywords each followed by its offset from that edge, each value a keyword (`top`, `left`, `center`, …), a
+percentage, a length or a math function adding the two, any of which may lie outside the box: `at_top_left`,
+`at_25%_75%`, `at_20px_30px`, `at_right_10px_bottom_20px`, `at_calc(50%_+_30px)_40%`. A utility class interpolates in OKLab, as Tailwind's do, and a trailing `/srgb`, `/srgb-linear`, `/oklab`, `/oklch`, `/lab`, `/lch` or `/hsl`
 on the shape picks the space the colours are interpolated in. A gradient written in an arbitrary bracket
 (`bg-linear-[…]`, `bg-radial-[…]`, `bg-conic-[…]`) names no space and interpolates in sRGB, as CSS does for the
 colours such a bracket carries; `in_{space}` inside it names one. `bg-gradient-to-*` reads as `bg-linear-to-*`. In the polar spaces (`oklch`, `lch`, `hsl`) the
@@ -98,8 +100,8 @@ bg-conic-[from_90deg_at_25%_75%,red,yellow,red]
 - **A malformed list leaves a linear or conic class inert**, as an unknown angle does, so a shape
   utility before it in the class list still applies. Malformed covers an argument that is neither a stop
   nor the shape's first argument, an unreadable colour or position, an angle that is a bare number other
-  than `0`, an `at_` position with a token that is not `left`, `right`, `top`, `bottom`, `center` or a
-  percentage (or with more than two), more than two positions on one stop, fewer than 2 or more than 64
+  than `0`, an `at_` position CSS does not read (`at_top_10px`, `at_right_10px_bottom`), more than two positions
+  on one stop, fewer than 2 or more than 64
   stops, and a `-` in front of `bg-linear-[…]`.
 - **A `/` modifier after a stop list leaves the class inert** on every shape, since Tailwind takes none
   after a bracketed shape. Name the space inside the bracket instead (`in_oklab`).
@@ -114,6 +116,5 @@ both.
 ## Where this differs from CSS and Tailwind
 
 - Not read, and so leaving the class inert: interpolation spaces other than the seven above (`hwb`,
-  `xyz`, `display-p3`, …), a centre written in lengths or with edge offsets (`at_20px_30px`,
-  `at_right_10px_bottom_20px`), `var()` in a stop, a math function in a stop that does not come to one
+  `xyz`, `display-p3`, …), `var()` in a stop, a math function in a stop that does not come to one
   length or one percentage, and a colour the grammar [styling-colors.md](styling-colors.md) describes does not read.

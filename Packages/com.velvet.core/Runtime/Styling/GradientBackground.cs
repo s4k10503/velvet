@@ -133,7 +133,7 @@ namespace Velvet
         // axis, a corner direction and a radial come out the same in every box.
         internal static bool DependsOnAspect(in GradientSpec spec)
         {
-            if (spec.HasLengths)
+            if (spec.HasLengths || spec.HasCentreLength)
             {
                 return true;
             }
@@ -151,7 +151,8 @@ namespace Velvet
         // True when a radial's size or a stop's position is written in pixels, so the texture depends on the
         // box's size and not only its proportions.
         internal static bool NeedsAbsoluteSize(in GradientSpec spec)
-            => spec.HasLengths || (spec.Type == GradientType.Radial && spec.Radial.Extent == RadialExtent.Explicit
+            => spec.HasLengths || spec.HasCentreLength
+                || (spec.Type == GradientType.Radial && spec.Radial.Extent == RadialExtent.Explicit
                 && (spec.Radial.Circle || !spec.Radial.XPercent || !spec.Radial.YPercent));
 
         // True when the gradient has a feature the default texture would blur: two stops a hair apart (a hard
@@ -475,7 +476,7 @@ namespace Velvet
             // already keeps in any box, so it is laid out over a square.
             var lineAspect = spec.ToCorner ? 1f : aspect;
             var box = widthPx > 0f ? new Vector2(widthPx, widthPx / aspect) : new Vector2(aspect, 1f);
-            var frame = new BakeFrame(box, lineAspect, direction, RadialRadii(spec, box.x, box.y));
+            var frame = new BakeFrame(box, lineAspect, direction, RadialRadii(spec, box.x, box.y), spec.CentreIn(box.x, box.y));
             var stops = ResolveStops(spec, box.x, box.y);
             for (var row = 0; row < height; row++)
             {
@@ -498,8 +499,9 @@ namespace Velvet
         // linear line is laid out over, its direction, and a radial's radii in the box's units.
         private readonly struct BakeFrame
         {
-            public BakeFrame(Vector2 box, float lineAspect, Vector2 direction, Vector2 radii)
+            public BakeFrame(Vector2 box, float lineAspect, Vector2 direction, Vector2 radii, Vector2 centre)
             {
+                Centre = centre;
                 Box = box;
                 LineAspect = lineAspect;
                 Direction = direction;
@@ -507,6 +509,7 @@ namespace Velvet
             }
 
             public Vector2 Box { get; }
+            public Vector2 Centre { get; }
             public float LineAspect { get; }
             public Vector2 Direction { get; }
             public Vector2 Radii { get; }
@@ -521,14 +524,14 @@ namespace Velvet
             {
                 case GradientType.Radial:
                 {
-                    var nx = (u - spec.CenterX) * frame.Box.x / frame.Radii.x;
-                    var ny = (v - spec.CenterY) * frame.Box.y / frame.Radii.y;
+                    var nx = (u - frame.Centre.x) * frame.Box.x / frame.Radii.x;
+                    var ny = (v - frame.Centre.y) * frame.Box.y / frame.Radii.y;
                     return Mathf.Sqrt((nx * nx) + (ny * ny));
                 }
                 case GradientType.Conic:
                 {
                     // atan2(x, -y): 0° straight up, increasing clockwise in the y-down UV (CSS conic).
-                    var ang = Mathf.Atan2((u - spec.CenterX) * frame.Box.x, -(v - spec.CenterY) * frame.Box.y) * Mathf.Rad2Deg;
+                    var ang = Mathf.Atan2((u - frame.Centre.x) * frame.Box.x, -(v - frame.Centre.y) * frame.Box.y) * Mathf.Rad2Deg;
                     return ((((ang - spec.AngleDeg) % 360f) + 360f) % 360f) / 360f;
                 }
                 default:
@@ -545,10 +548,11 @@ namespace Velvet
         internal static Vector2 RadialRadii(in GradientSpec spec, float width, float height)
         {
             var radial = spec.Radial;
-            var left = Mathf.Abs(spec.CenterX * width);
-            var right = Mathf.Abs((1f - spec.CenterX) * width);
-            var top = Mathf.Abs(spec.CenterY * height);
-            var bottom = Mathf.Abs((1f - spec.CenterY) * height);
+            var centre = spec.CentreIn(width, height);
+            var left = Mathf.Abs(centre.x * width);
+            var right = Mathf.Abs((1f - centre.x) * width);
+            var top = Mathf.Abs(centre.y * height);
+            var bottom = Mathf.Abs((1f - centre.y) * height);
             var nearX = Mathf.Min(left, right);
             var nearY = Mathf.Min(top, bottom);
             var farX = Mathf.Max(left, right);

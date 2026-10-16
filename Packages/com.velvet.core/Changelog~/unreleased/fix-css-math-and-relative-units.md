@@ -22,3 +22,6 @@
   `bg-[rgb(calc(255/2)_0_0)]`, `text-[hsl(calc(60deg*2)_100%_50%)]`, where it left the class inert.
 - An outline's width and offset are snapped to the panel's device pixels as the browser snaps a border width
   (`outline-[2.75px]` is 2.5px at two device pixels a point), where they were drawn as written.
+- A radial or conic gradient's `at_` position reads CSS's whole `<position>`: lengths (`at_20px_30px`), edge
+  offsets (`at_right_10px_bottom_20px`) and a math function adding a percentage and a length, where only keywords
+  and percentages were read.

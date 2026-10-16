@@ -124,7 +124,8 @@ namespace Velvet
             m.SetFloatArray(StopHintsId, s_stopHints);
             m.SetFloat(StopCountId, stops.Colors.Length);
             m.SetFloat(TypeId, (float)(int)spec.Type);
-            m.SetVector(CenterId, new Vector4(spec.CenterX, spec.CenterY, 0f, 0f));
+            var centre = spec.CentreIn(w, h);
+            m.SetVector(CenterId, new Vector4(centre.x, centre.y, 0f, 0f));
             m.SetFloat(ConicStartId, spec.AngleDeg); // used only for conic
             var radialRadii = GradientBackground.RadialRadii(spec, w, h);
             m.SetVector(RadialRadiiId, new Vector4(radialRadii.x, radialRadii.y, 0f, 0f)); // used only for radial
