@@ -8,8 +8,8 @@ namespace Velvet.Tests
     /// Specifies where an <c>absolute</c> element lands on a real panel when an axis has no inset, against the
     /// static position css-flexbox gives an absolutely-positioned child of a flex container: across the
     /// container's content edges, and along its main axis where the child would sit as the container's sole flex
-    /// item, so a preceding in-flow sibling does not move it. Every Velvet container is a flex container, so
-    /// the block-flow position after preceding siblings never applies.
+    /// item, so a preceding in-flow sibling does not move it. Only <c>flex</c> and <c>flex-col</c> containers are
+    /// pinned; a <c>grid</c> container, a wrapping flex row, is not.
     /// </summary>
     /// <remarks>
     /// The utility classes <c>relative</c>, <c>flex</c>, <c>flex-col</c>, <c>absolute</c>, <c>justify-*</c> and
