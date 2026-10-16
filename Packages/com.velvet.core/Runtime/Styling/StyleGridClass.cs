@@ -77,7 +77,8 @@ namespace Velvet
         public static bool TryParse(string cls, out int columns)
         {
             columns = 0;
-            if (string.IsNullOrEmpty(cls) || !cls.StartsWith("grid-cols-", StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(cls) || !cls.StartsWith("grid-cols-", StringComparison.Ordinal)
+                || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }

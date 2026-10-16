@@ -35,7 +35,14 @@ which leaves the class inert as it does in a browser:
   it, 3px where none does, so `outline-[2]` is a 3px outline and `outline outline-[2]` a 1px one;
 - `ring-*`, `ring-offset-*` and `from-*` / `via-*` / `to-*` take the length alone, so `ring-[2]` is a colour.
 
-`text-[length:16PX]` is a length, its type hint skipping the tests.
+A type hint, a lower-case word and a colon at the start of a bracket (`[length:…]`, `[color:…]`), is read as
+Tailwind reads it. A utility that writes its bracket through drops it, so `w-[length:10px]` is `w-[10px]` and
+`rotate-[angle:45deg]` is `rotate-[45deg]`. One of those above takes the branch the hint names in place of its
+tests — `length` or `line-width` for `border-*`; `length`, `percentage`, `absolute-size` or `relative-size` for
+`text-*`; `length`, `number` or `percentage` for `outline-*`; `length` for `ring-*` and `ring-offset-*`;
+`length` or `percentage` for `from-*` / `via-*` / `to-*` — and any other hint the colour, so
+`text-[length:16PX]` is 16px, `bg-[color:#f00]/50` a half-transparent red, and `border-[color:2px]` inert.
+`filter-[name:args]` is Velvet's custom-filter call, not a hint ([styling-filters.md](styling-filters.md)).
 
 Swapping one bracketed value for another that writes the same property (`w-[300px]` for `w-[10px]`, with or
 without `!`) leaves the old inline value in place until the new one is written, so a `transition-*` or

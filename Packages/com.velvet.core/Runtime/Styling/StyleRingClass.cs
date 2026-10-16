@@ -224,7 +224,7 @@ namespace Velvet
                 return;
             }
 
-            if (isOutlineFamily && TryParseOutlineNumber(ringSuffix!, ref slots))
+            if (isOutlineFamily && TryParseOutlineWidth(ringSuffix!, ref slots))
             {
                 return;
             }
@@ -242,7 +242,7 @@ namespace Velvet
             // move IsOutline: that flag only selects which family's DEFAULT width applies, and a color names
             // no width. Letting it move meant `outline ring-red-500` recoloured the band and silently
             // widened it from the outline default to the ring default at the same time.
-            if (TryParseColorValue(ringSuffix, isOutlineFamily, out var c))
+            if (TryParseColorValue(isRingFamily ? "ring" : "outline", ringSuffix, isOutlineFamily, out var c))
             {
                 slots.HasIntent = true;
                 slots.ColorSet = true;
@@ -251,22 +251,25 @@ namespace Velvet
             // An unrecognized ring-*/outline-* suffix is ignored (not a known utility).
         }
 
-        // outline-[N] and outline-[N%], which Tailwind's type tests take for a number or a percentage and write as
-        // outline-width beside outline-style: solid. The browser keeps the width only as 0, and otherwise draws the
-        // outline at the width the rest of the cascade gives it.
-        private static bool TryParseOutlineNumber(string suffix, ref RingSlots slots)
+        // An outline-[…] that Tailwind's type tests (or a length, number or percentage hint) take for a width, which
+        // it writes as outline-width beside outline-style: solid. A width the browser drops leaves the outline at
+        // the width the rest of the cascade gives it.
+        private static bool TryParseOutlineWidth(string suffix, ref RingSlots slots)
         {
-            if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner) || TailwindDataTypes.IsLength(inner)
-                || !(TailwindDataTypes.IsNumber(inner) || TailwindDataTypes.IsPercentage(inner)))
+            if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
+                || !(hint != null
+                    ? StyleColorValueParser.HintSelectsNonColour("outline", hint)
+                    : TailwindDataTypes.IsLength(inner) || TailwindDataTypes.IsNumber(inner) || TailwindDataTypes.IsPercentage(inner)))
             {
                 return false;
             }
             slots.HasIntent = true;
             slots.IsOutline = true;
-            if (StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out var zero))
+            if (StyleArbitraryValueResolver.TryParsePixels(inner, out var width))
             {
                 slots.WidthSet = true;
-                slots.Width = zero;
+                slots.Width = width;
             }
             return true;
         }
@@ -296,14 +299,31 @@ namespace Velvet
             {
                 return true;
             }
-            return inferred
-                ? StyleArbitraryValueResolver.TryParseInferredArbitraryPixels(suffix.AsSpan(), out width)
-                : StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out width);
+            if (inferred)
+            {
+                return StyleArbitraryValueResolver.TryParseInferredArbitraryPixels(suffix.AsSpan(), out width);
+            }
+            var written = StyleArbitraryValueResolver.WithoutTypeHint(suffix);
+            return written != null && StyleArbitraryValueResolver.TryParseArbitraryPixels(written.AsSpan(), out width);
         }
 
-        // A color is a palette token (red-500 / white / black) or an arbitrary [<color>].
-        private static bool TryParseColorValue(string? suffix, bool longhand, out Color color)
-            => VelvetPalette.TryResolveColorToken(suffix ?? string.Empty, longhand, out color);
+        // A color is a palette token (red-500 / white / black) or an arbitrary [<color>], whose type hint is the
+        // colour branch's unless HintSelectsNonColour says otherwise for root.
+        private static bool TryParseColorValue(string root, string? suffix, bool longhand, out Color color)
+        {
+            color = default;
+            if (string.IsNullOrEmpty(suffix))
+            {
+                return false;
+            }
+            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
+            {
+                return StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
+                    && !StyleColorValueParser.HintSelectsNonColour(root, hint)
+                    && StyleColorValueParser.TryParseColor(inner, longhand, out color);
+            }
+            return VelvetPalette.TryResolveColorToken(suffix, longhand, out color);
+        }
 
         // Resolves the top-left corner radius (px) the ring overlay follows, mirroring StyleShadowClass —
         // the band's outer radius is this plus the ring width (+ offset). Returns false for rounded-full /

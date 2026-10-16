@@ -641,6 +641,11 @@ namespace Velvet
 
         private static StopToken ParseStopToken(string suffix)
         {
+            var hint = StyleArbitraryValueResolver.TypeHintOf(suffix);
+            if (hint != null)
+            {
+                return ParseHintedStopToken(suffix, hint);
+            }
             if ((suffix.Length > 0 && suffix[0] == '[' || IsBarePercent(suffix)) && TryParsePercent(suffix, out var p))
             {
                 return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
@@ -651,6 +656,28 @@ namespace Velvet
             }
             return VelvetPalette.TryResolveColorToken(suffix, out var c)
                 ? new StopToken { IsColor = true, Color = c }
+                : default;
+        }
+
+        // A type hint picks the branch in place of Tailwind's tests: a length or percentage hint the position,
+        // read without the case test, and any other the colour.
+        private static StopToken ParseHintedStopToken(string suffix, string hint)
+        {
+            var plain = StyleArbitraryValueResolver.WithoutTypeHint(suffix);
+            if (plain == null)
+            {
+                return default;
+            }
+            if (!StyleColorValueParser.HintSelectsNonColour("from", hint))
+            {
+                return VelvetPalette.TryResolveColorToken(plain, out var c) ? new StopToken { IsColor = true, Color = c } : default;
+            }
+            if (TryParsePercent(plain, out var p))
+            {
+                return new StopToken { IsPosition = true, Position = p, PositionPx = float.NaN };
+            }
+            return TryParseStopLength(plain.Substring(1, plain.Length - 2), out var px)
+                ? new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px }
                 : default;
         }
 
@@ -1373,8 +1400,14 @@ namespace Velvet
             }
             if (StyleArbitraryValueResolver.TryStripBrackets(s, 0, out var inner))
             {
+                // An `angle:` hint passes the angle test whatever it holds; any other hint fails it.
+                if (!StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner))
+                {
+                    return false;
+                }
                 var text = inner.ToString();
-                return TryParseCssAngle(text, out deg) && (!negative || IsLowerCaseAngle(text));
+                return TryParseCssAngle(text, out deg)
+                    && (!negative || (hint != null ? hint == "angle" : IsLowerCaseAngle(text)));
             }
             if (int.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out var whole))
             {
