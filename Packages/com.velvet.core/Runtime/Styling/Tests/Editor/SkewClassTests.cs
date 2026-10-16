@@ -285,6 +285,69 @@ namespace Velvet.Tests
             Assert.That(angles, Is.EqualTo("6,6 | 6,6"));
         }
 
+        // --- the important modifier ---
+
+        [Test]
+        public void Given_AnImportantSkewXBesideALargerPlainOne_When_Normalized_Then_TheImportantOneHoldsTheAxis()
+        {
+            // Act
+            var angles = BothOrders("!skew-x-6", "skew-x-12");
+
+            // Assert
+            Assert.That(angles, Is.EqualTo("6,0 | 6,0"));
+        }
+
+        [Test]
+        public void Given_ATrailingBangSkewXBesideALargerPlainOne_When_Normalized_Then_TheImportantOneHoldsTheAxis()
+        {
+            // Act
+            var angles = BothOrders("skew-x-6!", "skew-x-12");
+
+            // Assert
+            Assert.That(angles, Is.EqualTo("6,0 | 6,0"));
+        }
+
+        [Test]
+        public void Given_AnImportantPlainSkewBesideAPlainPerAxisOne_When_Normalized_Then_TheImportantOneHoldsBothAxes()
+        {
+            // Act — importance decides before the per-axis rule does.
+            var angles = BothOrders("!skew-6", "skew-x-12");
+
+            // Assert
+            Assert.That(angles, Is.EqualTo("6,6 | 6,6"));
+        }
+
+        [Test]
+        public void Given_AnImportantPlainSkewBesideAnImportantPerAxisOne_When_Normalized_Then_ThePerAxisOneHoldsItsAxis()
+        {
+            // Act
+            var angles = BothOrders("!skew-6", "!skew-x-12");
+
+            // Assert
+            Assert.That(angles, Is.EqualTo("12,6 | 12,6"));
+        }
+
+        [Test]
+        public void Given_TwoImportantSkewXSpellings_When_Normalized_Then_TheCandidateTailwindEmitsLaterWins()
+        {
+            // Act — `!` sorts ahead of `s`, so Tailwind emits skew-x-6! after !skew-x-12.
+            var angles = BothOrders("!skew-x-12", "skew-x-6!");
+
+            // Assert
+            Assert.That(angles, Is.EqualTo("6,0 | 6,0"));
+        }
+
+        [Test]
+        public void Given_ANegatedImportantSkewXInEitherSpelling_When_Extracted_Then_TheAngleIsNegated()
+        {
+            // Act
+            StyleSkewClass.TryExtract(new[] { "-skew-x-6!" }, out var trailing);
+            StyleSkewClass.TryExtract(new[] { "!-skew-x-6" }, out var leading);
+
+            // Assert
+            Assert.That($"{trailing.XDeg} | {leading.XDeg}", Is.EqualTo("-6 | -6"));
+        }
+
         // --- border-dashed / border-dotted / border-solid utility parser ---
 
         [Test]

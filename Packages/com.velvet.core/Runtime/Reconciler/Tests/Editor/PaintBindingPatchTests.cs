@@ -461,6 +461,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnImportantSkewXBeforeALargerPlainOne_When_Reconciled_Then_TheImportantOneHoldsTheAxis()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            Mount(scope, new VNode[] { V.Div(className: "!skew-x-6 skew-x-12", name: "card") });
+
+            // Act
+            var xDeg = scope.Reconciler.Context.SkewBindings.TryGetValue(scope.Root[0], out var binding)
+                ? binding.Spec.XDeg
+                : float.NaN;
+
+            // Assert
+            Assert.That(xDeg, Is.EqualTo(6f));
+        }
+
+        [Test]
         public void Given_ASkewedElement_When_TheClassIsRemovedByPatch_Then_TheBindingIsUntracked()
         {
             // Arrange

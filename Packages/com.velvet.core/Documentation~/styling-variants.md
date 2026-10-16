@@ -329,7 +329,8 @@ An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element'
 per-axis class outranks `skew-<n>` on its axis wherever either is written: `skew-6 skew-x-12` and
 `skew-x-12 skew-6` both give 12° on x and 6° on y. Two classes of one of the three take the one Tailwind emits
 later, whichever is written last: `skew-x-6 skew-x-12` and `skew-x-12 skew-x-6` both give 12°, and `skew-6 -skew-6`
-and `-skew-6 skew-6` both give 6°.
+and `-skew-6 skew-6` both give 6°. An important skew (`!skew-x-6`, `skew-x-6!`) outranks every plain one before
+either rule applies: `!skew-6 skew-x-12` gives 6° on both axes.
 
 **Where `skew-*` deviates from CSS.** UI Toolkit's transform carries rotation, scale and translation and
 no shear, so a skew here is not a transform: the caster's own face is repainted sheared in its generated

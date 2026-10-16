@@ -40,9 +40,10 @@ namespace Velvet
     // both axes. skew-x-0 is a recognized reset (it overrides an earlier skew-x-6 in the cascade). Same shape as
     // StyleClipPathClass: a cheap gate plus a cascade-correct extractor.
     //
-    // A per-axis utility outranks skew-<n> on its axis wherever either is written, since Tailwind emits skew-<n>
-    // ahead of skew-x-* and skew-y-* in its sheet. Within one of the three families the extractors take the last
-    // token, which InTailwindOrder makes the one Tailwind emits last.
+    // An important token (!skew-x-6, skew-x-6!) outranks every plain one, as its !important declaration does. Between
+    // two of one importance, a per-axis utility outranks skew-<n> on its axis wherever either is written, since
+    // Tailwind emits skew-<n> ahead of skew-x-* and skew-y-* in its sheet, and within one of the three families the
+    // extractors take the last token, which InTailwindOrder makes the one Tailwind emits last.
     //
     // PARITY NOTE: CSS transform: skewX() shears the element AND its descendants. UI Toolkit's
     // transform supports only translate / rotate / scale — shear is unrepresentable — so Velvet's
@@ -61,37 +62,39 @@ namespace Velvet
         // True when cls is a skew utility this layer owns (recognized or not-yet-valid).
         public static bool IsSkewClass(string? cls)
         {
-            if (string.IsNullOrEmpty(cls))
-            {
-                return false;
-            }
-            var body = cls[0] == '-' ? cls.Substring(1) : cls;
+            var core = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out _);
+            var body = core.Length > 0 && core[0] == '-' ? core.Substring(1) : core;
             return body.StartsWith(BothPrefix, StringComparison.Ordinal);
         }
 
         // tokens with their variantless skew utilities put in Tailwind's order, in the positions they already hold, so
         // the last of a family is the one Tailwind emits last: skew-x-6 skew-x-12 and skew-x-12 skew-x-6 both end on
-        // skew-x-12, and -skew-6 sorts ahead of skew-6. A variant payload is appended after these by the variant gate
-        // and keeps its place there. tokens itself when nothing moves.
+        // skew-x-12, and -skew-6 sorts ahead of skew-6. The important tokens are ordered apart from the plain ones, in
+        // the positions the important ones hold, each by the candidate as written. A variant payload is
+        // appended after these by the variant gate and keeps its place there. tokens itself when nothing moves.
         internal static string[] InTailwindOrder(string[] tokens)
+        {
+            var placed = Placed(null, tokens, important: false);
+            return Placed(placed, tokens, important: true) ?? placed ?? tokens;
+        }
+
+        // into, or a copy of tokens when into is null, with the skew tokens of one importance sorted into the
+        // positions they hold; null when they already are in order.
+        private static string[]? Placed(string[]? into, string[] tokens, bool important)
         {
             System.Collections.Generic.List<int>? members = null;
             for (var i = 0; i < tokens.Length; i++)
             {
-                if (IsSkewClass(tokens[i]))
+                if (IsSkewClass(tokens[i]) && IsImportant(tokens[i]) == important)
                 {
                     (members ??= new System.Collections.Generic.List<int>()).Add(i);
                 }
             }
             if (members == null || members.Count < 2)
             {
-                return tokens;
+                return null;
             }
-            var ordered = new System.Collections.Generic.List<string>(members.Count);
-            foreach (var member in members)
-            {
-                ordered.Add(tokens[member]);
-            }
+            var ordered = members.ConvertAll(member => tokens[member]);
             // List.Sort is not stable; two equal candidates are the same string, so their order cannot show.
             ordered.Sort(StyleCandidateOrder.Compare);
             string[]? placed = null;
@@ -99,10 +102,16 @@ namespace Velvet
             {
                 if (!string.Equals(ordered[i], tokens[members[i]], StringComparison.Ordinal))
                 {
-                    (placed ??= (string[])tokens.Clone())[members[i]] = ordered[i];
+                    (placed ??= into ?? (string[])tokens.Clone())[members[i]] = ordered[i];
                 }
             }
-            return placed ?? tokens;
+            return placed;
+        }
+
+        private static bool IsImportant(string token)
+        {
+            StyleArbitraryValueResolver.StripImportant(token, out var important);
+            return important;
         }
 
         // Cheap early-out gate: true when ANY class is a skew utility.
@@ -122,11 +131,10 @@ namespace Velvet
             return false;
         }
 
-        // Allocation-free cascade probe: the LAST PARSEABLE skew token per axis (mirroring the token
-        // TryExtract stores in SkewSpec.SourceX / SourceY), or false when neither axis has one. The patch
-        // path compares these against the live binding's SourceX / SourceY to skip the parse in the steady
-        // state — gating on the same TryParse predicate keeps the two probes from diverging on a trailing
-        // unparseable token (e.g. ["skew-x-6", "skew-x-junk"]), which otherwise defeats the fast path.
+        // The winning skew token per axis (the token TryExtract stores in SkewSpec.SourceX / SourceY), or false when
+        // neither axis has one. The patch path compares these against the live binding's SourceX / SourceY to skip
+        // the parse in the steady state; both read Resolve, so a trailing unparseable token (e.g. ["skew-x-6",
+        // "skew-x-junk"]) cannot make them disagree and defeat the fast path.
         public static bool TryGetWinningSkewClasses(string[]? classNames, out string? winnerX, out string? winnerY)
         {
             winnerX = null;
@@ -135,34 +143,14 @@ namespace Velvet
             {
                 return false;
             }
-            string? winnerBoth = null;
-            foreach (var cls in classNames)
-            {
-                if (!TryParse(cls, out var axis, out _))
-                {
-                    continue;
-                }
-                switch (axis)
-                {
-                    case SkewAxis.X:
-                        winnerX = cls;
-                        break;
-                    case SkewAxis.Y:
-                        winnerY = cls;
-                        break;
-                    default:
-                        winnerBoth = cls;
-                        break;
-                }
-            }
-            winnerX ??= winnerBoth;
-            winnerY ??= winnerBoth;
+            Resolve(classNames, out var x, out var y);
+            winnerX = x.Source;
+            winnerY = y.Source;
             return winnerX != null || winnerY != null;
         }
 
-        // Resolves the cascade (last recognized class per axis wins) into a SkewSpec. Returns true
-        // only when the result is ACTIVE (a non-zero angle on at least one axis) — skew-x-0 resets
-        // its axis, so a list ending in resets extracts to false.
+        // Resolves the cascade into a SkewSpec. Returns true only when the result is ACTIVE (a non-zero angle on at
+        // least one axis) — skew-x-0 resets its axis, so a list ending in resets extracts to false.
         public static bool TryExtract(string[]? classNames, out SkewSpec spec)
         {
             spec = default;
@@ -170,52 +158,73 @@ namespace Velvet
             {
                 return false;
             }
-
-            float x = 0f, y = 0f, both = 0f;
-            string? sourceX = null, sourceY = null, sourceBoth = null;
-            foreach (var cls in classNames)
-            {
-                if (!TryParse(cls, out var axis, out var deg))
-                {
-                    continue;
-                }
-                switch (axis)
-                {
-                    case SkewAxis.X:
-                        x = deg;
-                        sourceX = cls;
-                        break;
-                    case SkewAxis.Y:
-                        y = deg;
-                        sourceY = cls;
-                        break;
-                    default:
-                        both = deg;
-                        sourceBoth = cls;
-                        break;
-                }
-            }
-            if (sourceX == null && sourceBoth != null)
-            {
-                x = both;
-                sourceX = sourceBoth;
-            }
-            if (sourceY == null && sourceBoth != null)
-            {
-                y = both;
-                sourceY = sourceBoth;
-            }
-
-            spec = new SkewSpec(x, y, sourceX, sourceY);
+            Resolve(classNames, out var x, out var y);
+            spec = new SkewSpec(x.Deg, y.Deg, x.Source, y.Source);
             return spec.Active;
         }
 
-        // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<angle>] (+ the y and both-axes forms).
-        // Returns false for anything else (the cascade ignores unrecognized tokens).
+        private struct Pick
+        {
+            public float Deg;
+            public string? Source;
+            public bool Important;
+        }
+
+        private static void Resolve(string[] classNames, out Pick x, out Pick y)
+        {
+            Pick perX = default, perY = default, both = default;
+            foreach (var cls in classNames)
+            {
+                if (!TryParse(cls, out var axis, out var deg, out var important))
+                {
+                    continue;
+                }
+                var pick = new Pick { Deg = deg, Source = cls, Important = important };
+                switch (axis)
+                {
+                    case SkewAxis.X:
+                        Offer(ref perX, pick);
+                        break;
+                    case SkewAxis.Y:
+                        Offer(ref perY, pick);
+                        break;
+                    default:
+                        Offer(ref both, pick);
+                        break;
+                }
+            }
+            x = OnAxis(perX, both);
+            y = OnAxis(perY, both);
+        }
+
+        // An important token takes a family from a plain one, and between two of one importance the later does.
+        private static void Offer(ref Pick held, Pick offered)
+        {
+            if (held.Source == null || offered.Important || !held.Important)
+            {
+                held = offered;
+            }
+        }
+
+        // The per-axis pick holds its axis unless only the both-axes one is important.
+        private static Pick OnAxis(Pick perAxis, Pick both)
+            => perAxis.Source != null && (perAxis.Important || !both.Important) ? perAxis : both;
+
+        // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<angle>] (+ the y and both-axes forms), with or
+        // without the important modifier. Returns false for anything else (the cascade ignores unrecognized tokens).
         internal static bool TryParse(string? cls, out SkewAxis axis, out float deg)
+            => TryParse(cls, out axis, out deg, out _);
+
+        private static bool TryParse(string? cls, out SkewAxis axis, out float deg, out bool important)
         {
             axis = SkewAxis.Both;
             deg = 0f;
+            important = false;
+            if (string.IsNullOrEmpty(cls))
+            {
+                return false;
+            }
+            cls = StyleArbitraryValueResolver.StripImportant(cls, out important);
             if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
