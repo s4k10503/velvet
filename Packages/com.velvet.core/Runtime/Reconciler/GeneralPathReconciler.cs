@@ -2813,10 +2813,8 @@ namespace Velvet
             var inners = PresencesRunningExitsUnder(state, key);
             if (!anchorPlays && descendants.Count == 0 && inners == null)
             {
-                var phase = !HoldsAMotion(state, key) ? ReconcilerContext.ExitSettlePhase.Effect
-                    : instantTarget.Value || HasExitTarget(ghostMotionNode) ? ReconcilerContext.ExitSettlePhase.Frame
-                    : ReconcilerContext.ExitSettlePhase.Promise;
-                SettleAfterTheRemovingCommit(in pass, key, Settled, phase);
+                SettleAfterTheRemovingCommit(in pass, key, Settled,
+                    QuietExitPhase(state, key, ghostMotionNode, instantTarget.Value));
                 return false;
             }
 
@@ -3709,6 +3707,16 @@ namespace Velvet
         // timed exit pose, collapses a reversed stagger to forward order.
         internal static StyleTransitionConfig? ResolveExitTransition(MotionNode? motion)
             => TryResolveExitVariant(motion, out _, out _, out var transition) ? transition : motion?.Transition;
+
+        // ReconcilerContext.ExitSettlePhase owns the order; descendantInstantTarget is what CollectDescendantExits found.
+        private ReconcilerContext.ExitSettlePhase QuietExitPhase(
+            ReconcilerContext.PresenceBoundaryState state, string key, MotionNode? anchor, bool descendantInstantTarget)
+        {
+            if (!HoldsAMotion(state, key)) return ReconcilerContext.ExitSettlePhase.Effect;
+            return descendantInstantTarget || HasExitTarget(anchor)
+                ? ReconcilerContext.ExitSettlePhase.Frame
+                : ReconcilerContext.ExitSettlePhase.Promise;
+        }
 
         // Whether the anchor's exit names somewhere to go, a pose or the classic exit's classes: what Framer Motion
         // animates there, instantly where the config plays nothing, rather than resolving the exit with nothing to do.
