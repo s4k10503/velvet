@@ -847,7 +847,9 @@ need the identifier to say what it says.
 proves, and what the sources carry), `release/` (cutting a release and publishing it), `hooks/` (the
 suites for the guards under `.claude/hooks/`, and the checks holding those guards to their
 contracts), `generators/` (the committed generator DLLs), `pr/` (settling a pull request), `ci/`
-(which commit a workflow job reads its change against) and `unity/` (sample sync). Two rules keep
+(which commit a workflow job reads its change against) and `unity/` (the Library seed, sample sync,
+and `package_meta_check.py`, which `Test ▸ test-quality` runs to refuse a package asset and its
+`.meta` committed apart). Two rules keep
 the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
