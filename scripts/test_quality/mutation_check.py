@@ -4242,16 +4242,18 @@ CLASS_HEADER = re.compile(r"\b(?:class|struct)\s+([A-Za-z_]\w*)\b([^{;]*)[{;]")
 BASE_LIST = re.compile(r":\s*([^{]*?)\s*(?:\bwhere\b|$)", re.DOTALL)
 # A parameterised case's name carries its arguments in parentheses, and an argument may hold a dot.
 CASE_NAME = re.compile(r"^([^()]*)(?:\(.*)?$", re.DOTALL)
+IDENTIFIER = re.compile(r"[A-Za-z_]\w*")
 
 
 def test_index(project):
-    """({class name: [(relative path, base type names)]}, {relative path: comment-free text}), over
-    the test sources a killing case can be declared in.
+    """({class name: [(relative path, base type names)]}, {relative path: comment-free text},
+    {relative path: the other test sources declaring a top-level type it spells}), over the test
+    sources a killing case can be declared in.
 
     A class is found by its simple name: a case's full name carries the namespace, which does not
     track folders, and a nested fixture's carries `Outer+Inner`, whose source is the outer's.
     """
-    classes, texts = {}, {}
+    classes, texts, declarers = {}, {}, {}
     for relative in key_inputs(project)[0]:
         if not relative.endswith(".cs"):
             continue
@@ -4265,18 +4267,25 @@ def test_index(project):
             names = [re.sub(r"<.*", "", part).strip().split(".")[-1]
                      for part in (bases.group(1).split(",") if bases else ())]
             classes.setdefault(match.group(1), []).append((relative, [name for name in names if name]))
-    return classes, texts
+        for name in top_level_types(code_text(text)):
+            declarers.setdefault(name, set()).add(relative)
+    uses = {}
+    for relative, text in texts.items():
+        spelt = set(IDENTIFIER.findall(code_text(text, holes=True))) & set(declarers)
+        uses[relative] = set().union(*(declarers[name] for name in spelt)) - {relative}
+    return classes, texts, uses
 
 
 def fixture_hashes(project, case, index):
     """{relative path: sha256} of the files declaring a case's fixture and the fixtures it derives
-    from, or None where the case cannot be traced into the tree.
+    from, and of every test source declaring a top-level type one of those spells, followed through
+    such sources in turn; or None where the case cannot be traced into the tree.
 
     A case whose method none of those files declares is untraceable too, which is how a killing case
     that was renamed or deleted reads. An untraceable case is never reused. Hashed in the form
     `digestible` gives, so a comment edit moves nothing and a code edit, a new case included, does.
     """
-    classes, texts = index
+    classes, texts, uses = index
     owner, _, method = CASE_NAME.match(case).group(1).rpartition(".")
     name = re.split(r"[.+]", owner)[-1] if owner else ""
     if not name or not method or name not in classes:
@@ -4292,6 +4301,12 @@ def fixture_hashes(project, case, index):
             pending.extend(bases)
     if not any(re.search(r"\b{}\s*\(".format(re.escape(method)), texts[relative]) for relative in files):
         return None
+    pending = list(files)
+    while pending:
+        for other in uses.get(pending.pop(), ()):
+            if other not in files:
+                files.add(other)
+                pending.append(other)
     return {relative: hashlib.sha256(texts[relative].encode()).hexdigest() for relative in sorted(files)}
 
 
@@ -4396,6 +4411,11 @@ def context_reason(moved, run):
 ACROSS_ASSEMBLIES = re.compile(
     r"\bGetAssemblies\b|\bTypeCache\.|\bAssembly\.Load\w*|\bAppDomain\.CurrentDomain\b"
     r"|\bCompilationPipeline\.(?!Common\b)")
+OWN_ASSEMBLY = re.compile(r"\bGet(?:Executing|Calling)Assembly\b|\bGetType\s*\(\s*\)\s*\.\s*Assembly\b")
+# `typeof(T).Assembly` and `Assembly.GetAssembly(typeof(T))`, capturing `T` without its namespace.
+ASSEMBLY_OF_TYPE = re.compile(
+    r"typeof\(\s*(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*\)\s*\.\s*Assembly\b"
+    r"|\bAssembly\.GetAssembly\s*\(\s*typeof\(\s*(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)")
 TYPE_DECLARATION = re.compile(r"\b(?:class|struct|interface|enum|record(?:\s+(?:class|struct))?)\s+@?([A-Za-z_]\w*)")
 DELEGATE_DECLARATION = re.compile(r"\bdelegate\s+[\w<>\[\],.?\s]*?\s@?([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(")
 # Words TYPE_DECLARATION captures that name no type: `where T : struct where U : class`.
@@ -4406,9 +4426,9 @@ NAMESPACE_OPENER = re.compile(r"\bnamespace\s+[\w.]+\s*$")
 def top_level_types(code):
     """The types `code` (`code_text`'s form) declares outside every other type.
 
-    A nested type is reached from another file through its outer type's name, which is followed, except
-    after a `using static` of the outer type. Following nested names as well was rejected: it binds
-    every file spelling that short name.
+    A nested type is reached from another file through its outer type's name, which a `using static`
+    of it spells as well. Following nested names too was rejected: it binds every file spelling that
+    short name.
     """
     events = [(match.start(), match.group(), None) for match in re.finditer(r"[{}]", code)]
     events += [(match.start(), "type", match.group(1))
@@ -4427,10 +4447,19 @@ def top_level_types(code):
     return names - NOT_A_TYPE
 
 
-def cross_assembly_readers(project):
-    """The fixture files that can read a test assembly other than their own: one spelling
-    `ACROSS_ASSEMBLIES`, or one naming a top-level type that a file that is no fixture declares and
-    either spells it or names such a type in turn.
+def reads_a_test_assembly(code, test_types):
+    """Whether `code` reads a whole test assembly's types or IL: one of `ACROSS_ASSEMBLIES`, an IL
+    read, its own assembly by `GetExecutingAssembly`, `GetCallingAssembly` or `GetType().Assembly`, or
+    the assembly of a type `test_types` holds."""
+    if ACROSS_ASSEMBLIES.search(code) or IL_READ.search(code) or OWN_ASSEMBLY.search(code):
+        return True
+    return any(name in test_types for pair in ASSEMBLY_OF_TYPE.findall(code) for name in pair if name)
+
+
+def assembly_readers(project):
+    """The fixture files that can read another test file through an assembly: one `reads_a_test_assembly`
+    holds for, or one naming a top-level type that a file that is no fixture declares and that either
+    reads one or names such a type in turn.
 
     A kill such a fixture recorded can rest on any test file's content, which its record does not hash.
     """
@@ -4445,7 +4474,9 @@ def cross_assembly_readers(project):
         code[relative] = code_text(text, holes=True)
         if is_test_source(relative) and not is_test_support(relative, text):
             fixtures.add(relative)
-    found = {relative for relative, text in code.items() if ACROSS_ASSEMBLIES.search(text)}
+    test_types = set().union(*(TYPE_DECLARATION.findall(code_text(code[relative]))
+                               for relative in code if is_test_source(relative)))
+    found = {relative for relative, text in code.items() if reads_a_test_assembly(text, test_types)}
     followed, names = set(code) - fixtures, set()
     while True:
         grown = set().union(*(top_level_types(code_text(code[relative])) for relative in found & followed)) - names
@@ -4478,7 +4509,7 @@ def short_case(case):
 def kill_problem(record, mutant, project, index, readers):
     """Why a recorded kill does not stand for this mutant in this tree, or None where it does.
 
-    `readers` is `cross_assembly_readers`' reading of this tree. A record that cannot be read as the
+    `readers` is `assembly_readers`' reading of this tree. A record that cannot be read as the
     shape `ledger_record` writes does not stand either.
     """
     try:
@@ -4501,7 +4532,7 @@ def kill_problem(record, mutant, project, index, readers):
                     moved[0], short_case(held["case"]))
             across = sorted(set(now) & readers)
             if across:
-                return "the fixture source {} of its killing case {} reads across the loaded assemblies".format(
+                return "the fixture source {} of its killing case {} reads another test file through an assembly".format(
                     across[0], short_case(held["case"]))
     except (KeyError, TypeError, AttributeError, ValueError):
         return "the record cannot be read"
@@ -4557,7 +4588,7 @@ def decide_reuse(mutants, ledgers, project):
         return reused, {number: "no earlier campaign on the branch left a ledger that could be read"
                         for number in range(1, len(mutants) + 1)}
     tool, index, context = tool_digest(project), test_index(project), context_digests(project)
-    readers = cross_assembly_readers(project)
+    readers = assembly_readers(project)
     for number, mutant in enumerate(mutants, start=1):
         identity = json.dumps(mutant_record(mutant, project), sort_keys=True)
         path = relative_to(mutant.path, project).as_posix()
@@ -5836,7 +5867,7 @@ def main():
         # Read against this tree rather than taken from the plan's file: the plan decided it on a
         # runner of its own, and a kill that does not stand here is not a pass.
         if reused:
-            index, readers = test_index(project), cross_assembly_readers(project)
+            index, readers = test_index(project), assembly_readers(project)
             moved = context_moved(planned_under, context_digests(project))
             for number, record in reused.items():
                 problem = (context_reason(moved, record.get("reused_from")) if moved
