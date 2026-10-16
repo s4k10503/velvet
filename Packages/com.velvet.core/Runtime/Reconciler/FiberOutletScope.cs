@@ -83,10 +83,10 @@ namespace Velvet
         }
 
         // The scope is the route's, not the render's: a factory that throws leaves the route to render
-        // without one rather than taking the reconcile with it. Contained rather than swallowed --
-        // ContainUserCallbackFailure reaches the nearest error boundary, so an application that wants a
-        // scope-less route refused still gets to refuse it. A drop-and-log -- what Release above does with
-        // the departing scope's Dispose -- would have decided that for it.
+        // without one rather than taking the reconcile with it. Contained rather than swallowed -- the Outlet's
+        // render reads the factory, so a boundary reaches the failure as it reaches a render error, and an
+        // application that wants a scope-less route refused still gets to refuse it. A drop-and-log -- what
+        // Release above does with the departing scope's Dispose -- would have decided that for it.
         private static IRouteScope? CreateOutletScope(ReconcilerContext ctx, RouteDefinition? route,
             IRouteScopeFactory? scopeFactory)
         {
@@ -100,7 +100,7 @@ namespace Velvet
             }
             catch (System.Exception exception)
             {
-                ReconcilerContext.ContainUserCallbackFailure(ctx.FiberStack.Current, exception);
+                ComponentBoundarySearch.PropagateFromOwner(ctx.FiberStack.Current, exception, isRenderError: true);
                 return null;
             }
         }

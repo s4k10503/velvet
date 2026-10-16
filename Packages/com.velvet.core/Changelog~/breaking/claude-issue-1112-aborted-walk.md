@@ -26,6 +26,11 @@
   `onAnimationComplete` runs in a promise. It used to go to the nearest boundary above the component rendering the
   Motion.
 
+- An error a `V.Outlet`'s route-scope factory throws is a render error of the Outlet, as the Outlet's render reads the
+  factory: an error boundary the same render is rendering at or above the Outlet catches it, and the rest of that
+  render commits around the fallback. It used to stop that render at the catch, which left the rows after the
+  boundary as the previous render had committed them.
+
 ### Fixed
 
 - When an element callback fails during a component's own update and the error boundary that catches it is above

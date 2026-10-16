@@ -24,11 +24,11 @@ namespace Velvet
 
         // Lays out the panels a read by the fiber's layout effects or handles can reach.
         internal static void LayOutFor(ReconcilerContext ctx, ComponentFiber fiber)
-            => LayOut(ctx, fiber.MountPoint?.panel, fiber);
+            => LayOut(ctx, fiber.MountPoint?.panel, fiber, ownerIsLifecycle: true);
 
         // Lays out the panels a callback ref attached to element, rendered by owner, can read.
         internal static void LayOutFor(ReconcilerContext ctx, VisualElement element, ComponentFiber? owner)
-            => LayOut(ctx, element.panel, owner);
+            => LayOut(ctx, element.panel, owner, ownerIsLifecycle: false);
 
         internal static bool ReadsLayout(ComponentFiber fiber)
         {
@@ -42,9 +42,11 @@ namespace Velvet
             return false;
         }
 
-        // A computation that throws, from a measure callback inside it, fails the commit's owner as a failing
-        // callback does (ReconcilerContext.ContainUserCallbackFailure).
-        private static void LayOut(ReconcilerContext ctx, IPanel? panel, ComponentFiber? owner)
+        // A computation that throws, from a measure callback inside it, fails the commit's owner. The owner of a
+        // layout effect or handle is the fiber itself, whose error starts above it as an effect's does
+        // (ComponentBoundarySearch.PropagateException); a ref's owner is the component that rendered the element,
+        // which ReconcilerContext.ContainUserCallbackFailure gives a failing callback.
+        private static void LayOut(ReconcilerContext ctx, IPanel? panel, ComponentFiber? owner, bool ownerIsLifecycle)
         {
             try
             {
@@ -53,6 +55,12 @@ namespace Velvet
             }
             catch (TargetInvocationException exception)
             {
+                if (ownerIsLifecycle)
+                {
+                    // MUTANT_SURVIVES(unreachable): no panel the suite mounts on holds a measure callback that throws.
+                    ComponentBoundarySearch.PropagateException(owner, exception.InnerException!);
+                    return;
+                }
                 // MUTANT_SURVIVES(unreachable): no panel the suite mounts on holds a measure callback that throws.
                 ReconcilerContext.ContainUserCallbackFailure(owner, exception.InnerException!);
             }

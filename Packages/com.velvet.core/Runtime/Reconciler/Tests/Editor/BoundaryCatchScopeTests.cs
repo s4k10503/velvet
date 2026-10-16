@@ -1286,8 +1286,9 @@ namespace Velvet.Tests
             Assert.That(Texts() + ",enters " + s_enterCompletions, Is.EqualTo("fallback,enters 1"));
         }
 
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // GREEN_ON_BASE(characterization): the merge base drops the enter a failed render queued when its boundary
+        // catches on the aborting path. What this pins is that it still does where the boundary is above the updating
+        // component, which is not catching in the walk.
         [Test]
         public void Given_AnEnterWithNothingToPlayInAComponentsOwnUpdate_When_ABoundaryAboveItCatchesOnTheAbortingPath_Then_ItsCompletionNeverRuns()
         {
@@ -1332,6 +1333,8 @@ namespace Velvet.Tests
         private static VNode AbortedEnterHostRender()
             => V.Div(children: new VNode[] { V.Component(AbortedEnterBoundaryRender, key: "boundary") });
 
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
         [Test]
         public void Given_AnInheritingEnterBlockedInAFailedOutput_When_TheBoundaryCatchesOnMount_Then_ItsCompletionNeverRuns()
         {
@@ -1641,8 +1644,9 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(WrapHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
 
-            // Assert
-            Assert.That(Texts() + ", refs " + s_wrapRefSetups, Is.EqualTo("fallback, refs 0"));
+            // Assert — the sibling after the boundary is read with it, since a catch that stops the mount's walk
+            // leaves that sibling uncreated
+            Assert.That(Texts() + ", refs " + s_wrapRefSetups, Is.EqualTo("fallback,after, refs 0"));
         }
 
         [Test]
@@ -1915,7 +1919,12 @@ namespace Velvet.Tests
         }
 
         [Component(Compiler = false)]
-        private static VNode WrapHostRender() => V.Div(children: new VNode[] { V.Component(WrapBoundaryRender, key: "boundary") });
+        private static VNode WrapHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(WrapBoundaryRender, key: "boundary"),
+                V.Label(text: "after"),
+            });
 
         [Test]
         public void Given_ALayoutEffectBesideAnElementWhoseCallbackFails_When_TheBoundaryCatchesOnMount_Then_ItNeverRuns()
@@ -1925,9 +1934,10 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SiblingEffectCallbackHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
 
-            // Assert — the fallback is read with the counts, since a mount nothing threw in sets the effect up
+            // Assert — the fallback is read with the counts, since a mount nothing threw in sets the effect up, and
+            // the sibling after the boundary with it, since a catch that stops the mount's walk leaves it uncreated
             Assert.That(Texts() + ", setups " + s_siblingLayoutSetups + ", cleanups " + s_siblingLayoutCleanups,
-                Is.EqualTo("fallback, setups 0, cleanups 0"));
+                Is.EqualTo("fallback,after, setups 0, cleanups 0"));
         }
 
         private static int s_siblingLayoutSetups;
@@ -1957,7 +1967,11 @@ namespace Velvet.Tests
 
         [Component(Compiler = false)]
         private static VNode SiblingEffectCallbackHostRender()
-            => V.Div(children: new VNode[] { V.Component(SiblingEffectCallbackBoundaryRender, key: "boundary") });
+            => V.Div(children: new VNode[]
+            {
+                V.Component(SiblingEffectCallbackBoundaryRender, key: "boundary"),
+                V.Label(text: "after"),
+            });
 
         [Component(Compiler = false)]
         private static VNode EffectUnderTheElementRender()

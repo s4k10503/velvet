@@ -1570,7 +1570,8 @@ namespace Velvet
         // ChildReconciler.DrainPendingPortalMounts leaves its ZLayerMountNode arm's throw on the render's own
         // escape path, and argues that there. A callback of an element still being created takes a fourth,
         // FiberNodeFactory.ContainCreationCallbackFailure, and a presence's or a Motion's completion a fifth,
-        // GeneralPathReconciler.InvokeExitComplete and InvokeEnterComplete. Reporting was rejected for the
+        // GeneralPathReconciler.InvokeExitComplete and InvokeEnterComplete, and an Outlet's route-scope factory a
+        // sixth, FiberOutletScope.CreateOutletScope. Reporting was rejected for the
         // live case because a boundary is the mechanism a component has for its own failures, and an effect
         // cleanup — the same kind of callback — already reaches one (HookEffectExecutor.RunCleanups).
         //

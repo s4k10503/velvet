@@ -214,9 +214,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFactoryThrowsInARenderWithALaterSibling_Then_ThatRenderStopsAtTheCatch()
+        public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFactoryThrowsInARenderWithALaterSibling_Then_ThatRenderCommitsAroundTheFallback()
         {
-            // Arrange — the factory's failure is not a render error, so the boundary takes it on the aborting path
+            // Arrange — the Outlet's render reads the factory, so the boundary takes the failure as a render error
             s_throwOnDispose = false;
             var mounted = BoundedAppBeside(0);
             _reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
@@ -227,9 +227,9 @@ namespace Velvet.Tests
             // Act
             var escaped = EscapesFrom(() => _reconciler.Reconcile(_root, mounted, BoundedAppBeside(1)));
 
-            // Assert — the sibling after the boundary keeps what the render before it gave it
+            // Assert — the sibling after the boundary takes this render's row, as it does around a boundary that caught a render
             Assert.That((escaped, _root.Q<VisualElement>("fallback") != null, LabelTextsUnder(_root)),
-                        Is.EqualTo((false, true, "after:0")));
+                        Is.EqualTo((false, true, "after:1")));
         }
 
         [Test]
