@@ -815,7 +815,8 @@ last render a commit showed. A component it rendered renders again for the revea
 children runs the insertion and passive effects whose deps differ from those, so one whose deps changed and then
 changed back while the fallback showed does not run. A component first mounted while the fallback shows runs its
 insertion and passive effects once, at the reveal.
-**Velvet deviation:** the attempt renders the children after the one that suspends too, where React's stops there. A
+**Velvet deviation:** the attempt renders the children after the one that suspends too, where React's stops there, and
+`UseMemo`/`UseCallback` values computed in a discarded attempt stand. A
 `V.Portal` among the hidden children, one a render adds included, is hidden with them, its components along
 with its elements: their layout effects are taken down and set up again at the reveal, as React does for a
 tree it hides, and their refs and state updates wait for the reveal too. A `V.Anchored`

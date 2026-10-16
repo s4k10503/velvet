@@ -7,8 +7,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins that a render of the children a <c>V.Suspense</c> keeps hidden is an attempt, as React's attempt at a
-    /// primary that suspends again is: it commits nothing, so the deps the reveal compares against are those of
-    /// the last render a commit showed, and the reveal's own render is the one that queues what is owed.
+    /// primary that suspends again is: it commits no effect, so the deps the reveal compares its effects against
+    /// are those of the last render a commit showed, and the reveal's own render is the one that queues what is owed.
     /// </summary>
     [TestFixture]
     internal sealed class SuspenseHiddenAttemptTests
