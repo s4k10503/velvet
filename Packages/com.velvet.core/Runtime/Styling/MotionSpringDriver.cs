@@ -458,18 +458,21 @@ namespace Velvet
             var passTime = float.IsPositiveInfinity(channel.PassSec)
                 ? elapsedSec
                 : state.Repeat.PassTime(elapsedSec, channel.PassSec, out mirrored);
-            return mirrored
-                ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, state,
-                    channel.MirroredPhysics)
-                : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, state,
-                    channel.Physics);
+            return SamplePass(state, channel, passTime, mirrored);
         }
 
-        private static float SampleSpring(float from, float to, float scale, float velocity, double t,
-            MotionSpringState state, (float Stiffness, float Damping)? physics)
-            => SampleSpring(from, to, scale, velocity, t,
-                physics is { } own ? (own.Stiffness, own.Damping, state.Mass) : (state.Stiffness, state.Damping, state.Mass),
-                state.SettleSec);
+        private static float SamplePass(MotionSpringState state, SpringChannel channel, double passTime, bool mirrored)
+        {
+            var physics = mirrored ? channel.MirroredPhysics : channel.Physics;
+            var spring = physics is { } own
+                ? (own.Stiffness, own.Damping, state.Mass)
+                : (state.Stiffness, state.Damping, state.Mass);
+            return mirrored
+                ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, spring,
+                    state.SettleSec)
+                : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, spring,
+                    state.SettleSec);
+        }
 
         // Framer Motion's spring generator released at `from` toward `to` with `velocity` on the scaled travel: the
         // target once it rests, or, for one resolved from a duration (settleSec), once that duration has run.

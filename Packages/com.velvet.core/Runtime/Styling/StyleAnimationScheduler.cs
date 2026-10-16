@@ -154,14 +154,14 @@ namespace Velvet
             Action? onSwap = null, string[]? appliedClasses = null, MotionPlayback? playback = null)
         {
             // A spring landing at once plays as the zero-duration tween its DurationSec already is. An instant one
-            // with a delay still to wait plays as a spring that ends where it starts moving. Neither repeats, as
-            // Framer's instant animation does not.
+            // with a delay still to wait plays as a spring that ends where it starts moving. Neither repeats
+            // (PlayedRepeat).
             var landsAtOnce = config.SpringLandsAtOnceAfter(additionalDelaySec);
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
                 landsAtOnce ? TransitionType.Tween : config.Type, config.Stiffness, config.Damping, config.Mass,
                 config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses,
-                playback, config.SpringIsInstant ? default : MotionRepeat.Of(config), config.SpringSettleSec,
+                playback, config.PlayedRepeat, config.SpringSettleSec,
                 config.SpringDescription);
         }
 
@@ -473,8 +473,7 @@ namespace Velvet
                 DelaySec = config.DelaySec,
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = true,
-                // As PlayVariantEnter's config overload, an instant spring repeats nothing.
-                Repeat = config.SpringIsInstant ? default : MotionRepeat.Of(config),
+                Repeat = config.PlayedRepeat,
             };
 
             WarnRepeatNotPlayed(config.Type, play.Repeat);

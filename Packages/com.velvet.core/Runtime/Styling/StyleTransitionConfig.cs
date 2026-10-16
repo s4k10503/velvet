@@ -116,6 +116,10 @@ namespace Velvet
         // delayed one holds its start and lands when the delay ends.
         internal bool SpringIsInstant => Type == TransitionType.Spring && _durationSec == 0f && RepeatDelaySec == 0f;
 
+        // The repeat a variant play on this config plays: none for an instant spring, as Framer's instant animation
+        // repeats nothing.
+        internal MotionRepeat PlayedRepeat => SpringIsInstant ? default : MotionRepeat.Of(this);
+
         internal bool SpringLandsAtOnce => SpringLandsAtOnceAfter(0f);
 
         // additionalDelaySec: the stagger a caller adds to DelaySec, which an instant spring waits out as well.
