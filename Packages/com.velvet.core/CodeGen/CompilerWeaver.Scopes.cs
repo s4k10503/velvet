@@ -5,20 +5,21 @@ using Mono.Cecil.Cil;
 
 namespace Velvet.CodeGen
 {
-    // Reactive scopes: below a component's own gate, the VNode expressions of the returned tree, the callbacks it
-    // hands them and the values the body derives are each cached on the values they read, as React Compiler's
-    // reactive scopes are, so a render that changes one input builds again what reads it and hands the
+    // Reactive scopes: below a component's own gate, an expression is cached on the values it reads, as React
+    // Compiler's reactive scopes are, so a render that changes one input builds again what reads it and hands the
     // reconciler the same instances for the rest.
-    // A scope is one expression leaving one value on the stack, after the last hook call:
+    // A scope is one expression that leaves one value on the stack, after the last hook call (anywhere in a body
+    // that calls none):
     //   a call or constructor returning a VNode, wherever it stands: an element of a `VNode[]` initializer (what
-    //     `params VNode?[] children` and `children: new[] { ... }` both compile to), a single child, an argument,
-    //     the root;
-    //   a delegate built from a lambda that captures variables (`ldloc display; ldftn; newobj`), cached under
-    //     the captured variables it reads when it runs, which the compiler hoists into fields of a display class;
-    //   an expression stored into a local or a captured variable stored once (`var visible = items.Where(...)`),
-    //     when its type is immutable: a value type, a string, a VNode, a delegate or an interface exposing no
-    //     way to change it (IEnumerable<T>, IReadOnlyList<T>, ...). A list or an array is not, because the body
-    //     may add to it after the scope ended.
+    //     `params VNode?[] children` and `children: new[] { ... }` both compile to), an argument (a single child, a
+    //     member of a props record), the root;
+    //   a delegate built from a lambda that captures variables (`ldloc display; ldftn; newobj`), cached under the
+    //     captured variables the lambda reads when it runs, which the compiler hoists into fields of a display
+    //     class;
+    //   an expression stored once into a local or a captured variable (`var visible = items.Where(...)`), when
+    //     nothing can change what it holds after the scope ended: a value type, a string, a delegate, or an interface
+    //     exposing no way to change it (IEnumerable<T>, IReadOnlyList<T>, ...). A list or an array is not one,
+    //     because the body may write to it afterwards.
     // It is woven only when everything the expression reads is a value compared where it starts:
     //   A parameter it reads is compared. A local it reads is compared when it is a hook value nothing stores to
     //   after the hook section, a value type or string, or the output of a scope of its own stored once before
@@ -32,20 +33,24 @@ namespace Velvet.CodeGen
     //   It calls no member of a Ref / MutableRef and no method taking one, and reads no hook value from UseService
     //   or from a custom hook unless value-like: a render reading through one has no value to compare.
     //   It reads no mutable static, and calls only a V factory, a constructor, an instance property accessor or
-    //   a member of the BCL namespaces named in PureNamespaces that does not read the clock or the process.
+    //   a member of the BCL namespaces named in PureNamespaces, other than a member of the types named in
+    //   AmbientStateTypes and the static members of those in AmbientStateStaticTypes.
     //   Control flow in it stays inside it and moves forward, nothing outside jumps into it, and nothing
     //   outside runs it twice (no loop around it).
     //   The method has no try / catch / finally.
-    // The weaver inspects the calls an expression itself makes, and what the values it reads hold, as React
-    // Compiler does, and neither a delegate it hands on (a method group, a lambda capturing nothing), nor an override
-    // it dispatches to, nor a method it calls that is not named above: render code is pure, as the Rules of React
-    // require, and an expression reading something no dependency stands for through one of those shows what it
-    // read when it last ran.
+    // What is inspected is the expression's own instructions: the fields it reads, each call it makes by the type
+    // it is declared on and by the types of its parameters, and the captured variables a lambda it creates reads.
+    // A call is not followed into the code it reaches. The target of a delegate the expression hands on (a method
+    // group, a lambda capturing nothing), the override a virtual call dispatches to, `Func.Invoke` on a delegate it
+    // was given, the body of a lambda beyond the variables it captures, and a BCL generic instantiated over a Ref
+    // (`List<Ref<int>>`, whose members name no Ref in their signatures) are all code or values this does not read.
+    // As in React, render code must be pure: an expression that reads something no dependency stands for, through
+    // one of those or through a property accessor of an object it holds, shows what it read when it last ran.
     // An expression reading nothing is cached only when everything it calls is a V factory. One whose
     // dependencies equal those of the scope enclosing it is left to that scope, and so is the tree the body
-    // returns when it reads every input of the component's gate: it would miss wherever the gate misses. Anything else is built on every miss of the gate, as before. The weave is checked afterwards
-    // against the stack discipline, and a method failing the check is woven again without scopes (see
-    // TryWeaveMethod).
+    // returns when it reads every input of the component's gate: it would miss wherever the gate misses. Anything
+    // else is built on every miss of the gate, as before. The weave is checked afterwards against the stack
+    // discipline, and a method failing the check is woven again without scopes (see TryWeaveMethod).
     internal static partial class CompilerWeaver
     {
         private static readonly string RefTypeFullName = typeof(Velvet.Ref<>).FullName!;
@@ -66,22 +71,23 @@ namespace Velvet.CodeGen
             "System.Runtime.CompilerServices",
         };
 
-        // Types whose every member reads or advances state of the process.
+        // No call on these types is repeatable: an instance of Random advances its generator, and a member of
+        // Environment reads the process. The static members of the types below are not repeatable either: they read
+        // the clock (DateTime.Now, DateTimeOffset.UtcNow), the time zone (TimeZoneInfo.Local) or mint a value
+        // (Guid.NewGuid). Their instance members are not excluded. Every type here has a case in
+        // ReactiveScopeWovenBehaviorE2ETests; a type not listed is covered by the rule that render code is pure.
         private static readonly HashSet<string> AmbientStateTypes = new()
         {
-            "System.Random", "System.Environment", "System.Console", "System.GC", "System.Activator",
-            "System.AppDomain",
+            "System.Random", "System.Environment",
         };
 
-        // Types whose static members read the clock or mint a value.
         private static readonly HashSet<string> AmbientStateStaticTypes = new()
         {
-            "System.DateTime", "System.DateTimeOffset", "System.Guid", "System.TimeZoneInfo", "System.DateOnly",
-            "System.TimeOnly",
+            "System.DateTime", "System.DateTimeOffset", "System.Guid", "System.TimeZoneInfo",
         };
 
-        // A type exposing no member that changes what it holds, so that a value of it kept from an earlier render
-        // is the value the expression would build again.
+        // Interfaces declaring no member that changes what a value holds, so that one kept from an earlier render
+        // is what the expression would build again.
         private static readonly HashSet<string> ReadOnlyInterfaces = new()
         {
             "System.Collections.Generic.IEnumerable`1", "System.Collections.Generic.IReadOnlyCollection`1",
@@ -192,7 +198,7 @@ namespace Velvet.CodeGen
             // MUTANT_SURVIVES(equivalent, boundary): a region beginning at the boundary begins with the hook call, which no scope may hold.
             foreach (var candidate in FindCandidates(facts).Where(each => each.Span.Start > boundary))
             {
-                if (candidate.Kind == ScopeKind.Value && context.TryGetMemoizedValue == null) continue;
+                if (candidate.Kind == ScopeKind.Value && (context.TryGetMemoizedValue == null || context.StoreMemoizedValue == null)) continue;
                 if (TryPlanCandidate(facts, candidate, plans) is not { } plan) continue;
                 plans.Add(plan);
                 if (candidate.Output != null) facts.AcceptOutput(candidate.Output);
@@ -340,9 +346,14 @@ namespace Velvet.CodeGen
             }
         }
 
+        // An array of nodes, or a by-reference one, resolves to the node type it holds and is not a node.
         private static bool IsNodeType(TypeReference type)
         {
-            if (type.IsPrimitive || type.MetadataType == MetadataType.Void || type.FullName.StartsWith("System.", System.StringComparison.Ordinal)) return false;
+            if (type.IsPrimitive || type.MetadataType == MetadataType.Void || IsArrayOrIndirection(type)
+                || type.FullName.StartsWith("System.", System.StringComparison.Ordinal))
+            {
+                return false;
+            }
             var current = TryResolve(() => type.Resolve());
             while (current != null)
             {
@@ -353,9 +364,14 @@ namespace Velvet.CodeGen
             return false;
         }
 
-        // A value type, a string, a delegate or an interface with no mutating member.
+        private static bool IsArrayOrIndirection(TypeReference type)
+            => type is ArrayType or ByReferenceType or PointerType or PinnedType;
+
+        // A value type, a string, a delegate or an interface with no mutating member. An array of any of them is
+        // an object the body can write to.
         private static bool IsImmutableType(TypeReference type)
         {
+            if (IsArrayOrIndirection(type)) return false;
             if (IsValueLike(type) && IsBoxable(type)) return true;
             if (ReadOnlyInterfaces.Contains(ElementOf(type).FullName)) return true;
             var current = TryResolve(() => type.Resolve());
@@ -529,8 +545,8 @@ namespace Velvet.CodeGen
             return true;
         }
 
-        // A call whose result is a function of its arguments and of what they hold. Anything else may read state no
-        // dependency names, which the gate alone would have refreshed on an unrelated change.
+        // A call taken to be a function of its arguments and of what they hold; the header says what that takes on
+        // trust. Any other may read state no dependency names, which a miss of the gate alone would have refreshed.
         private static bool IsRepeatableCall(Instruction instr, MethodReference method)
         {
             var declaring = method.DeclaringType;
