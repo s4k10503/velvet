@@ -1,9 +1,10 @@
 Shader "Velvet/BoxShadow"
 {
     // Soft, iOS/macOS-style box shadow rendered with an SDF rounded box so the blur follows the
-    // target's corner radius. The C# side passes a small TARGET size in _ElementSize; this pass inflates it by
-    // (_BlurRadius + extraPadding) so the blur has room to fade inside the quad, and outputs white RGB with the
-    // falloff in alpha (the shadow color/strength is applied later as a tint).
+    // target's corner radius. The C# side passes the TARGET size in _ElementSize.xy and the quad's size in .zw:
+    // the target padded by (_BlurRadius + extraPadding) per side so the blur has room to fade, grown by the
+    // shear's overhang. It outputs white RGB with the falloff in alpha (the shadow color/strength is applied
+    // later as a tint).
     //
     // This pass is BAKED once into a texture (BoxShadowBaker uses Graphics.Blit) and that texture is drawn as
     // a single quad in the caster element's OWN generateVisualContent — FIRST, before the binding repaints the
@@ -101,13 +102,8 @@ Shader "Velvet/BoxShadow"
 
             half4 frag(Varyings input) : SV_Target
             {
-                // _ElementSize carries the TARGET element's size (set from C# via SetTargetSize),
-                // not this shadow quad's size. The shadow quad is target + padding*2.
                 float2 targetSize = _ElementSize.xy;
-
-                float extraPadding = 5.0;
-                float padding = _BlurRadius + extraPadding;
-                float2 elementSize = targetSize + float2(padding * 2.0, padding * 2.0);
+                float2 elementSize = _ElementSize.zw;
 
                 // UV -> pixel position centered on the shadow quad, y-down as the caster's box is.
                 float2 c = (float2(input.uv.x, 1.0 - input.uv.y) - 0.5) * elementSize;
@@ -115,8 +111,7 @@ Shader "Velvet/BoxShadow"
                 // Unshear: evaluate the upright rounded-box SDF at the unsheared coordinate so the
                 // rendered alpha follows the skewed caster's silhouette. The shear is Tailwind's transform,
                 // skewX() skewY(): M = [[1 + skewX*skewY, skewX],[skewY, 1]], whose determinant is 1, so its
-                // inverse is [[1, -skewX],[-skewY, 1 + skewX*skewY]]. The quad is padded enough
-                // (blur + ExtraPadding per side) for small slant angles to stay inside it.
+                // inverse is [[1, -skewX],[-skewY, 1 + skewX*skewY]].
                 float2 pixelPos = float2(c.x - (_SkewX * c.y), ((1.0 + (_SkewX * _SkewY)) * c.y) - (_SkewY * c.x));
 
                 // Half the target size is the SDF box's core extent.

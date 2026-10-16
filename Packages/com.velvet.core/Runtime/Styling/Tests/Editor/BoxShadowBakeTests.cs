@@ -110,6 +110,64 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnUprightShadow_When_ItsRectIsTaken_Then_ItIsThePaddedBoxMovedByTheOffset()
+        {
+            // Arrange — blur 3 pads each side by 3 + ExtraPadding.
+            var pad = 3f + BoxShadowBaker.ExtraPadding;
+
+            // Act
+            var rect = BoxShadowBaker.ShadowRect(100f, 40f, 3f, new Vector2(4f, 6f), Vector2.zero);
+
+            // Assert
+            Assert.That(new[] { rect.x, rect.y, rect.width, rect.height },
+                Is.EqualTo(new[] { 4f - pad, 6f - pad, 100f + (2f * pad), 40f + (2f * pad) }).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AShadowOnACasterSkewedOnY_When_ItsRectIsTaken_Then_ItGrowsByTheShearOverhang()
+        {
+            // Arrange — the 110x50 padded box under skewY(45deg) spans 0.5·110 + 0.5·50 either side of its centre
+            // vertically, and keeps its width.
+            var skew = new Vector2(0f, 45f);
+
+            // Act
+            var rect = BoxShadowBaker.ShadowRect(100f, 40f, 0f, Vector2.zero, skew);
+
+            // Assert
+            Assert.That(new[] { rect.width, rect.height }, Is.EqualTo(new[] { 110f, 160f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnOffsetShadowOnACasterSkewedOnY_When_ItsRectIsTaken_Then_TheOffsetShearsWithTheBox()
+        {
+            // Arrange — skewY(45deg) carries an offset of (10, 0) to (10, 10), so the shadow centres on the box
+            // centre (50, 20) moved by that.
+            var skew = new Vector2(0f, 45f);
+
+            // Act
+            var rect = BoxShadowBaker.ShadowRect(100f, 40f, 0f, new Vector2(10f, 0f), skew);
+
+            // Assert
+            Assert.That(new[] { rect.center.x, rect.center.y }, Is.EqualTo(new[] { 60f, 30f }).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AShadowOnACasterSkewedOnY_When_Baked_Then_TheTextureCoversTheShearOverhang()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange — the rect the paint draws the bake into, which a texel each way has to cover.
+            var skew = new Vector2(0f, 45f);
+            var rect = BoxShadowBaker.ShadowRect(100f, 40f, 0f, Vector2.zero, skew);
+
+            // Act
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(0f, 0f, 0f, 100f, 40f, skew);
+
+            // Assert
+            Assert.That((tex != null, tex != null && tex.height >= rect.height), Is.EqualTo((true, true)));
+        }
+
+        [Test]
         public void Given_ManyDistinctSizesPlusAReStore_When_ExceedingTheCap_Then_CacheStaysBoundedAndLruInSync()
         {
             // Arrange — the cap to exceed.

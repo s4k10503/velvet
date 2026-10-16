@@ -196,24 +196,26 @@ namespace Velvet
             SyncBoundsSpacer(element, binding);
         }
 
-        // Sizes (or removes) the bounds-spacer to the shadow's extent: the baked quad (box grown by
-        // blur + ExtraPadding per side, shifted by the offset) unioned with the box, and — for a skewed caster,
-        // whose shadow shears with it — grown by the shear overhang. Empty AABB until layout gives a size.
+        // Sizes (or removes) the bounds-spacer to the shadow's extent: the rect the shadow quad covers
+        // (BoxShadowBaker.ShadowRect) grown by the spread, unioned with the box — sheared too on a skewed
+        // caster. Empty AABB until layout gives a size.
         private static void SyncBoundsSpacer(VisualElement element, BoxShadowBinding binding)
         {
             var aabb = default(Rect);
             if (SilhouetteBoundsSpacer.TryGetLayoutSize(element, out var w, out var h))
             {
                 var spec = binding.Spec;
-                var pad = BoxShadowBaker.QuantizePx(spec.Blur) + BoxShadowBaker.ExtraPadding
-                    + BoxShadowBaker.QuantizePx(spec.Spread);
-                var quad = new Rect(-pad + spec.OffsetX, -pad + spec.OffsetY, w + (2f * pad), h + (2f * pad));
-                aabb = SilhouetteBoundsSpacer.Union(new Rect(0f, 0f, w, h), quad);
+                var spread = BoxShadowBaker.QuantizePx(spec.Spread);
+                var quad = BoxShadowBaker.ShadowRect(w, h, spec.Blur, new Vector2(spec.OffsetX, spec.OffsetY),
+                    new Vector2(binding.SkewXDeg, binding.SkewYDeg));
+                quad = new Rect(quad.x - spread, quad.y - spread, quad.width + (2f * spread), quad.height + (2f * spread));
+                var box = new Rect(0f, 0f, w, h);
                 if (binding.CasterSkewed)
                 {
-                    aabb = SilhouetteBoundsSpacer.ExpandForShear(aabb, Mathf.Tan(binding.SkewXDeg * Mathf.Deg2Rad),
+                    box = SilhouetteBoundsSpacer.ExpandForShear(box, Mathf.Tan(binding.SkewXDeg * Mathf.Deg2Rad),
                         Mathf.Tan(binding.SkewYDeg * Mathf.Deg2Rad));
                 }
+                aabb = SilhouetteBoundsSpacer.Union(box, quad);
             }
             aabb = SilhouetteBoundsSpacer.ShiftToPaddingBox(aabb, binding.BorderLeft, binding.BorderTop);
             SilhouetteBoundsSpacer.Sync(element, ref binding.BoundsSpacer, binding.WantSpacer, aabb);
@@ -354,15 +356,13 @@ namespace Velvet
                 return; // no graphics device / shader yet — retry on the next geometry change
             }
 
-            // Quantize the blur to whole pixels for the anchor, exactly as QuadSize / the bake do, so the
-            // quad's top-left lines up with the baked texel grid (a non-integer arbitrary shadow-[…] blur would
-            // otherwise offset the quad up to ~0.5px from the texture).
-            var pad = BoxShadowBaker.QuantizePx(spec.Blur) + BoxShadowBaker.ExtraPadding;
-            BoxShadowBaker.QuadSize(w, h, spec.Blur, out var quadW, out var quadH);
-            // Anchor the quad so its solid core sits over the box: top-left at (-pad + offsetX, -pad + offsetY)
-            // and size (w + 2pad, h + 2pad) — clamped to the baked texel size so one texel maps to one pixel.
-            var minX = -pad + spec.OffsetX;
-            var minY = -pad + spec.OffsetY;
+            // The rect the bake was sized from, anchored at its top-left and drawn at the baked texel size so one
+            // texel maps to one pixel.
+            var rect = BoxShadowBaker.ShadowRect(w, h, spec.Blur, new Vector2(spec.OffsetX, spec.OffsetY),
+                new Vector2(binding.SkewXDeg, binding.SkewYDeg));
+            BoxShadowBaker.QuadSize(rect.size, out var quadW, out var quadH);
+            var minX = rect.x;
+            var minY = rect.y;
             var maxX = minX + quadW;
             var maxY = minY + quadH;
 

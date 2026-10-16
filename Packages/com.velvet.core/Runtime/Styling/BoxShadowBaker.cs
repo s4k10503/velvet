@@ -112,15 +112,29 @@ namespace Velvet
             return tex;
         }
 
-        // The quad pixel size (per side padded by blur + ExtraPadding) the silhouette is baked at, for a caster
-        // of (targetWidth, targetHeight). The paint binding sizes its draw quad to this so one texel maps to
-        // one pixel. Mirrors BakeSilhouetteTexture's clamp exactly.
-        internal static void QuadSize(float targetWidth, float targetHeight, float blur,
-            out int quadW, out int quadH)
+        // The rect the shadow quad covers in the caster's local space: the box padded by blur + ExtraPadding per
+        // side, grown by the shear's overhang about the box centre, and moved by the offset carried through the
+        // same shear, as CSS transforms a shadow with its element, offset included. Upright, it is the padded box
+        // moved by the offset.
+        internal static Rect ShadowRect(float targetWidth, float targetHeight, float blur, Vector2 offset,
+            Vector2 skewDeg)
         {
             var pad = QuantizePx(blur) + ExtraPadding;
-            quadW = Mathf.Clamp(Mathf.CeilToInt(targetWidth + (2f * pad)), 8, 2048);
-            quadH = Mathf.Clamp(Mathf.CeilToInt(targetHeight + (2f * pad)), 8, 2048);
+            var tanX = Mathf.Tan(skewDeg.x * Mathf.Deg2Rad);
+            var tanY = Mathf.Tan(skewDeg.y * Mathf.Deg2Rad);
+            var quad = SilhouetteBoundsSpacer.ExpandForShear(
+                new Rect(-pad, -pad, targetWidth + (2f * pad), targetHeight + (2f * pad)), tanX, tanY);
+            var sheared = new Vector2(((1f + (tanX * tanY)) * offset.x) + (tanX * offset.y),
+                (tanY * offset.x) + offset.y);
+            return new Rect(quad.position + sheared, quad.size);
+        }
+
+        // The pixel size the silhouette is baked at for a shadow rect of that size. The paint binding sizes its
+        // draw quad to this so one texel maps to one pixel.
+        internal static void QuadSize(Vector2 rectSize, out int quadW, out int quadH)
+        {
+            quadW = Mathf.Clamp(Mathf.CeilToInt(rectSize.x), 8, 2048);
+            quadH = Mathf.Clamp(Mathf.CeilToInt(rectSize.y), 8, 2048);
         }
 
         // Disposes the bake Material. Invoked once on reconciler teardown — the baked textures are cached
@@ -178,15 +192,15 @@ namespace Velvet
             var spread = QuantizePx(shape.Spread);
             var targetWidth = shape.TargetWidth;
             var targetHeight = shape.TargetHeight;
-            var pad = blur + ExtraPadding;
-            var qw = Mathf.Clamp(Mathf.CeilToInt(targetWidth + (2f * pad)), 8, 2048);
-            var qh = Mathf.Clamp(Mathf.CeilToInt(targetHeight + (2f * pad)), 8, 2048);
+            var rect = ShadowRect(targetWidth, targetHeight, blur, Vector2.zero,
+                new Vector2(shape.SkewXDeg, shape.SkewYDeg));
+            QuadSize(rect.size, out var qw, out var qh);
 
             mat.SetColor(ShadowColorId, Color.white);
             mat.SetFloat(BlurRadiusId, blur);
             mat.SetFloat(CornerRadiusId, corner);
             mat.SetFloat(SpreadId, spread);
-            mat.SetVector(ElementSizeId, new Vector4(targetWidth, targetHeight, 0f, 0f));
+            mat.SetVector(ElementSizeId, new Vector4(targetWidth, targetHeight, rect.width, rect.height));
             mat.SetFloat(SkewXId, Mathf.Tan(shape.SkewXDeg * Mathf.Deg2Rad));
             mat.SetFloat(SkewYId, Mathf.Tan(shape.SkewYDeg * Mathf.Deg2Rad));
 
