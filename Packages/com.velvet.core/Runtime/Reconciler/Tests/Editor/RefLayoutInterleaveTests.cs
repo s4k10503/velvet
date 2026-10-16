@@ -781,13 +781,22 @@ namespace Velvet.Tests
             return V.Label(text: state);
         }
 
+        // Declares the transition apart from the components under test: the render that takes the indicator down
+        // is the declaring component's, and it would render whatever that component holds a second time.
         [Component(Compiler = false)]
-        private static VNode OwedRoot()
+        private static VNode OwedStarter()
         {
             var (_, start) = Hooks.UseTransition();
             s_start = start;
+            return V.Label(text: "starter");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OwedRoot()
+        {
             return V.Div(children: new VNode[]
             {
+                V.Component(OwedStarter, key: "starter"),
                 V.Component(OwedHolder, key: "holder"),
                 V.Component(OwedSibling, key: "sibling"),
             });
@@ -870,6 +879,7 @@ namespace Velvet.Tests
             }));
             return V.Div(refCallback: element =>
             {
+                s_lastWatchedTick = tick;
                 s_log.Add("attach");
                 return null;
             });
@@ -878,10 +888,9 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode OwedLoggedRoot()
         {
-            var (_, start) = Hooks.UseTransition();
-            s_start = start;
             return V.Div(children: new VNode[]
             {
+                V.Component(OwedStarter, key: "starter"),
                 V.Component(OwedHolder, key: "holder"),
                 V.Component(OwedLoggedSibling, key: "sibling"),
             });
