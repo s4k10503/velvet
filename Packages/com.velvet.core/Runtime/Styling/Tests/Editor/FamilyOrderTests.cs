@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 
@@ -60,6 +61,18 @@ namespace Velvet.Tests
         [TestCase("skew-y-3 skew-x-3", "skew-x-3 skew-y-3")]
         [TestCase("to-red-500 from-blue-500", "from-blue-500 to-red-500")]
         [TestCase("pointer-events-none pointer-events-auto", "pointer-events-auto pointer-events-none")]
+        [TestCase("bg-linear-[45deg] bg-linear-to-r", "bg-linear-to-r bg-linear-[45deg]")]
+        [TestCase("bg-conic bg-linear-to-r", "bg-linear-to-r bg-conic")]
+        [TestCase("bg-conic-90 bg-linear-90", "bg-linear-90 bg-conic-90")]
+        [TestCase("bg-gradient-to-r bg-linear-to-l", "bg-linear-to-l bg-gradient-to-r")]
+        [TestCase("!bg-conic !bg-linear-90", "!bg-linear-90 !bg-conic")]
+        [TestCase("bg-conic from-red-500", "from-red-500 bg-conic")]
+        [TestCase("bg-conic via-green-500", "via-green-500 bg-conic")]
+        [TestCase("bg-conic to-red-500", "to-red-500 bg-conic")]
+        [TestCase("bg-conic -bg-linear-45", "-bg-linear-45 bg-conic")]
+        [TestCase("drop-shadow-sm shadow-lg", "shadow-lg drop-shadow-sm")]
+        [TestCase("outline-2 ring-0", "ring-0 outline-2")]
+        [TestCase("!outline-2 !ring-0", "!ring-0 !outline-2")]
         [TestCase("bg-[addr:b] bg-[addr:a]", "bg-[addr:a] bg-[addr:b]")]
         [TestCase("border-solid border-dashed", "border-dashed border-solid")]
         [TestCase("animate-spin animate-pulse", "animate-pulse animate-spin")]
@@ -92,6 +105,13 @@ namespace Velvet.Tests
         [TestCase("text-sm/6 text-[16px]")]
         [TestCase("text-lg/7 text-sm/6")]
         [TestCase("text-[14px]/6 text-[16px]/6")]
+        [TestCase("bg-linear-to-r bg-linear-[45deg]")]
+        [TestCase("bg-linear-to-r bg-conic")]
+        [TestCase("-bg-linear-45 bg-conic")]
+        [TestCase("bg-linear-90 bg-conic-90")]
+        [TestCase("bg-linear-to-l bg-gradient-to-r")]
+        [TestCase("shadow-lg drop-shadow-sm")]
+        [TestCase("ring-0 outline-2")]
         [TestCase("slice-y-[8] slice-t-[2]")]
         [TestCase("slice-t-[2] !slice-y-[8]")]
         [TestCase("w-[2px] h-[1px] bg-[#ff0000]")]
@@ -103,6 +123,89 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(" ", tokens), Is.EqualTo(className));
+        }
+
+        // One row for each reader that folds the live class list: the clip shape, and the layout gates LiveClasses
+        // hands to (pointer events, gap, grid columns, divide). A token a later render adds sorts ahead of the ones
+        // already there in each, which the diff appends it behind.
+        [TestCase("pointer-events-none", "pointer-events-none pointer-events-auto")]
+        [TestCase("clip-path-none", "clip-path-none clip-path-[inset(10%)]")]
+        [TestCase("clip-path-[inset(10%)]", "clip-path-[inset(10%)] clip-path-[circle(40%)]")]
+        [TestCase("gap-x-4", "gap-x-4 gap-2")]
+        [TestCase("grid-cols-3", "grid-cols-3 grid-cols-2")]
+        [TestCase("divide-y-2", "divide-y-2 divide-x-2")]
+        public void Given_ATokenAddedByALaterRenderThatSortsAheadOfTheOnesThere_When_Reconciled_Then_TheLiveClassListIsInTheOrderAFreshMountGives(
+            string first, string second)
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var firstTree = new VNode[] { V.Div(name: "t", className: first) };
+            var secondTree = new VNode[] { V.Div(name: "t", className: second) };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), firstTree);
+
+            // Act
+            reconciler.Reconcile(root, firstTree, secondTree);
+
+            // Assert
+            var wanted = V.ParseClassNames(second);
+            var live = root.Q<VisualElement>("t").GetClasses().Where(cls => wanted.Contains(cls));
+            Assert.That(string.Join(" ", live), Is.EqualTo(string.Join(" ", wanted)));
+        }
+
+        [Test]
+        public void Given_ABracketClipAddedByALaterRenderBesideAnotherOne_When_TheLiveClipIsRead_Then_ItIsTheShapeAFreshMountResolves()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var firstTree = new VNode[] { V.Div(name: "t", className: "clip-path-[inset(10%)]") };
+            var secondTree = new VNode[] { V.Div(name: "t", className: "clip-path-[inset(10%)] clip-path-[circle(40%)]") };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), firstTree);
+
+            // Act
+            reconciler.Reconcile(root, firstTree, secondTree);
+
+            // Assert
+            StyleClipPathClass.TryExtractLive(root.Q<VisualElement>("t"), out var spec);
+            Assert.That(spec?.Source, Is.EqualTo("clip-path-[inset(10%)]"));
+        }
+
+        [Test]
+        public void Given_ABracketClipAddedByALaterRenderBesideClipPathNone_When_TheLiveClipIsRead_Then_NoClipResolves()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var firstTree = new VNode[] { V.Div(name: "t", className: "clip-path-none") };
+            var secondTree = new VNode[] { V.Div(name: "t", className: "clip-path-none clip-path-[inset(10%)]") };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), firstTree);
+
+            // Act
+            reconciler.Reconcile(root, firstTree, secondTree);
+
+            // Assert
+            Assert.That(StyleClipPathClass.TryExtractLive(root.Q<VisualElement>("t"), out _), Is.False);
+        }
+
+        [Test]
+        public void Given_AVariantPayloadOnTheLiveListBesideAClipAddedByALaterRender_When_Reconciled_Then_ThePayloadStaysLast()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var firstTree = new VNode[] { V.Div(name: "t", className: "clip-path-[inset(10%)]") };
+            var secondTree = new VNode[] { V.Div(name: "t", className: "clip-path-[inset(10%)] clip-path-[circle(40%)]") };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), firstTree);
+            // What a lit hover:clip-path-none payload leaves on the live list: the bare token, appended after the base.
+            root.Q<VisualElement>("t").AddToClassList("clip-path-none");
+
+            // Act
+            reconciler.Reconcile(root, firstTree, secondTree);
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("t").GetClasses().Last(cls => cls.StartsWith("clip-path-")),
+                Is.EqualTo("clip-path-none"));
         }
 
         [TestCase("font-light font-bold", VelvetFontWeight.Light)]

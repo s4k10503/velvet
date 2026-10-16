@@ -35,7 +35,12 @@ colours such a bracket carries; `in_{space}` inside it names one. `bg-gradient-t
 hue travels the shorter way round the circle; `/longer`, `/increasing` and `/decreasing` (and `/shorter`)
 pick the way, and name `oklch` by themselves. A colour with no chroma has no hue and takes the other's.
 
-Of two shape utilities the one Tailwind emits last wins, whichever is written first, and a stop utility with no shape utility is inert.
+Of two shape utilities the one Tailwind emits last wins, whichever is written first. A keyword or integer
+`bg-linear-*` (`bg-linear-to-r`, `bg-linear-90`) counts three declarations to the two of every other shape
+(`bg-linear-[…]`, `bg-radial*`, `bg-conic*`, `bg-gradient-to-*`), and Tailwind emits the one with more first, so
+`bg-linear-to-r bg-conic` is conic and `bg-linear-[45deg] bg-linear-to-r` the bracket; among shapes of the same count
+the candidate name decides (`bg-linear-to-l bg-gradient-to-r` is `bg-gradient-to-r`). A stop utility with no shape
+utility is inert.
 
 ## Stops from `from-` / `via-` / `to-`
 

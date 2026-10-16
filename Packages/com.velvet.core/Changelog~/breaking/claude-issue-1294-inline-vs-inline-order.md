@@ -22,7 +22,12 @@
   (`font-light font-bold` and `font-bold font-light` give light, `not-italic italic` gives not italic,
   `font-[700] font-[600]` gives 700), the text effects (`uppercase lowercase` gives upper case, `underline overline`
   underline, `text-pretty text-balance` pretty, `leading-6 leading-4` the 6 step), `z-*`, `gap-*` / `space-*`,
-  `grid-cols-*`, `divide-*`, `shadow-*`, `ring-*`, `clip-path-*`, `skew-*`, the gradient shape and stops,
-  `pointer-events-*`, `bg-[addr:…]`, `border-solid` and the other line styles, and `animate-*`. The nine-slice
+  `grid-cols-*`, `divide-*`, `shadow-*` (a `drop-shadow-*` outranks it: `shadow-lg drop-shadow-sm` gives the drop
+  shadow), `ring-*` (an `outline-*` outranks it: `ring-0 outline-2` gives a 2px outline), `clip-path-*`, `skew-*`,
+  the gradient shape and stops (a keyword or integer `bg-linear-*` loses to every other shape: `bg-linear-to-r bg-conic`
+  gives conic), `pointer-events-*`, `bg-[addr:…]`, `border-solid` and the other line styles, and `animate-*`
+  (`animate-spin animate-none` spins). A class added to an element in a later render takes the place a fresh mount
+  gives it, so a clip written as `clip-path-[inset(10%)]` and re-rendered with `clip-path-[circle(40%)]` added
+  resolves as it does when mounted that way. The nine-slice
   insets, which Tailwind has no utility for, follow the sort key: `slice-t-[2] slice-y-[8]` gives the top 2 and the
   bottom 8, where the top was 8.

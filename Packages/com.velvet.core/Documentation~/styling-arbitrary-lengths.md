@@ -227,9 +227,10 @@ the plain size holds the font size and the slash token the line height in either
 
 A few families have no inline layer to settle a pair: a resolver reads the whole class list and ends on the last
 token of each slot. Their base tokens are put in the order Tailwind emits them, in the positions they hold, so the
-token the fold ends on is the one Tailwind emits last whichever is written first. Two utilities of one slot declare
-the same properties, so Tailwind sorts them by the candidate name, digits compared as numbers and a bracket ahead of
-a letter:
+token the fold ends on is the one Tailwind emits last whichever is written first. Tailwind sorts two utilities by
+the first property they differ on, then by the one with more declarations, then by the candidate name, digits compared
+as numbers and a bracket ahead of a letter. Most utilities of one slot declare the same properties, so the name decides;
+the exceptions are named in the list:
 
 - the font facets: `font-light font-bold` and `font-bold font-light` both give light, `not-italic italic` gives not
   italic, `font-[700] font-[600]` gives 700, `font-light font-[700]` gives light, `font-sans font-mono` gives sans;
@@ -239,13 +240,18 @@ a letter:
   sizes in the same list;
 - `z-20 z-10` gives 20, `grid-cols-3 grid-cols-2` three columns, `gap-x-4 gap-2` a 4 horizontal gap with a 2
   vertical one, `space-x-*` and `space-y-*`, and `divide-*`;
-- `shadow-*` and `drop-shadow-*`, `ring-*` and `outline-*`, `clip-path-none` and `clip-path-[…]`, `skew-*`, the
-  gradient shape and its `from-` / `via-` / `to-` stops, `pointer-events-none` and `pointer-events-auto`,
-  `bg-[addr:…]`, `border-solid` and the other line styles, and `animate-*`.
+- `shadow-*` and `drop-shadow-*`, which declare box-shadow and filter, so `shadow-lg drop-shadow-sm` gives the drop
+  shadow; `ring-*` and `outline-*`, outline being emitted after the ring, so `ring-0 outline-2` gives a 2px outline;
+  `skew-*`, `pointer-events-none` and `pointer-events-auto`, `border-solid` and the other line styles, and
+  `animate-*`;
+- the gradient shape, where a keyword or integer `bg-linear-*` counts three declarations to the two of the others
+  and is emitted first ([styling-gradients.md](styling-gradients.md)), beside its `from-` / `via-` / `to-` stops;
+- `clip-path-none` and `clip-path-[…]`, `bg-[addr:…]`, `animate-gradient`, `animate-shimmer` and `animate-hue`, which
+  Tailwind has no utility for, so the candidate name orders them.
 
 Tokens of the two importances are ordered apart, as the resolvers fold them. A variant payload is appended after the
-base tokens by the variant gate and keeps its place there. The nine-slice insets (`slice-*`) write overlapping
-longhands that Tailwind has no utility for, so they follow the sort key instead: more longhands first, then the
+base tokens by the variant gate and keeps its place there. The nine-slice insets (`slice-*`) and `bold-italic` also have no Tailwind utility; the insets write overlapping
+longhands, so they follow the sort key instead: more longhands first, then the
 candidate name, which puts `slice-[…]` ahead of `slice-y-[…]` ahead of `slice-t-[…]` whichever is written first.
 
 This is a change from the last token written: `not-italic italic`, `underline overline`, `text-pretty text-balance`

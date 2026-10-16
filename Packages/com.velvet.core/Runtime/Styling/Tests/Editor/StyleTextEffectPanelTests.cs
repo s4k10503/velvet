@@ -512,6 +512,15 @@ namespace Velvet.Tests
             Assert.That(_mounted.Root.Reconciler.Context.TextOverlineBindings.ContainsKey(label), Is.True);
         }
 
+        [Test]
+        public void Given_OverlineAndAPlainNoUnderlineOnSameElement_When_Mounted_Then_TheOverlineBindingIsRegistered()
+        {
+            // Tailwind emits overline after no-underline, so the plain pair ends on overline in either order.
+            var label = MountAndFindLabel(V.Label(className: "overline no-underline", text: "hi"));
+
+            Assert.That(_mounted.Root.Reconciler.Context.TextOverlineBindings.ContainsKey(label), Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base resolves an important no-underline to None whichever comes first.
         [Test]
         public void Given_OverlineAndAnImportantNoUnderlineOnSameElement_When_Mounted_Then_NoBindingIsRegistered()

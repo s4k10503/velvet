@@ -565,8 +565,12 @@ interval is eased by the timing function its keyframe names, as a CSS animation 
 | `animate-ping` | scales to twice the element's own scale while fading to nothing by three quarters of the loop, on `cubic-bezier(0, 0, 0.2, 1)`, then holds | 1s |
 | `animate-bounce` | lifts the element a quarter of its height and drops it back, the lift easing in on `cubic-bezier(0.8, 0, 1, 1)` and out on `cubic-bezier(0, 0, 0.2, 1)` | 1s |
 
-`animate-none` cancels, and the last *recognised* `animate-*` in the class list wins — an unclaimed
-name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
+`animate-none` cancels. Of two recognised `animate-*` classes the one Tailwind emits last wins, in either
+order, and Tailwind orders them by name: `animate-bounce`, `animate-gradient`, `animate-hue`, `animate-none`,
+`animate-ping`, `animate-pulse`, `animate-shimmer`, `animate-spin`. So `animate-none` cancels the three before it
+in that list, and the four after it outrank it (`animate-spin animate-none` spins). `animate-gradient`,
+`animate-hue` and `animate-shimmer` have no Tailwind utility, so that order is the one the sort gives their names.
+An unclaimed name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
 `animate-hue-[5s]`. The two gradient modes are inert without a gradient
 ([styling-gradients.md](styling-gradients.md)) to pan.
 

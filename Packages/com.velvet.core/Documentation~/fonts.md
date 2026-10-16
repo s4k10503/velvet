@@ -181,8 +181,8 @@ synchronously-reachable ascent metric to place it exactly).
 `overline` joins the SAME decoration axis as `underline` / `line-through` / `no-underline`, so
 cascade, inheritance, and the `no-underline` reset all apply to it. The axis stays single-valued,
 which is a deviation: CSS lets `text-decoration-line` combine lines (`underline overline` shows
-both), while Velvet's decoration axis resolves exactly one value, last-token-wins, so
-`underline overline` on one element renders only the overline. **v1 scope:** one rule, positioned
+both), while Velvet's decoration axis resolves exactly one value, the one Tailwind emits last, so
+`underline overline` and `overline underline` on one element render only the underline. **v1 scope:** one rule, positioned
 above the FIRST line only and sized to the text's natural single-line-equivalent width (clamped to
 the content width) — per-line metrics of wrapped text are not publicly reachable in a way usable
 synchronously from `generateVisualContent`, so a multi-line label shows the rule above its top line

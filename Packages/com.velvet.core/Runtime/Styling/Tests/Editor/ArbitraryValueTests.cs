@@ -1073,11 +1073,14 @@ namespace Velvet.Tests
         [TestCase(true, true, "wrap-new-inline")]
         public void Given_InlineClassOccurrences_When_TheirOrderOrCountChanges_Then_TheLastWritersHoldTheirSlots(bool important, bool largeList, string change)
         {
+            // Arrange
+            using var arranged = ArrangeSliceChange(important, largeList, change);
+
             // Act
-            var (actual, expected) = SliceChangeOutcome(important, largeList, change);
+            arranged.Reconciler.Reconcile(arranged.Root, arranged.OldTree, arranged.NewTree);
 
             // Assert
-            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(arranged.Outcome(), Is.EqualTo(arranged.Expected));
         }
 
         [TestCase(false, false, "leading")]
@@ -1102,19 +1105,41 @@ namespace Velvet.Tests
         [TestCase(true, true, "append-occurrence")]
         public void Given_SliceInsetsWrittenInTheOtherOrderThanTailwindOrdersThem_When_TheirOrderOrCountChanges_Then_TheNarrowerInsetHoldsTheTop(bool important, bool largeList, string change)
         {
+            // Arrange
+            using var arranged = ArrangeSliceChange(important, largeList, change);
+
             // Act
-            var (actual, expected) = SliceChangeOutcome(important, largeList, change);
+            arranged.Reconciler.Reconcile(arranged.Root, arranged.OldTree, arranged.NewTree);
 
             // Assert
-            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(arranged.Outcome(), Is.EqualTo(arranged.Expected));
         }
 
-        private static ((int Before, int After, int Companion, float Width, bool HistoryConsistent) Actual,
-            (int Before, int After, int Companion, float Width, bool HistoryConsistent) Expected) SliceChangeOutcome(
-            bool important, bool largeList, string change)
+        private sealed class SliceChange : System.IDisposable
         {
-            // Arrange
-            using var reconciler = new Reconciler();
+            public Reconciler Reconciler = null!;
+            public VisualElement Root = null!;
+            public VNode[] OldTree = null!;
+            public VNode[] NewTree = null!;
+            public bool Chain;
+            public int Before;
+            public bool HistoryConsistent;
+            public (int Before, int After, int Companion, float Width, bool HistoryConsistent) Expected;
+
+            public (int Before, int After, int Companion, float Width, bool HistoryConsistent) Outcome()
+            {
+                var element = Root.ElementAt(0);
+                var after = Chain ? element.style.unitySliceBottom.value : element.style.unitySliceTop.value;
+                var companion = Chain ? element.style.unitySliceLeft.value : element.style.unitySliceBottom.value;
+                return (Before, after, companion, element.style.width.value.value, HistoryConsistent);
+            }
+
+            public void Dispose() => Reconciler.Dispose();
+        }
+
+        private static SliceChange ArrangeSliceChange(bool important, bool largeList, string change)
+        {
+            var reconciler = new Reconciler();
             var root = new VisualElement();
             var bang = important ? "!" : "";
             var extra = largeList ? " flex relative items-start justify-start overflow-hidden opacity-50 bg-red-500" : "";
@@ -1159,14 +1184,12 @@ namespace Velvet.Tests
                 ? root.ElementAt(0).style.unitySliceBottom.value
                 : root.ElementAt(0).style.unitySliceTop.value;
             root.ElementAt(0).style.width = 99f;
-
-            reconciler.Reconcile(root, oldTree, newTree);
-
-            var element = root.ElementAt(0);
-            var after = chain ? element.style.unitySliceBottom.value : element.style.unitySliceTop.value;
-            var companion = chain ? element.style.unitySliceLeft.value : element.style.unitySliceBottom.value;
-            return ((before, after, companion, element.style.width.value.value, historyConsistent),
-                ((int)oldValue, (int)newValue, chain ? 2 : 8, 99f, true));
+            return new SliceChange
+            {
+                Reconciler = reconciler, Root = root, OldTree = oldTree, NewTree = newTree, Chain = chain,
+                Before = before, HistoryConsistent = historyConsistent,
+                Expected = ((int)oldValue, (int)newValue, chain ? 2 : 8, 99f, true),
+            };
         }
 
         [TestCase(false)]
