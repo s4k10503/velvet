@@ -24,17 +24,18 @@ namespace Velvet.Tests
     /// <item>A props-only body — parameters and no hook — is woven too, keyed on its parameters alone with the
     /// gate at method entry, unless it sets <c>Memoize = true</c>.</item>
     /// <item>An open virtual / interface dispatch outside the BCL / Unity carve-out — made directly or through a
-    /// helper — is woven past the gate: after the last hook call, or anywhere in a body with no hook.</item>
+    /// helper — is woven past the gate: after the last hook call, or anywhere in a body with no hook. Ahead of a
+    /// hook call it is woven too, bracketed by <c>BeginOpaqueCall</c> / <c>EndOpaqueCall</c> so that the gate declines
+    /// a render in which a hook ran inside it; a custom hook that composes one is not bracketed, its value being a
+    /// dependency. A delegate invocation (virtual Invoke on a sealed type) is not an open dispatch.</item>
+    /// <item>A body reaching <c>UseMutation</c> — directly or transitively through a custom hook — is woven with a
+    /// gate that carries a fresh <c>object</c> as a dependency and so never hits. <c>Use</c> and <c>UseFallback</c>
+    /// are on the allow-lists and add none.</item>
     /// <item>A body the weaver cannot prove correct is left unwoven (graceful bailout): neither a parameter nor a
     /// hook to key a cache on, a props-only body left to its props bail, a discarded hook value, a whole-tuple
     /// capture (compared structurally, not by reference, so a fresh-but-equal record would be a stale hit), a
-    /// body with void hooks alone and no parameter (empty deps would freeze it on an unconditional hit), a body
-    /// that reaches the suspend-unsafe <c>Use</c> hook or
-    /// <c>UseMutation</c> — directly or transitively through a custom hook — a hook inside a loop (head-tested
-    /// or do-while), a hook section overlapping a try/catch region, and an open dispatch — made directly or
-    /// through a helper — ahead of a hook call, where a hook its runtime target composes would feed the body a
-    /// value the deps array does not capture. A delegate invocation (virtual Invoke on a sealed type) is not an
-    /// open dispatch.</item>
+    /// body with void hooks alone and no parameter (empty deps would freeze it on an unconditional hit), a hook
+    /// inside a loop (head-tested or do-while) and a hook section overlapping a try/catch region.</item>
     /// <item>Below the gate, each child of a children list gets a scope gate (<c>TryGetMemoizedScope</c>) of its own
     /// where everything it reads is a value compared at its start, a child inside another child included. A child
     /// reading a <c>MutableRef</c>, a mutable static, a method the weaver cannot read or the clock, or writing a local
@@ -206,15 +207,25 @@ namespace Velvet.Tests
         }
 
         // UseMutation returns a MutationResult whose reference is stable across renders. Mutate() mutates the
-        // status / data in place and requests a re-render, but the captured reference stays equal, so a woven
-        // memo would hit and return a stale (Idle) VNode after the mutation. The allow-list excludes UseMutation,
-        // so the weaver must bail.
+        // status / data in place and requests a re-render, but the captured reference stays equal, so a gate that
+        // could hit would return a stale (Idle) VNode after the mutation. The allow-list excludes UseMutation, so
+        // the gate of a body reaching it carries a dependency that is never equal.
         [Component]
         public static VNode UseMutationComponent()
         {
             var mutation = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: (v, _) => VelvetTask.FromResult(v * 2)));
             return V.Label(text: mutation.Status.ToString());
+        }
+
+        // UseFallback registers the boundary's fallback factory on every render and returns nothing, so it adds no
+        // dependency to the gate.
+        [Component]
+        public static VNode UseFallbackComponent()
+        {
+            Hooks.UseFallback(error => V.Label(text: error.Message));
+            var (value, _) = Hooks.UseState(0);
+            return V.Label(text: value.ToString());
         }
 
         // A void effect hook (UseEffect) captures no dep, but the allow-list admits it: it runs for its side
@@ -1169,7 +1180,7 @@ namespace Velvet.Tests
 
         private static string DescribeScopeInput(int value) => s_scopeMutable + ":" + value;
 
-[Component]
+        [Component]
         public static VNode TwoIndependentChildrenComponent()
         {
             var (left, _) = Hooks.UseState(0);
@@ -1177,7 +1188,7 @@ namespace Velvet.Tests
             return V.Div("root", V.Label(text: left.ToString()), V.Label(text: right.ToString()));
         }
 
-[Component]
+        [Component]
         public static VNode NestedIndependentChildrenComponent()
         {
             var (a, _) = Hooks.UseState(0);
@@ -1187,7 +1198,7 @@ namespace Velvet.Tests
                 V.Label(text: b.ToString()));
         }
 
-[Component]
+        [Component]
         public static VNode ChildReadingAMutableRefComponent()
         {
             var (n, _) = Hooks.UseState(0);
@@ -1195,25 +1206,89 @@ namespace Velvet.Tests
             return V.Div("root", V.Label(text: counter.Current.ToString()), V.Label(text: n.ToString()));
         }
 
-[Component]
+        [Component]
         public static VNode ChildReadingAMutableStaticComponent()
         {
             var (n, _) = Hooks.UseState(0);
             return V.Div("root", V.Label(text: s_scopeMutable + ":" + n), V.Label(text: n.ToString()));
         }
 
-[Component]
+        [Component]
         public static VNode ChildCallingAFixtureMethodComponent()
         {
             var (n, _) = Hooks.UseState(0);
             return V.Div("root", V.Label(text: DescribeScopeInput(n)), V.Label(text: n.ToString()));
         }
 
-                                                [Component]
+        [Component]
         public static VNode ChildReadingTheClockComponent()
         {
             var (n, _) = Hooks.UseState(0);
             return V.Div("root", V.Label(text: System.DateTime.Now.Ticks + ":" + n), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingARandomSourceComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: new System.Random(n).Next().ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingTheProcessComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: (System.Environment.TickCount + n).ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingAGeneratedGuidComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: System.Guid.NewGuid().ToString() + n), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingTheTimeZoneComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: System.TimeZoneInfo.Local.Id + n), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingTheOffsetClockComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: System.DateTimeOffset.UtcNow.Ticks + ":" + n), V.Label(text: n.ToString()));
+        }
+
+        private static void Touch(System.Collections.Generic.List<int> items) => items.Add(items.Count);
+
+        [Component]
+        public static VNode ChildReadingAReferenceAnOpaqueCallReceivesComponent()
+        {
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var (n, _) = Hooks.UseState(0);
+            Touch(items);
+            return V.Div("root", V.Label(text: items.Count.ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingAParameterAnOpaqueCallReceivesComponent(System.Collections.Generic.List<int> items)
+        {
+            var (n, _) = Hooks.UseState(0);
+            Touch(items);
+            return V.Div("root", V.Label(text: items.Count.ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingACapturedReferenceAnOpaqueCallReceivesComponent()
+        {
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var (n, _) = Hooks.UseState(0);
+            System.Action grow = () => items.Add(1);
+            Touch(items);
+            return V.Div("root", V.Label(text: items.Count.ToString()), V.Label(text: n.ToString()));
         }
 
         [Component]
@@ -1452,7 +1527,7 @@ namespace Velvet.Tests
                 V.Label(text: b.ToString()));
         }
 
-                                [Test]
+        [Test]
         public void Given_TwoChildrenReadingDifferentStates_When_Woven_Then_EachGetsItsOwnScopeGate()
         {
             // Act
@@ -1462,7 +1537,7 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(2));
         }
 
-[Test]
+        [Test]
         public void Given_ChildrenNestedInAChildReadingBoth_When_Woven_Then_EveryChildGetsAScopeGate()
         {
             // Act
@@ -1472,7 +1547,7 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(4), "The group, the two labels in it and the label beside it");
         }
 
-[Test]
+        [Test]
         public void Given_AChildReadingAMutableRef_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {
             // Act
@@ -1482,7 +1557,7 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(1));
         }
 
-[Test]
+        [Test]
         public void Given_AChildReadingAMutableStatic_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {
             // Act
@@ -1492,7 +1567,7 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(1));
         }
 
-[Test]
+        [Test]
         public void Given_AChildCallingAMethodOfTheFixture_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {
             // Act
@@ -1690,11 +1765,91 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(2), "The group and the label beside it; the two labels in the group read what it reads");
         }
 
-                [Test]
+        [Test]
         public void Given_AChildReadingTheClock_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {
             // Act
             var gates = CountHookCalls(LoadMethod(nameof(ChildReadingTheClockComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingARandomSource_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildReadingARandomSourceComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingTheProcess_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildReadingTheProcessComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingAGeneratedGuid_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildReadingAGeneratedGuidComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingTheTimeZone_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildReadingTheTimeZoneComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingTheOffsetClock_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildReadingTheOffsetClockComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingALocalReferenceAnOpaqueCallReceives_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildReadingAReferenceAnOpaqueCallReceivesComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingAParameterReferenceAnOpaqueCallReceives_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildReadingAParameterAnOpaqueCallReceivesComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingACapturedReferenceAnOpaqueCallReceives_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildReadingACapturedReferenceAnOpaqueCallReceivesComponent)), ScopeGateName);
 
             // Assert
             Assert.That(gates, Is.EqualTo(1));
@@ -1810,11 +1965,33 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_UseMutationComponent_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_UseMutationComponent_When_Woven_Then_ItsGateCarriesAFreshDependency()
+        {
+            // Act
+            var fresh = CountFreshObjects(LoadMethod(nameof(UseMutationComponent)));
+
+            // Assert
+            Assert.That(fresh, Is.EqualTo(1), "A stable reference mutated in place is no dependency a gate could compare");
+        }
+
+        [Test]
+        public void Given_UseFallbackComponent_When_Analyzed_Then_IsWoven()
         {
             // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(UseMutationComponent))), Is.False,
-                "UseMutation returns a stable reference mutated in place; a woven memo would return a stale VNode, so the weaver bails");
+            Assert.That(IsWoven(LoadMethod(nameof(UseFallbackComponent))), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves this body unwoven, and a body left unwoven has no fresh dependency.
+        // What it pins is UseFallback being on the void allow-list: removing it from `MemoSafeVoidHookNames` gives the
+        // gate a dependency that is never equal.
+        [Test]
+        public void Given_UseFallbackComponent_When_Woven_Then_ItsGateCarriesNoFreshDependency()
+        {
+            // Act
+            var fresh = CountFreshObjects(LoadMethod(nameof(UseFallbackComponent)));
+
+            // Assert
+            Assert.That(fresh, Is.EqualTo(0));
         }
 
         [Test]
@@ -1834,52 +2011,66 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TransitiveUseComponent_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_TransitiveUseComponent_When_Analyzed_Then_IsWoven()
         {
             // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(TransitiveUseComponent))), Is.False,
-                "A custom hook that transitively reaches the suspend-unsafe Use hook forces the component to bail");
+            Assert.That(IsWoven(LoadMethod(nameof(TransitiveUseComponent))), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves this body unwoven, and a body left unwoven has no fresh dependency.
+        // What it pins is Use being on the value allow-list: removing it from `MemoSafeValueHookNames` gives the gate
+        // a dependency that is never equal.
+        [Test]
+        public void Given_TransitiveUseComponent_When_Woven_Then_ItsGateCarriesNoFreshDependency()
+        {
+            // Act
+            var fresh = CountFreshObjects(LoadMethod(nameof(TransitiveUseComponent)));
+
+            // Assert
+            Assert.That(fresh, Is.EqualTo(0), "Use returns the resolved value, which changes with the resource");
         }
 
         [Test]
-        public void Given_TransitiveUseMutationComponent_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_TransitiveUseMutationComponent_When_Woven_Then_ItsGateCarriesAFreshDependency()
         {
-            // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(TransitiveUseMutationComponent))), Is.False,
-                "A custom hook that transitively reaches UseMutation forces the component to bail");
+            // Act
+            var fresh = CountFreshObjects(LoadMethod(nameof(TransitiveUseMutationComponent)));
+
+            // Assert
+            Assert.That(fresh, Is.EqualTo(1), "A custom hook that transitively reaches UseMutation is as volatile as UseMutation");
         }
 
-        // GREEN_ON_BASE(characterization): the base bails a body making an open dispatch, and this one stays bailed.
-        // What it pins is the ahead-of-gate refusal: removing the `HasOpaqueCallAhead` check from `TryAnalyze`
-        // reddens it.
         [Test]
-        public void Given_InterfaceDispatchAheadOfTheHook_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_InterfaceDispatchAheadOfTheHook_When_Woven_Then_TheDispatchIsBracketed()
         {
-            // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(InterfaceDispatchAheadOfHookComponent))), Is.False,
-                "A dispatch ahead of the gate runs whether or not the gate hits, and a hook it reached would go uncaptured");
+            // Act
+            var brackets = CountHookCalls(LoadMethod(nameof(InterfaceDispatchAheadOfHookComponent)), nameof(Hooks.BeginOpaqueCall));
+
+            // Assert
+            Assert.That(brackets, Is.EqualTo(1), "A dispatch ahead of the gate runs whether or not the gate hits, and a hook it reached would go uncaptured");
         }
 
-        // GREEN_ON_BASE(characterization): the base bails a body whose helper makes an open dispatch, as this one.
-        // What it pins is the helper taking Opaque from its dispatch: masking the Opaque flag off what
-        // `CallGraphFold.Visit` folds from a callee reddens it.
         [Test]
-        public void Given_HelperDispatchingAheadOfTheHook_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_HelperDispatchingAheadOfTheHook_When_Woven_Then_TheHelperCallIsBracketed()
         {
-            // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(HelperDispatchAheadOfHookComponent))), Is.False,
-                "A helper whose only reach is a dispatch is Opaque, and Opaque ahead of the gate bails the body");
+            // Act
+            var brackets = CountHookCalls(LoadMethod(nameof(HelperDispatchAheadOfHookComponent)), nameof(Hooks.BeginOpaqueCall));
+
+            // Assert
+            Assert.That(brackets, Is.EqualTo(1), "A helper whose only reach is a dispatch is opaque");
         }
 
-        // GREEN_ON_BASE(characterization): the base bails a custom hook reaching a dispatch, and so does this change.
-        // What it pins is a hook call still carrying its dispatch: testing `IsOpaqueCall` for a reach of exactly
-        // Opaque instead of for the Opaque flag reddens it.
+        // GREEN_ON_BASE(characterization): the base brackets nothing, and neither does this change for a hook call.
+        // What it pins is a hook call carrying its dispatch not being bracketed: testing `IsOpaqueCall` for the Opaque
+        // flag instead of for a reach of exactly Opaque brackets it, and the hooks it runs would mark every render.
         [Test]
-        public void Given_CustomHookComposingADispatch_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_CustomHookComposingADispatch_When_Woven_Then_TheCallIsNotBracketed()
         {
-            // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(CustomHookWithDispatchComponent))), Is.False,
-                "A custom hook runs ahead of the gate, so a dispatch inside it bails the body as a direct one does");
+            // Act
+            var brackets = CountHookCalls(LoadMethod(nameof(CustomHookWithDispatchComponent)), nameof(Hooks.BeginOpaqueCall));
+
+            // Assert
+            Assert.That(brackets, Is.EqualTo(0));
         }
 
         [Test]
@@ -1891,11 +2082,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_UseMutationCycleEnteredAtItsOtherMember_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_UseMutationCycleEnteredAtItsOtherMember_When_Woven_Then_ItsGateCarriesAFreshDependency()
         {
-            // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(MutatingLoopMemberComponent))), Is.False,
-                "UseMutatingLoopSecond reaches UseMutation through UseMutatingLoopFirst, so the body bails");
+            // Act
+            var fresh = CountFreshObjects(LoadMethod(nameof(MutatingLoopMemberComponent)));
+
+            // Assert
+            Assert.That(fresh, Is.EqualTo(1), "UseMutatingLoopSecond reaches UseMutation through UseMutatingLoopFirst");
         }
 
         // GREEN_ON_BASE(characterization): the base leaves a setter-only read unwoven, and so does this change.
@@ -1920,16 +2113,12 @@ namespace Velvet.Tests
                 "A whole tuple compares structurally rather than by reference, so the weaver bails");
         }
 
-        // GREEN_ON_BASE(characterization): the base bails a custom hook reaching a dispatch, and so does this change.
-        // What it pins is the ahead-of-gate scan reading its boundary: with the value on the stack the hook call
-        // is the boundary, and moving `if (instr == boundary) break;` ahead of the `IsOpaqueCall` test in
-        // `HasOpaqueCallAhead` reddens it.
         [Test]
-        public void Given_CustomHookComposingADispatchPassedStraightAsAnArgument_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_CustomHookComposingADispatchPassedStraightAsAnArgument_When_Analyzed_Then_IsWoven()
         {
             // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(CustomHookWithDispatchAsArgumentComponent))), Is.False,
-                "The custom hook is the boundary and runs ahead of the gate, so its dispatch bails the body");
+            Assert.That(IsWoven(LoadMethod(nameof(CustomHookWithDispatchAsArgumentComponent))), Is.True,
+                "The custom hook is the boundary and runs ahead of the gate, and its value is a dependency");
         }
 
         // GREEN_ON_BASE(characterization): the base bails a whole tuple stored to a field, and so does this change.
@@ -2537,6 +2726,12 @@ namespace Velvet.Tests
 
         private static int CountHookCalls(MethodDefinition method, string hookMethodName) =>
             method.Body.Instructions.Count(IsHookCallTo(hookMethodName));
+
+        // The `new object()` the gate of a body reaching a volatile hook carries as a dependency.
+        private static int CountFreshObjects(MethodDefinition method) =>
+            method.Body.Instructions.Count(instr => instr.OpCode == OpCodes.Newobj
+                && instr.Operand is MethodReference constructor
+                && constructor.DeclaringType.FullName == typeof(object).FullName);
 
         private static bool InjectsHookCall(MethodDefinition method, string hookMethodName) =>
             method.Body.Instructions.Any(IsHookCallTo(hookMethodName));

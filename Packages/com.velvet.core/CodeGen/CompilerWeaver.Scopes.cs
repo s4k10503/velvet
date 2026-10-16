@@ -36,6 +36,8 @@ namespace Velvet.CodeGen
     //   outside the namespaces named in StatefulAccessorNamespaces, or a member of the BCL namespaces named in
     //   PureNamespaces, other than a member of the types named in AmbientStateTypes and the static members of those
     //   in AmbientStateStaticTypes.
+    //   It reads no reference a call outside every scope is given (see ReferencesGivenToCalls): that call may write
+    //   through it, and the scope would hold what it built from the object before.
     //   Control flow in it stays inside it and moves forward, nothing outside jumps into it, and nothing
     //   outside runs it twice (no loop around it).
     //   The method has no try / catch / finally.
@@ -157,42 +159,6 @@ namespace Velvet.CodeGen
         private sealed record ScopeLocals(VariableDefinition Slot, VariableDefinition? Cached,
             VariableDefinition? Result, VariableDefinition? CachedValue, VariableDefinition? ResultValue);
 
-        // Whether what runs after the hook section builds the same tree on every render: it calls only V factories
-        // and delegate constructors over lambdas that capture nothing, reads no static other than the compiler's cache
-        // for those, writes no field and has no loop or handler. A body that does anything else may read state that
-        // changes without a render, or count its own renders, which a cache that never misses would stop.
-        private static bool IsInputFree(MethodBody body, Instruction? boundary)
-        {
-            if (body.HasExceptionHandlers) return false;
-            var instructions = body.Instructions;
-            for (var i = boundary == null ? 0 : instructions.IndexOf(boundary) + 1; i < instructions.Count; i++)
-            {
-                if (!IsInputFreeInstruction(instructions[i])) return false;
-            }
-            return true;
-        }
-
-        private static bool IsInputFreeInstruction(Instruction instr)
-        {
-            var code = instr.OpCode.Code;
-            if (code != Code.Ret && ScopeForbiddenCodes.Contains(code)) return false;
-            if (JumpTargets(instr).Any(target => target.Offset <= instr.Offset)) return false;
-            switch (instr.Operand)
-            {
-                case MethodReference method when code is Code.Call or Code.Callvirt or Code.Newobj:
-                    return method.DeclaringType.FullName == FactoryTypeFullName || IsDelegateConstructor(method);
-                case FieldReference field:
-                    return code switch
-                    {
-                        Code.Ldsfld => IsClosureCache(field) || IsReadOnlyValue(field),
-                        Code.Stsfld => IsClosureCache(field),
-                        _ => false,
-                    };
-                default:
-                    return true;
-            }
-        }
-
         private static bool IsDelegateConstructor(MethodReference constructor)
             => constructor.Name == ".ctor" && constructor.Parameters.Count == 2
                 && constructor.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr;
@@ -207,11 +173,12 @@ namespace Velvet.CodeGen
             if (depths == null) return plans;
             var boundary = analysis.LastHookBoundary == null ? -1 : System.Array.IndexOf(instructions, analysis.LastHookBoundary);
             var facts = new ScopeFacts(body, instructions, depths, analysis, boundary);
+            var mutated = ReferencesGivenToCalls(facts);
             // MUTANT_SURVIVES(equivalent, boundary): a region beginning at the boundary begins with the hook call, which no scope may hold.
             foreach (var candidate in FindCandidates(facts).Where(each => each.Span.Start > boundary))
             {
                 if (candidate.Kind == ScopeKind.Value && (context.TryGetMemoizedValue == null || context.StoreMemoizedValue == null)) continue;
-                if (TryPlanCandidate(facts, candidate, plans) is not { } plan) continue;
+                if (TryPlanCandidate(facts, candidate, plans, mutated) is not { } plan) continue;
                 plans.Add(plan);
                 if (candidate.Output != null) facts.AcceptOutput(candidate.Output);
             }
@@ -396,7 +363,50 @@ namespace Velvet.CodeGen
             return false;
         }
 
-        private static ScopePlan? TryPlanCandidate(ScopeFacts facts, ScopeCandidate candidate, List<ScopePlan> accepted)
+        // The references a call outside every scope is given: a call the weaver cannot take for a function of its
+        // arguments may write through any of them, so a scope reading one holds what it built from the object as it
+        // was. The arguments are the references read by the expression the call ends, and a variable shared by two
+        // such calls is named once.
+        private static HashSet<object> ReferencesGivenToCalls(ScopeFacts facts)
+        {
+            var given = new HashSet<object>();
+            for (var i = facts.Boundary + 1; i < facts.Instructions.Length; i++)
+            {
+                var instr = facts.Instructions[i];
+                if (instr.OpCode.Code is not (Code.Call or Code.Callvirt) || instr.Operand is not MethodReference method
+                    || IsRepeatableCall(instr, method))
+                {
+                    continue;
+                }
+                var start = SpanEndingAt(facts, i)?.Start ?? facts.Boundary + 1;
+                for (var read = start; read < i; read++)
+                {
+                    if (ReferenceKeyOf(facts.Instructions[read]) is { } key) given.Add(key);
+                }
+            }
+            return given;
+        }
+
+        // The variable a load reads, when what it holds is a reference a callee could change.
+        private static object? ReferenceKeyOf(Instruction instr)
+        {
+            switch (instr.Operand)
+            {
+                case VariableDefinition local when instr.OpCode.Code == Code.Ldloc && !IsClosureClass(local.VariableType):
+                    return CanBeWrittenThrough(local.VariableType) ? local : null;
+                case ParameterDefinition parameter when instr.OpCode.Code == Code.Ldarg:
+                    return CanBeWrittenThrough(parameter.ParameterType) ? parameter : null;
+                case FieldReference field when instr.OpCode.Code == Code.Ldfld && IsClosureField(field) && !IsParentLink(field):
+                    return CanBeWrittenThrough(field.FieldType) ? FieldKey(field) : null;
+                default:
+                    return null;
+            }
+        }
+
+        private static bool CanBeWrittenThrough(TypeReference type) => !IsValueLike(type) && !IsImmutableType(type);
+
+        private static ScopePlan? TryPlanCandidate(ScopeFacts facts, ScopeCandidate candidate, List<ScopePlan> accepted,
+            HashSet<object> mutated)
         {
             var region = candidate.Span;
             var scan = new ScopeScan();
@@ -404,6 +414,7 @@ namespace Velvet.CodeGen
                 || facts.Branches.Any(branch => BranchBreaksRegion(branch.Source, branch.Target, region))
                 || !Enumerable.Range(region.Start, region.End - region.Start + 1).All(i => ScanInstruction(facts, i, region, scan))
                 || !scan.HasCall || (scan.Deps.Count == 0 && !scan.OnlyFactoryCalls)
+                || scan.Deps.Any(dep => mutated.Contains(dep.Key))
                 || RepeatsEnclosingScope(accepted, region, scan.Deps)
                 || (facts.FlowsIntoReturn(region.End + 1) && facts.CoversGate(scan.Deps)))
             {

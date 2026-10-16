@@ -127,6 +127,8 @@ namespace Velvet.CodeGen
             private void CollectGateKeys(HookAnalysis analysis)
             {
                 foreach (var parameter in _body.Method.Parameters) _gateKeys.Add(parameter);
+                // A gate that never hits has no scope to be left to.
+                if (analysis.Volatile) _gateKeys.Add(new object());
                 foreach (var capture in analysis.HookCaptures)
                 {
                     var key = CaptureKey(capture);

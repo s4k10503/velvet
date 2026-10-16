@@ -274,6 +274,10 @@ namespace Velvet
         // Hooks.StoreMemoizedScope does against the one of Hooks.TryGetMemoizedScope.
         internal int HookCallCount;
 
+        // Set when a hook ran inside a call the weaver bracketed ahead of the gate; the gate of that render then
+        // reports a miss. Cleared with the hook cursor at the start of each attempt.
+        internal bool HookRanInOpaqueCall;
+
         /// <summary>
         /// Cache field for the onCompleted callback of <see cref="Hooks.Use{T}"/> (Suspense) across re-renders,
         /// reducing GC allocations from per-render to once per fiber (zero-allocation design).

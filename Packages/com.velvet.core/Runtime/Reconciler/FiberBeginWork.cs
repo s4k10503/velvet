@@ -41,6 +41,7 @@ namespace Velvet
             // it must be retained until RunEffects processes it at the next frame boundary.
             fiber.Indices.Reset();
             fiber.ResetAsyncSlotCursor();
+            fiber.HookRanInOpaqueCall = false;
         }
 
         // Runs the render-phase setState loop: with a fresh hook cursor each pass, invokes Render() and,

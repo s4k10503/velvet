@@ -49,17 +49,31 @@ A scope is not cached, and is built as it was before scopes, where it:
 - calls a member of a `Ref<T>` or `MutableRef<T>`, or a method taking one, reads a `UseService` value, or reads a reference a custom hook returns;
 - reads a `static` field, other than a `readonly` one of a value type or `string`, or calls anything but a `V` factory, a constructor, an instance property accessor outside `System.Diagnostics` and `System.Threading`, or a member of `System`, `System.Collections`, `System.Collections.Generic`, `System.Linq`, `System.Text` or `System.Runtime.CompilerServices`. Of those, calls on `Random` and `Environment` are left out, and the static members of `DateTime`, `DateTimeOffset`, `Guid` and `TimeZoneInfo`. A method of your own that builds a child is not cached; make it a component or cache its result with `Hooks.UseMemo`;
 - reads a local of another kind, such as a list, a `VNode` or a delegate built in the body outside a scope of its own;
+- reads a list, dictionary or object that a call outside every scope is given: the call may write through it, so the scope would hold what it built from the object as it was. A `Grow(items)` statement in the body keeps every scope reading `items` uncached;
 - writes a local that code outside it also uses, such as a variable a later child reads, or passes the address of such a local to a call;
 - sits in a loop, or in a method with `try`, `catch` or `finally`.
 
-No diagnostic reports a scope left uncached, as none reports a component left unwoven. A body whose weave fails the stack-discipline check is woven with its gate alone.
+A body whose weave fails the stack-discipline check is woven with its gate alone.
+
+### Hooks and calls ahead of the gate
+
+The gate sits after the component's last hook call, and what stands ahead of it runs on every render.
+
+- A call ahead of it that may run a hook the weaver cannot see (an interface or virtual dispatch outside the BCL and Unity, or a method whose assembly the post-processor cannot read) is bracketed by `Hooks.BeginOpaqueCall` / `Hooks.EndOpaqueCall`. The gate of a render in which a hook ran inside one reports a miss, since that hook may have fed the body a value the gate does not compare; a call that runs none costs nothing else. A custom hook that composes such a call is not bracketed: its value is a dependency.
+- `Use` and `UseFallback` are on the allow-lists: `Use` returns a value that changes with its resource, and `UseFallback` returns nothing.
+- `UseMutation`, `UseBlocker` and any hook the weaver has not classified return an object changed in place, which no comparison of the reference sees. The component is woven, its gate never hits (it carries a fresh `object` as a dependency), and a scope reading what such a hook returns is not cached, while the scopes that do not read it are.
+- A conditional or repeated hook, a hook inside a `try`, a discarded hook result and a result read by a shape the weaver does not recognise still leave the component unwoven.
+
+### Inspecting what was woven
+
+Define `VELVET_REPORT_AUTOMEMO` in an assembly's scripting define symbols to have the post-processor emit one warning per `[Component]` of it: the reason the component is left unwoven, or what was woven into it (the number of scopes, a gate that never hits, the calls bracketed). Without the define it says nothing about a component left unwoven.
 
 ### Where it stays short of React Compiler
 
 - A scope is one of the three kinds above. A derived `List<T>` is computed again on every render the gate misses, and a scope reading it is built again; `Hooks.UseMemo` caches such a value.
+- A scope stands after the component's last hook call, since the gate does; what stands ahead of it is built on every render.
 - A render the gate misses allocates a dependency array for each scope it reaches, whether the scope then hits or misses.
 - A child component keeps its own gate, and `[Component(Memoize = true)]` its props bail.
-- A hook past the gate, or an unclassified one, still leaves the component unwoven; scopes do not lift that.
 
 `[Component(Compiler = false)]` opts a component out of the gate and every scope.
 

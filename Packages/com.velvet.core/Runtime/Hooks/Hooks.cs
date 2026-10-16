@@ -2782,7 +2782,8 @@ namespace Velvet
         {
             if (deps == null) throw new ArgumentNullException(nameof(deps));
             var fiber = FiberAmbientStack.Current;
-            if (fiber == null || fiber.Indices.MemoHookIndex != 0 || !fiber.RendersComponent(component))
+            if (fiber == null || fiber.Indices.MemoHookIndex != 0 || fiber.HookRanInOpaqueCall
+                || !fiber.RendersComponent(component))
             {
                 slotIndex = -1;
                 cached = null;
@@ -2796,6 +2797,7 @@ namespace Velvet
             }
             var slot = fiber.MemoSlots[slotIndex];
             slot.HookCallCountAtGate = fiber.HookCallCount;
+            RestageScopes(fiber.MemoSlots, slotIndex);
             // Structural value equality would call a fresh-but-content-equal record class prop or context
             // value unchanged and hand back the cached VNode, so the render the reconciler had already
             // decided to make would produce the committed tree instead of the new one.
@@ -2814,6 +2816,31 @@ namespace Velvet
             }
             cached = null!;
             return false;
+        }
+
+        /// <summary>
+        /// Opens the bracket the build-time compiler transform weaves around a call it cannot prove runs no hook,
+        /// ahead of the memoization gate. Returns the hook count to hand to <see cref="EndOpaqueCall"/>.
+        /// Do not call by hand.
+        /// </summary>
+        /// <returns>The number of hooks the rendering component has called so far.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static int BeginOpaqueCall() => FiberAmbientStack.Current?.HookCallCount ?? 0;
+
+        /// <summary>
+        /// Closes the bracket opened by <see cref="BeginOpaqueCall"/>. A hook called inside it makes the gate of
+        /// this render report a miss, since the value it fed the body is not among the gate's dependencies.
+        /// Do not call by hand.
+        /// </summary>
+        /// <param name="hooksBefore">The count <see cref="BeginOpaqueCall"/> returned.</param>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static void EndOpaqueCall(int hooksBefore)
+        {
+            var fiber = FiberAmbientStack.Current;
+            if (fiber != null && fiber.HookCallCount != hooksBefore)
+            {
+                fiber.HookRanInOpaqueCall = true;
+            }
         }
 
         /// <summary>
@@ -2958,6 +2985,19 @@ namespace Velvet
             slot.NextDeps = deps;
             slot.NextCachedResult = node;
             slot.NextCachedValue = value;
+        }
+
+        // A hit on the gate, or on a scope enclosing others, skips the scopes inside it, which would keep what a
+        // discarded attempt staged for them and have the settle promote it. Each attempt starts them from what is committed.
+        private static void RestageScopes(List<HookMemoSlot> slots, int gateSlot)
+        {
+            for (var i = gateSlot + 1; i < slots.Count; i++)
+            {
+                var scope = slots[i];
+                scope.NextDeps = scope.LastDeps;
+                scope.NextCachedResult = scope.CachedResult;
+                scope.NextCachedValue = scope.CachedValue;
+            }
         }
 
         // The scopes of a component sit in the slots after its gate's, in the order the weaver numbered them.
