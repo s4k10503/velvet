@@ -1434,9 +1434,17 @@ namespace Velvet
             internal List<SuspenseRender>? Renders { get; set; }
         }
 
-        // The enters of this top-level pass that played nothing, whose OnEnterComplete runs once the pass has
-        // ended — see CompleteEnterAfterThePass.
-        internal readonly List<(MotionNode Motion, ComponentFiber? Boundary)> PendingEnterCompletions = new();
+        // The completions of this top-level pass, an enter's that played nothing and an exit's, which run once the
+        // pass has ended — see CompleteEnterAfterThePass. RemovedBy is the commit whose removals an exit's child
+        // waits on: that exit completes from the passive-effect flush after the pass, and the commit takes it
+        // back if its removals never run (DropCompletionsRemovedBy).
+        internal readonly record struct PendingCompletion(System.Action Complete, ComponentFiber? Boundary, object? RemovedBy);
+
+        internal readonly List<PendingCompletion> PendingCompletions = new();
+
+        // The exit completions the passive-effect flush runs after the effects it stages — see
+        // FiberEffects.StagePassiveCompletion.
+        internal readonly List<System.Action> PendingPassiveCompletions = new();
 
         // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
         // boundary catching later in that pass can take it back with the rest of the failed output — in the walk
@@ -1449,27 +1457,50 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent, guard removed): every caller passes a motion it has resolved an enter for,
             // and one with no OnEnterComplete queues an entry whose invocation calls nothing.
             if (motion?.OnEnterComplete == null) return;
-            if (SharedReconcileDepth == 0) GeneralPathReconciler.InvokeEnterComplete(motion, boundary);
-            else PendingEnterCompletions.Add((motion, boundary));
+            CompleteAfterThePass(() => GeneralPathReconciler.InvokeEnterComplete(motion), boundary, removedBy: null);
+        }
+
+        // An AnimatePresence's onExitComplete completes as an enter does, and for the same reason. Framer Motion
+        // calls PresenceChild's from a passive effect once a child with nothing to animate has left, whose error
+        // React gives a boundary from the presence's owner, and from the exit's promise for a V.Motion child, whose
+        // error no boundary sees. removedBy is the commit that removes the child: an exit that waits on its removals
+        // completes from the passive-effect flush that follows the pass, and one that waits on an animation, with
+        // removedBy null, when the animation ends.
+        internal void CompleteExitAfterThePass(
+            System.Action? onExitComplete, ComponentFiber? owner, bool fromAMotion, object? removedBy = null)
+        {
+            if (onExitComplete == null) return;
+            CompleteAfterThePass(
+                () => GeneralPathReconciler.InvokeExitComplete(onExitComplete, owner, fromAMotion), owner, removedBy);
+        }
+
+        private void CompleteAfterThePass(System.Action complete, ComponentFiber? boundary, object? removedBy)
+        {
+            if (SharedReconcileDepth == 0 && removedBy == null) complete();
+            else PendingCompletions.Add(new PendingCompletion(complete, boundary, removedBy));
         }
 
         // The entries a render below boundary queued: read before a catch detaches what that render created, since
         // an entry's owner is placed by its parent chain.
-        internal List<(MotionNode Motion, ComponentFiber? Boundary)>? EnterCompletionsBelow(ComponentFiber boundary)
+        internal List<PendingCompletion>? CompletionsBelow(ComponentFiber boundary)
         {
-            List<(MotionNode Motion, ComponentFiber? Boundary)>? below = null;
-            foreach (var entry in PendingEnterCompletions)
+            List<PendingCompletion>? below = null;
+            foreach (var entry in PendingCompletions)
             {
                 if (IsAtOrBelow(entry.Boundary, boundary)) (below ??= new()).Add(entry);
             }
             return below;
         }
 
-        internal void DropEnterCompletions(List<(MotionNode Motion, ComponentFiber? Boundary)>? entries)
+        internal void DropCompletions(List<PendingCompletion>? entries)
         {
             if (entries == null) return;
-            foreach (var entry in entries) PendingEnterCompletions.Remove(entry);
+            foreach (var entry in entries) PendingCompletions.Remove(entry);
         }
+
+        // React runs nothing for removals that never committed.
+        internal void DropCompletionsRemovedBy(object commit)
+            => PendingCompletions.RemoveAll(entry => ReferenceEquals(entry.RemovedBy, commit));
 
         private static bool IsAtOrBelow(ComponentFiber? fiber, ComponentFiber boundary)
         {
@@ -1480,15 +1511,19 @@ namespace Velvet
             return false;
         }
 
-        internal void RunPendingEnterCompletions()
+        internal void RunPendingCompletions()
         {
             // MUTANT_SURVIVES(equivalent, guard removed): an empty list copies out nothing and the loop runs no
             // callback; the guard spares that copy where nothing is queued.
-            if (PendingEnterCompletions.Count == 0) return;
+            if (PendingCompletions.Count == 0) return;
             // Copied out first: a callback can start a pass whose own end reaches this list.
-            var completions = PendingEnterCompletions.ToArray();
-            PendingEnterCompletions.Clear();
-            foreach (var (motion, boundary) in completions) GeneralPathReconciler.InvokeEnterComplete(motion, boundary);
+            var completions = PendingCompletions.ToArray();
+            PendingCompletions.Clear();
+            foreach (var entry in completions)
+            {
+                if (entry.RemovedBy == null) entry.Complete();
+                else FiberEffects.StagePassiveCompletion(this, entry.Complete);
+            }
         }
 
         // Errors a boundary caught, in catch order, each waiting for the commit that runs its fallback's layout
@@ -1585,22 +1620,21 @@ namespace Velvet
         // element, rather than the context, whether the removals that setup has to follow have run.
         internal Reconciler? CurrentPass { get; set; }
 
-        // Where a user callback the reconciler invokes goes when it throws. Two shapes are picked between
-        // here, so a site does not pick its own: the teardown funnels —
-        // FiberElementCleaner, Reconciler's disposal sweeps, and the route-scope release at
-        // FiberNodePatcher that mirrors them — report to the console; a callback the reconciler makes for
-        // an owner that is still live comes here instead, to the nearest error boundary. A third shape is
-        // chosen against this rule rather than by it: ChildReconciler.DrainPendingPortalMounts leaves its
-        // ZLayerMountNode arm's throw on the render's own escape path, and argues that there. Reporting was
-        // rejected for the live case because a boundary is the mechanism a component has for its own
-        // failures, and an effect cleanup — the same kind of callback — already reaches one
-        // (HookEffectExecutor.RunCleanups).
+        // Where a user callback the reconciler invokes goes when it throws. The teardown funnels —
+        // FiberElementCleaner, Reconciler's disposal sweeps, and the route-scope release at FiberNodePatcher that
+        // mirrors them — report to the console. A callback the reconciler makes for an owner that is still live
+        // comes here, to the nearest error boundary, because a boundary is the mechanism a component has for its
+        // own failures, and an effect cleanup — the same kind of callback — already reaches one
+        // (HookEffectExecutor.RunCleanups). A site that routes otherwise argues it where it does:
+        // ChildReconciler.DrainPendingPortalMounts for its ZLayerMountNode arm's throw,
+        // FiberNodeFactory.ContainCreationCallbackFailure for an element still being created,
+        // GeneralPathReconciler.InvokeExitComplete and InvokeEnterComplete for a presence's or a Motion's
+        // completion, and FiberOutletScope.CreateOutletScope for an Outlet's route-scope factory.
         //
-        // owner is the component the failing callback belongs to, and the search starts ABOVE it: a host
-        // element's callback is attributed to the component that rendered the element, so a boundary
-        // catches its children's ref failures on the same terms it catches their render failures.
+        // owner is the component the failing callback belongs to, where ComponentBoundarySearch.PropagateFromOwner
+        // starts the search.
         internal static void ContainUserCallbackFailure(ComponentFiber? owner, System.Exception exception)
-            => ComponentBoundarySearch.PropagateException(owner, exception);
+            => ComponentBoundarySearch.PropagateFromOwner(owner, exception);
 
         // Cycles the ref installed on an element to match the node being committed: both the old cleanup and
         // the new setup at the pass boundary, the old first, as React detaches and attaches refs together in
