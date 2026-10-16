@@ -35,14 +35,15 @@
 [Velvet] ctor Velvet.ComponentNode.ctor(): System.Void
 [Velvet] ctor Velvet.ContextProviderNode`1[T].ctor(): System.Void
 [Velvet] ctor Velvet.Deferred`1[T].ctor(Velvet.VelvetTask`1[T]): System.Void
+[Velvet] ctor Velvet.DndCollision.ctor(System.String, System.Object?, System.Double): System.Void
 [Velvet] ctor Velvet.DndCollisionDetection.ctor(System.Object~, System.IntPtr): System.Void
 [Velvet] ctor Velvet.DndCollisionQuery.ctor(UnityEngine.Rect, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndDroppableRect]): System.Void
 [Velvet] ctor Velvet.DndContextSettings.ctor(System.Action`1[Velvet.DragStartArgs]?, System.Action`1[Velvet.DragOverArgs]?, System.Action`1[Velvet.DragEndArgs]?, System.Action`1[Velvet.DragCancelArgs]?, Velvet.DndCollisionDetection?, Velvet.DragActivation?): System.Void
 [Velvet] ctor Velvet.DndDroppableRect.ctor(System.String, UnityEngine.Rect, System.Object?): System.Void
 [Velvet] ctor Velvet.DragActivation.ctor(System.Single, System.Single, System.Single): System.Void
 [Velvet] ctor Velvet.DragCancelArgs.ctor(Velvet.DraggableInfo): System.Void
-[Velvet] ctor Velvet.DragEndArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, UnityEngine.Vector2): System.Void
-[Velvet] ctor Velvet.DragOverArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2): System.Void
+[Velvet] ctor Velvet.DragEndArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]): System.Void
+[Velvet] ctor Velvet.DragOverArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]): System.Void
 [Velvet] ctor Velvet.DragOverlaySettings.ctor(): System.Void
 [Velvet] ctor Velvet.DragStartArgs.ctor(Velvet.DraggableInfo, UnityEngine.Vector2): System.Void
 [Velvet] ctor Velvet.DraggableInfo.ctor(System.String, System.Object?, UnityEngine.UIElements.VisualElement): System.Void
@@ -167,6 +168,7 @@
 [Velvet] field Velvet.ComponentFiber.RenderCount: System.Int32
 [Velvet] field Velvet.ComponentFiber.RequestRenderForContextHandler: System.Action`1[Velvet.ComponentFiber]?
 [Velvet] field Velvet.DndCollisions.ClosestCenter: Velvet.DndCollisionDetection
+[Velvet] field Velvet.DndCollisions.ClosestCorners: Velvet.DndCollisionDetection
 [Velvet] field Velvet.DndCollisions.PointerWithin: Velvet.DndCollisionDetection
 [Velvet] field Velvet.DndCollisions.RectIntersection: Velvet.DndCollisionDetection
 [Velvet] field Velvet.DragActivation.Default: Velvet.DragActivation
@@ -341,8 +343,8 @@
 [Velvet] method Velvet.DevTools.VelvetDevToolsRegistry.Register(Velvet.ComponentFiber, System.String?): System.Void
 [Velvet] method Velvet.DevTools.VelvetDevToolsRegistry.Unregister(Velvet.ComponentFiber): System.Void
 [Velvet] method Velvet.DndCollisionDetection.BeginInvoke(Velvet.DndCollisionQuery&, System.AsyncCallback~, System.Object~): System.IAsyncResult~
-[Velvet] method Velvet.DndCollisionDetection.EndInvoke(Velvet.DndCollisionQuery&, System.IAsyncResult~): System.String?
-[Velvet] method Velvet.DndCollisionDetection.Invoke(Velvet.DndCollisionQuery&): System.String?
+[Velvet] method Velvet.DndCollisionDetection.EndInvoke(Velvet.DndCollisionQuery&, System.IAsyncResult~): Velvet.DndCollision[]
+[Velvet] method Velvet.DndCollisionDetection.Invoke(Velvet.DndCollisionQuery&): Velvet.DndCollision[]
 [Velvet] method Velvet.ErrorBoundaryReset.Invoke(System.Object?[]): System.Void
 [Velvet] method Velvet.Experimental.VBuilder.Add(Velvet.VNode?): System.Void
 [Velvet] method Velvet.Experimental.VBuilder.Build(): Velvet.VNode
@@ -816,6 +818,9 @@
 [Velvet] property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.RegisteredAt: System.DateTime
 [Velvet] property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.TypeName: System.String
 [Velvet] property Velvet.DevTools.VelvetDevToolsRegistry.Entries: System.Collections.Generic.IReadOnlyList`1[Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry]
+[Velvet] property Velvet.DndCollision.Data: System.Object?
+[Velvet] property Velvet.DndCollision.Id: System.String
+[Velvet] property Velvet.DndCollision.Value: System.Double
 [Velvet] property Velvet.DndCollisionQuery.ActiveRect: UnityEngine.Rect
 [Velvet] property Velvet.DndCollisionQuery.Droppables: System.Collections.Generic.IReadOnlyList`1[Velvet.DndDroppableRect]
 [Velvet] property Velvet.DndCollisionQuery.PointerPosition: UnityEngine.Vector2
@@ -833,10 +838,12 @@
 [Velvet] property Velvet.DragActivation.Tolerance: System.Single
 [Velvet] property Velvet.DragCancelArgs.Active: Velvet.DraggableInfo
 [Velvet] property Velvet.DragEndArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DragEndArgs.Collisions: System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]
 [Velvet] property Velvet.DragEndArgs.Delta: UnityEngine.Vector2
 [Velvet] property Velvet.DragEndArgs.Over: Velvet.DroppableInfo?
 [Velvet] property Velvet.DragEndArgs.Position: UnityEngine.Vector2
 [Velvet] property Velvet.DragOverArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DragOverArgs.Collisions: System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]
 [Velvet] property Velvet.DragOverArgs.Delta: UnityEngine.Vector2
 [Velvet] property Velvet.DragOverArgs.Over: Velvet.DroppableInfo?
 [Velvet] property Velvet.DragStartArgs.Active: Velvet.DraggableInfo
@@ -1296,6 +1303,7 @@
 [Velvet] type Velvet.Deferred`1[T]
 [Velvet] type Velvet.DevTools.VelvetDevToolsRegistry
 [Velvet] type Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry
+[Velvet] type Velvet.DndCollision
 [Velvet] type Velvet.DndCollisionDetection
 [Velvet] type Velvet.DndCollisionQuery
 [Velvet] type Velvet.DndCollisions
