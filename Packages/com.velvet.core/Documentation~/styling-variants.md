@@ -308,6 +308,12 @@ bands on one parent is their elements' order rather than the order the bands hap
 two `focus:ring-2` siblings render the same whichever was focused first. `ring-inset` paints **over**
 an opaque full-bleed child, where CSS paints an inset box-shadow under the element's children.
 
+A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `ring-<n>`, `ring-[…]`, `outline`
+(1px), `outline-<n>` and `outline-[…]`. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
+colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A band whose
+family names no colour is drawn in the element's text colour and follows it as it changes. Velvet still
+draws one band where CSS draws a ring and an outline together.
+
 What the ringed element's own subtree would carry reaches the band as well. Its transform —
 `translate-*`, `scale-*`, `rotate-*` about any `origin-*`, a transition or a `V.Motion` animating those,
 a `layoutId` play — its opacity, its `invisible` / `visible` and its `hidden` are copied onto the band

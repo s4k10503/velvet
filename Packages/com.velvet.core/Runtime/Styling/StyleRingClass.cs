@@ -13,13 +13,17 @@ namespace Velvet
     // width + offset), like ShadowSpec.
     //
     // ring and outline collapse onto ONE spec because they render identically — an outset band of Width at
-    // Offset distance, in Color. Their only modelled differences are defaults (ring defaults to blue-500 at
-    // 3px, the default ring; outline defaults to currentColor-ish at 1px) and that ring may be INSET
-    // (ring-inset draws the band inside the element edge instead of outside).
+    // Offset distance, in Color. Their only modelled differences are the default width (1px for both, medium
+    // for an outline whose width the browser dropped) and that ring may be INSET (ring-inset draws the band
+    // inside the element edge instead of outside).
     internal readonly struct RingSpec
     {
         public readonly float Width;
+        // The band's colour where a class named one; unused where CurrentColor is set.
         public readonly Color Color;
+        // No class named the colour, so the band takes the element's text colour, as Tailwind v4's
+        // var(--tw-ring-color, currentcolor) and outline-color's initial value do.
+        public readonly bool CurrentColor;
         // Gap (px) between the element edge and the band — ring-offset-* / outline-offset-*. The gap is
         // transparent (the element's own background / parent shows through), approximating ring-offset without
         // a dedicated offset-color fill.
@@ -27,12 +31,13 @@ namespace Velvet
         // ring-inset: the band is drawn just INSIDE the element edge rather than outset around it.
         public readonly bool Inset;
 
-        public RingSpec(float width, Color color, float offset, bool inset)
+        public RingSpec(float width, Color color, float offset, bool inset, bool currentColor = false)
         {
             Width = width;
             Color = color;
             Offset = offset;
             Inset = inset;
+            CurrentColor = currentColor;
         }
     }
 
@@ -44,44 +49,13 @@ namespace Velvet
     // cancel an earlier ring in the cascade.
     internal static class StyleRingClass
     {
-        // The DEFAULT ring is 3px blue-500; the bare `ring` and a width-only `ring-2` use it (color applied at
-        // 0.5 alpha, see DefaultRingColor). An explicit `ring-<color>` is opaque and does not go through here.
-        private const float DefaultRingWidth = 3f;
-        // The default ring's alpha. A ring with no explicit color renders at blue-500 / 0.5, not full
-        // opacity; an explicit ring color stays opaque, and the outline default (below) is unaffected.
-        private const float DefaultRingAlpha = 0.5f;
-        // Bare `outline` (outline-style: solid) — Velvet picks a thin default width; outline-{N} overrides.
+        // Tailwind v4's --default-ring-width, which the bare `ring` takes.
+        private const float DefaultRingWidth = 1f;
+        // Tailwind v4's --default-outline-width, which the bare `outline` declares.
         private const float DefaultOutlineWidth = 1f;
         // outline-width's initial value, medium: the width of an outline whose style a class set and whose width
         // no class did.
         private const float MediumOutlineWidth = 3f;
-
-        private static bool s_blue500Resolved;
-        private static Color s_blue500 = new(59f / 255f, 130f / 255f, 246f / 255f, 1f); // opaque fallback
-
-        // The default band color, opaque, shared by the ring and outline defaults. The ring applies its own
-        // 0.5 alpha on top (DefaultRingColor); bare `outline` keeps this opaque (a color-less outline is a
-        // pre-existing currentColor approximation, out of scope, so its alpha must not change with the ring).
-        private static Color DefaultBandColor()
-        {
-            if (!s_blue500Resolved)
-            {
-                if (VelvetPalette.TryResolveColorToken("blue-500", out var c))
-                {
-                    s_blue500 = c;
-                }
-                s_blue500Resolved = true;
-            }
-            return s_blue500;
-        }
-
-        // A color-less ring: blue-500 at 0.5 alpha.
-        private static Color DefaultRingColor()
-        {
-            var c = DefaultBandColor();
-            c.a = DefaultRingAlpha;
-            return c;
-        }
 
         // suffix → width (px). Shared by ring-{N} and outline-{N}; the ring/outline width scale.
         private static readonly Dictionary<string, float> WidthScale = new()
@@ -118,13 +92,17 @@ namespace Velvet
 
         private struct RingSlots
         {
-            public bool HasIntent;   // any width/color/bare ring-or-outline class establishes a ring
+            public bool HasIntent;   // a width-bearing class (bare ring or outline, a width) establishes a band
             public bool WidthSet;
             public float Width;
-            public bool IsOutline;   // tracks which family established intent, for the default width
+            public bool IsOutline;   // which family established intent, for the default width and the colour
             public bool OutlineDeclared; // bare `outline`, which declares its 1px width
-            public bool ColorSet;
-            public Color Color;
+            // Each family's colour is its own property (--tw-ring-color, outline-color), so a ring colour does
+            // not colour an outline, and a colour alone draws nothing.
+            public bool RingColorSet;
+            public Color RingColor;
+            public bool OutlineColorSet;
+            public Color OutlineColor;
             public float Offset;
             public bool Inset;
         }
@@ -158,11 +136,9 @@ namespace Velvet
                 return false; // ring-0 / outline-none: no ring
             }
 
-            // A color-less ring uses the 0.5-alpha default; a color-less outline keeps the opaque band color.
-            var effectiveColor = slots.ColorSet
-                ? slots.Color
-                : (slots.IsOutline ? DefaultBandColor() : DefaultRingColor());
-            spec = new RingSpec(effectiveWidth, effectiveColor, Mathf.Max(0f, slots.Offset), slots.Inset);
+            var colorSet = slots.IsOutline ? slots.OutlineColorSet : slots.RingColorSet;
+            var color = slots.IsOutline ? slots.OutlineColor : slots.RingColor;
+            spec = new RingSpec(effectiveWidth, color, Mathf.Max(0f, slots.Offset), slots.Inset, currentColor: !colorSet);
             return true;
         }
 
@@ -238,15 +214,20 @@ namespace Velvet
                 return;
             }
 
-            // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]). Deliberately does NOT
-            // move IsOutline: that flag only selects which family's DEFAULT width applies, and a color names
-            // no width. Letting it move meant `outline ring-red-500` recoloured the band and silently
-            // widened it from the outline default to the ring default at the same time.
+            // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]), which sets its own family's
+            // colour and names no band: in Tailwind v4 it writes only the colour property.
             if (TryParseColorValue(isRingFamily ? "ring" : "outline", ringSuffix, isOutlineFamily, out var c))
             {
-                slots.HasIntent = true;
-                slots.ColorSet = true;
-                slots.Color = c;
+                if (isRingFamily)
+                {
+                    slots.RingColorSet = true;
+                    slots.RingColor = c;
+                }
+                else
+                {
+                    slots.OutlineColorSet = true;
+                    slots.OutlineColor = c;
+                }
             }
             // An unrecognized ring-*/outline-* suffix is ignored (not a known utility).
         }

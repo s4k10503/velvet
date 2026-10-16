@@ -244,6 +244,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARingNamingNoColour_When_LaidOut_Then_TheBandIsTheTextColour()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] ring-2 text-[#ff0000]");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — the card's own red is the class taking effect.
+            Assert.That((card.resolvedStyle.color, BandFor(card).resolvedStyle.borderTopColor),
+                Is.EqualTo((Color.red, Color.red)));
+        }
+
+        [Test]
         public void Given_AnInvisibleRingedElement_When_LaidOut_Then_TheBandIsHidden()
         {
             // Arrange
