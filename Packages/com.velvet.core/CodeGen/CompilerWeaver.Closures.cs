@@ -150,7 +150,7 @@ namespace Velvet.CodeGen
         private static bool LambdaWritesACapturedHookValue(MethodDefinition component, List<HookCapture> captures)
         {
             var fields = captures.Where(capture => capture.Field != null).Select(capture => FieldName(capture.Field!)).ToHashSet();
-            return fields.Count > 0 && component.DeclaringType.NestedTypes.Where(IsClosureClass).SelectMany(type => type.Methods)
+            return component.DeclaringType.NestedTypes.Where(IsClosureClass).SelectMany(type => type.Methods)
                 .Where(method => method.HasBody).SelectMany(method => method.Body.Instructions)
                 .Any(instr => instr is { OpCode.Code: Code.Stfld, Operand: FieldReference field } && fields.Contains(FieldName(field)));
         }
