@@ -123,9 +123,12 @@ Tailwind's order. So a rejected value another class outranks takes nothing: `ske
 until hovered. A `translate-z-*` or `scale-z-*` class adds z to the declaration, so its rejected value takes
 the family only where its declaration is the one that wins: `translate-x-4 translate-z-[10]` translates
 nowhere, `!translate-x-4 translate-z-[10]` along x.
-A family an element's own `className` discards without a variant stays discarded under its `V.Motion` poses and under the
-stylesheet classes `whileHoverClass` and the other class channels add, and a pose that rejects a value holds
-the element's own family at its identity while the element rests at that pose.
+A `V.Motion` pose is read with the element's own `className` as one list, where a pose class outranks an own
+class of the same importance and variants, as Framer Motion's `animate` overrides the element's style: over
+`translate-y-[10]`, a `translate-y-4` pose translates and a `translate-x-4` pose does not, and a pose that
+rejects a value holds the element's own family at its identity while the element rests at that pose. A family
+the own `className` discards without a variant stays discarded under the stylesheet classes `whileHoverClass`
+and the other class channels add.
 A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
 
 ## Lengths only an element can measure

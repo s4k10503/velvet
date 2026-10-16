@@ -11,10 +11,9 @@ namespace Velvet
     // computed-value time where a custom property it reads holds a value the browser rejects, and each custom
     // property holds the value of the rule that wins it, so a rejected value takes the family only where its rule
     // wins its property, as measured in Chromium against Tailwind's own CSS; RejectedCompositeTests pins it. Where
-    // the family is discarded, its tokens are replaced by the family's identity values. A list normalized on its
-    // own — a V.Motion pose — reads the families its element's own list rejected without a variant through
-    // WithoutFamiliesRejectedIn. The gesture, presence and drag channels add stylesheet classes only, which the
-    // inline identity values hold against; RejectedCompositeLayerTests pins both layers.
+    // the family is discarded, its tokens are replaced by the family's identity values. A V.Motion pose is read
+    // with its element's own list through Layered. The gesture, presence and drag channels add stylesheet classes
+    // only, which the inline identity values hold against; RejectedCompositeLayerTests pins both layers.
     internal static class StyleCompositeRejection
     {
         private enum Family
@@ -41,14 +40,16 @@ namespace Velvet
             },
         };
 
-        // Each normalized list's families rejected without a variant, as a mask of 1 << Family, for the lists
-        // layered over it. Keyed by the array the parse cache hands out for the list, which it keeps stable.
-        private static readonly ConditionalWeakTable<string[], StrongBox<int>> s_rejectedEverywhere = new();
+        // The list as written behind each normalized list WithoutRejectedComposites changed, for the lists layered
+        // over it. Keyed by the array the parse cache hands out for the list, which it keeps stable.
+        private static readonly ConditionalWeakTable<string[], string[]> s_written = new();
 
         // One token of a composed family. Writes and Reads are masks over the family's custom properties: those
-        // the token sets, and those its copy of the family's declaration reads.
+        // the token sets, and those its copy of the family's declaration reads. Posed marks a token of a list
+        // layered over the element's own.
         private readonly struct Entry
         {
+            public readonly string Token;
             public readonly string Variants;
             public readonly Family Family;
             public readonly bool Important;
@@ -56,61 +57,132 @@ namespace Velvet
             public readonly int Writes;
             public readonly int Reads;
             public readonly string Utility;
+            public readonly bool Posed;
 
-            public Entry(string variants, Family family, bool important, bool rejected, (int Writes, int Reads) axes,
-                string utility)
+            public Entry(string token, string variants, (Family Family, bool Important, bool Rejected, bool Posed) kind,
+                (int Writes, int Reads) axes, string utility)
             {
+                Token = token;
                 Variants = variants;
-                Family = family;
-                Important = important;
-                Rejected = rejected;
+                Family = kind.Family;
+                Important = kind.Important;
+                Rejected = kind.Rejected;
+                Posed = kind.Posed;
                 Writes = axes.Writes;
                 Reads = axes.Reads;
                 Utility = utility;
             }
         }
 
-        // The mask of families tokens discards without a variant.
-        internal static int RejectedEverywhere(string[] tokens)
+        // Records written against normalized, the list the normalizer handed back for it, when the two differ in a
+        // composed family.
+        internal static void Remember(string[] normalized, string[] written, string[] composed)
         {
-            var entries = ReadAll(tokens);
-            var mask = 0;
-            foreach (var read in entries)
+            if (!ReferenceEquals(composed, written))
             {
-                if (read is { Rejected: true } entry && RejectedAt(entries, entry.Family, string.Empty))
+                s_written.AddOrUpdate(normalized, written);
+            }
+        }
+
+        private static string[] WrittenOf(string[] normalized)
+            => s_written.TryGetValue(normalized, out var written) ? written : normalized;
+
+        // layer, a V.Motion pose, as it applies over owner, the element's own normalized list, and in ownUnder what
+        // owner applies under it. A family the layer names and either list holds a rejected value of is read across
+        // the two as one list, where a layer token outranks an own one it ties with on importance and variants, as
+        // a pose overrides the element's own style. Its tokens in both lists are replaced by what that reading
+        // writes, an identity going with the layer. layer itself, and owner as ownUnder, when no family is read so.
+        internal static string[] Layered(string[] owner, string[] layer, out string[] ownUnder)
+        {
+            ownUnder = owner;
+            var entries = new List<Entry?>(ReadAll(WrittenOf(owner), posed: false));
+            entries.AddRange(ReadAll(WrittenOf(layer), posed: true));
+            var all = entries.ToArray();
+            var shared = 0;
+            foreach (var read in all)
+            {
+                if (read is { Posed: true } entry && HoldsRejection(all, entry.Family))
                 {
-                    mask |= 1 << (int)entry.Family;
+                    shared |= 1 << (int)entry.Family;
                 }
             }
-            return mask;
-        }
-
-        // Records mask against normalized, the list the normalizer handed back for tokens it read it from.
-        internal static void Remember(string[] normalized, int mask)
-        {
-            if (mask != 0)
-            {
-                s_rejectedEverywhere.AddOrUpdate(normalized, new StrongBox<int>(mask));
-            }
-        }
-
-        // layer without its tokens of a family owner, the list it is layered over, discards without a variant, so
-        // the family holds at its identity under every layer.
-        internal static string[] WithoutFamiliesRejectedIn(string[] owner, string[] layer)
-        {
-            if (!s_rejectedEverywhere.TryGetValue(owner, out var box))
+            if (shared == 0)
             {
                 return layer;
             }
-            var mask = box.Value;
-            return Array.FindAll(layer, token => !(TryRead(token, out var entry) && (mask & (1 << (int)entry.Family)) != 0));
+            var own = WithoutFamilies(owner, shared);
+            var posed = WithoutFamilies(layer, shared);
+            var tokens = Array.ConvertAll(all, read => read?.Token ?? string.Empty);
+            for (var family = Family.Translate; family <= Family.Filter; family++)
+            {
+                if ((shared & (1 << (int)family)) != 0)
+                {
+                    WriteLayered(own, posed, all, tokens, family);
+                }
+            }
+            ownUnder = own.ToArray();
+            return posed.ToArray();
+        }
+
+        private static List<string> WithoutFamilies(string[] tokens, int families)
+            => new(Array.FindAll(tokens, token => !(TryRead(token, posed: false, out var entry)
+                && (families & (1 << (int)entry.Family)) != 0)));
+
+        private static void WriteLayered(List<string> own, List<string> posed, Entry?[] entries, string[] tokens,
+            Family family)
+        {
+            var atBase = RejectedAt(entries, family, string.Empty);
+            if (atBase)
+            {
+                WriteIdentity(posed, tokens, family, string.Empty, HasImportant(entries, family, string.Empty));
+            }
+            else
+            {
+                WriteWinners((own, posed), entries, family, string.Empty, important: false);
+            }
+            var variants = new HashSet<string>();
+            foreach (var read in entries)
+            {
+                if (read is { } entry && entry.Family == family && entry.Variants.Length != 0
+                    && variants.Add(entry.Variants))
+                {
+                    WriteVariant(own, posed, entries, tokens, entry, atBase);
+                }
+            }
+        }
+
+        // The family at entry's variants over a base discarded or not, as WithoutRejectedComposites writes it.
+        private static void WriteVariant(List<string> own, List<string> posed, Entry?[] entries, string[] tokens,
+            Entry entry, bool atBase)
+        {
+            var here = RejectedAt(entries, entry.Family, entry.Variants);
+            if (here && !atBase)
+            {
+                WriteIdentity(posed, tokens, entry.Family, entry.Variants,
+                    HasImportant(entries, entry.Family, entry.Variants));
+            }
+            else if (!here && atBase)
+            {
+                WriteWinners((own, posed), entries, entry.Family, entry.Variants,
+                    HasImportant(entries, entry.Family, string.Empty));
+            }
+            else if (!here)
+            {
+                foreach (var read in entries)
+                {
+                    if (read is { } other && other.Family == entry.Family && other.Variants == entry.Variants)
+                    {
+                        (other.Posed ? posed : own).Add(other.Token);
+                    }
+                }
+            }
         }
 
         // tokens with each family whose declaration the browser discards written as that family's identity at the
         // variants where it is discarded; tokens itself when no token holds a rejected value.
         internal static string[] WithoutRejectedComposites(string[] tokens)
         {
-            var entries = ReadAll(tokens);
+            var entries = ReadAll(tokens, posed: false);
             if (!Array.Exists(entries, read => read is { Rejected: true }))
             {
                 return tokens;
@@ -145,13 +217,14 @@ namespace Velvet
             if (discarded)
             {
                 // Important where an important utility of the family applies, which it has to outrank.
-                WriteIdentity(kept, tokens, entry, HasImportant(entries, entry.Family, entry.Variants));
+                WriteIdentity(kept, tokens, entry.Family, entry.Variants, HasImportant(entries, entry.Family, entry.Variants));
             }
             else
             {
                 // The family holds here over a base where it is discarded, so it is written here whole, the values
                 // it inherits from the base included, and important where the base's identity is.
-                WriteWinners(kept, entries, entry, HasImportant(entries, entry.Family, string.Empty));
+                WriteWinners((kept, kept), entries, entry.Family, entry.Variants,
+                    HasImportant(entries, entry.Family, string.Empty));
             }
         }
 
@@ -215,7 +288,7 @@ namespace Velvet
         }
 
         // An important rule over a plain one, then a rule behind variants over one without, which Tailwind emits
-        // after it, then the later in Tailwind's order.
+        // after it, then a layered token over an own one, then the later in Tailwind's order.
         private static bool Outranks(Entry a, Entry z)
         {
             if (a.Important != z.Important)
@@ -225,6 +298,10 @@ namespace Velvet
             if (a.Variants.Length != z.Variants.Length)
             {
                 return a.Variants.Length != 0;
+            }
+            if (a.Posed != z.Posed)
+            {
+                return a.Posed;
             }
             return CompareRules(a, z) >= 0;
         }
@@ -251,57 +328,61 @@ namespace Velvet
             return StyleCandidateOrder.Compare(a.Utility, z.Utility);
         }
 
-        private static void WriteIdentity(List<string> kept, string[] tokens, Entry entry, bool important)
+        private static void WriteIdentity(List<string> kept, string[] tokens, Family family, string variants,
+            bool important)
         {
-            var prefix = (important ? "!" : string.Empty) + entry.Variants;
-            foreach (var identity in s_identity[(int)entry.Family])
+            var prefix = variants + (important ? "!" : string.Empty);
+            foreach (var identity in s_identity[(int)family])
             {
                 kept.Add(prefix + identity);
             }
             // A drop shadow is part of the filter, so one elsewhere in the list goes with it.
-            if (entry.Family == Family.Filter && Array.Exists(tokens, IsDropShadow))
+            if (family == Family.Filter && Array.Exists(tokens, IsDropShadow))
             {
                 kept.Add(prefix + "drop-shadow-none");
             }
         }
 
-        // The utility winning each property of entry's family at entry's variants, written behind them.
-        private static void WriteWinners(List<string> kept, Entry?[] entries, Entry entry, bool important)
+        // The utility winning each property of family at variants, written behind them into the list of the
+        // layer it came from.
+        private static void WriteWinners((List<string> Own, List<string> Posed) kept, Entry?[] entries, Family family,
+            string variants, bool important)
         {
             var all = 0;
             foreach (var read in entries)
             {
-                if (read is { } other && other.Family == entry.Family)
+                if (read is { } other && other.Family == family)
                 {
                     all |= other.Writes;
                 }
             }
-            var written = new HashSet<string>();
+            var written = new HashSet<(bool, string)>();
             for (var bit = 1; bit <= all; bit <<= 1)
             {
-                if ((all & bit) != 0 && WinnerOf(entries, entry.Family, entry.Variants, bit) is { } winner)
+                if ((all & bit) != 0 && WinnerOf(entries, family, variants, bit) is { } winner)
                 {
-                    WriteBehind(kept, written, winner, entry.Variants, important);
+                    WriteBehind(kept, written, winner, variants, important);
                 }
             }
             // A drop shadow's size and colour are set by separate utilities that one bit stands for, and none of
             // them holds a value this rejects, so each applying one is written.
             foreach (var read in entries)
             {
-                if (read is { } other && other.Family == entry.Family && IsDropShadow(other.Utility)
-                    && (other.Variants.Length == 0 || other.Variants == entry.Variants))
+                if (read is { } other && other.Family == family && IsDropShadow(other.Utility)
+                    && (other.Variants.Length == 0 || other.Variants == variants))
                 {
-                    WriteBehind(kept, written, other, entry.Variants, important);
+                    WriteBehind(kept, written, other, variants, important);
                 }
             }
         }
 
-        private static void WriteBehind(List<string> kept, HashSet<string> written, Entry entry, string variants,
-            bool important)
+        private static void WriteBehind((List<string> Own, List<string> Posed) kept, HashSet<(bool, string)> written,
+            Entry entry, string variants, bool important)
         {
-            if (written.Add(entry.Utility))
+            if (written.Add((entry.Posed, entry.Utility)))
             {
-                kept.Add((important || entry.Important ? "!" : string.Empty) + variants + entry.Utility);
+                (entry.Posed ? kept.Posed : kept.Own)
+                    .Add(variants + (important || entry.Important ? "!" : string.Empty) + entry.Utility);
             }
         }
 
@@ -312,17 +393,17 @@ namespace Velvet
             return payload == "drop-shadow" || payload.StartsWith("drop-shadow-", StringComparison.Ordinal);
         }
 
-        private static Entry?[] ReadAll(string[] tokens)
+        private static Entry?[] ReadAll(string[] tokens, bool posed)
         {
             var entries = new Entry?[tokens.Length];
             for (var i = 0; i < tokens.Length; i++)
             {
-                entries[i] = TryRead(tokens[i], out var entry) ? entry : null;
+                entries[i] = TryRead(tokens[i], posed, out var entry) ? entry : null;
             }
             return entries;
         }
 
-        private static bool TryRead(string token, out Entry entry)
+        private static bool TryRead(string token, bool posed, out Entry entry)
         {
             entry = default;
             if (string.IsNullOrEmpty(token))
@@ -330,6 +411,11 @@ namespace Velvet
                 return false;
             }
             var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
+            if (core.Length == 0 || core[0] == '!')
+            {
+                // A bang ahead of variants, which Tailwind generates nothing for.
+                return false;
+            }
             var length = StyleSpacingPrecedence.VariantsLength(core);
             var utility = core.Substring(length);
             if (!StyleArbitraryValueResolver.TryDropTypeHint(utility, out var payload))
@@ -349,7 +435,7 @@ namespace Velvet
                 var value = body.Substring(open + 1, body.Length - open - 2).Replace('_', ' ').Trim();
                 rejected = !Accepts(function, value);
             }
-            entry = new Entry(core.Substring(0, length), family, important, rejected, axes, utility);
+            entry = new Entry(token, core.Substring(0, length), (family, important, rejected, posed), axes, utility);
             return true;
         }
 
