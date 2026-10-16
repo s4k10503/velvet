@@ -320,8 +320,11 @@ jobs:
               --output Logs/mutation-playmode-shard
 
       # Uploaded whether or not the shard had survivors, so the verdict job's pattern always matches one.
+      # The docker steps run as root and leave Logs/mutation-playmode-shard owned by it, which the runner
+      # user cannot write a file into: the directory is handed back first.
       - if: always()
         run: |
+          sudo chown -R "$(id -u):$(id -g)" Logs
           mkdir -p Logs/mutation-playmode-shard
           echo "shard ${{ matrix.shard }}" > Logs/mutation-playmode-shard/shard-${{ matrix.shard }}.txt
 
