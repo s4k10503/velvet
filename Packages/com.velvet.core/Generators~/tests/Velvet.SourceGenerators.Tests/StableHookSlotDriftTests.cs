@@ -47,7 +47,7 @@ namespace Velvet.SourceGenerators.Tests
             ["UseMemo"] =
                 "stable only while its own deps are equal, same as UseCallback",
             ["UseNavigate"] =
-                "a UseCallback keyed on the replace argument and the enclosing Outlet depth, so a call site " +
+                "a UseCallback keyed on the router and the enclosing Outlet depth, so a call site " +
                 "varying either gets a fresh delegate",
             ["UseId"] =
                 "stable by value rather than by reference, so a deps array holding it compares equal every " +
