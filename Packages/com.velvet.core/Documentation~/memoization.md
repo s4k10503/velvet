@@ -31,12 +31,14 @@ Dependencies are compared as [react-migration.md §1-4](react-migration.md#1-4-w
 
 A local only the child itself uses is not compared.
 
+A child compares the references it reads, as React Compiler's scope does. A list, dictionary or object held in state, context or props and changed in place (`items.Add(x)` followed by a state update, a property written on a context object) counts as unchanged, so the child reading it keeps the element it built before. Replace the value (a new list, a new object) as in React, or opt the component out with `[Component(Compiler = false)]`. An instance property accessor of a type in `System.Diagnostics` or `System.Threading` (`Stopwatch.Elapsed`) is the exception: a child calling one is not cached. Any other instance property accessor is read like the value it belongs to, so a getter that returns something other than a function of its object's state is not seen to change.
+
 ### What is built on every render the gate misses
 
 A child is not cached, and is built as it was before scopes, where it:
 
 - calls a member of a `Ref<T>` or `MutableRef<T>`, or a method taking one, reads a `UseService` value, or reads a reference a custom hook returns;
-- reads a `static` field, other than a `readonly` one of a value type or `string`, or calls anything but a `V` factory, a constructor, an instance property accessor, or a member of `System`, `System.Collections`, `System.Collections.Generic`, `System.Linq`, `System.Text` or `System.Runtime.CompilerServices`. The members of the types that read the clock, the random source or the process are left out: Random, Environment, Console, GC, Activator and AppDomain whole, and the static members of DateTime, DateTimeOffset, Guid, TimeZoneInfo, DateOnly and TimeOnly. A method of your own that builds a child is not cached; make it a component or cache its result with `Hooks.UseMemo`;
+- reads a `static` field, other than a `readonly` one of a value type or `string`, or calls anything but a `V` factory, a constructor, an instance property accessor outside `System.Diagnostics` and `System.Threading`, or a member of `System`, `System.Collections`, `System.Collections.Generic`, `System.Linq`, `System.Text` or `System.Runtime.CompilerServices`. Of those, the members of the types that read the clock, the random source or the process are left out: Random, Environment, Console, GC, Activator and AppDomain whole, and the static members of DateTime, DateTimeOffset, Guid, TimeZoneInfo, DateOnly and TimeOnly. A method of your own that builds a child is not cached; make it a component or cache its result with `Hooks.UseMemo`;
 - reads a local of another kind, such as a list, a `VNode` or a delegate built in the body, or a variable a lambda captures;
 - writes a local that code outside it also uses, such as a variable a later child reads, or passes the address of such a local to a call;
 - sits in a loop, or in a method with `try`, `catch` or `finally`.
@@ -46,7 +48,7 @@ No diagnostic reports a child left uncached, as none reports a component left un
 ### Where it stays short of React Compiler
 
 - The cut is at the elements of a children list. A value the body derives (a filtered list, a string two children read) is computed again on every render the gate misses, and a child reading a derived list is built again. `Hooks.UseMemo` caches such a value.
-- Each scope allocates its dependency array on every render, hit or miss.
+- A render the gate misses allocates a dependency array for each scope it reaches, whether the scope then hits or misses.
 - A child component keeps its own gate, and `[Component(Memoize = true)]` its props bail.
 
 `[Component(Compiler = false)]` opts a component out of the gate and every scope.

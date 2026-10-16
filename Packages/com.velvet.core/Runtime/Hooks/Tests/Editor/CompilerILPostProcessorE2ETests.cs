@@ -1277,6 +1277,14 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode ChildReadingAStopwatchComponent()
+        {
+            var watch = Hooks.UseMemo(() => new System.Diagnostics.Stopwatch(), "stable");
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: watch.ElapsedTicks.ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
         public static VNode ChildReadingAServiceValueComponent()
         {
             var service = Hooks.UseService<IScopeService>();
@@ -1478,6 +1486,16 @@ namespace Velvet.Tests
         {
             // Act
             var gates = CountHookCalls(LoadMethod(nameof(ChildReadingAServiceValueComponent)), ScopeGateName);
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingAStopwatchProperty_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildReadingAStopwatchComponent)), ScopeGateName);
 
             // Assert
             Assert.That(gates, Is.EqualTo(1));

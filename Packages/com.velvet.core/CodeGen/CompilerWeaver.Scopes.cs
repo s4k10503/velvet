@@ -19,8 +19,9 @@ namespace Velvet.CodeGen
     //   once (see ReadsInPlace).
     //   It calls no member of a Ref / MutableRef and no method taking one, and reads no hook value from UseService
     //   or from a custom hook unless value-like: a render reading through one has no value to compare.
-    //   It reads no mutable static, and calls only a V factory, a constructor, an instance property accessor, or a
-    //   member of the BCL namespaces named in PureNamespaces that does not read the clock or the process.
+    //   It reads no mutable static, and calls only a V factory, a constructor, an instance property accessor
+    //   outside System.Diagnostics and System.Threading, or a member of the BCL namespaces named in PureNamespaces
+    //   that does not read the clock or the process.
     //   Control flow in it stays inside it and moves forward, nothing outside jumps into it, and nothing
     //   outside runs it twice (no loop around it).
     //   The method has no try / catch / finally.
@@ -46,6 +47,12 @@ namespace Velvet.CodeGen
         {
             "System", "System.Collections", "System.Collections.Generic", "System.Linq", "System.Text",
             "System.Runtime.CompilerServices",
+        };
+
+        // Namespaces whose instance property accessors read a clock or a counter that advances without a render.
+        private static readonly HashSet<string> StatefulAccessorNamespaces = new()
+        {
+            "System.Diagnostics", "System.Threading",
         };
 
         // Types whose every member reads or advances state of the process.
@@ -280,8 +287,9 @@ namespace Velvet.CodeGen
                 || (!method.HasThis && AmbientStateStaticTypes.Contains(declaring.FullName));
             return instr.OpCode.Code == Code.Newobj
                 || declaring.FullName == FactoryTypeFullName
-                || (method.HasThis && (method.Name.StartsWith("get_", System.StringComparison.Ordinal)
-                    || method.Name.StartsWith("set_", System.StringComparison.Ordinal)))
+                || (method.HasThis && !StatefulAccessorNamespaces.Contains(declaring.Namespace)
+                    && (method.Name.StartsWith("get_", System.StringComparison.Ordinal)
+                        || method.Name.StartsWith("set_", System.StringComparison.Ordinal)))
                 || (PureNamespaces.Contains(declaring.Namespace) && !ambient);
         }
 
