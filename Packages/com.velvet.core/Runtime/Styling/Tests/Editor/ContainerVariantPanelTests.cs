@@ -309,18 +309,22 @@ namespace Velvet.Tests
         [Test]
         public void Given_AContainerWithPaddingAtTheThreshold_When_Resolved_Then_ItsContentWidthDecides()
         {
-            // Arrange — 460px across the border box and 420px of content, either side of @md (448px).
-            _mounted = V.Mount(_window.rootVisualElement,
-                Container("padded", "@container w-[460px] p-[20px]", Leaf("leaf", "@md:bg-wide")));
+            // Arrange — both are 460px across the border box, either side of @md (448px) by content width: 420px
+            // padded, 460px not.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode?[]
+            {
+                Container("padded", "@container w-[460px] p-[20px]", Leaf("paddedLeaf", "@md:bg-wide")),
+                Container("plain", "@container w-[460px]", Leaf("plainLeaf", "@md:bg-wide")),
+            }));
 
             // Act
-            Resolve(Find("padded"));
+            Resolve(Find("padded"), Find("plain"));
 
             // Assert
             Assert.That(
                 (Find("padded").resolvedStyle.width >= MdThreshold, Find("padded").contentRect.width < MdThreshold,
-                    On("leaf")),
-                Is.EqualTo((true, true, false)));
+                    On("paddedLeaf"), On("plainLeaf")),
+                Is.EqualTo((true, true, false, true)));
         }
 
         [Test]
