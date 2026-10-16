@@ -113,7 +113,10 @@ namespace Velvet
         internal static readonly EngineMember StylePropertyNameId = ReadProperty(UIElements,
             "UnityEngine.UIElements.StylePropertyName", "id", "enum:UnityEngine.UIElements.StyleSheets.StylePropertyId");
 
-        // RingOverlay's outline host: whether an element clips what it holds.
+        // OutlineHosting: whether an element clips what it holds, and whether the panel's hierarchy changed.
+        internal static readonly EngineMember PanelHierarchyVersion =
+            ReadProperty(UIElements, "UnityEngine.UIElements.BaseVisualElementPanel", "hierarchyVersion", "System.UInt32");
+
         internal static readonly EngineMember ElementShouldClip =
             Method(UIElements, VisualElementType, "ShouldClip", "System.Boolean");
 

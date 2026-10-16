@@ -22,9 +22,10 @@ namespace Velvet
         // The element each top-level outline node belongs to, for the tree-order comparison between outlines.
         private static readonly ConditionalWeakTable<VisualElement, VisualElement> s_owner = new();
 
-        // Each panel's version reader. The version moves on any hierarchy, style, layout or transform change in
-        // the panel, so an outline is re-hosted only after one.
-        private static readonly ConditionalWeakTable<IPanel, Func<uint>?> s_versions = new();
+        // Each panel's hierarchy version reader. The version moves when any element of the panel is added, removed or
+        // reordered, which can change an outline's host, the clips on its way there and its place among the host's
+        // outlines; the styles that decide a host or a clip are read off the element's own ancestors (Unchanged).
+        private static readonly ConditionalWeakTable<IPanel, Func<uint>?> s_hierarchyVersions = new();
 
         private static Func<VisualElement, bool>? ShouldClipDelegate()
         {
@@ -40,15 +41,15 @@ namespace Velvet
             }
         }
 
-        private static Func<uint>? VersionOf(IPanel panel)
+        private static Func<uint>? HierarchyVersionOf(IPanel panel)
         {
-            if (s_versions.TryGetValue(panel, out var reader))
+            if (s_hierarchyVersions.TryGetValue(panel, out var reader))
             {
                 return reader;
             }
             try
             {
-                var getter = EngineMember.PanelVersion.ResolveProperty()?.GetMethod;
+                var getter = EngineMember.PanelHierarchyVersion.ResolveProperty()?.GetMethod;
                 reader = getter != null && getter.DeclaringType!.IsInstanceOfType(panel)
                     ? (Func<uint>)Delegate.CreateDelegate(typeof(Func<uint>), panel, getter)
                     : null;
@@ -57,23 +58,71 @@ namespace Velvet
             {
                 reader = null;
             }
-            s_versions.AddOrUpdate(panel, reader);
+            s_hierarchyVersions.AddOrUpdate(panel, reader);
             return reader;
         }
 
-        // Re-hosts and re-positions the outline unless nothing in its panel changed since it last did; force skips
-        // that check, for a call that knows its own element changed.
+        // Re-hosts and re-positions the outline unless nothing that decides either changed since it last did; force
+        // skips that check, for a call that knows its own element changed. The check reads the panel's hierarchy
+        // version and the element's own ancestors up to the host, allocating nothing, so a style change anywhere
+        // else in the panel costs an outline nothing.
         internal static void Place(VisualElement element, RingBinding binding, bool force)
         {
-            var version = element.panel is { } panel ? VersionOf(panel)?.Invoke() : null;
-            if (!force && version != null && version == binding.OutlineVersion)
+            if (!force && Unchanged(element, binding))
             {
                 return;
             }
             Rehost(element, binding);
             // Read after the moves above, which move the version themselves.
-            binding.OutlineVersion = element.panel is { } after ? VersionOf(after)?.Invoke() : null;
+            binding.OutlineVersion = element.panel is { } after ? HierarchyVersionOf(after)?.Invoke() : null;
         }
+
+        // Whether the host, the clips and the boxes the last placement read still stand: the same hierarchy, the same
+        // stacking root with no new one below it, the same clipping ancestors with the same boxes and masks, and the
+        // element where it was.
+        private static bool Unchanged(VisualElement element, RingBinding binding)
+        {
+            var host = binding.OutlineHost;
+            if (host == null || binding.Spec.Outline.Width <= 0f || element.panel is not { } panel
+                || HierarchyVersionOf(panel)?.Invoke() is not { } version || version != binding.OutlineVersion
+                || !(host.parent == null || host.parent == panel.visualTree || IsStackingRoot(host)))
+            {
+                return false;
+            }
+            var clip = binding.OutlineClipOwners.Count - 1;
+            var (x, y) = (0f, 0f);
+            for (var a = element; a != host; a = a.parent)
+            {
+                if (a == null)
+                {
+                    return false;
+                }
+                if (a != element)
+                {
+                    if (IsStackingRoot(a))
+                    {
+                        return false;
+                    }
+                    if (Clips(a))
+                    {
+                        if (clip < 0 || binding.OutlineClipOwners[clip] != a || binding.OutlineClipBoxes[clip] != ClipBoxOf(a))
+                        {
+                            return false;
+                        }
+                        clip--;
+                    }
+                }
+                x += a.layout.x;
+                y += a.layout.y;
+            }
+            return clip < 0 && new Vector2(x, y) == binding.OutlineOffset
+                && new Vector2(binding.Width, binding.Height) == binding.OutlineSize;
+        }
+
+        // What a clip proxy copies off a clipping ancestor, which a placement compares to know the proxy still stands
+        // for it: its box in its parent, its size and its mask.
+        private static (Rect Layout, object? Mask) ClipBoxOf(VisualElement c)
+            => (c.layout, c.style.backgroundImage.value.vectorImage);
 
         internal static void Remove(RingBinding binding)
         {
@@ -88,6 +137,7 @@ namespace Velvet
         private static void Rehost(VisualElement element, RingBinding binding)
         {
             var host = binding.Spec.Outline.Width > 0f && element.parent != null ? Host(element) : null;
+            binding.OutlineHost = host;
             if (host == null)
             {
                 Remove(binding);
@@ -105,6 +155,13 @@ namespace Velvet
             }
 
             SyncProxies(binding, clips.Count);
+            binding.OutlineClipOwners.Clear();
+            binding.OutlineClipOwners.AddRange(clips);
+            binding.OutlineClipBoxes.Clear();
+            foreach (var c in clips)
+            {
+                binding.OutlineClipBoxes.Add(ClipBoxOf(c));
+            }
             var top = clips.Count > 0 ? binding.OutlineClips[0] : binding.OutlineOverlay;
             var chain = binding.OutlineOverlay;
             for (var i = clips.Count - 1; i >= 0; i--)
@@ -122,8 +179,11 @@ namespace Velvet
             // Positions: each node over its stand-in's box, relative to its parent node's padding box.
             if (!TryOffsetWithin(element, host, out var ex, out var ey) || binding.Width <= 0f)
             {
+                binding.OutlineHost = null; // not yet laid out: the next tick places it
                 return;
             }
+            binding.OutlineOffset = new Vector2(ex + Sane(host.resolvedStyle.borderLeftWidth), ey + Sane(host.resolvedStyle.borderTopWidth));
+            binding.OutlineSize = new Vector2(binding.Width, binding.Height);
             float px = 0f, py = 0f;
             for (var i = 0; i < clips.Count; i++)
             {
@@ -140,6 +200,7 @@ namespace Velvet
                 var proxy = binding.OutlineClips[i];
                 SetBox(proxy, cx - px, cy - py, w, h);
                 SetRadii(proxy, c);
+                SetMask(proxy, c);
                 (px, py) = (cx, cy);
             }
             SetBox(binding.OutlineOverlay, ex - px, ey - py, binding.Width, binding.Height);
@@ -308,6 +369,24 @@ namespace Velvet
             if (s.top.value.value != y || s.top.keyword != StyleKeyword.Undefined) s.top = y;
             if (s.width.value.value != width || s.width.keyword != StyleKeyword.Undefined) s.width = width;
             if (s.height.value.value != height || s.height.keyword != StyleKeyword.Undefined) s.height = height;
+        }
+
+        // A clip-path-* wrapper clips by the shape its vector background carries (FiberClipPathApplier), which the
+        // proxy carries too, positioned alike; any other clip has none.
+        private static void SetMask(VisualElement proxy, VisualElement c)
+        {
+            var ps = proxy.style;
+            if (!c.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass))
+            {
+                ps.backgroundImage = StyleKeyword.Null;
+                return;
+            }
+            var cs = c.style;
+            ps.backgroundImage = cs.backgroundImage;
+            ps.backgroundRepeat = cs.backgroundRepeat;
+            ps.backgroundPositionX = cs.backgroundPositionX;
+            ps.backgroundPositionY = cs.backgroundPositionY;
+            ps.backgroundSize = cs.backgroundSize;
         }
 
         // The clip's corners: the clipping ancestor's padding-box radii, its outer radius less the wider border at

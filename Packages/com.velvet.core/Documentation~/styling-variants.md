@@ -311,7 +311,7 @@ draws each band itself, where CSS paints it:
   transform, a filter), hides or z-layers what it holds, so later content does not cover it, and several
   outlines there paint in their elements' tree order. An ancestor between that clips its content clips the
   outline too, as CSS clips an outline by its ancestors' overflow, through a clipping element over that
-  ancestor's padding box.
+  ancestor's padding box, which carries a `clip-path-*` ancestor's shape as well.
 - `ring-inset`, `inset-ring-*` and `inset-shadow-*` paint inside the padding box, over the background and
   under the element's children and text, in the order Tailwind lists them in `box-shadow`: the ring, its
   offset fill, the inset ring, the inset shadow.

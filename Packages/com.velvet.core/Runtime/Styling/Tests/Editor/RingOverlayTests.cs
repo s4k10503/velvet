@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -392,13 +393,84 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnOutlineOnAPanel_When_LaidOut_Then_ItsHostIsCachedAgainstThePanelVersion()
+        public void Given_AHostedOutline_When_AStyleChangesOutsideItsAncestors_Then_PlacingItAllocatesNothing()
         {
-            // Arrange & Act
-            var card = MountRinged("w-[40px] h-[40px] outline-2");
+            // Arrange — other's opacity changes between placements, outside the outlined card's ancestors; a re-host
+            // allocates, so nothing allocated is nothing re-hosted. The canary is the instrument's own control.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[200px] h-[100px]", children: new VNode[]
+                {
+                    V.Div(name: "card", className: "w-[40px] h-[40px] outline-2"),
+                    V.Div(name: "other", className: "w-[40px] h-[40px]"),
+                }));
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            var other = _window.rootVisualElement.Q<VisualElement>("other");
+            ForcePanelUpdate(card.panel);
+            var binding = RingOverlay.TryGet(card);
+            var opaque = true;
+            Action arrange = () =>
+            {
+                opaque = !opaque;
+                other.style.opacity = opaque ? 1f : 0.5f;
+                ForcePanelUpdate(card.panel);
+            };
+            Action place = () => OutlineHosting.Place(card, binding, force: false);
+            arrange();
+            place();
 
-            // Assert — the per-frame tick re-hosts only after the panel's version moves.
-            Assert.That(RingOverlay.TryGet(card)?.OutlineVersion.HasValue, Is.EqualTo((bool?)true));
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(arrange, place);
+
+            // Assert
+            Assert.That((GCAllocationCanary.BlocksForKnownArray() > 0, blocks), Is.EqualTo((true, 0)));
+        }
+
+        [Test]
+        public void Given_AHostedOutline_When_AnAncestorBeginsToFade_Then_ThatAncestorHostsIt()
+        {
+            // Arrange — laid out unfaded, the outline is hosted above wrap.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[200px] h-[100px]", children: new VNode[]
+                {
+                    V.Div(name: "card", className: "w-[40px] h-[40px] outline-2"),
+                }));
+            var wrap = _window.rootVisualElement.Q<VisualElement>("wrap");
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            ForcePanelUpdate(wrap.panel);
+            var binding = RingOverlay.TryGet(card);
+            var before = binding?.OutlineOverlay.parent == wrap;
+
+            // Act — a change no event reports to the card: the next placement reads it off the ancestors.
+            wrap.style.opacity = 0.5f;
+            ForcePanelUpdate(wrap.panel);
+            OutlineHosting.Place(card, binding, force: false);
+
+            // Assert
+            Assert.That((before, binding?.OutlineOverlay.parent == wrap), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAClipPathWrapper_When_LaidOut_Then_ItsProxyCarriesTheWrappersMask()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[200px] h-[200px]", children: new VNode[]
+                {
+                    V.Div(name: "shaped", className: "w-[100px] h-[100px] clip-path-[circle(50%)]", children: new VNode[]
+                    {
+                        V.Div(name: "card", className: "w-[40px] h-[40px] outline-2"),
+                    }),
+                }));
+            var shaped = _window.rootVisualElement.Q<VisualElement>("shaped");
+
+            // Act
+            ForcePanelUpdate(shaped.panel);
+            ForcePanelUpdate(shaped.panel);
+            var proxy = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("card"))?.OutlineOverlay.parent;
+            var mask = shaped.parent.style.backgroundImage.value.vectorImage;
+
+            // Assert — the wrapper's own mask is the control: it has to exist to be carried.
+            Assert.That((mask != null, proxy?.style.backgroundImage.value.vectorImage == mask), Is.EqualTo((true, true)));
         }
 
         [Test]

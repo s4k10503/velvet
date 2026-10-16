@@ -34,8 +34,14 @@ namespace Velvet
         // element's own content, so the element's children paint over them.
         public Action<MeshGenerationContext>? OnGenerateInside;
         // The clip proxies standing in for the outline's clipping ancestors, outermost first (OutlineHosting), and
-        // the panel version the outline was last hosted at.
+        // what the last placement read: the host, the clipping ancestors and the boxes and masks the proxies copied,
+        // the element's offset in the host and its size, and the panel's hierarchy version.
         public readonly List<VisualElement> OutlineClips = new();
+        public readonly List<VisualElement> OutlineClipOwners = new();
+        public readonly List<(Rect Layout, object? Mask)> OutlineClipBoxes = new();
+        public VisualElement? OutlineHost;
+        public Vector2 OutlineOffset;
+        public Vector2 OutlineSize;
         public uint? OutlineVersion;
         public EventCallback<GeometryChangedEvent>? OnGeometry;
         public EventCallback<AttachToPanelEvent>? OnAttach;
