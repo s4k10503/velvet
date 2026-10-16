@@ -331,7 +331,7 @@ namespace Velvet
         private static void WriteIdentity(List<string> kept, string[] tokens, Family family, string variants,
             bool important)
         {
-            var prefix = (important ? "!" : string.Empty) + variants;
+            var prefix = variants + (important ? "!" : string.Empty);
             foreach (var identity in s_identity[(int)family])
             {
                 kept.Add(prefix + identity);
@@ -382,7 +382,7 @@ namespace Velvet
             if (written.Add((entry.Posed, entry.Utility)))
             {
                 (entry.Posed ? kept.Posed : kept.Own)
-                    .Add((important || entry.Important ? "!" : string.Empty) + variants + entry.Utility);
+                    .Add(variants + (important || entry.Important ? "!" : string.Empty) + entry.Utility);
             }
         }
 
@@ -411,6 +411,11 @@ namespace Velvet
                 return false;
             }
             var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
+            if (core.Length == 0 || core[0] == '!')
+            {
+                // A bang ahead of variants, which Tailwind generates nothing for.
+                return false;
+            }
             var length = StyleSpacingPrecedence.VariantsLength(core);
             var utility = core.Substring(length);
             if (!StyleArbitraryValueResolver.TryDropTypeHint(utility, out var payload))

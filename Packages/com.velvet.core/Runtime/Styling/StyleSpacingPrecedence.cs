@@ -532,7 +532,7 @@ namespace Velvet
             {
                 return core;
             }
-            return candidate.TrailingBang ? core + "!" : "!" + core;
+            return candidate.TrailingBang ? core + "!" : candidate.Variants + "!" + form;
         }
     }
 }

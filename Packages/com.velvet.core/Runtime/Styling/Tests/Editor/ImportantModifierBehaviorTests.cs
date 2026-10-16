@@ -68,6 +68,17 @@ namespace Velvet.Tests
             Assert.That($"{core} {important}", Is.EqualTo(expected));
         }
 
+        [TestCase("!hover:w-[50px]")]
+        [TestCase("![&:hover]:w-[50px]")]
+        public void Given_ABangAheadOfTheVariants_When_Stripped_Then_TheTokenIsLeftWholeAndPlain(string token)
+        {
+            // Act
+            var core = StyleArbitraryValueResolver.StripImportant(token, out var important);
+
+            // Assert
+            Assert.That($"{core} {important}", Is.EqualTo($"{token} False"));
+        }
+
         // GREEN_ON_BASE(characterization): a bang inside a bracket is the value's, and the base left it there too.
         [TestCase("hover:bg-[url(a:!b)]")]
         public void Given_ABangInsideABracket_When_Stripped_Then_TheTokenIsPlain(string token)
