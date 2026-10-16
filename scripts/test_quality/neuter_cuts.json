@@ -265,7 +265,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
-          "anchor": "bool canReleaseFace)",
+          "anchor": "internal float ApplySkewOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)",
           "neuter": "return 0f;"
         }
       ]
@@ -338,7 +338,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberDropShadowApplier.cs",
-          "anchor": "float skewXDeg, bool canReleaseFace)",
+          "anchor": "float skewXDeg)",
           "neuter": "return;"
         }
       ]
@@ -372,7 +372,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs",
-          "anchor": "bool canReleaseFace)",
+          "anchor": "internal void ApplyBorderStyleOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)",
           "neuter": "return;"
         }
       ]

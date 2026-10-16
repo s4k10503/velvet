@@ -3,9 +3,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // The wrapper-less PAINT layer for border-dashed / border-dotted utilities: a dashed-outline painter
-    // drawn via the element's own generateVisualContent. Defers to skew / shadow (FiberSkewApplier /
-    // FiberDropShadowApplier) when either already owns the whole face, since both repaint a solid border
-    // themselves and would otherwise fight a dashed outline on the same element.
+    // drawn via the element's own generateVisualContent. Defers to skew (FiberSkewApplier), which owns the
+    // whole face and repaints a solid border itself, so a dashed outline would fight it on the same element.
     internal sealed class FiberBorderStyleApplier
     {
         private readonly ReconcilerContext _ctx;
@@ -17,13 +16,11 @@ namespace Velvet
 
         // Create-time entry point: when classNames resolves to an active border-dashed / border-dotted, wires
         // the dashed-outline painter onto the element (no structural wrapper — the outline is the element's own
-        // generateVisualContent). Defers to skew / shadow: either owns the whole face and already repaints a
-        // solid border, so a dashed outline on the same element would fight it — border-dashed + skew/shadow
-        // keeps a SOLID border (documented v1 limitation). ApplySkewOnCreate / ApplyShadowOnCreate ran before
-        // this in the factory order, so their bindings are already present to gate on.
+        // generateVisualContent). Defers to skew, which owns the whole face and already repaints a solid border.
+        // ApplySkewOnCreate ran before this in the factory order, so its binding is already present to gate on.
         internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
         {
-            if (_ctx.SkewBindings.ContainsKey(element) || _ctx.ShadowBindings.ContainsKey(element))
+            if (_ctx.SkewBindings.ContainsKey(element))
             {
                 return;
             }
@@ -36,19 +33,17 @@ namespace Velvet
 
         // Patch-time reconciliation of an element's border line-style against its new class list. Mirrors the
         // skew paint layer's four cases (update the spec, attach, detach, or no-op the steady state). Runs AFTER
-        // ApplySkewOnPatch and ApplyShadowOnPatch (the shared pass order) so it observes the final post-patch
-        // skew / shadow ownership: while either owns the face the layer stands down (defer/detach), so an
-        // add/remove of skew/shadow in the same pass resolves without a race.
+        // ApplySkewOnPatch (the shared pass order) so it observes the final post-patch skew ownership: while skew
+        // owns the face the layer stands down (defer/detach), so an add/remove of skew in the same pass resolves
+        // without a race.
         // classesChanged is the caller's, for the same reason as ApplySkewOnPatch's: on a variant re-sync the
         // change lives in what the live class list added, not in a difference between two reconciled arrays.
-        // canReleaseFace rides along for the same reason it does there.
-        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] newClassNames, bool classesChanged,
-            bool canReleaseFace)
+        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] newClassNames, bool classesChanged)
         {
             var bound = _ctx.BorderStyleBindings.TryGetValue(element, out var binding);
             var has = StyleBorderStyleClass.TryGetWinningBorderStyleClass(newClassNames, out var winner);
-            // Skew or shadow owning the face repaints a solid border itself, so the dashed layer must stand down.
-            var deferred = _ctx.SkewBindings.ContainsKey(element) || _ctx.ShadowBindings.ContainsKey(element);
+            // Skew owning the face repaints a solid border itself, so the dashed layer must stand down.
+            var deferred = _ctx.SkewBindings.ContainsKey(element);
 
             // Fast path: no border-style anywhere near this element (and none deferred away that we still track).
             if (!bound && (!has || deferred))
@@ -60,7 +55,7 @@ namespace Velvet
             // layer took the face — skip the parse, but keep the color stash in sync with this patch's styling.
             if (bound && has && !deferred && binding.Spec.Source == winner)
             {
-                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged, canReleaseFace);
+                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged);
                 return;
             }
 
@@ -70,7 +65,7 @@ namespace Velvet
             if (want && bound)
             {
                 binding.Spec = spec;
-                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged: true, canReleaseFace);
+                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
                 element.MarkDirtyRepaint();
                 return;
             }
@@ -78,16 +73,16 @@ namespace Velvet
             {
                 var fresh = BorderStyleSilhouette.Attach(element, spec);
                 _ctx.BorderStyleBindings[element] = fresh;
-                BorderStyleSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true, canReleaseFace);
+                BorderStyleSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true);
                 return;
             }
             if (bound)
             {
-                // A skew / shadow layer took the whole face in this same patch (deferred): hand it the captured
+                // A skew layer took the whole face in this same patch (deferred): hand it the captured
                 // border color and tear down WITHOUT releasing the suppression — that layer re-applied the same
                 // sentinel to the shared inline slot when it attached earlier in this patch, and its own Capture
                 // could read back only that sentinel, so it needs this color to repaint the border; releasing here
-                // would null the slot and re-expose the native rectangle behind the sheared / shadowed face. With
+                // would null the slot and re-expose the native rectangle behind the sheared face. With
                 // no higher layer (the border-style classes were simply removed) this is a plain, releasing detach.
                 if (deferred)
                 {
@@ -101,18 +96,13 @@ namespace Velvet
             }
         }
 
-        // Hands a deferred dashed layer's captured border color to whichever higher layer (skew or shadow) took the
-        // face in this patch, then tears the dashed binding down while preserving the suppression the new owner now
-        // relies on. Skew is reconciled before shadow, so at most one of them owns the face.
+        // Hands a deferred dashed layer's captured border color to the skew layer that took the face in this patch,
+        // then tears the dashed binding down while preserving the suppression the new owner now relies on.
         private void HandOffBorderFace(VisualElement element, BorderStyleBinding binding)
         {
             if (_ctx.SkewBindings.TryGetValue(element, out var skew))
             {
                 skew.Face.AdoptBorderFace(binding.Face);
-            }
-            else if (_ctx.ShadowBindings.TryGetValue(element, out var shadow))
-            {
-                shadow.Face.AdoptBorderFace(binding.Face);
             }
             BorderStyleSilhouette.DetachPreservingSuppression(element, binding);
         }

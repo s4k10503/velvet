@@ -372,22 +372,22 @@ without `overflow-hidden` appearing anywhere in its className.
 
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
-| `shadow-*` / `drop-shadow-*` | the whole shadow is gone. The paint is not removed — it is cut at the padding box like every other — but the only part of it you see is the halo outside the box, the interior being hidden under the element's own fill by design |
+| `shadow-*` / `drop-shadow-*` | the whole shadow is gone: it paints only outside the border box, as CSS's does, and the clip cuts at the padding box |
 | `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
 | `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
 | `overline` | unaffected — the rule sits inside the content box |
 
-**`shadow-*` and `skew-*` on a bordered element cost more than the bleed.** Either one takes ownership of
-the element's face: it suppresses the native background and border and repaints both in its own generated
-content. The padding-box clip then takes that repaint too, so a bordered card carrying `shadow-*` or
-`skew-*` plus a hidden overflow loses **its border and a border-wide ring of its own background**, and
-whatever is behind the card shows through that ring. The same card without the shadow keeps both, because
-a native border is not painted through generated content:
+**`skew-*` on a bordered element costs more than the bleed.** It takes ownership of the element's face:
+it suppresses the native background and border and repaints both, sheared, in its own generated content.
+The padding-box clip then takes that repaint too, so a bordered card carrying `skew-*` plus a hidden
+overflow loses **its border and a border-wide ring of its own background**, and whatever is behind the
+card shows through that ring. The same card without the skew keeps both, because a native border is not
+painted through generated content:
 
 ```csharp
 // Border and a border-wide ring of white are missing; the parent shows through.
-V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-black rounded-lg");
+V.Div(className: "skew-x-6 overflow-hidden bg-white border-2 border-black rounded-lg");
 
 // Same card, border intact.
 V.Div(className: "overflow-hidden bg-white border-2 border-black rounded-lg");

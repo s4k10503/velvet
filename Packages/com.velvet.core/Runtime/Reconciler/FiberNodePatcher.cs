@@ -382,10 +382,7 @@ namespace Velvet
             ApplyTextEffects(element, newClassNames);
             var resolved = ResolveVariantClasses(element, oldClassNames, newClassNames, paintTail,
                 out var classesChanged);
-            // canReleaseFace: a reconcile pass may let the silhouette stashes release, because this same
-            // sequence runs on the element's next patch and re-takes the stash. The re-sync below cannot.
-            ApplyResolvedClassPasses(element, resolved, classesChanged, paintTail, clipActive,
-                canReleaseFace: true);
+            ApplyResolvedClassPasses(element, resolved, classesChanged, paintTail, clipActive);
         }
 
         // The ordered paint-pass sequence, shared by the reconcile path and the variant re-sync so the two
@@ -420,7 +417,7 @@ namespace Velvet
         // does, so a Motion's gradient stays on the straight background-image path and those three stand down
         // entirely.
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
-            bool paintTail, bool clipActive, bool canReleaseFace)
+            bool paintTail, bool clipActive)
         {
             if (classesChanged)
             {
@@ -433,9 +430,9 @@ namespace Velvet
             _appliers.ApplyParticlesSpacer(element, classNames);
             if (paintTail)
             {
-                var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
-                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
-                _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
+                var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged);
+                _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg);
+                _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
             }
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
         }
@@ -2696,7 +2693,9 @@ namespace Velvet
             }
             for (var i = 0; i < root.hierarchy.childCount; i++)
             {
-                if (SubtreeCarriesClass(root.hierarchy[i], cls))
+                // A face probe carries copies of its element's classes, the payload's among them.
+                var child = root.hierarchy[i];
+                if (!child.ClassListContains(SilhouetteFaceStash.ProbeMarkerClass) && SubtreeCarriesClass(child, cls))
                 {
                     return true;
                 }
@@ -3273,7 +3272,7 @@ namespace Velvet
             // wantWrap answer, so reading the predicate here cannot disagree. Only the shadow reads it, so the
             // Motion path skips the scan the way PatchMotion hard-codes the answer.
             ApplyResolvedClassPasses(element, resolved, classesChanged, paintTail.Value,
-                paintTail.Value && StyleClipPathClass.WantsClipWrapper(resolved), canReleaseFace: false);
+                paintTail.Value && StyleClipPathClass.WantsClipWrapper(resolved));
         }
 
         // Records the class array an element that DECLARES a variant-gated payload will need if that payload

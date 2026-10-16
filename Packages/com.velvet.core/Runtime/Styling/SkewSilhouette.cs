@@ -17,15 +17,15 @@ namespace Velvet
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
 
-        // The native-face stash + sentinel suppression shared with the drop-shadow layer: the rectangular
+        // The native-face stash + sentinel suppression shared with the border-dashed layer: the rectangular
         // background / border are suppressed with a sentinel color and re-painted sheared, so their effective
         // colors must be captured before suppression. Border uses the LEFT side (the sheared outline is a
         // single uniform stroke, so per-side colors/widths collapse to one).
         public readonly SilhouetteFaceStash Face = new();
 
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
-        public Color BgColor => Face.BgColor;
-        public Color BorderColor => Face.BorderColor;
+        public Color BgColor => Face.CurrentBg;
+        public Color BorderColor => Face.CurrentBorder;
         public bool HasStash => Face.HasStash;
         public bool SuppressionApplied => Face.SuppressionApplied;
 
@@ -77,10 +77,8 @@ namespace Velvet
     /// <remarks>
     /// The native rectangular background/border colors are suppressed with a near-invisible sentinel (the
     /// inline slot is shared with <see cref="StyleArbitraryValueResolver"/>'s <c>bg-[…]</c> / <c>border-[…]</c>
-    /// writes, so suppression re-syncs on every patch: a fresh resolver value re-stashes directly; a USS-driven
-    /// stash releases the sentinel on a class change and re-stashes on the next style resolution, while an
-    /// inline-driven stash is kept — an inline color only changes through a resolver write, which the re-stash
-    /// branch already catches).
+    /// writes, so suppression re-syncs on every class change: a fresh resolver value re-stashes directly, and a
+    /// USS-driven color is read off <see cref="SilhouetteFaceStash"/>'s probe).
     /// <para>
     /// Caveat — this paints ONLY the element's own silhouette; it is NOT a real transform, so the element's
     /// layout box stays axis-aligned (unlike CSS <c>transform: skewX()</c>, which shears descendants too). UI
@@ -95,7 +93,7 @@ namespace Velvet
     /// </remarks>
     internal static class SkewSilhouette
     {
-        // The suppression sentinel lives in SilhouetteFace, shared with the drop-shadow layer; forwarded
+        // The suppression sentinel lives in SilhouetteFace, shared with the border-dashed layer; forwarded
         // here so a call site reads it off the layer it is working in.
         internal static Color SuppressedColor => SilhouetteFace.SuppressedColor;
 
@@ -239,11 +237,9 @@ namespace Velvet
         }
 
         // Patch-time stash sync, delegated to the shared face stash. Runs AFTER SyncClassDrivenStyling (so the
-        // resolver's inline writes for this patch are already on the element); see SilhouetteFaceStash.SyncOnPatch
-        // for the three cases (resolver overwrote us / USS color may have moved beneath the sentinel / current).
-        public static void SyncStashOnPatch(VisualElement element, SkewBinding binding, bool classesChanged,
-            bool canReleaseFace)
-            => binding.Face.SyncOnPatch(element, classesChanged, canReleaseFace);
+        // resolver's inline writes for this patch are already on the element).
+        public static void SyncStashOnPatch(VisualElement element, SkewBinding binding, bool classesChanged)
+            => binding.Face.SyncOnPatch(element, classesChanged);
 
         // Re-seats the direct children's approximate descendant shear from the reconciler, the panel-independent
         // path that also covers a child add / remove / reorder when the caster's own box did not change size (so

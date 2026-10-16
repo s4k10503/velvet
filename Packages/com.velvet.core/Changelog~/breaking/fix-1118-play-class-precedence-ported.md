@@ -19,6 +19,12 @@
   A variant's classes rank as the element's own once its play ends. A class the stylesheet declares later, a
   bracket value or a gesture class used to keep the property while the play ran, a divider's color did not
   give way to a class a variant change brought, and did not come back once an enter's class left.
+- `shadow-*` paints only outside the element's border box, as CSS paints a box-shadow, and leaves the
+  element's own background and border to paint as they would without it. A translucent background shows no
+  shadow through it, a bordered card keeps its border under `overflow-hidden`, `border-dashed` and
+  `divide-dashed` draw on a shadowed element, and a background a variant, gesture or drag class, theme change
+  or play brings in shows on it. The shadow used to paint under the whole box and repaint the background and
+  border over it, in the colours they had when the shadow attached, with a solid border.
 
 ### Fixed
 
@@ -29,3 +35,6 @@
 - A `has-[.foo]:` ancestor did not match a `.foo` a play showed on a descendant whose variant payload, such as
   `first:foo`, also put `.foo` there.
 - A variant payload such as `hover:foo` turning off could take `.foo` off the element while a play still showed it.
+- A skewed or `border-dashed` element kept painting the background and border colours it had when its skew or
+  dashed border attached after a variant, gesture or drag class, a theme change or a play changed them, until
+  an unrelated re-render.

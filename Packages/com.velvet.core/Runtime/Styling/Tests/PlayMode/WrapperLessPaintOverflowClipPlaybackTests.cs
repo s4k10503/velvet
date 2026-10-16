@@ -202,41 +202,31 @@ namespace Velvet.Tests
             var clippedShadow = CountAll(IsRedTinted);
 
             // Assert — the bleed reaches the screen unclipped, the control child is gone (so the clip really
-            // is on), and not one shadow pixel survives anywhere. The paint is not removed: it is cut at the
-            // padding box like every other, and the surviving interior is hidden under the caster's own
-            // repainted opaque fill by design, which is the whole point of the silhouette. So the only part a
-            // user ever sees is the part the clip takes. Given_AShadowCasterWithNoOpaqueFill measures the
-            // surviving interior directly.
+            // is on), and not one shadow pixel survives anywhere: the shadow lies wholly outside the border box
+            // (Given_AShadowCasterWithNoOpaqueFill), and the clip cuts at the padding box.
             Assert.That((openBleed > 0, clippedControl == 0, clippedShadow == 0), Is.EqualTo((true, true, true)),
                 $"openBleed={openBleed} clippedControl={clippedControl} clippedShadow={clippedShadow}");
         }
 
         [UnityTest]
-        public IEnumerator Given_AShadowCasterWithNoOpaqueFill_When_ItsOwnOverflowIsHidden_Then_TheInteriorSurvivesAndOnlyTheOutsideIsCut()
+        public IEnumerator Given_AShadowCasterWithNoOpaqueFill_When_ItRenders_Then_NoShadowPaintsInsideItsBox()
         {
-            // Arrange — the same caster with NO background, so nothing repaints over the silhouette and its
-            // interior is visible. This is what separates "the clip removed the paint" from "the clip cut the
-            // paint where it cuts every other, and the surviving part is one a user never sees".
+            // Arrange — a caster with NO background, so nothing covers its box: CSS paints a box-shadow only
+            // outside the border box, so the box shows the backdrop.
             const string bare = BoxBase + " shadow-[0px_0px_24px_#ff0000]";
-            yield return MountBox("BareShadowOpen", bare, clip: false);
-            var openInside = Count(BoxRect, IsRedTinted);
-            var openTotal = CountAll(IsRedTinted);
 
             // Act
-            yield return MountBox("BareShadowClipped", bare, clip: true);
-            var clippedInside = Count(BoxRect, IsRedTinted);
-            var clippedTotal = CountAll(IsRedTinted);
+            yield return MountBox("BareShadowOpen", bare, clip: false);
+            var inside = Count(BoxRect, IsRedTinted);
+            var total = CountAll(IsRedTinted);
 
-            // Assert — the interior comes through the clip untouched while everything beyond the box goes. An
-            // opaque-backed caster hides that same interior under its own repainted fill, which is why the
-            // shadow reads as a total loss there without the paint having been removed.
-            Assert.That((openTotal > openInside, clippedInside == openInside, clippedTotal == clippedInside),
-                Is.EqualTo((true, true, true)),
-                $"open inside={openInside} total={openTotal}; clipped inside={clippedInside} total={clippedTotal}");
+            // Assert — the halo paints, and none of it inside the box. A shadow drawn uncut fills the box with
+            // its opaque core.
+            Assert.That((total > 0, inside), Is.EqualTo((true, 0)), $"inside={inside} total={total}");
         }
 
         // A strip through the LEFT border band at mid-height. Mid-height is where a shear displaces nothing, so
-        // one strip definition serves the shadowed and the skewed caster alike, and it is clear of the corner
+        // one strip definition serves every caster below, and it is clear of the corner
         // anti-aliasing that would otherwise decide the count.
         private static RectInt LeftBorderStrip(Rect box, float border)
             => new(Mathf.RoundToInt(box.xMin), Mathf.RoundToInt(box.center.y) - 5,
@@ -262,38 +252,28 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_ABorderedShadowCaster_When_ItsOwnOverflowIsHidden_Then_TheBorderBandBecomesAHole()
+        public IEnumerator Given_ABorderedShadowCaster_When_ItsOwnOverflowIsHidden_Then_TheBorderSurvivesTheClip()
         {
-            // Arrange — the same bordered white card three ways. The shadow paint suppresses the native
-            // background AND border and repaints both inside generated content, so the padding-box clip takes
-            // the repaint with everything else; the card keeps only what lies inside its padding box.
+            // Arrange — the shadow leaves the native border to the engine, which does not clip an element's
+            // border by its own overflow.
             const string shadow = " shadow-[0px_0px_24px_#ff0000]";
-            yield return MountBorderedCard("BorderedPlainClipped", "", clip: true);
-            var plainClipped = SampleBorderStrip();
-            yield return MountBorderedCard("BorderedShadowOpen", shadow, clip: false);
-            var shadowOpen = SampleBorderStrip();
 
             // Act
             yield return MountBorderedCard("BorderedShadowClipped", shadow, clip: true);
             var shadowClipped = SampleBorderStrip();
 
-            // Assert — an unshadowed card survives the identical clip with its border intact, so this is
-            // Velvet's repaint being cut and not an engine-wide rule; the shadowed card's repainted border
-            // reaches the screen unclipped; and under the clip the band holds no border AND shows the backdrop,
-            // which is the finding — the card loses a border-wide ring of its own background too, not just its
-            // border. All four in one comparison: the third term alone is satisfied by a card that never
-            // painted.
-            Assert.That(
-                (plainClipped.Border > 0, shadowOpen.Border > 0, shadowClipped.Border, shadowClipped.Backdrop > 0),
-                Is.EqualTo((true, true, 0, true)),
-                $"plainClipped={plainClipped} shadowOpen={shadowOpen} shadowClipped={shadowClipped}");
+            // Assert — the band holds the border and no backdrop. A shadow that repainted the border in its own
+            // generated content loses it to the padding-box clip and shows the backdrop through the band.
+            Assert.That((shadowClipped.Border > 0, shadowClipped.Backdrop), Is.EqualTo((true, 0)),
+                $"shadowClipped={shadowClipped}");
         }
 
         [UnityTest]
         public IEnumerator Given_ABorderedSkewedCaster_When_ItsOwnOverflowIsHidden_Then_TheBorderBandBecomesAHole()
         {
-            // Arrange — the skew layer owns the face on the same terms as the shadow layer, so it loses the
-            // same ring. A shallow angle keeps the sheared face over the sampled strip while unclipped.
+            // Arrange — the skew layer suppresses the native background and border and repaints both in its
+            // generated content, which the padding-box clip cuts. A shallow angle keeps the sheared face over the
+            // sampled strip while unclipped.
             const string skew = " skew-x-[10deg]";
             yield return MountBorderedCard("BorderedSkewOpen", skew, clip: false);
             var open = SampleBorderStrip();
@@ -302,8 +282,8 @@ namespace Velvet.Tests
             yield return MountBorderedCard("BorderedSkewClipped", skew, clip: true);
             var clipped = SampleBorderStrip();
 
-            // Assert — same shape as the shadow case: border present unclipped, gone under the clip, and the
-            // backdrop showing through where it was.
+            // Assert — border present unclipped, gone under the clip, and the backdrop showing through where it
+            // was.
             Assert.That((open.Border > 0, clipped.Border, clipped.Backdrop > 0), Is.EqualTo((true, 0, true)),
                 $"open={open} clipped={clipped}");
         }

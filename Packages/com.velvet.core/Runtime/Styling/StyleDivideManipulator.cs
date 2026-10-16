@@ -204,12 +204,11 @@ namespace Velvet
         {
             var divides = isDivider
                 && !ChildOutranks(child, WidthSlot(edge), (_spec.Important & DivideImportance.Width) != 0);
-            // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
-            // dashed divider on the same child would fight it — route it through the solid path (documented known
-            // limitation). Gates on EITHER owner, mirroring the element-level border-dashed gate.
+            // A skew silhouette owns the child's border face and repaints a solid border, so a dashed divider on
+            // the same child would fight it — route it through the solid path, mirroring the element-level
+            // border-dashed gate.
             var dashed = (_spec.Style == BorderLineStyle.Dashed || _spec.Style == BorderLineStyle.Dotted)
-                && !_ctx.SkewBindings.ContainsKey(child)
-                && !_ctx.ShadowBindings.ContainsKey(child);
+                && !_ctx.SkewBindings.ContainsKey(child);
 
             if (!dashed || !divides)
             {

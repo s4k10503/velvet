@@ -47,9 +47,8 @@ namespace Velvet
         internal void ApplySkewOnCreate(VisualElement element, string[] classNames)
             => _skew.ApplySkewOnCreate(element, classNames);
 
-        internal float ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged,
-            bool canReleaseFace)
-            => _skew.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
+        internal float ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged)
+            => _skew.ApplySkewOnPatch(element, classNames, classesChanged);
 
         internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)
             => _gradient.ApplyGradientOnCreate(element, classNames);
@@ -73,15 +72,14 @@ namespace Velvet
             => _dropShadow.ApplyShadowOnCreate(element, classNames);
 
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
-            float skewXDeg, bool canReleaseFace)
-            => _dropShadow.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
+            float skewXDeg)
+            => _dropShadow.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg);
 
         internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
             => _borderStyle.ApplyBorderStyleOnCreate(element, classNames);
 
-        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] classNames, bool classesChanged,
-            bool canReleaseFace)
-            => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
+        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] classNames, bool classesChanged)
+            => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
 
         internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
             => _ring.ApplyRingOnCreate(element, classNames);

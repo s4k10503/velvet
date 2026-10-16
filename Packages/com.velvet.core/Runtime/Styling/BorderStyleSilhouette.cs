@@ -24,7 +24,7 @@ namespace Velvet
         public readonly SilhouetteFaceStash Face = new(includeBackground: false);
 
         // Pass-throughs onto Face so the reconciler / tests read the stash state directly off the binding.
-        public Color BorderColor => Face.BorderColor;
+        public Color BorderColor => Face.CurrentBorder;
         public bool HasStash => Face.HasStash;
         public bool SuppressionApplied => Face.SuppressionApplied;
 
@@ -48,10 +48,9 @@ namespace Velvet
     /// border-dashed</c> composes exactly as CSS width + style + color (width from the untouched resolved
     /// style, color from the captured stash).
     /// <para>
-    /// Limitation: when the element is also skewed or shadowed, that layer owns the whole face (it repaints a
-    /// solid border as part of its silhouette), so the border stays SOLID — the reconciler defers this layer
-    /// while a skew / shadow binding is present, the same tier as the clip + shadow / clip + ring mutual
-    /// exclusions.
+    /// Limitation: when the element is also skewed, the skew layer owns the whole face (it repaints a solid
+    /// border as part of its silhouette), so the border stays SOLID — the reconciler defers this layer while a
+    /// skew binding is present.
     /// </para>
     /// </remarks>
     internal static class BorderStyleSilhouette
@@ -117,10 +116,10 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
-        // Tears the binding down for a face HANDOFF to a skew / shadow layer that took over the whole face in the
+        // Tears the binding down for a face HANDOFF to a skew layer that took over the whole face in the
         // same patch: unregisters the paint + stash callbacks but LEAVES the border-color suppression in place, so
         // the incoming layer's own suppression of the shared inline slot is not nulled out from under it (which
-        // would re-expose the native rectangular border behind the sheared / shadowed face). The plain Detach
+        // would re-expose the native rectangular border behind the sheared face). The plain Detach
         // releases instead, for when the border-style classes were genuinely removed with no higher layer taking over.
         public static void DetachPreservingSuppression(VisualElement element, BorderStyleBinding binding)
         {
@@ -133,14 +132,14 @@ namespace Velvet
             {
                 element.UnregisterCallback(binding.OnGeometryChanged);
             }
+            binding.Face.Abandon(element);
             element.MarkDirtyRepaint();
         }
 
         // Patch-time stash sync, delegated to the shared border-only face stash. Runs AFTER the per-patch
         // styling is applied (the inline border slot is shared with the arbitrary-value resolver).
-        public static void SyncStashOnPatch(VisualElement element, BorderStyleBinding binding, bool classesChanged,
-            bool canReleaseFace)
-            => binding.Face.SyncOnPatch(element, classesChanged, canReleaseFace);
+        public static void SyncStashOnPatch(VisualElement element, BorderStyleBinding binding, bool classesChanged)
+            => binding.Face.SyncOnPatch(element, classesChanged);
 
         private static void Draw(MeshGenerationContext mgc, VisualElement ve, BorderStyleBinding binding)
         {
