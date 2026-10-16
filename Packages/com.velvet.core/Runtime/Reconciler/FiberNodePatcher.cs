@@ -845,9 +845,9 @@ namespace Velvet
         // animate's inline-resolved tokens are held for the swap. Returns the play's onSwap, or null when the
         // enter holds nothing.
         internal Action? HoldInlineForEnter(VisualElement element, string[]? baseClasses, string[] fromVariantClasses,
-            StyleTransitionConfig transition, float additionalDelaySec)
+            StyleTransitionConfig transition)
         {
-            if (!StyleAnimationScheduler.RunsOnSwap(transition, additionalDelaySec))
+            if (!StyleAnimationScheduler.RunsOnSwap(transition))
             {
                 return null;
             }

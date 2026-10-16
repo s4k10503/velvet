@@ -397,7 +397,7 @@ namespace Velvet
                     {
                         var enterComplete = GeneralPathReconciler.ContainedEnterComplete(motionNode);
                         var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames,
-                            enter.From!, enter.Transition!, enter.DelaySec);
+                            enter.From!, enter.Transition!);
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, enter.From, enter.To,
                             enter.Transition!, enterComplete, enter.DelaySec, onSwap,
                             playback: MotionVariantResolver.PlaybackForChildren(motionNode,

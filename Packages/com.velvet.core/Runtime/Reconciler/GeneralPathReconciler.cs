@@ -3219,7 +3219,7 @@ namespace Velvet
                 // and with it the onSwap that would write the swap's held inline values, so they land first.
                 _patcher.LandInlineHold(motionElement!);
                 var onSwap = _patcher.HoldInlineForEnter(motionElement!, motion.ClassNames, fromClasses!,
-                    enterTransition, staggerDelaySec);
+                    enterTransition);
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
                     enterTransition, ContainedEnterComplete(motion), staggerDelaySec, onSwap,
                     playback: MotionVariantResolver.PlaybackForChildren(motion, stack.Get(MotionContext.Playback)));

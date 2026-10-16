@@ -19,7 +19,7 @@ namespace Velvet.Tests
 
         private sealed class LabelStore : Store<LabelState>
         {
-            public LabelStore() : base(new LabelState("visible")) { }
+            public LabelStore(string label = "visible") : base(new LabelState(label)) { }
             public void Set(string label) => SetState(_ => new LabelState(label));
             protected override void ResetCore() => SetState(_ => new LabelState("visible"));
         }
@@ -57,8 +57,23 @@ namespace Velvet.Tests
             ["gone"] = new MotionVariant("opacity-0", s_instant),
         };
 
+        // Only the to-side names a translate, so the play starts from the value the element shows.
+        private static readonly Dictionary<string, MotionVariant> s_toSideOnly = new()
+        {
+            ["hidden"] = "opacity-100",
+            ["visible"] = new MotionVariant("opacity-100 translate-x-[100px]", s_instant),
+        };
+
+        // The from-side names a rotate the to-side leaves unnamed.
+        private static readonly Dictionary<string, MotionVariant> s_dropsARotate = new()
+        {
+            ["hidden"] = "translate-x-[0px] rotate-[10deg]",
+            ["visible"] = new MotionVariant("translate-x-[100px]", s_instant),
+        };
+
         private static LabelStore s_labels;
         private static KeysStore s_keys;
+        private static Dictionary<string, MotionVariant> s_children;
 
         private EditorPanelSimulator _sim;
 
@@ -70,6 +85,7 @@ namespace Velvet.Tests
             _sim.ResetTimePerSimulatedFrameToDefault();
             s_labels = null;
             s_keys = null;
+            s_children = s_child;
         }
 
         [TearDown]
@@ -98,8 +114,8 @@ namespace Velvet.Tests
             return V.Motion(key: "p", name: "p", variants: s_coordinator, animate: label,
                 children: new VNode[]
                 {
-                    V.Motion(key: "c0", name: "c0", variants: s_child),
-                    V.Motion(key: "c1", name: "c1", variants: s_child),
+                    V.Motion(key: "c0", name: "c0", variants: s_children),
+                    V.Motion(key: "c1", name: "c1", variants: s_children),
                 });
         }
 
@@ -161,6 +177,50 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(TranslateX(Root.Q<VisualElement>("c1")), Is.EqualTo(100f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AStaggeredChildWhoseTargetPoseAloneNamesATranslate_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsItsValueThroughItsStaggerThenLands()
+        {
+            // Arrange — at rest on hidden, which names no translate.
+            s_children = s_toSideOnly;
+            s_labels = new LabelStore("hidden");
+            using var mounted = V.Mount(Root, V.Component(Coordinator, key: "root"));
+            Ticks(1);
+            var c1 = Root.Q<VisualElement>("c1");
+
+            // Act — to visible: a frame into the second child's 0.2 s slot, then past it.
+            s_labels.Set("visible");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Ticks(1);
+            var during = TranslateX(c1);
+            Ticks(20);
+
+            // Assert — the 0 the element showed through the slot, as Framer's delayed instant animation leaves the
+            // value, and the pose's 100 after it.
+            Assert.That(new[] { during, TranslateX(c1) }, Is.EqualTo(new[] { 0f, 100f }).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base plays the spring, which carries nothing either.
+        [Test]
+        public void Given_AStaggeredChildLeavingAPoseThatNamesARotate_When_ItsLabelChangesToAnInstantSpring_Then_NothingIsCarriedPastIt()
+        {
+            // Arrange
+            s_children = s_dropsARotate;
+            s_labels = new LabelStore("hidden");
+            using var mounted = V.Mount(Root, V.Component(Coordinator, key: "root"));
+            Ticks(1);
+
+            // Act
+            s_labels.Set("visible");
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — as for any spring the label change plays rather than lands, none of the old pose's classes
+            // is kept for the next label change to diff away.
+            var c1 = Root.Q<VisualElement>("c1");
+            var applied = mounted.Root.Reconciler.Context.MotionAppliedClasses;
+            Assert.That(applied.TryGetValue(c1, out var set) ? string.Join(",", set.Carried) : "no entry",
+                Is.EqualTo(string.Empty));
         }
 
         [Test]
