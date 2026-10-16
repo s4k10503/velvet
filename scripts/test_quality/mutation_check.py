@@ -4312,9 +4312,26 @@ def declares_a_test(text):
     return any(TEST_ATTRIBUTE_NAME.search(body) for body in TEST_ATTRIBUTE.findall(text))
 
 
+# Unity or the runtime calls a member these mark on its own, so what it writes can reach cases in any
+# assembly.
+DOMAIN_HOOKS = re.compile(
+    r"\b(?:InitializeOnLoad(?:Method)?|RuntimeInitializeOnLoadMethod|InitializeOnEnterPlayMode"
+    r"|DidReloadScripts|ModuleInitializer)(?:Attribute)?\b")
+
+
+def code_text(text, holes=False):
+    """`text` with its comments, directives and literals blanked, newlines kept. With `holes`, an
+    interpolated string is kept whole, since its holes are code."""
+    spans = [span for span in mask_spans(text) if not (holes and text.startswith("$", span[0]))]
+    mask = code_mask(text, spans)
+    return "".join(character if mask[offset] or character == "\n" else " "
+                   for offset, character in enumerate(text))
+
+
 def is_test_support(relative, text):
     """Whether a test-side file supports fixtures rather than being one: the shared helpers, every
-    assembly definition and reference, data, and a `.cs` that declares no test or sets up a fixture.
+    assembly definition and reference, data, and a `.cs` that declares no test, sets up a fixture or
+    declares a domain-load hook.
 
     `text` is the file's comment-free form, so a test attribute that is commented out declares nothing.
     A `.meta` is not support unless it belongs to an assembly definition or reference: a new fixture
@@ -4324,7 +4341,8 @@ def is_test_support(relative, text):
         return relative.endswith(KEPT_META)
     if relative.startswith(PACKAGE + "/TestUtilities/") or not relative.endswith(".cs"):
         return True
-    return not declares_a_test(text) or "SetUpFixture" in text
+    return (not declares_a_test(text) or "SetUpFixture" in text
+            or bool(DOMAIN_HOOKS.search(code_text(text))))
 
 
 def support_digest(project, relatives):
@@ -4373,6 +4391,72 @@ def context_reason(moved, run):
         for name in moved))
 
 
+# What reads the loaded assemblies rather than the one a case runs in. `Unity.CompilationPipeline.Common`
+# is the post-processor API's namespace, which `CodeGen/` files import.
+ACROSS_ASSEMBLIES = re.compile(
+    r"\bGetAssemblies\b|\bTypeCache\.|\bAssembly\.Load\w*|\bAppDomain\.CurrentDomain\b"
+    r"|\bCompilationPipeline\.(?!Common\b)")
+TYPE_DECLARATION = re.compile(r"\b(?:class|struct|interface|enum|record(?:\s+(?:class|struct))?)\s+@?([A-Za-z_]\w*)")
+DELEGATE_DECLARATION = re.compile(r"\bdelegate\s+[\w<>\[\],.?\s]*?\s@?([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(")
+# Words TYPE_DECLARATION captures that name no type: `where T : struct where U : class`.
+NOT_A_TYPE = {"where", "class", "struct", "new", "unmanaged", "notnull", "default", "enum", "interface"}
+NAMESPACE_OPENER = re.compile(r"\bnamespace\s+[\w.]+\s*$")
+
+
+def top_level_types(code):
+    """The types `code` (`code_text`'s form) declares outside every other type.
+
+    A nested type is reached from another file through its outer type's name, which is followed, except
+    after a `using static` of the outer type. Following nested names as well was rejected: it binds
+    every file spelling that short name.
+    """
+    events = [(match.start(), match.group(), None) for match in re.finditer(r"[{}]", code)]
+    events += [(match.start(), "type", match.group(1))
+               for pattern in (TYPE_DECLARATION, DELEGATE_DECLARATION) for match in pattern.finditer(code)]
+    stack, names, cursor = [], set(), 0
+    for offset, kind, name in sorted(events, key=lambda event: (event[0], event[1] != "type")):
+        if kind == "{":
+            stack.append(bool(NAMESPACE_OPENER.search(code[cursor:offset])))
+            cursor = offset + 1
+        elif kind == "}":
+            if stack:
+                stack.pop()
+            cursor = offset + 1
+        elif all(stack):
+            names.add(name)
+    return names - NOT_A_TYPE
+
+
+def cross_assembly_readers(project):
+    """The fixture files that can read a test assembly other than their own: one spelling
+    `ACROSS_ASSEMBLIES`, or one naming a top-level type that a file that is no fixture declares and
+    either spells it or names such a type in turn.
+
+    A kill such a fixture recorded can rest on any test file's content, which its record does not hash.
+    """
+    code, fixtures = {}, set()
+    for relative in sum(key_inputs(project), []):
+        if not relative.endswith(".cs"):
+            continue
+        try:
+            text = digestible((project / relative).read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        code[relative] = code_text(text, holes=True)
+        if is_test_source(relative) and not is_test_support(relative, text):
+            fixtures.add(relative)
+    found = {relative for relative, text in code.items() if ACROSS_ASSEMBLIES.search(text)}
+    followed, names = set(code) - fixtures, set()
+    while True:
+        grown = set().union(*(top_level_types(code_text(code[relative])) for relative in found & followed)) - names
+        if not grown:
+            break
+        names |= grown
+        named = re.compile(r"\b(?:{})\b".format("|".join(sorted(map(re.escape, names)))))
+        found |= {relative for relative, text in code.items() if named.search(text)}
+    return found & fixtures
+
+
 def ledger_record(mutant, project, index, text_readers, run):
     """One measured mutant as the ledger keeps it: its identity, its file's content, its verdict and,
     for a kill, the cases that killed it with the fixture sources they stood on."""
@@ -4391,10 +4475,11 @@ def short_case(case):
     return ".".join(CASE_NAME.match(case).group(1).split(".")[-2:])
 
 
-def kill_problem(record, mutant, project, index):
+def kill_problem(record, mutant, project, index, readers):
     """Why a recorded kill does not stand for this mutant in this tree, or None where it does.
 
-    A record that cannot be read as the shape `ledger_record` writes does not stand either.
+    `readers` is `cross_assembly_readers`' reading of this tree. A record that cannot be read as the
+    shape `ledger_record` writes does not stand either.
     """
     try:
         if record["verdict"] != KILLED:
@@ -4414,6 +4499,10 @@ def kill_problem(record, mutant, project, index):
                                if now.get(name) != held["files"].get(name))
                 return "the fixture source {} of its killing case {} changed".format(
                     moved[0], short_case(held["case"]))
+            across = sorted(set(now) & readers)
+            if across:
+                return "the fixture source {} of its killing case {} reads across the loaded assemblies".format(
+                    across[0], short_case(held["case"]))
     except (KeyError, TypeError, AttributeError, ValueError):
         return "the record cannot be read"
     return None
@@ -4468,6 +4557,7 @@ def decide_reuse(mutants, ledgers, project):
         return reused, {number: "no earlier campaign on the branch left a ledger that could be read"
                         for number in range(1, len(mutants) + 1)}
     tool, index, context = tool_digest(project), test_index(project), context_digests(project)
+    readers = cross_assembly_readers(project)
     for number, mutant in enumerate(mutants, start=1):
         identity = json.dumps(mutant_record(mutant, project), sort_keys=True)
         path = relative_to(mutant.path, project).as_posix()
@@ -4487,7 +4577,7 @@ def decide_reuse(mutants, ledgers, project):
                     why = "run {} recorded this file with other mutants: its content changed".format(
                         ledger["run"])
                 continue
-            problem = kill_problem(found, mutant, project, index)
+            problem = kill_problem(found, mutant, project, index, readers)
             if problem is None:
                 reused[number] = dict(found, reused_from=ledger["run"])
                 why = None
@@ -5746,11 +5836,11 @@ def main():
         # Read against this tree rather than taken from the plan's file: the plan decided it on a
         # runner of its own, and a kill that does not stand here is not a pass.
         if reused:
-            index = test_index(project)
+            index, readers = test_index(project), cross_assembly_readers(project)
             moved = context_moved(planned_under, context_digests(project))
             for number, record in reused.items():
                 problem = (context_reason(moved, record.get("reused_from")) if moved
-                           else kill_problem(record, mutants[number - 1], project, index))
+                           else kill_problem(record, mutants[number - 1], project, index, readers))
                 if problem is not None:
                     mutants[number - 1].verdict = REUSE_LAPSED
                     mutants[number - 1].detail = problem

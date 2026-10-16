@@ -285,7 +285,12 @@ and `mutation_check.py --reuse-from` decides each mutant from the newest ledger 
 - the ledger's `tool`, `build-inputs` and `test-support` digests equal this tree's, and the mutant's
   record is a kill;
 - the mutated file has the same bytes, and the mutant is the same one;
-- every recorded killing case is still declared in the tree, and no code of its fixture has changed.
+- every recorded killing case is still declared in the tree, and no code of its fixture has changed;
+- no file declaring a recorded killing case's fixture, or one it derives from, reads across the loaded
+  assemblies, where what it reads can be any test file: it spells one of the reads `ACROSS_ASSEMBLIES`
+  lists, or names a type declared outside any other type by a C# file that is not a fixture and that
+  spells one or names such a type in turn. Comments and string literals other than interpolated ones
+  are not read for it.
 
 `build-inputs` is the key's component of that name, with the mutated files in it: every file the editor
 compiles or imports other than a test source, so an edit to any production file, stylesheet, assembly
@@ -293,15 +298,18 @@ definition, project setting or package manifest, and a merged-in base that chang
 kill of the ledger. `test-support` hashes every test-side file that is not a fixture: everything under
 `Packages/com.velvet.core/TestUtilities/`, every assembly definition and reference with its `.meta`,
 every other non-C# file under a `Tests/` directory except a `.meta` (a guid only, which a new fixture
-file brings along), and every C# file there that declares no test attribute or declares a
-NUnit set-up fixture (the SetUpFixture attribute). A test attribute is read anywhere in an attribute list, in the file with its comments
+file brings along), and every C# file there that declares no test attribute, declares a
+NUnit set-up fixture (the SetUpFixture attribute), or spells outside its comments and string literals
+one of the domain-load hooks `DOMAIN_HOOKS` lists. A file gaining
+or losing a hook therefore moves the digest as well. A test attribute is read anywhere in an attribute list, in the file with its comments
 removed; a C# file is hashed that way too, so a comment edited in a helper moves nothing. Any other
 change to it lapses every kill of the ledger, and the plan's summary says which of the two moved.
 What stays reusable across a change is therefore a fixture file's: an edit
-to a fixture that killed nothing, or a comment in one that did.
+to a fixture that killed nothing and holds no domain-load hook, or a comment in one that did.
 
 Everything else is measured: a survivor, a declared one included, a mutant no ledger holds, one on a
-file that changed, one whose killing case was renamed, deleted or whose fixture was edited, and any
+file that changed, one whose killing case was renamed, deleted or whose fixture was edited or reads
+across the loaded assemblies, and any
 record that cannot be read in full — a ledger that is missing, expired, listed twice or not JSON
 is only a measurement owed. The plan's summary says how many verdicts were reused and, for each mutant it
 measures again, why. A reused kill reaches no shard: the plan writes its decision into the
@@ -318,7 +326,9 @@ measured, since it decided every mutant in its own run.
 
 What the digests leave uncovered is a test file that declares tests and is not on the killing case's
 fixture chain, but that the fixture's code calls: a static helper declared in a file that also holds
-tests of its own. A kill that depends on one stays reused after that file changes.
+tests of its own. A kill that depends on one stays reused after that file changes. So does one whose
+fixture lists its own test assembly's types through the assembly object of a type it declares, after
+another fixture file of that assembly changes: that is not a read across the loaded assemblies.
 
 **A head whose whole key was passed is not measured at all.** `mutation_check.py --key` prints
 a campaign key: one hash over six components, each printed beside it so a miss can say which moved.
