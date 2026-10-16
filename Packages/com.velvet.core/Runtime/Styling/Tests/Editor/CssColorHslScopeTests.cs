@@ -157,7 +157,7 @@ namespace Velvet.Tests
         public void Given_AnHslSaturationAbove100_When_ACaretSuffixReadsIt_Then_ItClamps()
         {
             // Act
-            StyleColorValueParser.TryParseColorSuffix("[hsl(0_150%_75%)]", out var color);
+            StyleColorValueParser.TryParseColorValue("[hsl(0_150%_75%)]", 0, true, out var color);
 
             // Assert
             Assert.That(new[] { color.r, color.g, color.b }, Is.EqualTo(new[] { 1f, 0.5f, 0.5f }).Within(Tolerance));
@@ -210,7 +210,7 @@ namespace Velvet.Tests
         public void Given_AnHslSaturationAbove100_When_ASuffixWithAnOpacityModifierReadsIt_Then_ItStaysUnclamped()
         {
             // Act
-            StyleColorValueParser.TryParseColorSuffix("[hsl(0_150%_75%)]/50", out var color);
+            StyleColorValueParser.TryParseColorValue("[hsl(0_150%_75%)]/50", 0, true, out var color);
 
             // Assert
             Assert.That(new[] { color.r, color.g, color.b }, Is.EqualTo(new[] { 1f, 0.375f, 0.375f }).Within(Tolerance));
