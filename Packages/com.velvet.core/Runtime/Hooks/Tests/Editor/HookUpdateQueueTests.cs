@@ -255,6 +255,14 @@ namespace Velvet.Tests
                 "A write behind a scheduled one is not computed at the call, so it cannot bail out");
         }
 
+        private static int PendingCount(HookStateSlot slot)
+        {
+            var pending = (System.Collections.ICollection)typeof(HookUpdateQueueSlot<int, StateAction<int>>)
+                .GetField("_pending", BindingFlags.NonPublic | BindingFlags.Instance)
+                .GetValue(slot);
+            return pending?.Count ?? 0;
+        }
+
         [Test]
         public void Given_RepeatedEqualWrites_When_NoRenderFollows_Then_OnlyTheLatestStaysQueued()
         {
@@ -267,10 +275,7 @@ namespace Velvet.Tests
             s_runsSetCount.Invoke(10);
 
             // Assert — read by name, since no surface a caller reaches shows the queue
-            var pending = (System.Collections.ICollection)typeof(HookUpdateQueueSlot<int, StateAction<int>>)
-                .GetField("_pending", BindingFlags.NonPublic | BindingFlags.Instance)
-                .GetValue(ComponentOf(mounted).StateSlots[0]);
-            Assert.That(pending.Count, Is.EqualTo(1),
+            Assert.That(PendingCount(ComponentOf(mounted).StateSlots[0]), Is.EqualTo(1),
                 "Writes that bailed out are no-ops, so each replaces the ones before it rather than piling up");
         }
 
@@ -417,6 +422,99 @@ namespace Velvet.Tests
             // Assert
             Assert.That((promoted, ComponentOf(mounted).HasPromotedTransition), Is.EqualTo((true, false)),
                 "The Normal lane the marker rode is gone, so a later settle is not skipped for it");
+        }
+
+        [Test]
+        public void Given_AnUnmountedComponent_When_ItsSetterIsInvokedWithAValue_Then_NothingIsQueued()
+        {
+            // Arrange — the slot is kept, since unmounting empties the fiber's list of them
+            var mounted = V.Mount(_root, V.Component(RunsRender, key: "runs"));
+            var slot = ComponentOf(mounted).StateSlots[0];
+            var setCount = s_runsSetCount;
+            mounted.Dispose();
+
+            // Act
+            setCount.Invoke(5);
+
+            // Assert
+            Assert.That(PendingCount(slot), Is.EqualTo(0), "A setter of an unmounted component queues nothing");
+        }
+
+        [Test]
+        public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassFoldsTheChildsNormalWrite_Then_IsPendingClears()
+        {
+            // Arrange — the child's state slot holds a Normal write, which the pass renders, and no Transition one;
+            // its deferred value keeps the Transition lane queued, so the flag clears only if the enrolment was discharged
+            using var store = new TransitionCountStore();
+            s_noteStore = store;
+            using var mounted = V.Mount(_root, V.Component(NoteParentRender, key: "note-parent"));
+            s_noteChildStart.Invoke(() => store.Set(1));
+            s_noteSetNote.Invoke(1);
+            s_noteSetQuery.Invoke("beta");
+
+            // Act
+            FiberWorkLoop.FlushState(s_noteParentFiber);
+
+            // Assert
+            Assert.That(s_noteChildFiber.TransitionSlots[0].IsPending, Is.False,
+                "A pass that renders every write queued in the child's state has nothing left of the transition to wait for");
+        }
+
+        private sealed class TransitionCountStore : Store<TransitionCountState>
+        {
+            public TransitionCountStore() : base(new TransitionCountState(0)) { }
+            public void Set(int value) => SetState(_ => new TransitionCountState(value));
+            protected override void ResetCore() => SetState(_ => new TransitionCountState(0));
+        }
+
+        private readonly record struct TransitionCountState(int Value);
+
+        private static TransitionCountStore s_noteStore;
+        private static StateUpdater<string> s_noteSetQuery;
+        private static StateUpdater<int> s_noteSetNote;
+        private static ComponentFiber s_noteParentFiber;
+        private static ComponentFiber s_noteChildFiber;
+        private static TransitionStarter s_noteChildStart;
+
+        [Component]
+        private static VNode NoteParentRender()
+        {
+            s_noteParentFiber = FiberAmbientStack.Current;
+            var (query, setQuery) = Hooks.UseState("alpha");
+            s_noteSetQuery = setQuery;
+            return V.Div(children: new VNode[] { V.Component(NoteChildRender, query, key: "note-child") });
+        }
+
+        [Component]
+        private static VNode NoteChildRender(string query)
+        {
+            s_noteChildFiber = FiberAmbientStack.Current;
+            var count = Hooks.UseStore(s_noteStore, state => state.Value);
+            var (note, setNote) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_noteSetNote = setNote;
+            s_noteChildStart = start;
+            var deferred = Hooks.UseDeferredValue(query);
+            return V.Label(name: "note-out", text: $"{deferred}:{count}:{note}");
+        }
+
+        [Test]
+        public void Given_AStagedRenderThatNeverCommitted_When_TheRecycleSweepVisitsTheSlot_Then_TheStateItComputedIsVisited()
+        {
+            // Arrange — the reducer returns a node no queued action names
+            using var mounted = V.Mount(_root, V.Component(RunsRender, key: "runs"));
+            var staged = V.Button(text: "staged");
+            var slot = new ReducerSlot<VNode, int>(null, (_, _) => staged);
+            slot.Enqueue(1, FiberUpdatePriority.Normal);
+            slot.Process(ComponentOf(mounted), FiberUpdatePriority.Normal);
+            var visited = new List<object>();
+
+            // Act
+            slot.VisitRecycleRoots(visited.Add);
+
+            // Assert
+            Assert.That(visited.Exists(root => ReferenceEquals(root, staged)), Is.True,
+                "A render a Suspense holds back has computed a state the slot will adopt, so the sweep spares its node");
         }
     }
 }

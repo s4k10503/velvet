@@ -652,10 +652,9 @@ namespace Velvet
             // commit of a render. Otherwise the staged fields are the committed ones, visited above.
             // MUTANT_SURVIVES(equivalent): visiting the staged fields when they are the committed ones marks the same roots a second time.
             if (ReferenceEquals(_nextBaseQueue, _baseQueue)) return;
-            // MUTANT_SURVIVES(unreachable): a Suspense hold keeps a render staged across a sweep, and no fixture holds one across a sweep that reaches a hook state slot.
+            // The staged queue holds only updates _baseQueue still holds, or copies of them, until the Commit
+            // adopts it, so it needs no visit of its own; the staged states can be a result no queued update names.
             Visit(visitRoot, _nextValue, _nextBaseState);
-            // MUTANT_SURVIVES(unreachable): a Suspense hold keeps a render staged across a sweep, and no fixture holds one across a sweep that reaches a hook state slot.
-            VisitQueued(visitRoot, _nextBaseQueue);
         }
 
         private void VisitQueued(Action<object> visitRoot, List<HookUpdate<TState, TAction>>? updates)
