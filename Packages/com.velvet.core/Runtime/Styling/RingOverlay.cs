@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -183,9 +184,25 @@ namespace Velvet
         // The band's width on element: the spec's, or what its width expression measures there, which is zero
         // while the element is on no panel.
         internal static float WidthOf(VisualElement element, in RingSpec spec)
-            => spec.WidthExpression == null ? spec.Width
+            => Snap(element, spec, spec.WidthExpression == null ? spec.Width
                 : StyleRelativeLengths.TryBasisOf(element, out var basis) ? spec.WidthExpression.Evaluate(basis)
-                : 0f;
+                : 0f);
+
+        // The gap between the element's edge and the band.
+        internal static float OffsetOf(VisualElement element, in RingSpec spec) => Snap(element, spec, spec.Offset);
+
+        // An outline's length as the browser snaps a border width to device pixels: one under a device pixel is
+        // one, any other is rounded toward zero to a whole number of them (RingOverlayTests pins it).
+        private static float Snap(VisualElement element, in RingSpec spec, float length)
+        {
+            if (!spec.Snaps || length == 0f || element.panel == null)
+            {
+                return length;
+            }
+            var perPixel = element.panel.scaledPixelsPerPoint;
+            var devicePixels = Math.Abs(length) * perPixel;
+            return Math.Sign(length) * (devicePixels < 1f ? 1f : (float)Math.Floor(devicePixels)) / perPixel;
+        }
 
         private static void ApplyColor(VisualElement overlay, Color color)
         {
@@ -266,11 +283,11 @@ namespace Velvet
 
             var bandWidth = WidthOf(element, spec);
             // A width the element measures follows its font and the panel as they change, as the em does in CSS.
-            if (spec.WidthExpression != null)
+            if (spec.WidthExpression != null || spec.Snaps)
             {
                 ApplyWidth(overlay, bandWidth);
             }
-            var grow = spec.Inset ? 0f : spec.Offset + bandWidth;
+            var grow = spec.Inset ? 0f : OffsetOf(element, spec) + bandWidth;
             overlay.style.left = originX - grow - hostBorderLeft;
             overlay.style.top = originY - grow - hostBorderTop;
             overlay.style.width = width + (grow * 2f);
@@ -311,7 +328,7 @@ namespace Velvet
             {
                 SyncGeometry(element, binding, host);
             }
-            var grow = binding.Spec.Inset ? 0f : binding.Spec.Offset + width;
+            var grow = binding.Spec.Inset ? 0f : OffsetOf(element, binding.Spec) + width;
             var origin = rs.transformOrigin;
             var translate = rs.translate;
             style.transformOrigin = new TransformOrigin(origin.x + grow, origin.y + grow, origin.z);

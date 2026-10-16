@@ -257,6 +257,65 @@ namespace Velvet.Tests
                 Is.EqualTo((12f, (float?)24f)));
         }
 
+        // The browser snaps an outline's width as a border width: down to a whole number of device pixels.
+        [Test]
+        public void Given_AFractionalOutlineWidth_When_LaidOut_Then_ItIsSnappedDownToDevicePixels()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] outline-[2.75px]");
+            var perPixel = card.panel.scaledPixelsPerPoint;
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(BandFor(card)?.resolvedStyle.borderTopWidth,
+                Is.EqualTo((float?)(Mathf.Floor(2.75f * perPixel) / perPixel)));
+        }
+
+        // And one under a device pixel up to one.
+        [Test]
+        public void Given_AnOutlineWidthUnderADevicePixel_When_LaidOut_Then_ItIsOneDevicePixel()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] outline-[0.25px]");
+            var perPixel = card.panel.scaledPixelsPerPoint;
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(BandFor(card)?.resolvedStyle.borderTopWidth, Is.EqualTo((float?)(1f / perPixel)));
+        }
+
+        [Test]
+        public void Given_AFractionalOutlineOffset_When_LaidOut_Then_TheBandSitsAtTheSnappedOffset()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] outline-2 outline-offset-[1.75px]");
+            var perPixel = card.panel.scaledPixelsPerPoint;
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(BandOffsetX(card), Is.EqualTo(-(Mathf.Floor(1.75f * perPixel) / perPixel) - 2f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): a ring is a box-shadow, which the browser does not snap, nor does this.
+        [Test]
+        public void Given_AFractionalRingWidth_When_LaidOut_Then_ItIsNotSnapped()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] ring-[2.75px]");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(BandFor(card)?.resolvedStyle.borderTopWidth, Is.EqualTo((float?)2.75f));
+        }
+
         [Test]
         public void Given_AnOutlineOfTwoEms_When_TheFontSizeChanges_Then_TheBandFollowsIt()
         {

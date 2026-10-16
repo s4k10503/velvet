@@ -20,3 +20,5 @@
   inert.
 - A colour function reads a math function in a channel, a hue or the alpha, as CSS does:
   `bg-[rgb(calc(255/2)_0_0)]`, `text-[hsl(calc(60deg*2)_100%_50%)]`, where it left the class inert.
+- An outline's width and offset are snapped to the panel's device pixels as the browser snaps a border width
+  (`outline-[2.75px]` is 2.5px at two device pixels a point), where they were drawn as written.

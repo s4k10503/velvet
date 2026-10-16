@@ -33,10 +33,14 @@ namespace Velvet
         public readonly float Offset;
         // ring-inset: the band is drawn just INSIDE the element edge rather than outset around it.
         public readonly bool Inset;
+        // An outline, whose width and offset the browser snaps to device pixels (RingOverlay.Snap); a ring is a
+        // box-shadow, which it does not.
+        public readonly bool Snaps;
 
         public RingSpec(float width, Color color, float offset, bool inset, bool currentColor = false,
-            StyleLengthExpression? widthExpression = null)
+            StyleLengthExpression? widthExpression = null, bool snaps = false)
         {
+            Snaps = snaps;
             Width = width;
             WidthExpression = widthExpression;
             Color = color;
@@ -150,7 +154,7 @@ namespace Velvet
             var colorSet = slots.IsOutline ? slots.OutlineColorSet : slots.RingColorSet;
             var color = slots.IsOutline ? slots.OutlineColor : slots.RingColor;
             spec = new RingSpec(effectiveWidth, color, Mathf.Max(0f, slots.Offset), slots.Inset, currentColor: !colorSet,
-                widthExpression: slots.WidthSet ? slots.WidthExpression : null);
+                widthExpression: slots.WidthSet ? slots.WidthExpression : null, snaps: slots.IsOutline);
             return true;
         }
 
