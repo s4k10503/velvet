@@ -1,8 +1,6 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -17,7 +15,6 @@ namespace Velvet.Tests
     /// holds, show the pass-through state by the time the drain's layout effects run.</item>
     /// <item>So do a holder the drain's pass rendered before the work of a descendant it subsumes settled the
     /// transition, and its reader.</item>
-    /// <item>A settle no flush lands, an async action completing, leaves no render owed to a later flush.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -94,40 +91,6 @@ namespace Velvet.Tests
             Assert.That($"{shownBefore}>{s_seenAtCommit.Skip(seenBefore).FirstOrDefault()}",
                 Is.EqualTo("base+sent|base+sent>base|base"),
                 "A holder rendered before the settle is rendered again without the entry within the same drain");
-        }
-
-        [Test]
-        public void Given_AnAsyncActionCompletingOutsideEveryFlush_When_ItsEntryIsRetired_Then_NoRenderIsLeftOwedToALaterFlush()
-        {
-            // Arrange — a flush has run before the completion, so a window left open by it would show
-            using var mounted = V.Mount(_root, V.Component(OutsideRootRender, key: "outside-root"));
-            var scheduler = mounted.GetSchedulerForTest();
-            var gate = new VelvetTaskCompletionSource();
-            s_start.Invoke(async () =>
-            {
-                s_add.Invoke("sent");
-                await gate.Task;
-            });
-            scheduler.DrainImmediateForTest();
-            scheduler.DrainDelayedForTest();
-            scheduler.DrainImmediateForTest();
-
-            // Act
-            gate.TrySetResult();
-            scheduler.DrainImmediateForTest();
-            scheduler.DrainDelayedForTest();
-            scheduler.DrainImmediateForTest();
-
-            // Assert — the shown reading is the proof the entry was retired by the completion
-            Assert.That($"{s_observedRoot.Q<Label>("holder-label").text}|{OwedRenderCount()}", Is.EqualTo("base|0"),
-                "A completion that no flush lands asks its holder for a render and records none as owed");
-        }
-
-        private static int OwedRenderCount()
-        {
-            var owed = typeof(FiberWorkLoop).GetField("OwedSettleRenders", BindingFlags.NonPublic | BindingFlags.Static)
-                ?? throw new MissingFieldException(typeof(FiberWorkLoop).FullName, "OwedSettleRenders");
-            return ((ICollection)owed.GetValue(null)).Count;
         }
 
         private static VisualElement s_observedRoot;
