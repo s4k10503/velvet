@@ -2399,15 +2399,13 @@ namespace Velvet
                 {
                     state.Committed.Insert(Math.Min(index, state.Committed.Count), (key, node));
                 }
-                // MUTANT_SURVIVES(equivalent, equality): nothing reads this record for a key that is removed at once, and
-                // the retry removes it at once again, which retires the record.
                 if (motionElement != null) state.MotionElements[key] = motionElement;
                 if (roots != null) state.ChildRoots[key] = roots;
-                // MUTANT_SURVIVES(equivalent, equality): an exit wait belongs to a key whose exit plays, and this key's
-                // did not.
                 if (wait != null) state.ExitWaits[key] = wait;
-                // MUTANT_SURVIVES(equivalent, line removed): a key mounted leaving has an exit that plays, and this
-                // key's did not.
+                // MUTANT_SURVIVES(unreachable, line removed): not measured, and no case builds it. A key mounted leaving
+                // (MountChildLeaving) reaches RemoveGhostAtOnce through ExpandPresenceGhostEntry once its exits are
+                // gone, and only the retry of an aborted pass in that window reads this record, to decide where the
+                // Motion rests.
                 if (leavingMount) state.LeavingMounts.Add(key);
             });
         }

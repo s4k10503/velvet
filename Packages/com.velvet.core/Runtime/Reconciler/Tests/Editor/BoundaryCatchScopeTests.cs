@@ -105,6 +105,9 @@ namespace Velvet.Tests
             s_unsubscribeThrows = false;
             s_outerSuspends = false;
             s_setDisposedTick = null;
+            s_outerCaught = false;
+            s_outerSuspensions = 0;
+            s_flakyInnerFiber = null;
             s_setOrderedExitTick = null;
             s_exitOrder.Clear();
         }
@@ -2069,6 +2072,24 @@ namespace Velvet.Tests
             Assert.That(Texts().Contains("q-fallback"), Is.False);
         }
 
+        // The Motion element the presence kept for the key is still known to the retry, which starts the exit from it.
+        [Test]
+        public void Given_AMotionChildWhoseRemovalAnAbortedRenderSkipped_When_TheRemovalIsPutBack_Then_ThePresenceKeepsItsMotionElement()
+        {
+            // Arrange
+            s_abortedExitChild = () => V.Motion(key: "a", transition: StyleTransitionConfig.None,
+                children: new VNode[] { V.Label(text: "m") });
+            using var mounted = V.Mount(_root, V.Component(AbortedExitHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Act
+            s_setAbortedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.PresenceStates.Values.Single().MotionElements.ContainsKey("a"),
+                Is.True);
+        }
+
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode MotionRoutedRootRender()
         {
@@ -2162,35 +2183,29 @@ namespace Velvet.Tests
             });
         }
 
-        // The boundary that declined an error out of a disposal still catches the next render's error.
+        // The boundary that declined an error out of a disposal is left ready to catch again, though the ancestor's
+        // fallback factory suspended while it handled that error.
         [Test]
-        public void Given_AnAncestorWhoseFallbackSuspendsOnAnErrorOutOfADisposal_When_TheInnerBoundaryRendersAgain_Then_ItCatchesAgain()
+        public void Given_AnAncestorWhoseFallbackSuspendsOnAnErrorOutOfADisposal_When_TheInnerBoundaryHasDeclinedIt_Then_TheInnerBoundaryIsNotLeftShowingAFallback()
         {
             // Arrange
-            LogAssert.ignoreFailingMessages = true;
             using var mounted = V.Mount(_root, V.Component(FlakyHostRender, key: "host"), CaughtErrors.Unlogged);
             s_throws = true;
             s_unsubscribeThrows = true;
             s_outerSuspends = true;
-            try
-            {
-                s_setFlakyTick.Invoke(1);
-                mounted.FlushStateForTest();
-            }
-            catch (Exception)
-            {
-                // the suspended attempt may leave the flush; the retry below is what is read
-            }
-            s_unsubscribeThrows = false;
-            s_outerSuspends = false;
 
             // Act
-            s_setFlakyTick.Invoke(2);
+            s_setFlakyTick.Invoke(1);
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(Texts(), Is.EqualTo("fallback"));
+            var actual = (s_outerSuspensions > 0, s_flakyInnerFiber.IsShowingFallback);
+            Assert.That(actual, Is.EqualTo((true, false)),
+                $"outerSuspensions={s_outerSuspensions} innerShowingFallback={s_flakyInnerFiber.IsShowingFallback}");
         }
+
+        private static int s_outerSuspensions;
+        private static ComponentFiber s_flakyInnerFiber;
 
         private static Action<int> s_setFlakyTick;
         private static bool s_unsubscribeThrows;
@@ -2211,6 +2226,7 @@ namespace Velvet.Tests
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode FlakyInnerBoundaryRender(int tick)
         {
+            s_flakyInnerFiber = FiberAmbientStack.Current;
             Hooks.UseFallback(_ => V.Label(text: "fallback"));
             if (tick == 0) return V.Label(text: "healthy");
             return V.Fragment(new VNode[]
@@ -2225,7 +2241,11 @@ namespace Velvet.Tests
         {
             Hooks.UseFallback(_ =>
             {
-                if (s_outerSuspends) throw FiberSuspendSignal.Instance;
+                if (s_outerSuspends)
+                {
+                    s_outerSuspensions++;
+                    throw FiberSuspendSignal.Instance;
+                }
                 return V.Label(text: "outer-fallback");
             });
             return V.Component(FlakyInnerBoundaryRender, tick, key: "inner");
@@ -2252,9 +2272,13 @@ namespace Velvet.Tests
             s_setDisposedTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That((Texts(), mounted.Root.Reconciler.Context.PresenceStates.Count), Is.EqualTo(("outer-fallback", 0)));
+            // Assert — the ancestor's catch is read with the count, since a mount nothing caught leaves no state either
+            var presenceStates = mounted.Root.Reconciler.Context.PresenceStates.Count;
+            Assert.That((s_outerCaught, presenceStates), Is.EqualTo((true, 0)),
+                $"outerCaught={s_outerCaught} presenceStates={presenceStates} texts={Texts()}");
         }
+
+        private static bool s_outerCaught;
 
         private static Action<int> s_setDisposedTick;
 
@@ -2273,7 +2297,11 @@ namespace Velvet.Tests
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode DisposedOuterBoundaryRender(int tick)
         {
-            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            Hooks.UseFallback(_ =>
+            {
+                s_outerCaught = true;
+                return V.Label(text: "outer-fallback");
+            });
             return tick == 0 ? V.Label(text: "ok") : V.Component(PresenceFallbackBoundaryRender, key: "inner");
         }
 
