@@ -1407,7 +1407,7 @@ namespace Velvet
 
         // The exit completions the passive-effect flush runs after the effects it stages — see
         // FiberEffects.StagePassiveCompletion.
-        internal readonly List<(System.Action Complete, ComponentFiber? Owner)> PendingPassiveCompletions = new();
+        internal readonly List<System.Action> PendingPassiveCompletions = new();
 
         // An enter that plays nothing completes with the pass that rendered it rather than inside the walk, so a
         // boundary catching later in that pass can take it back with the rest of the failed output — in the walk
@@ -1485,7 +1485,7 @@ namespace Velvet
             foreach (var entry in completions)
             {
                 if (entry.RemovedBy == null) entry.Complete();
-                else FiberEffects.StagePassiveCompletion(this, entry.Complete, entry.Boundary);
+                else FiberEffects.StagePassiveCompletion(this, entry.Complete);
             }
         }
 

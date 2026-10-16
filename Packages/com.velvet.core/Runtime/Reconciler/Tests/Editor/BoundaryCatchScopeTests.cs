@@ -2056,8 +2056,10 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base completes the exit in the removing render, before its
+        // owner can unmount. What this pins is that moving the completion to the passive flush keeps it.
         [Test]
-        public void Given_AnExitCompletionStagedByARender_When_ItsOwnerUnmountsBeforeThePassiveFlush_Then_ItNeverRuns()
+        public void Given_AnExitCompletionStagedByARender_When_ItsOwnerUnmountsBeforeThePassiveFlush_Then_ItStillRuns()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(UnmountingOwnerHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -2070,8 +2072,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
 
-            // Assert
-            Assert.That(s_exitOrder.Contains("exit"), Is.False);
+            // Assert — Framer Motion calls it for a presence that left with an enclosing child as well
+            Assert.That(s_exitOrder.Contains("exit"), Is.True);
         }
 
         private static Action<bool> s_setOwnerShown;

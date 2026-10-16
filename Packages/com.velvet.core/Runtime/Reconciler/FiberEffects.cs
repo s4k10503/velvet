@@ -576,28 +576,25 @@ namespace Velvet
         // An exit whose child left in the pass that just ended completes in the passive-effect flush, after the
         // effects that flush runs, as Framer Motion's PresenceChild completes it from an effect. A context with no
         // scheduler anchor, a bare Reconciler, has no flush to wait for and completes at once.
-        internal static void StagePassiveCompletion(ReconcilerContext context, Action complete, ComponentFiber? owner)
+        internal static void StagePassiveCompletion(ReconcilerContext context, Action complete)
         {
             if (context.BatchScheduler.Anchor == null)
             {
                 complete();
                 return;
             }
-            context.PendingPassiveCompletions.Add((complete, owner));
+            context.PendingPassiveCompletions.Add(complete);
             ArmPassiveDrain(context);
         }
 
-        // A presence unmounts with its owner, and its callback is not called once it has.
+        // Run whether or not the presence's owner has unmounted since staging: an inner presence that leaves with
+        // its enclosing child is gone by the flush, and Framer Motion still calls its onExitComplete.
         private static void RunPassiveCompletions(ReconcilerContext context)
         {
             if (context.PendingPassiveCompletions.Count == 0) return;
             var completions = context.PendingPassiveCompletions.ToArray();
             context.PendingPassiveCompletions.Clear();
-            foreach (var (complete, owner) in completions)
-            {
-                if (owner is { IsDisposed: true }) continue;
-                complete();
-            }
+            foreach (var complete in completions) complete();
         }
 
         // Tree-ordered, 2-phase passive (UseEffect) commit across every fiber staged in the current
