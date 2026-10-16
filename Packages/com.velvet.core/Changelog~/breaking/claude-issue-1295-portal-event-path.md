@@ -5,6 +5,7 @@
   content, in either the capture or the bubble phase, whichever reconciler rendered the element, as the container
   of a React portal never sees them. They used to run through the engine's own dispatch. A handler on a portal
   container that relied on hearing its content's pointer, wheel, key, focus, value-change or click events now has to
-  sit on a logical ancestor of the `V.Portal` call site instead. A `Button`'s `onClick` follows the press that
-  started it, a pointer-down or a submit raised in the content. An element that is both a physical and a logical
-  ancestor still runs once in each phase.
+  sit on a logical ancestor of the `V.Portal` call site instead. A `Button`'s `onClick` runs unless the press and
+  the release were both in that content, as a browser raises a click on the common ancestor of the two. An element that is both a physical and a logical
+  ancestor still runs once in each phase, except for a pointer-down or pointer-up that a physical-only `Button`
+  between the content and it consumes.

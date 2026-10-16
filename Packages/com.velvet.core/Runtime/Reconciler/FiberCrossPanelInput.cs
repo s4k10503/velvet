@@ -265,6 +265,11 @@ namespace Velvet
         // portal content, not through the context that bound the handler being asked.
         private static readonly HashSet<ReconcilerContext> s_bridged = new();
 
+#if UNITY_EDITOR
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticFields() => s_bridged.Clear();
+#endif
+
         private static void Retire(ReconcilerContext ctx)
         {
             if (ctx.EventManager.HoldsBridges) return;
@@ -276,15 +281,20 @@ namespace Velvet
         // there visits. Each step takes the position a relocated element answers to, else hierarchy.parent, the
         // step native dispatch takes, so every element on the physical path outside a relocated span is met.
         // Synthetic invocation never asks, since it walks the chain itself.
-        internal static bool OffLogicalChain(VisualElement element, EventBase evt)
+        internal static bool OffLogicalChain(VisualElement element, EventBase evt) =>
+            OffLogicalChain(element, evt.target as VisualElement);
+
+        // A target out of the panel, as an earlier handler of the same dispatch can leave it, reads as on the
+        // chain: a walk from it reaches no ancestor, and the handlers the React tree still runs must not be
+        // skipped for that.
+        internal static bool OffLogicalChain(VisualElement element, VisualElement? target)
         {
             if (s_bridged.Count == 0) return false;
-            var target = evt.target as VisualElement;
             for (var current = target; current != null; current = ParentOnChain(current))
             {
                 if (ReferenceEquals(current, element)) return false;
             }
-            return target != null;
+            return target != null && target.panel != null;
         }
 
         private static VisualElement? ParentOnChain(VisualElement element)

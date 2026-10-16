@@ -84,9 +84,13 @@ The boundary behaves the same in all four forms:
   call site, the element the portal renders into included, runs none of its `events:` handlers for an
   event raised in the content, in either phase, whichever reconciler rendered the element, as the container of a React portal never sees them.
   That covers the `Button` `onClick`s and the field focus, blur, key and value-change bindings too. A
-  `Button`'s click follows the press that started it, a pointer-down or a submit raised in the content. An element that is both — a physical
-  ancestor of the target AND a logical ancestor of the call site — still fires exactly once, and so
-  does a logical ancestor reached through portals nested in each other's content. A portal's child
+  `Button`'s click is decided the way a browser raises one, on the common ancestor of the press and the
+  release: it runs unless both were in content off the Button's logical chain, and a submit follows the
+  element it was raised on. An element that is both — a physical
+  ancestor of the target AND a logical ancestor of the call site — still fires exactly once, except for a
+  pointer-down or pointer-up with a physical-only `Button` between the content and that element: the
+  Button's own click handling consumes both there, so the element does not hear them.
+  A logical ancestor reached through portals nested in each other's content also fires once. A portal's child
   need not be a component: an element written straight into the portal bubbles the same way. `FocusEvent`/`BlurEvent` do not
   bubble, in a portal or out of one, as the DOM's `focus`/`blur` do not; React's bubbling
   `onFocus`/`onBlur` correspond to `FocusInEvent`/`FocusOutEvent`. See "Cross-panel input routing"

@@ -21,14 +21,17 @@ namespace Velvet
         // event type" without any generic type parameter to dispatch on.
         private readonly Dictionary<VisualElement, List<FiberEventBinding>> _bindingsByElement = new();
 
-        // Per Button, whether the press or submit now under way began in content off the logical chain. It is
-        // kept apart from the bindings because a render that binds the Button again between the press and the
-        // click must not lose it; Forget drops it once the Button leaves the tree.
+        // Per Button, the press origins a click is decided from. It is kept apart from the bindings because a
+        // render that binds the Button again between the press and the click must not lose them; Forget drops
+        // it once the Button leaves the tree.
         private readonly Dictionary<Button, ClickGate> _clickGates = new();
 
         private sealed class ClickGate
         {
-            public bool OffChain;
+            // The pointers whose press began in content off the logical chain.
+            public readonly HashSet<int> OffChainDowns = new();
+            // Whether the click now being raised is one the React tree would not carry to the Button.
+            public bool Suppress;
             public Action Unwire = null!;
         }
 
@@ -169,7 +172,7 @@ namespace Velvet
                     var gate = GateClicks(button);
                     Action wrapped = () =>
                     {
-                        if (gate.OffChain) return;
+                        if (gate.Suppress) return;
                         RunDiscrete(handler);
                     };
                     button.clicked += wrapped;
@@ -276,7 +279,7 @@ namespace Velvet
             EventCallback<FocusInEvent> keyboardOpened = _ => keyboard = field.textEdition.touchScreenKeyboard;
             EventCallback<FocusOutEvent> keyboardClosed = evt =>
             {
-                if (keyboard != null && SubmitsOnFocusOut(field, evt, keyboard.status))
+                if (SubmitsOnFocusOut(field, evt, keyboard, static held => held.status))
                 {
                     RunDiscrete(() => handler?.Invoke(field.value));
                 }
@@ -299,9 +302,11 @@ namespace Velvet
         }
 
         // A focus-out raised in portal content the field holds without being above its call site is no blur of the
-        // field, however the keyboard ended.
-        internal static bool SubmitsOnFocusOut(TextField field, FocusOutEvent evt, UnityEngine.TouchScreenKeyboard.Status status)
-            => !FiberCrossPanelEventDispatcher.OffLogicalChain(field, evt) && SubmitsOnKeyboardClose(field.multiline, status);
+        // field, however the keyboard ended. The keyboard is a type parameter so that a case can stand one in.
+        internal static bool SubmitsOnFocusOut<TKeyboard>(TextField field, FocusOutEvent evt, TKeyboard? keyboard,
+            Func<TKeyboard, UnityEngine.TouchScreenKeyboard.Status> statusOf) where TKeyboard : class
+            => keyboard != null && !FiberCrossPanelEventDispatcher.OffLogicalChain(field, evt)
+                && SubmitsOnKeyboardClose(field.multiline, statusOf(keyboard));
 
         // Done is the status a keyboard the user finished with reports; a multi-line field never submits.
         internal static bool SubmitsOnKeyboardClose(bool multiline, UnityEngine.TouchScreenKeyboard.Status status)
@@ -649,37 +654,59 @@ namespace Velvet
             actions.Add(() => element.UnregisterCallback(wrapped));
         }
 
-        // clicked carries no event, so the origin of a click is read where the press starts: a pointer-down or a
-        // submit trickling through the Button still names the element it was raised on. The up and cancel
-        // callbacks are registered after the Button's own, which therefore read the origin first. A capture-out
-        // is left out of that: its order against the click is not pinned here, and every press or submit starts
-        // by writing the origin again.
+        // clicked carries no event, so whether a click reaches the Button is decided where it starts. A browser
+        // raises a click on the common ancestor of the press and the release, and React walks the fiber tree
+        // from there: the Button hears it unless both ended off the logical chain. The pointer-up is read on
+        // its trickle pass, before the Button's own click handling raises clicked, and the bubble-pass
+        // callbacks registered after it clear the decision once that handling has run. A submit has the one
+        // element it was raised on. A capture-out is left out: where it falls against the click is not pinned.
         private ClickGate GateClicks(Button button)
         {
             if (_clickGates.TryGetValue(button, out var gate)) return gate;
 
             gate = new ClickGate();
-            EventCallback<PointerDownEvent> pressed = evt => BeginPress(button, gate, evt);
-            EventCallback<NavigationSubmitEvent> submitting = evt => BeginPress(button, gate, evt);
-            EventCallback<PointerUpEvent> released = _ => gate.OffChain = false;
-            EventCallback<PointerCancelEvent> cancelled = _ => gate.OffChain = false;
+            EventCallback<PointerDownEvent> pressed = evt =>
+            {
+                if (FiberCrossPanelEventDispatcher.OffLogicalChain(button, evt)) gate.OffChainDowns.Add(evt.pointerId);
+                else gate.OffChainDowns.Remove(evt.pointerId);
+            };
+            EventCallback<PointerUpEvent> releasing = evt =>
+                gate.Suppress = gate.OffChainDowns.Remove(evt.pointerId)
+                    && FiberCrossPanelEventDispatcher.OffLogicalChain(button, ReleasedOn(button, evt));
+            EventCallback<PointerUpEvent> released = _ => gate.Suppress = false;
+            EventCallback<PointerCancelEvent> cancelled = evt =>
+            {
+                gate.OffChainDowns.Remove(evt.pointerId);
+                gate.Suppress = false;
+            };
+            EventCallback<NavigationSubmitEvent> submitting = evt =>
+                gate.Suppress = FiberCrossPanelEventDispatcher.OffLogicalChain(button, evt);
+            EventCallback<NavigationSubmitEvent> submitted = _ => gate.Suppress = false;
             button.RegisterCallback(pressed, TrickleDown.TrickleDown);
+            button.RegisterCallback(releasing, TrickleDown.TrickleDown);
             button.RegisterCallback(submitting, TrickleDown.TrickleDown);
             button.RegisterCallback(released);
             button.RegisterCallback(cancelled);
+            button.RegisterCallback(submitted);
             gate.Unwire = () =>
             {
                 button.UnregisterCallback(pressed, TrickleDown.TrickleDown);
+                button.UnregisterCallback(releasing, TrickleDown.TrickleDown);
                 button.UnregisterCallback(submitting, TrickleDown.TrickleDown);
                 button.UnregisterCallback(released);
                 button.UnregisterCallback(cancelled);
+                button.UnregisterCallback(submitted);
             };
             _clickGates[button] = gate;
             return gate;
         }
 
-        private static void BeginPress(Button button, ClickGate gate, EventBase evt) =>
-            gate.OffChain = FiberCrossPanelEventDispatcher.OffLogicalChain(button, evt);
+        // The element a release landed on. One aimed at the Button itself names
+        // whatever lies under the pointer; the Button stands for a release over nothing.
+        private static VisualElement? ReleasedOn(Button button, PointerUpEvent evt)
+            => ReferenceEquals(evt.target, button)
+                ? button.panel?.Pick(evt.position) ?? button
+                : evt.target as VisualElement;
 
         // Called once a Button leaves the tree for good.
         internal void Forget(Button button)
@@ -708,7 +735,7 @@ namespace Velvet
 
             Action wrapped = () =>
             {
-                if (gate.OffChain) return;
+                if (gate.Suppress) return;
                 RunDiscrete(() => handler?.Invoke(slot.Current));
             };
             button.clicked += wrapped;

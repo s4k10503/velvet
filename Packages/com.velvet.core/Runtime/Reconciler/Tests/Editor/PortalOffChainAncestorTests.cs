@@ -5,6 +5,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
+using static Velvet.Tests.PortalOffChainSupport;
 
 namespace Velvet.Tests
 {
@@ -15,95 +16,18 @@ namespace Velvet.Tests
     /// the content is attached to. The logical ancestors keep their handlers, once in each phase.
     /// </summary>
     [TestFixture]
-    internal sealed class PortalOffChainAncestorTests : PanelTestBase
+    internal sealed class PortalOffChainAncestorTests : PortalOffChainFixtureBase
     {
-        private const string TargetId = "off-chain-target";
-
-        private static readonly List<string> s_log = new();
-        private static StateUpdater<bool> s_showPortal;
-
         private static StateUpdater<bool> s_showFirst;
         private static StateUpdater<bool> s_showSecond;
         private static StateUpdater<bool> s_showButton;
 
-        private VisualElement _root;
-        private MountedTree _other;
-
         [SetUp]
-        public override void SetUp()
+        public void ResetStateUpdaters()
         {
-            base.SetUp();
-            s_log.Clear();
-            s_showPortal = default;
             s_showFirst = default;
             s_showSecond = default;
             s_showButton = default;
-            RuntimeStateProbe.ClearPortalRegistry();
-            _root = new VisualElement();
-            _window.rootVisualElement.Add(_root);
-        }
-
-        [TearDown]
-        public override void TearDown()
-        {
-            _mounted?.Dispose();
-            _mounted = null;
-            _other?.Dispose();
-            _other = null;
-            RuntimeStateProbe.ClearPortalRegistry();
-            base.TearDown();
-        }
-
-        [Component]
-        private static VNode CallerRender()
-        {
-            var (show, setShow) = Hooks.UseState(false);
-            s_showPortal = setShow;
-            return V.When(show, () => V.Portal(TargetId, children: new VNode[] { V.Div(name: "content") }));
-        }
-
-        private static FiberEventBinding[] PointerDown(string entry, bool capture) =>
-            new FiberEventBinding[] { new PointerDownBinding { Handler = _ => s_log.Add(entry), Capture = capture } };
-
-        private static FiberEventBinding[] Wheel(string entry, bool capture) =>
-            new FiberEventBinding[] { new WheelBinding { Handler = _ => s_log.Add(entry), Capture = capture } };
-
-        private static FiberEventBinding[] Change(string entry) =>
-            new FiberEventBinding[] { new ChangeEventBinding<bool> { Handler = _ => s_log.Add(entry) } };
-
-        private static void Dispatch<TEvent>(TEvent evt, VisualElement target) where TEvent : EventBase<TEvent>, new()
-        {
-            using (evt)
-            {
-                evt.target = target;
-                target.SendEvent(evt);
-            }
-        }
-
-        private static System.Action RegisterTarget(VisualElement element)
-        {
-            FiberPortalRegistry.Register(TargetId, element);
-            return () => FiberPortalRegistry.Unregister(TargetId);
-        }
-
-        // The portal's target is put under "holder" once mounted, so "holder" holds the content without being
-        // above the call site, which sits under "caller". Returns the portal's content.
-        private VisualElement MountHolderBesideCaller(
-            System.Type holderType, FiberEventBinding[] holderEvents, System.Type callerType, FiberEventBinding[] callerEvents)
-        {
-            _mounted = V.Mount(_root, V.Div(children: new VNode[]
-            {
-                V.Motion(name: "holder", elementType: holderType, events: holderEvents,
-                    children: new VNode[] { V.Div(name: "slot") }),
-                V.Motion(name: "caller", elementType: callerType, events: callerEvents,
-                    children: new VNode[] { V.Component(CallerRender) }),
-            }));
-            var target = new VisualElement();
-            _root.Q<VisualElement>("slot").Add(target);
-            FiberPortalRegistry.Register(TargetId, target);
-            s_showPortal.Invoke(true);
-            _mounted.FlushStateForTest();
-            return target.Q<VisualElement>("content");
         }
 
         [Test]
@@ -266,72 +190,122 @@ namespace Velvet.Tests
             return _root.Q<Button>("holder");
         }
 
+        // Raises the click between the gate's decision and its clearing, which is when a click arising from the
+        // event being dispatched is raised.
+        private static void ClickDuring<TEvent>(Button button, System.Action raise) where TEvent : EventBase<TEvent>, new()
+        {
+            button.RegisterCallback<TEvent>(_ => button.SimulateClick(), TrickleDown.TrickleDown);
+            raise();
+        }
+
+        private static PointerDownEvent TouchDown(int fingerId) =>
+            PointerDownEvent.GetPooled(new UnityEngine.Touch { fingerId = fingerId });
+
+        private static PointerUpEvent TouchUp(int fingerId) =>
+            PointerUpEvent.GetPooled(new UnityEngine.Touch { fingerId = fingerId });
+
         [Test]
-        public void Given_APhysicalOnlyButtonAroundThePortalTarget_When_APressInTheContentIsFollowedByItsClick_Then_ItsOnClickDoesNotRun()
+        public void Given_APhysicalOnlyButtonAroundThePortalTarget_When_APressAndReleaseInTheContentRaiseAClick_Then_ItsOnClickDoesNotRun()
         {
             // Arrange
             var button = MountButtonHolderBesideCaller();
-            Dispatch(PointerDownEvent.GetPooled(), button.Q<VisualElement>("content"));
+            var content = button.Q<VisualElement>("content");
+            Dispatch(PointerDownEvent.GetPooled(), content);
 
             // Act
-            button.SimulateClick();
+            ClickDuring<PointerUpEvent>(button, () => Dispatch(PointerUpEvent.GetPooled(), content));
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo(""));
         }
 
         [Test]
-        public void Given_APhysicalOnlyButtonAroundThePortalTarget_When_ASubmitInTheContentIsFollowedByItsClick_Then_ItsOnClickDoesNotRun()
+        public void Given_APhysicalOnlyButtonAroundThePortalTarget_When_ASubmitInTheContentRaisesAClick_Then_ItsOnClickDoesNotRun()
         {
             // Arrange
             var button = MountButtonHolderBesideCaller();
-            Dispatch(EventBase<NavigationSubmitEvent>.GetPooled(), button.Q<VisualElement>("content"));
+            var content = button.Q<VisualElement>("content");
 
             // Act
-            button.SimulateClick();
+            ClickDuring<NavigationSubmitEvent>(button, () => Dispatch(EventBase<NavigationSubmitEvent>.GetPooled(), content));
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo(""));
         }
 
         [Test]
-        public void Given_APhysicalOnlyButtonWithAClickedEventBinding_When_APressInTheContentIsFollowedByItsClick_Then_ItDoesNotRun()
+        public void Given_APhysicalOnlyButtonWithAClickedEventBinding_When_APressAndReleaseInTheContentRaiseAClick_Then_ItDoesNotRun()
         {
             // Arrange
             var button = MountButtonHolderBesideCaller(new FiberEventBinding[]
             {
                 new ClickedEventBinding { Handler = _ => s_log.Add("click-event") },
             });
-            Dispatch(PointerDownEvent.GetPooled(), button.Q<VisualElement>("content"));
+            var content = button.Q<VisualElement>("content");
+            Dispatch(PointerDownEvent.GetPooled(), content);
 
             // Act
-            button.SimulateClick();
+            ClickDuring<PointerUpEvent>(button, () => Dispatch(PointerUpEvent.GetPooled(), content));
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo(""));
         }
 
         // GREEN_ON_BASE(characterization): the base runs a Button's click whatever began it.
-        // This pins that a press which ended in a pointer-up leaves the next click alone.
+        // This pins that a press in the content released over the Button's own area clicks the Button, which is
+        // the common ancestor of the two.
         [Test]
-        public void Given_APressInTheContentThatEndedInAPointerUp_When_TheButtonIsClicked_Then_ItsOnClickRuns()
+        public void Given_APressInTheContent_When_ItIsReleasedOverTheButtonsOwnArea_Then_ItsOnClickRuns()
         {
             // Arrange
             var button = MountButtonHolderBesideCaller();
             Dispatch(PointerDownEvent.GetPooled(), button.Q<VisualElement>("content"));
-            Dispatch(PointerUpEvent.GetPooled(), button);
 
             // Act
-            button.SimulateClick();
+            ClickDuring<PointerUpEvent>(button, () => Dispatch(PointerUpEvent.GetPooled(), button.Q<VisualElement>("slot")));
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("click"));
         }
 
         // GREEN_ON_BASE(characterization): the base runs a Button's click whatever began it.
-        // This pins that a cancelled press leaves the next click alone.
+        // This pins that a press on the Button's own area released in the content clicks the Button as well.
+        [Test]
+        public void Given_APressOnTheButtonsOwnArea_When_ItIsReleasedInTheContent_Then_ItsOnClickRuns()
+        {
+            // Arrange
+            var button = MountButtonHolderBesideCaller();
+            Dispatch(PointerDownEvent.GetPooled(), button.Q<VisualElement>("slot"));
+
+            // Act
+            ClickDuring<PointerUpEvent>(button, () => Dispatch(PointerUpEvent.GetPooled(), button.Q<VisualElement>("content")));
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("click"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs a Button's click whatever began it.
+        // This pins that a press cancelled in the content leaves a later click alone.
         [Test]
         public void Given_APressInTheContentThatWasCancelled_When_TheButtonIsClicked_Then_ItsOnClickRuns()
+        {
+            // Arrange
+            var button = MountButtonHolderBesideCaller();
+            var content = button.Q<VisualElement>("content");
+            Dispatch(PointerDownEvent.GetPooled(), content);
+            Dispatch(EventBase<PointerCancelEvent>.GetPooled(), button);
+
+            // Act
+            ClickDuring<PointerUpEvent>(button, () => Dispatch(PointerUpEvent.GetPooled(), content));
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("click"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs a Button's click whatever began it.
+        // This pins that a press cancelled in the content leaves a click raised by other means alone.
+        [Test]
+        public void Given_APressInTheContentThatWasCancelled_When_TheButtonIsClickedByOtherMeans_Then_ItsOnClickRuns()
         {
             // Arrange
             var button = MountButtonHolderBesideCaller();
@@ -346,20 +320,53 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base runs a Button's click whatever began it.
-        // This pins that a press on the Button's own child is no press from off the chain.
+        // This pins that a release in the content that raised no click leaves a click raised by other means alone.
         [Test]
-        public void Given_APressInTheContentFollowedByAPressOnTheButtonsOwnChild_When_TheButtonIsClicked_Then_ItsOnClickRuns()
+        public void Given_APressAndReleaseInTheContentThatRaisedNoClick_When_TheButtonIsClickedAfterwards_Then_ItsOnClickRuns()
         {
             // Arrange
             var button = MountButtonHolderBesideCaller();
-            Dispatch(PointerDownEvent.GetPooled(), button.Q<VisualElement>("content"));
-            Dispatch(PointerDownEvent.GetPooled(), button.Q<VisualElement>("slot"));
+            var content = button.Q<VisualElement>("content");
+            Dispatch(PointerDownEvent.GetPooled(), content);
+            Dispatch(PointerUpEvent.GetPooled(), content);
 
             // Act
             button.SimulateClick();
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("click"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs a Button's click whatever began it.
+        // This pins that a submit in the content, once handled, leaves a click raised by other means alone.
+        [Test]
+        public void Given_ASubmitInTheContent_When_TheButtonIsClickedAfterwards_Then_ItsOnClickRuns()
+        {
+            // Arrange
+            var button = MountButtonHolderBesideCaller();
+            Dispatch(EventBase<NavigationSubmitEvent>.GetPooled(), button.Q<VisualElement>("content"));
+
+            // Act
+            button.SimulateClick();
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("click"));
+        }
+
+        [Test]
+        public void Given_APressInTheContentOfOnePointer_When_AnotherPointerPressesAndReleasesInTheContent_Then_ItsOnClickDoesNotRun()
+        {
+            // Arrange
+            var button = MountButtonHolderBesideCaller();
+            var content = button.Q<VisualElement>("content");
+            Dispatch(TouchDown(1), content);
+            Dispatch(TouchDown(2), button.Q<VisualElement>("slot"));
+
+            // Act
+            ClickDuring<PointerUpEvent>(button, () => Dispatch(TouchUp(1), content));
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo(""));
         }
 
         private static int s_clickRenders;
@@ -376,7 +383,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APhysicalOnlyButtonBoundAgainByARender_When_APressInTheContentIsFollowedByItsClick_Then_ItsOnClickDoesNotRun()
+        public void Given_APhysicalOnlyButtonBoundAgainByARender_When_APressInTheContentIsReleasedThere_Then_ItsOnClickDoesNotRun()
         {
             // Arrange — the press starts before the render that binds the Button again.
             s_clickRenders = 0;
@@ -390,13 +397,14 @@ namespace Velvet.Tests
             FiberPortalRegistry.Register(TargetId, target);
             s_showPortal.Invoke(true);
             _mounted.FlushStateForTest();
-            Dispatch(PointerDownEvent.GetPooled(), target.Q<VisualElement>("content"));
+            var content = target.Q<VisualElement>("content");
+            Dispatch(PointerDownEvent.GetPooled(), content);
             var rendersBefore = s_clickRenders;
             s_showButton.Invoke(true);
             _mounted.FlushStateForTest();
 
             // Act
-            _root.Q<Button>("holder").SimulateClick();
+            ClickDuring<PointerUpEvent>(_root.Q<Button>("holder"), () => Dispatch(PointerUpEvent.GetPooled(), content));
 
             // Assert
             Assert.That((s_clickRenders > rendersBefore, string.Join(",", s_log)), Is.EqualTo((true, "")));
@@ -450,24 +458,6 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", s_log), Is.EqualTo("caller"));
         }
 
-        // The field holds the portal's target without being above the call site. Returns the portal's content.
-        private VisualElement MountTextFieldAroundTarget(EventCallback<FocusInEvent> onFocus)
-        {
-            _mounted = V.Mount(_root, V.Div(children: new VNode[]
-            {
-                V.TextField(name: "field", onFocus: onFocus),
-                V.Motion(name: "caller",
-                    events: new FiberEventBinding[] { new FocusInBinding { Handler = _ => s_log.Add("caller") } },
-                    children: new VNode[] { V.Component(CallerRender) }),
-            }));
-            var target = new VisualElement();
-            _root.Q<VisualElement>("field").Add(target);
-            FiberPortalRegistry.Register(TargetId, target);
-            s_showPortal.Invoke(true);
-            _mounted.FlushStateForTest();
-            return target.Q<VisualElement>("content");
-        }
-
         [Test]
         public void Given_AFocusInReachingPortalContentInsideATextField_When_TheFieldHasAnOnFocus_Then_OnlyTheLogicalAncestorHearsIt()
         {
@@ -479,33 +469,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("caller"));
-        }
-
-        private static void DispatchFocus<TEvent>(VisualElement target) where TEvent : FocusEventBase<TEvent>, new()
-        {
-            using (var evt = FocusEventBase<TEvent>.GetPooled(target, null, FocusChangeDirection.unspecified, target.focusController))
-            {
-                target.SendEvent(evt);
-            }
-        }
-
-        [Test]
-        public void Given_AFocusOutRaisedInPortalContentInsideATextField_When_TheKeyboardReportsDone_Then_OnlyAFocusOutOnTheFieldItselfSubmits()
-        {
-            // Arrange
-            var content = MountTextFieldAroundTarget(_ => { });
-            var field = _root.Q<TextField>("field");
-            var submits = new List<bool>();
-            field.RegisterCallback<FocusOutEvent>(
-                evt => submits.Add(FiberEventBindingManager.SubmitsOnFocusOut(field, evt, UnityEngine.TouchScreenKeyboard.Status.Done)),
-                TrickleDown.TrickleDown);
-
-            // Act
-            DispatchFocus<FocusOutEvent>(content);
-            DispatchFocus<FocusOutEvent>(field);
-
-            // Assert
-            Assert.That(string.Join(",", submits), Is.EqualTo("False,True"));
         }
 
         // GREEN_ON_BASE(characterization): the base runs an element above both the target and the call site once.
@@ -602,18 +565,78 @@ namespace Velvet.Tests
             Assert.That((held, afterFirst, BridgedContexts() - before), Is.EqualTo((1, 1, 0)));
         }
 
+        [Component]
+        private static VNode DetachingChildRender()
+        {
+            var (show, setShow) = Hooks.UseState(true);
+            s_showButton = setShow;
+            return V.Motion(name: "ancestor", events: PointerDown("ancestor", false), children: new VNode[]
+            {
+                V.When(show, () => V.Motion(name: "child", events: new FiberEventBinding[]
+                {
+                    new PointerDownBinding { Handler = _ => { s_log.Add("child"); s_showButton.Invoke(false); } },
+                })),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs an ancestor's handler after a child's handler removed the child.
+        // This pins that the off-chain check, once a portal is mounted, still runs that ancestor.
+        [Test]
+        public void Given_APortalIsMounted_When_AChildsPointerDownHandlerRemovesTheChild_Then_ItsLogicalAncestorStillRunsItsHandler()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Div(children: new VNode[]
+            {
+                V.Component(DetachingChildRender),
+                V.Div(name: "slot"),
+                V.Component(CallerRender),
+            }));
+            var target = new VisualElement();
+            _root.Q<VisualElement>("slot").Add(target);
+            FiberPortalRegistry.Register(TargetId, target);
+            s_showPortal.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Act
+            Dispatch(PointerDownEvent.GetPooled(), _root.Q<VisualElement>("child"));
+
+            // Assert
+            Assert.That(string.Join(",", s_log), Is.EqualTo("child,ancestor"));
+        }
+
+        [Test]
+        public void Given_AMountHoldingAPortal_When_TheStaticStateIsReset_Then_NoContextIsHeldAnyMore()
+        {
+            // Arrange
+            var before = BridgedContexts();
+            var target = new VisualElement();
+            _window.rootVisualElement.Add(target);
+            FiberPortalRegistry.Register("off-chain-first", target);
+            _mounted = V.Mount(_root, V.Portal("off-chain-first", children: new VNode[] { V.Div(name: "content") }));
+            var held = BridgedContexts() - before;
+
+            // Act
+            typeof(FiberCrossPanelEventDispatcher)
+                .GetMethod("ResetStaticFields", BindingFlags.Static | BindingFlags.NonPublic)?.Invoke(null, null);
+
+            // Assert
+            Assert.That((held, BridgedContexts()), Is.EqualTo((1, 0)));
+        }
+
         private static readonly FieldInfo s_gatesField =
             typeof(FiberEventBindingManager).GetField("_clickGates", BindingFlags.Instance | BindingFlags.NonPublic);
 
         private FiberEventBindingManager EventManager => _mounted.Root.Reconciler.Context.EventManager;
 
-        private static bool OffChainOf(object gate) => (bool)gate.GetType().GetField("OffChain").GetValue(gate);
+        private static object GateField(object gate, string name) => gate.GetType().GetField(name).GetValue(gate);
 
-        private static void SetOffChain(object gate, bool value) => gate.GetType().GetField("OffChain").SetValue(gate, value);
+        private static void SetSuppress(object gate, bool value) => gate.GetType().GetField("Suppress").SetValue(gate, value);
 
-        // What a Button's press-origin callbacks still do after unwire ran: a callback left registered writes
-        // the origin it was given, so each of the four is read apart from the others.
-        private (bool AfterUp, bool AfterCancel, bool AfterDown, bool AfterSubmit) ReadingsAfter(
+        private static ISet<int> OffChainDowns(object gate) => (ISet<int>)GateField(gate, "OffChainDowns");
+
+        // What a Button's gate callbacks still do after unwire ran. A callback left registered changes what it
+        // was written to change, so each reading starts from a state that callback would move.
+        private (int AfterDown, (bool, bool) AfterUp, (bool, bool) AfterCancel, bool AfterSubmit) ReadingsAfter(
             Button button, System.Action unwire)
         {
             var gates = s_gatesField?.GetValue(EventManager) as IDictionary;
@@ -621,22 +644,31 @@ namespace Velvet.Tests
             var gate = gates[button];
             var content = button.Q<VisualElement>("content");
             unwire();
-            SetOffChain(gate, true);
-            Dispatch(PointerUpEvent.GetPooled(), button);
-            var afterUp = OffChainOf(gate);
-            SetOffChain(gate, true);
-            Dispatch(EventBase<PointerCancelEvent>.GetPooled(), button);
-            var afterCancel = OffChainOf(gate);
-            SetOffChain(gate, false);
             Dispatch(PointerDownEvent.GetPooled(), content);
-            var afterDown = OffChainOf(gate);
-            SetOffChain(gate, false);
-            Dispatch(EventBase<NavigationSubmitEvent>.GetPooled(), content);
-            return (afterUp, afterCancel, afterDown, OffChainOf(gate));
+            var afterDown = OffChainDowns(gate).Count;
+            OffChainDowns(gate).Clear();
+
+            var up = PointerUpEvent.GetPooled();
+            var upId = up.pointerId;
+            OffChainDowns(gate).Add(upId);
+            SetSuppress(gate, true);
+            Dispatch(up, content);
+            var afterUp = (OffChainDowns(gate).Contains(upId), (bool)GateField(gate, "Suppress"));
+
+            var cancel = EventBase<PointerCancelEvent>.GetPooled();
+            var cancelId = cancel.pointerId;
+            OffChainDowns(gate).Add(cancelId);
+            SetSuppress(gate, true);
+            Dispatch(cancel, button);
+            var afterCancel = (OffChainDowns(gate).Contains(cancelId), (bool)GateField(gate, "Suppress"));
+
+            SetSuppress(gate, true);
+            Dispatch(EventBase<NavigationSubmitEvent>.GetPooled(), button.Q<VisualElement>("slot"));
+            return (afterDown, afterUp, afterCancel, (bool)GateField(gate, "Suppress"));
         }
 
         [Test]
-        public void Given_AButtonWithAnOnClickThatTheManagerForgets_When_PointerEventsReachItAfterwards_Then_NoneOfItsPressCallbacksStillWritesTheOrigin()
+        public void Given_AButtonWithAnOnClickThatTheManagerForgets_When_PointerEventsReachItAfterwards_Then_NoneOfItsGateCallbacksStillRuns()
         {
             // Arrange
             var button = MountButtonHolderBesideCaller();
@@ -648,11 +680,11 @@ namespace Velvet.Tests
             var readings = ReadingsAfter(button, () => forget.Invoke(manager, new object[] { button }));
 
             // Assert
-            Assert.That(readings, Is.EqualTo((true, true, false, false)));
+            Assert.That(readings, Is.EqualTo((0, (true, true), (true, true), true)));
         }
 
         [Test]
-        public void Given_AButtonWithAnOnClickThatTheManagerClears_When_PointerEventsReachItAfterwards_Then_NoneOfItsPressCallbacksStillWritesTheOrigin()
+        public void Given_AButtonWithAnOnClickThatTheManagerClears_When_PointerEventsReachItAfterwards_Then_NoneOfItsGateCallbacksStillRuns()
         {
             // Arrange
             var button = MountButtonHolderBesideCaller();
@@ -662,7 +694,7 @@ namespace Velvet.Tests
             var readings = ReadingsAfter(button, manager.Clear);
 
             // Assert
-            Assert.That((readings, ClickGates(manager)), Is.EqualTo(((true, true, false, false), 0)));
+            Assert.That((readings, ClickGates(manager)), Is.EqualTo(((0, (true, true), (true, true), true), 0)));
         }
     }
 }
