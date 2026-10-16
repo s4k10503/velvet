@@ -8,3 +8,8 @@
 - `VelvetFilters.Register`, a re-registration and `VelvetFilters.Unregister` resolve every element carrying the
   name again, at once. A class applied before its name was registered resolved only when some later pass
   re-applied the element's classes, and a re-registration left elements on the definition they had.
+- A filter change where the element's filter holds a user `filter-[name:args]` before or after it applies at
+  once, under `transition-filter` and under the engine's own filter transition alike, as CSS interpolates a
+  filter list holding a `url()` discretely. Velvet's filter tween ran a custom's arguments between two
+  argument sets of one definition, faded a custom in or out from its declared defaults, and tweened a built-in
+  filter beside a custom.

@@ -148,32 +148,19 @@ CSS: a filter added *before* an existing one (`grayscale` → `blur grayscale`),
 changes. The native filter types the utilities compose (`blur`, `contrast`, `grayscale`, `hue-rotate`, `invert`,
 `sepia`) and the two first-party built-in customs (`brightness`, `saturate`) interpolate, so
 `transition-filter duration-300` tweens `blur-0` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly.
-Under Velvet's tween:
 
-- **User custom filters interpolate** when both sides hold the *same registered definition* at a position with
-  the same number of arguments and matching argument types per slot — `filter-[glow:#f00:2]` →
-  `hover:filter-[glow:#00f:6]` cross-fades the color and lerps the amount. CSS applies a `url()` filter change at
-  once; this is a Velvet addition.
-- A user custom **added or removed at the end** fades from or to the neutral *your definition declares* — each
-  `FilterParameterDeclaration.interpolationDefaultValue`, the same value the engine pads its own filter-list
-  transitions with — so `filter-[glow:2]` appearing on hover fades up from the glow's declared default rather
-  than from zero. Declare those defaults deliberately; a slot left at the struct default fades from `0`.
-- A user custom **snaps** when its position cannot be paired: a different definition on each side, a differing
-  argument count, or a slot that is a color on one side and a float on the other. Every user custom composes
-  after the built-ins, so adding a built-in filter to an element carrying a custom one is a change before its end,
-  and snaps too.
-- A definition **destroyed mid-tween** drops out of the frames the tween paints instead of throwing;
-  the remaining filters keep animating. The value the tween settles on is the one composed when it
-  started, so the element's next compose, rather than the settle, drops its whole filter, as for any name no
-  live definition answers.
+A user custom filter is a `url()` reference in CSS's terms, and CSS interpolates a filter list holding one
+discretely. So a change where the element's filter holds a `filter-[name:args]` before or after it applies at
+once under either animator: `filter-[glow:#f00:2]` → `hover:filter-[glow:#00f:6]`, a custom appearing or going,
+and a built-in beside a custom (`blur-0 filter-[glow:2]` → `blur-md filter-[glow:2]`) alike. Such a change
+stops a filter tween already running on the element.
 
 ### Contract
 
 - **Registration reaches mounted elements.** `Register`, a re-registration and `Unregister` each resolve
-  every element carrying the name again, without starting a transition, as a filter appearing behind a `url()`
-  changes no computed value in CSS. A filter tween already running keeps its clock and heads for the new
-  definition where its arguments line up, and is otherwise replaced by the new filter at once. A class applied
-  before its name was registered resolves when it is registered, in the compose slot it took when applied.
+  every element carrying the name again, without starting a transition, by the `url()` rule under
+  [Transitions](#transitions). A class applied before its name was registered resolves when it is
+  registered, in the compose slot it took when applied.
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
   `invert`, `saturate`, `sepia`) are **reserved** and cannot be registered.
 - A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).

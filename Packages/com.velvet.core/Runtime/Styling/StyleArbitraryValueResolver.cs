@@ -1536,6 +1536,11 @@ namespace Velvet
         // pruned when its name next grows past twice the size it had at the last prune, or is re-resolved.
         private static readonly Dictionary<string, (List<WeakReference<VisualElement>> Hosts, int Pruned)> s_customFilterHosts = new();
 
+#if UNITY_EDITOR
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetCustomFilterHosts() => s_customFilterHosts.Clear();
+#endif
+
         private static void AddCustomFilterHost(string name, VisualElement element)
         {
             if (!s_customFilterHosts.TryGetValue(name, out var entry))
@@ -1567,10 +1572,7 @@ namespace Velvet
         }
 
         // Parses every filter-[name:args] layer held under name again against what VelvetFilters now has
-        // registered under it, and recomposes each element holding one. CSS changes no computed value when a
-        // filter appears or goes behind a url(), so a filter tween already running keeps its clock, with the
-        // re-resolved filter in its frames (StyleFilterTransitionDriver.TryRebind); where the tween cannot take
-        // it, or the element's chain is dropped on either side, the change is written at once.
+        // registered under it, and recomposes each element holding one.
         internal static void ReresolveCustomFilter(string name)
         {
             if (!s_customFilterHosts.TryGetValue(name, out var entry))
@@ -1595,16 +1597,7 @@ namespace Velvet
                     StyleFilterValueParser.TryParseCustomFilter("filter-", stack.Values[k].Custom!.Token.AsSpan(), false, out var style);
                     stack[stack.Keys[k]] = style;
                 }
-                var wasDropped = map.FilterChainDropped;
-                var functions = ComposeFilter(map, out var dropped);
-                map.FilterChainDropped = dropped;
-                if (wasDropped || dropped || !StyleFilterTransitionDriver.TryRebind(element, functions))
-                {
-                    using (StyleFilterEngineWrite.WithoutTransition())
-                    {
-                        WriteComposedFilter(element, functions);
-                    }
-                }
+                ApplyCombinedFilter(element, map);
             }
             entry.Pruned = hosts.Count;
             s_customFilterHosts[name] = entry;

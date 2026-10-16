@@ -828,6 +828,43 @@ namespace Velvet.Tests
             Assert.That(VelvetFilters.Unregister("pulse"), Is.True);
         }
 
+        [Test]
+        public void Given_AnElementCarryingARegisteredName_When_TheSubsystemResetsRun_Then_NoHostIsListedUnderIt()
+        {
+            // Arrange — the resolver's hosts are process-wide, so they are put back after the reset.
+            var hosts = typeof(StyleArbitraryValueResolver).GetField("s_customFilterHosts",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)?.GetValue(null)
+                as System.Collections.IDictionary;
+            var hostsBefore = hosts?.Cast<System.Collections.DictionaryEntry>().ToList()
+                ?? new List<System.Collections.DictionaryEntry>();
+            StyleArbitraryValueResolver.ApplyClassToken(new VisualElement(), "filter-[dissolve:0.4]", StyleLayerPriority.Base);
+            var resets = typeof(StyleArbitraryValueResolver)
+                .GetMethods(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+                .Where(method => method.GetCustomAttributes(typeof(RuntimeInitializeOnLoadMethodAttribute), false)
+                    .Cast<RuntimeInitializeOnLoadMethodAttribute>()
+                    .Any(attribute => attribute.loadType == RuntimeInitializeLoadType.SubsystemRegistration));
+
+            try
+            {
+                // Act
+                foreach (var reset in resets)
+                {
+                    reset.Invoke(null, null);
+                }
+
+                // Assert
+                Assert.That(HostsListedFor("dissolve"), Is.Zero);
+            }
+            finally
+            {
+                hosts?.Clear();
+                foreach (var entry in hostsBefore)
+                {
+                    hosts![entry.Key] = entry.Value;
+                }
+            }
+        }
+
         #endregion
     }
 }

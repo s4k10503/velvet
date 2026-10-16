@@ -27,6 +27,11 @@ namespace Velvet
         internal static FilterFunctionDefinition? Saturate
             => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", "velvet-saturate");
 
+        // Read off the cached fields rather than the properties, which build a definition where none is cached.
+        internal static bool IsFirstParty(FilterFunctionDefinition? definition)
+            => definition is not null
+                && (ReferenceEquals(definition, s_brightness) || ReferenceEquals(definition, s_saturate));
+
         // A cached definition is reusable only while both it and the material its single pass binds are live.
         // A shader reimport can destroy the pass material out from under a surviving definition; UI Toolkit's
         // == treats a destroyed object as null, so serving that definition would bind a dead material. Rebuild
