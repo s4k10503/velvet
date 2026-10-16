@@ -1,6 +1,6 @@
-Shader "Velvet/DropShadow"
+Shader "Velvet/BoxShadow"
 {
-    // Soft, iOS/macOS-style drop shadow rendered with an SDF rounded box so the blur follows the
+    // Soft, iOS/macOS-style box shadow rendered with an SDF rounded box so the blur follows the
     // target's corner radius. The C# side passes a small TARGET size in _ElementSize; this pass inflates it by
     // (_BlurRadius + extraPadding) so the blur has room to fade inside the quad, and outputs white RGB with the
     // falloff in alpha (the shadow color/strength is applied later as a tint).
@@ -43,7 +43,7 @@ Shader "Velvet/DropShadow"
 
         Pass
         {
-            Name "VelvetDropShadow"
+            Name "VelvetBoxShadow"
             Cull Off
             ZWrite Off
             ZTest Always
@@ -128,7 +128,7 @@ Shader "Velvet/DropShadow"
                 // OPAQUE on purpose: the in-element paint draws this offset silhouette FIRST, then repaints the
                 // caster's UPRIGHT fill + border over it, so the opaque fill covers the silhouette's interior
                 // and its offset-up overlap, leaving only the outer soft halo (mostly below the offset-down
-                // box) — exactly the visible part of a behind-the-element drop shadow, with no top shadow and
+                // box) — exactly the visible part of a behind-the-element box shadow, with no top shadow and
                 // no hard edge.
                 half softness = max(_BlurRadius, 1.0);
                 half alpha = 1.0 - smoothstep(-softness * 0.5, softness * 0.5, dist);

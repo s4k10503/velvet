@@ -46,6 +46,7 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown() => ResetMethod?.Invoke(null, null);
 
+        // GREEN_ON_BASE(refactor): only the precondition's message changed, naming the shader by its new name.
         // The interior must be OPAQUE: the bake is the full soft silhouette, and the binding repaints the
         // caster's opaque fill OVER it, so an opaque interior is exactly what the fill covers. A transparent
         // interior is the bug — cutting a hole there would leave a faint shadow visible over the top of the
@@ -57,13 +58,14 @@ namespace Velvet.Tests
 
             // Arrange / Act — bake a typical card shadow and read its center (deep interior) texel.
             var tex = DropShadowBaker.GetOrBakeSilhouette(12f, 40f, 0f, 240f, 160f, 0f);
-            Assume.That(tex, Is.Not.Null, "Precondition: the DropShadow shader resolved and produced a baked texture.");
+            Assume.That(tex, Is.Not.Null, "Precondition: the BoxShadow shader resolved and produced a baked texture.");
             var centerAlpha = tex.GetPixel(tex.width / 2, tex.height / 2).a;
 
             // Assert — full-strength interior, covered at draw time by the repainted opaque fill.
             Assert.That(centerAlpha, Is.EqualTo(1f).Within(0.02f));
         }
 
+        // GREEN_ON_BASE(refactor): only the precondition's message changed, naming the shader by its new name.
         // The halo must be present OUTSIDE the box: a texel just beyond the box edge carries the soft shadow.
         // The silhouette fades over ~blur/2 px outside the edge (1 - smoothstep(-soft/2, soft/2, dist)), so the
         // sample is a few px outside the LEFT box edge — within that falloff band — on the vertical midline. The
@@ -79,7 +81,7 @@ namespace Velvet.Tests
 
             // Act — bake and sample a texel a few px outside the left box edge, on the vertical midline.
             var tex = DropShadowBaker.GetOrBakeSilhouette(12f, blur, 0f, w, h, 0f);
-            Assume.That(tex, Is.Not.Null, "Precondition: the DropShadow shader resolved and produced a baked texture.");
+            Assume.That(tex, Is.Not.Null, "Precondition: the BoxShadow shader resolved and produced a baked texture.");
             var x = Mathf.RoundToInt(pad) - 4; // ~4 px outside the left box edge, inside the soft falloff
             var haloAlpha = tex.GetPixel(x, tex.height / 2).a;
 
@@ -87,6 +89,7 @@ namespace Velvet.Tests
             Assert.That(haloAlpha, Is.GreaterThan(0.05f));
         }
 
+        // GREEN_ON_BASE(refactor): only the precondition's message changed, naming the shader by its new name.
         // The cache keys by WHOLE-PIXEL radii (rounding is fine — bakes are pixel-resolution), so two presets
         // whose raw floats round to the same pixel share one cache entry. The bake must quantize the same way,
         // or the first-baked raw-float texture is shared by both and one gets a subpixel-off shadow. corner
@@ -100,7 +103,7 @@ namespace Velvet.Tests
             var a = DropShadowBaker.GetOrBakeSilhouette(20.4f, 30f, 0f, 200f, 120f, 0f);
             var b = DropShadowBaker.GetOrBakeSilhouette(19.6f, 30f, 0f, 200f, 120f, 0f);
             Assume.That(a != null && b != null, Is.True,
-                "Precondition: the DropShadow shader resolved and baked both textures.");
+                "Precondition: the BoxShadow shader resolved and baked both textures.");
 
             // Assert — identical bake geometry, so the shared cache entry is correct for both.
             Assert.That(a.width, Is.EqualTo(b.width));

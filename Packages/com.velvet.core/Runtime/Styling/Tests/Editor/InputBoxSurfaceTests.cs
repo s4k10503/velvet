@@ -81,6 +81,19 @@ namespace Velvet.Tests
             Assert.That(Joined(classNames), Is.EqualTo(Scoped + token));
         }
 
+        [TestCase("blur-sm")]
+        [TestCase("-hue-rotate-15")]
+        [TestCase("hover:grayscale")]
+        [TestCase("filter-[glow:2]")]
+        public void Given_AFilterUtilityOnATextField_When_TheNodeIsBuilt_Then_ItIsScopedToTheInputBox(string token)
+        {
+            // Act
+            var classNames = V.TextField(className: token).ClassNames;
+
+            // Assert
+            Assert.That(Joined(classNames), Is.EqualTo(Scoped + token));
+        }
+
         [Test]
         public void Given_SurfaceAndLayoutUtilities_When_TheNodeIsBuilt_Then_OnlyTheSurfaceOnesAreScoped()
         {
@@ -557,6 +570,54 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((painted, scope.Reconciler.Context.ShadowBindings.Count), Is.EqualTo((true, 0)));
+        }
+
+        #endregion
+
+        #region Filters
+
+        private static string FilterTypes(VisualElement element)
+        {
+            var filter = element.style.filter.value;
+            if (filter == null || filter.Count == 0)
+            {
+                return "none";
+            }
+            var types = new string[filter.Count];
+            for (var i = 0; i < filter.Count; i++)
+            {
+                types[i] = filter[i].type.ToString();
+            }
+            return string.Join(" ", types);
+        }
+
+        [Test]
+        public void Given_ABlurOnALabelledTextField_When_Reconciled_Then_OnlyTheInputBoxIsFiltered()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "blur-sm", label: "Name") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That((FilterTypes(Box(scope.Root[0])), FilterTypes(scope.Root[0])), Is.EqualTo(("Blur", "none")));
+        }
+
+        [Test]
+        public void Given_ADropShadowOnALabelledTextField_When_Reconciled_Then_OnlyTheInputBoxIsFiltered()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "drop-shadow-lg", label: "Name") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That((FilterTypes(Box(scope.Root[0])), FilterTypes(scope.Root[0])),
+                Is.EqualTo(("Custom", "none")));
         }
 
         #endregion

@@ -152,6 +152,8 @@ namespace Velvet
                || StyleShadowClass.IsShadowClass(core)
                || StyleRingClass.IsRingClass(core)
                || StyleGradientClass.IsGradientClass(core)
+               // CSS's filter groups the element and its descendants; a declared label is neither.
+               || StyleFilterValueParser.IsFilterLeaf(core)
                || core.StartsWith("caret-", StringComparison.Ordinal)
                || core.StartsWith("selection:", StringComparison.Ordinal);
 
