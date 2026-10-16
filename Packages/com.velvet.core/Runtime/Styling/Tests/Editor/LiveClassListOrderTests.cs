@@ -933,7 +933,6 @@ namespace Velvet.Tests
             => ReadDeclaredKind.Invoke(null, new object[] { element, StyleLonghand.Height, element.style.height })!
                 .ToString();
 
-        // GREEN_ON_BASE(characterization): the base already picks this winner by cascade position.
         // What shows the case can fail is widening `position > winningPosition` to take every match:
         // measured, the two arrangements then declare different slots.
         [Test]
@@ -954,7 +953,7 @@ namespace Velvet.Tests
             // Assert — that the two utilities declare different slots rides along, since a pair that
             // declared the same ones would agree here whatever decided between them.
             Assert.That((fromAdded, fromReversed, colorsAlone == transformAlone),
-                Is.EqualTo((colorsAlone, colorsAlone, false)),
+                Is.EqualTo((transformAlone, transformAlone, false)),
                 "the later cascade position wins this reading, not the later place in the class list");
         }
 

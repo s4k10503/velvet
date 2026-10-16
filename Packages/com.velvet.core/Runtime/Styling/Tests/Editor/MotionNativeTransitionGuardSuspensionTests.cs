@@ -44,17 +44,32 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TransitionTransformThenTransitionColors_When_ATranslatePlayRuns_Then_NothingIsSuspended()
+        public void Given_TransitionTransformThenTransitionNone_When_ATranslatePlayRuns_Then_NothingIsSuspended()
         {
-            // Arrange — the later transition-colors replaces the transform list outright, so no transform
-            // property is transitioning for a translate play to fight.
-            var element = Classed("transition-transform", "transition-colors");
+            // Arrange — Tailwind emits transition-none after transition-transform, so it replaces the transform
+            // list outright and no transform property is transitioning for a translate play to fight.
+            var element = Classed("transition-transform", "transition-none");
 
             // Act
             var suspended = Suspends(element, MotionTransitionSlots.Translate);
 
             // Assert
             Assert.That(suspended, Is.False);
+        }
+
+        [TestCase("transition-colors", "transition-transform")]
+        [TestCase("transition-transform", "transition-colors")]
+        public void Given_TransitionColorsBesideTransitionTransform_When_ATranslatePlayRuns_Then_TheTransformListSuspendsIt(
+            string first, string second)
+        {
+            // Arrange — Tailwind emits transition-transform after transition-colors, so its list is the resolved one.
+            var element = Classed(first, second);
+
+            // Act
+            var suspended = Suspends(element, MotionTransitionSlots.Translate);
+
+            // Assert
+            Assert.That(suspended, Is.True);
         }
 
         [Test]

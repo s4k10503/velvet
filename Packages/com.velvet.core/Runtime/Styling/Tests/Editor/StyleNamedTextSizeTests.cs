@@ -174,8 +174,8 @@ namespace Velvet.Tests
             // Act
             var effect = StyleTextEffectClass.Parse(new[] { first, second });
 
-            // Assert
-            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Em, 1.5f)));
+            // Assert — Tailwind emits text-xs after text-base, so the sheet declares it later and its pair holds.
+            Assert.That(effect.Leading, Is.EqualTo(new LeadingValue(LeadingUnit.Em, 1f / 0.75f)));
         }
 
         [TestCase("text-base", "text-xs/4")]
