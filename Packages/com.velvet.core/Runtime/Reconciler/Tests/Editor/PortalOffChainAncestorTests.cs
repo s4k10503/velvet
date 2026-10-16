@@ -104,15 +104,7 @@ namespace Velvet.Tests
         public void Given_APortalIntoAnElementCarryingHandlers_When_APointerDownReachesTheContent_Then_TheElementRunsNoneOfThem()
         {
             // Arrange — the element the portal renders into is the bridge's own anchor.
-            _mounted = V.Mount(_root, V.Div(children: new VNode[]
-            {
-                V.Motion(name: "container", events: BindPointerDown("container", false), refCallback: RegisterTarget),
-                V.Motion(events: BindPointerDown("caller", false), children: new VNode[]
-                {
-                    V.Portal(TargetId, children: new VNode[] { V.Div(name: "content") }),
-                }),
-            }));
-
+            _mounted = V.Mount(_root, V.Component(ContainerHostRender, key: "host"));
             _mounted.FlushStateForTest();
 
             // Act
@@ -121,6 +113,25 @@ namespace Velvet.Tests
             // Assert
             Assert.That(string.Join(",", s_log), Is.EqualTo("caller"));
         }
+
+        [Component]
+        private static VNode ContainerHostRender() => V.Div(children: new VNode[]
+        {
+            V.Motion(name: "container", events: BindPointerDown("container", false), refCallback: RegisterTarget),
+            V.Motion(events: BindPointerDown("caller", false), children: new VNode[]
+            {
+                V.Portal(TargetId, children: new VNode[] { V.Div(name: "content") }),
+            }),
+        });
+
+        [Component]
+        private static VNode ScrollHostRender() => V.Div(children: new VNode[]
+        {
+            V.Motion(name: "scroll", elementType: typeof(ScrollView), refCallback: RegisterScrollViewTarget),
+            V.Motion(
+                events: new FiberEventBinding[] { new WheelBinding { Handler = evt => evt.StopPropagation() } },
+                children: new VNode[] { V.Portal(TargetId, children: new VNode[] { V.Div(name: "content") }) }),
+        });
 
         private static System.Action RegisterScrollViewTarget(VisualElement element)
         {
@@ -135,13 +146,7 @@ namespace Velvet.Tests
         {
             // Arrange — the handler that stops the wheel is the portal's logical ancestor alone, not the
             // ScrollView's, so only the bridge carries the wheel to it.
-            _mounted = V.Mount(_root, V.Div(children: new VNode[]
-            {
-                V.Motion(name: "scroll", elementType: typeof(ScrollView), refCallback: RegisterScrollViewTarget),
-                V.Motion(
-                    events: new FiberEventBinding[] { new WheelBinding { Handler = evt => evt.StopPropagation() } },
-                    children: new VNode[] { V.Portal(TargetId, children: new VNode[] { V.Div(name: "content") }) }),
-            }));
+            _mounted = V.Mount(_root, V.Component(ScrollHostRender, key: "host"));
             _mounted.FlushStateForTest();
             var content = _root.Q<VisualElement>("scroll").contentContainer.Q<VisualElement>("content");
 
