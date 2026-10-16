@@ -1905,13 +1905,11 @@ namespace Velvet
             }
         }
 
-        // mode="wait": while any previously-committed child is still exiting, hold back
-        // brand-new keys so the exit fully completes before the new child mounts / enters. The exit's
-        // completion already re-renders the boundary; on that render no ghost remains, so the withheld
-        // child emits and enters. Returning ghosts (a key re-added mid-exit) and persisting children are
-        // never withheld — only keys absent from the committed set. A removal with nothing to animate
-        // withholds them too, for the render its exit completes after, as Framer Motion renders only the
-        // exiting children until their exits complete.
+        // mode="wait": while any previously-committed child absent from the new children is still exiting, the
+        // presence renders the exiting children alone, as Framer Motion does until their exits complete
+        // (ExpandPresenceEnterEntry withholds the rest). The exit's completion already re-renders the boundary;
+        // on that render no ghost remains, so the withheld children emit and enter. A key re-added mid-exit is
+        // present, so it is not one of the exiting children; a removal with nothing to animate is.
         private static bool ShouldBlockPresenceEnters(
             AnimatePresenceNode presence,
             List<(string key, VNode node)> prevCommitted,
@@ -2733,7 +2731,9 @@ namespace Velvet
             bool fromAMotion)
         {
             if (_ctx.IsDisposed) return;
-            state.Exiting.Remove(key);
+            // A key no longer exiting had its exit ended without completing: cancelled by its return, or withheld
+            // under mode="wait" with the exit still running.
+            if (!state.Exiting.Remove(key)) return;
             state.ExitComplete.Add(key);
             // A disposed boundary has no ghost left to drop, and ScheduleRerender has no disposed guard of its own
             // (unlike the public RequestRenderFromHook/RequestTransitionRerender), so scheduling would pin a
@@ -2753,8 +2753,7 @@ namespace Velvet
             }
             // onExitComplete completes once the exiting set drains (the last in-flight exit finished), after
             // the re-render that drops the ghosts is asked for, as Framer Motion's AnimatePresence forces its
-            // render before calling it. Cancelled exits (key re-entered) remove from Exiting elsewhere and do
-            // not reach here, so they never trigger it.
+            // render before calling it. An exit ended without completing returned above, so it never triggers it.
             if (state.Exiting.Count == 0)
             {
                 // Framer's safeToRemove, which runs ahead of the presence's own onExitComplete.
@@ -2914,11 +2913,13 @@ namespace Velvet
             var presence = pass.Presence;
             var prevCommitted = pass.PrevCommitted;
             var commit = walk.Commit;
-            // Withhold a brand-new child under mode="wait" while exits are in flight (see above). The
-            // linear prevCommitted scan is bounded: this only runs when blockEnters is set, and wait-mode
-            // targets single-child swaps, so prevCommitted holds ~1 entry.
-            if (pass.BlockEnters && !PresenceContainsKey(prevCommitted, key))
+            // Under mode="wait" with exits in flight, Framer Motion renders the exiting children alone, so a present
+            // child is withheld too: one already committed leaves now, and the render after the exits comes back
+            // with it as a new child. The linear prevCommitted scan is bounded: wait-mode targets single-child
+            // swaps, so prevCommitted holds ~1 entry.
+            if (pass.BlockEnters)
             {
+                if (PresenceContainsKey(prevCommitted, key)) WithholdCommittedChild(in pass, key);
                 return;
             }
 
@@ -2993,6 +2994,44 @@ namespace Velvet
 
             pass.NextCommitted.Add((key, node));
             pass.Tally.VisualIndex++;
+        }
+
+        // A committed child mode="wait" does not render while exits run leaves as an unmounted one does, with no
+        // exit of its own, and whatever exit it was still running ends with it. A walk whose removals never run puts
+        // it all back.
+        private void WithholdCommittedChild(in PresenceExpansion pass, string key)
+        {
+            var state = pass.State;
+            var commit = pass.Walk.Commit!;
+            var node = FindPresenceCommittedNode(pass.PrevCommitted, key)!;
+            NotePresenceRemovalPutBack(commit, state, key, node);
+            var wasExiting = state.Exiting.Remove(key);
+            var wasExitComplete = state.ExitComplete.Remove(key);
+            state.PendingSettles.Remove(key, out ReconcilerContext.PendingSettle? pending);
+            var initialBlocked = state.InitialBlocked.Remove(key);
+            (commit.PutBackRemovals ??= new List<Action>()).Add(() =>
+            {
+                if (wasExiting) state.Exiting.Add(key);
+                if (wasExitComplete) state.ExitComplete.Add(key);
+                if (initialBlocked) state.InitialBlocked.Add(key);
+                if (pending == null) return;
+                pending.Staging = null;
+                state.PendingSettles[key] = pending;
+            });
+            if (state.ExitAnchors.Remove(key, out var anchor))
+            {
+                (commit.BeforeRemovals ??= new List<Action>()).Add(
+                    () => _ctx.ComponentRegistry.DisposeFibersUnder(new HashSet<VisualElement> { anchor }));
+                (commit.PutBackRemovals ??= new List<Action>()).Add(() => state.ExitAnchors[key] = anchor);
+            }
+            if (wasExiting || wasExitComplete) ReleaseDescendantExits(state, key);
+            RemovePresenceCommittedEntry(state.Committed, key);
+            RetirePresenceKeyEntries(state, key);
+            // A ghost's node is the presence's alone to keep; a present child's belongs to the render that gave it.
+            if (!wasExiting && !wasExitComplete) return;
+            var boundary = pass.BoundaryFiber;
+            (commit.AfterRemovals ??= new List<Action>()).Add(
+                () => FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundary));
         }
 
         // A live key whose anchor was created again under the same key — a type flip — remounts with an enter, as a

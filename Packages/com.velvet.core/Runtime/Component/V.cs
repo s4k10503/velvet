@@ -2513,7 +2513,7 @@ namespace Velvet
         /// presence's children.</param>
         /// <param name="staggerSec">Delay (seconds) staggered between sequential children.</param>
         /// <param name="mode">Exit / enter sequencing. <see cref="AnimatePresenceMode.Sync"/> (default) overlaps
-        /// exit and enter; <see cref="AnimatePresenceMode.Wait"/> holds a brand-new child back until in-flight
+        /// exit and enter; <see cref="AnimatePresenceMode.Wait"/> renders only the exiting children until in-flight
         /// exits finish (suited to single-child route / screen swaps); <see cref="AnimatePresenceMode.PopLayout"/>
         /// pulls an exiting child out of layout flow so still-present siblings reflow immediately.</param>
         /// <param name="onExitComplete">Invoked once the exits of the removed children have all completed, an exit

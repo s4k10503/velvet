@@ -726,6 +726,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_WaitModeWithAChildThatStays_When_AnotherChildIsRemoved_Then_OnlyTheExitingChildRendersUntilItsExitCompletes()
+        {
+            // Arrange
+            VNode[] Show(params string[] keys) => PresenceWait(keys
+                .Select(key => (VNode)V.Motion(key: key, transition: StyleTransitionConfig.None, children: Label(key)))
+                .ToArray());
+            var both = Show("x", "a");
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), both);
+            var onlyX = Show("x");
+
+            // Act
+            Reconciler.Reconcile(Root, both, onlyX);
+            var afterRemoval = LabelTexts();
+            Reconciler.Reconcile(Root, onlyX, Show("x"));
+
+            // Assert — Framer Motion's mode="wait" renders the exiting children alone until their exits complete
+            Assert.That((afterRemoval, LabelTexts()), Is.EqualTo(("a", "x")));
+        }
+
+        [Test]
         public void Given_ExitInProgress_When_ReconcilerDisposed_Then_DoesNotThrow()
         {
             // Arrange — a deferred exit callback could fire after Dispose.

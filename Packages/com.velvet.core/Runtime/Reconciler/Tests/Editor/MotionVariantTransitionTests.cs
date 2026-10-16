@@ -740,7 +740,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_WaitModeAndAnExitTimedByItsPoseAlone_When_ANewKeyArrives_Then_TheNewChildIsWithheld()
         {
-            // Arrange — mode: Wait holds a brand-new child back while any previously committed child is
+            // Arrange — mode: Wait renders the exiting children alone while any previously committed child is
             // still exiting, and whether that exit animates, rather than settling after the removing render, is
             // decided by the exit pose here.
             using var keys = new KeySetStore("a");
