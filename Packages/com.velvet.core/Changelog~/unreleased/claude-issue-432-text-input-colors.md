@@ -19,6 +19,9 @@
   read, and a size takes an opacity modifier (`shadow-lg/20`, `shadow/20`).
 - `ring-offset-<colour>` colours the offset fill, and a ring, ring-offset or outline colour takes an opacity
   modifier (`ring-red-500/50`).
+- An opacity modifier takes a number in steps of 0.25 (`/2.25`) and a bracketed percentage (`/[33.3%]`), as
+  Tailwind generates them, and a `shadow-*` size's modifier past 100% (`shadow-lg/150`) is read, clamping its
+  colour's alpha.
 - `ring-<n>`, `outline-<n>`, `ring-offset-<n>` and `outline-offset-<n>` take any integer Tailwind generates
   (`ring-3`, `outline-12`), where only 0, 1, 2, 4 and 8 were read, and `-outline-offset-<n>` and
   `outline-offset-[-2px]` draw the outline inside the element's edge.

@@ -37,6 +37,8 @@ namespace Velvet
             public Color ShadowColor;
         }
 
+        internal static bool IsPreset(string suffix) => Presets.ContainsKey(suffix);
+
         internal static bool IsInsetBoxShadowClass(string cls)
             => cls == "inset-ring" || cls.StartsWith(RingPrefix, StringComparison.Ordinal)
                 || cls.StartsWith(ShadowPrefix, StringComparison.Ordinal);
@@ -106,7 +108,9 @@ namespace Velvet
                     spec = new ShadowSpec(tint, spec.Blur, spec.OffsetY, spec.Spread);
                 }
             }
+            // As for shadow-[…]: a `color` hint is never a size, and any other hint is dropped.
             else if (!StyleArbitraryValueResolver.TryStripBrackets(size, 0, out var inner)
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner) || hint == "color"
                 || !StyleShadowClass.TryParseArbitrary(inner.ToString(), modifier, out spec))
             {
                 return;
@@ -114,7 +118,7 @@ namespace Velvet
             slots.ShadowDeclared = true;
             slots.WantShadow = true;
             slots.Shadow = spec.AsInset();
-            slots.ShadowAlpha = modifier ?? 1f;
+            StyleShadowClass.TrySizeColourScale(suffix, out slots.ShadowAlpha);
         }
 
         // The inset ring: Tailwind v4's inset-ring is 1px in var(--tw-inset-ring-color, currentcolor).

@@ -43,6 +43,11 @@
 - A ring's and its offset fill's outer corners grow by the spread as CSS grows a box-shadow's, so a square
   element's ring is square where it was rounded by the ring's width, and an outline's corners stay square on a
   square element.
+- An inset-ring or inset-shadow value the browser rejects (`inset-ring inset-ring-[5PX]`,
+  `inset-shadow-[5PX]`), a ring, shadow, inset-ring or inset-shadow colour whose opacity modifier lies outside
+  0–100% (`shadow-red-500/150`), and a `shadow-*` size's modifier outside it beside a shadow colour discard the
+  element's box-shadow, as the browser discards it; an outline colour outside it is the text colour. A
+  `shadow-[color:…]` is a colour, never a size.
 - An outline paints over the content around it, as CSS paints it after the rest of its stacking context, where
   a later sibling's face covered it. `ring-inset` paints inside the padding box under the element's children
   and text, where it painted over them across the border box.

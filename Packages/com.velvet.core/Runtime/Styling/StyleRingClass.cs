@@ -275,90 +275,9 @@ namespace Velvet
         private static readonly Func<string, bool> s_emitOrdered =
             cls => IsRingClass(cls) || StyleShadowClass.IsBoxShadowClass(cls);
 
-        // Whether the box-shadow Tailwind composes for these classes is one the browser discards, which takes the
-        // ring and every shadow-* with it: a ring whose colour, width or offset colour the browser rejects, or a
-        // shadow-[…] holding a bare non-zero number. classNames is in the order InEmitOrder gives, read last rule
-        // winning, as Accumulate reads it.
-        internal static bool DiscardsBoxShadow(string[]? classNames)
-        {
-            if (classNames == null)
-            {
-                return false;
-            }
-            var declared = false;
-            var ringShadow = false;
-            var ringWidthRejected = false;
-            var ringColourRejected = false;
-            var offsetWidth = false;
-            var offsetColourRejected = false;
-            var shadowRejected = false;
-            foreach (var cls in classNames)
-            {
-                if (string.IsNullOrEmpty(cls))
-                {
-                    continue;
-                }
-                if (cls == "ring")
-                {
-                    declared = ringShadow = true;
-                    ringWidthRejected = false;
-                }
-                else if (TryMatchPrefix(cls, "ring-offset-", out var offset))
-                {
-                    ReadBoxShadowPart(offset!, "ring-offset", ref offsetWidth, ref offsetColourRejected, out _);
-                }
-                else if (cls != "ring-inset" && TryMatchPrefix(cls, "ring-", out var ring))
-                {
-                    var width = false;
-                    ReadBoxShadowPart(ring!, "ring", ref width, ref ringColourRejected, out var widthRejected);
-                    if (width)
-                    {
-                        declared = ringShadow = true;
-                        ringWidthRejected = widthRejected;
-                    }
-                }
-                else if (StyleShadowClass.DeclaresBoxShadow(cls))
-                {
-                    declared = true;
-                    shadowRejected = StyleShadowClass.HoldsRejectedValue(cls);
-                }
-            }
-            return declared
-                && ((ringShadow && (ringWidthRejected || ringColourRejected)) || (offsetWidth && offsetColourRejected) || shadowRejected);
-        }
-
-        // One ring- or ring-offset- suffix as Tailwind types it: a width (rejected when the browser would reject
-        // it) or a colour (rejected likewise); a palette name it does not know sets neither.
-        private static void ReadBoxShadowPart(string suffix, string root, ref bool width, ref bool colourRejected,
-            out bool widthRejected)
-        {
-            widthRejected = false;
-            if (TryParseInteger(suffix, out _))
-            {
-                width = true;
-                return;
-            }
-            if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
-            {
-                if (StyleColorValueParser.TryParseColorValue(suffix, 0, out _))
-                {
-                    colourRejected = false;
-                }
-                return;
-            }
-            if (!StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner))
-            {
-                return;
-            }
-            if (hint != null ? StyleColorValueParser.HintSelectsNonColour(root, hint) : TailwindDataTypes.IsLength(inner))
-            {
-                width = true;
-                widthRejected = !StyleArbitraryValueResolver.TryParseValue(inner, out _, out _)
-                    && !StyleLengthExpression.TryParse(inner, out _);
-                return;
-            }
-            colourRejected = !StyleColorValueParser.TryParseColor(inner, out _);
-        }
+        // Whether the box-shadow Tailwind composes for these classes, in the order InEmitOrder gives, is one the
+        // browser discards (BoxShadowDiscard).
+        internal static bool DiscardsBoxShadow(string[]? classNames) => BoxShadowDiscard.Of(classNames);
 
         // ring-offset-{N|[..]|color} is the offset width or the colour of the fill drawn across it; outline-offset-*
         // is the outline's own offset. False for a class of neither prefix.
@@ -488,6 +407,12 @@ namespace Velvet
                     slots.OutlineColorSet = true;
                     slots.OutlineColor = c;
                 }
+            }
+            else if (isOutlineFamily && StyleColorValueParser.VerdictOfColourValue(ringSuffix!, 0) == StyleColorValueParser.ColourVerdict.Rejected)
+            {
+                // outline-red-500/150: an outline-color the browser rejects once computed, which leaves it at its initial
+                // currentcolor. A rejected ring colour discards the box-shadow instead (BoxShadowDiscard).
+                slots.OutlineColorSet = false;
             }
             // An unrecognized ring-*/outline-* suffix is ignored (not a known utility).
         }

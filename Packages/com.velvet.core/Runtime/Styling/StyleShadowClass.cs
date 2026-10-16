@@ -214,7 +214,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                if (TryParse(cls!, out var parsed, out var wantShadow, out var modifier))
+                if (TryParse(cls!, out var parsed, out var wantShadow, out _))
                 {
                     // A recognized utility overrides earlier ones; shadow-none flips found back to false.
                     found = wantShadow;
@@ -222,7 +222,7 @@ namespace Velvet
                     {
                         spec = parsed;
                         foundBoxShadow = IsBoxShadowClass(cls!);
-                        sizeAlpha = modifier ?? 1f;
+                        TrySizeColourScale(cls!, out sizeAlpha);
                     }
                 }
             }
@@ -236,9 +236,9 @@ namespace Velvet
             return found;
         }
 
-        // The --tw-shadow-color the shadow colour classes write, scaled by --tw-shadow-alpha, the size's opacity
-        // modifier (sizeAlpha), as Tailwind's color-mix(in oklab, <colour> var(--tw-shadow-alpha), transparent)
-        // does. classNames is in the order InEmitOrder gives; the last colour class wins.
+        // The --tw-shadow-color the shadow colour classes write, scaled by --tw-shadow-alpha (sizeAlpha, from
+        // TrySizeColourScale), as Tailwind's color-mix(in oklab, <colour> var(--tw-shadow-alpha), transparent) does.
+        // classNames is in the order InEmitOrder gives; the last colour class wins.
         private static bool TryResolveShadowColor(string[] classNames, bool discarded, float sizeAlpha,
             out ShadowColorSource source, out Color color)
         {
@@ -271,9 +271,9 @@ namespace Velvet
             foreach (var cls in classNames)
             {
                 if (cls != null && !TryParseShadowColor(cls, out _, out _) && IsBoxShadowClass(cls)
-                    && TryParse(cls, out _, out var want, out var modifier) && want)
+                    && TryParse(cls, out _, out var want, out _) && want)
                 {
-                    sizeAlpha = modifier ?? 1f;
+                    TrySizeColourScale(cls, out sizeAlpha);
                 }
             }
             var set = TryResolveShadowColor(classNames, discarded, sizeAlpha, out var source, out var color);
@@ -323,7 +323,8 @@ namespace Velvet
         }
 
         // A size's opacity modifier: the part after the '/' outside any bracket, which Tailwind writes as the alpha
-        // of the size's own colour and as --tw-shadow-alpha. size is cls without it.
+        // of the size's own colour, oklab(from <colour> l a b / <modifier>), clamped to 0..1 as an alpha is. size is
+        // cls without it.
         internal static bool TrySplitSizeModifier(string cls, out string size, out float? alpha)
         {
             size = cls;
@@ -334,11 +335,37 @@ namespace Velvet
                 return true;
             }
             size = cls.Substring(0, slash);
-            if (!StyleColorValueParser.TryParseAlphaModifier(cls.AsSpan(slash + 1), out var parsed))
+            if (!StyleColorValueParser.TryParseModifierPercent(cls.AsSpan(slash + 1), out var percent))
             {
                 return false;
             }
-            alpha = parsed;
+            alpha = Mathf.Clamp01(percent / 100f);
+            return true;
+        }
+
+        // The factor --tw-shadow-alpha (--tw-inset-shadow-alpha) mixes a shadow colour beside the size cls with: the
+        // size's opacity modifier where Tailwind writes it as a percentage, and 1 where it writes a bracketed number,
+        // which the property's <percentage> syntax turns back to its initial 100%. False where the percentage lies
+        // outside 0..100, which leaves the colour's color-mix() invalid and with it the box-shadow.
+        internal static bool TrySizeColourScale(string cls, out float scale)
+        {
+            scale = 1f;
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(cls, 0);
+            if (slash < 0)
+            {
+                return true;
+            }
+            var modifier = cls.AsSpan(slash + 1);
+            if (!StyleColorValueParser.TryParseModifierPercent(modifier, out var percent)
+                || (modifier[0] == '[' && modifier[modifier.Length - 2] != '%'))
+            {
+                return true;
+            }
+            if (percent < 0f || percent > 100f)
+            {
+                return false;
+            }
+            scale = percent / 100f;
             return true;
         }
 
@@ -348,7 +375,10 @@ namespace Velvet
             spec = default;
             wantShadow = false;
             modifier = null;
+            // A `color` hint makes the bracket a shadow colour whether or not it holds one (VerdictOfShadowColour), so
+            // it is never a size; any other hint is dropped, Tailwind writing the value through as the shadow.
             if (string.IsNullOrEmpty(cls) || !TrySplitSizeModifier(cls, out cls, out modifier)
+                || StyleArbitraryValueResolver.TypeHintOf(cls) == "color"
                 || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
@@ -413,38 +443,105 @@ namespace Velvet
 
         // Whether cls is a box-shadow utility Tailwind generates: shadow, a preset, shadow-none or a bracket that is
         // not a shadow colour.
-        internal static bool DeclaresBoxShadow(string cls)
+        internal static bool DeclaresBoxShadow(string cls) => DeclaresBoxShadow(cls, "shadow-");
+
+        // The same under prefix: inset-shadow- writes --tw-inset-shadow from its own presets.
+        internal static bool DeclaresBoxShadow(string cls, string prefix)
         {
-            if (!IsBoxShadowClass(cls) || TryParseShadowColor(cls, out _, out _)
+            var inset = prefix != "shadow-";
+            if ((inset ? !cls.StartsWith(prefix, StringComparison.Ordinal) : !IsBoxShadowClass(cls))
+                || VerdictOfShadowColour(cls, prefix) != StyleColorValueParser.ColourVerdict.None
                 || !TrySplitSizeModifier(cls, out var size, out _))
             {
                 return false;
             }
-            return size == "shadow" || size == "shadow-none" || Presets.ContainsKey(size.Substring("shadow-".Length))
-                || size["shadow-".Length] == '[';
+            if (!inset && size == "shadow")
+            {
+                return true;
+            }
+            var suffix = size.Substring(prefix.Length);
+            return suffix == "none" || suffix.StartsWith("[", StringComparison.Ordinal)
+                || (inset ? StyleInsetBoxShadowClass.IsPreset(suffix) : Presets.ContainsKey(suffix));
         }
 
-        // Whether cls is a shadow-[…] Tailwind writes as a box-shadow value that the browser rejects because it
-        // holds a bare non-zero number (`shadow-[0_4_8_#000]`).
-        internal static bool HoldsRejectedValue(string cls)
+        // What a shadow colour class under prefix makes of --tw-shadow-color (--tw-inset-shadow-color): None where cls is
+        // no colour class, Rejected where the browser rejects the colour it writes, Valid otherwise.
+        internal static StyleColorValueParser.ColourVerdict VerdictOfShadowColour(string cls, string prefix)
+        {
+            if (!cls.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return StyleColorValueParser.ColourVerdict.None;
+            }
+            var rest = cls.AsSpan(prefix.Length);
+            if (rest.SequenceEqual("inherit".AsSpan()) || rest.SequenceEqual("current".AsSpan()))
+            {
+                return StyleColorValueParser.ColourVerdict.Valid;
+            }
+            if (rest.StartsWith("current/".AsSpan(), StringComparison.Ordinal))
+            {
+                return !StyleColorValueParser.TryParseModifierPercent(rest.Slice("current/".Length), out var percent)
+                    ? StyleColorValueParser.ColourVerdict.None
+                    : percent < 0f || percent > 100f ? StyleColorValueParser.ColourVerdict.Rejected : StyleColorValueParser.ColourVerdict.Valid;
+            }
+            if (StyleArbitraryValueResolver.TryStripBrackets(cls, prefix.Length, out var inner))
+            {
+                if (!StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner))
+                {
+                    return StyleColorValueParser.ColourVerdict.None;
+                }
+                var parses = StyleColorValueParser.TryParseColor(inner, out _);
+                return hint == "color"
+                    ? (parses ? StyleColorValueParser.ColourVerdict.Valid : StyleColorValueParser.ColourVerdict.Rejected)
+                    : hint == null && parses ? StyleColorValueParser.ColourVerdict.Valid : StyleColorValueParser.ColourVerdict.None;
+            }
+            return StyleColorValueParser.VerdictOfColourValue(cls, prefix.Length);
+        }
+
+        // Whether cls is a shadow-[…] Tailwind writes as a box-shadow value that the browser rejects (`shadow-[…]`).
+        internal static bool HoldsRejectedValue(string cls) => HoldsRejectedValue(cls, "shadow-");
+
+        // The same under prefix. Rejected: a bare non-zero number (`shadow-[0_4_8_#000]`), or a value made only of
+        // lengths and colours that is still no box-shadow — fewer than two lengths, more than four, or two colours
+        // (`inset-shadow-[5PX]`). A value holding anything else is left to the browser this does not model.
+        internal static bool HoldsRejectedValue(string cls, string prefix)
         {
             if (!TrySplitSizeModifier(cls, out cls, out _)
-                || !cls.StartsWith("shadow-[", StringComparison.Ordinal)
-                || !StyleArbitraryValueResolver.TryStripBrackets(cls, "shadow-".Length, out var inner)
+                || !cls.StartsWith(prefix + "[", StringComparison.Ordinal)
+                || !StyleArbitraryValueResolver.TryStripBrackets(cls, prefix.Length, out var inner)
                 || !StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
                 || hint == "color" || (hint == null && StyleColorValueParser.TryParseColor(inner, out _)))
             {
                 return false;
             }
+            var (lengths, colours) = (0, 0);
             foreach (var token in StyleGradientClass.SplitTopLevel(inner.ToString().Replace('_', ' '), ' '))
             {
-                if (float.TryParse(token, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n)
-                    && n != 0f)
+                if (token.Length == 0)
                 {
-                    return true;
+                    continue;
+                }
+                if (float.TryParse(token, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n))
+                {
+                    if (n != 0f)
+                    {
+                        return true;
+                    }
+                    lengths++;
+                }
+                else if (StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out _, out _))
+                {
+                    lengths++;
+                }
+                else if (StyleColorValueParser.TryParseColor(token.AsSpan(), out _))
+                {
+                    colours++;
+                }
+                else
+                {
+                    return false;
                 }
             }
-            return false;
+            return lengths < 2 || lengths > 4 || colours > 1;
         }
 
         // Parses the inner body of a shadow-[…] arbitrary value. Tokens are whitespace-separated (the

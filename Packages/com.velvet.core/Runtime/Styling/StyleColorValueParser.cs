@@ -229,31 +229,78 @@ namespace Velvet
             return true;
         }
 
-        // Parses the alpha portion of a color opacity modifier: an integer percent 0..100 (50 -> 0.5) or an
-        // arbitrary bracketed 0..1 fraction ([0.32] -> 0.32). Returns false for any other / out-of-range form.
+        internal enum ColourVerdict
+        {
+            None,
+            Valid,
+            Rejected,
+        }
+
+        // A colour utility's value from start: a palette name or a bracketed colour, with or without an opacity
+        // modifier. Rejected where the modifier's percentage lies outside 0..100, which leaves the color-mix()
+        // Tailwind writes invalid; None where the token is no colour Tailwind generates.
+        internal static ColourVerdict VerdictOfColourValue(string token, int start)
+        {
+            var slash = ColorModifierSlashIndex(token, start);
+            var colour = slash < 0 ? token.Substring(start) : token.Substring(start, slash - start);
+            if (!VelvetPalette.TryResolveColorToken(colour, out _))
+            {
+                return ColourVerdict.None;
+            }
+            if (slash < 0)
+            {
+                return ColourVerdict.Valid;
+            }
+            if (!TryParseModifierPercent(token.AsSpan(slash + 1), out var percent))
+            {
+                return ColourVerdict.None;
+            }
+            return percent < 0f || percent > 100f ? ColourVerdict.Rejected : ColourVerdict.Valid;
+        }
+
+        // Parses the alpha portion of a color opacity modifier, a percent from 0 to 100 as TryParseModifierPercent reads
+        // it (50 -> 0.5). Returns false for any other form, and for a percent outside that range, which makes the
+        // color-mix() Tailwind writes invalid.
         internal static bool TryParseAlphaModifier(ReadOnlySpan<char> span, out float alpha)
         {
             alpha = 0f;
+            if (!TryParseModifierPercent(span, out var percent) || percent < 0f || percent > 100f)
+            {
+                return false;
+            }
+            alpha = percent / 100f;
+            return true;
+        }
+
+        // The percent an opacity modifier names, in the forms Tailwind generates: a number in steps of 0.25 written
+        // as a number prints (50, 2.25, 0.5 — not 05, .5 or 50.0), or a bracketed number, which is a fraction of
+        // 100% ([0.32]), or a bracketed percentage ([33.3%]). A bracket may hold any value, a negative one or one
+        // past 100% included; what that does is the reader's to decide.
+        internal static bool TryParseModifierPercent(ReadOnlySpan<char> span, out float percent)
+        {
+            percent = 0f;
             if (span.Length == 0)
             {
                 return false;
             }
             if (StyleArbitraryValueResolver.TryStripBrackets(span, 0, out var inner))
             {
-                if (!float.TryParse(inner, NumberStyles.Float, CultureInfo.InvariantCulture, out var frac)
-                    || !float.IsFinite(frac) || frac < 0f || frac > 1f)
+                var isPercent = inner.Length > 0 && inner[inner.Length - 1] == '%';
+                var number = isPercent ? inner.Slice(0, inner.Length - 1) : inner;
+                if (!float.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !float.IsFinite(value))
                 {
                     return false;
                 }
-                alpha = frac;
+                percent = isPercent ? value : value * 100f;
                 return true;
             }
-            if (!int.TryParse(span, NumberStyles.Integer, CultureInfo.InvariantCulture, out var percent)
-                || percent < 0 || percent > 100)
+            if (!float.TryParse(span, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var named)
+                || (named * 4f) % 1f != 0f
+                || !span.SequenceEqual(named.ToString(CultureInfo.InvariantCulture).AsSpan()))
             {
                 return false;
             }
-            alpha = percent / 100f;
+            percent = named;
             return true;
         }
 

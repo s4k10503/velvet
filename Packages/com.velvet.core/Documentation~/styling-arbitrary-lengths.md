@@ -78,7 +78,11 @@ dropped, so the class is inert: `border-[2PX]`, `text-[16]`, `w-[120]`. One Tail
 element's box-shadow discards the whole box-shadow, the ring and every `shadow-*` with it, while a
 `drop-shadow-*`, a filter, stays: a ring colour that is no colour (`ring ring-[5PX]`, `ring-2 ring-[2]`), a ring
 width that is no length (`ring-[length:2]`), a ring offset colour that is no colour beside an offset width
-(`ring-offset-2 ring-offset-[2]`), and a `shadow-[…]` holding a bare non-zero number (`shadow-[0_4_8_#000]`).
+(`ring-offset-2 ring-offset-[2]`), a `shadow-[…]` or `inset-shadow-[…]` holding a bare non-zero number
+(`shadow-[0_4_8_#000]`) or too few lengths to be a shadow (`inset-shadow-[5PX]`), an inset ring's colour or
+width that is no colour or no length (`inset-ring inset-ring-[5PX]`), and a colour whose opacity modifier lies
+outside 0–100% ([styling-colors.md](styling-colors.md)). A `color` hint makes a `shadow-[…]` a colour, so
+`shadow-lg shadow-[color:0_4px_8px]` discards the box-shadow, and any other hint makes it a shadow.
 The ring colour and width are each the one Tailwind emits last, as the ring reads them. A `from-` / `via-` / `to-` colour
 that is no colour (`from-[1IN]`) leaves its stop transparent, and a position that is no length
 (`from-[length:red]`) returns the stop to its initial position: 0%, 50% or 100%.

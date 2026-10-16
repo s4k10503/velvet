@@ -52,7 +52,11 @@ The functions follow CSS Color 4:
 - **Function names, `none` and angle units** are read in any case.
 - **The opacity modifier** (`bg-[…]/50`, `bg-red-500/50`, `text-…/[0.3]`) multiplies the colour's alpha, as
   Tailwind v4's `color-mix(in oklab, <colour> 50%, transparent)` does: `bg-[#ff000080]/50` has an alpha of a
-  quarter.
+  quarter. It takes the forms Tailwind generates: a number in steps of 0.25 (`/50`, `/2.25`), a bracketed
+  fraction (`/[0.3]`) or a bracketed percentage (`/[33.3%]`). A percentage outside 0–100% leaves the
+  `color-mix()` invalid: a ring, shadow, inset-ring or inset-shadow colour carrying one discards the element's
+  box-shadow, an outline colour falls back to the text colour, and a `shadow-*` size's own colour clamps to an
+  alpha of 0 or 1.
 
 ## Where Velvet differs from CSS
 
