@@ -61,6 +61,16 @@ namespace Velvet.Tests
             Assert.That((s.Property, s.Value, s.Unit), Is.EqualTo(((ArbitraryProperty)property, value, unit)));
         }
 
+        [Test]
+        public void Given_AWidthValueWithoutUnit_When_Parsed_Then_TheClassIsDeclined()
+        {
+            // Act — Tailwind writes `width: 200`, which the browser rejects.
+            var ok = StyleArbitraryValueResolver.TryParse("w-[200]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
         #endregion
 
         #region TryParse — Valid Inputs (rem unit)

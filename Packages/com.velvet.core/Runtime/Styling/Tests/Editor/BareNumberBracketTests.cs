@@ -8,7 +8,6 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class BareNumberBracketTests
     {
-        [TestCase("w-[200]")]
         [TestCase("top-[8]")]
         [TestCase("p-[4]")]
         [TestCase("rounded-[8]")]
