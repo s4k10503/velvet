@@ -100,10 +100,12 @@ namespace Velvet
             return aRank < 0 || zRank < 0 ? StyleBorderSideColor.CompareCascade(a, z) : aRank.CompareTo(zRank);
         }
 
-        // tokens as NormalizeSpacing leaves them, with the tokens of each family a C# resolver folds from the whole list
-        // put in Tailwind's order (StyleFamilyOrder); tokens itself when nothing moves.
+        // tokens without a composite family the browser discards (StyleCompositeRejection), as NormalizeSpacing leaves
+        // them, with the tokens of each family a C# resolver folds from the whole list put in Tailwind's order
+        // (StyleFamilyOrder); tokens itself when nothing moves.
         internal static string[] Normalize(string[] tokens)
         {
+            tokens = StyleCompositeRejection.WithoutRejectedComposites(tokens);
             if (tokens.Length < 2)
             {
                 return tokens;

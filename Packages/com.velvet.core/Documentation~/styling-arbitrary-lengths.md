@@ -87,6 +87,14 @@ The ring colour and width are each the last class's, as the ring reads them. A `
 that is no colour (`from-[1IN]`) leaves its stop transparent, and a position that is no length
 (`from-[length:red]`) returns the stop to its initial position: 0%, 50% or 100%.
 
+Tailwind composes four more families through one declaration each: `translate-*`; `scale-x-*`, `scale-y-*` and
+the uniform `scale-<n>` (a bracketed `scale-[…]` is written as `scale` alone); `skew-*`; and the filters, `blur-*`
+to `sepia-*`, `hue-rotate-*` and `drop-shadow-*`. A value the browser rejects in one of them drops every utility
+of its family with the same variants and importance, as the browser drops the declaration they share:
+`translate-x-4 translate-y-[10]` translates nowhere, `blur-sm brightness-[abc]` filters nothing, and
+`drop-shadow-lg blur-[2]` loses its drop shadow, while `translate-x-4 hover:translate-y-[10]` keeps its
+translation until hovered. A `rotate-[…]` and a `scale-[…]` the browser rejects take nothing with them.
+
 ## Lengths only an element can measure
 
 | Written | Measured against |
