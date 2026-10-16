@@ -1535,9 +1535,9 @@ namespace Velvet
         internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info, long Sequence)> PendingCaughtErrorReports = new();
         internal long NextCaughtErrorSequence;
 
-        // Errors out of the unmount a mount root is making for an uncaught error, which FiberErrorBoundary.RecordCatch
-        // queues behind that error's report.
-        internal readonly List<(System.Exception Error, ErrorInfo Info)> UncaughtDuringRootUnmount = new();
+        // Errors a boundary took while showing its fallback (FiberErrorBoundary.TakeDuringTheSwap), which
+        // FiberErrorBoundary.RecordCatch queues behind the report of the error the swap is for.
+        internal readonly List<(ComponentFiber Boundary, System.Exception Error, ErrorInfo Info)> ErrorsDuringFallbackSwap = new();
 
         // Layout commits and passive drains running on this context; a catch inside one leaves its commit to
         // it (FiberEffects.CommitStrandedLayoutWork).

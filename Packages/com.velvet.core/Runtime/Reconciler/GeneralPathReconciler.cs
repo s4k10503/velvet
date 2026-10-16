@@ -1158,11 +1158,9 @@ namespace Velvet
             }
         }
 
-        // An error out of the disposal of what a boundary's failed output mounted goes to the boundaries above it: the
-        // rows of the boundary that caught are being replaced, so it declines the error as it declines one out of its
-        // own fallback's content, and the abort a catch of it would raise would release the elements around it. That
-        // sets FallbackContentFailed, which both callers clear before they read it: ExpandBoundaryInline and
-        // FiberErrorBoundary.ShowCaughtFallback each set it false ahead of the fallback's render.
+        // An error out of the disposal of what a boundary's failed output mounted is the boundary's own, taken as one
+        // out of its fallback swap is (FiberErrorBoundary.TakeDuringTheSwap), which records it rather than raising
+        // an abort that would release the elements around it.
         private static void DisposingFailedOutputOf(ComponentFiber boundary, Action dispose)
         {
             boundary.IsShowingFallback = true;

@@ -8,6 +8,10 @@
   boundary and unmounts nothing. Where a boundary's own fallback content throws and no boundary above catches
   that, only the fallback content's error is reported, as React discards the catch the boundary was showing.
   An effect cleanup that throws while `MountedTree.Dispose` runs is now reported rather than dropped.
+- An error a cleanup or ref throws while an error boundary swaps its fallback in, or while it disposes the output
+  that failed, is now that boundary's own, as React's commit-phase capture starts at the nearest mounted ancestor:
+  it is reported to `OnCaughtError` after the error the boundary caught, and the fallback renders again with it.
+  It used to go to the boundaries above, replacing the boundary that had just caught.
 
 ### Added
 

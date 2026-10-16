@@ -145,15 +145,14 @@ namespace Velvet
             }
             if (fiber.IsDisposed) return;
             if (shown) RecordCatch(fiber.Reconciler!.Context, fiber, caught.Error, caught.Info);
-            else
-            {
-                ReportDeferredUncaught(fiber);
-                PassOnTheCaughtError(fiber, caught);
-            }
+            else PassOnTheCaughtError(fiber, caught);
         }
 
         internal static void PassOnTheCaughtError(ComponentFiber boundary, BoundaryCaughtSignal caught)
-            => ComponentBoundarySearch.PropagateException(boundary, caught.Thrower, caught.Error, isRenderError: true);
+        {
+            DropTheSwapsErrors(boundary);
+            ComponentBoundarySearch.PropagateException(boundary, caught.Thrower, caught.Error, isRenderError: true);
+        }
 
         private static VNode? TryInvokeFactory(ComponentFiber fiber, Exception originalException, ErrorInfo info)
         {
@@ -187,22 +186,24 @@ namespace Velvet
             ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception, bool isRenderError)
         {
             if (!fiber.CatchesErrors || fiber.Reconciler == null) return false;
-            if (fiber.IsMountRoot && (fiber.IsShowingFallback || fiber.IsDisposed))
+            if (fiber.IsMountRoot && fiber.IsDisposed)
             {
-                TakeAtTheUnmountingRoot(fiber, throwingFiber, exception);
+                // MountedTree.Dispose is unmounting the tree, and no catch follows to deliver a report.
+                ReportUncaughtError(fiber.Reconciler.Context, exception, new ErrorInfo(BuildComponentStack(throwingFiber)));
                 return true;
             }
-            // A fiber whose own fallback content throws re-enters here (the content's per-fiber render
-            // catch routes back to this same boundary via ComponentBoundarySearch.PropagateException).
-            // Decline immediately rather than attempting to show the already-failing fallback again — the
-            // caller's propagation loop then continues to the next ancestor boundary on its own. Record it
-            // so the OUTER (non-reentrant) call in progress below can report failure for the exception it
-            // was actually handling, instead of the Reconcile call it's nested inside returning normally
-            // and looking like a clean render.
             if (fiber.IsShowingFallback)
             {
-                fiber.FallbackContentFailed = true;
-                return false;
+                // An error a render of the fallback's own content raises declines here, as React's boundary passes
+                // over an error its own retry raises. Recorded so the call showing the fallback reports failure
+                // for the error it was handling, though the reconcile it runs inside returns normally.
+                if (isRenderError && !fiber.IsMountRoot)
+                {
+                    fiber.FallbackContentFailed = true;
+                    return false;
+                }
+                TakeDuringTheSwap(fiber, throwingFiber, exception);
+                return true;
             }
             if (isRenderError && fiber.CatchesInTheWalk) return CatchInTheWalk(fiber, throwingFiber, exception);
             var ctx = fiber.Reconciler.Context;
@@ -235,31 +236,38 @@ namespace Velvet
                 FiberEffects.CommitStrandedLayoutWork(ctx);
                 return true;
             }
-            ReportDeferredUncaught(fiber);
+            DropTheSwapsErrors(fiber);
             return false;
         }
 
-        // An error out of the unmount the root is making, for an earlier uncaught error or for MountedTree.Dispose,
-        // is reported as uncaught and replaces nothing. During an unmount for an earlier error it is reported after
-        // that error (RecordCatch appends it), as React reports the earlier one from the layout phase of the commit
-        // whose deletions raised it and this one from a later commit; a Dispose reports it at once, since no catch
-        // follows to deliver it.
-        private static void TakeAtTheUnmountingRoot(ComponentFiber root, ComponentFiber? throwingFiber, Exception exception)
+        // An error that is not a render of the fallback's content — a cleanup or a ref of what the swap removes or
+        // mounts — is the boundary's own to catch: it is the nearest mounted ancestor of that work, where React's
+        // captureCommitPhaseError starts. It is caught after the error the swap is for (RecordCatch), as React
+        // reports that one from the layout phase of the swap's commit and this one from a later commit.
+        private static void TakeDuringTheSwap(ComponentFiber boundary, ComponentFiber? throwingFiber, Exception exception)
         {
-            var ctx = root.Reconciler!.Context;
-            var info = new ErrorInfo(BuildComponentStack(throwingFiber));
-            if (root.IsDisposed) ReportUncaughtError(ctx, exception, info);
-            else ctx.UncaughtDuringRootUnmount.Add((exception, info));
+            var info = new ErrorInfo(BuildComponentStack(throwingFiber))
+            {
+                ErrorBoundary = boundary.IsMountRoot ? string.Empty : Hooks.ComponentName(boundary),
+            };
+            boundary.Reconciler!.Context.ErrorsDuringFallbackSwap.Add((boundary, exception, info));
         }
 
-        // A root whose unmount failed reports at once what that unmount threw, since no catch is recorded to carry it.
-        private static void ReportDeferredUncaught(ComponentFiber fiber)
+        // A swap that failed leaves nothing to catch with, so what it took goes with it, as React's updates on a
+        // boundary an ancestor replaces do. The root cannot be replaced, and reports what it took at once.
+        private static void DropTheSwapsErrors(ComponentFiber boundary)
         {
-            if (!fiber.IsMountRoot || fiber.Reconciler == null) return;
-            var ctx = fiber.Reconciler.Context;
-            var deferred = ctx.UncaughtDuringRootUnmount;
-            for (var i = 0; i < deferred.Count; i++) ReportUncaughtError(ctx, deferred[i].Error, deferred[i].Info);
-            deferred.Clear();
+            var ctx = boundary.Reconciler?.Context;
+            if (ctx == null) return;
+            var taken = ctx.ErrorsDuringFallbackSwap;
+            for (var i = 0; i < taken.Count; i++)
+            {
+                if (boundary.IsMountRoot && ReferenceEquals(taken[i].Boundary, boundary))
+                {
+                    ReportUncaughtError(ctx, taken[i].Error, taken[i].Info);
+                }
+            }
+            taken.RemoveAll(entry => ReferenceEquals(entry.Boundary, boundary));
         }
 
         // Leaves the fallback to the frame expanding or reconciling the boundary's output that is on the stack,
@@ -277,13 +285,19 @@ namespace Velvet
         {
             fiber.CaughtError = (exception, info);
             ctx.PendingCaughtErrorReports.Add((fiber, exception, info, ctx.NextCaughtErrorSequence++));
-            if (!fiber.IsMountRoot) return;
-            var deferred = ctx.UncaughtDuringRootUnmount;
-            for (var i = 0; i < deferred.Count; i++)
+            var taken = ctx.ErrorsDuringFallbackSwap;
+            var tookAny = false;
+            for (var i = 0; i < taken.Count; i++)
             {
-                ctx.PendingCaughtErrorReports.Add((fiber, deferred[i].Error, deferred[i].Info, ctx.NextCaughtErrorSequence++));
+                if (!ReferenceEquals(taken[i].Boundary, fiber)) continue;
+                fiber.CaughtError = (taken[i].Error, taken[i].Info);
+                ctx.PendingCaughtErrorReports.Add((fiber, taken[i].Error, taken[i].Info, ctx.NextCaughtErrorSequence++));
+                tookAny = true;
             }
-            deferred.Clear();
+            if (!tookAny) return;
+            taken.RemoveAll(entry => ReferenceEquals(entry.Boundary, fiber));
+            // Its fallback renders again with the newest error, as React's getDerivedStateFromError takes it.
+            if (!fiber.IsMountRoot) FiberWorkLoop.RequestRenderFromHook(fiber);
         }
 
         // A boundary that has caught renders its fallback from then on, as React's does until it remounts: a
