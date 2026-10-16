@@ -105,7 +105,7 @@ namespace Velvet
             | BindingFlags.DeclaredOnly;
 
         // The member of a closed generic type that an open definition's member stands for, matched by metadata token.
-        private static FieldInfo Closed(FieldInfo open, Type closedDeclaring)
+        internal static FieldInfo Closed(FieldInfo open, Type closedDeclaring)
         {
             foreach (var field in closedDeclaring.GetFields(Declared))
             {
@@ -114,40 +114,13 @@ namespace Velvet
             throw new ArgumentException($"{open.Name} is not a field of {closedDeclaring}.");
         }
 
-        private static MethodInfo Closed(MethodInfo open, Type closedDeclaring)
+        internal static MethodInfo Closed(MethodInfo open, Type closedDeclaring)
         {
             foreach (var method in closedDeclaring.GetMethods(Declared))
             {
                 if (method.MetadataToken == open.MetadataToken) return method;
             }
             throw new ArgumentException($"{open.Name} is not a method of {closedDeclaring}.");
-        }
-
-        /// <summary>
-        /// The names of the generic members that do not close over a float animation, which a rename or a retyped
-        /// container shows as here before it shows as a velocity that never arrives.
-        /// </summary>
-        internal static string[] Unclosed()
-        {
-            if (!Resolves) return new[] { "an unresolved member" };
-            var unclosed = new System.Collections.Generic.List<string>();
-            void Check(string name, Action close)
-            {
-                try { close(); }
-                catch (Exception exception) when (exception is ArgumentException or NullReferenceException
-                    or InvalidOperationException) { unclosed.Add(name); }
-            }
-            var values = s_running!.DeclaringType!.MakeGenericType(typeof(float));
-            var running = Closed(s_running, values).FieldType;
-            var timing = Closed(s_timing!, running).FieldType.GetElementType()!;
-            var style = Closed(s_style!, running).FieldType.GetElementType()!;
-            Check(nameof(s_indexOf), () => Closed(s_indexOf!, running));
-            Check(nameof(s_start), () => Closed(s_start!, timing));
-            Check(nameof(s_duration), () => Closed(s_duration!, timing));
-            Check(nameof(s_easing), () => Closed(s_easing!, timing));
-            Check(nameof(s_from), () => Closed(s_from!, style));
-            Check(nameof(s_to), () => Closed(s_to!, style));
-            return unclosed.ToArray();
         }
     }
 }

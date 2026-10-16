@@ -11,17 +11,16 @@ namespace Velvet
     {
         private readonly VisualElement _element;
         private readonly Func<ArbitraryProperty, bool> _drivenByRunningPlay;
-        private readonly Func<ArbitraryProperty, bool> _drivenByLivePlay;
+        private Func<ArbitraryProperty, bool> _drivenByLivePlay;
         private readonly HashSet<string> _swapped = new(StringComparer.Ordinal);
         private readonly HashSet<ArbitraryProperty> _inlineBySwap = new();
         private readonly HashSet<ArbitraryProperty> _importantInlineBySwap = new();
 
-        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay,
-            Func<ArbitraryProperty, bool> drivenByLivePlay)
+        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay)
         {
             _element = element;
             _drivenByRunningPlay = drivenByRunningPlay;
-            _drivenByLivePlay = drivenByLivePlay;
+            _drivenByLivePlay = drivenByRunningPlay;
         }
 
         public static MotionSlotContext? Read(VisualElement element, string[]? fromClasses, string[]? toClasses,
@@ -31,7 +30,8 @@ namespace Velvet
             {
                 return null;
             }
-            var context = new MotionSlotContext(element, drivenByRunningPlay, drivenByLivePlay ?? drivenByRunningPlay);
+            var context = new MotionSlotContext(element, drivenByRunningPlay);
+            if (drivenByLivePlay != null) context._drivenByLivePlay = drivenByLivePlay;
             context.NoteSwapped(fromClasses);
             context.NoteSwapped(toClasses);
             return context;

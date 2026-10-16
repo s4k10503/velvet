@@ -76,10 +76,29 @@ namespace Velvet.Tests
         [Test]
         public void Given_TheStyleAnimationMembers_When_ClosedOverAFloatAnimation_Then_NoneIsLeftOpen()
         {
-            // Arrange — nothing beyond the declarations.
+            // Arrange
+            var values = EngineMember.AnimationValuesRunning.ResolveField()!.DeclaringType!.MakeGenericType(typeof(float));
+            var running = NativeTransitionVelocity.Closed(EngineMember.AnimationValuesRunning.ResolveField()!, values).FieldType;
+            var timing = NativeTransitionVelocity.Closed(EngineMember.AnimationDataSetTiming.ResolveField()!, running)
+                .FieldType.GetElementType();
+            var style = NativeTransitionVelocity.Closed(EngineMember.AnimationDataSetStyle.ResolveField()!, running)
+                .FieldType.GetElementType();
+            var closers = new (string Name, Action Close)[]
+            {
+                ("IndexOf", () => NativeTransitionVelocity.Closed(EngineMember.AnimationDataSetIndexOf.ResolveMethod()!, running)),
+                ("startTime", () => NativeTransitionVelocity.Closed(EngineMember.AnimationTimingStart.ResolveField()!, timing)),
+                ("duration", () => NativeTransitionVelocity.Closed(EngineMember.AnimationTimingDuration.ResolveField()!, timing)),
+                ("easingCurve", () => NativeTransitionVelocity.Closed(EngineMember.AnimationTimingEasing.ResolveField()!, timing)),
+                ("startValue", () => NativeTransitionVelocity.Closed(EngineMember.AnimationStyleStart.ResolveField()!, style)),
+                ("endValue", () => NativeTransitionVelocity.Closed(EngineMember.AnimationStyleEnd.ResolveField()!, style)),
+            };
 
             // Act
-            var unclosed = NativeTransitionVelocity.Unclosed();
+            var unclosed = closers.Where(closer =>
+            {
+                try { closer.Close(); return false; }
+                catch (ArgumentException) { return true; }
+            }).Select(closer => closer.Name);
 
             // Assert
             Assert.That(string.Join(", ", unclosed), Is.Empty);
