@@ -1207,7 +1207,7 @@ namespace Velvet
         // of a LEADING back container would shift every ordinary sibling index a live Common/Keyed loop is
         // still iterating by absolute position). Pure membership changes within an ALREADY-EXISTING container
         // never touch this set — they run synchronously, from anywhere. Drained (and cleared) by
-        // FiberZLayerCoordinator.DrainTeardowns, called from the same Reconciler.Reconcile top-level finally as
+        // FiberZLayerCoordinator.DrainTeardowns, called from Reconciler.FinishTopLevelPass's finally, after
         // DrainPendingPortalMounts.
         public HashSet<VisualElement> PendingZLayerTeardownChecks { get; } = new();
 
