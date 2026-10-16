@@ -461,5 +461,38 @@ namespace Velvet.Tests
             // Assert
             Assert.That(runs, Is.EqualTo(2));
         }
+
+        [Test]
+        public void Given_PathRelativeRouting_When_DotDotFromASplatRoute_Then_StartsFromTheWholeMatchedPathname()
+        {
+            // Arrange
+            var router = new Router(new[] { Route("/", children: new[] { Route("files/*") }) });
+            router.NavigateSync("/files/a/b");
+
+            // Act
+            Navigate(router, "..", new NavigateOptions { Relative = RelativeRoutingType.Path });
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/files/a"));
+        }
+
+        [Test]
+        public void Given_ADeltaOfZero_When_ABlockerIsConsulted_Then_TheHistoryActionIsBack()
+        {
+            // Arrange
+            var router = BuildAt("/a");
+            NavigationMode? seen = null;
+            router.RouteBlockerManager.Register(args =>
+            {
+                seen = args.HistoryAction;
+                return false;
+            }, new RouteBlockerState());
+
+            // Act
+            router.NavigateAsync(0).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(seen, Is.EqualTo(NavigationMode.Back));
+        }
     }
 }

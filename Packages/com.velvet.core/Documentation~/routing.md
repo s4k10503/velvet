@@ -243,9 +243,10 @@ navigate(-1);
   with it are ignored. A delta past either end lands on that end entry, as a memory history's `go` clamps its index,
   and a delta that does not move, zero or one clamped where it stands, lands on the entry already current and runs its
   loaders again, as the router does for the pop a memory history announces. It answers `NavigationResult.Cancelled`
-  only when the history holds no entry. `Router.GoBack`, `Router.GoForward` and the `Back` and `Forward` modes of
-  `Router.NavigateAsync` step by one entry and answer `Cancelled` at either end instead; they commit the neighbouring
-  entry's own location.
+  only when the history holds no entry. A blocker is told `Back` for a delta that does not move, as `NavigationMode`
+  has no pop. `Router.GoBack`, `Router.GoForward` and the `Back` and `Forward` modes of `Router.NavigateAsync` are
+  conveniences with no React Router counterpart: they step by one entry and answer `Cancelled` at either end, and they
+  commit the neighbouring entry's own location. `navigate(delta)` is the call that follows React Router.
 - `V.Link`, `V.NavLink` and `V.Navigate` take `state` and `relative` beside `replace`; `V.Navigate` redirects again
   when either changes. `V.NavLink` resolves its target
   with the same `relative` to decide whether it is active, and ignores the fragment of the target for that.
@@ -318,8 +319,7 @@ counterpart and holds its own history stack, which grows without a bound as a me
 by nothing, because the router has no scroll restoration for it to configure; it is there so a call written against
 React Router's options compiles, and `V.Link` and `V.NavLink` do not take it. `flushSync` and `viewTransition` are not
 offered; they configure browser behaviours with no counterpart in this router. `State` is any object, held by
-reference and not cloned, where the browser clones it into the history entry. A delta resolved from the pathname of a
-splat route uses its `PathnameBase`, where React Router uses the leaf's full pathname.
+reference and not cloned, where the browser clones it into the history entry.
 
 ## Also see
 

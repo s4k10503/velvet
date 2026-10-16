@@ -346,7 +346,7 @@ namespace Velvet
             var entry = _history[landing];
             return Begin(
                 entry.Path + entry.Hash,
-                landing < _historyIndex ? NavigationMode.Back : NavigationMode.Forward,
+                landing > _historyIndex ? NavigationMode.Forward : NavigationMode.Back,
                 cancellationToken,
                 submission: null,
                 Visit.Step(landing, entry.Key));
