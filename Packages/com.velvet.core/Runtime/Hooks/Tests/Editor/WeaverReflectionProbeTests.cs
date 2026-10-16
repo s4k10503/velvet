@@ -128,15 +128,24 @@ namespace Velvet.Tests
         private static List<string> InvokeWeave(string weaverTypeFullName, ModuleDefinition module)
             => InvokeWeave(weaverTypeFullName, module, out _);
 
-        private static List<string> InvokeWeave(string weaverTypeFullName, ModuleDefinition module, out bool changed)
+        private static List<string> InvokeWeaveAndReport(ModuleDefinition module)
+            => InvokeWeave(CompilerWeaverTypeFullName, module, out _, "WeaveAndReport");
+
+        private static List<string> InvokeWeave(string weaverTypeFullName, ModuleDefinition module, out bool changed,
+            string weaveName = "Weave")
         {
             var codeGenAssembly = AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(a => a.GetName().Name == CodeGenAssemblyName);
             Assume.That(codeGenAssembly, Is.Not.Null,
                 "Precondition: the Unity.Velvet.CodeGen assembly is loaded in the editor domain");
             var weaverType = codeGenAssembly!.GetType(weaverTypeFullName, throwOnError: true);
-            var weaveMethod = weaverType!.GetMethod("Weave",
+            var weaveMethod = weaverType!.GetMethod(weaveName,
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            if (weaveMethod == null && weaveName != "Weave")
+            {
+                Assert.Fail($"The weaver exposes no public static {weaveName} method");
+            }
+
             Assume.That(weaveMethod, Is.Not.Null,
                 "Precondition: the weaver exposes a public static Weave method");
 
@@ -271,6 +280,15 @@ namespace Velvet.Tests
             storeMethod.Parameters.Add(new ParameterDefinition(
                 "result", Mono.Cecil.ParameterAttributes.None, vnodeType));
             hooksType.Methods.Add(storeMethod);
+
+            var beginOpaqueMethod = new MethodDefinition("BeginOpaqueCall",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Int32);
+            hooksType.Methods.Add(beginOpaqueMethod);
+            var endOpaqueMethod = new MethodDefinition("EndOpaqueCall",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Void);
+            endOpaqueMethod.Parameters.Add(new ParameterDefinition(
+                "hooksBefore", Mono.Cecil.ParameterAttributes.None, module.TypeSystem.Int32));
+            hooksType.Methods.Add(endOpaqueMethod);
 
             var componentType = new TypeDefinition("Probe", "Fixture",
                 Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class
@@ -700,7 +718,8 @@ namespace Velvet.Tests
                 "The module was rewritten, so the post-processor has to write it");
         }
 
-        // GREEN_ON_BASE(characterization): the base reports no change for a module it wove nothing in, as this does.
+        // GREEN_ON_BASE(characterization): the base reports no change for a module it wove nothing in, as this does,
+        // though the body here bails on a discarded hook result where the base's bailed on a call it could not read.
         // What it pins is the analysis result being honoured: `true` in place of `false` for the failed analysis
         // in `TryWeaveMethod` reports a change.
         [Test]
@@ -708,10 +727,12 @@ namespace Velvet.Tests
         {
             // Arrange
             using var module = BuildHookShapeProbeModule("NothingWovenProbe",
-                out _, out _, out _, out _);
+                out _, out var useId, out _, out _);
             AddProbeComponent(module, "Bails", il =>
             {
-                il.Append(Instruction.Create(OpCodes.Call, UndeclaredMethodOf(module)));
+                il.Append(Instruction.Create(OpCodes.Ldnull));
+                il.Append(Instruction.Create(OpCodes.Call, useId));
+                il.Append(Instruction.Create(OpCodes.Pop));
                 il.Append(Instruction.Create(OpCodes.Ldnull));
                 il.Append(Instruction.Create(OpCodes.Ret));
             });
@@ -1083,11 +1104,10 @@ namespace Velvet.Tests
             Assert.That((woven: gate >= 0, gateFirst: gate < regionStart), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base bails a callee whose type declares no such method, as here.
         // What it pins is the safety fold's null guard: deleting `if (definition == null) return true;` from
         // `NonSafeHookFold.TryLeaf` hands the null on to `IsDispatchOpen`, and the weave throws.
         [Test]
-        public void Given_ACallToAMethodItsTypeDoesNotDeclare_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        public void Given_ACallToAMethodItsTypeDoesNotDeclare_When_CompilerWeaverRuns_Then_MethodIsWoven()
         {
             // Arrange — one parameter, and a call naming a method Probe.Fixture does not declare
             using var module = BuildHookShapeProbeModule("UndeclaredMethodProbe",
@@ -1104,9 +1124,10 @@ namespace Velvet.Tests
             var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
 
             // Assert
-            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((false, 0)),
-                "A callee Resolve() returns nothing for cannot be inspected, so the weaver bails without failing");
+            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((true, 0)),
+                "A callee Resolve() returns nothing for is opaque rather than a reason to bail");
         }
+
         // GREEN_ON_BASE(characterization): the base reads such a callee inside a Velvet.Hooks member as no hook.
         // What it pins is the reach fold's null guard: deleting `if (definition == null) return true;` from
         // `HookReachFold.TryLeaf` hands the null on to `IsDispatchOpen`, and the weave throws.
@@ -1230,12 +1251,10 @@ namespace Velvet.Tests
             return new MethodReference("Undeclared", module.TypeSystem.Void, leafType);
         }
 
-        // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so it leaves this one alone too.
-        // What this pins is the safety gate running ahead of the entry gate. An unresolvable callee is read as
-        // no hook by the hook scan and as unverifiable by the safety gate, so moving the hookless branch of
-        // `TryAnalyze` above its `ReachesAnyNonSafeHook` call reddens this case.
+        // What this pins is an unresolvable callee not counting as a non-SAFE hook to the safety fold: restoring the
+        // `value = 1` it answered before trying to resolve one bails the body.
         [Test]
-        public void Given_AHooklessBodyCallingAnUnresolvableMethod_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        public void Given_AHooklessBodyCallingAnUnresolvableMethod_When_CompilerWeaverRuns_Then_MethodIsWoven()
         {
             // Arrange — one parameter, and a call into an assembly no resolver can find
             using var module = BuildHookShapeProbeModule("UnresolvableCalleeProbe",
@@ -1256,9 +1275,240 @@ namespace Velvet.Tests
             InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
 
             // Assert
-            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
-                "A callee the weaver cannot inspect bails a body with no hook as it bails one with a hook");
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "A callee the weaver cannot inspect bails nothing, ahead of a gate that precedes it or not");
         }
+
+        // `Missing.Run(); var id = Hooks.UseId(null);`, the call into an assembly no resolver finds standing ahead of the hook.
+        private static MethodDefinition AssembleUnresolvableCallAheadOfAHook(ModuleDefinition module,
+            MethodDefinition method, MethodReference useId)
+        {
+            var missingScope = new AssemblyNameReference("Velvet.WeaverProbe.Missing", new Version(1, 0, 0, 0));
+            module.AssemblyReferences.Add(missingScope);
+            var missingType = new TypeReference("Probe.Missing", "Service", module, missingScope);
+            var missingMethod = new MethodReference("Run", module.TypeSystem.Void, missingType);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, missingMethod));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+            return method;
+        }
+
+        [Test]
+        public void Given_AnUnresolvableCalleeAheadOfAHook_When_CompilerWeaverRuns_Then_ItsCallIsBracketed()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("UnresolvableAheadProbe",
+                out var method, out var useId, out _, out _);
+            AssembleUnresolvableCallAheadOfAHook(module, method, useId);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(CallsTo(method, "BeginOpaqueCall"), Is.EqualTo(1),
+                "What the callee runs is not known here, and a hook in it would feed the body a value the gate does not compare");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body with an opaque call ahead of a hook unwoven, and so
+        // does this change where the Velvet declares no bracket.
+        // What it pins is the bracket test in `TryAnalyze`: `if (false)` in place of it reddens this case.
+        [Test]
+        public void Given_AnOpaqueCallAheadOfAHookAndAVelvetDeclaringNoBracket_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("NoBracketProbe",
+                out var method, out var useId, out _, out _);
+            var hooks = module.Types.Single(type => type.FullName == "Velvet.Hooks");
+            hooks.Methods.Remove(hooks.Methods.Single(each => each.Name == "BeginOpaqueCall"));
+            AssembleUnresolvableCallAheadOfAHook(module, method, useId);
+
+            // Act
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((false, 0)),
+                "Without the bracket nothing tells the gate a hook ran inside the call, so the body is left unwoven without a failure");
+        }
+
+        [Test]
+        public void Given_ADiscardedHookResult_When_BailoutsAreReported_Then_TheMessageNamesTheReason()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("ReportedBailoutProbe",
+                out var method, out var useId, out _, out _);
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Pop));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            var messages = InvokeWeaveAndReport(module);
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("Probe.Fixture::Component").And.Contains("discarded"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base says nothing about a body it leaves unwoven.
+        // What it pins is the report being opt-in: `true` in place of `reportBailouts` in `TryWeaveMethod` says it anyway.
+        [Test]
+        public void Given_ADiscardedHookResult_When_BailoutsAreNotReported_Then_NothingIsSaid()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("UnreportedBailoutProbe",
+                out var method, out var useId, out _, out _);
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Pop));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(messages, Is.Empty);
+        }
+
+        [Test]
+        public void Given_AWovenBody_When_BailoutsAreReported_Then_TheMessageCountsItsScopes()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("ReportedWeaveProbe",
+                out var method, out var useId, out _, out _);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            var messages = InvokeWeaveAndReport(module);
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("woven with 0 scopes"));
+        }
+
+        [Test]
+        public void Given_AnUnresolvableCalleeAheadOfAHook_When_BailoutsAreReported_Then_TheMessageCountsTheBracketedCalls()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("ReportedBracketProbe",
+                out var method, out var useId, out _, out _);
+            AssembleUnresolvableCallAheadOfAHook(module, method, useId);
+
+            // Act
+            var messages = InvokeWeaveAndReport(module);
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("1 call(s) ahead of the gate bracketed"));
+        }
+
+        [Test]
+        public void Given_AWovenBodyWithNoOpaqueCall_When_BailoutsAreReported_Then_TheMessageSaysNothingOfBracketedCalls()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("ReportedPlainWeaveProbe",
+                out var method, out var useId, out _, out _);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            var messages = InvokeWeaveAndReport(module);
+
+            // Assert
+            Assert.That(messages, Has.None.Contains("bracketed"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves a body with no opaque call whatever the Velvet declares,
+        // as this change does.
+        // What it pins is a body with no opaque call needing no bracket: `>=` in place of `>` on `opaqueCalls.Count`
+        // in `TryAnalyze` reddens this case.
+        [Test]
+        public void Given_AVelvetDeclaringNoBracketAndABodyWithNoOpaqueCall_When_CompilerWeaverRuns_Then_ItIsWoven()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("NoBracketPlainProbe",
+                out var method, out var useId, out _, out _);
+            var hooks = module.Types.Single(type => type.FullName == "Velvet.Hooks");
+            hooks.Methods.Remove(hooks.Methods.Single(each => each.Name == "BeginOpaqueCall"));
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "A Velvet without the bracket still weaves a body that needs none");
+        }
+
+        [Test]
+        public void Given_AHookOnNeitherAllowList_When_BailoutsAreReported_Then_TheMessageSaysTheGateNeverHits()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("ReportedVolatileProbe",
+                out var method, out _, out _, out _);
+            var useMutation = new MethodDefinition("UseMutation",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Object);
+            module.Types.Single(type => type.FullName == "Velvet.Hooks").Methods.Add(useMutation);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Object));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, useMutation));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            var messages = InvokeWeaveAndReport(module);
+
+            // Assert
+            Assert.That(messages, Has.Some.Contains("never hits"));
+        }
+
+        [Test]
+        public void Given_EveryBailoutReason_When_Described_Then_EachIsDescribedApart()
+        {
+            // Arrange
+            var codeGen = AppDomain.CurrentDomain.GetAssemblies().First(a => a.GetName().Name == CodeGenAssemblyName);
+            var weaver = codeGen.GetType(CompilerWeaverTypeFullName, throwOnError: true)!;
+            var reasons = weaver.GetNestedType("Bailout", BindingFlags.NonPublic)!;
+            var describe = weaver.GetMethod("Describe", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+            // Act
+            var descriptions = Enum.GetValues(reasons).Cast<object>()
+                .Select(reason => (string)describe.Invoke(null, new[] { reason })!).ToList();
+
+            // Assert
+            Assert.That(descriptions, Is.Unique);
+        }
+
         private static int IndexOfCallTo(MethodDefinition method, string name)
         {
             var instructions = method.Body.Instructions;

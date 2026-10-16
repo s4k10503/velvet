@@ -49,6 +49,9 @@ namespace Velvet.Tests
             s_setPhase = null;
             s_setPhaseText = null;
             s_strictCalls = 0;
+            s_greeter = new PlainGreeter();
+            s_setGreeter = null;
+            s_mutation = null;
         }
 
         [TearDown]
@@ -303,6 +306,64 @@ namespace Velvet.Tests
                 Hooks.StoreMemoizedScope(slot, 0, deps, node);
             }
             return V.Div("root", node);
+        }
+
+        public interface IGreeter
+        {
+            string Greet();
+        }
+
+        private sealed class PlainGreeter : IGreeter
+        {
+            public string Greet() => "plain";
+        }
+
+        private sealed class HookGreeter : IGreeter
+        {
+            public string Greet()
+            {
+                var (n, set) = Hooks.UseState(7);
+                s_setGreeter = set;
+                return "hook" + n;
+            }
+        }
+
+        private static IGreeter s_greeter = new PlainGreeter();
+        private static Action<int> s_setGreeter;
+        private static MutationResult<int, int> s_mutation;
+
+        [Component]
+        private static VNode DispatchAheadOfTheGate()
+        {
+            var greeting = s_greeter.Greet();
+            var (n, setN) = Hooks.UseState(0);
+            s_setOther = setN;
+            return V.Div("root",
+                V.Label(name: "greeting", text: new Built("greeting", greeting).Text),
+                V.Label(name: "n", text: n.ToString()));
+        }
+
+        private static void Grow(List<int> items) => items.Add(items.Count);
+
+        [Component]
+        private static VNode GrowsAListAfterTheHooks()
+        {
+            var (items, _) = Hooks.UseState(new List<int>());
+            var (other, setOther) = Hooks.UseState(0);
+            s_setOther = setOther;
+            Grow(items);
+            return V.Div("root",
+                V.Label(name: "count", text: items.Count.ToString()),
+                V.Label(name: "other", text: other.ToString()));
+        }
+
+        [Component]
+        private static VNode ReadsAMutation()
+        {
+            var mutation = Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: (v, _) => VelvetTask.FromResult(v)));
+            s_mutation = mutation;
+            return V.Label(name: "status", text: mutation.Status.ToString());
         }
 
         [Component]
@@ -742,6 +803,71 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Builds("scoped"), Is.EqualTo(2), "The mount built it twice, as its two passes read different inputs, and the render showing it again built it no more");
+        }
+
+        [Test]
+        public void Given_ADispatchAheadOfTheGate_When_AnotherStateChanges_Then_TheChildReadingItIsNotBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DispatchAheadOfTheGate, key: "dispatch"));
+
+            // Act
+            s_setOther(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Builds("greeting"), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body with a dispatch ahead of its gate unwoven, so it shows the new value too.
+        // What it pins is the gate declining a render in which a hook ran inside the dispatch: removing the
+        // `fiber.HookRanInOpaqueCall` clause from `TryGetMemoizedVNode` serves the cached tree, which shows the first value.
+        [Test]
+        public void Given_ADispatchAheadOfTheGateRunningAHook_When_ThatHooksStateChanges_Then_TheChildShowsIt()
+        {
+            // Arrange
+            s_greeter = new HookGreeter();
+            using var mounted = V.Mount(_root, V.Component(DispatchAheadOfTheGate, key: "hook-dispatch"));
+
+            // Act
+            s_setGreeter(8);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("greeting"), Is.EqualTo("hook8"));
+        }
+
+        // What it pins is a reference a call outside every scope is given staying out of them: replacing
+        // `mutated.Contains(dep.Key)` in `TryPlanCandidate` with `false` caches the child on the list's identity.
+        [Test]
+        public void Given_AListAnOpaqueCallGrows_When_AnotherStateChanges_Then_TheChildCountingItShowsTheCurrentCount()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(GrowsAListAfterTheHooks, key: "grows"));
+
+            // Act
+            s_setOther(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("count"), Is.EqualTo("2"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body reaching UseMutation unwoven, so it shows the new status too.
+        // What it pins is the gate of such a body never hitting: removing the fresh dependency `InjectMemoization`
+        // adds for a volatile body serves the cached tree, which shows Idle.
+        [Test]
+        public void Given_AMutationRead_When_ItIsMutated_Then_TheLabelShowsItHasLeftIdle()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ReadsAMutation, key: "mutation"));
+
+            // Act
+            s_mutation.Mutate(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("status"), Is.Not.EqualTo("Idle"));
         }
 
         [Test]

@@ -2782,7 +2782,8 @@ namespace Velvet
         {
             if (deps == null) throw new ArgumentNullException(nameof(deps));
             var fiber = FiberAmbientStack.Current;
-            if (fiber == null || fiber.Indices.MemoHookIndex != 0 || !fiber.RendersComponent(component))
+            if (fiber == null || fiber.Indices.MemoHookIndex != 0 || fiber.HookRanInOpaqueCall
+                || !fiber.RendersComponent(component))
             {
                 slotIndex = -1;
                 cached = null;
@@ -2815,6 +2816,31 @@ namespace Velvet
             }
             cached = null!;
             return false;
+        }
+
+        /// <summary>
+        /// Opens the bracket the build-time compiler transform weaves around a call it cannot prove runs no hook,
+        /// ahead of the memoization gate. Returns the hook count to hand to <see cref="EndOpaqueCall"/>.
+        /// Do not call by hand.
+        /// </summary>
+        /// <returns>The number of hooks the rendering component has called so far.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static int BeginOpaqueCall() => FiberAmbientStack.Current?.HookCallCount ?? 0;
+
+        /// <summary>
+        /// Closes the bracket opened by <see cref="BeginOpaqueCall"/>. A hook called inside it makes the gate of
+        /// this render report a miss, since the value it fed the body is not among the gate's dependencies.
+        /// Do not call by hand.
+        /// </summary>
+        /// <param name="hooksBefore">The count <see cref="BeginOpaqueCall"/> returned.</param>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static void EndOpaqueCall(int hooksBefore)
+        {
+            var fiber = FiberAmbientStack.Current;
+            if (fiber != null && fiber.HookCallCount != hooksBefore)
+            {
+                fiber.HookRanInOpaqueCall = true;
+            }
         }
 
         /// <summary>

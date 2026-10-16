@@ -27,6 +27,10 @@ namespace Velvet.CodeGen
         // exists to survive.
         private static readonly string VelvetAssemblyName = typeof(Velvet.Hooks).Assembly.GetName().Name;
 
+        // Defined in an assembly's scripting define symbols to have the compiler weaver say, in one warning per
+        // [Component], why the component is left unwoven or what was woven into it.
+        internal const string ReportDefine = "VELVET_REPORT_AUTOMEMO";
+
         public override ILPostProcessor GetInstance() => this;
 
         public override bool WillProcess(ICompiledAssembly compiledAssembly)
@@ -72,7 +76,9 @@ namespace Velvet.CodeGen
                 bool madeAnyChange;
                 try
                 {
-                    var memoWoven = CompilerWeaver.Weave(assemblyDefinition.MainModule, diagnostics);
+                    var memoWoven = Array.IndexOf(compiledAssembly.Defines, ReportDefine) >= 0
+                        ? CompilerWeaver.WeaveAndReport(assemblyDefinition.MainModule, diagnostics)
+                        : CompilerWeaver.Weave(assemblyDefinition.MainModule, diagnostics);
                     var metadataWoven = MetadataRegistrationWeaver.Weave(assemblyDefinition.MainModule, diagnostics);
                     madeAnyChange = memoWoven || metadataWoven;
                 }

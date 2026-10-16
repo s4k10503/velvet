@@ -360,6 +360,8 @@
 [Velvet] method Velvet.FocusManager.FocusLast(Velvet.FocusManagerOptions?): UnityEngine.UIElements.VisualElement?
 [Velvet] method Velvet.FocusManager.FocusNext(Velvet.FocusManagerOptions?): UnityEngine.UIElements.VisualElement?
 [Velvet] method Velvet.FocusManager.FocusPrevious(Velvet.FocusManagerOptions?): UnityEngine.UIElements.VisualElement?
+[Velvet] method Velvet.Hooks.BeginOpaqueCall(): System.Int32
+[Velvet] method Velvet.Hooks.EndOpaqueCall(System.Int32): System.Void
 [Velvet] method Velvet.Hooks.ForwardedRef`1(): Velvet.Ref`1[T]?
 [Velvet] method Velvet.Hooks.StoreMemoizedScope(System.Int32, System.Int32, System.Object?[], Velvet.VNode?): System.Void
 [Velvet] method Velvet.Hooks.StoreMemoizedValue(System.Int32, System.Int32, System.Object?[], System.Object?): System.Void

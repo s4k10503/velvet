@@ -9,31 +9,35 @@ namespace Velvet.CodeGen
     // Compiler's reactive scopes are, so a render that changes one input builds again what reads it and hands the
     // reconciler the same instances for the rest.
     // A scope is one expression that leaves one value on the stack, after the last hook call (anywhere in a body
-    // that calls none): a call or constructor returning a VNode, wherever it stands: an element of a `VNode[]`
-    // initializer (what `params VNode?[] children` and `children: new[] { ... }` both compile to), an argument (a
-    // single child, a member of a props record), the root.
-    // A scope may also be a delegate built from a lambda that captures variables (`ldloc display; ldftn; newobj`),
-    // cached under the captured variables the lambda reads when it runs, which the compiler hoists into fields of a
-    // display class.
-    // A scope may also be an expression stored once into a local or a captured variable (`var visible =
-    // items.Where(...)`), when nothing can change what it holds after the scope ended: a value type, a string, a
-    // delegate, or an interface exposing no way to change it (IEnumerable<T>, IReadOnlyList<T>, ...). A list or an
-    // array is not one, because the body may write to it afterwards.
+    // that calls none):
+    //   a call or constructor returning a VNode, wherever it stands: an element of a `VNode[]` initializer (what
+    //     `params VNode?[] children` and `children: new[] { ... }` both compile to), an argument (a single child, a
+    //     member of a props record), the root;
+    //   a delegate built from a lambda that captures variables (`ldloc display; ldftn; newobj`), cached under the
+    //     captured variables the lambda reads when it runs, which the compiler hoists into fields of a display
+    //     class;
+    //   an expression stored once into a local or a captured variable (`var visible = items.Where(...)`), when
+    //     nothing can change what it holds after the scope ended: a value type, a string, a delegate, or an interface
+    //     exposing no way to change it (IEnumerable<T>, IReadOnlyList<T>, ...). A list or an array is not one,
+    //     because the body may write to it afterwards.
     // It is woven only when everything the expression reads is a value compared where it starts:
     //   A parameter it reads is compared. A local it reads is compared when it is a hook value nothing stores to
-    //   after the hook section, a value type or string, or the output of a scope of its own stored once before it. A captured variable is read through its display class and
-    //   follows the same rules, and one a lambda of the scope reads is compared whichever it is, provided nothing
-    //   stores to it once the scope began and no lambda writes it. A setter that a hook returns beside its value is
-    //   one object for the life of the component, and is compared as a dependency that never changes. A local it
-    //   takes nothing from and leaves nothing in for what runs after it is its own and is not compared (see
-    //   ScopeFacts.IsPrivateTo). A local it writes must be its own, and an address it takes of a parameter, or of a
-    //   local that is not its own, must be read at once (see ReadsInPlace).
+    //   after the hook section, a value type or string, or the output of a scope of its own stored once before
+    //   it. A captured variable is read through its display class and follows the same rules, and one a lambda
+    //   of the scope reads is compared whichever it is, provided nothing stores to it once the scope began and
+    //   no lambda writes it. A setter that a hook returns beside its value is one object for the life of the
+    //   component, and is compared as a dependency that never changes. A local it takes nothing from and leaves
+    //   nothing in for what runs after it is its own and is not compared (see ScopeFacts.IsPrivateTo). A local
+    //   it writes must be its own, and an address it takes of a parameter, or of a local that is not its own,
+    //   must be read at once (see ReadsInPlace).
     //   It calls no member of a Ref / MutableRef and no method taking one, and reads no hook value from UseService
     //   or from a custom hook unless value-like: a render reading through one has no value to compare.
     //   It reads no mutable static, and calls only a V factory, a constructor, an instance property accessor
     //   outside the namespaces named in StatefulAccessorNamespaces, or a member of the BCL namespaces named in
     //   PureNamespaces, other than a member of the types named in AmbientStateTypes and the static members of those
     //   in AmbientStateStaticTypes.
+    //   It reads no reference a call outside every scope is given (see ReferencesGivenToCalls): that call may write
+    //   through it, and the scope would hold what it built from the object before.
     //   Control flow in it stays inside it and moves forward, nothing outside jumps into it, and nothing
     //   outside runs it twice (no loop around it).
     //   The method has no try / catch / finally.
@@ -165,11 +169,12 @@ namespace Velvet.CodeGen
             if (depths == null) return plans;
             var boundary = analysis.LastHookBoundary == null ? -1 : System.Array.IndexOf(instructions, analysis.LastHookBoundary);
             var facts = new ScopeFacts(body, instructions, depths, analysis, boundary);
+            var mutated = ReferencesGivenToCalls(facts);
             // MUTANT_SURVIVES(equivalent, boundary): a region beginning at the boundary begins with the hook call, which no scope may hold.
             foreach (var candidate in FindCandidates(facts).Where(each => each.Span.Start > boundary))
             {
                 if (candidate.Kind == ScopeKind.Value && (context.TryGetMemoizedValue == null || context.StoreMemoizedValue == null)) continue;
-                if (TryPlanCandidate(facts, candidate, plans) is not { } plan) continue;
+                if (TryPlanCandidate(facts, candidate, plans, mutated) is not { } plan) continue;
                 plans.Add(plan);
                 if (candidate.Output != null) facts.AcceptOutput(candidate.Output);
             }
@@ -358,7 +363,52 @@ namespace Velvet.CodeGen
             return false;
         }
 
-        private static ScopePlan? TryPlanCandidate(ScopeFacts facts, ScopeCandidate candidate, List<ScopePlan> accepted)
+        // The references a call outside every scope is given: a call the weaver cannot take for a function of its
+        // arguments may write through any of them, so a scope reading one holds what it built from the object as it
+        // was. The arguments are the references read by the expression the call ends, and a variable shared by two
+        // such calls is named once.
+        private static HashSet<object> ReferencesGivenToCalls(ScopeFacts facts)
+        {
+            var given = new HashSet<object>();
+            for (var i = facts.Boundary + 1; i < facts.Instructions.Length; i++)
+            {
+                var instr = facts.Instructions[i];
+                if (instr.OpCode.Code is not (Code.Call or Code.Callvirt) || instr.Operand is not MethodReference method
+                    || IsRepeatableCall(instr, method))
+                {
+                    continue;
+                }
+                // MUTANT_SURVIVES(equivalent, arithmetic): the two instructions at the boundary store a hook result and load no variable a callee could change.
+                var start = SpanEndingAt(facts, i)?.Start ?? facts.Boundary + 1;
+                // MUTANT_SURVIVES(equivalent, boundary): the instruction at `i` is the call, which names a method and reads no variable.
+                for (var read = start; read < i; read++)
+                {
+                    if (ReferenceKeyOf(facts.Instructions[read]) is { } key) given.Add(key);
+                }
+            }
+            return given;
+        }
+
+        // The variable a load reads, when what it holds is a reference a callee could change.
+        private static object? ReferenceKeyOf(Instruction instr)
+        {
+            switch (instr.Operand)
+            {
+                case VariableDefinition local when instr.OpCode.Code == Code.Ldloc && !IsClosureClass(local.VariableType):
+                    return CanBeWrittenThrough(local.VariableType) ? local : null;
+                case ParameterDefinition parameter when instr.OpCode.Code == Code.Ldarg:
+                    return CanBeWrittenThrough(parameter.ParameterType) ? parameter : null;
+                case FieldReference field when instr.OpCode.Code == Code.Ldfld && IsClosureField(field) && !IsParentLink(field):
+                    return CanBeWrittenThrough(field.FieldType) ? FieldKey(field) : null;
+                default:
+                    return null;
+            }
+        }
+
+        private static bool CanBeWrittenThrough(TypeReference type) => !IsValueLike(type) && !IsImmutableType(type);
+
+        private static ScopePlan? TryPlanCandidate(ScopeFacts facts, ScopeCandidate candidate, List<ScopePlan> accepted,
+            HashSet<object> mutated)
         {
             var region = candidate.Span;
             var scan = new ScopeScan();
@@ -366,6 +416,7 @@ namespace Velvet.CodeGen
                 || facts.Branches.Any(branch => BranchBreaksRegion(branch.Source, branch.Target, region))
                 || !Enumerable.Range(region.Start, region.End - region.Start + 1).All(i => ScanInstruction(facts, i, region, scan))
                 || !scan.HasCall || (scan.Deps.Count == 0 && !scan.OnlyFactoryCalls)
+                || scan.Deps.Any(dep => mutated.Contains(dep.Key))
                 || RepeatsEnclosingScope(accepted, region, scan.Deps)
                 || (facts.FlowsIntoReturn(region.End + 1) && facts.CoversGate(scan.Deps)))
             {
@@ -382,16 +433,20 @@ namespace Velvet.CodeGen
             return outer != null && outer.Deps.Select(dep => dep.Key).ToHashSet().SetEquals(deps.Select(dep => dep.Key));
         }
 
-        // A jump from inside goes forward, to a place in the region or to the store that ends it. One from outside
-        // lands in neither, and none from after the region goes back across it.
+        // A jump from inside goes forward, to a place in the region or to the store that ends it. One from before
+        // the region may land on its first instruction, as falling in would, and is sent to the gate there (see
+        // InjectScopes); one that lands anywhere else in the region or on its store has skipped part of it, and
+        // none from after the region goes back across it.
         private static bool BranchBreaksRegion(int source, int target, ElementRegion region)
         {
             var store = region.End + 1;
             // MUTANT_SURVIVES(unreachable, boundary): an element expression neither begins nor ends with a jump, and none jumps to itself.
             if (source >= region.Start && source <= region.End) return target <= source || target > store;
+            // MUTANT_SURVIVES(equivalent, boundary): a source at `region.End` lies inside the region and was decided by the test above.
+            if (target == region.Start) return source > region.End;
             // MUTANT_SURVIVES(unreachable, boundary): only the index load falls into the first instruction, and nothing outside jumps to the store.
             if (target >= region.Start && target <= store) return true;
-            // MUTANT_SURVIVES(equivalent, boundary): a jump from the last instruction or to the first was decided by the two tests above.
+            // MUTANT_SURVIVES(equivalent, boundary): a jump from the last instruction or to the first was decided by the tests above.
             return source > region.End && target < region.Start;
         }
 
@@ -590,11 +645,15 @@ namespace Velvet.CodeGen
                 NewLocalIf(body, plans, ScopeKind.Node, context.VNode), NewLocalIf(body, plans, ScopeKind.Node, context.VNode),
                 NewLocalIf(body, plans, ScopeKind.Value, body.Method.Module.TypeSystem.Object),
                 NewLocalIf(body, plans, ScopeKind.Value, body.Method.Module.TypeSystem.Object));
+            var entered = new HashSet<Instruction>();
             foreach (var plan in plans)
             {
                 var deps = new VariableDefinition(new ArrayType(body.Method.Module.TypeSystem.Object));
                 body.Variables.Add(deps);
-                InjectScope(body, context, plan, deps, locals);
+                var gate = InjectScope(body, context, plan, deps, locals);
+                // Plans are numbered outermost first, so the first of those starting at one instruction owns the
+                // first gate a jump into that instruction has to reach.
+                if (entered.Add(plan.Start)) RetargetBranches(body, plan.Start, gate);
             }
         }
 
@@ -608,8 +667,9 @@ namespace Velvet.CodeGen
 
         // The store goes in and takes the branches that ended the expression first. The hit path jumps to a no-op
         // after the store rather than to the instruction that followed the expression, because a scope starting at
-        // that instruction puts its gate ahead of it, and the hit would skip the gate.
-        private static void InjectScope(MethodBody body, WeaverContext context, ScopePlan plan, VariableDefinition deps,
+        // that instruction puts its gate ahead of it, and the hit would skip the gate. Returns the first instruction
+        // of the gate, which is where a jump into the start of the expression has to land.
+        private static Instruction InjectScope(MethodBody body, WeaverContext context, ScopePlan plan, VariableDefinition deps,
             ScopeLocals locals)
         {
             var il = body.GetILProcessor();
@@ -618,7 +678,9 @@ namespace Velvet.CodeGen
             store.Add(landing);
             RetargetBranches(body, plan.Store, store[0]);
             foreach (var instruction in store) il.InsertBefore(plan.Store, instruction);
-            foreach (var instruction in BuildScopeGate(body, context, plan, deps, locals, landing)) il.InsertBefore(plan.Start, instruction);
+            var gate = BuildScopeGate(body, context, plan, deps, locals, landing);
+            foreach (var instruction in gate) il.InsertBefore(plan.Start, instruction);
+            return gate[0];
         }
 
         // On a miss the expression's value is committed under the scope, then left on the stack for the store.
