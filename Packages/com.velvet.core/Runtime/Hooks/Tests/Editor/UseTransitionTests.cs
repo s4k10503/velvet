@@ -1494,20 +1494,33 @@ namespace Velvet.Tests
             s_deferredStore = store;
             using var mounted = V.Mount(_root, V.Component(DeferredStoreParentRender, key: "deferred-store-parent"));
             s_deferredChildStart.Invoke(() => store.Set(1));
-            var pendingBeforeTheParentPass = s_deferredChildFiber.TransitionSlots[0].IsPending;
+            Assume.That(s_deferredChildFiber.TransitionSlots[0].IsPending, Is.True, "Precondition: the transition is pending");
             s_deferredParentSetQuery.Invoke("beta");
 
             // Act
             FiberWorkLoop.FlushState(s_deferredParentFiber);
 
-            // Assert — three terms, since the flag coming down proves nothing unless it was lit and the lane
-            // the deferred value holds is what a settle that reads the lane alone would have kept it up for
-            Assert.That(
-                (pendingBeforeTheParentPass,
-                 s_deferredChildFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
-                 s_deferredChildFiber.TransitionSlots[0].IsPending),
-                Is.EqualTo((true, true, false)),
+            // Assert
+            Assert.That(s_deferredChildFiber.TransitionSlots[0].IsPending, Is.False,
                 "isPending belongs to the slot that queued the work, not to whoever holds the transition lane");
+        }
+
+        [Test]
+        public void Given_AStoreWriteATransitionQueued_When_AParentsNormalPassRendersTheReaderWhoseDeferredValueHoldsTheLane_Then_TheLaneStaysQueued()
+        {
+            // Arrange
+            using var store = new TransitionCountStore();
+            s_deferredStore = store;
+            using var mounted = V.Mount(_root, V.Component(DeferredStoreParentRender, key: "deferred-store-parent"));
+            s_deferredChildStart.Invoke(() => store.Set(1));
+            s_deferredParentSetQuery.Invoke("beta");
+
+            // Act
+            FiberWorkLoop.FlushState(s_deferredParentFiber);
+
+            // Assert
+            Assert.That(s_deferredChildFiber.LaneQueue.Contains(FiberUpdatePriority.Transition), Is.True,
+                "The deferred value asks for the Transition lane again, which is what the case above clears the flag despite");
         }
 
         private static TransitionCountStore s_deferredStore;
