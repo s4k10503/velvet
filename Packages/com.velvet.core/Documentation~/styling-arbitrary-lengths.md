@@ -24,6 +24,11 @@ and writes anything else as a colour, so `border-[2PX]` and `text-[16PX]` leave 
 A math function is a length there whatever case its units are in (`border-[calc(2PX)]`), and so is
 `text-[length:16PX]`, whose type hint skips the test.
 
+An angle (`rotate-[…]`, `skew-x-[…]`, `hue-rotate-[…]`, a gradient's) is read in `deg`, `grad`, `rad` or `turn`,
+and a time (`duration-[…]`, `animate-spin-[…]` and the other loops) in `ms` or `s`, each in any case. A bare number
+is read only where the CSS property Tailwind writes takes one: `0` in `skew-x-[…]`, `hue-rotate-[…]` and
+`bg-linear-[…]`, and none in `rotate-[…]`, whose `rotate` property takes no bare `0`, or in a time.
+
 A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a space. CSS wants a space
 on both sides of a binary `+` or `-`; Tailwind writes `calc(2rem-4px)` and adds the spaces itself, so a
 space on neither side reads as one on both, and `calc(2rem-4px)` and `calc(2rem_-_4px)` are the same

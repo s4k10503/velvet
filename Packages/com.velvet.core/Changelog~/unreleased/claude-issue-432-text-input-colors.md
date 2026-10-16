@@ -21,3 +21,5 @@
   and `leading-[1.5EM]` apply where they used to leave the class inert. `border-*`, `text-*`, `ring-*`,
   `outline-*`, `ring-offset-*` and `from-*` / `via-*` / `to-*` still take a length only in Tailwind's case,
   as Tailwind does, except inside a math function or behind `text-[length:…]`.
+- An angle or a time in a bracket is read in any case, as CSS reads it: `rotate-[45DEG]`, `hue-rotate-[.5TURN]`,
+  `duration-[150MS]`, `animate-spin-[2S]`. `skew-x-[…]` takes any angle unit, not only `deg`, and a bare `0`.
