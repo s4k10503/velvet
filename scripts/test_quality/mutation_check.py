@@ -554,6 +554,10 @@ WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 # changes the least about what the line does comes first: it is the one a test is least likely to
 # notice, so a line whose first mutant dies is taken to have been noticed, and one that survives is
 # the question worth asking. The order is a decision rather than a measurement.
+# The operators that take a statement or a clause, and so a call, out of a method. A woven component's IL
+# is read through the callees it reaches, so a fixture reading it can see that removal solo and not in a
+# session, where the guard keeps the call: their survivors are not narrowed to the fixtures reading IL.
+CALL_REMOVING = ("clause removed", "guard removed", "line removed")
 LINE_PRIORITY = ("boundary", "equality", "arithmetic", "clause removed", "logic", "literal",
                  "guard removed", "line removed")
 
@@ -4004,7 +4008,8 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
             # mutant together, so only a launch of its own can say -- of the fixtures that read IL.
             print("[{}] the reach run read no case running it, but a fixture reads its assembly's IL, so the "
                   "fixtures reading IL take their own launch".format(index))
-            il_only.add(index)
+            if mutant.operator not in CALL_REMOVING:
+                il_only.add(index)
             continue
         mutant.verdict = UNCOVERED
         mutant.detail = "none of the {} cases of the unmutated run ran it".format(baseline["total"])
@@ -4023,7 +4028,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
             # The session compiled every guard into the assembly, so a fixture reading its IL read the
             # union of the mutants rather than this one. Every other fixture ran the mutant through its
             # guard, so a plain survivor stands for them, and only the fixtures reading IL are run again.
-            if reading[0] == SURVIVED:
+            if reading[0] == SURVIVED and mutant.operator not in CALL_REMOVING:
                 il_only.add(index)
             reading = None
         if reading is None:
@@ -4844,7 +4849,28 @@ def answered(mutants, deferred, declared):
     return unanswered, stale
 
 
-def il_only_scope(project, baseline_results, text_readers, scope, editor_arg):
+# A fixture that takes arguments is run under names the class filter and the case count below do not follow.
+PARAMETERISED_FIXTURE = re.compile(r"\bTestFixtureSource\b|\bTestFixture(?:Attribute)?\s*\((?!\s*\))")
+
+
+def il_only_classes(project, ran, text_readers):
+    """The fixture classes `il_only_scope` selects, or None where a class filter cannot name their cases:
+    a reading file declaring a fixture with arguments, which includes a generic one, or a class some source
+    derives from -- whose cases run under another name."""
+    readers, sources, _ = il_reader_files(project, ran)
+    classes = {name for _, text in readers for name in FIXTURE_CLASS.findall(text)} - set(text_readers)
+    for _, text in readers:
+        if PARAMETERISED_FIXTURE.search(text):
+            return None
+    texts = [path.read_text(encoding="utf-8", errors="replace") for path in sources]
+    for name in classes:
+        pattern = re.compile(r"\bclass\s+\w+\s*(?:<[^>{;]*>)?\s*:[^{;]*\b" + re.escape(name) + r"\b")
+        if any(pattern.search(text) for text in texts):
+            return None
+    return classes
+
+
+def il_only_scope(project, baseline_results, text_readers, scope):
     """(the scope that runs only the fixtures reading compiled IL, how many cases the baseline held for
     them) or (None, 0) where those cannot be named.
 
@@ -4855,7 +4881,9 @@ def il_only_scope(project, baseline_results, text_readers, scope, editor_arg):
     """
     if scope:
         return None, 0
-    classes = il_reading_fixtures(project, set(assembly_seconds(baseline_results)[1])) - set(text_readers)
+    classes = il_only_classes(project, set(assembly_seconds(baseline_results)[1]), text_readers)
+    if not classes:
+        return None, 0
     patterns = [re.compile("[.+]{}$".format(name)) for name in sorted(classes)]
     cases = sum(1 for case in ET.parse(str(baseline_results)).getroot().iter("test-case")
                 if any(pattern.search(case.get("classname", "")) for pattern in patterns))
@@ -4863,7 +4891,7 @@ def il_only_scope(project, baseline_results, text_readers, scope, editor_arg):
         return None, 0
     chosen = excluding(["-testFilter", ";".join("[.+]{}$".format(name) for name in sorted(classes))],
                        text_readers)
-    return chosen + list(editor_arg), cases
+    return chosen, cases
 
 
 def measure(args, project, holder, output, targets, mutants, scope, campaign, coverage, selected):
@@ -4924,9 +4952,22 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 args, project, holder, output, mutants, pending, baseline_results, baseline, baseline_wall,
                 text_readers, excluding(scope, text_readers), campaign, scope)
     own = set(selected) - set(in_session)
-    il_scope, il_cases = il_only_scope(project, baseline_results, text_readers, scope, args.editor_arg) \
-        if il_only & own else (None, 0)
-    il_only = il_only & own if il_scope is not None else set()
+    il_scope, il_cases = il_only_scope(project, baseline_results, text_readers, scope) \
+        if il_only else (None, 0)
+    il_only = il_only if il_scope is not None else set()
+    if il_only:
+        # As an area's launch is: the fixtures must pass alone on the unmutated tree, or a failure of
+        # theirs on a mutant would not be the mutation's.
+        control = output / "baseline-il.xml"
+        if control.exists():
+            control.unlink()
+        _, control_timed_out, _ = run_suite(args.unity, project, args.platform, il_scope, control,
+                                            output / "baseline-il.log", min(args.timeout, baseline_wall), holder)
+        held = read_counts(control)
+        if control_timed_out or not held or held["failed"] or held["inconclusive"] or held["total"] != il_cases:
+            print("the fixtures reading IL did not pass alone on the unmutated tree, so their survivors "
+                  "run on the whole suite")
+            il_only = set()
 
     # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
     # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
@@ -5007,8 +5048,9 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             mutant.path.write_text(mutated)
             written[mutant.path] = mutated
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
-            attempt, narrowed_to, narrow_bound, area_cases = attempts.get(
-                area_of(mutant.path, project), (None, (), 0, 0)) if index not in il_only else (None, (), 0, 0)
+            il_narrow = first_try and index in il_only
+            attempt, narrowed_to, narrow_bound, area_cases = (None, (), 0, 0) if il_narrow else attempts.get(
+                area_of(mutant.path, project), (None, (), 0, 0))
             ran = []
             early, wall, neighbours, late, crashed = [], 0.0, 0, False, None
             if attempt is not None:
@@ -5032,27 +5074,32 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             if not early and not crashed:
                 since = time.time()
                 spent, timed_out, seen = run_suite(args.unity, project, args.platform,
-                                                   il_scope if index in il_only else launched,
+                                                   il_scope if il_narrow else launched,
                                                    results, log, args.timeout, holder)
                 wall, neighbours = wall + spent, max(neighbours, seen)
-                held = read_counts(results)
-                if index in il_only:
+                if il_narrow:
+                    held = read_counts(results)
                     ran.append(("fixtures reading IL", held["total"] if held else None))
-                    if held and not timed_out and not held["failed"] and held["total"] != il_cases:
-                        # The filter selected other cases than the baseline holds for these fixtures, so
-                        # a survivor of it would not stand for them: the whole suite decides instead.
-                        print("      the fixtures reading IL ran {} cases where the baseline holds {}, so "
-                              "the whole suite runs".format(held["total"], il_cases))
+                    # Only a launch that completed over the cases the baseline holds for these fixtures
+                    # stands for them -- or one that failed a case, which is a kill whatever it selected.
+                    # A build that stopped, a hang, no result and a different count each leave the whole
+                    # suite to decide.
+                    if timed_out or not held or build_error(log) or not (
+                            held["failed"] or held["total"] == il_cases):
+                        print("      the fixtures reading IL did not complete over their {} cases, so the "
+                              "whole suite runs".format(il_cases))
+                        for stale in (results, log):
+                            if stale.exists():
+                                stale.unlink()
+                        ran.pop()
+                        il_narrow = False
                         since = time.time()
                         spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
                                                            results, log, args.timeout, holder)
                         wall, neighbours = wall + spent, max(neighbours, seen)
-                        ran.pop()
-                        il_only.discard(index)
-                if index not in il_only:
+                if not il_narrow:
                     ran.append(("whole", (read_counts(results) or {}).get("total")))
-                if timed_out and complete_result(results, since, baseline["total"] if index not in il_only
-                                                 else il_cases):
+                if timed_out and complete_result(results, since, baseline["total"]):
                     timed_out, late = False, True
                 crashed = mutant_crash(results, log, dll, baseline_hashes)
             if holder.release() is None:

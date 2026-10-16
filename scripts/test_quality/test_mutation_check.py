@@ -7985,8 +7985,8 @@ class ShardCeilingTests(unittest.TestCase):
     # What a launch of its own spends on its area's baseline, charged once for each area the launches
     # touch; the slowest measured. A shard takes it in its opening when it takes main's path -- it places
     # fewer than `REACH_MIN_MUTANTS`, or was assigned one it declined. The same figure stands for the launch
-    # of the fixtures reading IL that follows a session survivor under `Runtime/`: a build and a handful
-    # of cases, which no run has timed.
+    # of the fixtures reading IL that follows a session survivor under `Runtime/`: a build and the cases
+    # of the six files that read IL, about 190, which no run has timed.
     AREA_LAUNCH = 231
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
@@ -8210,8 +8210,12 @@ class SessionCampaign(StubbedCampaign):
     # The cases the reach run reports, each with the mutant ids it ran: None is a reach run that did not
     # come out green, which is what a stub that knows nothing of it reports.
     reach = None
-    # Whether an own launch whose filter names the IL-reading fixture reports no case at all.
-    selects_nothing = False
+    # What an own launch whose filter names the IL-reading fixture reports instead of a green run of its one
+    # case (see `il_answer`), and how the unmutated control of that filter comes out: "red" or "short".
+    il_launch = None
+    il_control = None
+    # Whether a mutant whose text joins `a - b` fails to build, as a `+` between strings does.
+    rejects_minus = False
     reach_cases = ("N.C.A", "N.C.B", "N.C.C", "N.C.D") + tuple("N.C.F{}".format(number) for number in range(36))
     # A case the reach run reports as failed, and whether it reports one case fewer than the baseline held.
     failing_case = None
@@ -8254,8 +8258,34 @@ class SessionCampaign(StubbedCampaign):
         self.launched.append(Path(results).name)
         self.scopes.append(list(_scope))
         answer = super().run_suite(_unity, _project, _platform, _scope, results, log, _timeout, _holder)
-        if self.selects_nothing and Path(results).name != "baseline.xml" and "ReaderTests" in " ".join(_scope):
-            Path(results).write_text('<test-run total="0" passed="0" failed="0" inconclusive="0" />')
+        name = Path(results).name
+        if name == "baseline-il.xml" and self.il_control:
+            Path(results).write_text(FAILING_RESULTS if self.il_control == "red" else
+                                     '<test-run total="0" passed="0" failed="0" inconclusive="0" />')
+        if self.il_launch and name.startswith("mutant-") and "ReaderTests" in " ".join(_scope):
+            return self.il_answer(Path(results), Path(log), answer)
+        if self.rejects_minus and name.startswith("mutant-") and "a - b" in self.source.read_text():
+            Path(log).write_text("Packages/com.velvet.core/Runtime/Probe.cs(5,80): error CS0019: Operator '-' "
+                                 "cannot be applied to operands of type 'string' and 'string'\n")
+        return answer
+
+    def il_answer(self, results, log, answer):
+        """What a launch that runs the fixtures reading IL reports, by `il_launch`."""
+        mode = self.il_launch
+        if mode == "nothing":
+            results.write_text('<test-run total="0" passed="0" failed="0" inconclusive="0" />')
+        elif mode == "timeout_complete":
+            return answer[0], True, 0
+        elif mode == "timeout":
+            results.unlink()
+            return answer[0], True, 0
+        elif mode == "none":
+            results.unlink()
+        elif mode == "build":
+            log.write_text("Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n")
+        elif mode == "fail":
+            results.write_text('<test-run total="3" passed="2" failed="1" inconclusive="0">'
+                               '<test-case fullname="N.ReaderTests.A" result="Failed" /></test-run>')
         return answer
 
     def rewrite(self, _unity, project, request, _scratch):
@@ -8292,7 +8322,9 @@ class SessionCampaign(StubbedCampaign):
                          "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
             else:
                 xml.write_text('<test-run total="0" passed="0" failed="0" inconclusive="0" />'
-                               if self.short else GREEN_RESULTS)
+                               if self.short else
+                               '<test-run total="1" passed="0" failed="0" inconclusive="1" />'
+                               if self.outcome == "inconclusive" else GREEN_RESULTS)
                 stage = {"name": "whole", "finished": True, "xml": str(xml), "failures": [],
                          "armed": [] if self.unarmed else ["{}:{}".format(assembly, number)]}
             name.write_text(json.dumps({"id": number, "stages": [stage]}))
@@ -8498,54 +8530,173 @@ class SessionRoutingTests(SessionRoutingBase):
         self.assertEqual(campaign.rewrites, [])
 
 
-class ILReadingSurvivorTests(SessionRoutingBase):
-    """A session survivor in an assembly some fixture reads the IL of stands for every other fixture, so
-    its own launch runs the fixtures reading IL and nothing else."""
+READER = "class ReaderTests { void A() { ModuleDefinition.ReadModule(\"x\"); } }"
+ONE_READER_CASE = (
+    '<test-run total="1" passed="1" failed="0" inconclusive="0">'
+    '<test-suite type="Assembly" name="Velvet.Tests.Ran.dll" duration="1" />'
+    '<test-case fullname="N.ReaderTests.A" classname="N.ReaderTests" result="Passed" /></test-run>')
+ONLY_READERS = ["-testFilter", "[.+]ReaderTests$"]
+
+
+class ILReadingBase(SessionRoutingBase):
+    """A project holding one fixture that reads IL, one case of it in the baseline, and an assembly the
+    session reports as read."""
 
     def setUp(self):
         super().setUp()
         tests = self.campaign.source.parent / "Tests" / "Editor"
         tests.mkdir(parents=True)
         (tests / "A.asmdef").write_text(json.dumps({"name": "Velvet.Tests.Ran"}))
-        (tests / "ReaderTests.cs").write_text(
-            "class ReaderTests { void A() { ModuleDefinition.ReadModule(\"x\"); } }")
-        self.campaign.baseline_text = (
-            '<test-run total="1" passed="1" failed="0" inconclusive="0">'
-            '<test-suite type="Assembly" name="Velvet.Tests.Ran.dll" duration="1" />'
-            '<test-case fullname="N.ReaderTests.A" classname="N.ReaderTests" result="Passed" /></test-run>')
+        (tests / "ReaderTests.cs").write_text(READER)
+        self.campaign.baseline_text = ONE_READER_CASE
         self.campaign.outcome = "survived"
         self.il_read = {mutation_check.assembly_of(self.campaign.source)}
+
+    def own(self):
+        """The scope of each launch of mutant 1."""
+        return [scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
+                if name == "mutant-001.xml"]
+
+
+class ILReadingSurvivorTests(ILReadingBase):
+    """A session survivor in an assembly some fixture reads the IL of stands for every other fixture, so
+    its own launch runs the fixtures reading IL and nothing else."""
+
+    def ran(self):
+        found = re.findall(r"s; cases run: ([^;]*);", self.campaign.printed)
+        return found[-1] if found else None
 
     def test_Given_ASessionSurvivorInAnAssemblyAFixtureReadsTheILOf_When_ItsOwnLaunchRuns_Then_OnlyTheFixturesReadingILAreSelected(self):
         # Act
         self.campaign.run("--max", "1")
 
         # Assert
-        own = [scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
-               if name == "mutant-001.xml"]
-        self.assertEqual(own, [["-testFilter", "[.+]ReaderTests$"]])
+        self.assertEqual(self.own(), [ONLY_READERS])
 
-    def test_Given_AnILReadingLaunchThatSelectsNoCase_When_ItSurvives_Then_TheWholeSuiteDecides(self):
-        # Arrange — a filter that selected nothing would read every mutant as surviving the fixtures it
-        # was meant to run.
-        self.campaign.selects_nothing = True
-
+    def test_Given_TheFixturesReadingILPassAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheyAreRunOnceBeforeAnyMutant(self):
         # Act
         self.campaign.run("--max", "1")
 
         # Assert
         self.assertEqual([scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
-                          if name == "mutant-001.xml"], [["-testFilter", "[.+]ReaderTests$"], []])
+                          if name == "baseline-il.xml"], [ONLY_READERS])
+
+    def test_Given_TheFixturesReadingILRedAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
+        # Arrange — their failure on a mutant would not be the mutation's.
+        self.campaign.il_control = "red"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    def test_Given_AControlThatRanOtherCasesThanTheBaselineHolds_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
+        # Arrange — a filter that selected nothing proves nothing about these fixtures.
+        self.campaign.il_control = "short"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    def test_Given_AnILReadingLaunchThatSelectsNoCase_When_ItSurvives_Then_TheWholeSuiteDecides(self):
+        # Arrange — a filter that selected nothing would read every mutant as surviving the fixtures it
+        # was meant to run.
+        self.campaign.il_launch = "nothing"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatTimedOutOverACompleteResult_When_ItSurvives_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "timeout_complete"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatWroteNoResult_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "none"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatTimedOutWithoutAResult_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "timeout"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchWhoseBuildStopped_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange
+        self.campaign.il_launch = "build"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, []])
+
+    def test_Given_AnILReadingLaunchThatFailedACase_When_ItEnds_Then_ItIsTheVerdictAndTheWholeSuiteIsNotRun(self):
+        # Arrange — it reports more cases than the baseline holds, which a failure does not make wrong.
+        self.campaign.il_launch = "fail"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual((self.own(), mutation_check.KILLED in self.campaign.printed), ([ONLY_READERS], True))
+
+    def test_Given_AnILReadingLaunchThatFellBackOnTheWholeSuite_When_TheSummaryPrints_Then_ItNamesOnlyTheWholeRun(self):
+        # Arrange
+        self.campaign.il_launch = "nothing"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.ran(), "whole 1")
 
     def test_Given_AnOwnLaunch_When_TheSummaryPrints_Then_ItNamesHowManyCasesItRan(self):
         # Act
         self.campaign.run("--max", "1")
 
         # Assert
-        self.assertIn("cases run: fixtures reading IL 1", self.campaign.printed)
+        self.assertEqual(self.ran(), "fixtures reading IL 1")
 
-    # GREEN_ON_BASE(characterization): the base launches the whole suite for every such survivor; deleting the
-    # `if not cases` test in `il_only_scope` reddens it.
+    def test_Given_ASessionSurvivorThatWasInconclusive_When_ItsOwnLaunchRuns_Then_ItTakesTheWholeSuite(self):
+        # Arrange — the session's inconclusive case may be any fixture's, not only those reading IL.
+        self.campaign.outcome = "inconclusive"
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+    def test_Given_AScopeTheCallerChose_When_ASurvivorsOwnLaunchRuns_Then_NoLaunchIsNarrowedToTheFixturesReadingIL(self):
+        # Act
+        self.campaign.run("--max", "1", "--filter", "N.Elsewhere")
+
+        # Assert
+        self.assertEqual([scope for scope in self.campaign.scopes if "[.+]ReaderTests$" in " ".join(scope)], [])
+
+    # GREEN_ON_BASE(characterization): the base launches the whole suite for every such survivor, and deleting the `if not cases` test in `il_only_scope` reddens it.
     def test_Given_NoFixtureReadingIL_When_ASurvivorsAssemblyIsRead_Then_TheWholeSuiteIsTheOwnLaunch(self):
         # Arrange — the assembly is read as IL by name, but no fixture file the project holds says so.
         (self.campaign.source.parent / "Tests" / "Editor" / "ReaderTests.cs").write_text("class ReaderTests { }")
@@ -8554,8 +8705,166 @@ class ILReadingSurvivorTests(SessionRoutingBase):
         self.campaign.run("--max", "1")
 
         # Assert
-        self.assertEqual([scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
-                          if name == "mutant-001.xml"], [[]])
+        self.assertEqual(self.own(), [[]])
+
+    def test_Given_AReaderThatIsAlsoATextReader_When_TheScopeIsBuilt_Then_ItIsLeftOutOfIt(self):
+        # Arrange
+        results = self.campaign.project / "baseline.xml"
+        results.write_text(ONE_READER_CASE)
+
+        # Act
+        scope = mutation_check.il_only_scope(self.campaign.project, results, {"ReaderTests"}, [])
+
+        # Assert
+        self.assertEqual(scope, (None, 0))
+
+    def test_Given_AScopeTheCallerChose_When_TheScopeIsBuilt_Then_ThereIsNone(self):
+        # Arrange
+        results = self.campaign.project / "baseline.xml"
+        results.write_text(ONE_READER_CASE)
+
+        # Act
+        scope = mutation_check.il_only_scope(self.campaign.project, results, set(), ["-testFilter", "X"])
+
+        # Assert
+        self.assertEqual(scope, (None, 0))
+
+
+class ILReadingUncoveredTests(ILReadingBase):
+    """A mutant no case ran, in an assembly some fixture reads the IL of, takes the same launch."""
+
+    reach_from = 1
+
+    def setUp(self):
+        super().setUp()
+        self.campaign.reach = {"N.C.A": {99}}
+
+    def test_Given_AMutantNoCaseRanInAnAssemblyAFixtureReadsTheILOf_When_ItsOwnLaunchRuns_Then_OnlyTheFixturesReadingILAreSelected(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS])
+
+
+class CallRemovingCampaign(SessionCampaign):
+    """A mutant whose kept operator takes a call out of the method."""
+
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static void Run()
+                {
+                    Work();
+                }
+            }
+        }
+        """)
+
+
+class ILReadingCallRemovalTests(ILReadingBase):
+    """A woven component's IL is read through the callees it reaches, so a survivor that removes a call is
+    not narrowed to the fixtures reading IL."""
+
+    campaign_class = CallRemovingCampaign
+
+    def test_Given_ASurvivorThatRemovedACall_When_ItsAssemblyIsReadAsIL_Then_ItsOwnLaunchIsTheWholeSuite(self):
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+
+class ILReadingCallRemovalUncoveredTests(ILReadingBase):
+    campaign_class = CallRemovingCampaign
+    reach_from = 1
+
+    def test_Given_AnUncoveredMutantThatRemovedACall_When_ItsAssemblyIsReadAsIL_Then_ItsOwnLaunchIsTheWholeSuite(self):
+        # Arrange
+        self.campaign.reach = {"N.C.A": {99}}
+
+        # Act
+        self.campaign.run("--max", "1")
+
+        # Assert
+        self.assertEqual(self.own(), [[]])
+
+
+class RejectingSessionCampaign(SessionCampaign):
+    """`Log(a + b, ok && other);`: the kept `+ -> -` rewrite does not build, and the cap holds a clause
+    removal behind it."""
+
+    BODY = RejectingJoinCampaign.BODY
+    rejects_minus = True
+
+
+class ILReadingStandInTests(ILReadingBase):
+    """The mutant that stands for a line whose kept mutant is no program was not the session's survivor."""
+
+    campaign_class = RejectingSessionCampaign
+
+    def test_Given_AKeptMutantThatDoesNotBuild_When_AStandInIsMeasured_Then_ItRunsTheWholeSuite(self):
+        # Act
+        self.campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual(self.own(), [ONLY_READERS, [], []])
+
+
+class ILFixtureHazardTests(unittest.TestCase):
+    """Fixtures a class filter and a case count cannot follow."""
+
+    def classes(self, declarations):
+        project = Path(tempfile.mkdtemp(prefix="il-hazard-"))
+        tests = project / "Packages" / "P" / "Tests" / "Editor"
+        tests.mkdir(parents=True)
+        (tests / "T.asmdef").write_text(json.dumps({"name": "T"}))
+        (tests / "ReaderTests.cs").write_text(declarations)
+        (tests / "Other.cs").write_text("class Other : ReaderBase { }")
+        return mutation_check.il_only_classes(project, {"T"}, set())
+
+    def test_Given_APlainFixtureReadingIL_When_Named_Then_ItsClassIsReturned(self):
+        # Act
+        classes = self.classes(READER)
+
+        # Assert
+        self.assertEqual(classes, {"ReaderTests"})
+
+    def test_Given_AFixtureTakingArguments_When_Named_Then_NoClassIsReturned(self):
+        # Act
+        classes = self.classes("[TestFixture(1)]\n" + READER)
+
+        # Assert
+        self.assertIsNone(classes)
+
+    def test_Given_AFixtureSourceInTheReadingFile_When_Named_Then_NoClassIsReturned(self):
+        # Act
+        classes = self.classes("[TestFixtureSource(nameof(X))]\n" + READER)
+
+        # Assert
+        self.assertIsNone(classes)
+
+    def test_Given_AClassSomeSourceDerivesFrom_When_Named_Then_NoClassIsReturned(self):
+        # Act
+        classes = self.classes("class ReaderBase { void A() { ModuleDefinition.ReadModule(\"x\"); } }")
+
+        # Assert
+        self.assertIsNone(classes)
+
+    def test_Given_TheFixturesTheRepositoryReadsILIn_When_Named_Then_TheyAreNamedAndNoneIsParameterisedOrDerived(self):
+        # Arrange — the guard that fails the day one is added, so the narrowing is declined rather than wrong.
+        ran = {json.loads(path.read_text())["name"]
+               for path in (REPO_ROOT / mutation_check.PACKAGE).rglob("*.asmdef")
+               if path.parent.parts[-2:] == ("Tests", "Editor")}
+
+        # Act
+        classes = mutation_check.il_only_classes(REPO_ROOT, ran, set())
+
+        # Assert
+        self.assertTrue(classes)
 
 
 class SessionReachTests(SessionRoutingBase):
