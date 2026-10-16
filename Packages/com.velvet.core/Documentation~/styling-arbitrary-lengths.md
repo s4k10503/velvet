@@ -193,6 +193,32 @@ bundled classes carry Velvet's own name for a Tailwind utility and sort by that 
 and `duration-fast`, `duration-normal` and `duration-slow` as `duration-100`, `duration-150` and `duration-200`. The sheets declare them there too, so `rotate-6 rotate-n6` gives 6 degrees.
 
 This orders one inline token against the classes beside it. Only plain base tokens take part: a variant, an important
-token and a class gated on a state are ranked by their own layer. Where a class is written inline beside a second
-inline token of the same property (`size-[10px] w-[20px] w-4`), the two inline writers of that property go to the last
-one written, which this section does not change.
+token and a class gated on a state are ranked by their own layer. Two inline tokens of one property are ordered in
+the next section.
+
+### Two inline utilities of one property
+
+Two base utilities that both resolve inline and write the same property are ordered as Tailwind emits them, whichever
+is written first: `w-[1px] w-[2px]` and `w-[2px] w-[1px]` both give 2px, `w-1/2 w-[10px]` gives 10px,
+`bg-red-500/50 bg-[#ff0000]` gives the half-transparent red, `border-b-red-500 border-b-[#0000ff]` leaves the bottom
+border red, and `scale-[1.5] scale-[2]`, `translate-x-[4px] translate-x-[8px]`, `opacity-[.3] opacity-[.7]` and
+`blur-[2px] blur-[4px]` give the second value. The important layer is ordered the same way (`!w-[1px] !w-[2px]` gives
+2px), and a custom filter is told apart by its registered name, so two different names are both kept. A token of
+another property and a token in another layer are left as written (`!w-[1px] w-[2px]`), and a variant token is ranked
+by the position of its own rule ([styling-variants.md](styling-variants.md)).
+
+The earlier token is left out of the class list, so it writes no style; taking the later one away brings it back, and
+taking the earlier one away changes nothing. A border width bracket that later inline tokens write in part is cut down
+to the sides they leave, as it is for a class above: `border-[3px] border-t-[4px]` and `border-t-[4px] border-[3px]`
+give the top 4px and the other three 3px.
+
+A stylesheet class that is written inline beside a narrower inline utility (`pt-2` beside `p-[3px]`, `w-4` beside
+`size-[10px]`) is ordered against the other writers of its property by the name it was written with, not by the
+inline form it becomes: `size-[10px] w-[10px] w-4` gives a 10px width, since Tailwind emits `w-[10px]` after `w-4`,
+where the inline form `w-[16px]` would sort after it. The same holds behind a variant and under `!`.
+
+Left to the last token written: a slash text size (`text-[14px]/6`) beside a later font size (`text-[16px]`), where
+the slash token stays because its line height is read off it; the nine-slice utilities of overlapping
+insets (`slice-y-[8] slice-t-[2]`), which have no Tailwind order to follow; and the utilities a C# resolver reads
+from the whole class list rather than writing as one inline property, the font facets (`font-light font-bold`)
+among them.

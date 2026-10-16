@@ -100,14 +100,15 @@ namespace Velvet
             return aRank < 0 || zRank < 0 ? StyleBorderSideColor.CompareCascade(a, z) : aRank.CompareTo(zRank);
         }
 
-        // tokens without the inline token a later stylesheet class writes in full, and with a border width cut down to
-        // the sides such classes leave (StyleInlineSheetOrder), and with each stylesheet-backed spacing class that an inline utility of an overlapping family stands
+        // tokens without the inline token a later stylesheet class or inline token of its property writes in full, and
+        // with a border width cut down to the sides such tokens leave (StyleInlineSheetOrder), and with each stylesheet-backed spacing class that an inline utility of an overlapping family stands
         // beside rewritten to its inline form (pt-2 as pt-[8px], mx-auto as mx-[auto], w-full as w-[100%]), and
         // each logical utility dropped for the physical one of its own side (ps-13 beside pl-2: Tailwind sorts
         // padding-inline-start ahead of padding-left, so the physical one holds the side whichever is written
         // first), of the physical classes on the side, the one the stylesheet cascade lets win is written inline when all
         // are stylesheet classes, so that it is not left to a rule the logical token's removal no longer has anything to outrank; tokens itself when neither applies. Tokens are grouped by importance and by the set of their
-        // variants, so `sm:p-13 sm:pt-2` is judged apart from `p-13 pt-2`, and `hover:focus:` is `focus:hover:`.
+        // variants, so `sm:p-13 sm:pt-2` is judged apart from `p-13 pt-2`, and `hover:focus:` is `focus:hover:`. A class
+        // written inline goes when another token of its slot is emitted after it (DropOutrankedRewrites).
         internal static string[] Normalize(string[] tokens)
         {
             if (tokens.Length < 2)
@@ -156,6 +157,7 @@ namespace Velvet
                     rewritten[candidate.Index] = Inlined(candidate);
                 }
             }
+            DropOutrankedRewrites(tokens, readings, rewritten, ref dropped);
             if (dropped == null)
             {
                 return rewritten ?? tokens;
@@ -171,6 +173,33 @@ namespace Velvet
             }
             return kept.ToArray();
         }
+
+        // Each class written inline above, dropped when another token of its slot is emitted after it. Two inline
+        // tokens of one slot share a layer slot, so the one applied last would hold it. Tailwind's order decides, read
+        // off the class as written (w-4) rather than off its inline form (w-[16px]): w-[10px] follows w-4 and
+        // precedes w-[16px].
+        private static void DropOutrankedRewrites(string[] tokens, List<Reading> readings, string[]? rewritten,
+            ref List<int>? dropped)
+        {
+            if (rewritten == null)
+            {
+                return;
+            }
+            foreach (var reading in readings)
+            {
+                if (!ReferenceEquals(rewritten[reading.Index], tokens[reading.Index])
+                    && IsOutrankedInSlot(tokens, readings, reading, dropped))
+                {
+                    (dropped ??= new List<int>()).Add(reading.Index);
+                }
+            }
+        }
+
+        private static bool IsOutrankedInSlot(string[] tokens, List<Reading> readings, Reading reading,
+            List<int>? dropped)
+            => readings.Exists(other => SameSlot(reading, other)
+                && (dropped == null || !dropped.Contains(other.Index))
+                && StyleRuleOrder.CompareUtilities(tokens[other.Index], tokens[reading.Index]) > 0);
 
         // baseClasses without the inline spacing tokens a pose of the same Motion overrides: a pose is Framer
         // Motion's animate, which overrides the node's own style, so a base pt-[8px] must not outrank a pose's
