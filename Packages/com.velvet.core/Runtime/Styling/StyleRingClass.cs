@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -79,11 +78,25 @@ namespace Velvet
         // no class did.
         private const float MediumOutlineWidth = 3f;
 
-        // suffix → width (px). Shared by ring-{N} and outline-{N}; the ring/outline width scale.
-        private static readonly Dictionary<string, float> WidthScale = new()
+        // ring-<n>, outline-<n>, ring-offset-<n> and outline-offset-<n> take any integer Tailwind writes as pixels: digits
+        // with no leading zero but `0` itself, so `ring-3` is 3px and `ring-02` is no utility.
+        private static bool TryParseInteger(string suffix, out float value)
         {
-            ["0"] = 0f, ["1"] = 1f, ["2"] = 2f, ["4"] = 4f, ["8"] = 8f,
-        };
+            value = 0f;
+            if (suffix.Length == 0 || (suffix[0] == '0' && suffix.Length > 1))
+            {
+                return false;
+            }
+            foreach (var c in suffix)
+            {
+                if (c < '0' || c > '9')
+                {
+                    return false;
+                }
+            }
+            value = float.Parse(suffix, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture);
+            return true;
+        }
 
         // True when cls belongs to either family this layer owns (recognized or not-yet-valid). Both the
         // array gate below and the variant-payload gate answer through this one predicate, so which tokens
@@ -92,7 +105,10 @@ namespace Velvet
             => !string.IsNullOrEmpty(cls)
                 && (cls == "ring" || cls == "outline"
                     || cls.StartsWith("ring-", StringComparison.Ordinal)
-                    || cls.StartsWith("outline-", StringComparison.Ordinal));
+                    || cls.StartsWith("outline-", StringComparison.Ordinal)
+                    || cls.StartsWith(NegatedOutlineOffset, StringComparison.Ordinal));
+
+        private const string NegatedOutlineOffset = "-outline-offset-";
 
         // Cheap early-out gate: true when ANY class is ring/outline or begins with ring-/outline-. Skips the
         // full parse on the ~99% of elements that carry no ring/outline class and no binding.
@@ -175,7 +191,7 @@ namespace Velvet
                     : (slots.OutlineBare ? DefaultOutlineWidth : MediumOutlineWidth);
             var outline = new RingBand(
                 outlineWidth,
-                Mathf.Max(0f, slots.OutlineOffset),
+                slots.OutlineOffset,
                 slots.OutlineColor,
                 currentColor: !slots.OutlineColorSet);
             spec = new RingSpec(
@@ -251,7 +267,7 @@ namespace Velvet
             out bool widthRejected)
         {
             widthRejected = false;
-            if (WidthScale.ContainsKey(suffix) || (root == "ring-offset" && int.TryParse(suffix, out var n) && n >= 0))
+            if (TryParseInteger(suffix, out _))
             {
                 width = true;
                 return;
@@ -284,7 +300,7 @@ namespace Velvet
         {
             if (TryMatchPrefix(cls, "ring-offset-", out var ringOffSuffix))
             {
-                if (TryParseWidthValue(ringOffSuffix, inferred: true, out var off))
+                if (TryParseWidthValue(ringOffSuffix, out var off))
                 {
                     slots.RingOffset = off;
                 }
@@ -295,15 +311,32 @@ namespace Velvet
                 }
                 return true;
             }
-            if (!TryMatchPrefix(cls, "outline-offset-", out var outlineOffSuffix))
+            var negated = TryMatchPrefix(cls, NegatedOutlineOffset, out var outlineOffSuffix);
+            if (!negated && !TryMatchPrefix(cls, "outline-offset-", out outlineOffSuffix))
             {
                 return false;
             }
-            if (TryParseWidthValue(outlineOffSuffix, inferred: false, out var outlineOff))
+            if (TryParseOutlineOffset(outlineOffSuffix!, out var outlineOff))
             {
-                slots.OutlineOffset = outlineOff;
+                slots.OutlineOffset = negated ? -outlineOff : outlineOff;
             }
             return true;
+        }
+
+        // outline-offset takes a negative length, which draws the outline inside the element's edge: an integer, or
+        // a bracketed pixel length of either sign.
+        private static bool TryParseOutlineOffset(string suffix, out float offset)
+        {
+            if (TryParseInteger(suffix, out offset))
+            {
+                return true;
+            }
+            var written = StyleArbitraryValueResolver.WithoutTypeHint(suffix);
+            offset = 0f;
+            return written != null
+                && StyleArbitraryValueResolver.TryStripBrackets(written, 0, out var inner)
+                && StyleArbitraryValueResolver.TryParseValue(inner, out offset, out var unit)
+                && unit == LengthUnit.Pixel;
         }
 
         private static void Accumulate(string cls, ref RingSlots slots)
@@ -358,7 +391,7 @@ namespace Velvet
                 return;
             }
 
-            if (TryParseWidthValue(ringSuffix, inferred: true, out var w))
+            if (TryParseWidthValue(ringSuffix, out var w))
             {
                 if (isRingFamily)
                 {
@@ -426,26 +459,17 @@ namespace Velvet
             return false;
         }
 
-        // A width is either a preset (0/1/2/4/8) or an arbitrary [Npx] (px only — a ring width is pixels).
-        // inferred: whether Tailwind reads this prefix's bracket as a length or a colour
-        // (StyleArbitraryValueResolver.TryParseInferredArbitraryPixels); outline-offset- takes a length alone.
-        private static bool TryParseWidthValue(string? suffix, bool inferred, out float width)
+        // A width is either an integer (TryParseInteger) or an arbitrary [Npx] that Tailwind reads as a length
+        // rather than a colour (StyleArbitraryValueResolver.TryParseInferredArbitraryPixels).
+        private static bool TryParseWidthValue(string? suffix, out float width)
         {
             width = 0f;
             if (string.IsNullOrEmpty(suffix))
             {
                 return false;
             }
-            if (WidthScale.TryGetValue(suffix, out width))
-            {
-                return true;
-            }
-            if (inferred)
-            {
-                return StyleArbitraryValueResolver.TryParseInferredArbitraryPixels(suffix.AsSpan(), out width);
-            }
-            var written = StyleArbitraryValueResolver.WithoutTypeHint(suffix);
-            return written != null && StyleArbitraryValueResolver.TryParseArbitraryPixels(written.AsSpan(), out width);
+            return TryParseInteger(suffix, out width)
+                || StyleArbitraryValueResolver.TryParseInferredArbitraryPixels(suffix.AsSpan(), out width);
         }
 
         // A color is a palette token (red-500 / white / black) or an arbitrary [<color>], whose type hint is the

@@ -307,12 +307,13 @@ namespace Velvet
             var style = band.style;
             style.left = -grow;
             style.top = -grow;
-            style.width = width + (grow * 2f);
-            style.height = height + (grow * 2f);
-            style.borderTopLeftRadius = radii.x + grow;
-            style.borderTopRightRadius = radii.y + grow;
-            style.borderBottomRightRadius = radii.z + grow;
-            style.borderBottomLeftRadius = radii.w + grow;
+            // A negative outline offset shrinks the band's box, which cannot go below nothing.
+            style.width = Mathf.Max(0f, width + (grow * 2f));
+            style.height = Mathf.Max(0f, height + (grow * 2f));
+            style.borderTopLeftRadius = Mathf.Max(0f, radii.x + grow);
+            style.borderTopRightRadius = Mathf.Max(0f, radii.y + grow);
+            style.borderBottomRightRadius = Mathf.Max(0f, radii.z + grow);
+            style.borderBottomLeftRadius = Mathf.Max(0f, radii.w + grow);
         }
 
         // Gives the bands what the element's own subtree would have given them had they been inside: its opacity,

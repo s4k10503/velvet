@@ -18,6 +18,9 @@
   `shadow-*` beside them, as Tailwind's `--tw-shadow-color` does.
 - `ring-offset-<colour>` colours the offset fill, and a ring, ring-offset or outline colour takes an opacity
   modifier (`ring-red-500/50`).
+- `ring-<n>`, `outline-<n>`, `ring-offset-<n>` and `outline-offset-<n>` take any integer Tailwind generates
+  (`ring-3`, `outline-12`), where only 0, 1, 2, 4 and 8 were read, and `-outline-offset-<n>` and
+  `outline-offset-[-2px]` draw the outline inside the element's edge.
 
 ### Fixed
 

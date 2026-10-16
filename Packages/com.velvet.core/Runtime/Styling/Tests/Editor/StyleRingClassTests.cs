@@ -267,6 +267,52 @@ namespace Velvet.Tests
             Assert.That((spec.RingSpread, spec.OffsetSpread), Is.EqualTo((2f, 2f)));
         }
 
+        // ring-<n>, outline-<n>, ring-offset-<n> and outline-offset-<n> take any integer Tailwind generates.
+
+        [TestCase("ring-3")]
+        [TestCase("ring-12")]
+        public void Given_ARingWidthOffTheOldScale_When_Extracted_Then_ItIsThatManyPixels(string utility)
+        {
+            Assert.That(Extract(utility).Ring.Width, Is.EqualTo(float.Parse(utility.Substring("ring-".Length))));
+        }
+
+        [Test]
+        public void Given_AnOutlineWidthOffTheOldScale_When_Extracted_Then_ItIsThatManyPixels()
+        {
+            Assert.That(Extract("outline-3").Outline.Width, Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void Given_OffsetsOffTheOldScale_When_Extracted_Then_EachIsThatManyPixels()
+        {
+            var spec = Extract("ring-2", "ring-offset-3", "outline", "outline-offset-5");
+            Assert.That((spec.Ring.Offset, spec.Outline.Offset), Is.EqualTo((3f, 5f)));
+        }
+
+        [Test]
+        public void Given_AWidthWithALeadingZero_When_Extracted_Then_ItIsNoUtility()
+        {
+            // Tailwind generates ring-2 and not ring-02; the control is ring-2.
+            Assert.That(
+                (StyleRingClass.TryExtract(new[] { "ring-02" }, out _), StyleRingClass.TryExtract(new[] { "ring-2" }, out _)),
+                Is.EqualTo((false, true)));
+        }
+
+        [TestCase("-outline-offset-2")]
+        [TestCase("outline-offset-[-2px]")]
+        public void Given_ANegativeOutlineOffset_When_Extracted_Then_TheOutlineMovesInside(string utility)
+        {
+            Assert.That(Extract("outline-2", utility).Outline.Offset, Is.EqualTo(-2f));
+        }
+
+        [Test]
+        public void Given_ANegatedOutlineOffset_When_GateChecked_Then_ItIsARingClass()
+        {
+            Assert.That(
+                (StyleRingClass.HasRingClass(new[] { "-outline-offset-2" }), StyleRingClass.HasRingClass(new[] { "-mt-2" })),
+                Is.EqualTo((true, false)));
+        }
+
         [Test]
         public void Given_PlainUtility_When_GateChecked_Then_NotARingClass()
         {
