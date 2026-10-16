@@ -8,7 +8,7 @@ namespace Velvet
     // where a browser discards it unless it is a colour.
     internal static class TailwindDataTypes
     {
-        private static readonly string[] s_lengthUnits =
+        internal static readonly string[] s_lengthUnits =
         {
             "cm", "mm", "Q", "in", "pc", "pt", "px", "em", "ex", "ch", "cap", "ic", "rem", "rex", "rch", "rcap",
             "ric", "lh", "rlh", "vw", "vh", "vmin", "vmax", "vb", "vi", "svw", "svh", "svi", "svb", "svmin",
@@ -80,7 +80,7 @@ namespace Velvet
         }
 
         // Where HAS_NUMBER, [+-]?\d*\.?\d+(?:[eE][+-]?\d+)?, ends when it matches from the start, or -1.
-        private static int NumberEnd(string value, bool withExponent)
+        internal static int NumberEnd(string value, bool withExponent)
         {
             var at = 0;
             if (at < value.Length && (value[at] == '+' || value[at] == '-'))

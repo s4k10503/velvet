@@ -100,7 +100,8 @@ namespace Velvet
             return aRank < 0 || zRank < 0 ? StyleBorderSideColor.CompareCascade(a, z) : aRank.CompareTo(zRank);
         }
 
-        // tokens without the inline token a later stylesheet class writes in full, and with a border width cut down to
+        // tokens without a composite family the browser discards (StyleCompositeRejection), without the inline token a
+        // later stylesheet class writes in full, and with a border width cut down to
         // the sides such classes leave (StyleInlineSheetOrder), and with each stylesheet-backed spacing class that an inline utility of an overlapping family stands
         // beside rewritten to its inline form (pt-2 as pt-[8px], mx-auto as mx-[auto], w-full as w-[100%]), and
         // each logical utility dropped for the physical one of its own side (ps-13 beside pl-2: Tailwind sorts
@@ -110,6 +111,7 @@ namespace Velvet
         // variants, so `sm:p-13 sm:pt-2` is judged apart from `p-13 pt-2`, and `hover:focus:` is `focus:hover:`.
         internal static string[] Normalize(string[] tokens)
         {
+            tokens = StyleCompositeRejection.WithoutRejectedComposites(tokens);
             if (tokens.Length < 2)
             {
                 return tokens;
