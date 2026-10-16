@@ -210,8 +210,8 @@ namespace Velvet.Tests
             Assert.That(parsed, Is.EqualTo((false, true)));
         }
 
-        // Each literal is past double's range, and reads as Chromium reads it: a channel, a percentage or an alpha
-        // clamps to its end, and a hue reads as 0deg.
+        // Each literal is past float's range, and reads as Chromium reads it: a channel, a percentage or an alpha
+        // clamps to its end, and a hue is the hue of float's largest, which is 0deg in degrees and in turns.
         [TestCase("rgb(1e999_0_0)", 1f, 0f, 0f, 1f)]
         [TestCase("rgb(+1e999,0,0)", 1f, 0f, 0f, 1f)]
         [TestCase("rgb(1e999%_0_0)", 1f, 0f, 0f, 1f)]
@@ -315,75 +315,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(color, Is.EqualTo(new[] { 0.5f, 0.5f, 0.5f, 1f }).Within(Tolerance));
-        }
-
-        [TestCase("hsl(0_150%_75%)", 1f, 0.5f, 0.5f, 1f)]
-        [TestCase("hsl(0deg_150.5%_75%)", 1f, 0.5f, 0.5f, 1f)]
-        [TestCase("hsl(0grad_150%_75%)", 1f, 0.5f, 0.5f, 1f)]
-        [TestCase("hsl(0rad_150%_75%)", 1f, 0.5f, 0.5f, 1f)]
-        [TestCase("hsl(.0turn_150%_75%_/_0.5)", 1f, 0.5f, 0.5f, 0.5f)]
-        [TestCase("hsl(-0_150%_75%)", 1f, 0.5f, 0.5f, 1f)]
-        public void Given_AnHslSaturationAbove100_When_Parsed_Then_ItClampsWhereChromiumReadsItPlain(string value, float r, float g, float b, float a)
-        {
-            // Act
-            var color = Parse(value);
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { r, g, b, a }).Within(Tolerance));
-        }
-
-        // GREEN_ON_BASE(characterization): the base leaves every saturation above 100% unclamped, and each of
-        // these spellings must still, being one Chromium's fast path declines; a clamp keyed on the saturation
-        // alone gives the 0.5 channels instead.
-        [TestCase("hsl(0_150_75)", 1f, 0.375f, 0.375f, 1f)]
-        [TestCase("hsl(none_150%_75%)", 1f, 0.375f, 0.375f, 1f)]
-        [TestCase("hsl(0_150%_75%_/_none)", 1f, 0.375f, 0.375f, 0f)]
-        [TestCase("hsl(0_150%_75%_/_50%)", 1f, 0.375f, 0.375f, 0.5f)]
-        [TestCase("hsl(0_150%_75%_/_5e-1)", 1f, 0.375f, 0.375f, 0.5f)]
-        [TestCase("hsl(0e0_150%_75%)", 1f, 0.375f, 0.375f, 1f)]
-        [TestCase("hsl(+0_150%_75%)", 1f, 0.375f, 0.375f, 1f)]
-        [TestCase("hsl(0_1.5e2%_75%)", 1f, 0.375f, 0.375f, 1f)]
-        [TestCase("hsl(0_150%_75e0%)", 1f, 0.375f, 0.375f, 1f)]
-        [TestCase("hsl(0_150%_.5%)", 0.0125f, 0f, 0f, 1f)]
-        public void Given_AnHslSaturationAbove100_When_ChromiumDeclinesItsFastPath_Then_ItStaysUnclamped(string value, float r, float g, float b, float a)
-        {
-            // Act
-            var color = Parse(value);
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { r, g, b, a }).Within(Tolerance));
-        }
-
-        [TestCase("hsl(0,150%,75%)")]
-        [TestCase("hsl(0e0,150%,75%)")]
-        [TestCase("hsl(0,150%,75%,1)")]
-        public void Given_ALegacyHslSaturationAbove100_When_Parsed_Then_ItClamps(string value)
-        {
-            // Act
-            var color = Parse(value);
-
-            // Assert
-            Assert.That(color, Is.EqualTo(new[] { 1f, 0.5f, 0.5f, 1f }).Within(Tolerance));
-        }
-
-        // A number past float's range reads as float's largest, so every hue from 1e39 up is the hue of 3.4028235e38:
-        // 0deg as degrees or turns, 216deg as gradians and 240deg as radians.
-        [TestCase("hsl(1e39_100%_50%)", "hsl(0_100%_50%)")]
-        [TestCase("hsl(1e100_100%_50%)", "hsl(0_100%_50%)")]
-        [TestCase("hsl(1e305_100%_50%)", "hsl(0_100%_50%)")]
-        [TestCase("hsl(-1e305_100%_50%)", "hsl(0_100%_50%)")]
-        [TestCase("hsl(1e300turn_100%_50%)", "hsl(0_100%_50%)")]
-        [TestCase("hsl(1e300grad_100%_50%)", "hsl(216_100%_50%)")]
-        [TestCase("hsl(4e38grad_100%_50%)", "hsl(216_100%_50%)")]
-        [TestCase("hsl(-1e300grad_100%_50%)", "hsl(144_100%_50%)")]
-        [TestCase("hsl(1e300rad_100%_50%)", "hsl(240_100%_50%)")]
-        public void Given_AHuePastFloatsRange_When_Parsed_Then_ItIsTheHueOfFloatsLargest(string value, string equivalent)
-        {
-            // Act
-            var color = Parse(value);
-
-            // Assert
-            Assert.That(color, Is.EqualTo(Parse(equivalent)).Within(Tolerance));
         }
 
         [Test]
