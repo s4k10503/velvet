@@ -101,6 +101,8 @@ namespace Velvet
             => StyleArbitraryValueResolver.HasImportantInlineOutside(_element,
                 StyleArbitraryLonghands.Of(slot), _importantInlineBySwap);
 
+        public bool DrivenByRunningPlay(ArbitraryProperty slot) => _drivenByRunningPlay(slot);
+
         public bool TryReadCurrent(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {
             if (slot == ArbitraryProperty.BorderColor)

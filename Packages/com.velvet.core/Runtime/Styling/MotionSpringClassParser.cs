@@ -268,7 +268,7 @@ namespace Velvet
             {
                 return null;
             }
-            if (fromValue.HasValue && (context == null || from.WasSwapped(axis)))
+            if (fromValue.HasValue && HoldsExplicitStart(context, from.WasSwapped(axis), axis))
             {
                 return (fromValue.Value, toValue ?? identity);
             }
@@ -280,6 +280,11 @@ namespace Velvet
             }
             return from.HeldUnread(axis) ? null : (identity, toValue ?? identity);
         }
+
+        // A slot a running play is driving starts from the frame it shows, as Framer Motion starts a new animation
+        // from the value's current state; the swapped-out class value is where that slot rests, not where it is.
+        private static bool HoldsExplicitStart(MotionSlotContext? context, bool swapped, ArbitraryProperty slot)
+            => context == null || (swapped && !context.DrivenByRunningPlay(slot));
 
         private readonly struct SideScan
         {
@@ -356,7 +361,8 @@ namespace Velvet
                 var isColor = MotionPropertyClassParser.IsColor(property);
                 ArbitraryStyle from = default;
                 var hasFrom = fromProperties != null && fromProperties.TryGetValue(property, out from)
-                    && (context == null || fromSide.SwappedProperties.Overlaps(StyleArbitraryLonghands.Of(property))) && (isColor || from.Unit == to.Unit);
+                    && HoldsExplicitStart(context, fromSide.SwappedProperties.Overlaps(StyleArbitraryLonghands.Of(property)), property)
+                    && (isColor || from.Unit == to.Unit);
                 if (!hasFrom && (context == null || !context.TryReadCurrent(property, to.Unit, out from)))
                 {
                     continue;

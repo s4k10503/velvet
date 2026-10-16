@@ -278,8 +278,10 @@ new StyleTransitionConfig
 ## Driven channels (Spring and Bezier)
 
 Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
-classes and the element's classes left in place. An explicit swapped-out value takes priority as the
-start. Otherwise, on a mounted element, the start is the current inline value, including a running
+classes and the element's classes left in place. A slot no running play drives
+starts from the swapped-out value when the swapped-out classes name one; a slot a running play drives starts
+from that play's current frame, as Framer Motion starts a new animation from a value's current state.
+Otherwise, on a mounted element, the start is the current inline value, including a running
 Spring or Bezier frame, or the resolved value when no inline value is set. If a native transition is
 running on that same element and longhand, the play samples its displayed value before cancellation
 or the class swap. A transition on another property does not change this slot's starting value.
@@ -313,7 +315,7 @@ resolved start described above.
   from — so a `text-sm` → `text-2xl` delta lands instantly while `text-[14px]` → `text-[24px]`
   animates. Reach for the bracket form when you want the size to move.
 - **The to-side must name a color or length.** A swapped-out value in the target's unit supplies
-  the start; otherwise a mounted element supplies its current inline or displayed value. Width and
+  the start unless a running play drives the slot; otherwise a mounted element supplies its current inline or displayed value. Width and
   height, including their min/max forms, can convert between pixels and percentages through the
   parent's content box. Other mixed-unit pairs, or an off-panel target with no matching-unit start,
   land instantly. A color or length with no compatible effective to-side target lands instantly;
