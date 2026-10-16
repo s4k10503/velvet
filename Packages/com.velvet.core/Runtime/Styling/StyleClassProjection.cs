@@ -111,9 +111,10 @@ namespace Velvet
         public static void RawRested(VisualElement element, string cls)
             => StyleArbitraryValueResolver.TryGetProjection(element)?.RawRested(element, cls);
 
-        // Whether element's className declares cls while the projection keeps it off the live class list.
-        internal static bool SuppressesDeclared(VisualElement element, string cls)
-            => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesDeclared(cls) == true;
+        // Whether cls is element's own while the projection keeps it off the live class list: declared by its
+        // className, or put on by a play (RawAdded).
+        internal static bool SuppressesOwnClass(VisualElement element, string cls)
+            => StyleArbitraryValueResolver.TryGetProjection(element)?.SuppressesOwnClass(cls) == true;
 
         // Whether cls sits on element's live class list only because a variant payload put it there.
         internal static bool IsHeldOnlyByPayload(VisualElement element, string cls)
@@ -478,16 +479,25 @@ namespace Velvet
                 return false;
             }
 
-            // A payload's class is not the className's own, so only a base entry counts, important or not.
-            public bool SuppressesDeclared(string cls)
-                => _suppressed?.Contains(cls) == true
-                    && (IndexOf(cls, StyleLayerPriority.Base) >= 0
-                        || IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) >= 0);
+            public bool SuppressesOwnClass(string cls) => _suppressed?.Contains(cls) == true && IsOwn(cls);
 
-            public bool HeldOnlyByPayload(string cls)
-                => Holds(cls)
-                    && IndexOf(cls, StyleLayerPriority.Base) < 0
-                    && IndexOf(cls, StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)) < 0;
+            public bool HeldOnlyByPayload(string cls) => Holds(cls) && !IsOwn(cls);
+
+            // A payload's class is not the element's own, so only a base entry counts, important or not, and a
+            // play's ranking-only one at whatever rank the play holds it: a class written onto the element is in
+            // its class attribute however the cascade ranks it.
+            private bool IsOwn(string cls)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (entry.Class == cls && (entry.RankOnly || entry.Priority == StyleLayerPriority.Base
+                            || entry.Priority == StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
 
             private int FirstIndexOf(string cls)
             {

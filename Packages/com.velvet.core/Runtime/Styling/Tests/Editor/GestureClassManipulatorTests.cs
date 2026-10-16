@@ -586,6 +586,60 @@ namespace Velvet.Tests
             Assert.That((hovered, left), Is.EqualTo((reference.resolvedStyle.backgroundColor, Color.blue)));
         }
 
+        private static object Read(VisualElement element, string property) => property switch
+        {
+            "width" => element.resolvedStyle.width,
+            "paddingTop" => element.resolvedStyle.paddingTop,
+            "backgroundColor" => element.resolvedStyle.backgroundColor,
+            _ => throw new ArgumentOutOfRangeException(nameof(property), property, null),
+        };
+
+        // property on child while hovered and once the pointer has left, beside the reference's and child's resting
+        // value.
+        private static ((object Hovered, object Left) Read, (object Reference, object Resting) Expected) AcrossHover(
+            VisualElement child, VisualElement reference, string property)
+        {
+            var resting = Read(child, property);
+            Hover(child, true);
+            var hovered = Read(child, property);
+            Hover(child, false);
+            return ((hovered, Read(child, property)), (Read(reference, property), resting));
+        }
+
+        // The row's w-[20px] is the bracket width the w-8 case contends with.
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        public void Given_ABaseBracketValue_When_AHoverClassOfItsFamilyHolds_Then_ItWinsUntilThePointerLeaves(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, reference) = Mount("", baseClass, hover: hover, reference: hover);
+
+            // Act
+            var (read, expected) = AcrossHover(child, reference, property);
+
+            // Assert
+            Assert.That(read, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets a className hover: class outrank a bracket base value.
+        // The case holds the same verdict for the className's own hover: rule that the gesture channel now shares.
+        [TestCase("", "w-8", "width")]
+        [TestCase("p-[10px]", "p-4", "paddingTop")]
+        [TestCase("bg-[#0000ff]", "bg-red-500", "backgroundColor")]
+        public void Given_ABaseBracketValue_When_AClassNameHoverRuleOfItsFamilyHolds_Then_ItWinsUntilThePointerLeaves(
+            string baseClass, string hover, string property)
+        {
+            // Arrange
+            var (child, reference) = Mount("", baseClass + " hover:" + hover, reference: hover);
+
+            // Act
+            var (read, expected) = AcrossHover(child, reference, property);
+
+            // Assert
+            Assert.That(read, Is.EqualTo(expected));
+        }
+
         [Test]
         public void Given_AHoverBracketColor_When_Hovered_Then_ItApplies()
         {
