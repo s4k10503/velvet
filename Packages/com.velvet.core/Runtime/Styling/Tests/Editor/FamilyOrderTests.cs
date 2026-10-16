@@ -127,15 +127,15 @@ namespace Velvet.Tests
 
         // One row for each reader that folds the live class list: the clip shape, and the layout gates LiveClasses
         // hands to (pointer events, gap, grid columns, divide). A token a later render adds sorts ahead of the ones
-        // already there in each, which the diff appends it behind.
-        [TestCase("pointer-events-none", "pointer-events-none pointer-events-auto")]
-        [TestCase("clip-path-none", "clip-path-none clip-path-[inset(10%)]")]
-        [TestCase("clip-path-[inset(10%)]", "clip-path-[inset(10%)] clip-path-[circle(40%)]")]
-        [TestCase("gap-x-4", "gap-x-4 gap-2")]
-        [TestCase("grid-cols-3", "grid-cols-3 grid-cols-2")]
-        [TestCase("divide-y-2", "divide-y-2 divide-x-2")]
+        // already there in each, which the diff appends it behind; the expected list is the order Tailwind emits them in.
+        [TestCase("pointer-events-none", "pointer-events-none pointer-events-auto", "pointer-events-auto pointer-events-none")]
+        [TestCase("clip-path-none", "clip-path-none clip-path-[inset(10%)]", "clip-path-[inset(10%)] clip-path-none")]
+        [TestCase("clip-path-[inset(10%)]", "clip-path-[inset(10%)] clip-path-[circle(40%)]", "clip-path-[circle(40%)] clip-path-[inset(10%)]")]
+        [TestCase("gap-x-4", "gap-x-4 gap-2", "gap-2 gap-x-4")]
+        [TestCase("grid-cols-3", "grid-cols-3 grid-cols-2", "grid-cols-2 grid-cols-3")]
+        [TestCase("divide-y-2", "divide-y-2 divide-x-2", "divide-x-2 divide-y-2")]
         public void Given_ATokenAddedByALaterRenderThatSortsAheadOfTheOnesThere_When_Reconciled_Then_TheLiveClassListIsInTheOrderAFreshMountGives(
-            string first, string second)
+            string first, string second, string expected)
         {
             // Arrange
             using var reconciler = new Reconciler();
@@ -148,9 +148,9 @@ namespace Velvet.Tests
             reconciler.Reconcile(root, firstTree, secondTree);
 
             // Assert
-            var wanted = V.ParseClassNames(second);
-            var live = root.Q<VisualElement>("t").GetClasses().Where(cls => wanted.Contains(cls));
-            Assert.That(string.Join(" ", live), Is.EqualTo(string.Join(" ", wanted)));
+            var written = second.Split(' ');
+            var live = root.Q<VisualElement>("t").GetClasses().Where(cls => written.Contains(cls));
+            Assert.That(string.Join(" ", live), Is.EqualTo(expected));
         }
 
         [Test]
