@@ -225,36 +225,11 @@ namespace Velvet
                     return Float(slot, style.opacity, out value);
                 case ArbitraryProperty.TranslateX:
                 case ArbitraryProperty.TranslateY:
-                {
-                    var translate = style.translate;
-                    if (translate.keyword != StyleKeyword.Undefined)
-                    {
-                        return false;
-                    }
-                    var axis = slot == ArbitraryProperty.TranslateX ? translate.value.x : translate.value.y;
-                    value = new ArbitraryStyle(slot, axis.value, axis.unit);
-                    return true;
-                }
+                    return Translate(slot, style.translate, out value);
                 case ArbitraryProperty.Scale:
-                {
-                    var scale = style.scale;
-                    if (scale.keyword != StyleKeyword.Undefined || !scale.value.value.x.Equals(scale.value.value.y))
-                    {
-                        return false;
-                    }
-                    value = new ArbitraryStyle(slot, scale.value.value.x, LengthUnit.Pixel);
-                    return true;
-                }
+                    return Scale(slot, style.scale, out value);
                 case ArbitraryProperty.Rotate:
-                {
-                    var rotate = style.rotate;
-                    if (rotate.keyword != StyleKeyword.Undefined)
-                    {
-                        return false;
-                    }
-                    value = new ArbitraryStyle(slot, rotate.value.angle.ToDegrees(), LengthUnit.Pixel);
-                    return true;
-                }
+                    return Rotate(slot, style.rotate, out value);
                 case ArbitraryProperty.TextColor:
                     return Color(slot, style.color, out value);
                 case ArbitraryProperty.BackgroundColor:
@@ -364,6 +339,40 @@ namespace Velvet
         {
             value = new ArbitraryStyle(slot, style.value, LengthUnit.Pixel);
             return style.keyword == StyleKeyword.Undefined;
+        }
+
+        private static bool Translate(ArbitraryProperty slot, StyleTranslate style, out ArbitraryStyle value)
+        {
+            value = default;
+            if (style.keyword != StyleKeyword.Undefined)
+            {
+                return false;
+            }
+            var axis = slot == ArbitraryProperty.TranslateX ? style.value.x : style.value.y;
+            value = new ArbitraryStyle(slot, axis.value, axis.unit);
+            return true;
+        }
+
+        private static bool Scale(ArbitraryProperty slot, StyleScale style, out ArbitraryStyle value)
+        {
+            value = default;
+            if (style.keyword != StyleKeyword.Undefined || !style.value.value.x.Equals(style.value.value.y))
+            {
+                return false;
+            }
+            value = new ArbitraryStyle(slot, style.value.value.x, LengthUnit.Pixel);
+            return true;
+        }
+
+        private static bool Rotate(ArbitraryProperty slot, StyleRotate style, out ArbitraryStyle value)
+        {
+            value = default;
+            if (style.keyword != StyleKeyword.Undefined)
+            {
+                return false;
+            }
+            value = new ArbitraryStyle(slot, style.value.angle.ToDegrees(), LengthUnit.Pixel);
+            return true;
         }
 
         // A masked edge reads as the color its dash takes.
