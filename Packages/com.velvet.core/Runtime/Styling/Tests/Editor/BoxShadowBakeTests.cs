@@ -34,10 +34,19 @@ namespace Velvet.Tests
         private static int NodesCount => ((ICollection)NodesField.GetValue(null)).Count;
         private static int Cap => (int)CapField.GetValue(null);
         private static void Store(int w, Texture2D tex)
-            => StoreMethod.Invoke(null, new object[] { (0L, w, 0, 0, 0L), tex });
+            => StoreMethod.Invoke(null, new object[] { (0L, 0L, 0L, w, 0, 0, 0L), tex });
 
-        private static ShadowSpec Layer(float blur, float offsetY = 0f, float spread = 0f, float offsetX = 0f)
-            => new(Color.black, blur, offsetY, spread, offsetX);
+        private static ShadowSpec Layer(float blur, float offsetY = 0f, float spread = 0f, float offsetX = 0f,
+            bool inset = false)
+            => new(Color.black, blur, offsetY, spread, offsetX, inset);
+
+        // A borderless caster box with one radius on every corner.
+        private static ShadowBox Box(float w, float h, float radius = 0f)
+            => new(w, h, new Vector4(radius, radius, radius, radius), Vector4.zero);
+
+        // The baked alpha at a point of the caster's local space (y down), read from the texel covering it.
+        private static float AlphaAt(Texture2D tex, Rect rect, float x, float y)
+            => tex.GetPixel(Mathf.FloorToInt(x - rect.x), tex.height - 1 - Mathf.FloorToInt(y - rect.y)).a;
 
         [SetUp]
         public void SetUp() => ResetMethod?.Invoke(null, null);
@@ -54,7 +63,7 @@ namespace Velvet.Tests
             var layer = Layer(40f);
 
             // Act
-            var tex = BoxShadowBaker.GetOrBakeSilhouette(12f, layer, 240f, 160f, Vector2.zero);
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(Box(240f, 160f, 12f), layer, Vector2.zero);
 
             // Assert
             Assert.That(tex != null ? tex.GetPixel(tex.width / 2, tex.height / 2).a : float.NaN,
@@ -74,11 +83,11 @@ namespace Velvet.Tests
 
             // Arrange
             var layer = Layer(20f);
-            var rect = BoxShadowBaker.ShadowRect(200f, 200f, layer, Vector2.zero);
+            var rect = BoxShadowBaker.ShadowRect(Box(200f, 200f), layer, Vector2.zero);
             var x = Mathf.FloorToInt(200f - rect.x + distance);
 
             // Act
-            var tex = BoxShadowBaker.GetOrBakeSilhouette(0f, layer, 200f, 200f, Vector2.zero);
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(Box(200f, 200f), layer, Vector2.zero);
 
             // Assert
             Assert.That(tex != null ? tex.GetPixel(x, tex.height / 2).a : float.NaN,
@@ -95,8 +104,8 @@ namespace Velvet.Tests
             TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
 
             // Arrange / Act — bake two presets whose only difference rounds away to the same 20px corner.
-            var a = BoxShadowBaker.GetOrBakeSilhouette(20.4f, Layer(30f), 200f, 120f, Vector2.zero);
-            var b = BoxShadowBaker.GetOrBakeSilhouette(19.6f, Layer(30f), 200f, 120f, Vector2.zero);
+            var a = BoxShadowBaker.GetOrBakeSilhouette(Box(200f, 120f, 20.4f), Layer(30f), Vector2.zero);
+            var b = BoxShadowBaker.GetOrBakeSilhouette(Box(200f, 120f, 19.6f), Layer(30f), Vector2.zero);
             Assume.That(a != null && b != null, Is.True,
                 "Precondition: the BoxShadow shader resolved and baked both textures.");
 
@@ -111,7 +120,7 @@ namespace Velvet.Tests
             var pad = 6f + BoxShadowBaker.ExtraPadding;
 
             // Act
-            var rect = BoxShadowBaker.ShadowRect(100f, 40f, Layer(4f, offsetY: 6f, spread: 2f, offsetX: 4f),
+            var rect = BoxShadowBaker.ShadowRect(Box(100f, 40f), Layer(4f, offsetY: 6f, spread: 2f, offsetX: 4f),
                 Vector2.zero);
 
             // Assert
@@ -127,7 +136,7 @@ namespace Velvet.Tests
             var pad = 9f + BoxShadowBaker.ExtraPadding;
 
             // Act
-            var rect = BoxShadowBaker.ShadowRect(100f, 40f, Layer(6f, offsetY: 4f, spread: -4f), Vector2.zero);
+            var rect = BoxShadowBaker.ShadowRect(Box(100f, 40f), Layer(6f, offsetY: 4f, spread: -4f), Vector2.zero);
 
             // Assert
             Assert.That(new[] { rect.width, rect.height },
@@ -143,7 +152,7 @@ namespace Velvet.Tests
             var pad = BoxShadowBaker.ExtraPadding;
 
             // Act
-            var rect = BoxShadowBaker.ShadowRect(100f, 40f, Layer(0f), skew);
+            var rect = BoxShadowBaker.ShadowRect(Box(100f, 40f), Layer(0f), skew);
 
             // Assert
             Assert.That(new[] { rect.width, rect.height },
@@ -158,7 +167,7 @@ namespace Velvet.Tests
             var skew = new Vector2(0f, 45f);
 
             // Act
-            var rect = BoxShadowBaker.ShadowRect(100f, 40f, Layer(0f, offsetX: 10f), skew);
+            var rect = BoxShadowBaker.ShadowRect(Box(100f, 40f), Layer(0f, offsetX: 10f), skew);
 
             // Assert
             Assert.That(new[] { rect.center.x, rect.center.y }, Is.EqualTo(new[] { 60f, 30f }).Within(1e-3f));
@@ -171,13 +180,103 @@ namespace Velvet.Tests
 
             // Arrange — the rect the paint draws the bake into, which a texel each way has to cover.
             var skew = new Vector2(0f, 45f);
-            var rect = BoxShadowBaker.ShadowRect(100f, 40f, Layer(0f), skew);
+            var rect = BoxShadowBaker.ShadowRect(Box(100f, 40f), Layer(0f), skew);
 
             // Act
-            var tex = BoxShadowBaker.GetOrBakeSilhouette(0f, Layer(0f), 100f, 40f, skew);
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(Box(100f, 40f), Layer(0f), skew);
 
             // Assert
             Assert.That((tex != null, tex != null && tex.height >= rect.height), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AShadowOnABoxRoundedAtOneCorner_When_Baked_Then_OnlyThatCornerOfTheSpreadShapeIsRound()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange — only the top-right corner is rounded (40px), and a 10px spread with no blur grows the
+            // shape: its top-left corner stays square and covers a point 7.5px out along that diagonal, while its
+            // top-right corner, rounded to 50px, misses the same point there.
+            var box = new ShadowBox(200f, 120f, new Vector4(0f, 40f, 0f, 0f), Vector4.zero);
+            var layer = Layer(0f, spread: 10f);
+            var rect = BoxShadowBaker.ShadowRect(box, layer, Vector2.zero);
+
+            // Act
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(box, layer, Vector2.zero);
+
+            // Assert
+            Assert.That(tex != null
+                    ? new[] { AlphaAt(tex, rect, -7.5f, -7.5f), AlphaAt(tex, rect, 207.5f, -7.5f) }
+                    : new[] { float.NaN, float.NaN },
+                Is.EqualTo(new[] { 1f, 0f }).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AnInsetShadowWithASpread_When_Baked_Then_ItCoversABandInsideTheBoxAndNotItsMiddle()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange — inset 0 0 0 10px: a hole 10px in from every side, drawn inside the padding box only.
+            var box = Box(200f, 120f);
+            var layer = Layer(0f, spread: 10f, inset: true);
+            var rect = BoxShadowBaker.ShadowRect(box, layer, Vector2.zero);
+
+            // Act
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(box, layer, Vector2.zero);
+
+            // Assert
+            Assert.That(tex != null
+                    ? new[] { AlphaAt(tex, rect, 5.5f, 60.5f), AlphaAt(tex, rect, 100.5f, 60.5f) }
+                    : new[] { float.NaN, float.NaN },
+                Is.EqualTo(new[] { 1f, 0f }).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AnInsetShadowOffsetDown_When_Baked_Then_ItCoversTheTopEdgeAndNotTheBottom()
+        {
+            TestGraphics.IgnoreIfHeadless("a GPU shadow bake (Graphics.Blit + ReadPixels)");
+
+            // Arrange — inset 0 10px: the hole moves 10px down, uncovering a band along the top edge.
+            var box = Box(200f, 120f);
+            var layer = Layer(0f, offsetY: 10f, inset: true);
+            var rect = BoxShadowBaker.ShadowRect(box, layer, Vector2.zero);
+
+            // Act
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(box, layer, Vector2.zero);
+
+            // Assert
+            Assert.That(tex != null
+                    ? new[] { AlphaAt(tex, rect, 100.5f, 5.5f), AlphaAt(tex, rect, 100.5f, 114.5f) }
+                    : new[] { float.NaN, float.NaN },
+                Is.EqualTo(new[] { 1f, 0f }).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AnInsetShadowOnABorderedBox_When_ItsRectIsTaken_Then_ItIsThePaddingBox()
+        {
+            // Arrange — borders left 2, top 3, right 4, bottom 5.
+            var box = new ShadowBox(100f, 40f, Vector4.zero, new Vector4(2f, 3f, 4f, 5f));
+
+            // Act
+            var rect = BoxShadowBaker.ShadowRect(box, Layer(4f, offsetY: 6f, inset: true), Vector2.zero);
+
+            // Assert
+            Assert.That(new[] { rect.x, rect.y, rect.width, rect.height },
+                Is.EqualTo(new[] { 2f, 3f, 94f, 32f }).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ABorderedBox_When_ItsPaddingRadiiAreTaken_Then_EachCornerLosesItsWiderBorder()
+        {
+            // Arrange — a 10px radius on every corner; borders left 2, top 3, right 4, bottom 5.
+            var box = new ShadowBox(100f, 40f, new Vector4(10f, 10f, 10f, 10f), new Vector4(2f, 3f, 4f, 5f));
+
+            // Act
+            var radii = BoxShadowBaker.PaddingRadii(box);
+
+            // Assert
+            Assert.That(new[] { radii.x, radii.y, radii.z, radii.w },
+                Is.EqualTo(new[] { 7f, 6f, 5f, 5f }).Within(1e-4f));
         }
 
         // CSS Backgrounds 3's own example: a 10px radius under a 20px spread is 10 + 20 × (1 + (0.5 − 1)³).

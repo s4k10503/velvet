@@ -1,20 +1,21 @@
 Shader "Velvet/BoxShadow"
 {
-    // One layer of a CSS box-shadow: the caster's border box moved by the offset and grown (or shrunk) by the
-    // spread, blurred by a Gaussian whose standard deviation is half the blur radius, and cut out where the
-    // caster's own border box lies, since CSS draws an outer shadow only outside it. The C# side passes the
-    // caster's size in _ElementSize.xy and the quad's size in .zw: the shape padded by three standard deviations
-    // per side, grown by the shear's overhang. It outputs white RGB with the coverage in alpha (the layer's
-    // colour is applied later as a tint).
+    // One layer of a CSS box-shadow. An outer layer is the caster's border box moved by the offset and grown (or
+    // shrunk) by the spread, blurred by a Gaussian whose standard deviation is half the blur radius, and cut out
+    // where the border box lies, since CSS draws an outer shadow only outside it. An inset layer is the padding
+    // box with a hole — the padding box moved by the offset and shrunk by the spread, blurred the same way —
+    // drawn only inside the padding box. The C# side passes the clip box (border box or padding box) and the
+    // shape (blurred box or hole) as half-sizes, centres relative to the quad's centre and per-corner radii,
+    // and the quad's size. It outputs white RGB with the coverage in alpha (the layer's colour is applied later
+    // as a tint).
     //
     // This pass is BAKED once into a texture (BoxShadowBaker uses Graphics.Blit) and that texture is drawn as
-    // a single quad in the caster element's OWN generateVisualContent, before the binding repaints the caster's
-    // upright fill + border. It is deliberately NOT used as a live per-element material
-    // (style.unityMaterial): UITK freezes a custom-material element's draw-command order at first generation, so
-    // a shadow first generated under an animating ancestor transform would composite in FRONT of its caster.
-    // Going through the normal textured-quad path keeps plain depth-first order, with no custom-material command
-    // to misorder. The shadow is a NON-structural paint: no wrapper, so it does not alter the caster's layout
-    // and it follows a transform on the caster (CSS box-shadow parity).
+    // a single quad in the caster element's OWN generateVisualContent. It is deliberately NOT used as a live
+    // per-element material (style.unityMaterial): UITK freezes a custom-material element's draw-command order at
+    // first generation, so a shadow first generated under an animating ancestor transform would composite in
+    // FRONT of its caster. Going through the normal textured-quad path keeps plain depth-first order, with no
+    // custom-material command to misorder. The shadow is a NON-structural paint: no wrapper, so it does not
+    // alter the caster's layout and it follows a transform on the caster (CSS box-shadow parity).
     //
     // URP only: SubShader is tagged "UniversalPipeline". The showcase project is converted to URP for
     // this reason (see Assets/Editor/URPSetup.cs).
@@ -22,12 +23,17 @@ Shader "Velvet/BoxShadow"
     {
         [MainTexture] _MainTex("Texture", 2D) = "white" {}
         _BlurRadius("Blur Radius", Range(0, 100)) = 40
-        // The caster's corner radius, and the shadow shape's after the spread (CSS's spread-radius rule).
-        _CornerRadius("Corner Radius", Range(0, 100)) = 32
-        _ShapeRadius("Shape Corner Radius", Range(0, 150)) = 32
-        _Spread("Spread", Range(-50, 50)) = 0
-        _Offset("Offset", Vector) = (0, 0, 0, 0)
+        // xy: the shape's half-size; zw: its centre relative to the quad's centre.
+        _Shape("Shape", Vector) = (50, 50, 0, 0)
+        // Per-corner radii, top-left, top-right, bottom-right, bottom-left.
+        _ShapeRadii("Shape Radii", Vector) = (0, 0, 0, 0)
+        // xy: the clip box's half-size; zw: its centre relative to the quad's centre.
+        _Clip("Clip", Vector) = (50, 50, 0, 0)
+        _ClipRadii("Clip Radii", Vector) = (0, 0, 0, 0)
+        // xy: the quad's size.
         _ElementSize("Element Size", Vector) = (100, 100, 0, 0)
+        // 1 for an inset layer, 0 for an outer one.
+        _Inset("Inset", Float) = 0
         // tan() of the caster's skew-x and skew-y angles. Non-zero shears the silhouette so the shadow
         // follows a skewed caster (baked full-size by BoxShadowBaker).
         _SkewX("Skew X (tan)", Range(-2, 2)) = 0
@@ -77,11 +83,12 @@ Shader "Velvet/BoxShadow"
             };
 
             float _BlurRadius;
-            float _CornerRadius;
-            float _ShapeRadius;
-            float _Spread;
-            float4 _Offset;
+            float4 _Shape;
+            float4 _ShapeRadii;
+            float4 _Clip;
+            float4 _ClipRadii;
             float4 _ElementSize;
+            float _Inset;
             float _SkewX;
             float _SkewY;
 
@@ -94,16 +101,27 @@ Shader "Velvet/BoxShadow"
                 return output;
             }
 
-            // Signed distance to a rounded box.
-            // Ref: Inigo Quilez - https://iquilezles.org/articles/distfunctions2d/
-            float sdRoundedBox(float2 p, float2 b, float r)
+            // The radius of the corner p lies towards, y-down: radii are (top-left, top-right, bottom-right,
+            // bottom-left).
+            float cornerOf(float2 p, float4 radii)
             {
+                float top = p.x < 0.0 ? radii.x : radii.y;
+                float bottom = p.x < 0.0 ? radii.w : radii.z;
+                return p.y < 0.0 ? top : bottom;
+            }
+
+            // Signed distance to a rounded box with a radius per corner.
+            // Ref: Inigo Quilez - https://iquilezles.org/articles/distfunctions2d/
+            float sdRoundedBox(float2 p, float2 b, float4 radii)
+            {
+                float r = min(cornerOf(p, radii), min(b.x, b.y));
                 float2 q = abs(p) - b + r;
                 return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
             }
 
             // A Gaussian-blurred rounded box, after Evan Wallace's "Fast Rounded Rectangle Shadows": exact along
-            // x through erf, integrated along y in four samples spanning three standard deviations.
+            // x through erf, integrated along y in four samples spanning three standard deviations. A row takes
+            // its left and right extents from the corners on its own half of the box.
             float gaussian(float x, float sigma)
             {
                 return exp(-(x * x) / (2.0 * sigma * sigma)) / (2.50662827463 * sigma);
@@ -118,15 +136,22 @@ Shader "Velvet/BoxShadow"
                 return s - s / (x * x);
             }
 
-            float blurredRowX(float x, float y, float sigma, float corner, float2 halfSize)
+            float extentAt(float y, float corner, float2 halfSize)
             {
                 float delta = min(halfSize.y - corner - abs(y), 0.0);
-                float curved = halfSize.x - corner + sqrt(max(0.0, corner * corner - delta * delta));
-                float2 integral = 0.5 + 0.5 * erf2((x + float2(-curved, curved)) * (0.70710678 / sigma));
+                return halfSize.x - corner + sqrt(max(0.0, corner * corner - delta * delta));
+            }
+
+            float blurredRowX(float x, float y, float sigma, float4 radii, float2 halfSize)
+            {
+                float cap = min(halfSize.x, halfSize.y);
+                float left = extentAt(y, min(y < 0.0 ? radii.x : radii.w, cap), halfSize);
+                float right = extentAt(y, min(y < 0.0 ? radii.y : radii.z, cap), halfSize);
+                float2 integral = 0.5 + 0.5 * erf2(float2(x - right, x + left) * (0.70710678 / sigma));
                 return integral.y - integral.x;
             }
 
-            float blurredRoundedBox(float2 p, float2 halfSize, float corner, float sigma)
+            float blurredRoundedBox(float2 p, float2 halfSize, float4 radii, float sigma)
             {
                 float low = p.y - halfSize.y;
                 float high = p.y + halfSize.y;
@@ -137,7 +162,7 @@ Shader "Velvet/BoxShadow"
                 float value = 0.0;
                 for (int i = 0; i < 4; i++)
                 {
-                    value += blurredRowX(p.x, p.y - y, sigma, corner, halfSize) * gaussian(y, sigma) * step;
+                    value += blurredRowX(p.x, p.y - y, sigma, radii, halfSize) * gaussian(y, sigma) * step;
                     y += step;
                 }
                 return value;
@@ -145,37 +170,30 @@ Shader "Velvet/BoxShadow"
 
             float4 frag(Varyings input) : SV_Target
             {
-                float2 targetSize = _ElementSize.xy;
-                float2 quadSize = _ElementSize.zw;
+                // UV -> pixel position centered on the quad, y-down as the caster's box is.
+                float2 c = (float2(input.uv.x, 1.0 - input.uv.y) - 0.5) * _ElementSize.xy;
 
-                // UV -> pixel position centered on the shadow quad, y-down as the caster's box is.
-                float2 c = (float2(input.uv.x, 1.0 - input.uv.y) - 0.5) * quadSize;
-
-                // Unshear: evaluate the upright shape at the unsheared coordinate so the rendered alpha follows
+                // Unshear: evaluate the upright boxes at the unsheared coordinate so the rendered alpha follows
                 // the skewed caster's silhouette. The shear is Tailwind's transform, skewX() skewY():
                 // M = [[1 + skewX*skewY, skewX],[skewY, 1]], whose determinant is 1, so its inverse is
-                // [[1, -skewX],[-skewY, 1 + skewX*skewY]]. The result is relative to the shape's centre.
+                // [[1, -skewX],[-skewY, 1 + skewX*skewY]].
                 float2 p = float2(c.x - (_SkewX * c.y), ((1.0 + (_SkewX * _SkewY)) * c.y) - (_SkewY * c.x));
 
-                float2 shapeHalf = max(targetSize * 0.5 + _Spread, 0.0);
-                float shapeCorner = min(_ShapeRadius, min(shapeHalf.x, shapeHalf.y));
+                float2 shapeP = p - _Shape.zw;
                 float sigma = _BlurRadius * 0.5;
-                float coverage;
+                float shape;
                 if (sigma < 0.01)
                 {
-                    coverage = saturate(0.5 - sdRoundedBox(p, shapeHalf, shapeCorner));
+                    shape = saturate(0.5 - sdRoundedBox(shapeP, _Shape.xy, _ShapeRadii));
                 }
                 else
                 {
-                    coverage = blurredRoundedBox(p, shapeHalf, shapeCorner, sigma);
+                    shape = saturate(blurredRoundedBox(shapeP, _Shape.xy, _ShapeRadii, sigma));
                 }
+                float clip = saturate(0.5 - sdRoundedBox(p - _Clip.zw, _Clip.xy, _ClipRadii));
 
-                // The caster's border box sits at -offset from the shape's centre; nothing is drawn inside it.
-                float2 boxHalf = targetSize * 0.5;
-                float boxCorner = min(_CornerRadius, min(boxHalf.x, boxHalf.y));
-                float inside = saturate(0.5 - sdRoundedBox(p + _Offset.xy, boxHalf, boxCorner));
-
-                return float4(1.0, 1.0, 1.0, saturate(coverage) * (1.0 - inside));
+                float alpha = _Inset > 0.5 ? clip * (1.0 - shape) : shape * (1.0 - clip);
+                return float4(1.0, 1.0, 1.0, alpha);
             }
             ENDHLSL
         }

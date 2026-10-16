@@ -27,9 +27,9 @@ namespace Velvet
         // the native chrome and repaints an upright fill + border ON TOP of the shadow quad, so the opaque fill
         // covers the shadow's interior and offset-up overlap, leaving only the outer halo (the box shadow).
         public bool CasterSkewed;
-        // The corner radius the bake rounds to. Resolved from rounded-* off-panel and from the laid-out
-        // resolvedStyle.borderTopLeftRadius once on a panel — the same precedence the wrapper path used.
-        public float CornerRadius;
+        // The corner radii the bakes round to (top-left, top-right, bottom-right, bottom-left). Resolved from
+        // rounded-* off-panel and from the laid-out resolvedStyle once on a panel.
+        public Vector4 CornerRadii;
 
         // When the caster carries an inline filter, the shadow bleed (painted outside the box) would be
         // clipped to the layout rect by the filter's offscreen render tree. A transparent last-child spacer
@@ -209,9 +209,10 @@ namespace Velvet
                     aabb = SilhouetteBoundsSpacer.ExpandForShear(aabb, Mathf.Tan(skew.x * Mathf.Deg2Rad),
                         Mathf.Tan(skew.y * Mathf.Deg2Rad));
                 }
+                var box = BoxOf(element, binding, w, h);
                 foreach (var layer in binding.Layers)
                 {
-                    aabb = SilhouetteBoundsSpacer.Union(aabb, BoxShadowBaker.ShadowRect(w, h, layer, skew));
+                    aabb = SilhouetteBoundsSpacer.Union(aabb, BoxShadowBaker.ShadowRect(box, layer, skew));
                 }
             }
             aabb = SilhouetteBoundsSpacer.ShiftToPaddingBox(aabb, binding.BorderLeft, binding.BorderTop);
@@ -275,31 +276,48 @@ namespace Velvet
         public static BoxShadowBinding? TryGet(VisualElement element)
             => s_byElement.TryGetValue(element, out var binding) ? binding : null;
 
-        // Radius prefers the laid-out resolvedStyle.borderTopLeftRadius (handles %, arbitrary, and inline
-        // radii) once on a panel, and falls back to the rounded-* class scale off-panel / pre-layout so a
-        // value is always set.
+        // The radii prefer the laid-out resolvedStyle corners (handles %, arbitrary, and inline radii) once on a
+        // panel, and fall back to the rounded-* class scale off-panel / pre-layout, where the top-left corner's
+        // class stands for all four, so a value is always set.
         private static void ResolveCornerRadius(VisualElement element, BoxShadowBinding binding)
         {
-            var resolved = element.resolvedStyle.borderTopLeftRadius;
-            if (element.panel != null && !float.IsNaN(resolved))
+            var style = element.resolvedStyle;
+            if (element.panel != null && !float.IsNaN(style.borderTopLeftRadius))
             {
-                binding.CornerRadius = resolved;
+                binding.CornerRadii = new Vector4(style.borderTopLeftRadius, style.borderTopRightRadius,
+                    style.borderBottomRightRadius, style.borderBottomLeftRadius);
             }
             else if (StyleShadowClass.TryResolveCornerRadius(binding.ClassNames, out var classRadius))
             {
-                binding.CornerRadius = classRadius;
+                binding.CornerRadii = new Vector4(classRadius, classRadius, classRadius, classRadius);
             }
             else
             {
-                binding.CornerRadius = 0f;
+                binding.CornerRadii = Vector4.zero;
             }
         }
 
-        // Paints the box shadow (and, for an upright caster, the repainted fill + border) in the caster's own
-        // generateVisualContent. Draw order within this callback: (1) one baked quad per layer, the last layer
-        // first, since CSS paints the first shadow of a list on top; then for an UPRIGHT caster, (2) an upright
-        // rounded-rect fill of the captured background color, and (3) the border stroke. A SKEWED caster skips
-        // (2)/(3): its SkewSilhouette repaints the sheared fill/border just after this paint. Skipped before
+        // The caster box the bakes are taken against. Each radius is bounded as the face painter bounds a
+        // corner; RoundedFullSilhouettePlaybackTests pins the halo an unbounded --radius-full bakes away.
+        private static ShadowBox BoxOf(VisualElement ve, BoxShadowBinding binding, float w, float h)
+        {
+            var bound = SilhouetteFace.MaxRadius(w, h);
+            var r = binding.CornerRadii;
+            var style = ve.resolvedStyle;
+            return new ShadowBox(w, h,
+                new Vector4(Mathf.Min(r.x, bound), Mathf.Min(r.y, bound), Mathf.Min(r.z, bound), Mathf.Min(r.w, bound)),
+                new Vector4(Finite(style.borderLeftWidth), Finite(style.borderTopWidth),
+                    Finite(style.borderRightWidth), Finite(style.borderBottomWidth)));
+        }
+
+        private static float Finite(float v) => float.IsNaN(v) ? 0f : v;
+
+        // Paints the box shadow (and, for an upright caster, the repainted face) in the caster's own
+        // generateVisualContent. Within each kind, the last layer is drawn first, since CSS paints the first
+        // shadow of a list on top. Draw order: (1) the outer layers; then for an UPRIGHT caster, (2) an upright
+        // rounded-rect fill of the captured background color, (3) the inset layers, which CSS paints above the
+        // background, and (4) the border stroke. A SKEWED caster stops after (1): its SkewSilhouette repaints
+        // the sheared fill, calls DrawInsetLayers, and strokes the border just after this paint. Skipped before
         // layout gives a real size.
         private static void Draw(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding)
         {
@@ -310,20 +328,41 @@ namespace Velvet
                 return;
             }
 
-            for (var i = binding.Layers.Length - 1; i >= 0; i--)
-            {
-                DrawShadowQuad(mgc, binding, binding.Layers[i], w, h);
-            }
+            var box = BoxOf(ve, binding, w, h);
+            DrawLayers(mgc, binding, box, inset: false);
 
             // A skewed caster's face is owned (suppressed + repainted, sheared) by its SkewSilhouette, which
             // paints just after this callback. Painting an upright fill here would double the face and undo the
-            // shear, so only paint the shadow quad.
+            // shear, so only paint the outer layers.
             if (binding.CasterSkewed)
             {
                 return;
             }
 
-            RepaintUprightFace(mgc, ve, binding, w, h);
+            RepaintUprightFill(mgc, ve, binding, w, h);
+            DrawLayers(mgc, binding, box, inset: true);
+            RepaintUprightBorder(mgc, ve, binding, w, h);
+        }
+
+        // Draws the inset layers of a skewed caster's shadow, between the fill and the border its SkewSilhouette
+        // paints. A no-op for an element with no shadow or no inset layer.
+        public static void DrawInsetLayers(MeshGenerationContext mgc, VisualElement ve, float w, float h)
+        {
+            if (s_byElement.TryGetValue(ve, out var binding) && binding.CasterSkewed)
+            {
+                DrawLayers(mgc, binding, BoxOf(ve, binding, w, h), inset: true);
+            }
+        }
+
+        private static void DrawLayers(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowBox box, bool inset)
+        {
+            for (var i = binding.Layers.Length - 1; i >= 0; i--)
+            {
+                if (binding.Layers[i].Inset == inset)
+                {
+                    DrawShadowQuad(mgc, binding, binding.Layers[i], box);
+                }
+            }
         }
 
         // Draws the baked shadow silhouette quad. Returns early if the shadow color is transparent or the bake
@@ -335,7 +374,7 @@ namespace Velvet
         // pinned by ShadowFadeOpacityPlaybackTests — so restoring a multiplier means refuting those rather
         // than re-deriving a measurement.
         private static void DrawShadowQuad(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowSpec layer,
-            float w, float h)
+            in ShadowBox box)
         {
             var alpha = layer.Color.a;
             if (alpha <= 0.004f)
@@ -343,11 +382,8 @@ namespace Velvet
                 return;
             }
 
-            // Bounded as the face painter bounds a corner. RoundedFullSilhouettePlaybackTests pins the halo an
-            // unbounded --radius-full bakes away.
-            var corner = Mathf.Min(binding.CornerRadius, SilhouetteFace.MaxRadius(w, h));
             var skew = new Vector2(binding.SkewXDeg, binding.SkewYDeg);
-            var tex = BoxShadowBaker.GetOrBakeSilhouette(corner, layer, w, h, skew);
+            var tex = BoxShadowBaker.GetOrBakeSilhouette(box, layer, skew);
             if (tex == null)
             {
                 return; // no graphics device / shader yet — retry on the next geometry change
@@ -355,7 +391,7 @@ namespace Velvet
 
             // The rect the bake was sized from, anchored at its top-left and drawn at the baked texel size so one
             // texel maps to one pixel.
-            var rect = BoxShadowBaker.ShadowRect(w, h, layer, skew);
+            var rect = BoxShadowBaker.ShadowRect(box, layer, skew);
             BoxShadowBaker.QuadSize(rect.size, out var quadW, out var quadH);
             var minX = rect.x;
             var minY = rect.y;
@@ -380,10 +416,10 @@ namespace Velvet
             mwd.SetNextIndex(3);
         }
 
-        // Repaints the UPRIGHT caster's suppressed fill + border on top of the shadow quad, mirroring how
-        // SkewSilhouette repaints a sheared face — but with zero shear (tanX = tanY = 0), so it traces the
-        // element's own rounded-rect box. The opaque fill is what covers the shadow silhouette's interior.
-        private static void RepaintUprightFace(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding,
+        // Repaints the UPRIGHT caster's suppressed fill, then (after the inset layers) its border, on top of the
+        // outer layers, mirroring how SkewSilhouette repaints a sheared face — but with zero shear
+        // (tanX = tanY = 0), so it traces the element's own rounded-rect box.
+        private static void RepaintUprightFill(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding,
             float w, float h)
         {
             var p = mgc.painter2D;
@@ -397,7 +433,12 @@ namespace Velvet
                 p.fillColor = fill;
                 p.Fill();
             }
+        }
 
+        private static void RepaintUprightBorder(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding,
+            float w, float h)
+        {
+            var p = mgc.painter2D;
             var borderColor = binding.Face.HasStash ? binding.Face.BorderColor : ve.resolvedStyle.borderLeftColor;
             var borderWidth = ve.resolvedStyle.borderLeftWidth;
             if (borderWidth > 0.01f && borderColor.a > 0.004f)

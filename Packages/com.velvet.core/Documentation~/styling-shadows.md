@@ -17,27 +17,31 @@ follows a transform on the element, as a CSS box-shadow does. `drop-shadow-*` is
 | `shadow-lg` | `0 10px 15px -3px` and `0 4px 6px -4px`, both black at 10% |
 | `shadow-xl` | `0 20px 25px -5px` and `0 8px 10px -6px`, both black at 10% |
 | `shadow-2xl` | `0 25px 50px -12px` black at 25% |
+| `shadow-inner` | `inset 0 2px 4px 0` black at 5% |
 | `shadow-none` | none |
-| `shadow-[<shadow>(,<shadow>)*]` | each shadow two to four lengths (x, y, blur, spread) and an optional colour, with `_` for spaces: `shadow-[0_4px_8px_-2px_#0004,0_1px_2px_#0002]` |
+| `shadow-[<shadow>(,<shadow>)*]` | each shadow two to four lengths (x, y, blur, spread), an optional colour and an optional `inset`, with `_` for spaces: `shadow-[0_4px_8px_-2px_#0004,inset_0_1px_2px_#0002]` |
 
 The presets are Tailwind v4's `--shadow-*` theme values. A layer of a bracketed shadow without a colour takes
 `rgb(4 12 24 / 0.2)`, where CSS takes `currentColor`. A negative blur, a percentage, or any layer that does not
-read rejects the whole bracket, as the browser drops a `box-shadow` value it cannot read. `inset` shadows,
-`shadow-inner` and `inset-shadow-*` are not implemented.
+read rejects the whole bracket, as the browser drops a `box-shadow` value it cannot read.
 
 ## How a layer is drawn
 
 Each layer follows CSS Backgrounds 3:
 
-- **Shape.** The element's border box, moved by the offset and grown by a positive spread or shrunk by a
-  negative one. Its corner radius is the element's plus the spread, floored at zero; where a positive spread
-  exceeds the radius it is first scaled by `1 + (r − 1)³`, `r` being the radius over the spread.
+- **Shape.** For an outer shadow, the element's border box moved by the offset and grown by a positive spread
+  or shrunk by a negative one. Each corner's radius is the element's plus the spread, floored at zero; where a
+  positive spread exceeds the radius it is first scaled by `1 + (r − 1)³`, `r` being the radius over the
+  spread.
+- **Inset.** An `inset` shadow is drawn inside the padding box only, around a hole: the padding box moved by the
+  offset and shrunk by a positive spread, its corner radii taken by the same rule with the spread negated. It
+  is drawn above the element's background and below its border.
 - **Blur.** A Gaussian whose standard deviation is half the blur radius.
-- **Outside only.** Nothing is drawn inside the element's border box, so a translucent background shows what is
-  behind the element rather than its shadow.
+- **Outside only.** An outer shadow draws nothing inside the element's border box, so a translucent background
+  shows what is behind the element rather than its shadow.
 - **Order.** The first layer of a list is drawn on top.
 - **Transform.** On a `skew-*` element the whole layer shears with the element about its centre, offset
   included.
 
-The element's corner radius is read from its top-left corner and used for all four, for both the shape and the
-cut-out.
+Each corner keeps its own radius. A padding-box corner is the border-box radius less the wider of the two borders
+meeting there.

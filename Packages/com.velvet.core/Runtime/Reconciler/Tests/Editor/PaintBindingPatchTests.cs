@@ -207,7 +207,7 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg rounded-2xl") });
 
             // Assert: --radius-2xl == 16px (the rounded-2xl scale value).
-            Assert.That(Binding(scope, scope.Root[0]).CornerRadius, Is.EqualTo(16f));
+            Assert.That(Binding(scope, scope.Root[0]).CornerRadii.x, Is.EqualTo(16f));
         }
 
         [Test]

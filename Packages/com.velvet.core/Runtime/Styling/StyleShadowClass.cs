@@ -18,19 +18,22 @@ namespace Velvet
         public readonly float Spread;
         // Horizontal offset (px). The presets are centered (0); only an arbitrary shadow-[x y …] sets it.
         public readonly float OffsetX;
+        // An inner shadow (CSS's `inset`), drawn inside the padding box rather than outside the border box.
+        public readonly bool Inset;
 
         public ShadowSpec(Color color, float blur, float offsetY, float spread)
             : this(color, blur, offsetY, spread, 0f)
         {
         }
 
-        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX)
+        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX, bool inset = false)
         {
             Color = color;
             Blur = blur;
             OffsetY = offsetY;
             Spread = spread;
             OffsetX = offsetX;
+            Inset = inset;
         }
     }
 
@@ -59,6 +62,7 @@ namespace Velvet
             ["lg"] = new[] { new ShadowSpec(Black(0.1f), 15f, 10f, -3f), new ShadowSpec(Black(0.1f), 6f, 4f, -4f) },
             ["xl"] = new[] { new ShadowSpec(Black(0.1f), 25f, 20f, -5f), new ShadowSpec(Black(0.1f), 10f, 8f, -6f) },
             ["2xl"] = new[] { new ShadowSpec(Black(0.25f), 50f, 25f, -12f) },
+            ["inner"] = new[] { new ShadowSpec(Black(0.05f), 4f, 2f, 0f, 0f, inset: true) },
         };
 
         // Mirrors --radius-* in _tokens.uss. rounded-full / arbitrary radii are left to the
@@ -220,9 +224,15 @@ namespace Velvet
             var lengthCount = 0;
             var color = ArbitraryDefaultColor;
             var hasColor = false;
+            var inset = false;
 
             foreach (var token in tokens)
             {
+                if (token == "inset" && !inset)
+                {
+                    inset = true;
+                    continue;
+                }
                 if (StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out var value, out var unit)
                     && unit == LengthUnit.Pixel)
                 {
@@ -252,7 +262,7 @@ namespace Velvet
             {
                 return false; // CSS rejects a negative blur radius
             }
-            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0]);
+            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0], inset);
             return true;
         }
 

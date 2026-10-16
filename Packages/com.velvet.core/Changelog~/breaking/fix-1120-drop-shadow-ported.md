@@ -18,7 +18,9 @@
   added. Each layer is drawn as CSS draws it: the spread grows or shrinks the box with CSS's corner-radius
   rule, the blur is a Gaussian of half the blur radius, nothing is drawn inside the element's border box, and
   the first layer is on top. A translucent background no longer shows the shadow through it.
-  `shadow-[…]` takes a comma-separated list of shadows, and rejects a negative blur.
+  `shadow-[…]` takes a comma-separated list of shadows, and rejects a negative blur. Each corner of the
+  shadow follows its own corner of the element, where all four followed the top-left one.
+- `shadow-inner` and an `inset` layer in `shadow-[…]` draw an inner shadow inside the padding box.
 - `drop-shadow` is a reserved name in `VelvetFilters.Register`.
 - The box-shadow shader is named `Velvet/BoxShadow`; it was `Velvet/DropShadow`. A shader opted out under
   **Project Settings ▸ Velvet** is saved by name, so an opt-out made under the old name has to be made again.

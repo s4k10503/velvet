@@ -40,6 +40,29 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ShadowInner_When_Extracted_Then_ItIsOneInsetLayer()
+        {
+            // Act — theme.css's --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05).
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-inner" }, out var spec);
+
+            // Assert
+            Assert.That(found && spec.Length == 1 && spec[0].Inset ? Describe(spec) : "none",
+                Is.EqualTo("0 2 4 0 0.05"));
+        }
+
+        [Test]
+        public void Given_AnArbitraryShadowWithTheInsetKeyword_When_Extracted_Then_TheLayerIsInset()
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-[inset_0_2px_4px_#000000,0_1px_2px_#000000]" },
+                out var spec);
+
+            // Assert
+            Assert.That(found ? new[] { spec[0].Inset, spec[1].Inset } : new bool[0],
+                Is.EqualTo(new[] { true, false }));
+        }
+
+        [Test]
         public void Given_ATailwindPreset_When_Extracted_Then_ItsLayersAreBlack()
         {
             // Act
