@@ -17,7 +17,7 @@ namespace Velvet
         // The settle of a render the Suspense shows.
         internal static void CommitSuspenseRender(SuspenseRender render)
         {
-            FiberBeginWork.CommitSettledHookSlots(render.Fiber);
+            FiberBeginWork.CommitSettledEffects(render.Fiber);
         }
 
         // A render the Suspense does not show queues no effect and promotes no deps, so the next render compares

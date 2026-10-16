@@ -808,12 +808,13 @@ them keep their state. A query over the tree finds those hidden elements too. Th
 fallback takes down their layout effects, imperative handles and element refs, as React 18 does, and blurs
 a focused element inside them; the commit that reveals them sets the effects, handles and refs up
 again. Their passive effects stay connected throughout, as React's do. A render of them while the fallback
-shows is an attempt, as React's attempt at a primary that suspends again is: the bodies run, and none of the
-hook state they stage is committed. It queues no insertion, layout or passive effect and moves none of the deps that `UseEffect`,
-`UseCallback`, `UseMemo` and the like compare against, which stay those of the last render a commit showed. A
-component it rendered renders again for the reveal, and the commit that reveals the children runs the insertion and
-passive effects whose deps differ from those, so one whose deps changed and then changed back while the fallback
-showed does not run. A component first mounted while the fallback shows runs its insertion and passive effects once, at the reveal.
+shows is an attempt, as React's attempt at a primary that suspends again is: the bodies run, and the
+effects they queue are not committed. It queues no insertion, layout or passive effect and moves none of the deps
+that `UseEffect`, `UseLayoutEffect`, `UseInsertionEffect` and `UseBlocker` compare against, which stay those of the
+last render a commit showed. A component it rendered renders again for the reveal, and the commit that reveals the
+children runs the insertion and passive effects whose deps differ from those, so one whose deps changed and then
+changed back while the fallback showed does not run. A component first mounted while the fallback shows runs its
+insertion and passive effects once, at the reveal.
 **Velvet deviation:** the attempt renders the children after the one that suspends too, where React's stops there. A
 `V.Portal` among the hidden children, one a render adds included, is hidden with them, its components along
 with its elements: their layout effects are taken down and set up again at the reveal, as React does for a

@@ -24,11 +24,14 @@ namespace Velvet.Tests
             s_setTick = default;
             s_setOther = default;
             s_memoProbe = false;
+            s_setReads = default;
+            s_setTheme = default;
+            s_consumerTheme = null;
+            s_memoFactoryRuns = 0;
             s_source = null;
             s_insertionSetups = 0;
             s_passiveSetups = 0;
             s_probeRenders = 0;
-            s_callback = null;
         }
 
         [Test]
@@ -66,24 +69,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_passiveSetups, Is.EqualTo(1),
                 "The reveal compares against the deps the last committed render left, and they are the restored ones");
-        }
-
-        [Test]
-        public void Given_AShownProbeHiddenAndItsDepsChangedAndRestored_When_TheBoundaryReveals_Then_ItsCallbackIsTheOneItCommittedBeforeHiding()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
-            var committed = s_callback;
-            SetBlocked(mounted);
-            SetTick(mounted, 1);
-            SetTick(mounted, 0);
-
-            // Act
-            Reveal(mounted);
-
-            // Assert
-            Assert.That(ReferenceEquals(committed, s_callback), Is.True,
-                "A render the reveal does not show leaves the callback's deps at the committed render's");
         }
 
         [Test]
@@ -181,6 +166,46 @@ namespace Velvet.Tests
                 "A render that threw committed nothing, and its queued effect is not owed to the render after it");
         }
 
+        // GREEN_ON_BASE(characterization): the base commits the context reads of every render. What this pins is that a
+        // render under a shown Suspense does the same, so a context first read there still notifies the component.
+        [Test]
+        public void Given_AMemoizedConsumerThatFirstReadsAContextInARenderUnderAShownBoundary_When_TheProviderValueChanges_Then_ItShowsTheNewValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ContextHostRender, key: "context-host"));
+            s_setReads.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_setTheme.Invoke("dark");
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_consumerTheme, Is.EqualTo("dark"),
+                "The render that first read the context is the one its later change is delivered to");
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs a memo factory once per render under a double render too.
+        // What this pins is that a render under a shown Suspense, whose effect deps are committed later, is
+        // repeated by the double render against the memo it just committed rather than one it has yet to.
+        [Test]
+        public void Given_StrictModeAndAMemoizingProbeUnderAShownBoundary_When_ItsPropChanges_Then_ItsMemoFactoryRunsOncePerRender()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(MemoHostRender, key: "memo-host"));
+            var runsAfterMount = s_memoFactoryRuns;
+
+            // Act
+            SetTick(mounted, 1);
+
+            // Assert
+            Assert.That((runsAfterMount, s_memoFactoryRuns), Is.EqualTo((1, 2)),
+                "A render under a shown Suspense runs the factory once, and the double render reuses its result");
+        }
+
         private static void SetBlocked(MountedTree mounted)
         {
             s_setBlocked.Invoke(1);
@@ -204,9 +229,13 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setBlocked;
         private static StateUpdater<int> s_setTick;
         private static StateUpdater<int> s_setOther;
+        private static StateUpdater<int> s_setReads;
+        private static StateUpdater<string> s_setTheme;
+        private static string s_consumerTheme;
+        private static int s_memoFactoryRuns;
+        private static readonly ComponentContext<string> ThemeContext = ComponentContext<string>.Create("light");
         private static bool s_memoProbe;
         private static VelvetTaskCompletionSource<int> s_source;
-        private static Action s_callback;
         private static int s_insertionSetups;
         private static int s_passiveSetups;
         private static int s_probeRenders;
@@ -233,6 +262,57 @@ namespace Velvet.Tests
                         V.Component(ReaderRender, blocked, key: "reader"),
                     }),
             });
+        }
+
+        [Component]
+        private static VNode ContextHostRender()
+        {
+            var (reads, setReads) = Hooks.UseState(0);
+            var (theme, setTheme) = Hooks.UseState("light");
+            s_setReads = setReads;
+            s_setTheme = setTheme;
+            return V.Provider(ThemeContext, theme, new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(ThemeConsumerRender, reads, key: "consumer") }),
+            });
+        }
+
+        // Reads the context from its second kind of render on, which the hook-order rule exists to forbid.
+#pragma warning disable VEL101
+        [Component(Memoize = true)]
+        private static VNode ThemeConsumerRender(int reads)
+        {
+            var theme = "unread";
+            if (reads > 0) theme = Hooks.UseContext(ThemeContext);
+            s_consumerTheme = theme;
+            return V.Label(text: theme);
+        }
+#pragma warning restore VEL101
+
+        [Component]
+        private static VNode MemoHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(MemoizingProbeRender, tick, key: "probe") }),
+            });
+        }
+
+        [Component]
+        private static VNode MemoizingProbeRender(int tick)
+        {
+            var value = Hooks.UseMemo(() =>
+            {
+                s_memoFactoryRuns++;
+                return tick * 2;
+            }, new object[] { tick });
+            return V.Label(text: "memo:" + value);
         }
 
         [Component]
@@ -298,7 +378,6 @@ namespace Velvet.Tests
         private static VNode MemoProbeRender(int tick)
         {
             s_probeRenders++;
-            s_callback = Hooks.UseCallback<Action>(() => { }, new object[] { tick });
             Hooks.UseInsertionEffect(() =>
             {
                 s_insertionSetups++;
@@ -316,7 +395,6 @@ namespace Velvet.Tests
         private static VNode ProbeRender(int tick)
         {
             s_probeRenders++;
-            s_callback = Hooks.UseCallback<Action>(() => { }, new object[] { tick });
             Hooks.UseInsertionEffect(() =>
             {
                 s_insertionSetups++;
