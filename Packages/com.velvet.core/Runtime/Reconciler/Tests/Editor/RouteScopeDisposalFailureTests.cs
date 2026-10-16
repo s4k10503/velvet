@@ -227,7 +227,7 @@ namespace Velvet.Tests
             // Act
             var escaped = EscapesFrom(() => _reconciler.Reconcile(_root, mounted, BoundedAppBeside(1)));
 
-            // Assert — the sibling after the boundary takes this render's row, as it does around a boundary that caught a render
+            // Assert — the component after the boundary renders this render's row, as it does around a boundary that caught a render
             Assert.That((escaped, _root.Q<VisualElement>("fallback") != null, LabelTextsUnder(_root)),
                         Is.EqualTo((false, true, "after:1")));
         }
@@ -422,9 +422,12 @@ namespace Velvet.Tests
                                     V.Component(RoutedApp, _router.CurrentLocation!, key: "app"),
                                 },
                                 key: "boundary"),
-                V.Label(text: "after:" + render),
+                V.Component(AfterRowRender, render, key: "after"),
             }),
         };
+
+        [Component(Compiler = false)]
+        private static VNode AfterRowRender(int render) => V.Label(text: "after:" + render);
 
         private VNode[] MountBoundedApp()
         {

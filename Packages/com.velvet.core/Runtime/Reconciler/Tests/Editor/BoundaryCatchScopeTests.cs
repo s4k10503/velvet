@@ -1890,15 +1890,20 @@ namespace Velvet.Tests
             Hooks.UseFallback(_ => V.Label(text: "fallback"));
             return V.Fragment(new VNode[]
             {
-                V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
-                {
-                    V.Motion(name: "item-a", key: "a", transition: StyleTransition.Fade,
-                        onEnterComplete: () => throw new InvalidOperationException("Enter complete throw"),
-                        children: new VNode[] { V.Label(text: "motion") }),
-                }),
+                V.Component(EnterFailChildRender, key: "child"),
                 V.Label(text: "sibling"),
             });
         }
+
+        // The presence is rendered below the boundary, not by it, so the completion's owner has the boundary above it.
+        [Component(Compiler = false)]
+        private static VNode EnterFailChildRender()
+            => V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+            {
+                V.Motion(name: "item-a", key: "a", transition: StyleTransition.Fade,
+                    onEnterComplete: () => throw new InvalidOperationException("Enter complete throw"),
+                    children: new VNode[] { V.Label(text: "motion") }),
+            });
 
         [Component(Compiler = false)]
         private static VNode EnterFailHostRender()
@@ -1921,15 +1926,18 @@ namespace Velvet.Tests
             Assert.That((Texts().StartsWith("o-fallback"), s_abortedExits), Is.EqualTo((true, 0)));
         }
 
-        // The render the abort discarded is taken again, and the child it could not remove leaves then, once.
+        // The render the abort discarded is taken again, and the removal it skipped completes then, once: a presence
+        // that had forgotten the child would find nothing to remove, and one that completed in the aborted render
+        // would complete twice over the two.
         [Test]
-        public void Given_APresenceWhoseRemovalAnAbortedRenderSkipped_When_TheHostRendersAgain_Then_TheChildLeavesAndOnExitCompleteRunsOnce()
+        public void Given_APresenceWhoseRemovalAnAbortedRenderSkipped_When_TheHostRendersAgain_Then_OnExitCompleteRunsOnceAndOnlyThen()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(AbortedExitHostRender, key: "host"), CaughtErrors.Unlogged);
             s_setAbortedExitTick.Invoke(1);
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
+            var afterTheAbortedRender = s_abortedExits;
 
             // Act
             s_setAbortedExitTick.Invoke(2);
@@ -1937,7 +1945,7 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That((Texts().Split(',').Contains("a"), s_abortedExits), Is.EqualTo((false, 1)));
+            Assert.That((afterTheAbortedRender, s_abortedExits), Is.EqualTo((0, 1)));
         }
 
         private static Action<int> s_setAbortedExitTick;
@@ -2365,9 +2373,6 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("outer-fallback,sibling"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base keeps the Suspense's fallback while a boundary inside the
-        // pending primary catches an element callback's error, and renders that boundary's children once the read
-        // resolves. What this pins is that a walk that boundary's catch stopped still leaves the Suspense to decide.
         [Test]
         public void Given_ABoundaryInsideAPendingPrimaryCatchingAnElementCallbackError_When_TheReadResolvesWithTheChildNoLongerThrowing_Then_ItRendersItsChildrenAndNothingWasReported()
         {
