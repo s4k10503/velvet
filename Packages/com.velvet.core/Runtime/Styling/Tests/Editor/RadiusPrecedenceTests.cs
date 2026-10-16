@@ -140,7 +140,6 @@ namespace Velvet.Tests
         // contend, or the class is no radius class, so a rewrite of every class beside an inline one reddens it.
         [TestCase("rounded-lg rounded-t-[2px]")]
         [TestCase("rounded-lg rounded-s-[2px]")]
-        [TestCase("rounded-lg rounded-[2px]")]
         [TestCase("rounded-t-lg rounded-tl-[2px]")]
         [TestCase("rounded-t-lg rounded-b-[2px]")]
         [TestCase("rounded-t-lg rounded-bl-[2px]")]

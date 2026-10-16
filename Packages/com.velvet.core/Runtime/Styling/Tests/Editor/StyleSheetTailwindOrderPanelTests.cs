@@ -28,6 +28,39 @@ namespace Velvet.Tests
             Assert.That(leaf.resolvedStyle.width, Is.EqualTo(1f));
         }
 
+        [TestCase("w-px w-[10px]")]
+        [TestCase("w-[10px] w-px")]
+        public void Given_AnInlineWidthAndAStepClassTailwindEmitsLater_When_LaidOut_Then_TheClassHoldsTheWidth(string className)
+        {
+            // Act
+            var leaf = MountAndResolve(className);
+
+            // Assert — --space-px is 1px, and px sorts after the bracket.
+            Assert.That(leaf.resolvedStyle.width, Is.EqualTo(1f));
+        }
+
+        [TestCase("w-1/2 w-4")]
+        [TestCase("w-4 w-1/2")]
+        public void Given_AFractionWidthAndAStepClassTailwindEmitsLater_When_LaidOut_Then_TheClassHoldsTheWidth(string className)
+        {
+            // Act
+            var leaf = MountAndResolve(className);
+
+            // Assert — --space-4 is 16px, and the 1 of 1/2 sorts ahead of the 4.
+            Assert.That(leaf.resolvedStyle.width, Is.EqualTo(16f));
+        }
+
+        [TestCase("rotate-6 rotate-n6")]
+        [TestCase("rotate-n6 rotate-6")]
+        public void Given_ARotationBesideItsNegatedClass_When_LaidOut_Then_TheOneTailwindEmitsLaterHoldsTheAngle(string className)
+        {
+            // Act
+            var leaf = MountAndResolve(className);
+
+            // Assert — Tailwind emits -rotate-6 ahead of rotate-6.
+            Assert.That(leaf.resolvedStyle.rotate.angle.ToDegrees(), Is.EqualTo(6f).Within(1e-3f));
+        }
+
         [TestCase("p-1 p-px")]
         [TestCase("p-px p-1")]
         public void Given_TwoPaddingsOfTheScale_When_LaidOut_Then_TheStepTailwindEmitsLaterHoldsThePadding(string className)

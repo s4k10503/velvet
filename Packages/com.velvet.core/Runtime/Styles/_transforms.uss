@@ -26,6 +26,16 @@
 .scale-125 { scale: 1.25 1.25; }
 .scale-150 { scale: 1.5 1.5; }
 
+/* === Rotate (negative) === */
+.rotate-n1 { rotate: -1deg; }
+.rotate-n2 { rotate: -2deg; }
+.rotate-n3 { rotate: -3deg; }
+.rotate-n6 { rotate: -6deg; }
+.rotate-n12 { rotate: -12deg; }
+.rotate-n45 { rotate: -45deg; }
+.rotate-n90 { rotate: -90deg; }
+.rotate-n180 { rotate: -180deg; }
+
 /* === Rotate (positive) === */
 .rotate-0 { rotate: 0deg; }
 .rotate-1 { rotate: 1deg; }
@@ -36,16 +46,6 @@
 .rotate-45 { rotate: 45deg; }
 .rotate-90 { rotate: 90deg; }
 .rotate-180 { rotate: 180deg; }
-
-/* === Rotate (negative) === */
-.rotate-n1 { rotate: -1deg; }
-.rotate-n2 { rotate: -2deg; }
-.rotate-n3 { rotate: -3deg; }
-.rotate-n6 { rotate: -6deg; }
-.rotate-n12 { rotate: -12deg; }
-.rotate-n45 { rotate: -45deg; }
-.rotate-n90 { rotate: -90deg; }
-.rotate-n180 { rotate: -180deg; }
 
 /* === Transform Origin (Tailwind origin-) === */
 /* UITK transform-origin takes an x y pair; Tailwind's single keyword (e.g. top) means the
