@@ -318,21 +318,21 @@ namespace Velvet
         // The comma syntax takes three numbers or three percentages and an optional alpha, and no none.
         private static bool TryParseRgb(string body, out CssColor color)
         {
-            if (!body.Contains(','))
+            var parts = StyleGradientClass.SplitTopLevel(body, ',').ToArray();
+            if (parts.Length == 1)
             {
                 return TryParseModern(body, CssColorSpace.Srgb, out color);
             }
             color = new CssColor(CssColorSpace.Srgb, 0, 0, 0, 1);
-            var parts = body.Split(',');
             if (parts.Length != 3 && parts.Length != 4)
             {
                 return false;
             }
-            var percent = parts[0].Trim().EndsWith("%", StringComparison.Ordinal);
+            var percent = IsPercentage(parts[0].Trim());
             for (var i = 0; i < 3; i++)
             {
                 var token = parts[i].Trim();
-                if (token.EndsWith("%", StringComparison.Ordinal) != percent
+                if (IsPercentage(token) != percent
                     || !TryParseLegacyToken(token, 255, out var channel))
                 {
                     return false;
@@ -345,12 +345,12 @@ namespace Velvet
         // The comma syntax takes a hue and two percentages, and no none.
         private static bool TryParseHsl(string body, out CssColor color)
         {
-            if (!body.Contains(','))
+            var parts = StyleGradientClass.SplitTopLevel(body, ',').ToArray();
+            if (parts.Length == 1)
             {
                 return TryParseModern(body, CssColorSpace.Hsl, out color);
             }
             color = new CssColor(CssColorSpace.Hsl, 0, 0, 0, 1);
-            var parts = body.Split(',');
             if (parts.Length != 3 && parts.Length != 4)
             {
                 return false;
@@ -359,8 +359,8 @@ namespace Velvet
             var saturation = parts[1].Trim();
             var lightness = parts[2].Trim();
             if (hue == "none" || !TryParseHue(hue, out color.C0)
-                || !saturation.EndsWith("%", StringComparison.Ordinal) || !TryParseLegacyToken(saturation, 100, out color.C1)
-                || !lightness.EndsWith("%", StringComparison.Ordinal) || !TryParseLegacyToken(lightness, 100, out color.C2))
+                || !IsPercentage(saturation) || !TryParseLegacyToken(saturation, 100, out color.C1)
+                || !IsPercentage(lightness) || !TryParseLegacyToken(lightness, 100, out color.C2))
             {
                 return false;
             }
@@ -442,7 +442,7 @@ namespace Velvet
             alpha = null;
             var count = 0;
             var afterSlash = false;
-            foreach (var part in body.Replace("/", " / ").Split(' '))
+            foreach (var part in SplitModern(body))
             {
                 if (part.Length == 0)
                 {
@@ -476,13 +476,49 @@ namespace Velvet
             return count == 3 && afterSlash == (alpha != null);
         }
 
-        // A number, a percentage of the reference, or none, which reads as zero.
+        // The words of a space-syntax body, with each '/' a word of its own, outside parentheses: a math function's
+        // own spaces and its division stay in its word.
+        private static List<string> SplitModern(string body)
+        {
+            var parts = new List<string>();
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i <= body.Length; i++)
+            {
+                var c = i < body.Length ? body[i] : ' ';
+                depth += c == '(' ? 1 : c == ')' ? -1 : 0;
+                if (depth != 0 || (c != ' ' && c != '/'))
+                {
+                    continue;
+                }
+                parts.Add(body.Substring(start, i - start));
+                if (c == '/')
+                {
+                    parts.Add("/");
+                }
+                start = i + 1;
+            }
+            return parts;
+        }
+
+        // Whether a channel is a percentage: written as one, or a math function coming to one.
+        private static bool IsPercentage(string token)
+            => token.EndsWith("%", StringComparison.Ordinal)
+                || StyleLengthExpression.TypeOf(token.AsSpan()) == MathType.Percentage;
+
+        // A number, a percentage of the reference, or none, which reads as zero. A math function comes to either.
         private static bool TryParseComponent(string token, double percentReference, out double value)
         {
             value = 0;
             if (token == "none")
             {
                 return true;
+            }
+            if (StyleLengthExpression.OpensMathFunction(token.AsSpan()))
+            {
+                var parsed = StyleLengthExpression.TryParseNumberOrPercentage(token.AsSpan(), out var math, out var percent);
+                value = percent ? math / 100 * percentReference : math;
+                return parsed;
             }
             if (token.EndsWith("%", StringComparison.Ordinal))
             {
@@ -503,6 +539,13 @@ namespace Velvet
             if (token == "none")
             {
                 return true;
+            }
+            if (StyleLengthExpression.OpensMathFunction(token.AsSpan()))
+            {
+                var parsed = StyleLengthExpression.TryParseAngle(token.AsSpan(), out var angle)
+                    || StyleLengthExpression.TryParseNumber(token.AsSpan(), out angle);
+                degrees = parsed && Math.Abs(angle) < float.MaxValue ? CssColorMath.NormalizeHue(angle) : 0;
+                return parsed;
             }
             var scale = 1.0;
             var unitLength = 0;

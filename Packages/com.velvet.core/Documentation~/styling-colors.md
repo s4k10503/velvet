@@ -39,6 +39,10 @@ The functions follow CSS Color 4:
 - **A number** is a CSS `<number>`: `.5`, `+1e2` and `-0` read, `1.` and `1e` do not, and neither do `infinity` or
   `nan`. One past double precision's range (`1e999`) reads as the largest value of its sign, as Chromium reads
   it, so `rgb(1e999_0_0)` is red, `rgb(-1e999_0_0)` black, and such a hue 0deg.
+- **A math function** ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#math-functions)) stands for any
+  component that comes to a number or a percentage, and for a hue that comes to an angle or a number:
+  `rgb(calc(255/2)_0_0)`, `hsl(calc(60deg*2)_100%_50%)`, `rgb(255_0_0_/_calc(50%))`. It is clamped as a written
+  component is, and a NaN reads as 0. One coming to a length is no component (`rgb(calc(1px)_0_0)` is inert).
 - **Function names, `none` and angle units** are read in any case.
 - **The opacity modifier** (`bg-[…]/50`, `bg-red-500/50`, `text-…/[0.3]`) multiplies the colour's alpha, as
   Tailwind v4's `color-mix(in oklab, <colour> 50%, transparent)` does: `bg-[#ff000080]/50` has an alpha of a
@@ -51,4 +55,4 @@ The functions follow CSS Color 4:
   `#ef4444`, not v4's `oklch(63.7% 0.237 25.331)`. Write the v4 value in brackets to get it.
 - **A colour outside sRGB**, which an `hsl()` or `hwb()` whose components lie outside their ranges can
   describe, has each channel clipped to 0–1 where CSS Color 4 maps it into the gamut.
-- **`calc()`, `var()`, `currentColor` and relative colour syntax** are not read.
+- **`var()`, `currentColor` and relative colour syntax** are not read.

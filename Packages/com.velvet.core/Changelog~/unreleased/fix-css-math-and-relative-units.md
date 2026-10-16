@@ -18,3 +18,5 @@
 - `scale-[…]`, `opacity-[…]` and the filter amounts take a percentage, written or from a math function, as CSS
   does: `scale-[150%]` and `scale-[calc(150%)]` are 1.5, where `scale-[150%]` and `opacity-[50%]` left the class
   inert.
+- A colour function reads a math function in a channel, a hue or the alpha, as CSS does:
+  `bg-[rgb(calc(255/2)_0_0)]`, `text-[hsl(calc(60deg*2)_100%_50%)]`, where it left the class inert.
