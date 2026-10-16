@@ -68,10 +68,11 @@ namespace Velvet
         // (HookTransitionSlot.SettlesWithCommitOf). Saved and restored beside the flag.
         internal static ComponentFiber? TransitionDrainFiber;
 
-        // The lane the render in progress renders: a hook folds in the queued updates of this lane and the
-        // lanes above it, and leaves the rest queued. Transition outside a flush, which sees every update.
+        // The lane the render in progress renders: a hook folds in the queued updates that lane renders
+        // (FiberLane.Renders) and leaves the rest queued. Transition exactly where IsRenderingTransitionLane is
+        // true, so a render outside a flush, such as the retry of a resolved resource, is not a transition's.
         // Ambient for the reason IsRenderingTransitionLane is, and saved and restored beside it.
-        internal static FiberUpdatePriority RenderLane = FiberUpdatePriority.Transition;
+        internal static FiberUpdatePriority RenderLane = FiberUpdatePriority.Normal;
 
         // A starvation-promoted drain carries Transition updates under the Normal label (HasPromotedTransition), so
         // it renders the Transition lane.
@@ -486,7 +487,7 @@ namespace Velvet
             // lane (e.g. a context-driven flush) the reconcile runs synchronously.
             var flushBudget = FiberLane.FrameBudgetMs;
             var drainsTransitionWork = false;
-            var renderLane = FiberUpdatePriority.Transition;
+            var renderLane = FiberUpdatePriority.Normal;
 
             if (fiber.LaneQueue.Count > 0)
             {
@@ -662,8 +663,10 @@ namespace Velvet
                 // the same way the pass that parked it did — see PendingReconcileDrainsTransitionWork.
                 var wasRenderingTransitionLane = IsRenderingTransitionLane;
                 var wasTransitionDrainFiber = TransitionDrainFiber;
+                var wasRenderLane = RenderLane;
                 IsRenderingTransitionLane = fiber.PendingReconcileDrainsTransitionWork;
                 TransitionDrainFiber = fiber.PendingReconcileDrainsTransitionWork ? fiber : null;
+                RenderLane = RenderLaneOf(FiberUpdatePriority.Normal, fiber.PendingReconcileDrainsTransitionWork);
                 // A resume continues the pass whose output is already this fiber's PreviousTree, so the
                 // children it reaches are stamped against that array exactly as the slice that parked
                 // stamped the ones it reached. Without it they are stamped against nothing, and
@@ -695,6 +698,7 @@ namespace Velvet
                     resumeContext.CurrentFiberTree = enclosingFiberTree;
                     IsRenderingTransitionLane = wasRenderingTransitionLane;
                     TransitionDrainFiber = wasTransitionDrainFiber;
+                    RenderLane = wasRenderLane;
                 }
 
                 if (fiber.Reconciler.HasPendingWork)

@@ -13,6 +13,7 @@ namespace Velvet
         {
             return updater =>
             {
+                if (fiber.IsDisposed) return;
                 if (updater == null) throw new ArgumentNullException(nameof(updater));
                 Dispatch(slot, fiber, new StateAction<T>(default!, updater));
             };

@@ -421,6 +421,43 @@ namespace Velvet.Tests
                 Is.EqualTo("True | ref attached"));
         }
 
+        // The probe starts at a lane no flush here renders, so a resumed slice that does not render it fails the assertion.
+        [Test]
+        public void Given_AParkedTransitionPass_When_ItsResumedSliceRendersAComponent_Then_ItRendersTheTransitionLane()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            s_slowRowsShown = true;
+            s_slowRowsProbed = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            s_slowRowProbeLane = FiberUpdatePriority.Urgent;
+
+            // Act
+            s_slowRowListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(s_slowRowProbeLane, Is.EqualTo(FiberUpdatePriority.Transition),
+                "A resumed slice renders the lane the pass that parked it was draining");
+        }
+
+        [Test]
+        public void Given_AParkedTransitionPass_When_ItIsResumedToCompletion_Then_TheRenderLaneIsTheOneOutsideEveryFlush()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SlowRowListRender, key: "slow-list"));
+            s_slowRowsShown = true;
+            s_slowRowListFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Act
+            s_slowRowListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(FiberWorkLoop.RenderLane, Is.EqualTo(FiberUpdatePriority.Normal),
+                "A resume hands the render lane back as it found it");
+        }
+
         #endregion
 
         #region Sibling-shift re-bases a parked following sibling
@@ -1326,6 +1363,8 @@ namespace Velvet.Tests
         private const int SlowRowRenderMs = 25;
 
         private static bool s_slowRowsShown;
+        private static bool s_slowRowsProbed;
+        private static FiberUpdatePriority s_slowRowProbeLane;
         private static ComponentFiber s_slowRowListFiber;
         private static readonly System.Collections.Generic.List<string> s_slowRowLog = new();
         private static readonly Ref<Label> s_slowRowRef = new();
@@ -1333,6 +1372,7 @@ namespace Velvet.Tests
         private static void ResetSlowRowList()
         {
             s_slowRowsShown = false;
+            s_slowRowsProbed = false;
             s_slowRowListFiber = null;
             s_slowRowLog.Clear();
             s_slowRowRef.Set(null);
@@ -1351,7 +1391,18 @@ namespace Velvet.Tests
             {
                 rows[i] = V.Div(key: "row" + i, children: new VNode[] { V.Label(text: "row-" + i) });
             }
+            if (s_slowRowsProbed)
+            {
+                rows[3] = V.Div(key: "row3", children: new VNode[] { V.Component(LaneProbeRender, key: "probe") });
+            }
             return V.Fragment(children: rows);
+        }
+
+        [Component]
+        private static VNode LaneProbeRender()
+        {
+            s_slowRowProbeLane = FiberWorkLoop.RenderLane;
+            return V.Label(text: "probe");
         }
 
         [Component]

@@ -362,10 +362,11 @@ namespace Velvet
                     // lane still pending (the runaway's commits may write bystanders each pass), and
                     // wiping that lane would strand its delayed-tier work (a StartTransition left
                     // isPending forever). A Transition lane that starvation-promoted to Normal DURING
-                    // the runaway (the cap exceeds the starvation threshold) is dropped with it —
-                    // acceptable: the transition's updates stay queued in their slots, and the next render that
-                    // skips them asks for their lane again; the pending-flag sweep below spares an async
-                    // action still in flight.
+                    // the runaway (the cap exceeds the starvation threshold) is dropped with it, but its writes stay
+                    // queued in their slots: the flush that promoted it either drained them or rendered an Urgent
+                    // lane that skipped them and asked for the Transition lane again, so that lane survives the drop,
+                    // and the pending-flag sweep below spares an async action still in flight. The runaway update
+                    // itself stays queued in its slot too, and the next render of that component folds it in.
                     FiberLogger.LogError("Scheduler",
                         "Maximum update depth exceeded. A component repeatedly schedules state"
                         + " updates from its commit phase (a callback ref or an effect writing a"
@@ -395,14 +396,13 @@ namespace Velvet
                 dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Normal);
                 // The promoted marker retires with the dropped Normal it rode, or it would keep
                 // skipping the settle sweep for as long as any surviving lane stays queued.
-                // MUTANT_SURVIVES(unreachable): no fiber a fixture drops declares UseTransition, so no lane of a dropped fiber was ever promoted.
                 dropped.HasPromotedTransition = false;
                 // MUTANT_SURVIVES(unreachable, equality): a fiber left dirty with an empty queue is re-enrolled by a Normal update; see IsDirty below.
                 if (dropped.LaneQueue.Count == 0)
                 {
-                    // MUTANT_SURVIVES(unreachable): a Normal update re-enrols a dirty fiber whose queue is empty, and only a Transition one, which no fiber a fixture drops issues, would be stranded.
+                    // MUTANT_SURVIVES(unreachable): a Normal update re-enrols a dirty fiber whose queue is empty, and only a Transition one would be stranded, which no fixture's dropped fiber with an empty queue issues.
                     dropped.IsDirty = false;
-                    // MUTANT_SURVIVES(unreachable): no fiber a fixture drops declares UseTransition, so this call finds no slot and no enrolment to settle.
+                    // MUTANT_SURVIVES(unreachable): no fixture's dropped fiber with an empty queue declares UseTransition, so this call finds no slot and no enrolment to settle.
                     dropped.SettleTransitionPending();
                 }
                 // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on

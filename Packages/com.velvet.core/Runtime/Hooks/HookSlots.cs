@@ -484,34 +484,36 @@ namespace Velvet
     internal abstract class HookStateSlot
     {
         // The node roots the slot holds that a recycle sweep must not return to the pool — see
-        // HookSlotRecycleProbe: the committed state, the state a skipped update is replayed over, and the
-        // nodes the base queue's updates carry, since the render that reaches a skipped update emits its node.
+        // HookSlotRecycleProbe: the states it holds or staged, and the nodes its queued updates carry or computed,
+        // since the render that reaches a skipped update emits its node.
         public abstract void VisitRecycleRoots(Action<object> visitRoot);
 
-        // Adopts the state the last render of this slot staged.
         public abstract void Commit();
 
-        // Whether a render at lane would skip an update still queued here.
+        // Whether a render at lane would skip an update still queued here that asked for a render.
         public abstract bool HoldsUpdateBeyond(FiberUpdatePriority lane);
     }
 
-    // An update a setter queued. Lane is the one the setter ran on. EagerState is what the reducer returned for
-    // it against the committed state when the queue was empty, valid only for the reducer that computed it.
+    // An update a setter queued. Lane is the one the setter ran on. EagerState is the result the setter computed
+    // at the call, which a replay uses rather than running the reducer again. An update that bailed out eagerly is
+    // queued unscheduled, so a rebase still sees it and no render is asked for.
     internal sealed class HookUpdate<TState, TAction>
     {
         public TAction Action = default!;
         public FiberUpdatePriority Lane;
-        public Func<TState, TAction, TState>? EagerReducer;
+        public bool HasEagerState;
         public TState EagerState = default!;
+        public bool Scheduled;
 
-        // The copy a rebase keeps of an update that was applied after one that was skipped. Urgent is the lowest
-        // lane value, so no render lane excludes it, and the update is never taken back out of the state.
+        // The copy a rebase keeps of an update that was applied after one that was skipped. Urgent is never
+        // skipped by a render, so the update is never taken back out of the state.
         internal HookUpdate<TState, TAction> Rebased() => new()
         {
             Action = Action,
             Lane = FiberUpdatePriority.Urgent,
-            EagerReducer = EagerReducer,
+            HasEagerState = HasEagerState,
             EagerState = EagerState,
+            Scheduled = Scheduled,
         };
     }
 
@@ -536,29 +538,34 @@ namespace Velvet
         private TState _nextBaseState;
         private List<HookUpdate<TState, TAction>>? _nextBaseQueue;
 
+        // React's useState computes an update's result at the call while nothing is scheduled and bails out of
+        // rendering on an equal one; its useReducer dispatch never does either.
+        private readonly bool _computesAtTheCall;
+
         private static readonly bool s_canHoldNodes = !typeof(TState).IsValueType;
 
-        protected HookUpdateQueueSlot(TState seed, Func<TState, TAction, TState> reducer)
+        protected HookUpdateQueueSlot(TState seed, Func<TState, TAction, TState> reducer, bool computesAtTheCall)
         {
             Value = _baseState = _nextValue = _nextBaseState = seed;
             Reducer = reducer;
+            _computesAtTheCall = computesAtTheCall;
         }
 
-        // Queues action at lane and returns whether anything has to render for it. With nothing queued the
-        // reducer runs now, and a result equal to the committed state queues nothing.
+        // Queues action at lane and returns whether a render has to run for it.
         internal bool Enqueue(TAction action, FiberUpdatePriority lane)
         {
-            var nothingQueued = (_baseQueue?.Count ?? 0) + (_pending?.Count ?? 0) == 0;
-            var eager = nothingQueued ? Reducer(Value, action) : default!;
-            if (nothingQueued && ObjectIs.AreEqual(Value, eager)) return false;
-            (_pending ??= new List<HookUpdate<TState, TAction>>()).Add(new HookUpdate<TState, TAction>
+            var update = new HookUpdate<TState, TAction> { Action = action, Lane = lane, Scheduled = true };
+            if (_computesAtTheCall && !HoldsScheduledUpdate())
             {
-                Action = action,
-                Lane = lane,
-                EagerReducer = nothingQueued ? Reducer : null,
-                EagerState = eager,
-            });
-            return true;
+                update.EagerState = Reducer(Value, action);
+                update.HasEagerState = true;
+                update.Scheduled = !ObjectIs.AreEqual(Value, update.EagerState);
+            }
+            // Everything queued is an update that bailed out and left the state as it was, so one more
+            // replaces them.
+            if (!update.Scheduled) _pending?.Clear();
+            (_pending ??= new List<HookUpdate<TState, TAction>>()).Add(update);
+            return update.Scheduled;
         }
 
         // The state a render at renderLane shows. A skipped update asks the fiber for a render at its own lane,
@@ -574,20 +581,24 @@ namespace Velvet
 
             var state = _baseState;
             var newBaseState = state;
-            var newBaseQueue = new List<HookUpdate<TState, TAction>>();
+            List<HookUpdate<TState, TAction>>? newBaseQueue = null;
             foreach (var update in _baseQueue)
             {
-                if (update.Lane > renderLane)
+                if (!FiberLane.Renders(renderLane, update.Lane))
                 {
-                    if (newBaseQueue.Count == 0) newBaseState = state;
+                    if (newBaseQueue == null)
+                    {
+                        newBaseQueue = new List<HookUpdate<TState, TAction>>();
+                        newBaseState = state;
+                    }
                     newBaseQueue.Add(update);
                     FiberWorkLoop.ScheduleRerender(fiber, update.Lane);
                     continue;
                 }
-                if (newBaseQueue.Count > 0) newBaseQueue.Add(update.Rebased());
-                state = update.EagerReducer == Reducer ? update.EagerState : Reducer(state, update.Action);
+                newBaseQueue?.Add(update.Rebased());
+                state = update.HasEagerState ? update.EagerState : Reducer(state, update.Action);
             }
-            if (newBaseQueue.Count == 0) newBaseState = state;
+            if (newBaseQueue == null) newBaseState = state;
 
             _nextValue = state;
             _nextBaseState = newBaseState;
@@ -602,6 +613,18 @@ namespace Velvet
             _baseQueue = _nextBaseQueue;
         }
 
+        private bool HoldsScheduledUpdate() => AnyScheduled(_baseQueue) || AnyScheduled(_pending);
+
+        private static bool AnyScheduled(List<HookUpdate<TState, TAction>>? updates)
+        {
+            if (updates == null) return false;
+            foreach (var update in updates)
+            {
+                if (update.Scheduled) return true;
+            }
+            return false;
+        }
+
         public override bool HoldsUpdateBeyond(FiberUpdatePriority lane)
             => AnyBeyond(_baseQueue, lane) || AnyBeyond(_pending, lane);
 
@@ -610,7 +633,7 @@ namespace Velvet
             if (updates == null) return false;
             foreach (var update in updates)
             {
-                if (update.Lane > lane) return true;
+                if (update.Scheduled && !FiberLane.Renders(lane, update.Lane)) return true;
             }
             return false;
         }
@@ -622,16 +645,35 @@ namespace Velvet
         {
             // MUTANT_SURVIVES(equivalent): a value-type state holds no node, so what the probes below would read through it marks nothing a render emits; the guard only skips boxing it.
             if (!s_canHoldNodes) return;
-            Visit(visitRoot, Value);
-            Visit(visitRoot, _baseState);
-            if (_baseQueue == null) return;
-            foreach (var update in _baseQueue)
+            Visit(visitRoot, Value, _baseState);
+            VisitQueued(visitRoot, _baseQueue);
+            VisitQueued(visitRoot, _pending);
+            // Between a Process and the Commit that adopts it, which a sweep reaches while a Suspense holds the
+            // commit of a render. Otherwise the staged fields are the committed ones, visited above.
+            // MUTANT_SURVIVES(equivalent): visiting the staged fields when they are the committed ones marks the same roots a second time.
+            if (ReferenceEquals(_nextBaseQueue, _baseQueue)) return;
+            // MUTANT_SURVIVES(unreachable): a Suspense hold keeps a render staged across a sweep, and no fixture holds one across a sweep that reaches a hook state slot.
+            Visit(visitRoot, _nextValue, _nextBaseState);
+            // MUTANT_SURVIVES(unreachable): a Suspense hold keeps a render staged across a sweep, and no fixture holds one across a sweep that reaches a hook state slot.
+            VisitQueued(visitRoot, _nextBaseQueue);
+        }
+
+        private void VisitQueued(Action<object> visitRoot, List<HookUpdate<TState, TAction>>? updates)
+        {
+            if (updates == null) return;
+            foreach (var update in updates)
             {
-                Visit(visitRoot, Payload(update.Action));
+                Visit(visitRoot, Payload(update.Action), update.EagerState);
             }
         }
 
-        private static void Visit(Action<object> visitRoot, object? candidate)
+        private static void Visit(Action<object> visitRoot, object? first, object? second)
+        {
+            VisitOne(visitRoot, first);
+            VisitOne(visitRoot, second);
+        }
+
+        private static void VisitOne(Action<object> visitRoot, object? candidate)
         {
             var root = HookSlotRecycleProbe.Probe(candidate);
             if (root != null) visitRoot(root);
@@ -658,7 +700,7 @@ namespace Velvet
         private static readonly Func<T, StateAction<T>, T> s_apply
             = static (state, action) => action.Updater != null ? action.Updater(state) : action.Value;
 
-        public HookStateSlot(T seed) : base(seed, s_apply)
+        public HookStateSlot(T seed) : base(seed, s_apply, computesAtTheCall: true)
         {
         }
 
@@ -669,7 +711,8 @@ namespace Velvet
     {
         public Action<TAction> Dispatch = null!;
 
-        public ReducerSlot(TState seed, Func<TState, TAction, TState> reducer) : base(seed, reducer)
+        public ReducerSlot(TState seed, Func<TState, TAction, TState> reducer)
+            : base(seed, reducer, computesAtTheCall: false)
         {
         }
     }
