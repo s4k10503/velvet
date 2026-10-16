@@ -182,7 +182,6 @@ namespace Velvet.CodeGen
             var instructions = lambda.HasBody ? lambda.Body.Instructions.ToList() : new List<Instruction>();
             var created = instructions.Where(IsClosureCreation).Select(instr => TryResolve(() => ((MethodReference)instr.Operand).Resolve()))
                 .Select(method => method is null ? null : CapturedReadsOf(method, known)).ToList();
-            // MUTANT_SURVIVES(equivalent, clause removed): a link field belongs to a class no scope reads, so IsComponentField drops it from the answer.
             var fields = instructions.Where(instr => instr is { OpCode.Code: Code.Ldfld or Code.Ldflda, Operand: FieldReference { } field } && !IsParentLink(field))
                 .Select(instr => TryResolve(() => ((FieldReference)instr.Operand).Resolve())).ToList();
             known[lambda] = lambda.HasThis && created.All(each => each is not null) && fields.All(each => each is not null) && !instructions.Any(instr => BreaksClosureReads(instr, lambda))
@@ -204,6 +203,10 @@ namespace Velvet.CodeGen
                 _ => default,
             };
 
+        // An address taken of a captured variable is a write unless it is read in place, since the callee may store through it.
+        private static bool WritesThroughAddress(Instruction addressOf, FieldReference field)
+            => IsClosureField(field) && !IsParentLink(field) && !ReadsInPlace(addressOf.Next, field.FieldType);
+
         private static bool IsReceiverOfClosureAccess(Instruction? next)
             => next is { OpCode.Code: Code.Ldfld or Code.Ldflda or Code.Ldftn or Code.Ldvirtftn } || (next is { OpCode.Code: Code.Stfld, Operand: FieldReference link } && IsParentLink(link));
 
@@ -213,7 +216,8 @@ namespace Velvet.CodeGen
             => component.DeclaringType.NestedTypes.Where(IsClosureClass).SelectMany(type => type.Methods).Where(method => method.HasBody)
                 .SelectMany(method => method.Body.Instructions)
                 // MUTANT_SURVIVES(equivalent, clause removed): no scope looks up a link field, so counting its stores changes no answer.
-                .Where(instr => instr is { OpCode.Code: Code.Stfld, Operand: FieldReference field } && !IsParentLink(field))
+                .Where(instr => instr is { OpCode.Code: Code.Stfld or Code.Ldflda, Operand: FieldReference field } && !IsParentLink(field)
+                    && (instr.OpCode.Code == Code.Stfld || WritesThroughAddress(instr, field)))
                 .Select(instr => TryResolve(() => ((FieldReference)instr.Operand).Resolve())).OfType<FieldDefinition>().ToHashSet();
     }
 }

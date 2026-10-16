@@ -39,6 +39,7 @@ namespace Velvet.Tests
             s_builds.Clear();
             s_ambient = 0;
             s_setRightText = null;
+            s_setLabel = null;
             s_seen.Clear();
             s_setLeft = null;
             s_setRight = null;
@@ -60,6 +61,7 @@ namespace Velvet.Tests
         private static readonly Dictionary<string, int> s_builds = new();
         private static int s_ambient;
         private static Action<string> s_setRightText;
+        private static Action<string> s_setLabel;
         private static readonly List<object> s_seen = new();
         private static Action<int> s_setLeft;
         private static Action<int> s_setRight;
@@ -124,6 +126,23 @@ namespace Velvet.Tests
             Action onClick = () => s_seen.Add(count);
             s_seen.Add(onClick);
             return V.Div("root", V.Button(name: "add", onClick: onClick), V.Label(name: "other", text: other));
+        }
+
+        [Component]
+        private static VNode HandlerInABlockScope()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            var (label, setLabel) = Hooks.UseState("0");
+            var (noise, setNoise) = Hooks.UseState("0");
+            s_setCount = setCount;
+            s_setLabel = setLabel;
+            s_setRightText = setNoise;
+            {
+                var inner = label;
+                Action onClick = () => s_seen.Add(inner + count);
+                s_seen.Add(onClick);
+                return V.Div("root", V.Button(name: "add", onClick: onClick), V.Label(name: "noise", text: noise));
+            }
         }
 
         [Component]
@@ -454,6 +473,38 @@ namespace Velvet.Tests
 
             // Act
             s_setCount(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ReferenceEquals(s_seen[0], s_seen[^1]), Is.False);
+        }
+
+        [Test]
+        public void Given_AHandlerInABlockScope_When_AnotherTextChanges_Then_TheRenderHandsTheSameDelegate()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HandlerInABlockScope, key: "handler"));
+
+            // Act
+            s_setRightText("1");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ReferenceEquals(s_seen[0], s_seen[^1]), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the delegate afresh on every render, so it hands another
+        // one when the text changes too.
+        // What it pins is a changed copy reaching the gate of the lambda: emptying `plan.Deps.SelectMany(DependencyStore)`
+        // in `BuildScopeGate` serves the first delegate again.
+        [Test]
+        public void Given_AHandlerInABlockScope_When_TheTextItCopiedChanges_Then_TheRenderHandsAnotherDelegate()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HandlerInABlockScope, key: "handler"));
+
+            // Act
+            s_setLabel("1");
             mounted.FlushStateForTest();
 
             // Assert

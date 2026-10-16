@@ -23,7 +23,7 @@ A scope is one of:
 
 - a call or constructor returning a `VNode`, wherever it stands: an element of a children list, a single child, a member of a props record, an arm of a conditional, the returned root;
 - a lambda that captures variables, cached under the captured variables it reads when it runs;
-- a value the body derives and stores once into a local (`var visible = items.Where(...)`), when nothing can change it afterwards: a value type, a `string`, a delegate, or an `IEnumerable<T>` / `IReadOnlyList<T>`-style interface. A `List<T>` or an array is not one, because the body may write to it later.
+- a value the body derives and stores once into a local (`var visible = items.Where(...)`), when nothing can change it afterwards: a value type, a `string`, a delegate, or an `IEnumerable<T>` / `IReadOnlyList<T>`-style interface. A `List<T>` or an array is not one, because the body may write to it later. Nor is a value that can hold a node (a tuple, a struct or a lookup of nodes, a sequence of nodes), because the runtime keeps a cached node alive only in a node's own scope.
 
 A scope that ends where an enclosing scope ends (the last arm of a conditional that is itself a scope) is left to that one.
 

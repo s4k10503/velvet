@@ -202,9 +202,8 @@ namespace Velvet.CodeGen
                 var receiver = FindClosureLocal(_body, field.DeclaringType);
                 var type = receiver == null ? null : InCallerTerms(field.FieldType, null, receiver.VariableType as GenericInstanceType);
                 if (receiver == null || type == null || !IsBoxable(type)) return null;
-                var comparable = direct
-                    ? CanBeCompared(field, type, region)
-                    : !_lambdaWritten.Contains(field) && StoresPrecede(field, region.Start);
+                var comparable = !_lambdaWritten.Contains(field)
+                    && (direct ? CanBeCompared(field, type, region) : StoresPrecede(field, region.Start));
                 if (!comparable) return null;
                 FieldReference reference = receiver.VariableType is GenericInstanceType instance
                     ? new FieldReference(field.Name, field.FieldType, instance)

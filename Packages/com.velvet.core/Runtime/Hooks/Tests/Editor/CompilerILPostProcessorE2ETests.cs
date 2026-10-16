@@ -2339,6 +2339,70 @@ namespace Velvet.Tests
             return V.Div("root", V.Button(text: "go", onClick: show), V.Label(text: other.ToString()));
         }
 
+        private static string DescribeNodes((ElementNode, ElementNode) pair) => pair.Item1.ToString();
+
+        [Component]
+        public static VNode DerivedNodePairComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var pair = (V.Label(text: n.ToString()), V.Label(text: "second"));
+            System.Action show = () => Print(DescribeNodes(pair));
+            return V.Div("root", V.Button(text: "go", onClick: show), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode DerivedLookupOfNodesComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (items, _) = Hooks.UseState(new System.Collections.Generic.List<int>());
+            var grouped = System.Linq.Enumerable.ToLookup(items, item => item % 2, item => V.Label(text: item.ToString()));
+            return V.Div("root", V.Label(text: grouped.Count.ToString()), V.Label(text: n.ToString()));
+        }
+
+        public readonly struct NodeHolder
+        {
+            public NodeHolder(ElementNode node) => Node = node;
+
+            public ElementNode Node { get; }
+        }
+
+        [Component]
+        public static VNode DerivedStructHoldingANodeComponent()
+        {
+            var (n, _) = Hooks.UseState(0);
+            var (other, _) = Hooks.UseState(0);
+            var holder = new NodeHolder(V.Label(text: n.ToString()));
+            System.Action show = () => Print(holder.Node.ToString());
+            return V.Div("root", V.Button(text: "go", onClick: show), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerWritingACapturedVariableThroughOutComponent()
+        {
+            var (text, _) = Hooks.UseState("1");
+            var (other, _) = Hooks.UseState(0);
+            var parsed = 0;
+            System.Action parse = () => int.TryParse(text, out parsed);
+            return V.Div("root", V.Button(text: "parse", onClick: parse), V.Label(text: parsed.ToString()), V.Label(text: other.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerWritingACapturedVariableReadByAChildComponent()
+        {
+            var (a, _) = Hooks.UseState(0);
+            var total = 0;
+            return V.Div("root", V.Button(text: "add", onClick: () => total += a), V.Label(text: total.ToString()), V.Label(text: a.ToString()));
+        }
+
+        [Component]
+        public static VNode HandlerWritingACapturedParameterThroughOutComponent(int start)
+        {
+            var (other, _) = Hooks.UseState(0);
+            System.Action parse = () => int.TryParse("5", out start);
+            return V.Div("root", V.Button(text: "parse", onClick: parse), V.Label(text: start.ToString()), V.Label(text: other.ToString()));
+        }
+
         private const string ValueGateName = "TryGetMemoizedValue";
 
         private static int ValueGatesOf(string component) => CountHookCalls(LoadMethod(component), ValueGateName);
@@ -2372,6 +2436,42 @@ namespace Velvet.Tests
         {
             // Act
             var gates = ValueGatesOf(nameof(HandlerCapturingAHookValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives only the other child a scope gate too.
+        // What it pins is a variable a lambda writes through an out argument being no value to compare: `false` in
+        // place of `WritesThroughAddress(instr, field)` in `FieldsWrittenByLambdas` gives the child a scope gate.
+        [Test]
+        public void Given_AHandlerWritingACapturedVariableThroughAnOutArgument_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerWritingACapturedVariableThroughOutComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHandlerWritingACapturedVariableReadByAChild_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerWritingACapturedVariableReadByAChildComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives only the other child a scope gate too.
+        // What it pins is a parameter a lambda writes through an out argument being no parameter to compare: `false` in
+        // place of `WritesThroughAddress(instr, field)` in `FieldsWrittenByLambdas` gives the child a scope gate.
+        [Test]
+        public void Given_AHandlerWritingACapturedParameterThroughAnOutArgument_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(HandlerWritingACapturedParameterThroughOutComponent));
 
             // Assert
             Assert.That(gates, Is.EqualTo(1));
@@ -2678,6 +2778,47 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(gates, Is.EqualTo(2));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no value gate, so it counts none here either.
+        // What it pins is a tuple of nodes being no value to keep: replacing the `HoldsNodes(type)` test in
+        // `IsImmutableType` with `false` boxes the pair for a value gate.
+        [Test]
+        public void Given_APairOfNodesCapturedByAHandler_When_Woven_Then_TheBuiltValueIsNotBoxedForTheCache()
+        {
+            // Act
+            var boxes = LoadMethod(nameof(DerivedNodePairComponent)).Body.Instructions.Count(
+                instruction => instruction.OpCode == OpCodes.Box && instruction.Previous.OpCode == OpCodes.Dup);
+
+            // Assert
+            Assert.That(boxes, Is.EqualTo(0), "A pooled node the slot holds is recycled by the sweep, which marks no tuple");
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no value gate, so it counts none here either.
+        // What it pins is a lookup of nodes being no value to keep: replacing the `HoldsNodes(type)` test in
+        // `IsImmutableType` with `false` gives the lookup a value gate.
+        [Test]
+        public void Given_ALookupOfNodesDerivedOnce_When_Woven_Then_NoValueGateIsWoven()
+        {
+            // Act
+            var gates = ValueGatesOf(nameof(DerivedLookupOfNodesComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(0), "The nodes a lookup groups are no node the slot marks");
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no value gate, so it counts none here either.
+        // What it pins is a struct with a node field being no value to keep: `field.IsStatic` in place of
+        // `!field.IsStatic` in `HoldsNodes` boxes the struct for a value gate.
+        [Test]
+        public void Given_AStructHoldingANodeCapturedByAHandler_When_Woven_Then_TheBuiltValueIsNotBoxedForTheCache()
+        {
+            // Act
+            var boxes = LoadMethod(nameof(DerivedStructHoldingANodeComponent)).Body.Instructions.Count(
+                instruction => instruction.OpCode == OpCodes.Box && instruction.Previous.OpCode == OpCodes.Dup);
+
+            // Assert
+            Assert.That(boxes, Is.EqualTo(0), "A node in a struct field is no node the slot marks");
         }
 
         [Test]

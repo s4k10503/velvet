@@ -334,7 +334,7 @@ namespace Velvet.CodeGen
         // an object the body can write to.
         private static bool IsImmutableType(TypeReference type)
         {
-            if (IsArrayOrIndirection(type)) return false;
+            if (IsArrayOrIndirection(type) || HoldsNodes(type)) return false;
             // MUTANT_SURVIVES(unreachable, clause removed): a ref struct is built in place on its local, so no expression a candidate stores yields one; Given_ASpanBuiltOnceFromState_When_Woven_Then_NoInstructionBuildsItOnTheStack pins the build.
             if (IsValueLike(type) && IsBoxable(type)) return true;
             if (ReadOnlyInterfaces.Contains(ElementOf(type).FullName)) return true;
@@ -346,6 +346,28 @@ namespace Velvet.CodeGen
                 current = TryResolve(() => parent.Resolve());
             }
             return false;
+        }
+
+        // FiberTreeReturn keeps the node in a node scope's slot alive, and the nodes of a UseMemo or UseRef value, but
+        // reads nothing else a slot holds. A value scope holding a node in any form (a tuple of them, a lookup
+        // grouping them, a struct with a node field, a sequence not yet enumerated) would be swept as retired while
+        // the slot still holds it, so no value scope keeps a type that can.
+        private static bool HoldsNodes(TypeReference type)
+        {
+            if (type is ArrayType array) return HoldsNodes(array.ElementType);
+            if (type is GenericParameter || type is TypeSpecification and not GenericInstanceType) return true;
+            if (type.IsPrimitive || type.MetadataType == MetadataType.String) return false;
+            if (TryResolve(() => type.Resolve()) is not { } definition) return true;
+            if (definition.IsEnum || definition.BaseType?.FullName is "System.MulticastDelegate") return false;
+            var arguments = type is GenericInstanceType instance ? instance.GenericArguments : null;
+            if (arguments != null && arguments.Any(HoldsNodes)) return true;
+            if (definition.IsInterface) return arguments == null || !ReadOnlyInterfaces.Contains(definition.FullName);
+            // A class may be a node, or hold one in a field a subclass adds; only a struct is known by its own fields.
+            if (!definition.IsValueType) return true;
+            return definition.Fields.Where(field => !field.IsStatic).Any(field => HoldsNodes(
+                field.FieldType is GenericParameter parameter && arguments != null && definition.GenericParameters.IndexOf(parameter) is var at and >= 0
+                    ? arguments[at]
+                    : field.FieldType));
         }
 
         private static ScopePlan? TryPlanCandidate(ScopeFacts facts, ScopeCandidate candidate, List<ScopePlan> accepted)
