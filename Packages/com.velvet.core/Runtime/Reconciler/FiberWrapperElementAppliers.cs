@@ -53,8 +53,8 @@ namespace Velvet
         internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)
             => _gradient.ApplyGradientOnCreate(element, classNames);
 
-        internal void ApplyGradientOnPatch(VisualElement element, string[] classNames, bool skewable)
-            => _gradient.ApplyGradientOnPatch(element, classNames, skewable);
+        internal void ApplyGradientOnPatch(VisualElement element, string[] classNames)
+            => _gradient.ApplyGradientOnPatch(element, classNames);
 
         internal void ApplyAnimateOnCreate(VisualElement element, string[] classNames)
             => _animate.ApplyAnimateOnCreate(element, classNames);

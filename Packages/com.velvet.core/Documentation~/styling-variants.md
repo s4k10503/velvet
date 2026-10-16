@@ -437,10 +437,9 @@ property — a rule the stylesheet declares later, a bracket value such as `bg-[
 and its own variant's rule in the className, such as `hover:` against `whileHoverClass`. It loses to what
 Tailwind ranks above that: `focus:` or `active:` against `whileHoverClass`, `disabled:` or `data-[…]:`
 against any of the three, a stacked rule such as `dark:hover:`, and an important utility. The element's
-own value comes back when the state goes off. Bracket values apply through them, and on an element so do
-`shadow-*`, `ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`:
-`whileHoverClass: "shadow-lg"` paints a shadow while hovered. A `V.Motion` draws no `shadow-*`, `skew-*`
-or `border-dashed` / `border-dotted`, through these channels or through its className. The transient enter
+own value comes back when the state goes off. Bracket values apply through them, and so do `shadow-*`,
+`ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`:
+`whileHoverClass: "shadow-lg"` paints a shadow while hovered. The transient enter
 / exit classes an `AnimatePresence` play applies for the duration of an animation write their utilities
 straight onto the live class list without telling the reconciler, and carry only a utility backed by a
 plain USS rule — `bg-red-500`, `opacity-50`, `px-4`, `border-red-500`, `scale-105`, `rotate-3`. Read that

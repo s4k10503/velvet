@@ -238,9 +238,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADarkGatedGradientOnAMotion_When_TheThemeTurnsDark_Then_TheBakedTextureIsApplied()
         {
-            // Arrange — a Motion paints none of the three silhouette layers, but it does carry the straight
-            // background-image gradient, so a variant has to reach that pass on a Motion exactly as it does
-            // on an element.
+            // Arrange — a variant has to reach the gradient pass on a Motion exactly as it does on an element.
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
                 new VNode[]
@@ -260,10 +258,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADarkGatedShadowOnAMotion_When_TheThemeTurnsDark_Then_NoShadowPaintIsAttached()
+        public void Given_ADarkGatedShadowOnAMotion_When_TheThemeTurnsDark_Then_TheShadowPaintIsAttached()
         {
-            // Arrange — a Motion never paints a drop shadow (the silhouette paints stand down on a Motion, so
-            // nothing would reconcile one afterwards), and a variant must not be a way in.
+            // Arrange — a Motion paints a drop shadow as any element does, through a variant too.
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
                 new VNode[] { V.Motion(className: "bg-[#FFFFFF] dark:shadow-lg", name: "mover") });
@@ -272,7 +269,7 @@ namespace Velvet.Tests
             VelvetTheme.IsDark = true;
 
             // Assert
-            Assert.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(0));
+            Assert.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(1));
         }
     }
 

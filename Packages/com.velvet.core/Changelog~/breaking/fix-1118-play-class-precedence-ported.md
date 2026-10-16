@@ -7,7 +7,7 @@
   carries no variant or `!`, for the same property, and, for the gesture channels, the className's rule for
   its own variant; Tailwind's order decides the rest, so a tap or focus class outranks a hover one and a
   className `focus:` rule outranks `whileHoverClass`. The element's own value comes back when the state goes
-  off. A bracket value such as `bg-[#f00]` applies through them, and on an element so do `shadow-*`,
+  off. A bracket value such as `bg-[#f00]` applies through them, and so do `shadow-*`,
   `ring-*`, `skew-*`, gradients, `animate-*`, `border-dashed`, `gap-*` and `uppercase`. These channels used
   to rank with the element's own classes, so a base class the stylesheet declares later, a base bracket
   value or a divider's color kept the property, and a bracket value or a paint Velvet draws itself did
@@ -25,6 +25,9 @@
   `divide-dashed` draw on a shadowed element, and a background a variant, gesture or drag class, theme change
   or play brings in shows on it. The shadow used to paint under the whole box and repaint the background and
   border over it, in the colours they had when the shadow attached, with a solid border.
+- A `V.Motion` draws `shadow-*`, `skew-*` and `border-dashed` / `border-dotted`, from its className, its
+  variants and the `while*Class` and drag channels, as any element does. It used to draw none of them, and
+  logged a warning for a shadow.
 
 ### Fixed
 

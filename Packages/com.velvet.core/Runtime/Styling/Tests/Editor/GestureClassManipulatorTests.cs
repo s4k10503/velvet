@@ -1079,6 +1079,50 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AShadowedCard_When_APlayShowsABackgroundClass_Then_ItsBackgroundTakesThePlaysColor()
+        {
+            // Arrange
+            var (card, expected) = Mount("bg-blue-500 shadow-md", "bg-red-500");
+
+            // Act — the class writer every play goes through.
+            StyleAnimationClassUtils.AddClasses(card, new[] { "bg-red-500" }, StyleLayerPriority.Animation);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(card.resolvedStyle.backgroundColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ASkewedCard_When_APlayShowsABackgroundClass_Then_ItsFaceTakesThePlaysColor()
+        {
+            // Arrange
+            var (card, expected) = Mount("bg-blue-500 -skew-x-6", "bg-red-500");
+
+            // Act — the class writer every play goes through.
+            StyleAnimationClassUtils.AddClasses(card, new[] { "bg-red-500" }, StyleLayerPriority.Animation);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(SkewFace(card), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_AMotionWithAShadowHoverClass_When_Hovered_Then_TheShadowPaints()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Motion(name: "card", className: "w-[40px] h-[40px] bg-blue-500", whileHoverClass: "shadow-lg"));
+            var card = _window.rootVisualElement.Q("card");
+            ForcePanelUpdate(card.panel);
+
+            // Act
+            Hover(card);
+
+            // Assert
+            Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
+        }
+
+        [Test]
         public void Given_ASkewedCardWithABracketHoverClassBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
         {
             // Arrange — a bracket value is written inline over the face's suppression, which the face reads

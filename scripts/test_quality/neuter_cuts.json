@@ -299,7 +299,7 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs",
-          "anchor": "internal void ApplyGradientOnPatch(VisualElement element, string[] classNames, bool skewable)",
+          "anchor": "internal void ApplyGradientOnPatch(VisualElement element, string[] classNames)",
           "neuter": "return;"
         },
         {
