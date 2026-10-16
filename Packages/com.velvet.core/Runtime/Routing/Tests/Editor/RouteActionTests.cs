@@ -126,6 +126,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ActionData_When_ANavigationOnlyAddsAFragment_Then_ItIsCleared()
+        {
+            // Arrange
+            var router = ItemsRouter("/other", Created);
+            Submit(router, "lamp", PostToItems);
+
+            // Act
+            router.NavigateSync("/items#top");
+
+            // Assert
+            Assert.That(router.CurrentActionData, Is.Empty);
+        }
+
+        [Test]
         public void Given_AnAction_When_ItIsPostedFromBelowItsRoute_Then_EveryMatchedLoaderRunsAfterIt()
         {
             // Arrange — the root and items layouts would keep their data on a plain navigation to /items.

@@ -259,9 +259,7 @@ namespace Velvet
             string path,
             NavigationMode mode = NavigationMode.Push,
             CancellationToken cancellationToken = default) =>
-            IsStepMode(mode)
-                ? StepBy(mode == NavigationMode.Back ? -1 : 1, cancellationToken)
-                : Begin(ResolvePath(path), mode, cancellationToken, submission: null, visit: default);
+            NavigateAsync(path, mode, baseRouteIndex: -1, cancellationToken);
 
         /// <summary>
         /// Navigates with relative resolution anchored to a specific matched-route level
@@ -530,14 +528,14 @@ namespace Velvet
             // A target with no pathname, only a search or a fragment, resolves from the current pathname rather
             // than from a route and drops the current search, as resolveTo does when the target's pathname is
             // null.
-            if (path.Length > 0 && (path[0] == '?' || path[0] == '#'))
+            if (path.StartsWith('?') || path.StartsWith('#'))
             {
                 return RouteQuery.StripQuery(CurrentLocation?.Path ?? "/") + path;
             }
 
             // The fragment takes no part in resolution and is put back after it.
             var hashAt = path.IndexOf('#');
-            return hashAt < 0
+            return hashAt == -1
                 ? ResolveWithoutHash(path, baseRouteIndex, relative)
                 : ResolveWithoutHash(path.Substring(0, hashAt), baseRouteIndex, relative) + path.Substring(hashAt);
         }
@@ -1068,8 +1066,8 @@ namespace Velvet
         private static string SplitHash(string target, out string hash)
         {
             var at = target.IndexOf('#');
-            hash = at < 0 ? string.Empty : target.Substring(at);
-            return at < 0 ? target : target.Substring(0, at);
+            hash = at == -1 ? string.Empty : target.Substring(at);
+            return at == -1 ? target : target.Substring(0, at);
         }
 
         private static readonly IReadOnlyDictionary<string, string> EmptyParams = new Dictionary<string, string>();
@@ -1191,7 +1189,7 @@ namespace Velvet
         // new entry, and the first one the router ever holds is React Router's "default".
         private (object? State, string Key) EntryIdentity(Visit visit)
         {
-            if (visit.IsStep && HasEntryAt(visit.Landing))
+            if (visit.IsStep)
             {
                 var entry = _history[visit.Landing];
                 return (entry.State, entry.Key);

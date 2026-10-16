@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using Velvet;
+using Velvet.TestUtilities;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
@@ -471,6 +472,91 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(seen, Is.EqualTo(NavigationMode.Back));
+        }
+
+        [Test]
+        public void Given_TheBackMode_When_Navigated_Then_StepsOntoThePreviousEntry()
+        {
+            // Arrange
+            var router = BuildAt("/a");
+            Navigate(router, "/b");
+
+            // Act
+            router.NavigateAsync("/ignored", NavigationMode.Back).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/a"));
+        }
+
+        [Test]
+        public void Given_ReplaceInTheOptions_When_Navigated_Then_TheHistoryHoldsTheReplacingLocation()
+        {
+            // Arrange
+            var router = BuildAt("/a");
+            Navigate(router, "/b");
+
+            // Act
+            Navigate(router, "/c", new NavigateOptions { Replace = true });
+
+            // Assert
+            Assert.That(RouterHistoryProbe.PathsOf(router), Is.EqualTo("/a,/c"));
+        }
+
+        [Test]
+        public void Given_ANavigationThatOnlyAddsAFragment_When_Committed_Then_ItPushesAHistoryEntry()
+        {
+            // Arrange
+            var router = BuildAt("/a");
+
+            // Act
+            Navigate(router, "/a#top");
+
+            // Assert
+            Assert.That(RouterHistoryProbe.CountOf(router), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ANavigationThatOnlyAddsAFragment_When_Committed_Then_TheLocationHoldsTheHash()
+        {
+            // Arrange
+            var router = BuildAt("/a");
+
+            // Act
+            Navigate(router, "/a#top");
+
+            // Assert
+            Assert.That(router.CurrentLocation!.Hash, Is.EqualTo("#top"));
+        }
+
+        [Test]
+        public void Given_ANavigationThatOnlyAddsAFragment_When_Committed_Then_TheLocationIsAnnounced()
+        {
+            // Arrange
+            var router = BuildAt("/a");
+            string? announced = null;
+            router.OnLocationChanged += location => announced = location.Hash;
+
+            // Act
+            Navigate(router, "/a#top");
+
+            // Assert
+            Assert.That(announced, Is.EqualTo("#top"));
+        }
+
+        [Test]
+        public void Given_ABlockedAttempt_When_ANavigationOnlyAddsAFragment_Then_TheBlockerStartsOver()
+        {
+            // Arrange
+            var router = BuildAt("/a");
+            var blocker = new RouteBlockerState();
+            router.RouteBlockerManager.Register(args => args.NextLocation.Path == "/b", blocker);
+            Navigate(router, "/b");
+
+            // Act
+            Navigate(router, "/a#top");
+
+            // Assert
+            Assert.That(blocker.Status, Is.EqualTo(RouteBlockerStatus.Idle));
         }
     }
 }

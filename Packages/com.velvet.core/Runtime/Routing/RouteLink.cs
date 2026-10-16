@@ -117,7 +117,7 @@ namespace Velvet
                 return "/";
             }
             var hashAt = path.IndexOf('#');
-            var stripped = RouteQuery.StripQuery(hashAt < 0 ? path : path.Substring(0, hashAt));
+            var stripped = RouteQuery.StripQuery(hashAt == -1 ? path : path.Substring(0, hashAt));
             if (stripped.Length > 1)
             {
                 stripped = stripped.TrimEnd('/');
