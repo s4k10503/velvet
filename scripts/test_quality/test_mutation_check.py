@@ -8119,8 +8119,8 @@ class ShardCeilingTests(unittest.TestCase):
     def test_Given_ThePlayModeStepTimeout_When_TheMostSurvivorsFittingItAreCounted_Then_ItIsThePlayModeCeiling(self):
         # Arrange — derived from the step timeout rather than read back from the constant.
         mutant, setup = 934 + 100, 202 + 625 + 11 + 900
-        largest = max(count for count in range(1, 40)
-                      if self.fits("mutation-shard", "PlayMode", mutant, setup, count=count))
+        largest = max((count for count in range(1, 40)
+                       if self.fits("mutation-shard", "PlayMode", mutant, setup, count=count)), default=0)
 
         # Act
         stated = mutation_check.SHARD_CEILING["PlayMode"]
@@ -8133,14 +8133,14 @@ class ShardCeilingTests(unittest.TestCase):
         # after both is its checkout, restore and uploads, which the measured setup figures do not cover.
         workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
         job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
-        steps = sum(int(minutes) for minutes in re.findall(r"^        timeout-minutes: (\d+)$", job, re.MULTILINE))
+        steps = [int(minutes) for minutes in re.findall(r"^        timeout-minutes: (\d+)$", job, re.MULTILINE)]
         found = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
 
         # Act
-        spare = int(found.group(1)) - steps if found else None
+        spare = int(found.group(1)) - sum(steps) if found else None
 
         # Assert
-        self.assertGreaterEqual(spare, 15)
+        self.assertEqual((len(steps), spare is not None and spare >= 15), (2, True))
 
     def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the 100 s are what its five bounded cases spend where a mutant stops the frame
