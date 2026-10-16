@@ -15,7 +15,8 @@
     selected text is drawn again above UI Toolkit's selection highlight, so an opaque highlight reads
     as a background.
 - `shadow-<colour>` and `shadow-[<colour>]`, with an opacity modifier (`shadow-red-500/50`), colour the
-  `shadow-*` beside them, as Tailwind's `--tw-shadow-color` does.
+  `shadow-*` beside them, as Tailwind's `--tw-shadow-color` does. `shadow-current` and `shadow-inherit` are
+  read, and a size takes an opacity modifier (`shadow-lg/20`, `shadow/20`).
 - `ring-offset-<colour>` colours the offset fill, and a ring, ring-offset or outline colour takes an opacity
   modifier (`ring-red-500/50`).
 - `ring-<n>`, `outline-<n>`, `ring-offset-<n>` and `outline-offset-<n>` take any integer Tailwind generates

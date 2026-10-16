@@ -334,7 +334,8 @@ namespace Velvet
             float w, float h)
         {
             var spec = binding.Spec;
-            var alpha = spec.Color.a;
+            var tint = spec.TintFor(ve);
+            var alpha = tint.a;
             if (alpha <= 0.004f)
             {
                 return;
@@ -365,8 +366,6 @@ namespace Velvet
             // UVs are raw 0..1 (UI Toolkit remaps them into the atlas slot); the texture's alpha carries the
             // SDF antialiasing. texUV.y is flipped (box top samples v = 1) to match the bake orientation and
             // SkewSilhouette's gradient quad, so a skewed caster's shadow slants the same direction on screen.
-            var tint = spec.Color;
-            tint.a = alpha;
             var mwd = mgc.Allocate(4, 6, tex);
             mwd.SetNextVertex(new Vertex { position = new Vector3(minX, minY, Vertex.nearZ), tint = tint, uv = new Vector2(0f, 1f) }); // top-left
             mwd.SetNextVertex(new Vertex { position = new Vector3(maxX, minY, Vertex.nearZ), tint = tint, uv = new Vector2(1f, 1f) }); // top-right

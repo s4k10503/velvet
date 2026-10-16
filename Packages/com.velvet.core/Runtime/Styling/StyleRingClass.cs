@@ -222,7 +222,7 @@ namespace Velvet
             => StyleRuleOrder.WithMembersInEmitOrder(classNames, baseCount, s_emitOrdered);
 
         private static readonly Func<string, bool> s_emitOrdered =
-            cls => IsRingClass(cls) || cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal);
+            cls => IsRingClass(cls) || StyleShadowClass.IsBoxShadowClass(cls);
 
         // Whether the box-shadow Tailwind composes for these classes is one the browser discards, which takes the
         // ring and every shadow-* with it: a ring whose colour, width or offset colour the browser rejects, or a

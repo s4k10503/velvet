@@ -10,7 +10,10 @@ space: `bg-[rgb(255_0_0_/_50%)]` is `rgb(255 0 0 / 50%)`.
 A shadow colour, `shadow-<colour>` or a `shadow-[…]` holding a colour, opacity modifier included
 (`shadow-red-500/50`), is Tailwind's `--tw-shadow-color`: it replaces the colour of the `shadow-*` size beside
 it, whichever comes first, a `shadow-[…]` size's own colour included, and draws nothing alone. A
-`drop-shadow-*` keeps its own colour.
+`drop-shadow-*` keeps its own colour. `shadow-current` is the text colour, and `shadow-inherit` takes the
+nearest ancestor's shadow colour, the size keeping its own where no ancestor names one. A `shadow-[…]` naming no
+colour is drawn in the text colour. A size's opacity modifier (`shadow-lg/20`) sets its own colour's alpha and
+scales a shadow colour beside it.
 
 ## Accepted forms
 

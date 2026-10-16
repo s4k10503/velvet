@@ -1,6 +1,8 @@
 using System;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -96,6 +98,111 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((discarded, kept), Is.EqualTo((false, true)));
+        }
+
+        // A size's opacity modifier, currentcolor, and an inherited shadow colour, as Tailwind v4 writes them.
+
+        [Test]
+        public void Given_ABracketedShadowNamingNoColour_When_Extracted_Then_ItTakesTheTextColour()
+        {
+            // Act — Tailwind writes var(--tw-shadow-color, currentcolor).
+            var ok = StyleShadowClass.TryExtract(new[] { "shadow-[0_4px_8px]" }, out var spec);
+
+            // Assert
+            Assert.That((ok, spec.CurrentColor, spec.Color.a), Is.EqualTo((true, true, 1f)));
+        }
+
+        [Test]
+        public void Given_AColourlessBracketedShadowWithAModifier_When_Extracted_Then_TheTextColourIsScaled()
+        {
+            // Act — color-mix(in oklab, currentcolor 50%, transparent).
+            StyleShadowClass.TryExtract(new[] { "shadow-[0_4px_8px]/50" }, out var spec);
+
+            // Assert
+            Assert.That((spec.CurrentColor, spec.Color.a), Is.EqualTo((true, 0.5f)));
+        }
+
+        [TestCase("shadow-lg/20")]
+        [TestCase("shadow/20")]
+        [TestCase("shadow-[0_4px_8px_#000]/20")]
+        public void Given_ASizeWithAModifier_When_Extracted_Then_ItsOwnColourTakesThatAlpha(string utility)
+        {
+            // Act — oklab(from <colour> l a b / 20%) replaces the size colour's alpha.
+            var ok = StyleShadowClass.TryExtract(new[] { utility }, out var spec);
+
+            // Assert
+            Assert.That(ok ? spec.Color.a : float.NaN, Is.EqualTo(0.2f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASizeModifierBesideAShadowColour_When_Extracted_Then_TheColourIsScaledByIt()
+        {
+            // Act — the modifier is --tw-shadow-alpha, which the colour is mixed with.
+            StyleShadowClass.TryExtract(new[] { "shadow-lg/20", "shadow-[#ff0000]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Color.a, Is.EqualTo(0.2f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ShadowCurrent_When_Extracted_Then_TheShadowTakesTheTextColourAtItsModifier()
+        {
+            // Act
+            StyleShadowClass.TryExtract(new[] { "shadow-lg", "shadow-current/50" }, out var spec);
+
+            // Assert
+            Assert.That((spec.CurrentColor, spec.Color.a), Is.EqualTo((true, 0.5f)));
+        }
+
+        [Test]
+        public void Given_AShadowSizeWithAModifier_When_GateChecked_Then_ItIsAShadowClass()
+        {
+            Assert.That((StyleShadowClass.IsShadowClass("shadow/20"), StyleShadowClass.IsShadowClass("shadowy")),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ShadowInheritUnderAColouredParent_When_Reconciled_Then_TheShadowTakesTheParentsColour()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "shadow-[#ff0000]", name: "parent", children: new VNode[]
+                {
+                    V.Div(className: "shadow-lg shadow-inherit", name: "child"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var child = scope.Root.Q<VisualElement>("child");
+
+            // Assert
+            Assert.That(DropShadowSilhouette.TryGet(child)?.Spec.TintFor(child), Is.EqualTo((Color?)Parsed("#ff0000")));
+        }
+
+        [Test]
+        public void Given_ShadowInheritUnderAParentNamingNoShadowColour_When_Reconciled_Then_TheSizeKeepsItsOwn()
+        {
+            // Arrange — --tw-shadow-color is unset on the parent, so var() falls back to the size's own colour; the
+            // control is the same size with no inherit.
+            using var scope = new ReconcilerScope();
+            StyleShadowClass.TryExtract(new[] { "shadow-lg" }, out var plain);
+            var tree = new VNode[]
+            {
+                V.Div(className: "p-1", name: "parent", children: new VNode[]
+                {
+                    V.Div(className: "shadow-lg shadow-inherit", name: "child"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var child = scope.Root.Q<VisualElement>("child");
+
+            // Assert
+            Assert.That(DropShadowSilhouette.TryGet(child)?.Spec.TintFor(child), Is.EqualTo((Color?)plain.Color));
         }
     }
 }

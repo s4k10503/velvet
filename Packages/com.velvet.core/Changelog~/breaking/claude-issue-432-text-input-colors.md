@@ -35,6 +35,9 @@
   Tailwind emits them, where the class written last won: `ring-4 ring-2` is 4px, `outline-none outline-2`
   draws no outline, `shadow-none shadow-lg` draws no shadow, and `ring ring-[5PX] ring-[#ff0000]` discards
   the box-shadow, as `ring-[5PX]` is emitted last.
+- A `shadow-[…]` naming no colour is drawn in the element's text colour, as Tailwind's
+  `var(--tw-shadow-color, currentcolor)` is, where it took the bare `shadow`'s tint; so is a `drop-shadow-[…]`
+  naming none, as `drop-shadow()` defaults to `currentcolor`.
 - `grid-cols-[5]` leaves the class inert, as the browser rejects the `grid-template-columns: 5` Tailwind writes
   for it; it used to lay out five columns. `grid-cols-[repeat(5,minmax(0,1fr))]`, the list `grid-cols-5` writes,
   is five columns.

@@ -19,8 +19,15 @@ namespace Velvet
         // wrapElement.
         internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)
         {
-            if (!StyleShadowClass.HasShadowClass(classNames)
-                || !StyleShadowClass.TryExtract(classNames, _ctx.ReconciledClassCount(element, classNames), out var spec))
+            if (!StyleShadowClass.HasShadowClass(classNames))
+            {
+                return;
+            }
+            var baseCount = _ctx.ReconciledClassCount(element, classNames);
+            // Recorded whether or not a size draws a shadow here: a shadow colour alone is what a descendant's
+            // shadow-inherit reads.
+            StyleShadowClass.RecordOwnColor(element, classNames, baseCount);
+            if (!StyleShadowClass.TryExtract(classNames, baseCount, out var spec))
             {
                 return;
             }
@@ -61,14 +68,22 @@ namespace Velvet
         {
             var bound = _ctx.ShadowBindings.TryGetValue(element, out var binding);
             // Fast path: no shadow anywhere near this element.
-            if (!bound && !StyleShadowClass.HasShadowClass(classNames))
+            if (!StyleShadowClass.HasShadowClass(classNames))
             {
-                return;
+                StyleShadowClass.ForgetOwnColor(element);
+                if (!bound)
+                {
+                    return;
+                }
+            }
+            var baseCount = _ctx.ReconciledClassCount(element, classNames);
+            if (StyleShadowClass.HasShadowClass(classNames))
+            {
+                StyleShadowClass.RecordOwnColor(element, classNames, baseCount);
             }
 
             var spec = default(ShadowSpec);
-            var want = !clipActive
-                && StyleShadowClass.TryExtract(classNames, _ctx.ReconciledClassCount(element, classNames), out spec);
+            var want = !clipActive && StyleShadowClass.TryExtract(classNames, baseCount, out spec);
 
             // ApplySkewOnPatch ran before this (the shared pass order), so the SkewBindings entry is in its
             // post-patch state: a skewed caster's face is owned by its SkewSilhouette, an upright caster's by

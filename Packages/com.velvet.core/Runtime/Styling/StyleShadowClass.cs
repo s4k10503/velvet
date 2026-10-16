@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -13,26 +14,69 @@ namespace Velvet
     /// </summary>
     internal readonly struct ShadowSpec
     {
+        // The shadow's colour, or, where CurrentColor is set, the factor the text colour's alpha is scaled by.
         public readonly Color Color;
         public readonly float Blur;
         public readonly float OffsetY;
         public readonly float Spread;
         // Horizontal offset (px). The presets are centered (0); only an arbitrary shadow-[x y …] sets it.
         public readonly float OffsetX;
+        // The text colour: a shadow-[…] naming no colour is var(--tw-shadow-color, currentcolor), and
+        // shadow-current names it.
+        public readonly bool CurrentColor;
+        // shadow-inherit: the nearest ancestor's shadow colour (StyleShadowClass.TryInheritedColor), the colour
+        // above where no ancestor has one.
+        public readonly bool InheritColor;
 
         public ShadowSpec(Color color, float blur, float offsetY, float spread)
             : this(color, blur, offsetY, spread, 0f)
         {
         }
 
-        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX)
+        public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX,
+            bool currentColor = false, bool inheritColor = false)
         {
             Color = color;
             Blur = blur;
             OffsetY = offsetY;
             Spread = spread;
             OffsetX = offsetX;
+            CurrentColor = currentColor;
+            InheritColor = inheritColor;
         }
+
+        // This shadow in the colour a shadow colour class of kind names: color itself, the text colour scaled by
+        // color.a, or the ancestor's, the shadow keeping its own colour to fall back on.
+        public ShadowSpec WithColor(ShadowColorSource kind, Color color) => kind switch
+        {
+            ShadowColorSource.Inherit => new(Color, Blur, OffsetY, Spread, OffsetX, CurrentColor, inheritColor: true),
+            _ => new(color, Blur, OffsetY, Spread, OffsetX, currentColor: kind == ShadowColorSource.Current),
+        };
+
+        // The colour the shadow is painted in on element.
+        public Color TintFor(VisualElement element)
+        {
+            if (InheritColor && StyleShadowClass.TryInheritedColor(element, out var inherited))
+            {
+                return inherited;
+            }
+            if (!CurrentColor)
+            {
+                return Color;
+            }
+            var text = element.resolvedStyle.color;
+            text.a *= Color.a;
+            return text;
+        }
+    }
+
+    // What a shadow colour class names: a colour, the text colour (shadow-current) or the ancestor's
+    // (shadow-inherit).
+    internal enum ShadowColorSource
+    {
+        Explicit,
+        Current,
+        Inherit,
     }
 
     // Parses Velvet's shadow-* AND drop-shadow-* utility classes into a ShadowSpec
@@ -105,8 +149,13 @@ namespace Velvet
         // which tokens count as "a shadow utility" is defined in exactly one place.
         public static bool IsShadowClass(string cls)
             => !string.IsNullOrEmpty(cls)
-                && (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal)
+                && (IsBoxShadowClass(cls)
                     || cls == "drop-shadow" || cls.StartsWith("drop-shadow-", StringComparison.Ordinal));
+
+        // shadow, shadow-*, and shadow/<n>, the bare size with an opacity modifier.
+        internal static bool IsBoxShadowClass(string cls)
+            => cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal)
+                || cls.StartsWith("shadow/", StringComparison.Ordinal);
 
         // Cheap early-out gate: true when ANY class is shadow or begins with shadow-. Used
         // to skip the full parse on the ~99% of elements that carry no shadow class and no binding.
@@ -146,53 +195,149 @@ namespace Velvet
 
             var found = false;
             var foundBoxShadow = false;
-            var colorSet = false;
-            var color = default(Color);
+            var sizeAlpha = 1f;
             // A box-shadow the browser discards takes every shadow-* with it; a drop-shadow is a filter and stays.
             var discarded = StyleRingClass.DiscardsBoxShadow(classNames);
             foreach (var cls in classNames)
             {
-                if (discarded && cls != null && (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal)))
+                if (discarded && cls != null && IsBoxShadowClass(cls))
                 {
                     continue;
                 }
                 // A shadow colour is --tw-shadow-color, its own property, so it neither replaces nor cancels the
                 // shadow beside it, whichever comes first.
-                if (TryParseShadowColor(cls!, out var parsedColor))
+                if (TryParseShadowColor(cls!, out _, out _))
                 {
-                    colorSet = true;
-                    color = parsedColor;
                     continue;
                 }
-                if (TryParse(cls!, out var parsed, out var wantShadow))
+                if (TryParse(cls!, out var parsed, out var wantShadow, out var modifier))
                 {
                     // A recognized utility overrides earlier ones; shadow-none flips found back to false.
                     found = wantShadow;
                     if (wantShadow)
                     {
                         spec = parsed;
-                        foundBoxShadow = cls == "shadow" || cls!.StartsWith("shadow-", StringComparison.Ordinal);
+                        foundBoxShadow = IsBoxShadowClass(cls!);
+                        sizeAlpha = modifier ?? 1f;
                     }
                 }
             }
             // A box-shadow size writes its colour as var(--tw-shadow-color, <its own>), so a shadow colour
             // replaces the size's colour, the alpha included. A drop-shadow reads its own colour property.
-            if (found && foundBoxShadow && colorSet)
+            if (found && foundBoxShadow
+                && TryResolveShadowColor(classNames, discarded, sizeAlpha, out var source, out var shadowColor))
             {
-                spec = new ShadowSpec(color, spec.Blur, spec.OffsetY, spec.Spread, spec.OffsetX);
+                spec = spec.WithColor(source, shadowColor);
             }
             return found;
         }
 
+        // The --tw-shadow-color the shadow colour classes write, scaled by --tw-shadow-alpha, the size's opacity
+        // modifier (sizeAlpha), as Tailwind's color-mix(in oklab, <colour> var(--tw-shadow-alpha), transparent)
+        // does. classNames is in the order InEmitOrder gives; the last colour class wins.
+        private static bool TryResolveShadowColor(string[] classNames, bool discarded, float sizeAlpha,
+            out ShadowColorSource source, out Color color)
+        {
+            source = ShadowColorSource.Explicit;
+            color = default;
+            var set = false;
+            foreach (var cls in classNames)
+            {
+                if (cls == null || (discarded && IsBoxShadowClass(cls)) || !TryParseShadowColor(cls, out var kind, out var parsed))
+                {
+                    continue;
+                }
+                set = true;
+                source = kind;
+                color = parsed;
+            }
+            if (set && source != ShadowColorSource.Inherit)
+            {
+                color.a *= sizeAlpha;
+            }
+            return set;
+        }
+
+        // Each element's own --tw-shadow-color, for a descendant's shadow-inherit. Written by the shadow applier on
+        // every element carrying a shadow class, whether or not a size draws a shadow there.
+        private static readonly ConditionalWeakTable<VisualElement, StrongBox<(ShadowColorSource Source, Color Color)>>
+            s_ownColor = new();
+
+        internal static void RecordOwnColor(VisualElement element, string[] classNames, int baseCount)
+        {
+            classNames = StyleRingClass.InEmitOrder(classNames, baseCount);
+            var discarded = StyleRingClass.DiscardsBoxShadow(classNames);
+            var sizeAlpha = 1f;
+            foreach (var cls in classNames)
+            {
+                if (cls != null && !TryParseShadowColor(cls, out _, out _) && IsBoxShadowClass(cls)
+                    && TryParse(cls, out _, out var want, out var modifier) && want)
+                {
+                    sizeAlpha = modifier ?? 1f;
+                }
+            }
+            if (TryResolveShadowColor(classNames, discarded, sizeAlpha, out var source, out var color))
+            {
+                s_ownColor.AddOrUpdate(element, new StrongBox<(ShadowColorSource, Color)>((source, color)));
+            }
+            else
+            {
+                s_ownColor.Remove(element);
+            }
+        }
+
+        internal static void ForgetOwnColor(VisualElement element) => s_ownColor.Remove(element);
+
+        // shadow-inherit: --tw-shadow-color is registered as not inheriting, so `inherit` takes the parent's
+        // value, which may itself be an inherit, and currentcolor resolves against this element's text colour.
+        internal static bool TryInheritedColor(VisualElement element, out Color color)
+        {
+            for (var ancestor = element.parent; ancestor != null; ancestor = ancestor.parent)
+            {
+                if (!s_ownColor.TryGetValue(ancestor, out var own))
+                {
+                    break;
+                }
+                switch (own.Value.Source)
+                {
+                    case ShadowColorSource.Explicit:
+                        color = own.Value.Color;
+                        return true;
+                    case ShadowColorSource.Current:
+                        color = element.resolvedStyle.color;
+                        color.a *= own.Value.Color.a;
+                        return true;
+                }
+            }
+            color = default;
+            return false;
+        }
+
         // shadow-<colour> and shadow-[<colour>], Tailwind's --tw-shadow-color branch, with an optional opacity
         // modifier. A bracket is a colour where its hint is `color`, or where it has none and holds a colour.
-        internal static bool TryParseShadowColor(string cls, out Color color)
+        // shadow-current is the text colour, its modifier kept as the factor in color.a; shadow-inherit takes the
+        // ancestor's (TryInheritedColor).
+        internal static bool TryParseShadowColor(string cls, out ShadowColorSource kind, out Color color)
         {
             color = default;
+            kind = ShadowColorSource.Explicit;
             const int start = 7; // "shadow-"
             if (string.IsNullOrEmpty(cls) || !cls.StartsWith("shadow-", StringComparison.Ordinal))
             {
                 return false;
+            }
+            if (cls == "shadow-inherit")
+            {
+                kind = ShadowColorSource.Inherit;
+                return true;
+            }
+            if (cls.StartsWith("shadow-current", StringComparison.Ordinal))
+            {
+                kind = ShadowColorSource.Current;
+                color = Color.white;
+                return cls.Length == "shadow-current".Length
+                    || (cls["shadow-current".Length] == '/'
+                        && StyleColorValueParser.TryScaleAlpha(cls.AsSpan("shadow-current/".Length), ref color));
             }
             if (StyleArbitraryValueResolver.TryStripBrackets(cls, start, out var inner))
             {
@@ -203,11 +348,34 @@ namespace Velvet
             return StyleColorValueParser.TryParseColorValue(cls, start, out color);
         }
 
-        private static bool TryParse(string cls, out ShadowSpec spec, out bool wantShadow)
+        // A size's opacity modifier: the part after the '/' outside any bracket, which Tailwind writes as the alpha
+        // of the size's own colour and as --tw-shadow-alpha. size is cls without it.
+        private static bool TrySplitSizeModifier(string cls, out string size, out float? alpha)
+        {
+            size = cls;
+            alpha = null;
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(cls, 0);
+            if (slash < 0)
+            {
+                return true;
+            }
+            size = cls.Substring(0, slash);
+            if (!StyleColorValueParser.TryParseAlphaModifier(cls.AsSpan(slash + 1), out var parsed))
+            {
+                return false;
+            }
+            alpha = parsed;
+            return true;
+        }
+
+        // modifier: the size's opacity modifier, null where it has none.
+        private static bool TryParse(string cls, out ShadowSpec spec, out bool wantShadow, out float? modifier)
         {
             spec = default;
             wantShadow = false;
-            if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
+            modifier = null;
+            if (string.IsNullOrEmpty(cls) || !TrySplitSizeModifier(cls, out cls, out modifier)
+                || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }
@@ -247,13 +415,20 @@ namespace Velvet
             }
             if (table.TryGetValue(suffix, out spec))
             {
+                // A preset's colour is written oklab(from <colour> l a b / <modifier>): the modifier replaces its alpha.
+                if (modifier is { } presetAlpha)
+                {
+                    var tint = spec.Color;
+                    tint.a = presetAlpha;
+                    spec = new ShadowSpec(tint, spec.Blur, spec.OffsetY, spec.Spread, spec.OffsetX);
+                }
                 wantShadow = true;
                 return true;
             }
             // Arbitrary value: shadow-[x_y_blur_spread_#color] (underscores are spaces). Sits AFTER the
             // preset lookup so a named preset never reaches it; both families share this one parse.
             if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
-                && TryParseArbitrary(inner.ToString(), out spec))
+                && TryParseArbitrary(inner.ToString(), modifier, out spec))
             {
                 wantShadow = true;
                 return true;
@@ -265,15 +440,22 @@ namespace Velvet
         // Whether cls is a box-shadow utility Tailwind generates: shadow, a preset, shadow-none or a bracket that is
         // not a shadow colour.
         internal static bool DeclaresBoxShadow(string cls)
-            => cls == "shadow" || (cls.StartsWith("shadow-", StringComparison.Ordinal)
-                && (cls == "shadow-none" || Presets.ContainsKey(cls.Substring("shadow-".Length))
-                    || (cls["shadow-".Length] == '[' && !TryParseShadowColor(cls, out _))));
+        {
+            if (!IsBoxShadowClass(cls) || TryParseShadowColor(cls, out _, out _)
+                || !TrySplitSizeModifier(cls, out var size, out _))
+            {
+                return false;
+            }
+            return size == "shadow" || size == "shadow-none" || Presets.ContainsKey(size.Substring("shadow-".Length))
+                || size["shadow-".Length] == '[';
+        }
 
         // Whether cls is a shadow-[…] Tailwind writes as a box-shadow value that the browser rejects because it
         // holds a bare non-zero number (`shadow-[0_4_8_#000]`).
         internal static bool HoldsRejectedValue(string cls)
         {
-            if (!cls.StartsWith("shadow-[", StringComparison.Ordinal)
+            if (!TrySplitSizeModifier(cls, out cls, out _)
+                || !cls.StartsWith("shadow-[", StringComparison.Ordinal)
                 || !StyleArbitraryValueResolver.TryStripBrackets(cls, "shadow-".Length, out var inner)
                 || !StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
                 || hint == "color" || (hint == null && StyleColorValueParser.TryParseColor(inner, out _)))
@@ -296,7 +478,8 @@ namespace Velvet
         // assigned positionally as x, y, blur, spread) or a color (the shared StyleColorValueParser grammar). At least the x+y offsets are required (matching CSS); blur/spread
         // default to 0 and the color defaults to the DEFAULT preset tint. Percent lengths are rejected (the SDF
         // bake is pixel-based).
-        private static bool TryParseArbitrary(string body, out ShadowSpec spec)
+        // alpha: the class's opacity modifier, which replaces a written colour's alpha and scales the text colour's.
+        private static bool TryParseArbitrary(string body, float? alpha, out ShadowSpec spec)
         {
             spec = default;
             if (string.IsNullOrEmpty(body))
@@ -309,7 +492,7 @@ namespace Velvet
             tokens.RemoveAll(t => t.Length == 0);
             var lengths = new float[4]; // x, y, blur, spread
             var lengthCount = 0;
-            var color = ShadowColor(0.20f); // the bare-shadow DEFAULT tint
+            var color = default(Color);
             var hasColor = false;
 
             foreach (var token in tokens)
@@ -339,6 +522,17 @@ namespace Velvet
                 return false; // a box-shadow needs at least x and y offsets
             }
 
+            if (!hasColor)
+            {
+                // var(--tw-shadow-color, currentcolor), the modifier mixing it with transparent.
+                spec = new ShadowSpec(new Color(1f, 1f, 1f, alpha ?? 1f), lengths[2], lengths[1], lengths[3], lengths[0],
+                    currentColor: true);
+                return true;
+            }
+            if (alpha is { } written)
+            {
+                color.a = written;
+            }
             // x, y, blur, spread — collapse onto the single-softness SDF shadow.
             spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0]);
             return true;
