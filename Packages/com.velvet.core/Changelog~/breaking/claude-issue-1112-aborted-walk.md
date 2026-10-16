@@ -40,3 +40,12 @@
   that component, the rest of the update's render no longer writes its later rows onto the rows the boundary's
   fallback left in their place. A sibling after the boundary showed the updating component's row instead of its
   own.
+
+- A render an abort stopped before its removals ran no longer leaves an `AnimatePresence` believing a child it could not
+  remove is gone: the next render takes that removal, so the child's element leaves and `onExitComplete` runs once.
+  It used to leave the element on screen with no later render removing it.
+
+- An error thrown while a boundary's catch releases what the failed output mounted, such as a store subscription's
+  unsubscribe, goes to the boundaries above that boundary, or is logged where there is none, and the boundary's fallback
+  shows. It used to be caught by the boundary itself on the aborting path, which released the element being mounted
+  around it and left the fallback unshown.

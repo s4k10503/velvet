@@ -1921,6 +1921,25 @@ namespace Velvet.Tests
             Assert.That((Texts().StartsWith("o-fallback"), s_abortedExits), Is.EqualTo((true, 0)));
         }
 
+        // The render the abort discarded is taken again, and the child it could not remove leaves then, once.
+        [Test]
+        public void Given_APresenceWhoseRemovalAnAbortedRenderSkipped_When_TheHostRendersAgain_Then_TheChildLeavesAndOnExitCompleteRunsOnce()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(AbortedExitHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setAbortedExitTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setAbortedExitTick.Invoke(2);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((Texts().Split(',').Contains("a"), s_abortedExits), Is.EqualTo((false, 1)));
+        }
+
         private static Action<int> s_setAbortedExitTick;
         private static int s_abortedExits;
 
@@ -1951,6 +1970,57 @@ namespace Velvet.Tests
                 V.Label(text: "tail:" + tick),
             });
         }
+
+        // A subscription the failed output made is released when the boundary catches, and its unsubscribe fails.
+        [Test]
+        public void Given_AnUnsubscribeThatFailsInAFailedOutputBelowABoundary_When_TheBoundaryCatchesInTheWalkOfAnElementItMounts_Then_TheFallbackShows()
+        {
+            // Arrange — the failure belongs to a boundary above, and none is mounted, so it is logged
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Unsubscribe throw");
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SubscribedFailureHostRender, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("fallback"));
+        }
+
+        [Test]
+        public void Given_AnUnsubscribeThatFailsInAFailedOutputOfABoundary_When_TheBoundaryCatchesInItsOwnReconcile_Then_TheFallbackShows()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Unsubscribe throw");
+            s_throws = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SubscribedFailureBoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("fallback"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SubscribingRender()
+        {
+            Hooks.UseSyncExternalStore(_ => () => throw new InvalidOperationException("Unsubscribe throw"), () => 0);
+            return V.Label(text: "subscribed");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SubscribedFailureBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Component(SubscribingRender, key: "subscribing"),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SubscribedFailureHostRender()
+            => V.Div(children: new VNode[] { V.Component(SubscribedFailureBoundaryRender, key: "boundary") });
 
         [Test]
         public void Given_APresenceWhoseChildLeavesWithNothingToAnimate_When_ARenderRemovesItBesideALayoutEffect_Then_OnExitCompleteRunsAfterThatLayoutEffect()
