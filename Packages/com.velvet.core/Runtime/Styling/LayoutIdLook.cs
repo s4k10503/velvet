@@ -42,8 +42,8 @@ namespace Velvet
         // holder to read again, as promote takes animationValues, which the new lead's animation stops.
         public static LayoutIdLook Read(VisualElement element, LayoutIdProjection? projection) =>
             projection is { Shared: true, Moving: true }
-                ? new LayoutIdLook(element.resolvedStyle.opacity, RotateOf(element, projection), RadiiOf(element, projection), s_released)
-                : new LayoutIdLook(MotionOpacity.Own(element), RotateOf(element, projection), RadiiOf(element, projection), element);
+                ? new LayoutIdLook(element.resolvedStyle.opacity, RotateOf(element, projection), RadiiOf(element, projection, new Length[4]), s_released)
+                : new LayoutIdLook(MotionOpacity.Own(element), RotateOf(element, projection), RadiiOf(element, projection, new Length[4]), element);
 
         // The rotate and radii an element is drawn with: what its projection wrote, or else its own.
         public static float RotateOf(VisualElement element, LayoutIdProjection? projection) =>
@@ -54,15 +54,24 @@ namespace Velvet
         private static float Unspun(VisualElement element, StyleRotate inline) =>
             StyleAnimateDriver.TryReadSpinOwn(element, inline, out _, out var own) ? own : element.resolvedStyle.rotate.angle.ToDegrees();
 
-        public static Length[] RadiiOf(VisualElement element, LayoutIdProjection? projection) =>
-            projection is { WritesRadii: true } ? projection.DrawnRadii : Declared(element);
-
-        // The radii the element holds with no projection writing them: its inline slots, else what its rules declare,
-        // else what it is resolved at, each where a transition of it is running drawn as UI Toolkit draws it now
-        // (Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt).
-        private static Length[] Declared(VisualElement element)
+        // Written into the four corners of into, which is returned; a pass reads them into an array it keeps, so that
+        // reading them allocates nothing (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated).
+        public static Length[] RadiiOf(VisualElement element, LayoutIdProjection? projection, Length[] into)
         {
-            var radii = new Length[4];
+            if (projection is { WritesRadii: true })
+            {
+                Array.Copy(projection.DrawnRadii, into, 4);
+                return into;
+            }
+            return Declared(element, into);
+        }
+
+        // The radii the element holds with no projection writing them, written into radii: its inline slots, else what
+        // its rules declare, else what it is resolved at, each where a transition of it is running drawn as UI Toolkit
+        // draws it now
+        // (Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt).
+        private static Length[] Declared(VisualElement element, Length[] radii)
+        {
             for (var corner = 0; corner < 4; corner++)
             {
                 var slot = CornerRadiusFit.InlineCorner(element.style, corner);
@@ -134,10 +143,10 @@ namespace Velvet
         // A corner's own changes are carried as MotionOpacity carries opacity: from where it stands towards what gives
         // it now, on the timing a variant swap's held list gave the corner, else the one UI Toolkit runs it by, over
         // dtSec more.
-        public static Length[] OwnRadii(VisualElement element, LayoutIdProjection projection, float dtSec)
+        // Written into own, which is returned.
+        public static Length[] OwnRadii(VisualElement element, LayoutIdProjection projection, float dtSec, Length[] own)
         {
-            if (!projection.WritesRadii) return Declared(element);
-            var own = new Length[4];
+            if (!projection.WritesRadii) return Declared(element, own);
             for (var corner = 0; corner < 4; corner++)
             {
                 var target = projection.InlineRadii[corner] ? projection.OwnInlineRadii[corner].value
@@ -162,9 +171,9 @@ namespace Velvet
 
         // Mixes two radii as Framer's mixValues does (canMix): a radius of none takes the other's unit, two of one
         // unit mix and do not go below zero, and a pixel radius and a percent one do not mix, the lead's being taken.
-        public static Length[] Mix(Length[] from, Length[] to, float progress)
+        // Written into mixed, which is returned.
+        public static Length[] Mix(Length[] from, Length[] to, float progress, Length[] mixed)
         {
-            var mixed = new Length[4];
             for (var corner = 0; corner < 4; corner++)
             {
                 var (a, b) = (from[corner], to[corner]);
@@ -211,7 +220,7 @@ namespace Velvet
             var divisor = Mathf.Sqrt(scale.x * scale.y);
             if (!projection.WritesRadii)
             {
-                var own = Declared(element);
+                var own = Declared(element, s_own);
                 var target = radii ?? own;
                 if (IsNone(own) && IsNone(target) || Same(target, own) && Mathf.Approximately(divisor, 1f)) return;
                 projection.WritesRadii = true;
@@ -224,7 +233,8 @@ namespace Velvet
                     projection.OwnInlineRadii[corner] = slot;
                     projection.InlineRadii[corner] = slot.keyword == StyleKeyword.Undefined && !CornerRadiusFit.Wrote(element, corner, slot);
                 }
-                projection.StartRadii = own;
+                projection.StartRadii = (Length[])own.Clone();
+                projection.DrawnRadii = new Length[4];
                 for (var corner = 0; corner < 4; corner++)
                 {
                     projection.RadiusCarries[corner].Land(own[corner].value);
@@ -234,8 +244,8 @@ namespace Velvet
                 CornerRadiusFit.Hold(element);
                 MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Radius);
             }
-            projection.DrawnRadii = radii ?? OwnRadii(element, projection, dtSec);
-            var written = new Length[4];
+            Array.Copy(radii ?? OwnRadii(element, projection, dtSec, projection.OwnRadiiBuffer), projection.DrawnRadii, 4);
+            var written = s_written;
             for (var corner = 0; corner < 4; corner++)
             {
                 var radius = projection.DrawnRadii[corner];
@@ -253,6 +263,10 @@ namespace Velvet
                 Write(element.style, corner, written[corner]);
             }
         }
+
+        // Scratch for a single pass, which no caller keeps.
+        private static readonly Length[] s_own = new Length[4];
+        private static readonly Length[] s_written = new Length[4];
 
         // Each corner's horizontal and vertical extent in the box, a percent one being of the box's width and height.
         private static CornerRadii Extent(Length[] radii, Rect box)

@@ -60,3 +60,7 @@
     transition-duration: 1s;
     transition-timing-function: linear;
 }
+
+.layout-id-test-half-round {
+    border-radius: 50%;
+}

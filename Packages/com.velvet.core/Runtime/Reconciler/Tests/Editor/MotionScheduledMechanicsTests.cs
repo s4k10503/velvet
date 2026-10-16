@@ -4359,6 +4359,37 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated()
+        {
+            // Arrange — the test's own sheet; a holder rounded at 50% by its rules, read off them since a percent is not
+            // what it resolves at, beside another whose radius runs on a transition, so that the panel holds running
+            // radius transitions to look the holder up in; one read to warm it, and a canary allocating a known array.
+            Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(TestRulesPath));
+            var holder = new VisualElement();
+            holder.AddToClassList("layout-id-test-half-round");
+            var turning = new VisualElement();
+            turning.AddToClassList("layout-id-test-radius-transition");
+            turning.AddToClassList("layout-id-test-round");
+            Root.Add(holder);
+            Root.Add(turning);
+            Tick();
+            turning.AddToClassList("layout-id-test-rounder");
+            Tick();
+            var radii = new Length[4];
+            Action read = () => LayoutIdLook.RadiiOf(holder, null, radii);
+            read();
+            Action canary = () => GC.KeepAlive(new byte[16]);
+            canary();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(read);
+
+            // Assert — none, where the canary's are counted, and the rules' percent read.
+            Assert.That((blocks, GCAllocationProbe.MedianBlocksDuring(canary) > 0, radii[0].unit),
+                Is.EqualTo((0, true, LengthUnit.Percent)));
+        }
+
+        [Test]
         public void Given_ANarrowedLeadMidMove_When_ItsProjectionRefreshes_Then_NothingIsAllocated()
         {
             // Arrange — the bundled sheet and the test's own; "b", transitioning everything by class and background-color

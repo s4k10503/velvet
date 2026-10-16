@@ -71,6 +71,7 @@ namespace Velvet
         // radius's unit, its current value, else that radius.
         public static Length CurrentRadius(VisualElement element, int corner, Length radius)
         {
+            if (!MayRun(element, corner)) return radius;
             if (Find(element, s_lengths, s_cornerIds[corner]) is not { } found) return radius;
             try
             {
@@ -82,6 +83,41 @@ namespace Velvet
                 return radius;
             }
         }
+
+        // False where no transition of the corner runs for the element, read by an accessor compiled once over
+        // VisualElement.HasRunningAnimation, the test Find makes, so that the read every pass makes of a holder whose radii
+        // run on no transition boxes nothing (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated).
+        // True, leaving the answer to Find, where that cannot be compiled, as under IL2CPP, which compiles nothing at run time.
+        private static bool MayRun(VisualElement element, int corner)
+        {
+#if !ENABLE_IL2CPP
+            if (s_runs != null) return s_runs(element, s_cornerIdValues[corner]);
+#endif
+            return true;
+        }
+
+        private static readonly int[] s_cornerIdValues = Array.ConvertAll(s_cornerIds, id => id == null ? 0 : Convert.ToInt32(id));
+
+#if !ENABLE_IL2CPP
+        private static readonly Func<VisualElement, int, bool>? s_runs = CompileRuns();
+
+        private static Func<VisualElement, int, bool>? CompileRuns()
+        {
+            if (EngineMember.HasRunningStyleAnimation.ResolveMethod() is not { } hasRunning || Array.IndexOf(s_cornerIds, null) >= 0) return null;
+            try
+            {
+                var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
+                var id = System.Linq.Expressions.Expression.Parameter(typeof(int), "id");
+                var call = System.Linq.Expressions.Expression.Call(element, hasRunning,
+                    System.Linq.Expressions.Expression.Convert(id, hasRunning.GetParameters()[0].ParameterType));
+                return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, int, bool>>(call, element, id).Compile();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+#endif
 
         private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property, Func<object, float> read)
         {

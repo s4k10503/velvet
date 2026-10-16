@@ -127,9 +127,47 @@ namespace Velvet
 #endif
 
         // A corner's radius as the rules declare it, in LayoutIdLook's corner order; null where the cached style cannot
-        // be read.
-        public static Length? Radius(VisualElement element, int corner) =>
-            s_radii[corner] is { } radius && Of(element) is { } style ? (Length)radius.GetValue(style) : null;
+        // be read. Read by an accessor compiled once, as RulesHash is, since a layoutId projection can read it on every pass
+        // (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated).
+        public static Length? Radius(VisualElement element, int corner)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledRadii is { } compiled)
+            {
+                var read = compiled[corner](element);
+                return float.IsNaN(read.value) ? null : read;
+            }
+#endif
+            return s_radii[corner] is { } radius && Of(element) is { } style ? (Length)radius.GetValue(style) : null;
+        }
+
+#if !ENABLE_IL2CPP
+        private static readonly Func<VisualElement, Length>[]? s_compiledRadii = CompileRadii();
+
+        // Each corner's reader gives a NaN length where the element's style is not cached.
+        private static Func<VisualElement, Length>[]? CompileRadii()
+        {
+            if (s_style == null || s_hash == null || s_tryGet == null || Array.IndexOf(s_radii, null) >= 0) return null;
+            try
+            {
+                return Array.ConvertAll(s_radii, radius =>
+                {
+                    var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
+                    var style = System.Linq.Expressions.Expression.Variable(s_style.FieldType, "style");
+                    var hash = System.Linq.Expressions.Expression.Field(System.Linq.Expressions.Expression.Field(element, s_style), s_hash);
+                    var body = System.Linq.Expressions.Expression.Block(new[] { style },
+                        System.Linq.Expressions.Expression.Condition(System.Linq.Expressions.Expression.Call(s_tryGet, hash, style),
+                            System.Linq.Expressions.Expression.Property(style, radius!),
+                            System.Linq.Expressions.Expression.Constant(new Length(float.NaN))));
+                    return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, Length>>(body, element).Compile();
+                });
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+#endif
 
         // The rotate the rules declare, in degrees; NaN where the cached style cannot be read.
         public static float Rotate(VisualElement element) =>

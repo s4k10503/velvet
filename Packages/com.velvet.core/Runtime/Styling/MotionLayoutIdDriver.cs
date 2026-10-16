@@ -373,7 +373,7 @@ namespace Velvet
             {
                 var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
                 rotate = LayoutIdLook.RotateOf(projection.Leader, leading);
-                radii = LayoutIdLook.RadiiOf(projection.Leader, leading);
+                radii = LayoutIdLook.RadiiOf(projection.Leader, leading, projection.LeadRadii);
             }
             else if (projection is { Shared: true, Moving: true, Held: { } held })
             {
@@ -383,7 +383,8 @@ namespace Velvet
             {
                 var progress = CrossfadeProgress(projection);
                 rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection, s_passDt), progress);
-                radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection, s_passDt), progress);
+                radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection, s_passDt, projection.OwnRadiiBuffer), progress,
+                    projection.MixedRadii);
             }
             LayoutIdLook.WriteRotate(element, projection, rotate, s_passDt);
             LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale, s_passDt);
@@ -1060,6 +1061,10 @@ namespace Velvet
         public Length[] StartRadii = System.Array.Empty<Length>();
         public Length[] DrawnRadii = System.Array.Empty<Length>();
         public StyleLength[] WrittenRadii = System.Array.Empty<StyleLength>();
+        // What a pass reads the radii into rather than allocating: the lead's, the element's own and their mix.
+        public readonly Length[] LeadRadii = new Length[4];
+        public readonly Length[] OwnRadiiBuffer = new Length[4];
+        public readonly Length[] MixedRadii = new Length[4];
         // How the own rotate and each corner's own radius are carried while the projection writes them
         // (LayoutIdLook.OwnRotate, OwnRadii), and the unit each corner's is carried in.
         public LayoutIdCarry RotateCarry = new();
