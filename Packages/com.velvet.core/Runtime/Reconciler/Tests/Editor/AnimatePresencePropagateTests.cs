@@ -676,7 +676,7 @@ namespace Velvet.Tests
 
         [TestCase("wrapper")]
         [TestCase("top")]
-        public void Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesAtOnce(
+        public void Given_AnInnerPresenceThatStoppedPropagating_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesOnTheNextRender(
             string shape)
         {
             // Arrange
@@ -684,28 +684,34 @@ namespace Velvet.Tests
             s_propagate.Set(false);
             Drain(mounted);
 
-            // Act
+            // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
             s_outerKeys.Set(string.Empty);
             Drain(mounted);
+            var heldForTheRemovingRender = HostChildCount;
+            mounted.FlushEffectsForTest();
+            Drain(mounted);
 
-            // Assert
-            Assert.That(HostChildCount, Is.EqualTo(0));
+            // Assert — no frame has passed, so the inner presence's 300ms exit did not hold it.
+            Assert.That((heldForTheRemovingRender, HostChildCount), Is.EqualTo((1, 0)));
         }
 
         [TestCase("middle")]
         [TestCase("middle-top")]
-        public void Given_APresenceBetweenThatDoesNotPropagate_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesAtOnce(
+        public void Given_APresenceBetweenThatDoesNotPropagate_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesOnTheNextRender(
             string shape)
         {
             // Arrange — the inner presence propagates, but the nearest presence above it does not.
             using var mounted = MountSettled(shape);
 
-            // Act
+            // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
             s_outerKeys.Set(string.Empty);
             Drain(mounted);
+            var heldForTheRemovingRender = HostChildCount;
+            mounted.FlushEffectsForTest();
+            Drain(mounted);
 
-            // Assert
-            Assert.That(HostChildCount, Is.EqualTo(0));
+            // Assert — no frame has passed, so the inner presence's 300ms exit did not hold it.
+            Assert.That((heldForTheRemovingRender, HostChildCount), Is.EqualTo((1, 0)));
         }
 
         [TestCase("middle")]
@@ -772,11 +778,12 @@ namespace Velvet.Tests
             Assert.That((heldWhileExiting, HostChildCount), Is.EqualTo((1, 0)));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base runs both callbacks as the outer child leaves. The flush
-        // added to the case is the passive-effect flush these completions now wait for.
+        // GREEN_ON_BASE(characterization): the merge base runs both callbacks and drops the outer child in the removing
+        // render. The flush and the drain after it are the passive-effect flush these completions wait for and the
+        // render the settled exits ask for.
         [TestCase("wrapper")]
         [TestCase("top")]
-        public void Given_AnInnerPresenceWhoseChildrenPlayNoExit_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesAtOnceAndBothCallbacksRun(
+        public void Given_AnInnerPresenceWhoseChildrenPlayNoExit_When_TheOuterKeyIsRemoved_Then_TheOuterChildLeavesOnTheNextRenderAndBothCallbacksRun(
             string shape)
         {
             // Arrange
@@ -787,6 +794,7 @@ namespace Velvet.Tests
             s_outerKeys.Set(string.Empty);
             Drain(mounted);
             mounted.FlushEffectsForTest();
+            Drain(mounted);
 
             // Assert
             Assert.That((HostChildCount, s_outerCompleted, s_innerCompleted), Is.EqualTo((0, 1, 1)));
@@ -876,6 +884,8 @@ namespace Velvet.Tests
             Assert.That((heldWhileExiting, InnerItem == null), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base cleaned the effect up in the removing render.
+        // The flush and drain added are the passive flush the exit settles in and the render that drops the child.
         [Test]
         public void Given_AChildWhoseOnlyOutputIsAPresenceOfChildrenWithNoExit_When_TheKeyIsRemovedAndAddedAgain_Then_ItsEffectCleansUpOnceAndMountsAgain()
         {
@@ -883,6 +893,8 @@ namespace Velvet.Tests
             s_innerChild = "plain";
             using var mounted = MountSettled("effectful");
             s_outerKeys.Set(string.Empty);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
             Drain(mounted);
             var cleanupsAfterRemoval = s_cleanups;
 

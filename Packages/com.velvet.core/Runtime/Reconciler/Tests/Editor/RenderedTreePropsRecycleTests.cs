@@ -425,7 +425,7 @@ namespace Velvet.Tests
         }
 
         // The return direction of the presence contract: a keyed child WITHOUT an exit animation is
-        // dropped from the presence set the moment it is removed, and that drop is the node's last
+        // dropped from the presence set by the render its settled exit asks for, and that drop is the node's last
         // reference — its bag must actually flow back (the presence mark protects only LIVE ghosts,
         // not ones leaving the committed set).
         [Component]
@@ -447,6 +447,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base returned the bag in the removing render.
+        // The flush and drain added run the render that drops the child now.
         [Test]
         public void Given_AKeyedChildWithoutAnExitAnimation_When_ItsRemovalDropsItFromThePresenceSet_Then_ItsBagReturnsToThePool()
         {
@@ -458,8 +460,11 @@ namespace Velvet.Tests
             var droppedBag = ((ElementNode)s_capturedMemoNode).Props;
             Assume.That(droppedBag, Is.Not.Null, "Precondition: the instant child rented a props bag");
 
-            // Act — remove the keyed child; with no exit animation it leaves the presence set now.
+            // Act — remove the keyed child; with no exit animation its exit settles in the passive flush after the
+            // removing render, and the render that settle asks for drops it from the presence set.
             store.Increment();
+            scheduler.DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
             scheduler.DrainImmediateForTest();
 
             // Assert — the drop actually retired the bag (it left the rented-out set).

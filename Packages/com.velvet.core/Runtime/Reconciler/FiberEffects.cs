@@ -580,9 +580,9 @@ namespace Velvet
             anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, context, DrainPassiveEffects));
         }
 
-        // An exit whose child left in the pass that just ended completes in the passive-effect flush, after the
-        // effects that flush runs, as Framer Motion's PresenceChild completes it from an effect. A context with no
-        // scheduler anchor, a bare Reconciler, has no flush to wait for and completes at once.
+        // An exit with nothing to animate, whose child the pass that just ended removed, settles in the
+        // passive-effect flush, after the effects that flush runs, as Framer Motion settles it after that commit.
+        // A context with no scheduler anchor, a bare Reconciler, has no flush to wait for and completes at once.
         internal static void StagePassiveCompletion(ReconcilerContext context, Action complete)
         {
             if (context.BatchScheduler.Anchor == null)

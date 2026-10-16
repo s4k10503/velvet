@@ -20,9 +20,10 @@ namespace Velvet.Tests
     /// the exit share one
     /// declaration, 0.5s in against 0.05s out over a Motion whose own transition declares 0.2s, which is
     /// the asymmetry a single per-node config cannot express.
-    /// Three gates decide how a removal is treated, and each reads the same chain, so a Motion whose own
-    /// transition is <c>StyleTransitionConfig.None</c> still exits on the timing its exit pose declares:
-    /// the ghost gate, the reversed-stagger count and <c>mode: Wait</c> are pinned one case each. The
+    /// Whether a removal animates is read from the same chain, so a Motion whose own transition is
+    /// <c>StyleTransitionConfig.None</c> still exits on the timing its exit pose declares: the ghost outliving the
+    /// render an exit with nothing to animate leaves on, the reversed-stagger count and <c>mode: Wait</c> are
+    /// pinned one case each. The
     /// orchestration frame a label change establishes for inheriting descendants is measured off the same
     /// resolved span.
     /// Durations are read back as the inline transition-duration the scheduler wrote, or its absence — a
@@ -42,9 +43,8 @@ namespace Velvet.Tests
             ["visible"] = new MotionVariant("opacity-100", new StyleTransitionConfig { DurationSec = 0.5f }),
         };
 
-        // Only the exit pose is timed; the node opts out of animation entirely. Each of the three removal
-        // gates reads that pose: without it the ghost gate reaps the child before the exit play, and the
-        // other two disagree with the play that does happen.
+        // Only the exit pose is timed; the node opts out of animation entirely. Without that pose the exit has
+        // nothing to animate and the child leaves on the render after its removal.
         private static readonly Dictionary<string, MotionVariant> s_exitTimedOnly = new()
         {
             ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig { DurationSec = 0.5f }),
@@ -641,6 +641,8 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("m").ClassListContains("opacity-100"), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base held the ghost for the pose's exit as well.
+        // The flush and drain added are the ones that would drop an exit with nothing to animate.
         [Test]
         public void Given_AMotionTransitionOfNone_When_ItsExitPoseDeclaresADuration_Then_TheRemovalIsHeldAsAnExitingGhost()
         {
@@ -652,12 +654,15 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             Tick();
 
-            // Act
+            // Act — the removing render, the flush an exit with nothing to animate settles in, and the render
+            // that settle asks for.
             keys.Set(string.Empty);
             scheduler.DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+            scheduler.DrainImmediateForTest();
 
-            // Assert — still mounted as a ghost: a gate reading only the node's config sees DurationSec 0
-            // and reaps the leaf in this very reconcile, so the exit pose's timing never plays.
+            // Assert — still mounted as a ghost: an exit reading only the node's config sees DurationSec 0 and
+            // settles in that flush, so the render after it drops the leaf.
             Assert.That(Root.Q<VisualElement>("host").childCount, Is.EqualTo(1));
         }
 
@@ -686,9 +691,8 @@ namespace Velvet.Tests
         public void Given_AMotionTransitionOfNone_When_ItsClasslessExitPoseDeclaresADuration_Then_TheGhostPlaysThatDuration()
         {
             // Arrange — the node opts out of animation and variants[gone], which applies no class, is the only
-            // timing. The removal gates and the exit play each decide from this pose, and they have to agree:
-            // a gate that disregarded it reaps the child here, and a play that disregarded it completes on
-            // None inside the reconcile with nothing written.
+            // timing. The exit play decides from this pose: one that disregarded it would play nothing and leave
+            // no duration written.
             s_classlessExitVariants = ClasslessTimedExit(null);
             s_classlessExitNode = StyleTransitionConfig.None;
             using var keys = new KeySetStore("a");
@@ -731,11 +735,14 @@ namespace Velvet.Tests
                 Is.EqualTo(("visible", "hidden")));
         }
 
+        // GREEN_ON_BASE(characterization): the base withheld the new child behind the pose's exit as well.
+        // The flush and drain added are the ones that would drop an exit with nothing to animate.
         [Test]
         public void Given_WaitModeAndAnExitTimedByItsPoseAlone_When_ANewKeyArrives_Then_TheNewChildIsWithheld()
         {
             // Arrange — mode: Wait holds a brand-new child back while any previously committed child is
-            // still exiting, and whether that exit animates is decided by the exit pose here.
+            // still exiting, and whether that exit animates, rather than settling after the removing render, is
+            // decided by the exit pose here.
             using var keys = new KeySetStore("a");
             s_keyStore = keys;
             s_mode = AnimatePresenceMode.Wait;
@@ -743,11 +750,14 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             Tick();
 
-            // Act — swap the key set entirely: a leaves, b arrives.
+            // Act — swap the key set entirely: a leaves, b arrives. Then the flush an exit with nothing to animate
+            // settles in, and the render that settle asks for.
             keys.Set("b");
             scheduler.DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+            scheduler.DrainImmediateForTest();
 
-            // Assert — a's ghost holds the slot and b has not mounted yet.
+            // Assert — a's ghost holds the slot past both and b has not mounted yet.
             Assert.That(
                 (PoseOf(Root.Q<VisualElement>("item-a")), PoseOf(Root.Q<VisualElement>("item-b"))),
                 Is.EqualTo(("visible", "gone")));

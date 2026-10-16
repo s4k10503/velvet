@@ -772,7 +772,8 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal.
+        // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal, which the base made
+        // in the removing render and the flush and drain added leave in place.
         [Test]
         public void Given_AnInnerAnimatePresence_When_TheOuterKeyIsRemoved_Then_TheInnerChildDoesNotHoldIt()
         {
@@ -780,11 +781,13 @@ namespace Velvet.Tests
             using var mounted = MountSettled("inner-presence", "a");
             using var keys = s_keyStore;
 
-            // Act
+            // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
             keys.Set(string.Empty);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+            Drain(mounted);
 
-            // Assert — the outer child leaves at once.
+            // Assert — the outer child has left with no frame passed, so the inner child's exit did not hold it.
             Assert.That(HostChildCount, Is.EqualTo(0));
         }
 
@@ -965,9 +968,10 @@ namespace Velvet.Tests
             Assert.That((HostChildCount, s_exitsCompleted), Is.EqualTo((1, 0)));
         }
 
-        // GREEN_ON_BASE(characterization): a child left with no Motion to exit was removed at once on the base too.
+        // GREEN_ON_BASE(characterization): a child left with no Motion to exit was removed on the base too.
+        // The base removed it in the removing render.
         [Test]
-        public void Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ThatRenderDrains_Then_TheChildIsRemoved()
+        public void Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ItsExitSettles_Then_TheChildIsRemoved()
         {
             // Arrange
             using var flag = new FlagStore();
@@ -975,10 +979,13 @@ namespace Velvet.Tests
             using var mounted = MountSettled("toggled", "a");
             using var keys = s_keyStore;
 
-            // Act — the removal and the Motion's replacement land in one drain.
+            // Act — the removal and the Motion's replacement land in one drain, then the flush the exit settles in and
+            // the render that settle asks for.
             keys.Set(string.Empty);
             flag.Set(false);
             Drain(mounted);
+            Drain(mounted);
+            mounted.FlushEffectsForTest();
             Drain(mounted);
 
             // Assert — nothing plays, so the removal completes.
@@ -1036,7 +1043,8 @@ namespace Velvet.Tests
             Assert.That(ItemDurationMs(), Is.EqualTo(300f));
         }
 
-        // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal.
+        // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal, which the base made
+        // in the removing render and the flush and drain added leave in place.
         [Test]
         public void Given_AKeyedChildWhoseTopIsAnInnerAnimatePresence_When_TheOuterKeyIsRemoved_Then_TheInnerChildDoesNotHoldIt()
         {
@@ -1044,11 +1052,13 @@ namespace Velvet.Tests
             using var mounted = MountSettled("inner-presence-top", "a");
             using var keys = s_keyStore;
 
-            // Act
+            // Act — the removing render, the flush its exit settles in, and the render that settle asks for.
             keys.Set(string.Empty);
             Drain(mounted);
+            mounted.FlushEffectsForTest();
+            Drain(mounted);
 
-            // Assert — the outer child leaves at once.
+            // Assert — the outer child has left with no frame passed, so the inner child's exit did not hold it.
             Assert.That(HostChildCount, Is.EqualTo(0));
         }
     }

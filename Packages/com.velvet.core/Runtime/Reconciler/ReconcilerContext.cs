@@ -1461,18 +1461,20 @@ namespace Velvet
         }
 
         // An AnimatePresence's onExitComplete completes as an enter does, and for the same reason. Framer Motion
-        // calls PresenceChild's from a passive effect once a child with nothing to animate has left, whose error
+        // calls PresenceChild's from a passive effect once a child with nothing to animate is removed, whose error
         // React gives a boundary from the presence's owner, and from the exit's promise for a V.Motion child, whose
-        // error no boundary sees. removedBy is the commit that removes the child: an exit that waits on its removals
-        // completes from the passive-effect flush that follows the pass, and one that waits on an animation, with
-        // removedBy null, when the animation ends.
-        internal void CompleteExitAfterThePass(
-            System.Action? onExitComplete, ComponentFiber? owner, bool fromAMotion, object? removedBy = null)
+        // error no boundary sees.
+        internal void CompleteExitAfterThePass(System.Action? onExitComplete, ComponentFiber? owner, bool fromAMotion)
         {
             if (onExitComplete == null) return;
             CompleteAfterThePass(
-                () => GeneralPathReconciler.InvokeExitComplete(onExitComplete, owner, fromAMotion), owner, removedBy);
+                () => GeneralPathReconciler.InvokeExitComplete(onExitComplete, owner, fromAMotion), owner, removedBy: null);
         }
+
+        // An exit that animates nothing settles from the passive-effect flush that follows the pass whose commit
+        // removedBy is, and that commit takes it back if its removals never run.
+        internal void CompleteAfterTheRemovals(System.Action settle, ComponentFiber? boundary, object removedBy)
+            => CompleteAfterThePass(settle, boundary, removedBy);
 
         private void CompleteAfterThePass(System.Action complete, ComponentFiber? boundary, object? removedBy)
         {
@@ -2192,6 +2194,10 @@ namespace Velvet
             // diff removes their leaves.
             public readonly HashSet<string> ExitComplete = new();
 
+            // Per exiting key whose exit animates nothing, the exit the completion staged for after its removing
+            // commit settles (GeneralPathReconciler.SettleAfterTheRemovingCommit). A re-entry drops it.
+            public readonly Dictionary<string, object> QuietExits = new();
+
             // Anchor element of each exiting ghost (its first emitted leaf). Once a Motion's exit detaches
             // its element, the old-side reproduction can no longer recurse into the ghost's subtree, so its
             // inline fibers escape the orphan sweep. Keeping the anchor lets the drop path dispose them
@@ -2204,7 +2210,7 @@ namespace Velvet
             // patch that would re-record the element (PresenceAnchorMotionElement) bails on reference
             // equality and never runs; this per-key memo, written whenever an emission DOES record the
             // element, is what the ghost's exit dispatch falls back to. Entries retire with their key
-            // (exit-complete drop / instant removal) so a pooled element is never resurrected as a target.
+            // (exit-complete drop) so a pooled element is never resurrected as a target.
             public readonly Dictionary<string, VisualElement> MotionElements = new();
 
             // The top-level elements each key's last committing emission placed, a z-managed placeholder

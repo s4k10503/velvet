@@ -95,10 +95,11 @@ namespace Velvet
             // Every old-leaf lookup of this walk goes through it; LogicalSlotCursor owns what it saves and when
             // it falls back.
             public LogicalSlotCursor OldSlots;
-            // What a presence's instant removals of this walk keep until the removals run: the retirement of the
-            // removed trees, applied once FinalizeGeneralCommit has removed their leaves, and the put-back of the
-            // presence's per-key records, applied where the walk throws or an abort skips the removals, since the
-            // next walk reads those records to find the leaves still on screen.
+            // What a presence's removals of this walk keep until the removals run: the retirement of the
+            // dropped ghosts' trees, applied once FinalizeGeneralCommit has removed their leaves, and the put-back
+            // of the presence's per-key records and of the exits it started with nothing to animate, applied where
+            // the walk throws or an abort skips the removals, since the next walk reads those records to find the
+            // leaves still on screen and starts those exits again.
             public List<Action>? AfterRemovals;
             public List<Action>? PutBackRemovals;
         }
@@ -1863,8 +1864,6 @@ namespace Velvet
             public int ExitIndex;
             public int VisualIndex;
             public int AnimatedExitCount;
-            public bool RemovedInstantThisRender;
-            public bool RemovedAMotionThisRender;
         }
 
         // One AnimatePresence boundary's expansion, as every per-entry step of it sees it: where the walk
@@ -1906,8 +1905,10 @@ namespace Velvet
         // brand-new keys so the exit fully completes before the new child mounts / enters. The exit's
         // completion already re-renders the boundary; on that render no ghost remains, so the withheld
         // child emits and enters. Returning ghosts (a key re-added mid-exit) and persisting children are
-        // never withheld — only keys absent from the committed set.
-        private bool ShouldBlockPresenceEnters(
+        // never withheld — only keys absent from the committed set. A removal with nothing to animate
+        // withholds them too, for the render its exit completes after, as Framer Motion renders only the
+        // exiting children until their exits complete.
+        private static bool ShouldBlockPresenceEnters(
             AnimatePresenceNode presence,
             List<(string key, VNode node)> prevCommitted,
             HashSet<string> newKeySet,
@@ -1915,11 +1916,9 @@ namespace Velvet
         {
             if (presence.Mode != AnimatePresenceMode.Wait) return false;
 
-            foreach (var (key, node) in prevCommitted)
+            foreach (var (key, _) in prevCommitted)
             {
-                if (newKeySet.Contains(key)) continue;
-                if (state.ExitComplete.Contains(key)) continue;
-                if (RemovalPlaysExit(state, key, node)) return true;
+                if (!newKeySet.Contains(key) && !state.ExitComplete.Contains(key)) return true;
             }
             return false;
         }
@@ -1930,7 +1929,7 @@ namespace Velvet
         // whole exit (only a popLayout-style mode pulls it out of flow); appending ghosts
         // after every current child instead yanked a non-last exiting item behind its later
         // siblings — and physically reordered the DOM — the instant its exit began.
-        // Finished / instant-removed ghosts are dropped by the per-entry walk over the result.
+        // Finished ghosts are dropped by the per-entry walk over the result.
         private static void BuildPresenceEmissionPlan(
             List<(string key, VNode node)> newKeyed,
             List<(string key, VNode node)> prevCommitted,
@@ -2067,17 +2066,6 @@ namespace Velvet
                 {
                     if (leaving && !firstRender) MountNewChildrenLeaving(in pass, givenKeyed);
                     RecordGivenKeys(state, givenKeyed);
-                }
-
-                // onExitComplete completes once the exiting children are gone. When every removed child
-                // had NO exit animation (all instant-removed above) no PlayExit callback runs to complete it, so it
-                // completes here — but only when no animated exit is still in flight (those complete it when the
-                // Exiting set drains). Where a V.Motion child is among those removed, it is the Motion's completion.
-                // The removals are this walk's commit, which takes the completion back if they never run.
-                if (commit != null && tally.RemovedInstantThisRender && state.Exiting.Count == 0)
-                {
-                    _ctx.CompleteExitAfterThePass(
-                        presence.OnExitComplete, boundaryFiber, tally.RemovedAMotionThisRender, removedBy: commit);
                 }
 
                 // 3) Commit the new composition for the next old-side reproduction. Exit-complete keys were
@@ -2227,44 +2215,19 @@ namespace Velvet
 
         // Ghost branch of the per-plan-entry walk: a previously-committed key now absent from the new
         // children, spliced into the plan at its old position (see ExpandAnimatePresenceInline). A finished
-        // exit is dropped (not emitted → the diff removes its leaves); a child without an exit animation is
-        // removed immediately; otherwise the child stays mounted in its old slot and its exit is started once.
+        // exit is dropped (not emitted → the diff removes its leaves); otherwise the child stays mounted in its
+        // old slot and its exit is started once, even when that exit has nothing to animate.
         private void ExpandPresenceGhostEntry(in PresenceExpansion pass, string key, VNode node)
         {
             var walk = pass.Walk;
             var state = pass.State;
-            var boundaryFiber = pass.BoundaryFiber;
             var commit = walk.Commit;
             // Once removed, a key coming back, mid-exit or later, is not the child Framer's PresenceChild held
             // initial: false for.
             state.InitialBlocked.Remove(key);
             if (state.ExitComplete.Contains(key))
             {
-                state.Exiting.Remove(key);
-                // Once the exit detached the ghost's element, the old-side reproduction can no longer
-                // recurse into the ghost's subtree (the Motion's PreviousTree was cleared), so its
-                // inline fibers escape the orphan sweep. Dispose them explicitly via the tracked anchor
-                // before the diff removes the leaves — otherwise a same-key re-entry would re-pair the
-                // undisposed fiber as a zombie whose local state updates no longer re-render.
-                DisposeExitedGhostFibers(state, key);
-                // Leaving the committed set is the ghost node's last live root (presence bookkeeping
-                // was what kept it alive past its emitting render), so retire its pooled objects here.
-                // The entry must leave state.Committed FIRST: the sweep's mark reads that very list
-                // (other retirements must spare live ghosts), and a still-listed entry would spare
-                // this sweep's own target. prevCommitted is a copy, so the loop is unaffected.
-                RemovePresenceCommittedEntry(state.Committed, key);
-                // The key's leaves are leaving the DOM for good — its memoized Motion element
-                // must retire with them, or a pooled element could be resurrected as a later
-                // dispatch target.
-                RetirePresenceKeyEntries(state, key);
-                FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundaryFiber);
-                return;
-            }
-
-            if (!RemovalPlaysExit(state, key, node))
-            {
-                // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
-                RemoveGhostAtOnce(in pass, key, node);
+                DropExitedGhost(in pass, key, node);
                 return;
             }
 
@@ -2274,10 +2237,6 @@ namespace Velvet
                 Walk = walk, Position = pass.Position, State = state, Absent = true,
                 MountsLeaving = state.LeavingMounts.Contains(key),
             };
-            // Only a child whose exit is a propagating presence's can place nothing and still be emitted.
-            var emissionBefore = commit != null && PropagatingPresenceHoldsChildren(state, key)
-                ? SnapshotEmission(walk)
-                : null;
             var ghostAnchor = EmitPresenceChildAsAnchor(in site, node, ghostMotionNode, key, out var ghostMotionElement, out _);
             // A ghost reproduces the SAME committed node on both diff sides, so the patch that
             // would re-record the Motion's element bails on reference equality — fall back to
@@ -2288,26 +2247,92 @@ namespace Velvet
                 else state.MotionElements.TryGetValue(key!, out ghostMotionElement);
             }
 
-            // An emission that placed nothing, a propagating presence whose children played no exit and left at
-            // once, leaves no element to keep mounted, so there is no exit to wait for.
-            if (commit != null && ghostAnchor == null)
-            {
-                UndoEmission(walk, emissionBefore);
-                RemoveGhostAtOnce(in pass, key, node);
-                return;
-            }
-
             // Track the live ghost anchor so the drop path (exit complete) can dispose the subtree
             // fibers under it — see DisposeExitedGhostFibers.
             if (commit != null && ghostAnchor != null) state.ExitAnchors[key] = ghostAnchor;
 
-            if (commit != null && ghostAnchor != null && state.Exiting.Add(key))
+            if (commit != null && state.Exiting.Add(key))
             {
-                StartPresenceExit(in pass, key, node, ghostAnchor, ghostMotionElement, ghostMotionNode);
-                pass.Tally.ExitIndex++;
+                if (ghostAnchor != null)
+                {
+                    // The stagger ordinal counts only the exits that animate, as CountAnimatedExits does.
+                    if (StartPresenceExit(in pass, key, node, ghostAnchor, ghostMotionElement, ghostMotionNode))
+                    {
+                        pass.Tally.ExitIndex++;
+                    }
+                }
+                else
+                {
+                    // StartPresenceExit needs the anchor a child that placed nothing lacks; its exit settles as
+                    // one with nothing to animate does.
+                    var presence = pass.Presence;
+                    var boundary = pass.BoundaryFiber;
+                    SettleAfterTheRemovingCommit(in pass, key, () => CompletePresenceExit(
+                        state, key, boundary, presence.OnExitComplete, HoldsAMotion(state, key)));
+                }
             }
 
             pass.NextCommitted.Add((key, node));
+        }
+
+        // Framer Motion completes an exit that animates nothing after the commit that removed the child, never
+        // inside it: PresenceChild's effect for a child holding no motion component, the exit's promise for one
+        // that does. So the child stays on screen for that commit and leaves on the render the completion asks
+        // for. The walk's commit takes the completion back where its removals never run, and the next render
+        // starts the exit again.
+        private void SettleAfterTheRemovingCommit(in PresenceExpansion pass, string key, Action settle)
+        {
+            var state = pass.State;
+            var commit = pass.Walk.Commit!;
+            // A key that came back and left again before the flush is another exit, which this one must not settle.
+            var exit = new object();
+            state.QuietExits[key] = exit;
+            _ctx.CompleteAfterTheRemovals(() =>
+            {
+                if (!state.QuietExits.TryGetValue(key, out var current) || !ReferenceEquals(current, exit)) return;
+                state.QuietExits.Remove(key);
+                settle();
+            }, pass.BoundaryFiber, removedBy: commit);
+            (commit.PutBackRemovals ??= new List<Action>()).Add(() =>
+            {
+                state.QuietExits.Remove(key);
+                state.Exiting.Remove(key);
+            });
+        }
+
+        // A finished exit's ghost leaves the committed set and is not emitted, so the diff removes its leaves. A walk
+        // whose removals never run puts back what this took, as the next walk reproduces the leaves still on screen
+        // from it and drops the ghost then.
+        private void DropExitedGhost(in PresenceExpansion pass, string key, VNode node)
+        {
+            var state = pass.State;
+            var commit = pass.Walk.Commit;
+            state.Exiting.Remove(key);
+            // Once the exit detached the ghost's element, the old-side reproduction can no longer
+            // recurse into the ghost's subtree (the Motion's PreviousTree was cleared), so its
+            // inline fibers escape the orphan sweep. Dispose them explicitly via the tracked anchor
+            // before the diff removes the leaves — otherwise a same-key re-entry would re-pair the
+            // undisposed fiber as a zombie whose local state updates no longer re-render.
+            DisposeExitedGhostFibers(state, key);
+            if (commit != null)
+            {
+                NotePresenceRemovalPutBack(commit, state, key, node);
+                (commit.PutBackRemovals ??= new List<Action>()).Add(() => state.ExitComplete.Add(key));
+            }
+            // Leaving the committed set is the ghost node's last live root (presence bookkeeping
+            // was what kept it alive past its emitting render), so retire its pooled objects once the
+            // removals have run. The entry must leave state.Committed FIRST: the sweep's mark reads that
+            // very list (other retirements must spare live ghosts), and a still-listed entry would spare
+            // this sweep's own target. prevCommitted is a copy, so the loop is unaffected.
+            RemovePresenceCommittedEntry(state.Committed, key);
+            // The key's leaves are leaving the DOM for good — its memoized Motion element
+            // must retire with them, or a pooled element could be resurrected as a later
+            // dispatch target.
+            RetirePresenceKeyEntries(state, key);
+            var boundary = pass.BoundaryFiber;
+            void Retire() => FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundary);
+            if (commit != null) (commit.AfterRemovals ??= new List<Action>()).Add(Retire);
+            else Retire();
         }
 
         // Whether key's child holds a V.Motion, its anchor or one below up to an inner presence's children, as any
@@ -2352,43 +2377,20 @@ namespace Velvet
             return false;
         }
 
-        private static (HashSet<ComponentFiber> Fibers, int Placements)? SnapshotEmission(InlineWalk walk)
+        private static (HashSet<ComponentFiber> Fibers, int Placements) SnapshotEmission(InlineWalk walk)
             => (new HashSet<ComponentFiber>(walk.NewFibers), walk.Commit!.Placements.Count);
 
-        // Takes back a ghost emission that placed nothing: the fibers it walked leave the walk, so the orphan
+        // Takes back an emission that placed nothing: the fibers it walked leave the walk, so the orphan
         // cleanups and the sweep dispose them as they do a child removed without being emitted, and the
         // placements it recorded for them go.
-        private void UndoEmission(InlineWalk walk, (HashSet<ComponentFiber> Fibers, int Placements)? before)
+        private void UndoEmission(InlineWalk walk, (HashSet<ComponentFiber> Fibers, int Placements) before)
         {
-            if (before == null) return;
-            DropFibersTheFailedOutputAdded(walk, before.Value.Fibers);
+            DropFibersTheFailedOutputAdded(walk, before.Fibers);
             var placements = walk.Commit!.Placements;
-            placements.RemoveRange(before.Value.Placements, placements.Count - before.Value.Placements);
+            placements.RemoveRange(before.Placements, placements.Count - before.Placements);
         }
 
-        // The removal of a key that has nothing to exit: it leaves the committed set, then its entries and node
-        // retire, and the pass reports an instant removal so the presence's onExitComplete still runs.
-        private void RemoveGhostAtOnce(in PresenceExpansion pass, string key, VNode node)
-        {
-            var state = pass.State;
-            state.Exiting.Remove(key);
-            pass.Tally.RemovedInstantThisRender = true;
-            if (HoldsAMotion(state, key)) pass.Tally.RemovedAMotionThisRender = true;
-            // The new side of a walk is only ReconcileGeneral's, which gives it a commit; the structural walks that
-            // have none (ExpandInlineForReconcile) read the old side, which returns before it reaches a presence's
-            // children.
-            var commit = pass.Walk.Commit!;
-            NotePresenceRemovalPutBack(commit, state, key, node);
-            // Same as the finished-exit drop: leave the committed set, then retire.
-            RemovePresenceCommittedEntry(state.Committed, key);
-            RetirePresenceKeyEntries(state, key);
-            // The removed tree is the baseline the next walk reproduces while the leaves are still on screen.
-            var boundary = pass.BoundaryFiber;
-            (commit.AfterRemovals ??= new List<Action>()).Add(
-                () => FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundary));
-        }
-
-        // Records what RemoveGhostAtOnce is about to take from the presence's state, so a walk whose removals never
+        // Records what DropExitedGhost is about to take from the presence's state, so a walk whose removals never
         // run gives the next walk the committed child it still has on screen.
         private static void NotePresenceRemovalPutBack(
             GeneralCommitState commit, ReconcilerContext.PresenceBoundaryState state, string key, VNode node)
@@ -2629,7 +2631,8 @@ namespace Velvet
 
         // Starts one ghost's exit animation: the enter cancellations and the PopLayout pin that must precede
         // it, then the reconcile-driven completion that flags the finished exit and re-renders the boundary.
-        private void StartPresenceExit(
+        // Returns whether any exit plays.
+        private bool StartPresenceExit(
             in PresenceExpansion pass,
             string key,
             VNode node,
@@ -2653,55 +2656,10 @@ namespace Velvet
             var capturedState = pass.State;
             var capturedBoundary = pass.BoundaryFiber;
             var capturedOnExitComplete = presence.OnExitComplete;
+            // An exit that plays is a V.Motion's; DispatchPresenceExits says whether one does.
+            var fromAMotion = true;
             void RunExitComplete()
-            {
-                if (_ctx.IsDisposed) return;
-                // Reconcile-driven removal: flag the finished exit and re-render the boundary;
-                // the next render stops emitting this child and the diff removes its leaves.
-                capturedState.Exiting.Remove(capturedKey);
-                capturedState.ExitComplete.Add(capturedKey);
-                if (capturedBoundary != null && capturedBoundary.IsDisposed)
-                {
-                    // There is no ghost left to drop a re-render for, and ScheduleRerender has no disposed
-                    // guard of its own (unlike the public RequestRenderFromHook/RequestTransitionRerender), so
-                    // scheduling here would just pin a disposed fiber dirty in the batch scheduler forever.
-                }
-                else if (capturedBoundary != null)
-                {
-                    // The boundary's own hook inputs are unchanged (the exit finished out of band,
-                    // not via a state update), so an auto-memoized boundary would return its cached
-                    // VNode and the reconciler would bail — the AnimatePresence would never re-expand
-                    // and the finished ghost would linger forever. Invalidate the memo so the
-                    // re-render re-walks the children and the ghost-drop runs, mirroring the Suspense
-                    // reveal path (InvalidateMemoCache + FiberWorkLoop.RequestRenderFromHook).
-                    capturedBoundary.InvalidateMemoCache();
-                    FiberWorkLoop.ScheduleRerender(capturedBoundary, FiberUpdatePriority.Normal);
-                }
-                else
-                {
-                    // No owning component fiber to re-render (a top-level AnimatePresence reconciled
-                    // straight onto a VisualElement). The exit animation finished but the reconcile
-                    // that drops the ghost can't be scheduled, so the element would silently linger.
-                    // Mount AnimatePresence inside a component (V.Mount establishes a root fiber) so
-                    // exit completion can remove the child. Warn rather than leak in silence.
-                    // Intentional: the supported path is V.Mount; reconciling straight onto a bare
-                    // element leaves no owner to drive the ghost-removal re-render.
-                    FiberLogger.LogWarning("AnimatePresence",
-                        "Exit completed but the presence has no owning component fiber to re-render, "
-                        + "so the exited child cannot be removed. Mount AnimatePresence inside a "
-                        + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
-                }
-                // onExitComplete completes once the exiting set drains (the last in-flight exit finished), after
-                // the re-render that drops the ghosts is asked for, as Framer Motion's AnimatePresence forces its
-                // render before calling it. Cancelled exits (key re-entered) remove from Exiting elsewhere and do
-                // not reach here, so they never trigger it. An exit that plays is a V.Motion's.
-                if (capturedState.Exiting.Count == 0)
-                {
-                    // Framer's safeToRemove, which runs ahead of the presence's own onExitComplete.
-                    capturedState.Registration?.Complete();
-                    _ctx.CompleteExitAfterThePass(capturedOnExitComplete, capturedBoundary, fromAMotion: true);
-                }
-            }
+                => CompletePresenceExit(capturedState, capturedKey, capturedBoundary, capturedOnExitComplete, fromAMotion);
             // The child is removed once its exits have played and each lead its layoutIds passed to has landed. A key
             // coming back drops its landings (MotionLayoutIdDriver.Present), and a presence retired since completes
             // nothing, by the check SettleIfStillExiting makes.
@@ -2714,12 +2672,54 @@ namespace Velvet
             {
                 if (_ctx.PresenceStates.ContainsValue(capturedState)) Settle();
             });
-            DispatchPresenceExits(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode, Settle);
+            if (DispatchPresenceExits(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode, Settle)) return true;
+            fromAMotion = HoldsAMotion(pass.State, key);
+            return false;
+        }
+
+        // Reconcile-driven removal: flag the finished exit and re-render the boundary; the next render stops
+        // emitting this child and the diff removes its leaves.
+        private void CompletePresenceExit(
+            ReconcilerContext.PresenceBoundaryState state,
+            string key,
+            ComponentFiber? boundary,
+            Action? onExitComplete,
+            bool fromAMotion)
+        {
+            if (_ctx.IsDisposed) return;
+            state.Exiting.Remove(key);
+            state.ExitComplete.Add(key);
+            // A disposed boundary has no ghost left to drop, and ScheduleRerender has no disposed guard of its own
+            // (unlike the public RequestRenderFromHook/RequestTransitionRerender), so scheduling would pin a
+            // disposed fiber dirty in the batch scheduler forever. A presence with no boundary fiber was expanded by
+            // a Reconciler.Reconcile call made outside every component render, and the caller's next one drops the
+            // ghost.
+            if (boundary != null && !boundary.IsDisposed)
+            {
+                // The boundary's own hook inputs are unchanged (the exit finished out of band,
+                // not via a state update), so an auto-memoized boundary would return its cached
+                // VNode and the reconciler would bail — the AnimatePresence would never re-expand
+                // and the finished ghost would linger forever. Invalidate the memo so the
+                // re-render re-walks the children and the ghost-drop runs, mirroring the Suspense
+                // reveal path (InvalidateMemoCache + FiberWorkLoop.RequestRenderFromHook).
+                boundary.InvalidateMemoCache();
+                FiberWorkLoop.ScheduleRerender(boundary, FiberUpdatePriority.Normal);
+            }
+            // onExitComplete completes once the exiting set drains (the last in-flight exit finished), after
+            // the re-render that drops the ghosts is asked for, as Framer Motion's AnimatePresence forces its
+            // render before calling it. Cancelled exits (key re-entered) remove from Exiting elsewhere and do
+            // not reach here, so they never trigger it.
+            if (state.Exiting.Count == 0)
+            {
+                // Framer's safeToRemove, which runs ahead of the presence's own onExitComplete.
+                state.Registration?.Complete();
+                _ctx.CompleteExitAfterThePass(onExitComplete, boundary, fromAMotion);
+            }
         }
 
         // Plays one ghost's exits — its anchor's and its descendants' — under one wait that runs
-        // runExitComplete once the last has completed or left the tree.
-        private void DispatchPresenceExits(
+        // runExitComplete once the last has completed or left the tree. Returns whether any exit plays.
+        private bool DispatchPresenceExits(
             in PresenceExpansion pass,
             string key,
             VisualElement ghostAnchor,
@@ -2757,8 +2757,8 @@ namespace Velvet
             var inners = PresencesRunningExitsUnder(state, key);
             if (!anchorPlays && descendants.Count == 0 && inners == null)
             {
-                Settled();
-                return;
+                SettleAfterTheRemovingCommit(in pass, key, Settled);
+                return false;
             }
 
             ReconcilerContext.PresenceExitWait? wait = null;
@@ -2806,6 +2806,7 @@ namespace Velvet
             {
                 PlayDescendantExit(exit, exitWait, staggerSec);
             }
+            return true;
         }
 
         // A torn-down descendant settles the wait from inside FiberElementCleaner, which unmounting the whole
@@ -2897,6 +2898,7 @@ namespace Velvet
             if (commit != null && anchor != null)
             {
                 var wasExiting = state.Exiting.Remove(key);
+                state.QuietExits.Remove(key);
                 var wasExitComplete = state.ExitComplete.Remove(key);
                 if (wasExiting || wasExitComplete)
                 {
@@ -3597,12 +3599,9 @@ namespace Velvet
         internal static StyleTransitionConfig? ResolveEnterTransition(MotionNode? motion)
             => TryResolveVariantInitial(motion, out _, out _, out var transition) ? transition : motion?.Transition;
 
-        // The three gates that decide how a removal is treated — ShouldBlockPresenceEnters,
-        // CountAnimatedExits and the ghost gate in ExpandPresenceGhostEntry — read this so they agree with
-        // the config StartPresenceExit then plays. Disagreeing costs each of them something different,
-        // measured on a Motion whose own transition is None beside a timed exit pose: the ghost gate reaps
-        // the child before that pose's timing can play at all, the count collapses a reversed stagger to
-        // forward order, and Wait mode admits a new child while an exit is still running.
+        // CountAnimatedExits reads this, as DispatchPresenceExits does, so it agrees with the config
+        // StartPresenceExit then plays. Disagreeing, measured on a Motion whose own transition is None beside a
+        // timed exit pose, collapses a reversed stagger to forward order.
         internal static StyleTransitionConfig? ResolveExitTransition(MotionNode? motion)
             => TryResolveExitVariant(motion, out _, out _, out var transition) ? transition : motion?.Transition;
 

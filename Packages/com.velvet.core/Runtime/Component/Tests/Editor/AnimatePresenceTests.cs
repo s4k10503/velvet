@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Velvet;
 using UnityEngine.UIElements;
@@ -26,7 +27,8 @@ namespace Velvet.Tests
     /// coexists with explicit keys.</item>
     /// <item>On exit, a child with a real transition stays in the DOM until the transition completes (and is
     /// retained if re-added meanwhile), whereas a child with no transition or
-    /// <see cref="StyleTransitionConfig.None"/> is removed immediately.</item>
+    /// <see cref="StyleTransitionConfig.None"/> stays for the reconcile that removed it and leaves on the next; under
+    /// mode="wait" it holds the new child back until then.</item>
     /// <item><c>initial: false</c> suppresses the enter animation on the very first mount only — later additions
     /// still animate; the resolved Motion's <c>OnEnterComplete</c> fires immediately when the enter animation is
     /// skipped.</item>
@@ -382,6 +384,8 @@ namespace Velvet.Tests
                 "The Memo-then-Suspense content renders wrapper-less into the presence container");
         }
 
+        // GREEN_ON_BASE(characterization): the base removed every element of the range in the removing reconcile.
+        // The added reconcile is the one that drops it now.
         [Test]
         public void Given_MultiElementSuspenseChild_When_KeyExits_Then_EveryElementOfTheRangeIsRemoved()
         {
@@ -393,8 +397,9 @@ namespace Velvet.Tests
             var container = Root;
             Assume.That(container.childCount, Is.EqualTo(2), "Precondition: both Suspense content elements are present");
 
-            // Act
+            // Act — the second reconcile is the one that drops the exited child.
             Reconciler.Reconcile(Root, Tree(true), Tree(false));
+            Reconciler.Reconcile(Root, Tree(false), Tree(false));
 
             // Assert
             Assert.That(container.childCount, Is.EqualTo(0),
@@ -626,7 +631,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ChildWithoutTransition_When_Removed_Then_ElementIsRemovedImmediately()
+        public void Given_ChildWithoutTransition_When_Removed_Then_ElementStaysForThatReconcileAndLeavesOnTheNext()
         {
             // Arrange — a MotionNode with Transition=null has no exit animation to wait for.
             var initial = Presence(new MotionNode
@@ -638,28 +643,35 @@ namespace Velvet.Tests
             });
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), initial);
             var container = Root;
+            var removed = Presence((VNode)null);
 
             // Act
-            Reconciler.Reconcile(Root, initial, Presence((VNode)null));
+            Reconciler.Reconcile(Root, initial, removed);
+            var afterRemoving = container.childCount;
+            Reconciler.Reconcile(Root, removed, Presence((VNode)null));
 
             // Assert
-            Assert.That(container.childCount, Is.EqualTo(0), "Without a transition the element is removed immediately on exit");
+            Assert.That((afterRemoving, container.childCount), Is.EqualTo((1, 0)),
+                "With nothing to animate the child stays for the removing reconcile and leaves on the next");
         }
 
         [Test]
-        public void Given_TransitionConfigNone_When_Removed_Then_ElementIsRemovedImmediately()
+        public void Given_TransitionConfigNone_When_Removed_Then_ElementStaysForThatReconcileAndLeavesOnTheNext()
         {
-            // Arrange — StyleTransitionConfig.None (DurationSec 0) completes instantly, so exit is immediate.
+            // Arrange
             var initial = Presence(V.Motion(key: "a", transition: StyleTransitionConfig.None, children: Label("A")));
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), initial);
             var container = Root;
+            var removed = Presence((VNode)null);
 
             // Act
-            Reconciler.Reconcile(Root, initial, Presence((VNode)null));
+            Reconciler.Reconcile(Root, initial, removed);
+            var afterRemoving = container.childCount;
+            Reconciler.Reconcile(Root, removed, Presence((VNode)null));
 
             // Assert
-            Assert.That(container.childCount, Is.EqualTo(0),
-                "StyleTransitionConfig.None completes immediately, so the element is removed at once");
+            Assert.That((afterRemoving, container.childCount), Is.EqualTo((1, 0)),
+                "StyleTransitionConfig.None animates nothing, so the child stays for the removing reconcile and leaves on the next");
         }
 
         [Test]
@@ -692,6 +704,25 @@ namespace Velvet.Tests
 
             // Assert — mode=wait holds B back while A exits, so only the exiting A is present.
             Assert.That(Root.childCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_WaitModeAndAnExitWithNothingToAnimate_When_KeySwaps_Then_TheNewChildMountsOnTheReconcileThatDropsTheOld()
+        {
+            // Arrange
+            VNode[] Show(string key) => PresenceWait(V.Motion(key: key, transition: StyleTransitionConfig.None,
+                children: Label(key)));
+            var showA = Show("a");
+            var showB = Show("b");
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), showA);
+
+            // Act
+            Reconciler.Reconcile(Root, showA, showB);
+            var afterSwap = LabelTexts();
+            Reconciler.Reconcile(Root, showB, Show("b"));
+
+            // Assert — mode=wait renders only the exiting child until the render its settled exit asks for
+            Assert.That((afterSwap, LabelTexts()), Is.EqualTo(("a", "b")));
         }
 
         [Test]
@@ -1109,6 +1140,8 @@ namespace Velvet.Tests
             new VNode[] { V.AnimatePresence(children: children, mode: AnimatePresenceMode.Wait) };
 
         private static VNode[] Label(string text) => new VNode[] { V.Label(text: text) };
+
+        private string LabelTexts() => string.Join(",", Root.Query<UnityEngine.UIElements.Label>().ToList().Select(label => label.text));
 
         private static bool HasAnyClass(VisualElement element, string[] classes)
         {

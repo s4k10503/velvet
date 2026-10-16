@@ -82,13 +82,21 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 });
 ```
 
-- `onExitComplete` runs when the last removed child is gone. Where the render that removed it had no exit to play,
-  that is the passive-effect flush after the render, which runs after the layout effects of its commit, as
-  Framer's `PresenceChild` calls it from an effect; a removal that render never committed completes nothing.
-  Where an exit played, it is the end of the last exit's animation. An error it throws goes to the nearest error
-  boundary at or above the component rendering the presence, except where an exit played or a `V.Motion` child
-  was removed: Framer calls it from that exit's promise, so no boundary takes it and it is logged. An error from
-  a Motion's `onEnterComplete` is logged the same way, as Framer's `onAnimationComplete` runs in a promise.
+- A removed child leaves on a render after the one that removed it, never in that render, as Framer's
+  `AnimatePresence` drops a child only on the render its exit's completion asks for. A child with nothing to
+  animate — no `V.Motion`, or a `StyleTransitionConfig.None` or zero-duration exit — stays for the commit that
+  removed it, and its exit completes in the passive-effect flush after that render, which runs after the layout
+  effects of its commit: Framer completes a child holding no motion component from `PresenceChild`'s effect, and
+  a motion component's exit with nothing to animate from that exit's promise. A removal that render never
+  committed completes nothing, and the next render that removes the child starts its exit again. Under
+  `AnimatePresenceMode.Wait` such a child holds the new children back until that later render, as it does while
+  an exit animates.
+- `onExitComplete` runs when the last removed child's exit completes, ahead of the render that drops it: the
+  passive-effect flush above, or the end of the last exit's animation. An error it throws goes to the nearest
+  error boundary at or above the component rendering the presence, except where an exit played or the child
+  whose exit completed last holds a `V.Motion`: Framer calls it from that exit's promise, so no boundary takes it
+  and it is logged. An error from a Motion's `onEnterComplete` is logged the same way, as Framer's
+  `onAnimationComplete` runs in a promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the
   parent, so put `flex` / `gap-*` / wrapping on the parent.
 - **Framer's splice semantics:** while a ghost exits, surviving siblings keep their positions;
@@ -841,9 +849,8 @@ Three consequences worth knowing:
   to the `Fade` preset's timing, so even a bare Motion tweens its label swaps. Pass
   `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
-  means exactly that pose animates and the rest are instant. Whether a removal is held as an
-  exiting ghost at all is decided by the same resolved config, so such an exit is not dropped for
-  the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
+  means exactly that pose animates and the rest are instant. Whether a removal animates is
+  decided by the same resolved config, so such an exit plays the pose despite the node's `None`. A label change into a `None` pose, or one whose bezier transition has zero
   duration, while an earlier swap is still moving the Motion lands the properties that pose names
   within two frames, and leaves the rest moving. One exception: a value the pose repeats from a moving
   tween's target in another kind of spelling — a stylesheet class for an arbitrary value, such as

@@ -10,7 +10,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what a presence keeps of a key it removed at once in a render an abort stopped before its removals:
+    /// Specifies what a presence keeps of a key still exiting through a render an abort stopped before its removals:
     /// the exit wait the key still held, which the next panel frame settles when a descendant's teardown has asked it
     /// to, so that the key's exit still completes.
     /// </summary>
@@ -45,8 +45,10 @@ namespace Velvet.Tests
             _sim = null;
         }
 
+        // GREEN_ON_BASE(characterization): the merge base removed the key at once in the aborted render and put its wait
+        // back. The ghost that render re-emits now keeps the wait without being removed.
         [Test]
-        public void Given_AKeyWhoseOnlyExitWasATornDownDescendants_When_AnAbortedRenderRemovesItAtOnce_Then_ThePresenceKeepsItsExitWait()
+        public void Given_AKeyWhoseOnlyExitWasATornDownDescendants_When_AnAbortedRenderReEmitsItsGhost_Then_ThePresenceKeepsItsExitWait()
         {
             // Arrange — the key's exit is under way, and its descendant is torn down with the settle left to the next frame
             using var mounted = V.Mount(_sim.rootVisualElement, V.Component(WaitHostRender, key: "host"), CaughtErrors.Unlogged);
@@ -55,7 +57,7 @@ namespace Velvet.Tests
             s_setInnerShown.Invoke(false);
             mounted.FlushStateForTest();
 
-            // Act — the render that finds nothing left to play removes the key at once, and aborts
+            // Act — a render before that frame re-emits the key's ghost, and aborts
             s_setHostTick.Invoke(2);
             mounted.FlushStateForTest();
 
