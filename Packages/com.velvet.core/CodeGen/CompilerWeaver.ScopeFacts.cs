@@ -57,6 +57,8 @@ namespace Velvet.CodeGen
 
             public Instruction[] Instructions { get; }
 
+            public ModuleDefinition Module => _body.Method.Module;
+
             public int[] Depths { get; }
 
             public int Boundary { get; }
@@ -202,9 +204,8 @@ namespace Velvet.CodeGen
                 var receiver = FindClosureLocal(_body, field.DeclaringType);
                 var type = receiver == null ? null : InCallerTerms(field.FieldType, null, receiver.VariableType as GenericInstanceType);
                 if (receiver == null || type == null || !IsBoxable(type)) return null;
-                var comparable = direct
-                    ? CanBeCompared(field, type, region)
-                    : !_lambdaWritten.Contains(field) && StoresPrecede(field, region.Start);
+                var comparable = !_lambdaWritten.Contains(field)
+                    && (direct ? CanBeCompared(field, type, region) : StoresPrecede(field, region.Start));
                 if (!comparable) return null;
                 FieldReference reference = receiver.VariableType is GenericInstanceType instance
                     ? new FieldReference(field.Name, field.FieldType, instance)
@@ -234,7 +235,7 @@ namespace Velvet.CodeGen
             {
                 if (_spans.TryGetValue(local, out var span) && span.First >= region.Start && span.Last <= region.End) return true;
                 var live = LiveIn(local);
-                return !live[region.Start] && !live[region.End + 2];
+                return !live[region.Start] && !live[region.End + 1];
             }
 
             // Whether a read of the local can be reached from each instruction before a store to it. A store

@@ -39,6 +39,7 @@ namespace Velvet.Tests
             s_builds.Clear();
             s_ambient = 0;
             s_setRightText = null;
+            s_setLabel = null;
             s_seen.Clear();
             s_setLeft = null;
             s_setRight = null;
@@ -63,6 +64,7 @@ namespace Velvet.Tests
         private static readonly Dictionary<string, int> s_builds = new();
         private static int s_ambient;
         private static Action<string> s_setRightText;
+        private static Action<string> s_setLabel;
         private static readonly List<object> s_seen = new();
         private static Action<int> s_setLeft;
         private static Action<int> s_setRight;
@@ -127,6 +129,23 @@ namespace Velvet.Tests
             Action onClick = () => s_seen.Add(count);
             s_seen.Add(onClick);
             return V.Div("root", V.Button(name: "add", onClick: onClick), V.Label(name: "other", text: other));
+        }
+
+        [Component]
+        private static VNode HandlerInABlockScope()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            var (label, setLabel) = Hooks.UseState("0");
+            var (noise, setNoise) = Hooks.UseState("0");
+            s_setCount = setCount;
+            s_setLabel = setLabel;
+            s_setRightText = setNoise;
+            {
+                var inner = label;
+                Action onClick = () => s_seen.Add(inner + count);
+                s_seen.Add(onClick);
+                return V.Div("root", V.Button(name: "add", onClick: onClick), V.Label(name: "noise", text: noise));
+            }
         }
 
         [Component]
@@ -404,6 +423,19 @@ namespace Velvet.Tests
                 V.Label(name: "other", text: other.ToString()));
         }
 
+        private static System.Threading.Tasks.TaskCompletionSource<int> s_source = new();
+
+        [Component]
+        private static VNode ReadsATaskGetter()
+        {
+            var task = Hooks.UseMemo(() => s_source.Task, "task");
+            var (other, setOther) = Hooks.UseState(0);
+            s_setOther = setOther;
+            return V.Div("root",
+                V.Label(name: "done", text: task.IsCompleted.ToString()),
+                V.Label(name: "other", text: other.ToString()));
+        }
+
         [Component]
         private static VNode ReadsAStatic()
         {
@@ -502,6 +534,38 @@ namespace Velvet.Tests
 
             // Act
             s_setCount(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ReferenceEquals(s_seen[0], s_seen[^1]), Is.False);
+        }
+
+        [Test]
+        public void Given_AHandlerInABlockScope_When_AnotherTextChanges_Then_TheRenderHandsTheSameDelegate()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HandlerInABlockScope, key: "handler"));
+
+            // Act
+            s_setRightText("1");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ReferenceEquals(s_seen[0], s_seen[^1]), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the delegate afresh on every render, so it hands another
+        // one when the text changes too.
+        // What it pins is a changed copy reaching the gate of the lambda: emptying `plan.Deps.SelectMany(DependencyStore)`
+        // in `BuildScopeGate` serves the first delegate again.
+        [Test]
+        public void Given_AHandlerInABlockScope_When_TheTextItCopiedChanges_Then_TheRenderHandsAnotherDelegate()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HandlerInABlockScope, key: "handler"));
+
+            // Act
+            s_setLabel("1");
             mounted.FlushStateForTest();
 
             // Assert
@@ -636,7 +700,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(Builds("attempt"), Is.EqualTo(3), "The committed deps are those of the settled attempt, not of the one that was discarded");
+            Assert.That(Builds("attempt"), Is.EqualTo(3), "Three builds are the mount, the discarded attempt and the settled one; the render that changes another text adds none");
         }
 
         [Test]
@@ -652,7 +716,24 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(Builds("attempt"), Is.EqualTo(2), "The attempt the gate hit over left no staging for the settle to promote");
+            Assert.That(Builds("attempt"), Is.EqualTo(2), "Two builds are the mount and the attempt the gate then hit over; the render that changes another text adds none");
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the child afresh on every miss, so it shows the settled text too.
+        // What it pins is each attempt of a render starting its scopes from what is committed: removing
+        // `scope.NextCachedResult = scope.CachedResult;` from `RestageScopes` commits the node the discarded attempt built.
+        [Test]
+        public void Given_ATextChildStagedByAnAttemptTheGateThenHitsOver_When_TheRenderSettles_Then_ItShowsTheTextThatSettled()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RevertedTextAttempt, key: "reverted-text"));
+
+            // Act
+            s_setPhaseText("b");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("attempt"), Is.EqualTo("a"));
         }
 
         // GREEN_ON_BASE(characterization): the base builds the called component's children as well.
@@ -775,7 +856,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AChildInTheArmAJumpEnters_When_AnotherStateChanges_Then_ItIsNotBuiltAgain()
+        public void Given_AChildInTheLastArmOfAConditionalThatIsNoScope_When_AnotherStateChanges_Then_ItIsNotBuiltAgain()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ChildInAConditionalArm, key: "arm"));
@@ -937,8 +1018,27 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base rebuilds every child on a miss, so it shows the current value too.
-        // What it pins is a mutable static staying out of every scope: `return true;` in place of the last return of
-        // `ScanField` caches the child on `input` alone, and it shows the first value.
+        // What it pins is a property read that answers from outside the render staying out of every scope: `return true;`
+        // at the top of `IsPlainGetter` caches the child on the task alone, and it shows the first value.
+        [Test]
+        public void Given_AChildReadingATaskProperty_When_AnotherStateChanges_Then_ItShowsTheCurrentValue()
+        {
+            // Arrange
+            s_source = new System.Threading.Tasks.TaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(ReadsATaskGetter, key: "task"));
+            s_source.SetResult(1);
+
+            // Act
+            s_setOther(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelText("done"), Is.EqualTo("True"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base rebuilds every child on a miss, so it shows the current value too.
+        // What it pins is a mutable static staying out of every scope: `return true;` in place of the return that
+        // answers for a static field in `ScanField` caches the child on `input` alone, and it shows the first value.
         [Test]
         public void Given_AChildReadingAMutableStatic_When_AnotherStateChanges_Then_ItShowsTheCurrentValue()
         {

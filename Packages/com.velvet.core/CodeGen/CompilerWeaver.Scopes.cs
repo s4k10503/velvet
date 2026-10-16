@@ -32,10 +32,9 @@ namespace Velvet.CodeGen
     //   must be read at once (see ReadsInPlace).
     //   It calls no member of a Ref / MutableRef and no method taking one, and reads no hook value from UseService
     //   or from a custom hook unless value-like: a render reading through one has no value to compare.
-    //   It reads no mutable static, and calls only a V factory, a constructor, an instance property accessor
-    //   outside the namespaces named in StatefulAccessorNamespaces, or a member of the BCL namespaces named in
-    //   PureNamespaces, other than a member of the types named in AmbientStateTypes and the static members of those
-    //   in AmbientStateStaticTypes.
+    //   It reads no mutable static, and calls only a V factory, a constructor, a plain property read (see
+    //   IsPlainGetter), or a member of the BCL namespaces named in PureNamespaces, other than a member of the types
+    //   named in AmbientStateTypes and the static members of those in AmbientStateStaticTypes.
     //   It reads no reference a call outside every scope is given (see ReferencesGivenToCalls): that call may write
     //   through it, and the scope would hold what it built from the object before.
     //   Control flow in it stays inside it and moves forward, nothing outside jumps into it, and nothing
@@ -78,21 +77,14 @@ namespace Velvet.CodeGen
             "System.Runtime.CompilerServices",
         };
 
-        // Instance property accessors are read like the value they belong to, except in these namespaces: a Stopwatch
-        // advances without a render, so a child reading one is built on every render the gate misses.
-        private static readonly HashSet<string> StatefulAccessorNamespaces = new()
-        {
-            "System.Diagnostics", "System.Threading",
-        };
-
-        // No call on these types is repeatable: an instance of Random advances its generator, and a member of
-        // Environment reads the process. The static members of the types below are not repeatable either: they read
+        // No call on these types is repeatable: an instance of Random advances its generator, a member of
+        // Environment reads the process, and a WeakReference or a Lazy answers from the collector or the first reader. The static members of the types below are not repeatable either: they read
         // the clock (DateTime.Now, DateTimeOffset.UtcNow), the time zone (TimeZoneInfo.Local) or mint a value
         // (Guid.NewGuid). Their instance members are not excluded. A type not listed is covered by the rule that
         // render code is pure.
         private static readonly HashSet<string> AmbientStateTypes = new()
         {
-            "System.Random", "System.Environment",
+            "System.Random", "System.Environment", "System.WeakReference", "System.WeakReference`1", "System.Lazy`1",
         };
 
         private static readonly HashSet<string> AmbientStateStaticTypes = new()
@@ -215,8 +207,6 @@ namespace Velvet.CodeGen
         private static IEnumerable<Instruction> JumpTargets(Instruction instr)
             => instr.Operand as Instruction[] ?? (instr.Operand is Instruction target ? new[] { target } : System.Array.Empty<Instruction>());
 
-        // Outermost first, so that a scope is always planned before the scopes inside it, and a value a scope stores
-        // is a scope's output before the scopes reading it.
         private static List<ScopeCandidate> FindCandidates(ScopeFacts facts)
         {
             var found = new Dictionary<ElementRegion, ScopeCandidate>();
@@ -349,7 +339,7 @@ namespace Velvet.CodeGen
         // an object the body can write to.
         private static bool IsImmutableType(TypeReference type)
         {
-            if (IsArrayOrIndirection(type)) return false;
+            if (IsArrayOrIndirection(type) || HoldsNodes(type)) return false;
             // MUTANT_SURVIVES(unreachable, clause removed): a ref struct is built in place on its local, so no expression a candidate stores yields one; Given_ASpanBuiltOnceFromState_When_Woven_Then_NoInstructionBuildsItOnTheStack pins the build.
             if (IsValueLike(type) && IsBoxable(type)) return true;
             if (ReadOnlyInterfaces.Contains(ElementOf(type).FullName)) return true;
@@ -363,6 +353,28 @@ namespace Velvet.CodeGen
             return false;
         }
 
+        // FiberTreeReturn keeps the node in a node scope's slot alive, and the nodes of a UseMemo or UseRef value, but
+        // reads nothing else a slot holds. A value scope holding a node in any form (a tuple of them, a lookup
+        // grouping them, a struct with a node field, a sequence not yet enumerated) would be swept as retired while
+        // the slot still holds it, so no value scope keeps a type that can.
+        private static bool HoldsNodes(TypeReference type)
+        {
+            if (type is ArrayType array) return HoldsNodes(array.ElementType);
+            if (type is GenericParameter || type is TypeSpecification and not GenericInstanceType) return true;
+            if (type.IsPrimitive || type.MetadataType == MetadataType.String) return false;
+            if (TryResolve(() => type.Resolve()) is not { } definition) return true;
+            if (definition.IsEnum || definition.BaseType?.FullName is "System.MulticastDelegate") return false;
+            var arguments = type is GenericInstanceType instance ? instance.GenericArguments : null;
+            if (arguments != null && arguments.Any(HoldsNodes)) return true;
+            if (definition.IsInterface) return arguments == null || !ReadOnlyInterfaces.Contains(definition.FullName);
+            // A class may be a node, or hold one in a field a subclass adds; only a struct is known by its own fields.
+            if (!definition.IsValueType) return true;
+            return definition.Fields.Where(field => !field.IsStatic).Any(field => HoldsNodes(
+                field.FieldType is GenericParameter parameter && arguments != null && definition.GenericParameters.IndexOf(parameter) is var at and >= 0
+                    ? arguments[at]
+                    : field.FieldType));
+        }
+
         // The references a call outside every scope is given: a call the weaver cannot take for a function of its
         // arguments may write through any of them, so a scope reading one holds what it built from the object as it
         // was. The arguments are the references read by the expression the call ends, and a variable shared by two
@@ -374,7 +386,7 @@ namespace Velvet.CodeGen
             {
                 var instr = facts.Instructions[i];
                 if (instr.OpCode.Code is not (Code.Call or Code.Callvirt) || instr.Operand is not MethodReference method
-                    || IsRepeatableCall(instr, method))
+                    || IsRepeatableCall(facts, instr, method))
                 {
                     continue;
                 }
@@ -428,7 +440,7 @@ namespace Velvet.CodeGen
 
         private static bool RepeatsEnclosingScope(List<ScopePlan> accepted, ElementRegion region, List<DepSource> deps)
         {
-            // MUTANT_SURVIVES(equivalent, boundary): a region enclosing another starts earlier and ends later, so equal bounds never decide.
+            // MUTANT_SURVIVES(equivalent, boundary): a region sharing its end with an accepted one is refused before this runs, so equal ends never reach it.
             var outer = accepted.LastOrDefault(each => each.Region.Start <= region.Start && each.Region.End >= region.End);
             return outer != null && outer.Deps.Select(dep => dep.Key).ToHashSet().SetEquals(deps.Select(dep => dep.Key));
         }
@@ -473,8 +485,7 @@ namespace Velvet.CodeGen
             }
         }
 
-        private static bool ScanLocal(ScopeFacts facts, int index, VariableDefinition local, ElementRegion region,
-            ScopeScan scan)
+        private static bool ScanLocal(ScopeFacts facts, int index, VariableDefinition local, ElementRegion region, ScopeScan scan)
         {
             var code = facts.Instructions[index].OpCode.Code;
             if (facts.IsPrivateTo(local, region)) return true;
@@ -547,7 +558,7 @@ namespace Velvet.CodeGen
             {
                 scan.HasCall = true;
                 scan.OnlyFactoryCalls &= method.DeclaringType.FullName == FactoryTypeFullName;
-                if (!IsRepeatableCall(instr, method)) return false;
+                if (!IsRepeatableCall(facts, instr, method)) return false;
             }
             if (instr.OpCode.Code is Code.Ldftn or Code.Ldvirtftn && IsClosureClass(method.DeclaringType)
                 && !ScanClosureCreation(facts, method, region, scan))
@@ -577,7 +588,7 @@ namespace Velvet.CodeGen
 
         // A call taken to be a function of its arguments and of what they hold; the header says what that takes on
         // trust. Any other may read state no dependency names, which a miss of the gate alone would have refreshed.
-        private static bool IsRepeatableCall(Instruction instr, MethodReference method)
+        private static bool IsRepeatableCall(ScopeFacts facts, Instruction instr, MethodReference method)
         {
             var declaring = method.DeclaringType;
             while (declaring is TypeSpecification specification) declaring = specification.ElementType;
@@ -585,11 +596,23 @@ namespace Velvet.CodeGen
                 || (!method.HasThis && AmbientStateStaticTypes.Contains(declaring.FullName));
             return instr.OpCode.Code == Code.Newobj
                 || declaring.FullName == FactoryTypeFullName
-                || (method.HasThis && !StatefulAccessorNamespaces.Contains(declaring.Namespace)
-                    && (method.Name.StartsWith("get_", System.StringComparison.Ordinal)
-                        || method.Name.StartsWith("set_", System.StringComparison.Ordinal)))
-                || (PureNamespaces.Contains(declaring.Namespace) && !ambient);
+                || (PureNamespaces.Contains(declaring.Namespace) && !ambient)
+                || IsPlainGetter(facts, method);
         }
+
+        // A property read that is a function of the object it is read from: a member of a type declared in the
+        // assembly being woven, or an auto-property of any type. Another getter (`Rigidbody.velocity`,
+        // `Task.IsCompleted`, `Store<T>.Current`) answers from state the scope compares nothing of.
+        private static bool IsPlainGetter(ScopeFacts facts, MethodReference method)
+        {
+            if (!method.HasThis || !method.Name.StartsWith("get_", System.StringComparison.Ordinal)) return false;
+            if (TryResolve(() => method.Resolve()) is not { } definition) return false;
+            return ReferenceEquals(definition.Module, facts.Module) || IsAutoPropertyGetter(definition);
+        }
+
+        private static bool IsAutoPropertyGetter(MethodDefinition getter)
+            => getter.HasBody && getter.Body.Instructions.Select(instr => instr.OpCode.Code).SequenceEqual(new[] { Code.Ldarg_0, Code.Ldfld, Code.Ret })
+                && getter.Body.Instructions[1].Operand is FieldReference field && field.Name.EndsWith(">k__BackingField", System.StringComparison.Ordinal);
 
         private static bool TouchesRef(MethodReference method)
             => IsRefType(method.DeclaringType) || method.Parameters.Any(parameter => IsRefType(parameter.ParameterType));
