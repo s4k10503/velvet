@@ -7,6 +7,6 @@
   `-mt-2 mt-1` leave the margin to the class, `bg-[#ff0000] bg-red-500` gives red, `border-s-2 border-l-4` gives
   a 4px left border (it gave 2px) and `rounded-lg rounded-[2px]` gives `rounded-lg` (it gave 2px). Where the inline
   token is the one emitted later it still wins (`w-4 w-[10px]` gives 10px). An inline token that the later classes
-  write in full is no longer written; the class stays on the element. A token they write only in part stays whole, as it
-  did: `border-[3px] border-l-4` still gives every side the bracket. Variants, the `!` modifier and two utilities that
-  both resolve inline are unchanged.
+  write in full is no longer written; the class stays on the element. One they write in part keeps the rest:
+  `border-[3px] border-l-4` gives the left border 4px and the other sides 3px, where the bracket gave all four 3px.
+  Variants, the `!` modifier and two utilities that both resolve inline are unchanged.

@@ -184,8 +184,8 @@ whichever is written first. Tailwind sorts the candidate names by character code
 later one it keeps the property: `w-4 w-[10px]` gives 10px, and `ml-8 ms-4` gives 32px in either order, as above.
 
 An inline token that the classes Tailwind emits after it write in full is left out of the class list, so it writes no
-style; taking the class away brings it back. A token those classes write only in part stays whole. For the spacing,
-size, inset and radius families the class is then written inline (above), and for a border side width it is not:
-`border-[3px] border-l-4` leaves the bracket on every side. Only plain base tokens take part. A variant, an important
-token and a class gated on a state are ranked by their own layer, and two utilities that both resolve inline are
-ordered only where the sections above say so.
+style; taking the class away brings it back. One they write only in part keeps the rest: for the spacing, size, inset
+and radius families the class is written inline (above), and a border width is cut down to the sides the classes leave,
+so `border-[3px] border-l-4` and `border-l-4 border-[3px]` give the left side 4px and the other three 3px. Only plain
+base tokens take part. A variant, an important token and a class gated on a state are ranked by their own layer, and
+two utilities that both resolve inline are ordered only where the sections above say so.

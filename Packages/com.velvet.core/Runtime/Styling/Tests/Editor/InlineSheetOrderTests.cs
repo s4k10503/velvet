@@ -1,4 +1,8 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 
@@ -109,6 +113,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That((element.style.borderLeftWidth.keyword, element.ClassListContains("border-l-4")),
                 Is.EqualTo((StyleKeyword.Null, true)));
+        }
+
+        [TestCase("border-[3px] border-l-4")]
+        [TestCase("border-l-4 border-[3px]")]
+        public void Given_AnInlineBorderWidthAndTheClassOfOneSide_When_Reconciled_Then_TheClassHoldsThatSideAndTheTokenTheRest(
+            string className)
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+
+            // Act
+            var element = MountOne(reconciler, root, className);
+
+            // Assert
+            var style = element.style;
+            Assert.That(
+                (style.borderTopWidth.value, style.borderRightWidth.value, style.borderBottomWidth.value,
+                    style.borderLeftWidth.keyword, element.ClassListContains("border-l-4")),
+                Is.EqualTo((3f, 3f, 3f, StyleKeyword.Null, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base normaliser already writes ml-8 inline and drops ms-4.
@@ -257,6 +281,74 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
         }
 
+        [TestCase("border-[3px] border-l-4", "border-t-[3px] border-r-[3px] border-b-[3px] border-l-4")]
+        [TestCase("border-l-4 border-[3px]", "border-l-4 border-t-[3px] border-r-[3px] border-b-[3px]")]
+        [TestCase("border-[3px] border-l-4 border-t-2", "border-r-[3px] border-b-[3px] border-l-4 border-t-2")]
+        [TestCase("border-[3px] border-x-2", "border-t-[3px] border-b-[3px] border-x-2")]
+        public void Given_AnInlineBorderWidthTheLaterClassesWriteInPart_When_ClassNamesAreParsed_Then_ItIsCutDownToTheSidesTheyLeave(
+            string className, string expected)
+        {
+            // Act
+            var tokens = V.ParseClassNames(className);
+
+            // Assert
+            Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
+        }
+
+        private static IEnumerable<(string Name, StyleUtilityRule Rule)> BundledClasses()
+        {
+            var table = (IDictionary)typeof(StyleUtilityProperties)
+                .GetField("ByClassName", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            foreach (var name in table.Keys.Cast<string>())
+            {
+                StyleUtilityProperties.TryGet(name, out var rule);
+                yield return (name, rule);
+            }
+        }
+
+        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the inline families' longhand table, which agree on the base too.
+        // Add `.border-t-red-500 { border-top-color: red; }` to `_borders.uss`, regenerate `StyleUtilityProperties.g.cs`, and this is what reddens.
+        [Test]
+        public void Given_TheMultiLonghandInlineFamiliesNoOtherPassOrders_When_ComparedWithTheBundledClasses_Then_NoClassWritesPartOfOne()
+        {
+            // Arrange
+            var families = Enum.GetValues(typeof(ArbitraryProperty)).Cast<ArbitraryProperty>()
+                .Where(property => property != ArbitraryProperty.BorderWidth
+                    && !StyleArbitraryValueResolver.IsSpacingOrRadiusProperty(property))
+                .ToArray();
+
+            // Act
+            var partial = BundledClasses()
+                .Where(utility => utility.Rule.Gate == StyleUtilityGate.None)
+                .SelectMany(utility => families
+                    .Where(property =>
+                    {
+                        var written = StyleArbitraryLonghands.Of(property);
+                        return utility.Rule.Properties.Overlaps(written)
+                            && utility.Rule.Properties.Union(written) != utility.Rule.Properties;
+                    })
+                    .Select(property => utility.Name + " writes part of " + property))
+                .ToArray();
+
+            // Assert
+            Assert.That(string.Join("; ", partial), Is.Empty);
+        }
+
+        // GREEN_ON_BASE(construction): both sides here are the bundled sheets and the inline dispatch gate, which agree on the base too.
+        // Add `.ms-4 { margin-left: 1px; }` to `_spacing.uss`, regenerate `StyleUtilityProperties.g.cs`, and this is what reddens.
+        [Test]
+        public void Given_TheBundledClassNames_When_AskedWhetherTheyResolveInline_Then_NoneDoes()
+        {
+            // Act
+            var claimed = BundledClasses()
+                .Select(utility => utility.Name)
+                .Where(StyleArbitraryValueResolver.IsInlineResolved)
+                .ToArray();
+
+            // Assert
+            Assert.That(string.Join("; ", claimed), Is.Empty);
+        }
+
         // GREEN_ON_BASE(characterization): the base rewrites or drops nothing for these, so each list reaches the reconciler as written.
         // Each is a pair where the inline token already holds what Tailwind gives it, or one ranked by its own layer
         // (a variant, an important token, a class gated on a pseudo-class) or one that writes no longhand the
@@ -272,6 +364,9 @@ namespace Velvet.Tests
         [TestCase("bg-[#ffffff] hover-bg-surface")]
         [TestCase("blur-[4px] w-px")]
         [TestCase("w-px blur-sm")]
+        [TestCase("border-[3px] border-2")]
+        [TestCase("border-[3px] w-px")]
+        [TestCase("-border-[3px] border-l-4")]
         public void Given_AnInlineTokenNoLaterClassOutranks_When_ClassNamesAreParsed_Then_TheyAreAsWritten(string className)
         {
             // Act
