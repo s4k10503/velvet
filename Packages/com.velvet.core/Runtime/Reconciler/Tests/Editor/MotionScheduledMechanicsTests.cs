@@ -4384,9 +4384,37 @@ namespace Velvet.Tests
             // Act
             var blocks = GCAllocationProbe.MedianBlocksDuring(read);
 
-            // Assert — none, where the canary's are counted, and the rules' percent read.
-            Assert.That((blocks, GCAllocationProbe.MedianBlocksDuring(canary) > 0, radii[0].unit),
-                Is.EqualTo((0, true, LengthUnit.Percent)));
+            // Assert — none, where the canary's are counted, with the rules' percent read and the other's transition still
+            // running as it was read.
+            var running = (bool)EngineMember.HasRunningStyleAnimation.ResolveMethod()
+                .Invoke(turning, new[] { EngineMember.BorderTopLeftRadiusPropertyId.ResolveField().GetValue(null) });
+            Assert.That((blocks, GCAllocationProbe.MedianBlocksDuring(canary) > 0, radii[0].unit, running),
+                Is.EqualTo((0, true, LengthUnit.Percent, true)));
+        }
+
+        [Test]
+        public void Given_ALeadMixingItsRotate_When_ItsOwnRotateIsReadAgain_Then_NothingIsAllocated()
+        {
+            // Arrange — "b" taking the id from "a" at rotate-[40deg], mixing its rotate from "a"'s to its own, which no
+            // inline value gives, so that it is read off its rules; one read to warm it, and a canary allocating a known
+            // array.
+            s_aClasses = "rotate-[40deg]";
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 15; i++) Tick();
+            var b = Root.Q<VisualElement>("b");
+            var projection = mounted.Root.Reconciler.Context.LayoutIdProjections[b];
+            Action read = () => LayoutIdLook.OwnRotate(b, projection, 0f);
+            read();
+            Action canary = () => GC.KeepAlive(new byte[16]);
+            canary();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(read);
+
+            // Assert — none, where the canary's are counted, the projection writing the rotate with no inline value of
+            // "b"'s own under it.
+            Assert.That((blocks, GCAllocationProbe.MedianBlocksDuring(canary) > 0, projection.WritesRotate,
+                projection.OwnInlineRotate.keyword), Is.EqualTo((0, true, true, StyleKeyword.Null)));
         }
 
         [Test]

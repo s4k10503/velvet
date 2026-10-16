@@ -147,20 +147,25 @@ namespace Velvet
         // Each corner's reader gives a NaN length where the element's style is not cached.
         private static Func<VisualElement, Length>[]? CompileRadii()
         {
-            if (s_style == null || s_hash == null || s_tryGet == null || Array.IndexOf(s_radii, null) >= 0) return null;
+            var readers = Array.ConvertAll(s_radii, radius => radius == null ? null : Compile(radius, new Length(float.NaN)));
+            return Array.IndexOf(readers, null) >= 0 ? null : readers!;
+        }
+
+        // A reader of one member of the element's cached style, giving fallback where the style is not cached; null where
+        // the members it goes through do not resolve or it cannot be compiled.
+        private static Func<VisualElement, T>? Compile<T>(PropertyInfo member, T fallback)
+        {
+            if (s_style == null || s_hash == null || s_tryGet == null) return null;
             try
             {
-                return Array.ConvertAll(s_radii, radius =>
-                {
-                    var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
-                    var style = System.Linq.Expressions.Expression.Variable(s_style.FieldType, "style");
-                    var hash = System.Linq.Expressions.Expression.Field(System.Linq.Expressions.Expression.Field(element, s_style), s_hash);
-                    var body = System.Linq.Expressions.Expression.Block(new[] { style },
-                        System.Linq.Expressions.Expression.Condition(System.Linq.Expressions.Expression.Call(s_tryGet, hash, style),
-                            System.Linq.Expressions.Expression.Property(style, radius!),
-                            System.Linq.Expressions.Expression.Constant(new Length(float.NaN))));
-                    return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, Length>>(body, element).Compile();
-                });
+                var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
+                var style = System.Linq.Expressions.Expression.Variable(s_style.FieldType, "style");
+                var hash = System.Linq.Expressions.Expression.Field(System.Linq.Expressions.Expression.Field(element, s_style), s_hash);
+                var body = System.Linq.Expressions.Expression.Block(new[] { style },
+                    System.Linq.Expressions.Expression.Condition(System.Linq.Expressions.Expression.Call(s_tryGet, hash, style),
+                        System.Linq.Expressions.Expression.Property(style, member),
+                        System.Linq.Expressions.Expression.Constant(fallback, typeof(T))));
+                return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, T>>(body, element).Compile();
             }
             catch (Exception)
             {
@@ -169,9 +174,22 @@ namespace Velvet
         }
 #endif
 
-        // The rotate the rules declare, in degrees; NaN where the cached style cannot be read.
-        public static float Rotate(VisualElement element) =>
-            Of(element) is { } style && TryReadRotate(style, out var rotate) ? rotate.angle.ToDegrees() : float.NaN;
+        // The rotate the rules declare, in degrees; NaN where the cached style cannot be read. Read by an accessor compiled
+        // once, as Radius is, since a layoutId lead mixing its rotate reads it on every pass
+        // (Given_ALeadMixingItsRotate_When_ItsOwnRotateIsReadAgain_Then_NothingIsAllocated).
+        public static float Rotate(VisualElement element)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledRotate != null) return s_compiledRotate(element).angle.ToDegrees();
+#endif
+            return Of(element) is { } style && TryReadRotate(style, out var rotate) ? rotate.angle.ToDegrees() : float.NaN;
+        }
+
+#if !ENABLE_IL2CPP
+        // A NaN angle where the element's style is not cached.
+        private static readonly Func<VisualElement, Rotate>? s_compiledRotate =
+            s_rotate == null ? null : Compile<Rotate>(s_rotate, new Rotate(new Angle(float.NaN)));
+#endif
 
         public static bool TryReadOpacity(object style, out float opacity)
         {
