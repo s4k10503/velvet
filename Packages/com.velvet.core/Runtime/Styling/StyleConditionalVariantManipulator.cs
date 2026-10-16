@@ -4,11 +4,12 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Toggles "ambient condition" variant payloads that do not depend on element-local pointer/focus
-    // state: responsive min-width variants (sm:/md:/lg:/xl:/2xl:), driven by the resolved responsive-scope
+    // state: responsive min-width variants (sm:/md:/lg:/xl:/2xl:), driven by the resolved viewport
     // width, and dark:, driven by VelvetTheme.IsDark. Mirrors StyleVariantManipulator's lifecycle (tracked in
     // ReconcilerContext.ConditionalVariantManipulators, removed on cleanup / dispose). Responsive
-    // breakpoints watch the width source resolved at attach (the nearest responsive-scope ancestor, else the
+    // breakpoints watch the width source resolved at attach (the nearest ViewportClass ancestor, else the
     // panel root) via a GeometryChangedEvent registered on that source, attached/detached with the element.
+    // Container variants (@md: and the rest) belong to StyleContainerVariantManipulator.
     // Payloads are USS classes or arbitrary values, the same as the other variant manipulators.
     internal sealed class StyleConditionalVariantManipulator : Manipulator
     {

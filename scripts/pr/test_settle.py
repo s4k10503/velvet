@@ -1297,7 +1297,9 @@ class CampaignMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [
             "it carries the automerge label and no mutation.yml run has measured 0000000: a "
-            "hand-off dispatches one once .github/workflows/test.yml passes on it, for a branch of "
+            "hand-off dispatches one when the label is added, a labelled draft is marked ready, a "
+            "labelled pull request is reopened or its head is pushed, and the merge job and the "
+            "sweep dispatch one once .github/workflows/test.yml has passed on it, for a branch of "
             "this repository whose base holds automerge.yml, and adding the label again asks again; "
             "for any other branch the label comes off before a merge by hand"])
 

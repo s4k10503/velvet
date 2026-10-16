@@ -531,7 +531,7 @@ namespace Velvet
         // for direction, since wrap is the only mode that writes the container's own margin.
         // An inline flex-wrap is read before the markers. The flex-wrap / flex-nowrap / flex-wrap-reverse markers
         // are consulted next, in _layout.uss's
-        // declaration order (flex-wrap-reverse beats flex-nowrap beats flex-wrap when more than one is
+        // declaration order (flex-wrap-reverse beats flex-wrap beats flex-nowrap when more than one is
         // present). There is no further "direction class implies a default" tier: flex / flex-row(-reverse)
         // / flex-col(-reverse) set flex-direction only, and since nearly every real container carries one,
         // treating them as evidence would take the resolvedStyle fallback away from almost all of them and
@@ -579,13 +579,13 @@ namespace Velvet
             {
                 return true;
             }
-            if (container.ClassListContains("flex-nowrap"))
-            {
-                return false;
-            }
             if (container.ClassListContains("flex-wrap"))
             {
                 return true;
+            }
+            if (container.ClassListContains("flex-nowrap"))
+            {
+                return false;
             }
             return null;
         }

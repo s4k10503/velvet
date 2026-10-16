@@ -313,16 +313,16 @@ namespace Velvet
             public TextWrapStyle? WrapStyle;
         }
 
-        // The utilities that write white-space, in the order _typography.uss declares them, since among
+        // The utilities that write white-space, in the order the bundled sheets declare them, since among
         // several on one element the later rule is the one UI Toolkit applies. whitespace-pre-line has no
-        // rule and is left to the Whitespace axis. WhiteSpaceSheetOrderTests reads the sheet to pin the order.
+        // rule and is left to the Whitespace axis. WhiteSpaceSheetOrderTests reads the sheets to pin the order.
         internal static readonly KeyValuePair<string, WhiteSpace>[] WhiteSpaceClassesInSheetOrder =
         {
+            new("truncate", WhiteSpace.NoWrap),
             new("whitespace-normal", WhiteSpace.Normal),
             new("whitespace-nowrap", WhiteSpace.NoWrap),
             new("whitespace-pre", WhiteSpace.Pre),
             new("whitespace-pre-wrap", WhiteSpace.PreWrap),
-            new("truncate", WhiteSpace.NoWrap),
         };
 
         // Returns true when cls was recognised as a text-effect utility (and folded into facets).

@@ -430,10 +430,10 @@ namespace Velvet
 
         // A boundary reconciling its own output catches a render error below it inside that reconcile, as the walk
         // catches one below a boundary it expands, and shows its fallback once the reconcile has returned
-        // (FiberErrorBoundary.ShowCaughtFallback). Where it catches on the aborting path instead — an element
-        // callback's error — inside another component's pass, a VirtualList row mounting during that pass, the
-        // abort it raises belongs to this reconcile alone: the
-        // enclosing pass goes on, as it does around a boundary caught in the walk. The flag is what tells that
+        // (FiberErrorBoundary.ShowCaughtFallback). Where it catches on the aborting path instead — an error that is
+        // not a render error, such as a removed ref's cleanup — inside another component's pass, a VirtualList row
+        // mounting during that pass, the abort it raises belongs to this reconcile alone: the enclosing pass goes
+        // on, as it does around a boundary caught in the walk. The flag is what tells that
         // abort from one an ancestor raised, which must stand: RenderAndReconcile clears it ahead of the body, so
         // only a fallback this render swapped in has set it. A deferred render keeps its abort even so: it swaps
         // one in only in the drain of a parked pass ahead of this call, into rows the walk around it is diffing,
@@ -473,6 +473,10 @@ namespace Velvet
             // not yet flushed (the flush is deferred to the frame boundary) must survive an
             // exception thrown by THIS render — see the catch block.
             var committedPendingEffectCount = fiber.PendingEffects?.Count ?? 0;
+            // The insertion list is not cleared as the layout list is: it keeps what an earlier render queued whose
+            // commit has not run it (a fiber a Suspense hides, where clearing would lose an effect whose deps that
+            // render already promoted), so the cuts a throw out of this render and a Suspense giving it up make return to this length.
+            var committedPendingInsertionCount = fiber.PendingInsertionEffects?.Count ?? 0;
             var pushedOnto = PushFiber(fiber);
             // Spine-rewalk-with-bailout: an isolated re-render (a standalone entry, not a
             // nested expansion render) starts with an empty live context cursor, so reconstruct the
@@ -492,8 +496,6 @@ namespace Velvet
                 // synchronously in the layout-effect commit right after this returns, so the list is empty again
                 // before the next RenderAndReconcile.
                 fiber.PendingLayoutEffects?.Clear();
-                if (fiber.LayoutEffectsHidden) FiberEffects.HoldInsertionEffects(fiber);
-                fiber.PendingInsertionEffects?.Clear();
                 // Cleared here rather than where it is read, so a fallback swapped over this fiber's tree
                 // before this render began is not read as this one's.
                 fiber.FallbackReplacedPreviousTree = false;
@@ -504,7 +506,7 @@ namespace Velvet
                 // every slot's committed deps where the last committed render left them.
                 HookCountSentinel.ValidateAndCommit(fiber);
 
-                FiberBeginWork.CommitSettledHookDeps(fiber);
+                SettleHooks(fiber, committedPendingInsertionCount, committedPendingEffectCount);
 
                 var newTree = FiberErrorBoundary.OutputOf(fiber, FiberTreeReturn.NormalizeToArray(rendered));
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
@@ -583,8 +585,8 @@ namespace Velvet
                     FiberTreeReturn.ReturnRetiredTree(abortedBaseline, fiber);
                 }
                 fiber.PendingLayoutEffects?.Clear();
-                fiber.PendingInsertionEffects?.Clear();
-                // Unlike the two lists above (rebuilt every render and flushed synchronously),
+                FiberHookCommit.TruncateTo(fiber.PendingInsertionEffects, committedPendingInsertionCount);
+                // Unlike the layout list above (rebuilt every render and flushed synchronously),
                 // PendingEffects intentionally persists across renders until the deferred flush
                 // runs it — and the settled deps of an already-committed entry were promoted at its
                 // commit, so no later successful render would ever re-stage a wiped stable-deps
@@ -641,6 +643,24 @@ namespace Velvet
             }
 #endif
             return retainedOutput;
+        }
+
+        // Commits the hook state a settled render staged. Under a Suspense primary that retains what it had
+        // committed, the render may be one the Suspense does not show, as React's attempt at a primary that suspends
+        // again is: the commit of its effect deps is held back until the Suspense decides
+        // (ReconcilerContext.ResolveSuspenseRenders), so a render nothing commits queues no effect and leaves the
+        // deps the next render compares its effects against as they were. A first render has no earlier commit to
+        // leave them at.
+        private static void SettleHooks(ComponentFiber fiber, int insertionBefore, int passiveBefore)
+        {
+            var context = fiber.Reconciler?.Context;
+            if (context == null || fiber.RenderCount == 0 || !context.IsInRetainingSuspensePrimary)
+            {
+                FiberBeginWork.CommitSettledHookDeps(fiber);
+                return;
+            }
+            FiberBeginWork.CommitSettledValues(fiber);
+            context.RecordSuspenseRender(new SuspenseRender(fiber, insertionBefore, passiveBefore));
         }
 
         // Sweeps and removes this fiber's own entries from the context's deferred inline-baseline

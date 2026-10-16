@@ -34,27 +34,7 @@ namespace Velvet
         }
 
         internal static void CleanupAllInsertionEffects(ComponentFiber fiber)
-        {
-            HookEffectExecutor.CleanupAll(fiber, fiber.InsertionEffects, fiber.PendingInsertionEffects);
-            fiber.HeldInsertionEffects?.Clear();
-        }
-
-        // A tree a Suspense hides commits none of what its render queued, and the next render clears the pending
-        // list, having already promoted the deps those effects were queued against: an effect left in it would not
-        // be queued again. Moved here before that clear, it waits for the commit that reveals the fiber
-        // (ShowLayoutEffects).
-        internal static void HoldInsertionEffects(ComponentFiber fiber)
-        {
-            var pending = fiber.PendingInsertionEffects;
-            if (pending == null || pending.Count == 0) return;
-            var held = fiber.HeldInsertionEffects ??= new List<HookEffectSlot>();
-            for (var i = 0; i < pending.Count; i++)
-            {
-                if (!held.Contains(pending[i])) held.Add(pending[i]);
-            }
-            // MUTANT_SURVIVES(equivalent, line removed): the one caller clears this same list on the next line.
-            pending.Clear();
-        }
+            => HookEffectExecutor.CleanupAll(fiber, fiber.InsertionEffects, fiber.PendingInsertionEffects);
 
         // Single-source-of-truth commit sequence invoked by every top-level commit entry
         // (Mount, FlushState, ContinueReconcile).
@@ -148,7 +128,7 @@ namespace Velvet
         // Queues every layout effect of a hidden fiber for the commit that reveals it, whatever its deps, has that
         // commit create every imperative handle again — from the last committed factory where the reveal does not
         // render the fiber — as React calls create() on reconnect. The passive work held while hidden is scheduled
-        // with them, and the insertion effects held while hidden run in the same commit.
+        // with them, and the insertion effects a hidden fiber still has pending run in the same commit.
         internal static void ShowLayoutEffects(ComponentFiber fiber, ReconcilerContext ctx)
         {
             if (!fiber.LayoutEffectsHidden) return;
@@ -172,17 +152,6 @@ namespace Velvet
                     }
                     slot.NextNeedsRecompute = true;
                 }
-            }
-            // MUTANT_SURVIVES(equivalent, boundary): an empty held list adds nothing, and every reader of the pending
-            // list reads a null one and an empty one the same.
-            if (fiber.HeldInsertionEffects is { Count: > 0 } held)
-            {
-                var pending = fiber.PendingInsertionEffects ??= new List<HookEffectSlot>();
-                foreach (var slot in held)
-                {
-                    if (!pending.Contains(slot)) pending.Add(slot);
-                }
-                held.Clear();
             }
             ctx.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false, ctx.CurrentPass));
             ScheduleRunEffects(fiber);
@@ -553,6 +522,11 @@ namespace Velvet
             {
                 context.PendingPassiveEffectFibers.Add(fiber);
             }
+            ArmPassiveDrain(context);
+        }
+
+        private static void ArmPassiveDrain(ReconcilerContext context)
+        {
             if (context.PassiveEffectDrainScheduled) return;
             // One drain serves the whole context and only that drain clears the latch below, so the
             // registration has to sit on a host outliving any single subtree: the batch scheduler's
@@ -568,6 +542,30 @@ namespace Velvet
             anchor.schedule.Execute(() => PanelSchedulerCallback.Run(anchor, context, DrainPassiveEffects));
         }
 
+        // An exit whose child left in the pass that just ended completes in the passive-effect flush, after the
+        // effects that flush runs, as Framer Motion's PresenceChild completes it from an effect. A context with no
+        // scheduler anchor, a bare Reconciler, has no flush to wait for and completes at once.
+        internal static void StagePassiveCompletion(ReconcilerContext context, Action complete)
+        {
+            if (context.BatchScheduler.Anchor == null)
+            {
+                complete();
+                return;
+            }
+            context.PendingPassiveCompletions.Add(complete);
+            ArmPassiveDrain(context);
+        }
+
+        // Run whether or not the presence's owner has unmounted since staging: an inner presence that leaves with
+        // its enclosing child is gone by the flush, and Framer Motion still calls its onExitComplete.
+        private static void RunPassiveCompletions(ReconcilerContext context)
+        {
+            if (context.PendingPassiveCompletions.Count == 0) return;
+            var completions = context.PendingPassiveCompletions.ToArray();
+            context.PendingPassiveCompletions.Clear();
+            foreach (var complete in completions) complete();
+        }
+
         // Tree-ordered, 2-phase passive (UseEffect) commit across every fiber staged in the current
         // batch. Phase 1 runs every pending fiber's effect cleanups; phase 2 runs every pending
         // fiber's effect setups. Both phases walk the staged fibers in post-order
@@ -581,11 +579,12 @@ namespace Velvet
             // Snapshot and clear the staged set before running: an effect setup can synchronously
             // stage further passive effects (setState in a UseEffect), which must enqueue a NEW drain
             // rather than mutate the list we are iterating.
-            if (context.PendingPassiveEffectFibers.Count == 0) return;
+            if (context.PendingPassiveEffectFibers.Count == 0 && context.PendingPassiveCompletions.Count == 0) return;
             context.EffectCommitDepth++;
             try
             {
                 RunPassivePhases(context);
+                RunPassiveCompletions(context);
             }
             finally
             {
@@ -758,7 +757,7 @@ namespace Velvet
             // An effect setup may setState and stage a fresh batch synchronously; drain until quiescent.
             // Bounded to surface a runaway effect-stages-effect loop as a test failure rather than a hang.
             var guard = 0;
-            while (context.PendingPassiveEffectFibers.Count > 0)
+            while (context.PendingPassiveEffectFibers.Count > 0 || context.PendingPassiveCompletions.Count > 0)
             {
                 if (guard++ > 10000)
                 {

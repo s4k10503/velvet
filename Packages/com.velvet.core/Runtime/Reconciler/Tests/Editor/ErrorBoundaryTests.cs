@@ -25,8 +25,10 @@ namespace Velvet.Tests
     /// container: with a sibling on each side, both stay and the subtree that threw goes.</item>
     /// <item>Where the pass that catches is itself re-placing the boundary, the rest of that pass commits and
     /// the fallback takes the rows it gives the boundary; where such a pass has already committed and a later
-    /// render of the thrower throws, the rows rewritten are the ones it placed. Where the catch is of an element
-    /// callback's error, which aborts that pass, the rows rewritten are the ones the container still holds.</item>
+    /// render of the thrower throws, the rows rewritten are the ones it placed. An element callback's error
+    /// raised while that pass creates an element is caught the same way; where the catch is of the error a
+    /// removed ref's cleanup throws, which aborts that pass, the rows rewritten are the ones the container still
+    /// holds.</item>
     /// <item>A catch inside its parent's render leaves the rest of that render to commit: a sibling behind the
     /// boundary, one inside a child that re-rendered in that render, and the fallback a Suspense behind the
     /// boundary is showing keep their state and their effect.</item>
@@ -681,7 +683,7 @@ namespace Velvet.Tests
         #region A catch on either side of the expansion that re-places the boundary
 
         private static bool s_movedShouldThrow;
-        private static bool s_movedThrowsInCallback;
+        private static bool s_movedThrowsInCleanup;
         private static Action<int> s_movedSetOrder;
         private static Action<int> s_movedSetLeading;
         private static Action<int> s_movedSetGrow;
@@ -690,7 +692,7 @@ namespace Velvet.Tests
         private static void ResetMoved()
         {
             s_movedShouldThrow = false;
-            s_movedThrowsInCallback = false;
+            s_movedThrowsInCleanup = false;
             s_movedSetOrder = null;
             s_movedSetLeading = null;
             s_movedSetGrow = null;
@@ -748,15 +750,16 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
-        // An element callback's error still aborts the pass, and the rows its fallback takes are what this pins.
+        // GREEN_ON_BASE(characterization): the merge base aborts on this error as it does here. A removed ref's
+        // cleanup failing is no render error, so the boundary catches it on the aborting path, and the rows its
+        // fallback rewrites are what this pins.
         [Test]
-        public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItAbortsOnACallbackError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItAbortsOnARemovedRefsCleanupError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
+            s_movedThrowsInCleanup = true;
             using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
-            s_movedThrowsInCallback = true;
 
             // Act
             s_movedSetOrder.Invoke(1);
@@ -768,15 +771,16 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-fallback,moved-ahead"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
-        // An element callback's error still aborts the pass, and the rows its fallback takes are what this pins.
+        // GREEN_ON_BASE(characterization): the merge base aborts on this error as it does here. A removed ref's
+        // cleanup failing is no render error, so the boundary catches it on the aborting path, and the rows its
+        // fallback rewrites are what this pins.
         [Test]
-        public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItAbortsOnACallbackError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItAbortsOnARemovedRefsCleanupError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
+            s_movedThrowsInCleanup = true;
             using var mounted = V.Mount(_root, V.Component(ShrinkHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
-            s_movedThrowsInCallback = true;
 
             // Act
             s_movedSetLeading.Invoke(1);
@@ -788,15 +792,16 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this callback error as it aborted on a render's.
-        // An element callback's error still aborts the pass, and the rows its fallback takes are what this pins.
+        // GREEN_ON_BASE(characterization): the merge base aborts on this error as it does here. A removed ref's
+        // cleanup failing is no render error, so the boundary catches it on the aborting path, and the rows its
+        // fallback rewrites are what this pins.
         [Test]
-        public void Given_APassAddingRowsAheadOfTheBoundary_When_ItAbortsOnACallbackError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        public void Given_APassAddingRowsAheadOfTheBoundary_When_ItAbortsOnARemovedRefsCleanupError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
+            s_movedThrowsInCleanup = true;
             using var mounted = V.Mount(_root, V.Component(GrowHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
-            s_movedThrowsInCallback = true;
 
             // Act
             s_movedSetGrow.Invoke(3);
@@ -827,17 +832,16 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-ahead,moved-fallback"));
         }
 
-        [Component]
+        [Component(Compiler = false)]
         private static VNode MovedThrowerRender()
         {
             var (_, setTick) = Hooks.UseState(0);
             s_movedSetTick = setTick;
-            if (s_movedShouldThrow && s_movedThrowsInCallback)
-            {
-                return V.ScrollView(name: "moved-thrown", onCreated: _ => throw new InvalidOperationException("Moved boundary throw"));
-            }
-            if (s_movedShouldThrow) throw new InvalidOperationException("Moved boundary throw");
-            return V.Label(name: "moved-thrown", text: "ok");
+            if (s_movedShouldThrow && !s_movedThrowsInCleanup) throw new InvalidOperationException("Moved boundary throw");
+            // The ref is there until the render that throws drops it, and its cleanup is what fails.
+            return V.Label(name: "moved-thrown", text: "ok", refCallback: s_movedThrowsInCleanup && !s_movedShouldThrow
+                ? _ => () => throw new InvalidOperationException("Moved boundary throw")
+                : null);
         }
 
         [Component(IsErrorBoundary = true)]

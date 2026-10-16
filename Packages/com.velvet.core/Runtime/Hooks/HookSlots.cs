@@ -154,6 +154,7 @@ namespace Velvet
         {
             Retire(owner);
             ComponentFiber.RequestRenderForSettledTransition(Fiber);
+            FiberWorkLoop.OweSettleRender(Fiber);
         }
 
         internal abstract void Retire(HookTransitionSlot owner);

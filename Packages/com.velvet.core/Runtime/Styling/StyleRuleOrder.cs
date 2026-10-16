@@ -95,7 +95,7 @@ namespace Velvet
         // font-size alone, UI Toolkit having no line-height; the sort adds it back for them.
         private static readonly int s_lineHeightIndex = Array.IndexOf(s_tailwindPropertyOrder, "line-height");
 
-        private const string NamedTextSizePrefix = "text-";
+        private const string GridUtility = "grid";
 
         private static int[] BuildTailwindIndex()
         {
@@ -203,7 +203,8 @@ namespace Velvet
                     }
                 }
                 var (properties, count) = PropertySortOf(leaf);
-                return new SortKey(values, properties, count, token);
+                var candidate = string.Concat(token.Substring(0, token.Length - leaf.Length), TailwindSpellingOf(leaf));
+                return new SortKey(values, properties, count, candidate);
             }
 
             public int CompareTo(SortKey other)
@@ -266,7 +267,7 @@ namespace Velvet
             {
                 if (StyleVariantClass.TryParse(rest, out var kind, out var name, out var payload))
                 {
-                    values.Add((StyleLayerPriority.ForVariant(kind), name ?? string.Empty));
+                    values.Add((StyleLayerPriority.ForVariant(kind, name), ValueOf(kind, name)));
                 }
                 else if (StyleHasVariantClass.TryParse(rest, out var hasKind, out var className, out payload))
                 {
@@ -296,6 +297,11 @@ namespace Velvet
             }
         }
 
+        // What a variant's rules of one rank are compared by: a container query's place among the others, else the
+        // relational name as written.
+        private static string ValueOf(StyleVariantKind kind, string? name)
+            => kind == StyleVariantKind.Container ? StyleContainerQuery.OrderKeyOf(name) : name ?? string.Empty;
+
         // has-[.x] before has-[:checked] before has-[:focus]: the arguments as written, compared as strings.
 #pragma warning disable CS8524 // no discard arm: a new has- kind has to state its argument
         private static string HasArgumentOf(StyleHasKind kind, string? className) => kind switch
@@ -311,7 +317,54 @@ namespace Velvet
         private static string SelectorOf(string token, string? payload)
             => token.Substring(0, Math.Max(0, token.Length - (payload?.Length ?? 0) - 1));
 
+        // The bundled classes whose name is Velvet's own, with the Tailwind utility each stands for: Tailwind orders by
+        // the name it gives the utility, so rotate-n6 sorts as -rotate-6 and the duration names as the steps they equal.
+        // InlineSheetOrderTests holds the values against the sheets.
+        private static readonly (string Name, string Tailwind)[] s_spelledOtherwise =
+        {
+            ("duration-fast", "duration-100"),
+            ("duration-normal", "duration-150"),
+            ("duration-slow", "duration-200"),
+        };
+
+        private const string NegatedRotatePrefix = "rotate-n";
+
+        // utility as Tailwind spells it, its important modifier kept where it stood; utility itself when its name is
+        // Tailwind's own.
+        private static string TailwindSpellingOf(string utility)
+        {
+            var core = StyleArbitraryValueResolver.StripImportant(utility, out var important);
+            var spelled = SpelledOtherwise(core);
+            if (spelled == null)
+            {
+                return utility;
+            }
+            if (!important)
+            {
+                return spelled;
+            }
+            return utility[0] == '!' ? string.Concat("!", spelled) : string.Concat(spelled, "!");
+        }
+
+        private static string? SpelledOtherwise(string core)
+        {
+            foreach (var (name, tailwind) in s_spelledOtherwise)
+            {
+                if (core == name)
+                {
+                    return tailwind;
+                }
+            }
+            return core.StartsWith(NegatedRotatePrefix, StringComparison.Ordinal)
+                ? string.Concat("-rotate-", core.Substring(NegatedRotatePrefix.Length))
+                : null;
+        }
+
         internal static int TailwindIndexOf(string property) => Array.IndexOf(s_tailwindPropertyOrder, property);
+
+        // Two utilities written without a variant, ordered as Tailwind emits them: negative when a is emitted
+        // first, which leaves a property they share to z.
+        internal static int CompareUtilities(string a, string z) => SortKey.Of(a).CompareTo(SortKey.Of(z));
 
         private static int? ShorthandIndexOf(StyleLonghandSet set)
         {
@@ -325,27 +378,51 @@ namespace Velvet
             return null;
         }
 
-        // The Tailwind property-order indexes of what the utility writes, ascending, and how many longhands it
-        // writes.
+        // The declarations Tailwind counts for a scale-<n> utility: the three --tw-scale variables and scale. compile.ts
+        // sorts the rule with more declarations first, so scale-100 is emitted ahead of -scale-[.5], which declares
+        // scale alone, and an axis utility (scale-x-50) sits between them with its one variable. StyleRuleOrderTests
+        // pins the order against what Tailwind emits.
+        private const int ScaleClassDeclarations = 4;
+        private const int ScaleAxisDeclarations = 2;
+
+        private static int ScaleDeclarationsOf(bool inline, ArbitraryProperty property)
+            => !inline ? ScaleClassDeclarations
+                : property is ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY ? ScaleAxisDeclarations : 1;
+
+        // A named size (text-lg) and a slash size (text-lg/7, text-[14px]/6) declare line-height beside font-size.
+        private static bool DeclaresLineHeight(StyleLonghandSet set, bool inline, string core)
+            => set.Contains(StyleLonghand.FontSize)
+                && (!inline || StyleNamedTextSize.TryParseSlashFontSize(core, out _));
+
+        // The Tailwind property-order indexes of what the utility writes, ascending, and how many declarations
+        // Tailwind counts for it: its longhands, plus the line-height a named or slash text size also declares, except
+        // where a variable beside the property adds to them (see ScaleClassDeclarations).
         private static (List<int> Order, int Count) PropertySortOf(string utility)
         {
             var core = StyleArbitraryValueResolver.StripImportant(utility, out _);
             var inline = false;
+            var property = default(ArbitraryProperty);
             StyleLonghandSet set;
             if (StyleArbitraryValueResolver.IsInlineResolved(core)
                 && StyleArbitraryValueResolver.TryParse(core, out var style))
             {
                 inline = true;
-                set = StyleArbitraryLonghands.Of(style.Property);
+                property = style.Property;
+                set = StyleArbitraryLonghands.Of(property);
             }
             else
             {
                 set = StyleUtilityProperties.TryGet(core, out var rule) ? rule.Properties : StyleLonghandSet.Empty;
             }
+            if (core == GridUtility)
+            {
+                // Sorts as the display utility it stands for, not by the direction and wrap its rule also writes to
+                // realise the display. StyleSheetTailwindOrderTests pins where flex, grid and hidden fall.
+                set = StyleLonghandSet.Of(StyleLonghand.Display);
+            }
             var order = new List<int>();
             var count = 0;
-            if (!inline && set.Contains(StyleLonghand.FontSize)
-                && core.StartsWith(NamedTextSizePrefix, StringComparison.Ordinal))
+            if (DeclaresLineHeight(set, inline, core))
             {
                 // MUTANT_SURVIVES(equivalent): without this index, count still puts named sizes before a lone
                 // font-size. RuleOrderCascadeBoundaryTests pins the font-size-only sets and adjacent line-height index.
@@ -387,6 +464,10 @@ namespace Velvet
             {
                 order.Clear();
                 order.Add(shorthand);
+            }
+            if (set.Contains(StyleLonghand.Scale))
+            {
+                count = ScaleDeclarationsOf(inline, property);
             }
             order.Sort();
             return (order, count);

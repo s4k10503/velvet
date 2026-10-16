@@ -82,6 +82,13 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 });
 ```
 
+- `onExitComplete` runs when the last removed child is gone. Where the render that removed it had no exit to play,
+  that is the passive-effect flush after the render, which runs after the layout effects of its commit, as
+  Framer's `PresenceChild` calls it from an effect; a removal that render never committed completes nothing.
+  Where an exit played, it is the end of the last exit's animation. An error it throws goes to the nearest error
+  boundary at or above the component rendering the presence, except where an exit played or a `V.Motion` child
+  was removed: Framer calls it from that exit's promise, so no boundary takes it and it is logged. An error from
+  a Motion's `onEnterComplete` is logged the same way, as Framer's `onAnimationComplete` runs in a promise.
 - **DOM-less:** the presence emits no wrapper element — children expand directly into the
   parent, so put `flex` / `gap-*` / wrapping on the parent.
 - **Framer's splice semantics:** while a ghost exits, surviving siblings keep their positions;
@@ -358,9 +365,9 @@ resolved start described above.
   that applies is decided from the element's **class list**, resolved the way the cascade resolves
   it: `transition-property` holds one value, so the utilities that set it do not combine — the
   **last-declared** one present on the element wins outright and the rest contribute nothing. The
-  bundled order is `transition-transform`, `transition-filter`, `transition-all`,
-  `transition-none`, `transition-opacity`, `transition-colors`, `transition-colors-scale`,
-  `transition-colors-scale-opacity`, then the scheduler-applied `anim-*` presets. So
+  bundled order is Tailwind's: `transition-all`, `transition-colors`, `transition-colors-scale`,
+  `transition-colors-scale-opacity`, `transition-filter`, `transition-opacity`,
+  `transition-transform`, `transition-none`, then the scheduler-applied `anim-*` presets. So
   `transition-all transition-colors` transitions the colours only, and
   `transition-all transition-none` transitions nothing, whichever order the class strings appear
   in. `transition-filter` names `filter`, which no driver writes, so it never triggers a

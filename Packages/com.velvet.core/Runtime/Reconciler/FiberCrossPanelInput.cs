@@ -44,7 +44,9 @@ namespace Velvet
     // everywhere except at a portal boundary. The bridge supplies the rest: the logical ancestors of the
     // event's target that are not its physical ancestors, walked the way React walks a portal child's
     // return path — a portal's child answers to the position its placeholder holds (see LogicalParent) —
-    // in capture as the event trickles through the anchor, and in bubble as it comes back up.
+    // in capture as the event trickles through the anchor, and in bubble as it comes back up. The other
+    // half of the disagreement is the physical ancestors that are off that path: native dispatch reaches
+    // them, and OffLogicalChain keeps their handlers from running.
     internal static class FiberCrossPanelEventDispatcher
     {
         // Each event the bridge carries, registered on bridgeAnchor TrickleDown and, where it bubbles,
@@ -105,7 +107,11 @@ namespace Velvet
         // on). Returns the delegate that releases this hold on the anchor.
         internal static System.Action AttachBridge(VisualElement bridgeAnchor, ReconcilerContext ctx)
         {
-            System.Action release = () => ctx.EventManager.ReleaseBridge(bridgeAnchor);
+            System.Action release = () =>
+            {
+                ctx.EventManager.ReleaseBridge(bridgeAnchor);
+                Retire(ctx);
+            };
             // More than one hold can land on one anchor — a portal into a host panel's root is one way — and a
             // second set of listeners there would carry each ancestor twice, so a later hold shares the first
             // one's.
@@ -123,6 +129,7 @@ namespace Velvet
             {
                 foreach (var unregister in registrations.Undo) unregister();
             });
+            s_bridged.Add(ctx);
             return release;
         }
 
@@ -251,6 +258,64 @@ namespace Velvet
                 if (ReferenceEquals(element, candidate)) return true;
             }
             return false;
+        }
+
+        // The contexts that hold a bridge. A portal in one reconciler can render into an element another one
+        // rendered, so what is off an event target's logical chain is read through every context that holds
+        // portal content, not through the context that bound the handler being asked.
+        private static readonly HashSet<ReconcilerContext> s_bridged = new();
+
+#if UNITY_EDITOR
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticFields() => s_bridged.Clear();
+#endif
+
+        private static void Retire(ReconcilerContext ctx)
+        {
+            if (ctx.EventManager.HoldsBridges) return;
+            s_bridged.Remove(ctx);
+        }
+
+        // Whether native dispatch is about to run element's handler for an event the React tree would not carry
+        // to it: element is on evt's target's physical path and off the chain of elements a React event raised
+        // there visits. Each step takes the position a relocated element answers to, else hierarchy.parent, the
+        // step native dispatch takes, so every element on the physical path outside a relocated span is met.
+        // Synthetic invocation never asks, since it walks the chain itself.
+        internal static bool OffLogicalChain(VisualElement element, EventBase evt) =>
+            OffLogicalChain(element, evt.target as VisualElement);
+
+        // A target out of the panel, as an earlier handler of the same dispatch can leave it, reads as on the
+        // chain: a walk from it reaches no ancestor, and the handlers the React tree still runs must not be
+        // skipped for that.
+        internal static bool OffLogicalChain(VisualElement element, VisualElement? target)
+        {
+            if (s_bridged.Count == 0) return false;
+            for (var current = target; current != null; current = ParentOnChain(current))
+            {
+                if (ReferenceEquals(current, element)) return false;
+            }
+            return target != null && target.panel != null;
+        }
+
+        private static VisualElement? ParentOnChain(VisualElement element)
+        {
+            foreach (var ctx in s_bridged)
+            {
+                var relocated = RelocatedParent(element, ctx);
+                if (relocated != null) return relocated;
+            }
+            return element.hierarchy.parent;
+        }
+
+        // The position an element answers to when that is not the element it is mounted under: the placeholder
+        // standing at a portal's call site for a portal's child, and the placeholder at its declared slot for a
+        // z-managed element. Null for any other element.
+        private static VisualElement? RelocatedParent(VisualElement element, ReconcilerContext ctx)
+        {
+            var slot = ctx.ZLayerMembers.TryGetValue(element, out var member) ? member.Placeholder : element;
+            var parent = slot.parent;
+            if (parent == null) return null;
+            return ctx.PortalHoldingRow(slot, parent) ?? (ReferenceEquals(slot, element) ? null : slot);
         }
 
         // A portal's child answers to the placeholder standing at the portal's call site, whatever element it
