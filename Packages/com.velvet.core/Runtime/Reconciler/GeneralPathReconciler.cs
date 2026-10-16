@@ -1374,9 +1374,10 @@ namespace Velvet
                 var fibersBefore = _ctx.BufferPool.RentFiberSet();
                 fibersBefore.UnionWith(newFibers);
                 var reportsBefore = _ctx.PendingCaughtErrorReports.Count;
+                List<SuspenseRender>? renders = null;
                 try
                 {
-                    suspended = ExpandSuspensePrimary(walk, suspense.Children, retains, primaryPosition);
+                    suspended = ExpandSuspensePrimary(walk, suspense.Children, retains, primaryPosition, out renders);
                     var primaryEnd = commit != null ? commit.NewElements.Count : result!.Count;
                     if (!suspended)
                     {
@@ -1384,6 +1385,8 @@ namespace Velvet
                             || AnyRowStillPending(walk, commit!, preCount, primaryEnd);
                     }
                     hides = suspended && retains;
+                    // A primary that suspends shows none of what its fibers rendered in this walk.
+                    _ctx.ResolveSuspenseRenders(renders, discard: suspended);
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
                     // their lane flush while suspended, to the render that reveals them. The
@@ -1433,8 +1436,11 @@ namespace Velvet
         }
 
         // Returns whether the primary suspended: at this expansion, or where HoldSuspendInPrimary held it.
-        private bool ExpandSuspensePrimary(InlineWalk walk, VNode?[]? children, bool retains, WalkPosition primaryPosition)
+        private bool ExpandSuspensePrimary(
+            InlineWalk walk, VNode?[]? children, bool retains, WalkPosition primaryPosition,
+            out List<SuspenseRender>? renders)
         {
+            renders = null;
             _ctx.OpenSuspensePrimary(retains);
             bool suspended;
             try
@@ -1449,7 +1455,7 @@ namespace Velvet
             }
             finally
             {
-                suspended = _ctx.CloseSuspensePrimary();
+                suspended = _ctx.CloseSuspensePrimary(out renders);
             }
             return suspended;
         }

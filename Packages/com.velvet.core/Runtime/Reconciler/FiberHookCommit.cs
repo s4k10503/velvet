@@ -2,6 +2,11 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
+    // One fiber's render under a Suspense primary that retains what it had committed. Its hook state is committed
+    // only if the Suspense shows the primary, so the two counts are the lengths of the fiber's pending-effect lists
+    // before the render, which a render the Suspense discards is cut back to.
+    internal readonly record struct SuspenseRender(ComponentFiber Fiber, int InsertionBefore, int PassiveBefore);
+
     // Commit-of-hooks helpers: promote a settled render attempt's staged hook state to the
     // committed baseline, and run the layout-phase imperative-handle commit. Extracted from the
     // render core (FiberRenderer.RenderAndReconcile calls the four Commit* helpers + the
@@ -9,6 +14,24 @@ namespace Velvet
     // handles after subtree commit).
     internal static class FiberHookCommit
     {
+        // The settle of a render the Suspense shows.
+        internal static void CommitSuspenseRender(SuspenseRender render)
+        {
+            FiberBeginWork.CommitSettledHookSlots(render.Fiber);
+        }
+
+        // A render the Suspense does not show queues no effect and promotes no deps, so the next render compares
+        // against what was last committed, and that next render is owed. The fiber is marked dirty with no lane
+        // queued, so no flush renders it on its own and the walk that reveals the primary does.
+        internal static void DiscardSuspenseRender(SuspenseRender render)
+        {
+            var fiber = render.Fiber;
+            fiber.PendingLayoutEffects?.Clear();
+            TruncateTo(fiber.PendingInsertionEffects, render.InsertionBefore);
+            TruncateTo(fiber.PendingEffects, render.PassiveBefore);
+            fiber.IsDirty = true;
+        }
+
         // Rolls a discarded render-phase attempt's effect registrations back to the committed footprint.
         // Effect slots only grow during a render (RegisterEffect appends; LastDeps is never mutated), so
         // truncating the slot and pending lists to their committed lengths is sufficient to undo the attempt;

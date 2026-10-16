@@ -124,6 +124,13 @@ namespace Velvet
         internal static void CommitSettledHookDeps(ComponentFiber fiber)
         {
             fiber.CommitStagedDependencies();
+            CommitSettledHookSlots(fiber);
+        }
+
+        // The hook slots of the settle, apart from the context reads: a render a Suspense primary has yet to show
+        // commits these once the Suspense decides (FiberHookCommit.CommitSuspenseRender).
+        internal static void CommitSettledHookSlots(ComponentFiber fiber)
+        {
             HookEffectExecutor.CommitEffectDeps(fiber.LayoutEffects);
             HookEffectExecutor.CommitEffectDeps(fiber.InsertionEffects);
             HookEffectExecutor.CommitEffectDeps(fiber.Effects);
