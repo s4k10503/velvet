@@ -16,5 +16,5 @@
 ### Fixed
 
 - `When = BeforeChildren` on a `TransitionType.Spring` transition held its children for the transition's
-  `DelaySec + DurationSec`, though a spring does not read `DurationSec`. They now wait as long as the spring's
+  `DelaySec + DurationSec`, though the spring did not play for `DurationSec`. They now wait as long as the spring's
   slowest channel takes to rest from the pose classes, measured as Framer Motion measures a spring's duration.

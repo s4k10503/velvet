@@ -266,10 +266,11 @@ namespace Velvet.Tests
         public void Given_BeforeChildrenOnASpringSwap_When_AChildClaimsItsSlot_Then_ItWaitsUntilTheSpringRests()
         {
             // Arrange — the opacity's travel-100 easing rests at 1.05 s on Framer's default spring; DurationSec is
-            // not read.
+            // not read beside a physics knob.
             var swap = new StyleTransitionConfig
             {
-                Type = TransitionType.Spring, DurationSec = 0.3f, DelaySec = 0.1f, When = TransitionWhen.BeforeChildren,
+                Type = TransitionType.Spring, Stiffness = 100f, DurationSec = 0.3f, DelaySec = 0.1f,
+                When = TransitionWhen.BeforeChildren,
             };
 
             // Act

@@ -33,14 +33,14 @@ namespace Velvet.Tests
         };
 
         // A coordinator whose exit pose springs its opacity 1 → 0, which Framer's default spring ends at 1.05 s on
-        // the browser, and holds its inheriting children until then. DurationSec, which a spring does not read,
-        // declares 0.05 s.
+        // the browser, and holds its inheriting children until then. DurationSec, which a spring setting a physics
+        // knob does not read, declares 0.05 s.
         private static readonly Dictionary<string, MotionVariant> s_springCoordinator = new()
         {
             ["visible"] = "opacity-100",
             ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig
             {
-                Type = TransitionType.Spring, DurationSec = 0.05f, When = TransitionWhen.BeforeChildren,
+                Type = TransitionType.Spring, Stiffness = 100f, DurationSec = 0.05f, When = TransitionWhen.BeforeChildren,
             }),
         };
 

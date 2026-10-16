@@ -15,7 +15,8 @@ namespace Velvet
         // from wherever the forward tween had reached.
         public float From;
         public float To;
-        public readonly float RestingTarget;
+        // Not readonly: a play continuing from one it interrupts (BezierTweenDriver.ContinueFrom) starts elsewhere.
+        public float RestingTarget;
         // Set on a driven Tween's channel whose property a PropertyOverrides entry names (DrivenTweenTiming), and on
         // each of its channels once it reverses (BezierTweenDriver.Retarget).
         public TweenChannelTiming? Timing;
@@ -393,6 +394,62 @@ namespace Velvet
         {
             state.TranslateX = new BezierTweenChannel(x, x);
             state.TranslateY = new BezierTweenChannel(y, y);
+        }
+
+        /// <summary>
+        /// Starts each channel of <paramref name="next"/> that <paramref name="interrupted"/> also drives from the
+        /// value <paramref name="interrupted"/> draws it at, the bezier sibling of
+        /// <see cref="MotionSpringDriver.ContinueFrom"/> less the velocity a tween does not carry. A length in
+        /// another unit keeps its own start.
+        /// </summary>
+        public static void ContinueFrom(BezierTweenState next, BezierTweenState interrupted)
+        {
+            var shared = SharedEased(interrupted);
+            Continue(next.Opacity, interrupted, interrupted.Opacity, shared);
+            Continue(next.TranslateX, interrupted, interrupted.TranslateX, shared);
+            Continue(next.TranslateY, interrupted, interrupted.TranslateY, shared);
+            Continue(next.Scale, interrupted, interrupted.Scale, shared);
+            Continue(next.Rotate, interrupted, interrupted.Rotate, shared);
+            if (next.Lengths != null && interrupted.Lengths != null)
+            {
+                foreach (var length in next.Lengths)
+                {
+                    var match = interrupted.Lengths.Find(l => l.Property == length.Property && l.Unit == length.Unit);
+                    if (match != null)
+                    {
+                        var drawn = MotionPropertyInterpolation.LerpLength(match.Property, match.Value.From,
+                            match.Value.To, Eased(interrupted, match.Value, shared));
+                        length.Value.From = length.Value.RestingTarget = drawn;
+                    }
+                }
+            }
+            if (next.Colors == null || interrupted.Colors == null)
+            {
+                return;
+            }
+            for (var i = 0; i < next.Colors.Count; i++)
+            {
+                var color = next.Colors[i];
+                var match = interrupted.Colors.Find(c => c.Property == color.Property);
+                if (match == null)
+                {
+                    continue;
+                }
+                var drawn = new BezierColorChannel(color.Property,
+                    MotionPropertyInterpolation.LerpColor(match.From, match.To, Value(interrupted, match.Progress, shared)),
+                    color.To);
+                drawn.Progress.Timing = color.Progress.Timing;
+                next.Colors[i] = drawn;
+            }
+        }
+
+        private static void Continue(BezierTweenChannel? next, BezierTweenState interrupted,
+            BezierTweenChannel? channel, float shared)
+        {
+            if (next != null && channel != null)
+            {
+                next.From = next.RestingTarget = Value(interrupted, channel, shared);
+            }
         }
 
         /// <summary>

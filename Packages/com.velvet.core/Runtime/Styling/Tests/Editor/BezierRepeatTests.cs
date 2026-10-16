@@ -465,8 +465,8 @@ namespace Velvet.Tests
         public void Given_ASpringConfig_When_ItsPlaySpanIsRead_Then_ItIsTheTimeItsChannelTakesToRestNotItsDuration()
         {
             // Arrange — Framer hands an opacity's spring to the browser as an easing over a travel of 100, which rests
-            // at 1.05 s on its default spring; DurationSec is not read.
-            var config = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0.5f };
+            // at 1.05 s on its default spring; DurationSec is not read beside a physics knob.
+            var config = new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, DurationSec = 0.5f };
 
             // Act
             var span = MotionPlaySpan.Of(config, s_hidden, s_visible);
