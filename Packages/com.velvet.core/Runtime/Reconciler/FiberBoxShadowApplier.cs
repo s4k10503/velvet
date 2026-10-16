@@ -2,17 +2,17 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The wrapper-less PAINT layer for shadow-* utilities: a baked drop-shadow texture drawn behind the
+    // The wrapper-less PAINT layer for shadow-* utilities: a baked box-shadow texture drawn behind the
     // element's content and bleeding outside its box via the element's own generateVisualContent. Composes
     // like skew and gradient (a paint, not a wrapper), and follows a skewed caster's sheared silhouette
     // (see FiberSkewApplier) rather than painting an upright rectangle.
-    internal sealed class FiberDropShadowApplier
+    internal sealed class FiberBoxShadowApplier
     {
         private readonly ReconcilerContext _ctx;
 
-        public FiberDropShadowApplier(ReconcilerContext ctx) => _ctx = ctx;
+        public FiberBoxShadowApplier(ReconcilerContext ctx) => _ctx = ctx;
 
-        // Create-time entry point: when classNames carries a shadow-* utility, attaches the drop-shadow
+        // Create-time entry point: when classNames carries a shadow-* utility, attaches the box-shadow
         // paint onto the element (no structural wrapper — the baked shadow texture is the element's own
         // generateVisualContent, drawn behind its content and bleeding outside the box). Composes like skew
         // and gradient: a paint, not a wrapper, so it works alongside a clip wrapper and a user
@@ -33,7 +33,7 @@ namespace Velvet
             {
                 return;
             }
-            // A skewed caster's shadow follows the sheared silhouette (the drop-shadow behavior);
+            // A skewed caster's shadow follows the sheared silhouette (the box-shadow behavior);
             // create-time resolves the skew here, the patch path forwards it from ApplySkewOnPatch.
             var skewXDeg = StyleSkewClass.TryExtract(classNames, out var skew) ? skew.XDeg : 0f;
             // ApplySkewOnCreate ran before this (the factory order), so a skewed caster already has a
@@ -42,9 +42,9 @@ namespace Velvet
             // suppressing the native chrome and repainting an upright fill over the shadow quad. skew-y casters
             // have skewXDeg 0 yet are skewed, so this gate is the SkewBindings presence, not the X angle.
             var casterSkewed = _ctx.SkewBindings.ContainsKey(element);
-            var shadowBinding = DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
+            var shadowBinding = BoxShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
             _ctx.ShadowBindings[element] = shadowBinding;
-            DropShadowSilhouette.SetWantSpacer(element, shadowBinding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
+            BoxShadowSilhouette.SetWantSpacer(element, shadowBinding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
         }
 
         // Patch-time reconciliation of an element's shadow state against its new class list. Mirrors the
@@ -75,24 +75,24 @@ namespace Velvet
 
             if (want && bound)
             {
-                DropShadowSilhouette.Sync(element, binding, new DropShadowSyncRequest
+                BoxShadowSilhouette.Sync(element, binding, new BoxShadowSyncRequest
                 {
                     Spec = spec,
                     ClassNames = classNames,
                     SkewXDeg = skewXDeg,
                     CasterSkewed = casterSkewed,
                 }, canReleaseFace);
-                DropShadowSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
+                BoxShadowSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
             }
             else if (want)
             {
-                var fresh = DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
+                var fresh = BoxShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
                 _ctx.ShadowBindings[element] = fresh;
-                DropShadowSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(classNames), classNames);
+                BoxShadowSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(classNames), classNames);
             }
             else if (bound)
             {
-                DropShadowSilhouette.Detach(element, binding);
+                BoxShadowSilhouette.Detach(element, binding);
                 _ctx.ShadowBindings.Remove(element);
             }
         }

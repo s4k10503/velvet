@@ -561,7 +561,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg ring-2", name: "card") });
 
-            Assert.That((RingOverlayIn(scope.Root) != null, DropShadowSilhouette.TryGet(scope.Root[0]) != null),
+            Assert.That((RingOverlayIn(scope.Root) != null, BoxShadowSilhouette.TryGet(scope.Root[0]) != null),
                 Is.EqualTo((true, true)));
         }
 

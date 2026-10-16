@@ -300,9 +300,9 @@ namespace Velvet
             if (_ctx.ShadowBindings.TryGetValue(element, out var shadowBinding))
             {
                 // Detach unhooks the paint + re-bake callbacks so a pooled element cannot ghost a prior
-                // consumer's drop shadow. The baked shadow textures are cached process-wide (DropShadowBaker)
+                // consumer's box shadow. The baked shadow textures are cached process-wide (BoxShadowBaker)
                 // and are NOT destroyed here — only this element's paint binding is dropped.
-                DropShadowSilhouette.Detach(element, shadowBinding);
+                BoxShadowSilhouette.Detach(element, shadowBinding);
                 _ctx.ShadowBindings.Remove(element);
             }
             if (_ctx.ClipPathBindings.TryGetValue(element, out var clipPathBinding))

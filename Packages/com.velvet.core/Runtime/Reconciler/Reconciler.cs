@@ -655,10 +655,10 @@ namespace Velvet
             // shadow textures are cached process-wide and outlive the reconciler, like the gradient bakes).
             foreach (var (element, binding) in _ctx.ShadowBindings)
             {
-                DropShadowSilhouette.Detach(element, binding);
+                BoxShadowSilhouette.Detach(element, binding);
             }
             _ctx.ShadowBindings.Clear();
-            DropShadowBaker.DisposeMaterial();
+            BoxShadowBaker.DisposeMaterial();
             // Clip wrappers hold a baked VectorImage (a ScriptableObject): still-mounted clipped
             // elements never pass through FiberElementCleaner at root disposal, so release here —
             // symmetric with the ShadowBindings Material teardown above.

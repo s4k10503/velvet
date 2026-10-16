@@ -8,7 +8,7 @@ namespace Velvet
     // A resolved ring / outline preset. UI Toolkit has no CSS box-shadow or outline, so Velvet draws the
     // outset hard border these utilities describe as a native rounded-border OVERLAY tracking the element
     // (hardware-rendered, follows rounded-* corners, no custom material / draw-order hazard — unlike the
-    // soft, blurred DropShadow which needs an SDF shader); RingOverlay owns where that overlay lives. Corner
+    // soft, blurred box shadow which needs an SDF shader); RingOverlay owns where that overlay lives. Corner
     // radius is NOT part of the spec: the overlay follows the target's own rounded-* radius (plus the ring
     // width + offset), like ShadowSpec.
     //
