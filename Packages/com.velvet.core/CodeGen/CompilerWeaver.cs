@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
@@ -363,20 +364,19 @@ namespace Velvet.CodeGen
                 return false;
             }
 
-            var hookPipedLocals = new List<(VariableDefinition? Local, TypeReference Type, Instruction Stored)>();
+            var hookPipedLocals = new List<HookCapture>();
             var hookCalls = new List<Instruction>();
-            var uncomparableLocals = new HashSet<VariableDefinition>();
-            if (!TryScanHookSection(body, reach, hookPipedLocals, hookCalls, uncomparableLocals,
-                    out var lastHookBoundary))
+            var hookKeys = new HookKeys();
+            if (!TryScanHookSection(body, reach, hookPipedLocals, hookCalls, hookKeys, out var lastHookBoundary))
             {
                 return false;
             }
 
-            if (hookPipedLocals.Count == 0 && method.Parameters.Count == 0)
+            if (hookPipedLocals.Count == 0 && method.Parameters.Count == 0 && !IsInputFree(body, lastHookBoundary))
             {
-                // No parameter and no value hook: the deps array would be empty, so TryGetMemoizedVNode would
-                // be an unconditional hit and freeze the body after the first render. A component with no reactive
-                // input (no props, no value hook) is constant, so leave it unwoven rather than always-hit.
+                // No parameter and no value hook: the deps array is empty, so the gate hits on every render after
+                // the first. That is the tree of a body that reads nothing, and for a body reading state no
+                // dependency stands for it would freeze the tree, so only the first is woven.
                 return false;
             }
 
@@ -385,7 +385,7 @@ namespace Velvet.CodeGen
                 // No hook call: the gate keys on the parameters alone and goes ahead of the first instruction, so
                 // it precedes every return and every protected region, and a hit's early return skips no hook
                 // call. The checks below have nothing to find.
-                analysis = new HookAnalysis(hookPipedLocals, null, returns, 0, uncomparableLocals);
+                analysis = new HookAnalysis(hookPipedLocals, null, returns, 0, hookKeys);
                 return !RequestsPropsBail(method);
             }
 
@@ -427,7 +427,7 @@ namespace Velvet.CodeGen
             }
 
             analysis = new HookAnalysis(hookPipedLocals, lastHookBoundary, returns,
-                StackDepthAfter(body, lastHookBoundary), uncomparableLocals);
+                StackDepthAfter(body, lastHookBoundary), hookKeys);
             return true;
         }
 
@@ -566,8 +566,8 @@ namespace Velvet.CodeGen
         // into. False means the shape is unweavable and the whole method bails; a true result with a null
         // boundary means the body reached no hook at all.
         private static bool TryScanHookSection(MethodBody body, HookReachFold reach,
-            List<(VariableDefinition? Local, TypeReference Type, Instruction Stored)> hookPipedLocals,
-            List<Instruction> hookCalls, HashSet<VariableDefinition> uncomparableLocals,
+            List<HookCapture> hookPipedLocals,
+            List<Instruction> hookCalls, HookKeys hookKeys,
             out Instruction? lastHookBoundary)
         {
             lastHookBoundary = null;
@@ -600,21 +600,21 @@ namespace Velvet.CodeGen
                     return false;
                 }
 
-                var capture = TryCaptureHookResult(next, body, isDirect, out var local, out var boundary);
-                if (capture == HookCaptureMatch.Bail)
+                var outcome = TryCaptureHookResult(next, body, isDirect);
+                if (outcome.Match == HookCaptureMatch.Bail)
                 {
                     return false;
                 }
-                if (capture == HookCaptureMatch.Matched)
+                if (outcome.Match == HookCaptureMatch.Matched)
                 {
-                    hookPipedLocals.Add((local!, local!.VariableType, boundary!));
-                    if (IsUncomparableHookValue(hookTarget!, isDirect, local)) uncomparableLocals.Add(local);
-                    lastHookBoundary = boundary;
+                    hookPipedLocals.Add(outcome.Capture);
+                    hookKeys.Record(outcome, IsUncomparableHookValue(hookTarget!, isDirect, outcome.Capture.Type));
+                    lastHookBoundary = outcome.Boundary;
                     continue;
                 }
                 if (TryCaptureStackValue(instr, next, out var stackType, out var producer))
                 {
-                    hookPipedLocals.Add((null, stackType!, producer));
+                    hookPipedLocals.Add(new HookCapture(null, null, null, stackType!, producer));
                     lastHookBoundary = producer;
                     continue;
                 }
@@ -629,22 +629,32 @@ namespace Velvet.CodeGen
         // The shapes are tried in this order because each is a strictly narrower read of the same
         // instruction, and the first one that recognizes the shape owns the verdict — including a Bail,
         // which means the shape matched but is unsound and a later matcher must not get to claim it.
-        private static HookCaptureMatch TryCaptureHookResult(Instruction next, MethodBody body, bool isDirect,
-            out VariableDefinition? local, out Instruction? boundary)
+        // A tuple held in a temporary is claimed ahead of TryMatchDirectCapture, which refuses a whole tuple.
+        private static HookCaptureOutcome TryCaptureHookResult(Instruction next, MethodBody body, bool isDirect)
         {
-            var direct = TryMatchDirectCapture(next, body, out local, out boundary);
-            if (direct != HookCaptureMatch.NotMatched)
+            if (TryGetStlocVariable(next, body, out var temporary) && IsValueTupleType(temporary.VariableType))
             {
-                return direct;
+                return TryMatchTupleTemp(next, body, isDirect, temporary);
+            }
+            if (next.OpCode == OpCodes.Stfld)
+            {
+                var field = TryMatchFieldCapture(next, body);
+                if (field.Match != HookCaptureMatch.NotMatched) return field;
             }
 
-            var item1 = TryMatchItem1Deconstruction(next, body, out local, out boundary);
-            if (item1 != HookCaptureMatch.NotMatched)
+            var direct = TryMatchDirectCapture(next, body, out var local, out var boundary);
+            if (direct == HookCaptureMatch.NotMatched)
             {
-                return item1;
+                direct = TryMatchItem1Deconstruction(next, body, out local, out boundary);
             }
-
-            return TryMatchTwoElementDeconstruction(next, body, isDirect, out local, out boundary);
+            object? stable = null;
+            if (direct == HookCaptureMatch.NotMatched)
+            {
+                direct = TryMatchTwoElementDeconstruction(next, body, isDirect, out local, out boundary, out stable);
+            }
+            return direct == HookCaptureMatch.Matched
+                ? new HookCaptureOutcome(direct, new HookCapture(local, null, null, local!.VariableType, boundary!), boundary, stable)
+                : new HookCaptureOutcome(direct, default, null, null);
         }
 
         // A hook call can be followed directly by whatever reads its value, with no store between. Such a value
@@ -725,11 +735,10 @@ namespace Velvet.CodeGen
         private static bool TryMatchDiscardedHookResult(Instruction next)
             => next.OpCode == OpCodes.Pop;
 
-        // A whole-tuple capture (`var s = Hooks.UseState(...)`) stores the returned ValueTuple and is
-        // compared via ValueTuple.Equals — per-element EqualityComparer<T>.Default (structural). For a
-        // reference / float Item1 that diverges from the Object.is the reconciler uses to drive a
-        // re-render, so a fresh-but-equal value would be a stale hit. Bail: single-element
-        // deconstruction (`var (value, _) = ...`) captures Item1 directly and is compared soundly.
+        // A `ref var` local holds a managed pointer, which cannot be stored into the object[] of deps. A whole
+        // tuple stored in a local is TryMatchTupleTemp's: boxed and compared with ValueTuple.Equals it would be
+        // matched per element by EqualityComparer<T>.Default, which diverges from the Object.is the reconciler
+        // uses to drive a re-render, so a tuple read otherwise than element by element bails there.
         private static HookCaptureMatch TryMatchDirectCapture(
             Instruction next, MethodBody body, out VariableDefinition? capturedLocal, out Instruction? newBoundary)
         {
@@ -739,8 +748,7 @@ namespace Velvet.CodeGen
             {
                 return HookCaptureMatch.NotMatched;
             }
-            // A `ref var` local holds a managed pointer, which cannot be stored into the object[] of deps.
-            if (IsValueTupleType(local.VariableType) || local.VariableType.IsByReference)
+            if (local.VariableType.IsByReference)
             {
                 return HookCaptureMatch.Bail;
             }
@@ -783,10 +791,11 @@ namespace Velvet.CodeGen
         // shape and bailed the whole component — disabling auto-memo for every `var (x, setX) = ...` site.
         private static HookCaptureMatch TryMatchTwoElementDeconstruction(
             Instruction next, MethodBody body, bool isDirect, out VariableDefinition? capturedLocal,
-            out Instruction? newBoundary)
+            out Instruction? newBoundary, out object? stableSetter)
         {
             capturedLocal = null;
             newBoundary = null;
+            stableSetter = null;
             if (next.OpCode != OpCodes.Dup)
             {
                 return HookCaptureMatch.NotMatched;
@@ -818,6 +827,7 @@ namespace Velvet.CodeGen
             }
             capturedLocal = valueLocal;
             newBoundary = setterStore;
+            stableSetter = TryGetStlocVariable(setterStore, body, out var setterLocal) ? setterLocal : null;
             return HookCaptureMatch.Matched;
         }
 
@@ -1252,7 +1262,7 @@ namespace Velvet.CodeGen
 
             body.SimplifyMacros();
             var plans = withScopes && context.TryGetMemoizedScope != null && context.StoreMemoizedScope != null
-                ? PlanScopes(body, analysis)
+                ? PlanScopes(body, analysis, context)
                 : new List<ScopePlan>();
 
             var vnodeType = context.VNode;
@@ -1270,12 +1280,12 @@ namespace Velvet.CodeGen
             // reads the copies: Roslyn gives two nested hooks' results one temp, and a statement's local can be
             // assigned again before the gate, so the local a hook stored into need not hold its value there. A
             // value left on the stack is copied off it with a dup where it is produced.
-            var copies = new List<(VariableDefinition? Local, Instruction Stored, VariableDefinition Copy)>();
-            foreach (var (local, type, stored) in analysis.HookCaptures)
+            var copies = new List<(HookCapture Capture, VariableDefinition Copy)>();
+            foreach (var capture in analysis.HookCaptures)
             {
-                var copy = new VariableDefinition(type);
+                var copy = new VariableDefinition(capture.Type);
                 body.Variables.Add(copy);
-                copies.Add((local, stored, copy));
+                copies.Add((capture, copy));
             }
 
             var insertAfter = analysis.LastHookBoundary;
@@ -1302,7 +1312,7 @@ namespace Velvet.CodeGen
                 injected.Add(Instruction.Create(OpCodes.Stelem_Ref));
             }
             var depIndex = paramCount;
-            foreach (var (_, _, local) in copies)
+            foreach (var (_, local) in copies)
             {
                 injected.Add(Instruction.Create(OpCodes.Dup));
                 injected.Add(Instruction.Create(OpCodes.Ldc_I4, depIndex++));
@@ -1352,11 +1362,18 @@ namespace Velvet.CodeGen
             }
 
             // After the gate, so that a copy lands between its store and the gate where that store is the boundary.
-            foreach (var (local, stored, copy) in copies)
+            foreach (var (capture, copy) in copies)
             {
-                il.InsertAfter(stored, Instruction.Create(OpCodes.Stloc, copy));
-                il.InsertAfter(stored, local == null ? Instruction.Create(OpCodes.Dup) : Instruction.Create(OpCodes.Ldloc, local));
+                il.InsertAfter(capture.Stored, Instruction.Create(OpCodes.Stloc, copy));
+                foreach (var load in CopySource(capture).Reverse())
+                {
+                    il.InsertAfter(capture.Stored, load);
+                }
             }
+
+            // Ahead of the returns' commit, so that a scope whose value is returned stores before the gate does and
+            // a hit on it jumps to the gate's commit.
+            InjectScopes(body, plans, context, slotLocal);
 
             // Inject Store + reload at every return path so all `Ret` instructions
             // share the same memoization commit, regardless of which branch produced
@@ -1381,7 +1398,6 @@ namespace Velvet.CodeGen
                 RetargetBranches(body, returnInstr, preReturn[0]);
             }
 
-            InjectScopes(body, plans, context, slotLocal);
             body.OptimizeMacros();
             return plans.Count;
         }
@@ -1442,26 +1458,60 @@ namespace Velvet.CodeGen
 
         private readonly struct HookAnalysis
         {
-            public HookAnalysis(IReadOnlyList<(VariableDefinition? Local, TypeReference Type, Instruction Stored)> hookCaptures,
+            public HookAnalysis(IReadOnlyList<HookCapture> hookCaptures,
                 Instruction? lastHookBoundary,
                 IReadOnlyList<Instruction> returns,
                 int stackDepthAtGate,
-                HashSet<VariableDefinition> uncomparableLocals)
+                HookKeys keys)
             {
                 HookCaptures = hookCaptures;
                 LastHookBoundary = lastHookBoundary;
                 Returns = returns;
                 StackDepthAtGate = stackDepthAtGate;
-                UncomparableLocals = uncomparableLocals;
+                Keys = keys;
             }
-            public IReadOnlyList<(VariableDefinition? Local, TypeReference Type, Instruction Stored)> HookCaptures { get; }
+            public IReadOnlyList<HookCapture> HookCaptures { get; }
             public Instruction? LastHookBoundary { get; }
             public IReadOnlyList<Instruction> Returns { get; }
             public int StackDepthAtGate { get; }
+            public HookKeys Keys { get; }
+        }
 
-            // Hook values a scope never compares: the one instance a stable-reference hook returns for the life of
-            // the component, and a reference a custom hook returns, which may be that instance from inside.
-            public HashSet<VariableDefinition> UncomparableLocals { get; }
+        // What the hook section says about the variables it stored into, each a local or the field of a display
+        // class. Uncomparable: the one instance a stable-reference hook returns for the life of the component, and a
+        // reference a custom hook returns, which may be that instance from inside. Stable: the setter of a hook's
+        // pair, one object for the life of the component, which a scope compares as a dependency that never changes.
+        private sealed class HookKeys
+        {
+            public HashSet<object> Uncomparable { get; } = new();
+
+            public HashSet<object> Stable { get; } = new();
+
+            // A value left on the stack has no variable to name, and no scope reads it.
+            public void Record(HookCaptureOutcome outcome, bool uncomparable)
+            {
+                var key = outcome.Capture.Local ?? (outcome.Capture.Field == null ? null : FieldKey(outcome.Capture.Field));
+                if (uncomparable && key != null) Uncomparable.Add(key);
+                if (outcome.StableKey != null) Stable.Add(outcome.StableKey);
+            }
+        }
+
+        // The loads that copy a captured value off wherever it was stored, once it is there.
+        private static IEnumerable<Instruction> CopySource(HookCapture capture)
+        {
+            if (capture.Local != null)
+            {
+                yield return Instruction.Create(OpCodes.Ldloc, capture.Local);
+            }
+            else if (capture.Field != null)
+            {
+                yield return Instruction.Create(OpCodes.Ldloc, capture.Receiver!);
+                yield return Instruction.Create(OpCodes.Ldfld, capture.Field);
+            }
+            else
+            {
+                yield return Instruction.Create(OpCodes.Dup);
+            }
         }
     }
 
@@ -1474,6 +1524,8 @@ namespace Velvet.CodeGen
         // Absent on a Velvet assembly that declares the component gate alone; the body is then woven without scopes.
         public MethodReference? TryGetMemoizedScope { get; init; }
         public MethodReference? StoreMemoizedScope { get; init; }
+        public MethodReference? TryGetMemoizedValue { get; init; }
+        public MethodReference? StoreMemoizedValue { get; init; }
 
         // Resolves the Velvet runtime members the weaver injects calls to. On failure, returns null and
         // reports what could not be resolved through failure so the caller can emit a diagnostic
@@ -1504,6 +1556,8 @@ namespace Velvet.CodeGen
             var store = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedVNode), 3);
             var tryGetScope = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedScope), 4);
             var storeScope = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedScope), 4);
+            var tryGetValue = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedValue), 4);
+            var storeValue = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedValue), 4);
             if (tryGet == null || store == null)
             {
                 failure = $"the memoization methods '{hooksTypeName}.{nameof(Velvet.Hooks.TryGetMemoizedVNode)}' /"
@@ -1519,6 +1573,8 @@ namespace Velvet.CodeGen
                 StoreMemoizedVNode = module.ImportReference(store),
                 TryGetMemoizedScope = tryGetScope == null ? null : module.ImportReference(tryGetScope),
                 StoreMemoizedScope = storeScope == null ? null : module.ImportReference(storeScope),
+                TryGetMemoizedValue = tryGetValue == null ? null : module.ImportReference(tryGetValue),
+                StoreMemoizedValue = storeValue == null ? null : module.ImportReference(storeValue),
             };
         }
 

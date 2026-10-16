@@ -2860,9 +2860,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Gate for one reactive scope, woven in by the build-time compiler transform around a child VNode
-        /// expression of a component the gate of <see cref="TryGetMemoizedVNode"/> already covers. Returns the
-        /// VNode the scope built last time when its dependency values are equal, so that child keeps its
+        /// Gate for one reactive scope, woven in by the build-time compiler transform around a VNode expression
+        /// of a component the gate of <see cref="TryGetMemoizedVNode"/> already covers. Returns the
+        /// VNode the scope built last time when its dependency values are equal, so that node keeps its
         /// identity and the reconciler skips it. A call whose gate was granted no slot (<paramref name="gateSlot"/>
         /// is <c>-1</c>) reports a miss and the scope runs uncached.
         /// Do not call by hand.
@@ -2876,18 +2876,9 @@ namespace Velvet
         [EditorBrowsable(EditorBrowsableState.Never)]
         public static bool TryGetMemoizedScope(int gateSlot, int scope, object?[] deps, out VNode? cached)
         {
-            var fiber = FiberAmbientStack.Current;
-            cached = null;
-            if (gateSlot < 0 || fiber == null) return false;
-            var slot = ScopeSlot(fiber, gateSlot, scope);
-            slot.HookCallCountAtGate = fiber.HookCallCount;
-            if (slot.RunsHooksPastGate || !ObjectIs.AreEqualDeps(slot.LastDeps, deps)) return false;
-            // Staged for the reason TryGetMemoizedVNode stages its own hit: a discarded attempt's miss would
-            // otherwise be what the settle promotes.
-            slot.NextDeps = slot.LastDeps;
-            slot.NextCachedResult = slot.CachedResult;
-            cached = slot.CachedResult;
-            return true;
+            var hit = TryHitScope(gateSlot, scope, deps);
+            cached = hit?.CachedResult;
+            return hit != null;
         }
 
         /// <summary>
@@ -2900,9 +2891,60 @@ namespace Velvet
         /// <param name="result">VNode to cache for subsequent hits; null where the expression built none.</param>
         [EditorBrowsable(EditorBrowsableState.Never)]
         public static void StoreMemoizedScope(int gateSlot, int scope, object?[] deps, VNode? result)
+            => StageScope(gateSlot, scope, deps, result, null, nameof(StoreMemoizedScope));
+
+        /// <summary>
+        /// Gate for one reactive scope whose value is not a VNode — a delegate over a lambda that captures
+        /// variables, or a value the body derives — woven in by the build-time compiler transform. It answers as
+        /// <see cref="TryGetMemoizedScope"/> does, for the value the scope stored.
+        /// Do not call by hand.
+        /// When the return value is <c>false</c>, <paramref name="cached"/> is undefined.
+        /// </summary>
+        /// <param name="gateSlot">The slot index <see cref="TryGetMemoizedVNode"/> granted the component this render.</param>
+        /// <param name="scope">The scope's position among the scopes of the component's method.</param>
+        /// <param name="deps">Dependency values read by the scope's expression.</param>
+        /// <param name="cached">Outputs the cached value on a hit; undefined on a miss.</param>
+        /// <returns>True when the previous dependency values are equal and the cached value was returned.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static bool TryGetMemoizedValue(int gateSlot, int scope, object?[] deps, out object? cached)
+        {
+            var hit = TryHitScope(gateSlot, scope, deps);
+            cached = hit?.CachedValue;
+            return hit != null;
+        }
+
+        /// <summary>
+        /// Slot writer API woven in on the miss path of <see cref="TryGetMemoizedValue"/>; the arguments name the
+        /// same scope. A <paramref name="gateSlot"/> of <c>-1</c> stages nothing.
+        /// </summary>
+        /// <param name="gateSlot">The slot index <see cref="TryGetMemoizedVNode"/> granted the component this render.</param>
+        /// <param name="scope">The scope's position among the scopes of the component's method.</param>
+        /// <param name="deps">Dependency values to record for this scope.</param>
+        /// <param name="result">Value to cache for subsequent hits, boxed where it is a value type.</param>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static void StoreMemoizedValue(int gateSlot, int scope, object?[] deps, object? result)
+            => StageScope(gateSlot, scope, deps, null, result, nameof(StoreMemoizedValue));
+
+        // The slot of a scope whose committed dependencies equal these, with what it held staged as the settle's
+        // baseline so that a discarded attempt's miss is not what the settle promotes, as TryGetMemoizedVNode
+        // does for its own hit.
+        private static HookMemoSlot? TryHitScope(int gateSlot, int scope, object?[] deps)
+        {
+            var fiber = FiberAmbientStack.Current;
+            if (gateSlot < 0 || fiber == null) return null;
+            var slot = ScopeSlot(fiber, gateSlot, scope);
+            slot.HookCallCountAtGate = fiber.HookCallCount;
+            if (slot.RunsHooksPastGate || !ObjectIs.AreEqualDeps(slot.LastDeps, deps)) return null;
+            slot.NextDeps = slot.LastDeps;
+            slot.NextCachedResult = slot.CachedResult;
+            slot.NextCachedValue = slot.CachedValue;
+            return slot;
+        }
+
+        private static void StageScope(int gateSlot, int scope, object?[] deps, VNode? node, object? value, string api)
         {
             if (gateSlot < 0) return;
-            var fiber = ResolveUncounted("StoreMemoizedScope");
+            var fiber = ResolveUncounted(api);
 #if UNITY_EDITOR
             // The diagnostic render's output is not staged, as StoreMemoizedVNode says.
             if (fiber.IsStrictDiagnosticPass) return;
@@ -2914,7 +2956,8 @@ namespace Velvet
                 slot.RunsHooksPastGate = true;
             }
             slot.NextDeps = deps;
-            slot.NextCachedResult = result;
+            slot.NextCachedResult = node;
+            slot.NextCachedValue = value;
         }
 
         // The scopes of a component sit in the slots after its gate's, in the order the weaver numbered them.

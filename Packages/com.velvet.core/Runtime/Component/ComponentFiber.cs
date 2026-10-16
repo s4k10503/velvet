@@ -875,7 +875,7 @@ namespace Velvet
         internal void DisposeBlockerSlots() => DisposeAndClear(BlockerSlots);
 
         /// <summary>
-        /// Releases all memoization slots. Called on Unmount; severs references to CachedResult (VNode) and LastDeps.
+        /// Releases all memoization slots. Called on Unmount; severs references to CachedResult (VNode), CachedValue and LastDeps.
         /// </summary>
         internal void DisposeMemoSlots()
         {
@@ -900,6 +900,7 @@ namespace Velvet
                 if (slot == null) continue;
                 slot.LastDeps = null;
                 slot.CachedResult = null;
+                slot.CachedValue = null;
             }
         }
 
