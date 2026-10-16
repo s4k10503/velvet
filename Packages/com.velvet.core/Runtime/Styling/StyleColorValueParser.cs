@@ -486,6 +486,7 @@ namespace Velvet
             {
                 return Math.Clamp(value / 255, 0, 1);
             }
+            // MUTANT_SURVIVES(equivalent): TryParseHue normalises the hue at index 0, so it is never below 0.
             return index > 0 && space == CssColorSpace.Hsl ? Math.Max(value, 0) : value;
         }
 
