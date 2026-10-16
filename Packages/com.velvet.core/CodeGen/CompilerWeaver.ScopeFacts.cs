@@ -57,6 +57,8 @@ namespace Velvet.CodeGen
 
             public Instruction[] Instructions { get; }
 
+            public ModuleDefinition Module => _body.Method.Module;
+
             public int[] Depths { get; }
 
             public int Boundary { get; }
@@ -232,7 +234,7 @@ namespace Velvet.CodeGen
             {
                 if (_spans.TryGetValue(local, out var span) && span.First >= region.Start && span.Last <= region.End) return true;
                 var live = LiveIn(local);
-                return !live[region.Start] && !live[region.End + 2];
+                return !live[region.Start] && !live[region.End + 1];
             }
 
             // Whether a read of the local can be reached from each instruction before a store to it. A store

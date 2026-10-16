@@ -1389,7 +1389,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures the pair of a custom hook
         // unwoven too.
         // What it pins is the second element being taken for a setter only from a hook of the library: dropping `&&
-        // (setters is 0 || (isDirect && setters is 1))` from `TupleElementsAreSound` weaves it.
+        // (setters is 0 || (stableSecond && setters is 1))` from `TupleElementsAreSound` weaves it.
         [Test]
         public void Given_ACustomHookPairAHandlerCaptures_When_Analyzed_Then_IsLeftUnwoven()
         {
@@ -1459,6 +1459,66 @@ namespace Velvet.Tests
             Assert.That(pops, Is.EqualTo(0), "The gate sits after the store of the last element, not between the read and the store");
         }
 
+        [Component]
+        public static VNode StoreTupleSelectorComponent()
+        {
+            var (first, second) = Hooks.UseStore(s_firstStore, value => (value, value + 1));
+            return V.Label(text: first.ToString() + second);
+        }
+
+        [Component]
+        public static VNode HandlerCapturingAStoreTupleComponent()
+        {
+            var (first, second) = Hooks.UseStore(s_firstStore, value => (value, value + 1));
+            return V.Button(text: "go", onClick: () => System.Console.Write(first + second));
+        }
+
+        [Component]
+        public static VNode HandlerReassigningAHookValueComponent()
+        {
+            var (count, _) = Hooks.UseState(0);
+            return V.Button(text: "add", onClick: () => { count++; });
+        }
+
+        [Test]
+        public void Given_AStoreWhoseSelectorReturnsAPair_When_Woven_Then_IsLeftUnwoven()
+        {
+            // Act
+            var woven = IsWoven(LoadMethod(nameof(StoreTupleSelectorComponent)));
+
+            // Assert
+            Assert.That(woven, Is.False, "The second element of a store's selected pair is a value of the selector's, not a setter");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures a hook value unwoven,
+        // whatever the hook returns.
+        // What it pins is the second element of a pair being left out of the gate for four hooks only: `isDirect` in
+        // place of `isDirect && StableSecondElementHookNames.Contains(hookTarget!.Name)` in `TryScanHookSection`
+        // weaves it.
+        [Test]
+        public void Given_AHandlerCapturingAStoreWhosePairIsSelected_When_Woven_Then_IsLeftUnwoven()
+        {
+            // Act
+            var woven = IsWoven(LoadMethod(nameof(HandlerCapturingAStoreTupleComponent)));
+
+            // Assert
+            Assert.That(woven, Is.False, "The second element of a store's selected pair is a value of the selector's, not a setter");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves a body whose handler captures a hook value unwoven,
+        // whatever the handler does to it.
+        // What it pins is a handler that assigns the captured value being refused: `if (false)` in place of the
+        // `LambdaWritesACapturedHookValue` test in `TryAnalyze` weaves it.
+        [Test]
+        public void Given_AHandlerReassigningAHookValue_When_Woven_Then_IsLeftUnwoven()
+        {
+            // Act
+            var woven = IsWoven(LoadMethod(nameof(HandlerReassigningAHookValueComponent)));
+
+            // Assert
+            Assert.That(woven, Is.False, "A handler that assigns the variable makes it other than what the gate compared");
+        }
+
         #endregion
 
         #region First reactive scopes
@@ -1515,6 +1575,13 @@ namespace Velvet.Tests
         {
             var (a, _) = Hooks.UseState("");
             return V.Div("root", V.Label(text: a), V.Label(text: Hooks.UseId()));
+        }
+
+        [Component]
+        public static VNode TextChildOmittingAnOptionalNullableComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            return V.Div("root", V.Button(text: a), V.Label(text: a));
         }
 
         [Component]
@@ -1714,7 +1781,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AChildChoosingBetweenTwoCalls_When_Woven_Then_ItsSiblingGetsAScopeGate()
+        public void Given_AChildChoosingBetweenTwoCalls_When_Woven_Then_TheChoiceItsFirstArmAndItsSiblingGetAScopeGate()
         {
             // Act
             var gates = ScopeGatesOf(nameof(ConditionalTextChildComponent));
@@ -1723,18 +1790,39 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(3));
         }
 
-        // GREEN_ON_BASE(characterization): the base weaves the component gate of this body and no scope gate, which
-        // is the pair it asserts.
+        // GREEN_ON_BASE(characterization): the base weaves the component gate of this body.
+        // It holds the next case to account: a body left unwoven has no scope gate either.
+        [Test]
+        public void Given_AChildAheadOfALaterHook_When_Woven_Then_TheComponentIsWoven()
+        {
+            // Act
+            var woven = IsWoven(LoadMethod(nameof(TextChildAfterAHookComponent)));
+
+            // Assert
+            Assert.That(woven, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no scope gate, so it counts none here either.
         // What it pins is a child ahead of a later hook staying out of every scope: `true` in place of
         // `each.Span.Start > boundary` in `PlanScopes` gives it one.
         [Test]
-        public void Given_AChildAheadOfALaterHook_When_Woven_Then_TheComponentIsWovenWithNoScopeGate()
+        public void Given_AChildAheadOfALaterHook_When_Woven_Then_NoChildGetsAScopeGate()
         {
             // Act
-            var method = LoadMethod(nameof(TextChildAfterAHookComponent));
+            var gates = ScopeGatesOf(nameof(TextChildAfterAHookComponent));
 
             // Assert
-            Assert.That((IsWoven(method), CountHookCalls(method, ScopeGateName)), Is.EqualTo((true, 0)));
+            Assert.That(gates, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AChildOmittingAnOptionalNullableParameter_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(TextChildOmittingAnOptionalNullableComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
         }
 
         [Test]
@@ -2685,7 +2773,6 @@ namespace Velvet.Tests
 
         #endregion
 
-
         #region Reactive scopes (a gate per child)
 
         private static int s_scopeMutable;
@@ -2851,6 +2938,65 @@ namespace Velvet.Tests
             var watch = Hooks.UseMemo(() => new System.Diagnostics.Stopwatch(), "stable");
             var (n, _) = Hooks.UseState(0);
             return V.Div("root", V.Label(text: watch.ElapsedTicks.ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingATaskGetterComponent()
+        {
+            var task = Hooks.UseMemo(() => System.Threading.Tasks.Task.CompletedTask, "stable");
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: task.IsCompleted.ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingAWeakReferenceComponent()
+        {
+            var weak = Hooks.UseMemo(() => new System.WeakReference(new object()), "stable");
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: weak.IsAlive.ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingALazyValueComponent()
+        {
+            var lazy = Hooks.UseMemo(() => new System.Lazy<int>(() => 1), "stable");
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: lazy.Value.ToString()), V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode ChildReadingAnAutoPropertyOfAnotherAssemblyComponent()
+        {
+            var (node, _) = Hooks.UseState<ElementNode>(V.Label(text: "x"));
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Label(text: node.Name), V.Label(text: n.ToString()));
+        }
+
+        private sealed class CaptionedCard : System.Collections.Generic.Dictionary<string, string>
+        {
+            public CaptionedCard(VNode label, string caption)
+            {
+                Add("caption", caption);
+            }
+        }
+
+        [Component]
+        public static VNode ChildStoringALocalItsNextArgumentReadsComponent()
+        {
+            var (title, _) = Hooks.UseState("");
+            var (n, _) = Hooks.UseState(0);
+            string caption;
+            return V.Div("root",
+                V.Label(data: new CaptionedCard(V.Label(text: caption = title.ToUpper()), caption)),
+                V.Label(text: n.ToString()));
+        }
+
+        [Component]
+        public static VNode SuspenseReadingOneStateComponent()
+        {
+            var (a, _) = Hooks.UseState("");
+            var (n, _) = Hooks.UseState(0);
+            return V.Div("root", V.Suspense(V.Label(text: a), new VNode?[] { V.Label(text: a) }), V.Label(text: n.ToString()));
         }
 
         [Component]
@@ -3081,6 +3227,66 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AChildReadingATaskProperty_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildReadingATaskGetterComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingAWeakReferenceProperty_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildReadingAWeakReferenceComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingALazyValue_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildReadingALazyValueComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AChildReadingAnAutoPropertyOfAnotherAssembly_When_Woven_Then_EachChildGetsAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildReadingAnAutoPropertyOfAnotherAssemblyComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AChildStoringALocalTheNextArgumentReads_When_Woven_Then_OnlyTheCardAndTheOtherChildGetAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(ChildStoringALocalItsNextArgumentReadsComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ASuspenseWhoseChildrenReadWhatItReads_When_Woven_Then_OnlyItAndTheOtherChildGetAScopeGate()
+        {
+            // Act
+            var gates = ScopeGatesOf(nameof(SuspenseReadingOneStateComponent));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(2));
+        }
+
+        [Test]
         public void Given_AChildReadingAReferenceFromACustomHook_When_Woven_Then_OnlyTheOtherChildGetsAScopeGate()
         {
             // Act
@@ -3190,20 +3396,29 @@ namespace Velvet.Tests
             Assert.That(gates, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): the base weaves no child gate, so it counts none here either, and the gate
-        // alone is the half it asserts that the base holds too.
+        // GREEN_ON_BASE(characterization): the base weaves the component gate of this body.
+        // It holds the next case to account: a body left unwoven has no scope gate either.
+        [Test]
+        public void Given_AChildAheadOfALaterHook_When_Woven_Then_ItIsWovenWithItsOwnGate()
+        {
+            // Act
+            var gates = CountHookCalls(LoadMethod(nameof(ChildAheadOfALaterHookComponent)), nameof(Hooks.TryGetMemoizedVNode));
+
+            // Assert
+            Assert.That(gates, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no child gate, so it counts none here either.
         // What it pins is a child ahead of the last hook staying out of every scope: `-1` in place of the conditional that
         // sets `boundary` in `PlanScopes` gives the label reading `n` a gate that runs before the component's own.
         [Test]
-        public void Given_AChildAheadOfALaterHook_When_Woven_Then_ItIsWovenWithNoScopeGate()
+        public void Given_AChildReadingAStateAheadOfALaterHook_When_Woven_Then_NoChildGetsAScopeGate()
         {
             // Act
-            var method = LoadMethod(nameof(ChildAheadOfALaterHookComponent));
+            var gates = CountHookCalls(LoadMethod(nameof(ChildAheadOfALaterHookComponent)), ScopeGateName);
 
             // Assert
-            Assert.That(
-                (CountHookCalls(method, nameof(Hooks.TryGetMemoizedVNode)), CountHookCalls(method, ScopeGateName)),
-                Is.EqualTo((1, 0)));
+            Assert.That(gates, Is.EqualTo(0));
         }
 
         [Test]

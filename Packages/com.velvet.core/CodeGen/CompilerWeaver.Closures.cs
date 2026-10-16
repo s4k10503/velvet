@@ -85,7 +85,7 @@ namespace Velvet.CodeGen
         // temporary and then reads one element for each target, `ldloc tuple; ldfld ItemN; stloc x` for a local and
         // `ldloc display; ldloc tuple; ldfld ItemN; stfld f` for a captured variable. The temporary must hold
         // nothing else: a tuple read again later is a hook value the gate could not compare.
-        private static HookCaptureOutcome TryMatchTupleTemp(Instruction stored, MethodBody body, bool isDirect, VariableDefinition tuple)
+        private static HookCaptureOutcome TryMatchTupleTemp(Instruction stored, MethodBody body, bool stableSecond, VariableDefinition tuple)
         {
             var elements = new List<TupleElementStore>();
             var cursor = stored.Next;
@@ -94,7 +94,7 @@ namespace Velvet.CodeGen
                 elements.Add(element);
                 cursor = element.Store.Next;
             }
-            if (!TupleElementsAreSound(elements, isDirect) || IsTupleReadAgain(cursor, tuple, body)) return BailOutcome;
+            if (!TupleElementsAreSound(elements, stableSecond) || IsTupleReadAgain(cursor, tuple, body)) return BailOutcome;
             var value = elements.First(element => element.Item is 1);
             var setter = elements.FirstOrDefault(element => element.Item is 2);
             return new HookCaptureOutcome(HookCaptureMatch.Matched, new HookCapture(value.Local, value.Field, value.Receiver, value.Type, value.Store),
@@ -140,13 +140,25 @@ namespace Velvet.CodeGen
                 ? new TupleElementStore(number, store, null, field, receiver, type)
                 : null;
 
-        // The value is captured once. A setter is the stable second element of the hook's pair, which only a
-        // direct hook promises; a later element is not captured by anything here.
-        private static bool TupleElementsAreSound(List<TupleElementStore> elements, bool isDirect)
+        // The value is captured once. A setter is the stable second element of the hook's pair, which only a hook
+        // of StableSecondElementHookNames promises; a later element is not captured by anything here.
+        private static bool TupleElementsAreSound(List<TupleElementStore> elements, bool stableSecond)
             => elements.All(element => element.Item is 1 or 2)
-                && elements.Count(element => element.Item is 2) is var setters && (setters is 0 || (isDirect && setters is 1))
+                && elements.Count(element => element.Item is 2) is var setters && (setters is 0 || (stableSecond && setters is 1))
                 && elements.FirstOrDefault(element => element.Item is 1) is { Type: { IsByReference: false } kept } value
                 && !IsValueTupleType(kept) && (value.Local is not null || value.Field is not null || value.OnStack);
+
+        // A handler that assigns a hook value it captured makes the variable something other than what the gate
+        // compared. React Compiler refuses a component that does this (compiler/packages/babel-plugin-react-compiler/src/Validation/ValidateLocalsNotReassignedAfterRender.ts), and the component is left unwoven here.
+        private static string FieldName(FieldReference field) => ElementOf(field.DeclaringType)!.FullName + "::" + field.Name;
+
+        private static bool LambdaWritesACapturedHookValue(MethodDefinition component, List<HookCapture> captures)
+        {
+            var fields = captures.Where(capture => capture.Field != null).Select(capture => FieldName(capture.Field!)).ToHashSet();
+            return component.DeclaringType.NestedTypes.Where(IsClosureClass).SelectMany(type => type.Methods)
+                .Where(method => method.HasBody).SelectMany(method => method.Body.Instructions)
+                .Any(instr => instr is { OpCode.Code: Code.Stfld, Operand: FieldReference field } && fields.Contains(FieldName(field)));
+        }
 
         private static bool References(Instruction instr, VariableDefinition local, MethodBody body)
             => ReferenceEquals(instr.Operand, local) || ReferenceEquals(LoadedLocal(instr, body), local) || (TryGetStlocVariable(instr, body, out var stored) && ReferenceEquals(stored, local));

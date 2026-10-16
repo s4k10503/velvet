@@ -13,6 +13,7 @@ namespace Velvet.TestUtilities
     public static class RouterHistoryProbe
     {
         private const string HistoryFieldName = "_history";
+        private const string EntryPathFieldName = "Path";
 
         /// <summary>
         /// The path of every history entry, oldest first, joined with commas.
@@ -32,7 +33,12 @@ namespace Velvet.TestUtilities
         {
             foreach (var entry in HistoryOf(router))
             {
-                yield return (string)entry;
+                var path = entry.GetType().GetField(EntryPathFieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+                if (path == null)
+                {
+                    throw new MissingFieldException(entry.GetType().FullName, EntryPathFieldName);
+                }
+                yield return (string)path.GetValue(entry)!;
             }
         }
 

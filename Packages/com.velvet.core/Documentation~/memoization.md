@@ -25,6 +25,8 @@ A scope is one of:
 - a lambda that captures variables, cached under the captured variables it reads when it runs;
 - a value the body derives and stores once into a local (`var visible = items.Where(...)`), when nothing can change it afterwards: a value type, a `string`, a delegate, or an `IEnumerable<T>` / `IReadOnlyList<T>`-style interface. A `List<T>` or an array is not one, because the body may write to it later.
 
+A scope that ends where an enclosing scope ends (the last arm of a conditional that is itself a scope) is left to that one.
+
 A scope sits at any depth: one inside a scope that is built again keeps its own cache. One reading nothing is cached once it calls nothing but `V` factories. A scope the render did not reach, because an early `return` came first, keeps what it last built. A scope starting after the component's last hook call is woven; in a body that calls no hook, any scope is.
 
 ### What a scope is compared on
@@ -38,7 +40,7 @@ Dependencies are compared as [react-migration.md §1-4](react-migration.md#1-4-w
 
 A local only the scope itself uses is not compared.
 
-A scope compares the references it reads, as React Compiler's does. A list, dictionary or object held in state, context or props and changed in place (`items.Add(x)` followed by a state update, a property written on a context object) counts as unchanged, so the scope reading it keeps what it built before. Replace the value (a new list, a new object) as in React, or opt the component out with `[Component(Compiler = false)]`. An instance property accessor of a type in `System.Diagnostics` or `System.Threading` (`Stopwatch.Elapsed`) is the exception: a scope calling one is not cached. Any other instance property accessor is read like the value it belongs to, so a getter that returns something other than a function of its object's state is not seen to change.
+A scope compares the references it reads, as React Compiler's does. A list, dictionary or object held in state, context or props and changed in place (`items.Add(x)` followed by a state update, a property written on a context object) counts as unchanged, so the scope reading it keeps what it built before. Replace the value (a new list, a new object) as in React, or opt the component out with `[Component(Compiler = false)]`. A property read is read like the value it belongs to only where it is a plain one: a member of a type declared in your own assembly, an auto-property of any type, or a member of the BCL namespaces below. A scope reading any other property (`Rigidbody.velocity`, `Task.IsCompleted`, `Stopwatch.Elapsed`, `Store<T>.Current`) is not cached, since the value it answers with is state no dependency stands for. A getter of your own that returns something other than a function of its object's state is not seen to change.
 
 The weaver reads the calls an expression itself makes and does not follow them: the target of a delegate the expression hands on, the override a virtual call reaches, the body of a lambda beyond the variables it captures. As in React, render code must be pure; an expression that reads something no dependency stands for through one of those shows what it read when it last ran.
 
@@ -47,8 +49,8 @@ The weaver reads the calls an expression itself makes and does not follow them: 
 A scope is not cached, and is built as it was before scopes, where it:
 
 - calls a member of a `Ref<T>` or `MutableRef<T>`, or a method taking one, reads a `UseService` value, or reads a reference a custom hook returns;
-- reads a `static` field, other than a `readonly` one of a value type or `string`, or calls anything but a `V` factory, a constructor, an instance property accessor outside `System.Diagnostics` and `System.Threading`, or a member of `System`, `System.Collections`, `System.Collections.Generic`, `System.Linq`, `System.Text` or `System.Runtime.CompilerServices`. Of those, calls on `Random` and `Environment` are left out, and the static members of `DateTime`, `DateTimeOffset`, `Guid` and `TimeZoneInfo`. A method of your own that builds a child is not cached; make it a component or cache its result with `Hooks.UseMemo`;
-- reads a local of another kind, such as a list, a `VNode` or a delegate built in the body outside a scope of its own;
+- reads a `static` field, other than a `readonly` one of a value type or `string`, or calls anything but a `V` factory, a constructor, a plain property read, or a member of `System`, `System.Collections`, `System.Collections.Generic`, `System.Linq`, `System.Text` or `System.Runtime.CompilerServices`. Of those, calls on `Random`, `Environment`, `WeakReference` and `Lazy<T>` are left out, and the static members of `DateTime`, `DateTimeOffset`, `Guid` and `TimeZoneInfo`. A method of your own that builds a child is not cached; make it a component or cache its result with `Hooks.UseMemo`;
+- reads a local of another kind, such as a list, a `VNode` or a delegate built in the body;
 - writes a local that code outside it also uses, such as a variable a later child reads, or passes the address of such a local to a call;
 - sits in a loop, or in a method with `try`, `catch` or `finally`.
 
