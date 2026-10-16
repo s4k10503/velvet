@@ -1,7 +1,7 @@
 ### Fixed
 
-- A length, angle, number or time bracket reads every math function of CSS Values 4, not only `calc()`,
-  `min()`, `max()` and `clamp()`: `round()`, `mod()`, `rem()`, `abs()`, `sign()`, `hypot()`, the
+- The bracket grammar for lengths, angles, numbers and times reads every math function of CSS Values 4, not
+  only `calc()`, `min()`, `max()` and `clamp()`: `round()`, `mod()`, `rem()`, `abs()`, `sign()`, `hypot()`, the
   trigonometric functions, `pow()`, `sqrt()`, `log()`, `exp()` and the constants `e`, `pi`, `infinity` and
   `NaN`, with CSS's typed arithmetic (`calc(100px/2px*1px)` is 50px). A math function is read in an angle
   (`rotate-[calc(45deg*2)]`, a gradient's angle), a number (`scale-[…]`, `opacity-[…]`) and a time
@@ -26,8 +26,7 @@
   offsets (`at_right_10px_bottom_20px`) and a math function adding a percentage and a length, where only keywords
   and percentages were read.
 - A length only an element can measure — a font-relative or viewport unit, or a math function reading one — is
-  read by every utility that takes a length, where it left the class inert outside the sizing, position, spacing
-  and type utilities: border widths, `rounded-*`, `translate-*`, `origin-[…]`, `blur-*`, `shadow-[…]`, `gap-*`,
+  read by these utilities too, where it left the class inert: border widths, `rounded-*`, `translate-*`, `origin-[…]`, `blur-*`, `shadow-[…]`, `gap-*`,
   `space-*`, `divide-*`, `ring-*`, `ring-offset-*`, `outline-offset-*`, `clip-path-[…]`, a gradient's stops,
   radii and centre, and `leading-[…]`. A `translate-*` and an `origin-[…]` read a percentage of the element's own
   box beside one, and a clip-path or gradient length a percentage added to a length (`calc(100%_-_10px)`).
