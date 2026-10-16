@@ -226,9 +226,6 @@ namespace Velvet.Tests
         [TestCase("calc(1px+)")]
         [TestCase("min(1px,2px,)")]
         [TestCase("calc(1px)#)")]
-        [TestCase("calc(1px_-2px)")]
-        [TestCase("calc(1px-_2px)")]
-        [TestCase("calc(1px_+2px)")]
         [TestCase("calc(1px---1px)")]
         [TestCase("calc(20.px)")]
         [TestCase("calc(2e)")]
@@ -246,12 +243,10 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): a bracket that is no single math function was never read, and still is not.
         [TestCase("calc(1px")]
         [TestCase("calc(1px)px")]
-        [TestCase("calc(1px)_")]
         [TestCase("calc(1px)(")]
         [TestCase("(1px)")]
         [TestCase("-(1px)")]
         [TestCase("-calc(1px)")]
-        [TestCase("_calc(1px)")]
         public void Given_ABracketThatIsNoSingleMathFunction_When_ParsedAsAnArbitraryTop_Then_TheClassIsDeclined(string length)
         {
             // Act

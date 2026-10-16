@@ -21,7 +21,8 @@ A unit is read in any case, as CSS reads it: `w-[10PX]` is `w-[10px]`. Where Tai
 either a length or a colour — `border-*`, `text-*`, `ring-*`, `outline-*`, `ring-offset-*` and `from-*`,
 `via-*` and `to-*` — it takes a length only when the unit is in its own case, `Q` upper and the rest lower,
 and writes anything else as a colour, so `border-[2PX]` and `text-[16PX]` leave the class inert there as here.
-A math function is a length there whatever case its units are in (`border-[calc(2PX)]`), and so is
+A math function named in lower case is a length there whatever case its units are in
+(`border-[calc(2PX)]`; `border-[CALC(2px)]` is a colour to Tailwind), and so is
 `text-[length:16PX]`, whose type hint skips the test.
 
 An angle (`rotate-[…]`, `skew-x-[…]`, `hue-rotate-[…]`, a gradient's) is read in `deg`, `grad`, `rad` or `turn`,
@@ -30,11 +31,14 @@ is read only where the CSS property Tailwind writes takes one: `0` in `skew-x-[�
 `bg-linear-[…]`, and none in `rotate-[…]`, whose `rotate` property takes no bare `0`, or in a time.
 
 A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a space. CSS wants a space
-on both sides of a binary `+` or `-`; Tailwind writes `calc(2rem-4px)` and adds the spaces itself, so a
-space on neither side reads as one on both, and `calc(2rem-4px)` and `calc(2rem_-_4px)` are the same
-length. A space on one side only is declined: `calc(1px_-2px)` is `1px` followed by a second value `-2px`.
+on both sides of a binary `+` or `-`. Tailwind adds the spaces itself around an operator inside a function
+it names in lower case, so `calc(2rem-4px)`, `calc(2rem_-_4px)` and `calc(2rem_-4px)` are the same length.
+A function name is read in any case, but Tailwind leaves one in another case as written, where CSS's rule
+holds: `CALC(1px_+_2px)` is 3px and `CALC(1px+2px)` is declined.
 A sign belongs to a number (`-2px`, `+.5rem`, `-1e3px`), never to a parenthesis or a function, so `-(1px)`
-and `-calc(1px)` are declined, and so is a space before the function. Functions nest and `(` groups; `*`
+and `-calc(1px)` are declined. A space at either end of a length is trimmed, as the browser trims it from the
+declaration Tailwind writes (`top-[_calc(1px)]`, `w-[1px_]`), except where Tailwind reads the bracket as either a
+length or a colour: outside a math function its length test takes no space, so `border-[2px_]` is inert. Functions nest and `(` groups; `*`
 takes a plain number on one side, and `/` a plain number on its right. Up to 63 nested functions, and a run of
 up to 63 terms, factors or arguments, are read; 64 is declined. The two count against one bound, so a run
 inside nested functions is declined sooner. `clamp(low, value, high)` is `max(low, min(value, high))`, so a

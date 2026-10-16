@@ -9,13 +9,11 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class StyleLengthExpressionParseTests
     {
-        [TestCase("_calc(1px)")]
         [TestCase("(1px)")]
         [TestCase("-(1px)")]
         [TestCase("-calc(1px)")]
         [TestCase("calc(1px")]
         [TestCase("calc(1px)px")]
-        [TestCase("calc(1px)_")]
         [TestCase("calc(1px)(")]
         public void Given_TextThatIsNoSingleLength_When_Parsed_Then_ItIsDeclined(string text)
         {

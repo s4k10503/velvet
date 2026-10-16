@@ -3114,6 +3114,8 @@ namespace Velvet
         {
             value = 0;
             unit = LengthUnit.Pixel;
+            // A `_` at either end is the space a browser trims from the declaration Tailwind writes.
+            valueStr = valueStr.Trim("_ ".AsSpan());
 
             bool parsed;
             if (valueStr.Length > 0 && valueStr[valueStr.Length - 1] == '%')
@@ -3179,9 +3181,18 @@ namespace Velvet
         // Where Tailwind reads a bracket as either a length or something else (border-, text-, ring-, outline-,
         // ring-offset-, from-/via-/to-), it takes it for a length only when the unit is spelled as its list spells
         // it: `border-[2PX]` writes `border-color: 2PX`, which a browser discards, while `w-[2PX]` is 2px. A math
-        // function is a length whatever its units' case, and ends on a parenthesis, which leaves no unit here.
+        // function is a length whatever its units' case, when Tailwind knows its name, which it does in lower case.
         internal static bool SpellsUnitAsTailwindInfers(ReadOnlySpan<char> value)
         {
+            if (value.IndexOf('(') >= 0)
+            {
+                return TailwindMathSpacing.HasMathFunction(value.ToString());
+            }
+            // Its length test is anchored, so a `_` (a space) at either end makes the value no length.
+            if (value.Length > 0 && (value[0] == '_' || value[value.Length - 1] == '_'))
+            {
+                return false;
+            }
             var unit = value.Slice(value.TrimEnd(AsciiLetters.AsSpan()).Length);
             if (unit.SequenceEqual("Q".AsSpan()))
             {
