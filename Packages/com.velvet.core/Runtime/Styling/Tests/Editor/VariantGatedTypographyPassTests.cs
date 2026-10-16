@@ -235,6 +235,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the control label carries no size class, so it reads as it did on the base.
         [Test]
         public void Given_AChildCombinatorTextEffectOverATextChild_When_Mounted_Then_TheTransformReachesIt()
         {
@@ -246,7 +247,7 @@ namespace Velvet.Tests
             {
                 V.Div(className: "[&>*]:uppercase", children: new VNode?[]
                 {
-                    V.Label(className: "text-sm", text: label, name: "elem"),
+                    V.Label(className: "p-1", text: label, name: "elem"),
                     V.Text("text-child"),
                 }),
             };

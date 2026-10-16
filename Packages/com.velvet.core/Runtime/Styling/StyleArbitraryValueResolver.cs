@@ -68,6 +68,8 @@ namespace Velvet
                 return false;
             }
 
+            className = StyleNamedTextSize.WithoutLengthHint(className);
+
             if (StyleBorderSideColor.TryParse(className, out result)
                 || StyleLogicalUtilities.TryParse(className, out result))
             {
@@ -80,6 +82,13 @@ namespace Velvet
             // applies to a color, so the negated form is skipped.
             if (className.Length > 0 && className[0] != '-'
                 && StyleColorValueParser.TryParseColorOpacityModifier(className, out result))
+            {
+                return true;
+            }
+
+            // text-<size>/<leading> and text-[<length>]/<leading> set the font-size here because no USS rule can spell the suffix;
+            // StyleTextEffectClass reads the same token for its line height.
+            if (StyleNamedTextSize.TryParseSlashFontSize(className, out result))
             {
                 return true;
             }
