@@ -824,6 +824,12 @@ namespace Velvet
             }
 
             _ctx.ConditionalVariantManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.ContainerVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ContainerVariantManipulators.Clear();
             foreach (var (element, manipulator) in _ctx.RelationalVariantManipulators)
             {
                 element.RemoveManipulator(manipulator);

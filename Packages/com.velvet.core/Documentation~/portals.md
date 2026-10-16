@@ -106,8 +106,8 @@ The boundary behaves the same in all four forms:
   declared on, the way a page's portals answer its one viewport. A layer host serves every portal
   on its layer in the tree and answers the panel of the last one to render into it; where that panel
   is itself a layer or world-space host, the panel that host's portal was declared on answers in
-  turn. An `@container` among the child's own ancestors still takes precedence, as a container query
-  does. When a child resolves its width source is [styling-variants.md](styling-variants.md)'s to state.
+  turn. A container variant (`@md:`) is not affected: it asks the `@container` among the child's own
+  ancestors. When a child resolves its width source is [styling-variants.md](styling-variants.md)'s to state.
 - `dark:` is global and identical everywhere.
 
 ## Cross-panel input routing (`V.Portal(layer:)` / `V.WorldSpace`)

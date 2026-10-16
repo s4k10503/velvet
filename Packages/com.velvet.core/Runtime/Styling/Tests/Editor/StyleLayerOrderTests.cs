@@ -33,6 +33,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TheContainerQueries_When_Ranked_Then_TheyFollowTheViewportBreakpointsAndPrecedeDark()
+        {
+            // Arrange — a ceiling below a floor, and both between the last breakpoint and dark:.
+            var ranks = new[]
+            {
+                StyleLayerPriority.Responsive2xl, StyleLayerPriority.ContainerMax, StyleLayerPriority.ContainerMin,
+                StyleLayerPriority.Dark,
+            };
+
+            // Act
+            var ascending = Ascending(ranks);
+
+            // Assert
+            Assert.That(ascending, Is.True);
+        }
+
+        [TestCase("@md", true)]
+        [TestCase("@min-md", true)]
+        [TestCase("@[40rem]", true)]
+        [TestCase("@max-md", false)]
+        [TestCase("@max-[600px]/side", false)]
+        public void Given_AContainerQueryAsWritten_When_ItsRankIsRead_Then_ACeilingRanksBelowAFloor(
+            string spelling, bool isFloor)
+        {
+            // Act
+            var rank = StyleLayerPriority.ForVariant(StyleVariantKind.Container, spelling);
+
+            // Assert
+            Assert.That(rank, Is.EqualTo(isFloor ? StyleLayerPriority.ContainerMin : StyleLayerPriority.ContainerMax));
+        }
+
+        [Test]
+        public void Given_AKindThatIsNotContainer_When_ItsRankIsReadWithAName_Then_TheNameChangesNothing()
+        {
+            // Act
+            var rank = StyleLayerPriority.ForVariant(StyleVariantKind.Md, "@max-md");
+
+            // Assert
+            Assert.That(rank, Is.EqualTo(StyleLayerPriority.ResponsiveMd));
+        }
+
+        [Test]
         public void Given_ThePseudoClassAndAttributeVariants_When_Ranked_Then_TheyFollowTailwindsOrder()
         {
             // Arrange

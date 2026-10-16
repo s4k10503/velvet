@@ -876,10 +876,10 @@ It excludes hand-written UXML/USS from its design and expresses all styles with 
 | Fractions (`w-1/2`, `left-1/2`, `-translate-x-1/2`) | Same syntax | Resolved as an inline percent. Sizing (`w-`, `h-`, `size-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `basis-`), position (`top-`, `right-`, `bottom-`, `left-`, `inset-`, `inset-x-`, `inset-y-`) and per-axis translate (`translate-x-`, `translate-y-`) take any `a/b` of whole numbers with a non-zero denominator, as Tailwind does (`left-3/2` is 150%). Position and translate also take the negated form (`-left-1/2`); position also takes `full` / `-full` (`left-full` is 100%, `-left-full` is -100%) and `auto` (`top-auto`, written inline, so it overrides a `top-4` the stylesheet supplies and leaves the element where one with no offset sits; it is not a `V.Motion` length channel). `auto` resets the offset to the engine's unset value, UI Toolkit's initial value for these properties; where the engine places an element whose offsets are all unset is its own layout's rule, and is not claimed to match CSS's static position. The logical `inset-s-`, `inset-e-`, `inset-bs-` and `inset-be-` take the fractions, `full` and `auto` an inset takes ([§4-1a](#4-1a-logical-direction-utilities)). Not supported: `1/0` |
 | `hover:` / `focus:` / `active:` / `checked:` state variants | Same prefixes | Driven by the element's own pointer / focus state (the payload is an ordinary utility) |
 | `dark:` theme variant | Same prefix | Driven by `VelvetTheme.IsDark` |
-| `sm:` / `md:` / `lg:` / `xl:` / `2xl:` responsive variants | Same prefixes | Min-width breakpoints; evaluated against the panel root by default (or a `@container` scope) |
+| `sm:` / `md:` / `lg:` / `xl:` / `2xl:` responsive variants | Same prefixes | Min-width breakpoints; evaluated against the viewport, never a container |
 | `group-*` / `peer-*` relational variants | Same prefixes (incl. named `group/<name>`) | React itself has no equivalent; this is Tailwind parity |
 | Stacked variants (`dark:hover:`) | Same syntax, order-independent | Applies only when every gate holds |
-| CSS container queries (`@container` / `container-type: inline-size`) | `@container` (apply via `VelvetResponsive.ContainerClass`) | Re-points descendants' `sm:`/`md:`/… at the marked element's width. See [styling-variants.md](styling-variants.md) |
+| CSS container queries (`@container` / `container-type: inline-size`) | `@container` (apply via `VelvetResponsive.ContainerClass`), with `@sm:`…`@7xl:`, `@min-*:`, `@max-*:` and named `@container/name` · `@md/name:` | Tailwind v4's container variants, answering the width of the nearest marked ancestor. See [styling-variants.md](styling-variants.md#container-queries--container) |
 
 ### 4-1a. Logical-direction utilities
 
@@ -973,7 +973,7 @@ live framework — see [preview-tooling.md](preview-tooling.md) for the full gui
 | Storybook (a "story") | Velvet Preview window — a `[VelvetPreview]` static method returning `VNode` | **Window ▸ Velvet ▸ Preview.** Live-renders without Play Mode |
 | Storybook global decorators / `preview.js` | `[VelvetPreviewSetup]` | Runs for each full story mount and is retained during args updates; returns `IDisposable` / `Action` / `void` |
 | Storybook Controls / Args | The Controls addon + a story's single "args" object | Reflects the args type into live editor knobs and re-renders on edit |
-| Storybook Viewport | The Viewport addon | Simulates responsive widths by sizing the canvas and making it a `@container` scope |
+| Storybook Viewport | The Viewport addon | Simulates responsive widths by sizing the canvas and marking it a viewport scope (`VelvetResponsive.ViewportClass`), which `sm:`…`2xl:` then measure |
 | React DevTools | Velvet DevTools | **Window ▸ Velvet ▸ DevTools Inspector.** VNode-tree inspector + state-history time travel |
 | Visual-regression snapshots (e.g. Chromatic / Storybook test-runner) | Registry-driven screenshot capture | Reuses the same `[VelvetPreview]` registry to render each story off-screen to a PNG |
 
