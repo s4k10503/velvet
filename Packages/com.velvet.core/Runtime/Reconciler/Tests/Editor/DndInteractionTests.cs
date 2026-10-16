@@ -29,6 +29,8 @@ namespace Velvet.Tests
         private static readonly List<string> s_started = new();
         private static readonly List<string> s_overIds = new();
         private static readonly List<string> s_ended = new();
+        private static readonly List<string> s_overRankings = new();
+        private static readonly List<string> s_endedRankings = new();
         private static int s_cancelCount;
         private static StateUpdater<bool> s_setShowSource;
         private static StateUpdater<bool> s_setAltDraggingClass;
@@ -45,6 +47,8 @@ namespace Velvet.Tests
             s_started.Clear();
             s_overIds.Clear();
             s_ended.Clear();
+            s_overRankings.Clear();
+            s_endedRankings.Clear();
             s_cancelCount = 0;
             s_setShowSource = default;
             s_setAltDraggingClass = default;
@@ -995,19 +999,25 @@ namespace Velvet.Tests
         }
 
         // A strategy that ranks the candidates in reverse registration order, so the first entry is the
-        // last-registered droppable wherever the pointer is.
+        // last-registered droppable wherever the pointer is, and whose values fall as the ranking rises so
+        // the first entry does not hold the smallest or the greatest one.
         [Component]
         private static VNode ReverseRankedScene()
         {
             return V.DndContext(
-                onDragEnd: e => s_ended.Add(e.Over?.Id),
+                onDragOver: e => s_overRankings.Add(string.Join(",", e.Collisions.Select(c => c.Id))),
+                onDragEnd: e =>
+                {
+                    s_ended.Add(e.Over?.Id);
+                    s_endedRankings.Add(string.Join(",", e.Collisions.Select(c => c.Id)));
+                },
                 collisionDetection: (in DndCollisionQuery query) =>
                 {
                     var ranked = new DndCollision[query.Droppables.Count];
                     for (var i = 0; i < ranked.Length; i++)
                     {
                         var candidate = query.Droppables[ranked.Length - 1 - i];
-                        ranked[i] = new DndCollision(candidate.Id, candidate.Data, i);
+                        ranked[i] = new DndCollision(candidate.Id, candidate.Data, ranked.Length - i);
                     }
                     return ranked;
                 },
@@ -1022,6 +1032,54 @@ namespace Velvet.Tests
                         className: "absolute left-[150px] top-[0px] w-[100px] h-[100px]"),
                     V.Droppable("second", key: "second", name: "second",
                         className: "absolute left-[150px] top-[150px] w-[100px] h-[100px]"),
+                });
+        }
+
+        // A strategy that reports no collision by returning null.
+        [Component]
+        private static VNode NullStrategyScene()
+        {
+            return V.DndContext(
+                onDragEnd: e => s_ended.Add(e.Over?.Id),
+                collisionDetection: (in DndCollisionQuery query) => null,
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                name: "scope",
+                children: new VNode[]
+                {
+                    V.Draggable("item", key: "item", name: "item",
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                    V.Droppable("slot", key: "slot", name: "slot",
+                        className: "absolute left-[150px] top-[0px] w-[100px] h-[100px]"),
+                });
+        }
+
+        // "b" mounts before "c" and unmounts, then "d" mounts over "c"'s rect, so "d" reuses the slot "b"
+        // vacated in the context's droppable dictionary.
+        [Component]
+        private static VNode ChurnedDroppablesScene()
+        {
+            var (stage, setStage) = Hooks.UseState(0);
+            s_setStage = setStage;
+            return V.DndContext(
+                onDragEnd: e => s_ended.Add(e.Over?.Id),
+                activation: new DragActivation(Distance: 4f),
+                className: "w-[300px] h-[300px]",
+                name: "scope",
+                children: new VNode[]
+                {
+                    V.Draggable("item", key: "item", name: "item",
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                    stage == 0
+                        ? V.Droppable("b", key: "b", name: "b",
+                            className: "absolute left-[0px] top-[150px] w-[100px] h-[100px]")
+                        : null,
+                    V.Droppable("c", key: "c", name: "c",
+                        className: "absolute left-[150px] top-[0px] w-[100px] h-[100px]"),
+                    stage == 2
+                        ? V.Droppable("d", key: "d", name: "d",
+                            className: "absolute left-[150px] top-[0px] w-[100px] h-[100px]")
+                        : null,
                 });
         }
 
@@ -1042,6 +1100,78 @@ namespace Velvet.Tests
             Assert.That(s_ended, Is.EqualTo(new[] { "second" }));
         }
 
+        [Test]
+        public void Given_AStrategyRankingTwoDroppables_When_TheDragEnds_Then_DragEndArgsCarryTheFullRanking()
+        {
+            // Arrange
+            Mount(ReverseRankedScene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, new Vector2(190, 20));
+
+            // Act
+            SendPointerUp(item, new Vector2(190, 20));
+
+            // Assert
+            Assert.That(s_endedRankings, Is.EqualTo(new[] { "second,first" }));
+        }
+
+        [Test]
+        public void Given_AStrategyRankingTwoDroppables_When_TheOverTargetChanges_Then_DragOverArgsCarryTheFullRanking()
+        {
+            // Arrange
+            Mount(ReverseRankedScene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+
+            // Act
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, new Vector2(190, 20));
+
+            // Assert
+            Assert.That(s_overRankings, Is.EqualTo(new[] { "second,first" }));
+        }
+
+        [Test]
+        public void Given_AStrategyReturningNull_When_ThePointerMovesAndReleases_Then_NoDropTargetIsReported()
+        {
+            // Arrange
+            Mount(NullStrategyScene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Act
+            SendPointerMove(item, new Vector2(190, 20));
+            SendPointerUp(item, new Vector2(190, 20));
+
+            // Assert
+            Assert.That(s_ended, Is.EqualTo(new object[] { null }));
+        }
+
+        [Test]
+        public void Given_ADroppableMountedAfterAnotherUnmountedBeforeTheOtherTiedOne_When_TheDragEnds_Then_TheEarlierRegisteredTiedDroppableIsTheOverTarget()
+        {
+            // Arrange — "c" and "d" share one rect and tie.
+            Mount(ChurnedDroppablesScene);
+            s_setStage.Invoke(1);
+            _mounted.FlushStateForTest();
+            s_setStage.Invoke(2);
+            _mounted.FlushStateForTest();
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+
+            // Act
+            SendPointerMove(item, new Vector2(190, 20));
+            SendPointerUp(item, new Vector2(190, 20));
+
+            // Assert
+            Assert.That(s_ended, Is.EqualTo(new[] { "c" }));
+        }
+
         #region Collision strategies (pure functions, no panel)
 
         private static DndCollisionQuery Query(Rect activeRect, Vector2 pointer, params DndDroppableRect[] droppables)
@@ -1052,7 +1182,7 @@ namespace Velvet.Tests
         private static string Ids(DndCollision[] ranked)
             => string.Join(",", ranked.Select(collision => collision.Id));
 
-        // The shortest round-trip form, so an unrounded value cannot hide behind a display format.
+        // The round-trip format, so a value is compared whole rather than at display precision.
         private static string Values(DndCollision[] ranked)
             => string.Join(",", ranked.Select(collision =>
                 collision.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
@@ -1063,8 +1193,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_CandidatesRegisteredOutOfOrder_When_RectIntersectionRuns_Then_TheyAreRankedByIntersectionRatioNotOverlapArea()
         {
-            // Arrange — "big" overlaps by the most area (100) at the lowest ratio (0.01); the others are 1, 0.6667 and 0.3333,
-            // and "apart" does not overlap at all.
+            // Arrange — "big" and "high" both overlap by 100, at ratios 0.01 and 1; "mid" and "low" are
+            // 0.6667 and 0.3333, and "apart" does not overlap at all.
             var query = Query(s_active, Vector2.zero,
                 Candidate("low", new Rect(5, 0, 10, 10)),
                 Candidate("high", new Rect(0, 0, 10, 10)),
@@ -1080,25 +1210,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_CandidatesThatOnlyTouchTheActiveRect_When_RectIntersectionRuns_Then_NoCollisionIsReported()
+        public void Given_CandidatesThatOnlyTouchOrAreSeparatedFromTheActiveRect_When_RectIntersectionRuns_Then_NoCollisionIsReported()
         {
-            // Arrange — one shares the right edge, one only the bottom-right corner.
+            // Arrange — "edge" shares the right edge, "corner" only the bottom-right corner; "right" is apart
+            // on x only, "below" on y only, "diagonal" on both.
             var query = Query(s_active, Vector2.zero,
                 Candidate("edge", new Rect(10, 0, 10, 10)),
-                Candidate("corner", new Rect(10, 10, 10, 10)));
-
-            // Act
-            var ranked = DndCollisions.RectIntersection(in query);
-
-            // Assert
-            Assert.That(Ids(ranked), Is.EqualTo(""));
-        }
-
-        [Test]
-        public void Given_CandidatesSeparatedOnOneOrBothAxes_When_RectIntersectionRuns_Then_NoCollisionIsReported()
-        {
-            // Arrange — "right" is apart on x only, "below" on y only, "diagonal" on both.
-            var query = Query(s_active, Vector2.zero,
+                Candidate("corner", new Rect(10, 10, 10, 10)),
                 Candidate("right", new Rect(20, 0, 10, 10)),
                 Candidate("below", new Rect(0, 20, 10, 10)),
                 Candidate("diagonal", new Rect(20, 20, 10, 10)));
@@ -1156,9 +1274,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_CandidatesAtDifferentCenterDistances_When_ClosestCenterRuns_Then_EveryCandidateIsRankedNearestFirst()
         {
-            // Arrange — the centers are 200, 5 (a 3-4-5 offset, where a Manhattan distance reads 7) and 30 from (5,5).
+            // Arrange — the centers are 200, 5 and 30 from (5,5); "unlaid" has NaN edges and sits between the
+            // first two, where a NaN value would hold the ranking apart.
             var query = Query(s_active, Vector2.zero,
                 Candidate("far", new Rect(0, 200, 10, 10)),
+                Candidate("unlaid", new Rect(float.NaN, float.NaN, float.NaN, float.NaN)),
                 Candidate("near", new Rect(3, 4, 10, 10)),
                 Candidate("mid", new Rect(30, 0, 10, 10)));
 
@@ -1170,40 +1290,44 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoCandidatesAtTheSameCenterDistance_When_ClosestCenterRuns_Then_RegistrationOrderIsKept()
+        public void Given_TwoCandidatesAtTheSameCenterDistanceAndANearerOneRegisteredLast_When_ClosestCenterRuns_Then_TheTiedPairKeepsRegistrationOrder()
         {
-            // Arrange — centers (25,5) and (-15,5) are both 20 from (5,5).
+            // Arrange — centers (25,5) and (-15,5) are both 20 from (5,5), "near" 5 away.
             var query = Query(s_active, Vector2.zero,
                 Candidate("right", new Rect(20, 0, 10, 10)),
-                Candidate("left", new Rect(-20, 0, 10, 10)));
+                Candidate("left", new Rect(-20, 0, 10, 10)),
+                Candidate("near", new Rect(3, 4, 10, 10)));
 
             // Act
             var ranked = DndCollisions.ClosestCenter(in query);
 
             // Assert
-            Assert.That(Ids(ranked), Is.EqualTo("right,left"));
+            Assert.That(Ids(ranked), Is.EqualTo("near,right,left"));
         }
 
         [Test]
-        public void Given_ACenterOffsetByOneOnEachAxis_When_ClosestCenterRuns_Then_TheValueIsTheUnroundedEuclideanDistance()
+        public void Given_ALargerCandidateWithItsCenterOffsetEquallyOnEachAxis_When_ClosestCenterRuns_Then_TheValueIsTheUnroundedEuclideanDistance()
         {
-            // Arrange
+            // Arrange — its center (11,11) is 6 from (5,5) on each axis, though its corner is 1 from the origin.
             var query = Query(s_active, Vector2.zero,
-                Candidate("diag", new Rect(1, 1, 10, 10)));
+                Candidate("diag", new Rect(1, 1, 20, 20)));
 
             // Act
             var ranked = DndCollisions.ClosestCenter(in query);
 
             // Assert
-            Assert.That(Values(ranked), Is.EqualTo("1.4142135623730951"));
+            Assert.That(Values(ranked), Is.EqualTo("8.48528137423857"));
         }
 
         [Test]
         public void Given_ACenteredLargeRectAndANearerSmallRect_When_ClosestCornersRuns_Then_TheRectWithNearerCornersRanksFirst()
         {
-            // Arrange — "wide" shares the active center, which ClosestCenter ranks first; its corners are 63.6396 away on average, "small"'s 20.
+            // Arrange — "wide" shares the active center, but its corners are 63.6396 away on average and
+            // "small"'s 20; "unlaid" has NaN edges and sits between them, where a NaN value would hold the
+            // ranking apart.
             var query = Query(s_active, Vector2.zero,
                 Candidate("wide", new Rect(-45, -45, 100, 100)),
+                Candidate("unlaid", new Rect(0, 0, float.NaN, float.NaN)),
                 Candidate("small", new Rect(20, 0, 10, 10)));
 
             // Act
@@ -1230,18 +1354,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoCandidatesAtTheSameCornerDistance_When_ClosestCornersRuns_Then_RegistrationOrderIsKept()
+        public void Given_TwoRectsOneFloatStepApartInX_When_ClosestCornersRuns_Then_TheirRoundedMeanDistancesTieAndRegistrationOrderIsKept()
         {
-            // Arrange
-            var query = Query(s_active, Vector2.zero,
-                Candidate("right", new Rect(20, 0, 10, 10)),
-                Candidate("left", new Rect(-20, 0, 10, 10)));
+            // Arrange — "x" sits one float step left of "y". Computed in double, as dnd-kit computes, their
+            // mean corner distances round to the same four decimals.
+            var query = Query(new Rect(-398.061767578125f, -135.78981018066406f, 635.7106323242188f, 875.8890380859375f), Vector2.zero,
+                Candidate("y", new Rect(862.5891723632812f, 1045.541015625f, 148.20156860351562f, 39.06645202636719f)),
+                Candidate("x", new Rect(862.589111328125f, 1045.541015625f, 148.20156860351562f, 39.06645202636719f)));
 
             // Act
             var ranked = DndCollisions.ClosestCorners(in query);
 
             // Assert
-            Assert.That(Ids(ranked), Is.EqualTo("right,left"));
+            Assert.That(Ids(ranked), Is.EqualTo("y,x"));
         }
 
         [Test]
@@ -1275,21 +1400,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Values(ranked), Is.EqualTo("70.7107,101.4658"));
-        }
-
-        [Test]
-        public void Given_TwoRectsWithTheSameMeanCornerDistance_When_PointerWithinRuns_Then_RegistrationOrderIsKept()
-        {
-            // Arrange
-            var query = Query(s_active, new Vector2(5, 5),
-                Candidate("first", new Rect(0, 0, 10, 10)),
-                Candidate("second", new Rect(0, 0, 10, 10)));
-
-            // Act
-            var ranked = DndCollisions.PointerWithin(in query);
-
-            // Assert
-            Assert.That(Ids(ranked), Is.EqualTo("first,second"));
         }
 
         [Test]

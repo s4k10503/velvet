@@ -42,12 +42,17 @@ namespace Velvet
     public sealed record DragStartArgs(DraggableInfo Active, Vector2 Origin);
 
     /// <summary>Fired when the winning drop target CHANGES (including to null — leaving all targets).
-    /// <see cref="Delta"/> is the total panel-space translation since activation.</summary>
-    public sealed record DragOverArgs(DraggableInfo Active, DroppableInfo? Over, Vector2 Delta);
+    /// <see cref="Delta"/> is the total panel-space translation since activation. <see cref="Collisions"/>
+    /// is the strategy's full ranking at that move, as dnd-kit's event carries <c>collisions</c>.</summary>
+    public sealed record DragOverArgs(
+        DraggableInfo Active, DroppableInfo? Over, Vector2 Delta, IReadOnlyList<DndCollision> Collisions);
 
     /// <summary>Fired on release. <see cref="Over"/> is null when dropped on nothing; state written here
-    /// flushes synchronously, like any discrete input handler.</summary>
-    public sealed record DragEndArgs(DraggableInfo Active, DroppableInfo? Over, Vector2 Delta, Vector2 Position);
+    /// flushes synchronously, like any discrete input handler. <see cref="Collisions"/> is the strategy's
+    /// full ranking at the last pointer move, empty when the drag ended before one.</summary>
+    public sealed record DragEndArgs(
+        DraggableInfo Active, DroppableInfo? Over, Vector2 Delta, Vector2 Position,
+        IReadOnlyList<DndCollision> Collisions);
 
     /// <summary>Fired when a drag aborts without a drop: Escape, a pointer cancel, a lost pointer
     /// capture, or the source/scope unmounting mid-drag.</summary>
@@ -62,11 +67,20 @@ namespace Velvet
         public Rect Rect { get; }
         public object? Data { get; }
 
+        // Position in attach order; zero for a rect a caller constructs.
+        internal long Order { get; }
+
         public DndDroppableRect(string id, Rect rect, object? data)
+            : this(id, rect, data, 0)
+        {
+        }
+
+        internal DndDroppableRect(string id, Rect rect, object? data, long order)
         {
             Id = id;
             Rect = rect;
             Data = data;
+            Order = order;
         }
     }
 
@@ -83,6 +97,8 @@ namespace Velvet
         public Rect ActiveRect { get; }
         /// <summary>Current pointer position, panel space.</summary>
         public Vector2 PointerPosition { get; }
+        /// <summary>In registration order: a droppable that unmounts and mounts again goes to the end, as in
+        /// dnd-kit's <c>DroppableContainersMap</c>.</summary>
         public IReadOnlyList<DndDroppableRect> Droppables { get; }
 
         public DndCollisionQuery(Rect activeRect, Vector2 pointerPosition, IReadOnlyList<DndDroppableRect> droppables)

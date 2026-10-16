@@ -76,7 +76,8 @@ candidates (in-scope, enabled, same panel, self excluded), and returns a ranked 
 (`Id`, `Data`, and the `Value` it ranked by) with the best first, as dnd-kit's `CollisionDetection`
 does; the first entry becomes `over` and an empty array means no collision. Built-ins on
 `DndCollisions` follow the dnd-kit algorithm of the same name, including its four-decimal rounding where it
-rounds and its tie order (equal values keep registration order):
+rounds and its tie order (equal values keep registration order, and a droppable that unmounts and mounts
+again registers last, as in dnd-kit's droppable container map):
 
 | Strategy | Collides | Ranked by |
 | --- | --- | --- |
@@ -85,7 +86,10 @@ rounds and its tie order (equal values keep registration order):
 | `ClosestCorners` | every droppable | mean distance between the four corresponding corners, nearest first |
 | `PointerWithin` | droppables whose rect contains the pointer, edges included | mean distance from the pointer to the four corners, nearest first |
 
-A custom strategy is just a delegate; it must be pure over the query, since it runs on every move.
+`DragOverArgs.Collisions` and `DragEndArgs.Collisions` carry the strategy's full ranking at the latest move, as
+dnd-kit's drag events carry `collisions`. `ClosestCenter` and `ClosestCorners` leave out a droppable whose rect has
+a NaN edge. A custom strategy is just a delegate; it must be pure over the query, since it runs on every move, and
+may return `null` or an empty array for no collision.
 
 Candidate rects are read live from the panel every move, so mid-drag layout shifts, scrolls, and
 droppables mounting/unmounting are picked up automatically — dnd-kit's `MeasuringConfiguration`

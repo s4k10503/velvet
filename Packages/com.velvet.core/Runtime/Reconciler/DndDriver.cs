@@ -42,10 +42,14 @@ namespace Velvet
         public DroppableSettings Settings;
         public string[] OverClasses;
         public string[] ActiveClasses;
+        // Position in attach order, kept across settings updates: the order a collision strategy sees the
+        // candidates in, where a droppable that unmounts and mounts again goes last.
+        public readonly long Order;
 
-        public DndDroppableBinding(DroppableSettings settings)
+        public DndDroppableBinding(DroppableSettings settings, long order)
         {
             Settings = settings;
+            Order = order;
             OverClasses = V.ParseClassNames(settings.WhileOverClass);
             ActiveClasses = V.ParseClassNames(settings.WhileDragActiveClass);
         }
@@ -142,8 +146,8 @@ namespace Velvet
 
     internal static class DndDroppableDriver
     {
-        public static DndDroppableBinding Attach(VisualElement element, DroppableSettings settings)
-            => new(settings);
+        public static DndDroppableBinding Attach(VisualElement element, DroppableSettings settings, ReconcilerContext ctx)
+            => new(settings, ctx.NextDroppableOrder++);
 
         public static void Update(VisualElement element, DndDroppableBinding binding, DroppableSettings settings, ReconcilerContext ctx)
         {

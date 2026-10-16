@@ -42,8 +42,8 @@
 [Velvet] ctor Velvet.DndDroppableRect.ctor(System.String, UnityEngine.Rect, System.Object?): System.Void
 [Velvet] ctor Velvet.DragActivation.ctor(System.Single, System.Single, System.Single): System.Void
 [Velvet] ctor Velvet.DragCancelArgs.ctor(Velvet.DraggableInfo): System.Void
-[Velvet] ctor Velvet.DragEndArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, UnityEngine.Vector2): System.Void
-[Velvet] ctor Velvet.DragOverArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2): System.Void
+[Velvet] ctor Velvet.DragEndArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]): System.Void
+[Velvet] ctor Velvet.DragOverArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]): System.Void
 [Velvet] ctor Velvet.DragOverlaySettings.ctor(): System.Void
 [Velvet] ctor Velvet.DragStartArgs.ctor(Velvet.DraggableInfo, UnityEngine.Vector2): System.Void
 [Velvet] ctor Velvet.DraggableInfo.ctor(System.String, System.Object?, UnityEngine.UIElements.VisualElement): System.Void
@@ -829,10 +829,12 @@
 [Velvet] property Velvet.DragActivation.Tolerance: System.Single
 [Velvet] property Velvet.DragCancelArgs.Active: Velvet.DraggableInfo
 [Velvet] property Velvet.DragEndArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DragEndArgs.Collisions: System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]
 [Velvet] property Velvet.DragEndArgs.Delta: UnityEngine.Vector2
 [Velvet] property Velvet.DragEndArgs.Over: Velvet.DroppableInfo?
 [Velvet] property Velvet.DragEndArgs.Position: UnityEngine.Vector2
 [Velvet] property Velvet.DragOverArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DragOverArgs.Collisions: System.Collections.Generic.IReadOnlyList`1[Velvet.DndCollision]
 [Velvet] property Velvet.DragOverArgs.Delta: UnityEngine.Vector2
 [Velvet] property Velvet.DragOverArgs.Over: Velvet.DroppableInfo?
 [Velvet] property Velvet.DragStartArgs.Active: Velvet.DraggableInfo
