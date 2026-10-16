@@ -943,12 +943,12 @@ namespace Velvet
             seconds = 0f;
             float scale;
             ReadOnlySpan<char> num;
-            if (value.EndsWith("ms".AsSpan()))
+            if (value.EndsWith("ms".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 num = value.Slice(0, value.Length - 2);
                 scale = 0.001f;
             }
-            else if (value.EndsWith("s".AsSpan()))
+            else if (value.EndsWith("s".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 num = value.Slice(0, value.Length - 1);
                 scale = 1f;
@@ -3298,7 +3298,8 @@ namespace Velvet
         }
 
         // Parses an angle (used by rotate-[..]) and normalizes it to degrees. Accepts the
-        // deg / rad / grad / turn suffixes; a bare number is degrees.
+        // deg / rad / grad / turn suffixes in any case; a bare number is degrees, which each caller
+        // narrows to what its CSS property takes (IsUnitlessAngle).
         // Internal so the extracted transform/filter parsers share the one angle grammar.
         internal static bool TryParseAngleDegrees(ReadOnlySpan<char> valueStr, out float degrees)
         {
@@ -3306,21 +3307,21 @@ namespace Velvet
 
             var factor = 1f;
             var numeric = valueStr;
-            if (valueStr.EndsWith("deg"))
+            if (valueStr.EndsWith("deg".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 3);
             }
-            else if (valueStr.EndsWith("grad"))
+            else if (valueStr.EndsWith("grad".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 4);
                 factor = 0.9f; // 400 grad = 360 deg
             }
-            else if (valueStr.EndsWith("rad"))
+            else if (valueStr.EndsWith("rad".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 3);
                 factor = Mathf.Rad2Deg;
             }
-            else if (valueStr.EndsWith("turn"))
+            else if (valueStr.EndsWith("turn".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 numeric = valueStr.Slice(0, valueStr.Length - 4);
                 factor = 360f;
@@ -3334,5 +3335,8 @@ namespace Velvet
             degrees = raw * factor;
             return true;
         }
+
+        // Whether an angle TryParseAngleDegrees accepted was a bare number, which is never empty.
+        internal static bool IsUnitlessAngle(ReadOnlySpan<char> valueStr) => !char.IsLetter(valueStr[valueStr.Length - 1]);
     }
 }
