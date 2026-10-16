@@ -347,20 +347,43 @@ namespace Velvet
         // to inherit.
         internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
-            var enclosing = s_owedSettleRenders;
-            var owed = new List<ComponentFiber>();
-            s_owedSettleRenders = owed;
+            OpenOwedSettleWindow(out var enclosing);
             try
             {
                 FlushFiber(fiber, timeSlicedBudgetMs);
             }
             finally
             {
-                // MUTANT_SURVIVES(equivalent, line removed): each call reads only the list it made, so a list left in place is added to by a settle outside every flush and read by nothing.
+                // MUTANT_SURVIVES(equivalent, line removed): FlushOwedSettleRenders is the only reader of a list, and it holds the list it was handed, so a list left installed is appended to by a settle outside every flush, or after the flush's last read, and read by nothing.
                 s_owedSettleRenders = enclosing;
             }
-            // Only a holder still holding an immediate-tier lane is flushed, so Transition work it holds for
-            // itself keeps its tier.
+        }
+
+        // The components a settle inside the running FlushState or ContinueReconcile asked for a render, in the
+        // order it asked; null outside both. Each call makes its own list, so a nested call neither reads nor
+        // disturbs its enclosing one's.
+        private static List<ComponentFiber>? s_owedSettleRenders;
+
+        private static List<ComponentFiber> OpenOwedSettleWindow(out List<ComponentFiber>? enclosing)
+        {
+            enclosing = s_owedSettleRenders;
+            var owed = new List<ComponentFiber>();
+            s_owedSettleRenders = owed;
+            return owed;
+        }
+
+        // Called by the settle that takes optimistic entries down. A holder owed a render by a settle inside a
+        // flush is rendered before that flush returns, ahead of the commit's layout effects, so the commit that
+        // lands a transition's last work shows the revert in a holder its pass does not reach and in one it
+        // rendered before the settle. A settle outside every flush, an async action completing, has no commit
+        // to join and leaves the render it requested to the scheduler.
+        internal static void OweSettleRender(ComponentFiber holder) => s_owedSettleRenders?.Add(holder);
+
+        // Only a holder still holding an immediate-tier lane is flushed, so Transition work it holds for itself
+        // keeps its tier, and one the flush skips (unmounted, hidden under a fallback, in a detached host)
+        // keeps its lane for the scheduler.
+        private static void FlushOwedSettleRenders(List<ComponentFiber> owed)
+        {
             for (var i = 0; i < owed.Count; i++)
             {
                 if (FiberLane.SchedulesOnImmediateTier(FiberLane.GetHighestPendingPriority(owed[i])))
@@ -369,18 +392,6 @@ namespace Velvet
                 }
             }
         }
-
-        // The components a settle inside the running FlushState asked for a render, in the order it asked;
-        // null outside every flush. Each call makes its own list, so a nested call neither reads nor disturbs
-        // its enclosing one's.
-        private static List<ComponentFiber>? s_owedSettleRenders;
-
-        // Called by the settle that takes optimistic entries down. A holder owed a render by a settle inside a
-        // flush is rendered before that flush returns, ahead of the layout effects the drain defers to its end,
-        // so the commit that lands a transition's last work shows the revert in a holder its pass does not reach
-        // and in one it rendered before the settle. A settle outside every flush, an async action completing,
-        // has no commit to join and leaves the render it requested to the scheduler.
-        internal static void OweSettleRender(ComponentFiber holder) => s_owedSettleRenders?.Add(holder);
 
         private static void FlushFiber(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
@@ -529,6 +540,8 @@ namespace Velvet
             if (!suspended && fiber.Reconciler?.HasPendingWork != true)
             {
                 SettleCompletedTransition(fiber);
+                // Ahead of the effect commit below, which outside a drain runs its layout effects inline.
+                FlushOwedSettleRenders(s_owedSettleRenders!);
                 // Bottom-up commit — descendant effects run before this fiber's so a
                 // parent effect that reads a child imperative handle / measured size observes the
                 // child's already-applied effect. The drain pops fibers in LIFO order (deepest first).
@@ -610,6 +623,7 @@ namespace Velvet
             if (mountPoint == null) return;
             if (!fiber.Reconciler.HasPendingWork) return;
 
+            var owed = OpenOwedSettleWindow(out var enclosingOwed);
             var pushedOnto = FiberRenderer.PushFiber(fiber);
             try
             {
@@ -670,6 +684,9 @@ namespace Velvet
                     fiber.PendingOldTree = null;
                     FiberTreeReturn.ReturnRetiredTree(completedBaseline, fiber);
                     SettleCompletedTransition(fiber);
+                    // Ahead of the effect commit below, so its layout effects read the holders without the
+                    // entries the settle took down.
+                    FlushOwedSettleRenders(owed);
                     // The commit is now fully applied — run the insertion / layout / passive effects FlushState
                     // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
                     // Bottom-up — descendant effects (LIFO drain) before this fiber's.
@@ -708,11 +725,14 @@ namespace Velvet
                 if (fiber.PendingReconcileDrainsTransitionWork)
                 {
                     fiber.SettleTransitionPending();
+                    FlushOwedSettleRenders(owed);
                 }
                 FiberErrorBoundary.OnRenderError(fiber, ex);
             }
             finally
             {
+                // MUTANT_SURVIVES(equivalent, line removed): same reason as the restore in FlushState, whose only reader of a list is FlushOwedSettleRenders over the list it was handed.
+                s_owedSettleRenders = enclosingOwed;
                 FiberRenderer.PopFiber(pushedOnto);
             }
         }

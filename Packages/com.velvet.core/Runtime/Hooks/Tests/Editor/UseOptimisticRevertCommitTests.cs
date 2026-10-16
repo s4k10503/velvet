@@ -15,6 +15,8 @@ namespace Velvet.Tests
     /// holds, show the pass-through state by the time the drain's layout effects run.</item>
     /// <item>So do a holder the drain's pass rendered before the work of a descendant it subsumes settled the
     /// transition, and its reader.</item>
+    /// <item>So do they when the flush runs outside a drain, whose layout effects run inline, and when the
+    /// settle is the terminal slice of a time-sliced reconcile.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -38,6 +40,7 @@ namespace Velvet.Tests
             s_start = default;
             s_setTick = default;
             s_setParentTick = default;
+            s_fiber = null;
         }
 
         [TearDown]
@@ -93,7 +96,58 @@ namespace Velvet.Tests
                 "A holder rendered before the settle is rendered again without the entry within the same drain");
         }
 
+        [Test]
+        public void Given_AFlushOutsideEveryDrain_When_ItSettlesTheTransition_Then_TheHolderAndItsReaderShowThePassthroughAtThatCommit()
+        {
+            // Arrange — outside a drain the flush's layout effects run inline, ahead of anything the scheduler owes
+            using var mounted = V.Mount(_root, V.Component(OutsideRootRender, key: "outside-root"));
+            var sibling = s_fiber;
+            s_start.Invoke(() =>
+            {
+                s_add.Invoke("sent");
+                s_setTick.Invoke(1);
+            });
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var shownBefore = ReadLabels();
+            var seenBefore = s_seenAtCommit.Count;
+
+            // Act
+            FiberWorkLoop.FlushState(sibling);
+
+            // Assert
+            Assert.That($"{shownBefore}>{s_seenAtCommit.Skip(seenBefore).FirstOrDefault()}",
+                Is.EqualTo("base+sent|base+sent>base|base"),
+                "A flush made outside a drain reverts its holders ahead of its own layout effects");
+        }
+
+        [Test]
+        public void Given_ATimeSlicedTransitionReconcile_When_ItsTerminalSliceSettlesTheTransition_Then_TheHolderAndItsReaderShowThePassthroughAtThatCommit()
+        {
+            // Arrange — the slice parks, and the holder sits outside the fiber whose slices commit the work
+            using var mounted = V.Mount(_root, V.Component(SlicedRootRender, key: "sliced-root"));
+            var sliced = s_fiber;
+            s_start.Invoke(() =>
+            {
+                s_add.Invoke("sent");
+                s_setTick.Invoke(1);
+            });
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var shownBefore = ReadLabels();
+            var seenBefore = s_seenAtCommit.Count;
+            sliced.FlushStateWithTinyBudgetForTest();
+            var parked = sliced.HasPendingReconcileWorkForTest();
+
+            // Act
+            sliced.DrainTimeSlicedReconcileForTest();
+
+            // Assert — the park travels with the assertion, since a flush that never parked settles in FlushState
+            Assert.That((parked, shownBefore, s_seenAtCommit.Skip(seenBefore).FirstOrDefault()),
+                Is.EqualTo((true, "base+sent|base+sent", "base|base")),
+                "The terminal slice reverts its holders ahead of the layout effects it commits");
+        }
+
         private static VisualElement s_observedRoot;
+        private static ComponentFiber s_fiber;
         private static readonly List<string> s_seenAtCommit = new();
         private static Action<string> s_add;
         private static TransitionStarter s_start;
@@ -136,6 +190,7 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode OutsideSiblingRender()
         {
+            s_fiber = FiberAmbientStack.Current;
             var (_, setTick) = Hooks.UseState(0);
             s_setTick = setTick;
             // Every render, since no dependencies are given: the tree is read when the commit's layout effects run.
@@ -145,6 +200,38 @@ namespace Velvet.Tests
                 return null;
             }));
             return V.Label(text: "sibling");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SlicedRootRender()
+        {
+            var (_, start) = Hooks.UseTransition();
+            s_start = start;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(SlicedRowsRender, key: "rows"),
+                V.Component(HolderRender, key: "holder"),
+            });
+        }
+
+        // A top-level Fragment of host nodes takes the reconciler's time-sliceable fast path.
+        [Component(Compiler = false)]
+        private static VNode SlicedRowsRender()
+        {
+            s_fiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            Hooks.UseLayoutEffect((Func<Action>)(() =>
+            {
+                s_seenAtCommit.Add(ReadLabels());
+                return null;
+            }));
+            var rows = new VNode[9];
+            for (var i = 0; i < rows.Length; i++)
+            {
+                rows[i] = V.Label(text: $"{i}-{tick}");
+            }
+            return V.Fragment(children: rows);
         }
 
         [Component(Compiler = false)]

@@ -2673,7 +2673,7 @@ namespace Velvet
         /// awaiting a task that never completes holds every later entry. A component rendered by the
         /// Transition-lane drain that lands the last work a transition queued leaves that transition's
         /// entries out of that render, and a component holding them that the drain did not render that way is
-        /// rendered without them before the drain's layout effects run. An entry no
+        /// rendered without them before that commit's layout effects run. An entry no
         /// render has shown when its owner settles is shown once first. An entry nothing owns is discarded by
         /// the component's next Transition-lane render.
         /// </summary>
