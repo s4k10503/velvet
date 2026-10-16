@@ -259,8 +259,9 @@ a fragment, or only a search, resolves from the current pathname, since it has n
 search. A `get` submission to an action ending in a fragment keeps the fragment after the query it builds, and a
 submission naming no action keeps the current one.
 
-`RouterLocation.Key` identifies the entry: `"default"` for the first the router holds, and a value unique within the
-router for every push or replace after it, replacing the first entry included. A step along the history brings back
+`RouterLocation.Key` identifies the entry: `"default"` for the first the router holds, and eight random base-36
+characters, as React Router's `createKey` makes, for every push or replace after it, replacing the first entry
+included. A step along the history brings back
 the key of the entry it lands on, so a key read from `Hooks.UseLocation` names the entry whichever way it was reached.
 A blocker asked about a step sees that entry as `NextLocation`, with its stored state and key; asked about a push, it
 sees the state of the call and a fresh key.

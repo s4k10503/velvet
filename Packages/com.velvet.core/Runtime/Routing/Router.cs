@@ -1200,24 +1200,17 @@ namespace Velvet
         private const string DefaultKey = "default";
         private const string KeyAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
 
-        // Eight base-36 characters, the shape of React Router's createKey, and never the default key or one an
-        // entry of this router already holds.
+        // Eight random base-36 characters, as React Router's createKey makes, which checks no earlier key either.
         private string NewKey()
         {
             // Created on the first key, which a router that only ever holds its first entry never needs.
             var random = _keyRandom ??= new System.Random();
             var chars = new char[8];
-            string key;
-            do
+            for (var i = 0; i < chars.Length; i++)
             {
-                for (var i = 0; i < chars.Length; i++)
-                {
-                    chars[i] = KeyAlphabet[random.Next(KeyAlphabet.Length)];
-                }
-                key = new string(chars);
+                chars[i] = KeyAlphabet[random.Next(KeyAlphabet.Length)];
             }
-            while (key == DefaultKey || _history.Exists(entry => entry.Key == key));
-            return key;
+            return new string(chars);
         }
 
         private void CommitHistoryEntry(RouterLocation location, NavigationMode mode, PendingNavigation pending)

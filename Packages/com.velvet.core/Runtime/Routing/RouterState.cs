@@ -50,7 +50,7 @@ namespace Velvet
         /// </summary>
         public object? State { get; init; }
         /// <summary>
-        /// Identifies the history entry: <c>"default"</c> for the first, and a value unique within the router for
+        /// Identifies the history entry: <c>"default"</c> for the first, and eight random base-36 characters for
         /// every push or replace after it. A history step brings back the key of the entry it lands on.
         /// </summary>
         public string Key { get; init; } = "default";
