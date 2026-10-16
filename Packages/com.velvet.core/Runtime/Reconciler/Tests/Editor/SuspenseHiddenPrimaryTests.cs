@@ -352,8 +352,8 @@ namespace Velvet.Tests
                 "The inner boundary still waits, so React keeps the layout effects of its children down");
         }
 
-        // GREEN_ON_BASE(characterization): the base hides nothing, so it writes to no element after the catch.
-        // What this pins is that the hide a caught render recorded is not applied to the elements it took back.
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnErrorBoundaryCatchingInTheRenderThatHidItsSuspensesPrimary_When_ALaterRenderCreatesALabel_Then_TheLabelIsDisplayed()
         {
@@ -373,6 +373,8 @@ namespace Velvet.Tests
                 "A boundary's catch takes the hidden primary back, and nothing hides an element after it");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryAboveASuspenseOwnerCatchingAnElementCallbackErrorInAPrimaryItHides_When_ThatRenderCommits_Then_TheCatchIsReported()
         {
@@ -682,8 +684,8 @@ namespace Velvet.Tests
                 "A Portal created among the children a boundary hides has its children hidden with them");
         }
 
-        // GREEN_ON_BASE(characterization): the merge base stops the pass at a catch of a failing ref cleanup too, with
-        // the reveal already recorded. What this pins is that the boundary reveals its children on the next render.
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryHidingItsPrimaryWhoseRevealIsStoppedByACatchAfterIt_When_ItsHostRendersAgain_Then_ItRevealsItsChildren()
         {

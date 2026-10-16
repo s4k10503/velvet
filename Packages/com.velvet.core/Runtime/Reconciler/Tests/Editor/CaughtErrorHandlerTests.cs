@@ -88,6 +88,8 @@ namespace Velvet.Tests
 
         private string Outcome() => $"{string.Join(", ", _calls)} | {_root.FindFirstLabel()?.text}";
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnOnCaughtErrorHandler_When_ABoundaryCatches_Then_ItReceivesTheCaughtExceptionAndTheComponentStack()
         {
@@ -231,6 +233,8 @@ namespace Velvet.Tests
             Assert.That(Outcome(), Is.EqualTo("fallback content boom | fallback"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnOnCaughtErrorHandlerThatThrows_When_ABoundaryCatchesALayoutEffectsError_Then_TheMountCompletesWithTheFallback()
         {
@@ -331,6 +335,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("other, fallback, caught"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryThatCaughtALayoutEffectsError_When_AnOuterBoundaryReplacesItInTheSameCommit_Then_OnlyTheOuterBoundaryReports()
         {
@@ -379,6 +385,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_SiblingBoundariesCatchingInReverseTreeOrderInOnePassiveDrain_When_TheirFallbacksCommit_Then_TheReportsFollowTreeOrderAndEachFallbacksLayoutEffects()
         {
@@ -569,6 +577,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback, caught"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryHoldingAReportFromARender_When_AnEarlierSiblingsLayoutEffectThrowsIntoAnOuterBoundaryInTheSameCommit_Then_OnlyTheOuterBoundaryReports()
         {
@@ -659,6 +669,8 @@ namespace Velvet.Tests
                 Is.EqualTo("1 kept before | 0 kept after"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_SiblingBoundariesWhoseFallbacksBothHaveLayoutEffectsCatchingInReverseTreeOrder_When_TheirFallbacksCommit_Then_EachReportFollowsItsOwnFallbacksLayoutEffect()
         {
@@ -679,8 +691,8 @@ namespace Velvet.Tests
             Assert.That(string.Join(", ", s_order), Is.EqualTo("fallback one, one, fallback two, two"));
         }
 
-        // GREEN_ON_BASE(characterization): the base reports both catches in catch order at the catch, and the
-        // queue that now holds them must keep the second while it delivers the first.
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_TwoBoundariesCatchingLayoutEffectsErrorsInOneCommit_When_Mounted_Then_EachReportsOnceInCatchOrder()
         {

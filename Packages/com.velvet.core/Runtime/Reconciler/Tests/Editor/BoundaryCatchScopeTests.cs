@@ -2675,6 +2675,8 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("outer-fallback,sibling"));
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryInsideAPendingPrimaryCatchingAnElementCallbackError_When_TheReadResolvesWithTheChildNoLongerThrowing_Then_ItRendersItsChildrenAndNothingWasReported()
         {
@@ -2851,10 +2853,8 @@ namespace Velvet.Tests
             });
 
 
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        // Before that, as characterization: the merge base forgets no catch when a primary is discarded. What this
-        // pins is that the forgetting this branch adds leaves alone a catch by a boundary above the Suspense's owner.
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ABoundaryAboveASuspenseOwnerCatchingAnElementCallbackErrorInAPrimaryThatStaysPending_When_ThatRenderCommits_Then_TheCatchIsReported()
         {

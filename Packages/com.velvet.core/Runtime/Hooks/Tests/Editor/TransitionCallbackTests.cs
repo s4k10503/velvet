@@ -129,6 +129,8 @@ namespace Velvet.Tests
 
         #region A callback that throws
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ACallbackThatThrows_When_TheTransitionLaneRenders_Then_TheErrorReachesTheBoundaryAboveTheDeclaringComponent()
         {
@@ -153,6 +155,8 @@ namespace Velvet.Tests
                 "The callback's error is thrown from the declaring component's Transition-lane render, as React's is");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ACallbackThatWritesItsParentThenThrows_When_TheParentsTransitionPassReachesIt_Then_TheErrorReachesTheBoundary()
         {
@@ -174,6 +178,8 @@ namespace Velvet.Tests
                 "A declaring component reached by an ancestor's Transition-lane pass throws the error there");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ACallbackThatThrew_When_AnUrgentPassOfTheParentRendersTheDeclaringComponentFirst_Then_TheTransitionLaneStillThrowsTheError()
         {
@@ -193,6 +199,8 @@ namespace Velvet.Tests
                 "A render off the Transition lane leaves the error for that lane, as React's urgent render does");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_TwoCallbacksThatThrow_When_TheTransitionLaneRenders_Then_TheSecondErrorIsThrown()
         {
@@ -216,6 +224,8 @@ namespace Velvet.Tests
                 "The outcome rendered is that of the call whose callback returned last");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnActionThatFaultsAfterALaterCallReturned_When_TheTransitionLaneRendersBeforeTheLaterOneSettles_Then_NoErrorIsThrown()
         {
@@ -240,6 +250,8 @@ namespace Velvet.Tests
                 "React dispatches each call's outcome where its callback returns, so the later call's pending one is last");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_AnActionStartedInsideACallbackThatThenThrows_When_TheActionsAwaitResumes_Then_TheCallbacksErrorIsThrown()
         {
@@ -267,6 +279,8 @@ namespace Velvet.Tests
                 "The action's callback returned first, so the outer callback's error is the outcome rendered");
         }
 
+        // GREEN_ON_BASE(refactor): only how this case spells its MountOptions changed.
+        // OnCaughtError is now set as the init property the options take, which the base's record accepts too.
         [Test]
         public void Given_ACallbackThatThrowsThenOneThatSucceeds_When_TheTransitionLaneRenders_Then_NoErrorIsThrown()
         {
