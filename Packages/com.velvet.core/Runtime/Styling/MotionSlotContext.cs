@@ -103,6 +103,8 @@ namespace Velvet
 
         public bool DrivenByRunningPlay(ArbitraryProperty slot) => _drivenByRunningPlay(slot);
 
+        public bool NativeTransitionRunning(ArbitraryProperty slot) => HasRunningNativeTransition(slot);
+
         public bool TryReadCurrent(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {
             if (slot == ArbitraryProperty.BorderColor)
