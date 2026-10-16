@@ -270,8 +270,8 @@ namespace Velvet
             boundary.Reconciler!.Context.ErrorsDuringFallbackSwap.Add((boundary, exception, info));
         }
 
-        // A swap that failed leaves nothing to catch with, so what it took goes with it, as React's updates on a
-        // boundary an ancestor replaces do. The root cannot be replaced, and reports what it took at once.
+        // A swap that failed leaves nothing to catch with, so what it took goes with it. The root cannot be replaced,
+        // and reports what it took at once.
         private static void DropTheSwapsErrors(ComponentFiber boundary)
         {
             var ctx = boundary.Reconciler?.Context;
