@@ -268,7 +268,8 @@ namespace Velvet
         // Resolves the top-left corner radius (px) from the rounded-* / rounded-t-* /
         // rounded-l-* / rounded-tl-* classes that affect the top-left corner, mirroring the
         // --radius-* token scale. The shader has a single uniform corner radius, so the top-left
-        // corner is taken as representative. Last matching class wins. Returns false for
+        // corner is taken as representative. Of the matching classes the one Tailwind emits last wins, as
+        // StyleSpacingPrecedence ranks them, and the last written of two that set the same corners. Returns false for
         // rounded-full / arbitrary radii (those resolve via resolvedStyle.borderTopLeftRadius
         // once laid out) and when no rounding class is present.
         public static bool TryResolveCornerRadius(string[]? classNames, out float radius)
@@ -280,6 +281,7 @@ namespace Velvet
             }
 
             var found = false;
+            var heldRank = int.MinValue;
             foreach (var cls in classNames)
             {
                 if (string.IsNullOrEmpty(cls))
@@ -288,35 +290,57 @@ namespace Velvet
                 }
 
                 string suffix;
+                ArbitraryProperty property;
                 // Longest prefix first so rounded-tl-/rounded-t-/rounded-l- are not swallowed by rounded-.
                 if (cls.StartsWith("rounded-tl-", StringComparison.Ordinal))
                 {
                     suffix = cls.Substring("rounded-tl-".Length);
+                    property = ArbitraryProperty.BorderTopLeftRadius;
+                }
+                else if (cls.StartsWith("rounded-ss-", StringComparison.Ordinal))
+                {
+                    suffix = cls.Substring("rounded-ss-".Length);
+                    property = ArbitraryProperty.BorderStartStartRadius;
+                }
+                else if (cls.StartsWith("rounded-s-", StringComparison.Ordinal))
+                {
+                    suffix = cls.Substring("rounded-s-".Length);
+                    property = ArbitraryProperty.BorderStartRadius;
                 }
                 else if (cls.StartsWith("rounded-t-", StringComparison.Ordinal))
                 {
                     suffix = cls.Substring("rounded-t-".Length);
+                    property = ArbitraryProperty.BorderTopRadius;
                 }
                 else if (cls.StartsWith("rounded-l-", StringComparison.Ordinal))
                 {
                     suffix = cls.Substring("rounded-l-".Length);
+                    property = ArbitraryProperty.BorderLeftRadius;
                 }
                 else if (cls.StartsWith("rounded-", StringComparison.Ordinal))
                 {
                     suffix = cls.Substring("rounded-".Length);
+                    property = ArbitraryProperty.BorderRadius;
                 }
                 else if (cls == "rounded")
                 {
                     suffix = ""; // bare `rounded` == --radius-default
+                    property = ArbitraryProperty.BorderRadius;
                 }
                 else
                 {
                     continue;
                 }
 
-                if (RadiusScale.TryGetValue(suffix, out var r))
+                if (!RadiusScale.TryGetValue(suffix, out var r))
+                {
+                    continue;
+                }
+                var rank = StyleSpacingPrecedence.RankOf(property);
+                if (rank >= heldRank)
                 {
                     radius = r;
+                    heldRank = rank;
                     found = true;
                 }
             }

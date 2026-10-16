@@ -313,6 +313,10 @@ namespace Velvet
 
         internal static int TailwindIndexOf(string property) => Array.IndexOf(s_tailwindPropertyOrder, property);
 
+        // Two utilities written without a variant, ordered as Tailwind emits them: negative when a is emitted
+        // first, which leaves a property they share to z.
+        internal static int CompareUtilities(string a, string z) => SortKey.Of(a).CompareTo(SortKey.Of(z));
+
         private static int? ShorthandIndexOf(StyleLonghandSet set)
         {
             foreach (var (shorthandSet, index) in s_shorthandIndexes)

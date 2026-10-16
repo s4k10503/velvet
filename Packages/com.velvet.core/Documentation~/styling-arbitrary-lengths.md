@@ -135,18 +135,30 @@ Where a shorthand and a longhand of one family meet in one `className`, the long
 comes first, as in Tailwind, which emits `padding` ahead of `padding-top`: `p-13 pt-2` and `pt-2 p-13` both
 leave the top at 8px and the other sides at 52px. The order is Tailwind's property order: the all-sides
 shorthand, then the axis (`px-*` / `py-*`, `inset-x-*` / `inset-y-*`), then a single side, and `size-*` ahead
-of `w-*` and `h-*`. It covers padding, margin, the insets and `size-*` / `w-*` / `h-*`, at one priority: a
-variant or `!` outranks the plain utility as it does anywhere, and a bracket value takes part the same way
-(`p-[52px] pt-2`). Variants are compared as a set, so `hover:focus:` and `focus:hover:` are one group.
+of `w-*` and `h-*`. It covers padding, margin, the insets, `size-*` / `w-*` / `h-*` and the border radii, at one
+priority: a variant or `!` outranks the plain utility as it does anywhere, and a bracket value takes part the same
+way (`p-[52px] pt-2`). Variants are compared as a set, so `hover:focus:` and `focus:hover:` are one group.
+
+The radii run `rounded-*`, then the logical sides and corners (`rounded-s-*`, `rounded-ss-*`, `rounded-e-*`,
+`rounded-se-*`, `rounded-ee-*`, `rounded-es-*`), then the physical ones: `rounded-t-*`, `rounded-l-*`,
+`rounded-tl-*`, `rounded-r-*`, `rounded-tr-*`, `rounded-b-*`, `rounded-br-*`, `rounded-bl-*`. Of two that write
+different properties and share a corner the later holds it whichever comes first, so `rounded-t-[2px] rounded-r-[8px]` and
+`rounded-r-[8px] rounded-t-[2px]` both give the top-right corner 8px, `rounded-l-sm rounded-b-lg` and
+`rounded-b-lg rounded-l-sm` both give the bottom-left 8px, and a logical radius gives way to the physical one over
+its corner. A stylesheet radius class that Tailwind emits after an inline one it overlaps is written inline, as
+below: `rounded-r-lg rounded-se-[2px]` leaves the top-right at 8px. Two utilities of one family
+(`rounded-md rounded-lg`) write one property and are not ordered by this rule. In a `V.Motion` pose, a base radius
+the pose partly overlaps keeps only the corners the pose leaves: `rounded-l-[4px]` under a `rounded-t-[16px]` pose
+is `rounded-bl-[4px]`.
 
 An inline value outranks every class on its element, so a stylesheet class that is the narrower of such a pair
 is written inline too when an inline utility of an overlapping family stands beside it: `pt-2` becomes
-`pt-[8px]`, `mx-auto` becomes `mx-[auto]` (the `auto` bracket in the [table above](#what-every-length-bracket-reads)) and `w-full`
-becomes `w-[100%]`. Two things follow. The rewritten class is no longer in the element's class list, so a
+`pt-[8px]`, `mx-auto` becomes `mx-[auto]` (the `auto` bracket in the [table above](#what-every-length-bracket-reads)), `w-full`
+becomes `w-[100%]` and `rounded-t-lg` becomes `rounded-t-[8px]` (`rounded-t-full` becomes `rounded-t-[9999px]`). Two things follow. The rewritten class is no longer in the element's class list, so a
 selector on it (`.pt-2 > .x`) and `ClassListContains("pt-2")` stop seeing it, though the unrewritten classes of
 the list are unchanged. And the rewrite writes the pixel value of the step as Velvet's scale gives it, so a
-stylesheet that redefines `--space-2` moves `pt-2` and leaves `pt-[8px]` where it was, the same limit as
-the logical utilities have ([react-migration.md](react-migration.md)).
+stylesheet that redefines `--space-2` moves `pt-2` and leaves `pt-[8px]` where it was (`--radius-lg` and
+`rounded-t-[8px]` likewise), the same limit as the logical utilities have ([react-migration.md](react-migration.md)).
 
 The rule is made where a shorthand and a longhand meet in one `className` string; these differ:
 - A logical utility (`ps-*`, `ms-*`, `start-*`, the block forms) beside the physical utility of its own side
@@ -158,7 +170,5 @@ The rule is made where a shorthand and a longhand meet in one `className` string
   `pt-[8px]` beside a pose `p-[52px]` leaves the top at 52px, the base token being left out while that pose
   applies. A base class beside an inline pose needs no such step, the inline value outranking it already; a pose class that is the narrower of a pair with an inline base token (`p-13` base, `pt-2` pose) is written inline like any other, so it holds its side and the base keeps the rest.
 - A class list assembled outside a `className` string, or beside a class list of another element, is not ordered this way.
-- Border radii are not ordered this way: `rounded-r-*` and `rounded-t-*` on one corner are left to whichever is
-  written last.
 
 `z-<n>` takes any whole number an int holds the same way (`z-15`, `-z-15`); see [styling-z-index.md](styling-z-index.md).

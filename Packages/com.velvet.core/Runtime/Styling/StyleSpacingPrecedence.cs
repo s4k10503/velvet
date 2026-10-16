@@ -7,7 +7,8 @@ namespace Velvet
     // Tailwind emits a shorthand ahead of the longhands it contains, so pt-2 beats p-13 whichever is written
     // first: padding, margin, inset and size/width/height sort that way in property-order.ts. Two utilities
     // of one family at one priority are therefore ordered here by that property order, in the place a border
-    // side colour already is (StyleBorderSideColor.CompareCascade), instead of by which arrived last.
+    // side colour already is (StyleBorderSideColor.CompareCascade), instead of by which arrived last. The radius
+    // families take part too, ranked by the order StyleRuleOrder gives their tokens.
     //
     // A stylesheet class cannot take part: an inline value outranks every class on the element it sits on, so
     // `p-13 pt-2` would paint 52px at the top with pt-2 a class. Normalize rewrites such a class into an inline
@@ -47,7 +48,39 @@ namespace Velvet
             // size-* declares width and height, and property-order.ts sorts height first, so it ahead of both w-*
             // and h-*: the first property it differs from w-* on is height, and from h-* the extra width.
             ranks[(int)ArbitraryProperty.Size] = ranks[(int)ArbitraryProperty.Height] - 1;
+            SetRadiusRanks(ranks);
             return ranks;
+        }
+
+        // The radius properties ranked by where Tailwind emits their utilities, from border-radius's own index
+        // up. The order is read off StyleRuleOrder through one token per property, not restated from
+        // property-order.ts. A local, because a static field would still be null when s_rank is built.
+        private static void SetRadiusRanks(int[] ranks)
+        {
+            var ordered = new (ArbitraryProperty Property, string Token)[]
+            {
+                (ArbitraryProperty.BorderRadius, "rounded-[1px]"),
+                (ArbitraryProperty.BorderTopRadius, "rounded-t-[1px]"),
+                (ArbitraryProperty.BorderRightRadius, "rounded-r-[1px]"),
+                (ArbitraryProperty.BorderBottomRadius, "rounded-b-[1px]"),
+                (ArbitraryProperty.BorderLeftRadius, "rounded-l-[1px]"),
+                (ArbitraryProperty.BorderTopLeftRadius, "rounded-tl-[1px]"),
+                (ArbitraryProperty.BorderTopRightRadius, "rounded-tr-[1px]"),
+                (ArbitraryProperty.BorderBottomRightRadius, "rounded-br-[1px]"),
+                (ArbitraryProperty.BorderBottomLeftRadius, "rounded-bl-[1px]"),
+                (ArbitraryProperty.BorderStartRadius, "rounded-s-[1px]"),
+                (ArbitraryProperty.BorderEndRadius, "rounded-e-[1px]"),
+                (ArbitraryProperty.BorderStartStartRadius, "rounded-ss-[1px]"),
+                (ArbitraryProperty.BorderStartEndRadius, "rounded-se-[1px]"),
+                (ArbitraryProperty.BorderEndStartRadius, "rounded-es-[1px]"),
+                (ArbitraryProperty.BorderEndEndRadius, "rounded-ee-[1px]"),
+            };
+            Array.Sort(ordered, (a, z) => StyleRuleOrder.CompareUtilities(a.Token, z.Token));
+            var first = 2 * StyleRuleOrder.TailwindIndexOf("border-radius");
+            for (var i = 0; i < ordered.Length; i++)
+            {
+                ranks[(int)ordered[i].Property] = first + i;
+            }
         }
 
         // Twice the property's index in property-order.ts, which leaves the odd rank before it free for size.
@@ -139,8 +172,10 @@ namespace Velvet
         // baseClasses without the inline spacing tokens a pose of the same Motion overrides: a pose is Framer
         // Motion's animate, which overrides the node's own style, so a base pt-[8px] must not outrank a pose's
         // p-[52px] on the top edge as it would in one class list. A base token goes when the pose token's property
-        // contains everything it writes, which includes the same property (a logical pose and the physical base of
-        // its side share one layer slot); baseClasses itself when none does.
+        // contains everything it writes, which includes the same property. A base radius a pose overlaps without
+        // containing is cut down to the corners the pose leaves (rounded-l-[4px] under a rounded-t-[16px] pose
+        // becomes rounded-bl-[4px]), since Tailwind may rank the base ahead of the pose on a shared corner;
+        // baseClasses itself when no token changes.
         internal static string[] WithoutOverriddenBase(string[] baseClasses, string[] pose, string[]? morePose = null)
         {
             if (!MayHoldSpacing(pose) && (morePose == null || !MayHoldSpacing(morePose)) || !MayHoldSpacing(baseClasses))
@@ -157,29 +192,91 @@ namespace Velvet
                 return baseClasses;
             }
             var overridden = new HashSet<int>();
+            var cut = new Dictionary<int, string[]>();
             foreach (var own in ReadAll(baseClasses))
             {
-                if (!own.Backed && poseReadings.Exists(posed => Overrides(posed, own)))
+                if (own.Backed)
+                {
+                    continue;
+                }
+                if (poseReadings.Exists(posed => Overrides(posed, own)))
                 {
                     overridden.Add(own.Index);
+                    continue;
+                }
+                var left = CornersLeftBy(baseClasses[own.Index], own, poseReadings);
+                if (left != null)
+                {
+                    cut[own.Index] = left;
                 }
             }
-            if (overridden.Count == 0)
+            if (overridden.Count == 0 && cut.Count == 0)
             {
                 return baseClasses;
             }
             var kept = new List<string>(baseClasses.Length);
             for (var i = 0; i < baseClasses.Length; i++)
             {
-                if (!overridden.Contains(i))
+                if (overridden.Contains(i))
                 {
-                    kept.Add(baseClasses[i]);
+                    continue;
                 }
+                if (cut.TryGetValue(i, out var corners))
+                {
+                    kept.AddRange(corners);
+                    continue;
+                }
+                kept.Add(baseClasses[i]);
             }
             return kept.ToArray();
         }
 
-        // Whether any token can be a spacing utility: the Motion paths ask it of every pose on every render, and
+        private static readonly (StyleLonghand Longhand, string Prefix)[] s_cornerTokens =
+        {
+            (StyleLonghand.BorderTopLeftRadius, "rounded-tl-"),
+            (StyleLonghand.BorderTopRightRadius, "rounded-tr-"),
+            (StyleLonghand.BorderBottomRightRadius, "rounded-br-"),
+            (StyleLonghand.BorderBottomLeftRadius, "rounded-bl-"),
+        };
+
+        // The corners of the base radius token that no pose of its variants and importance writes, each as a token
+        // of its own with the base's value; null for a token that is no radius or that no pose touches.
+        private static string[]? CornersLeftBy(string token, Reading own, List<Reading> poseReadings)
+        {
+            if (!StyleArbitraryValueResolver.IsRadiusProperty(own.Property))
+            {
+                return null;
+            }
+            var core = StyleArbitraryValueResolver.StripImportant(token, out _);
+            if (!StyleArbitraryValueResolver.TryParseLayer(core.Substring(VariantsLength(core)), out var style))
+            {
+                return null;
+            }
+            var written = StyleArbitraryLonghands.Of(own.Property);
+            var left = new List<string>();
+            var touched = false;
+            foreach (var corner in s_cornerTokens)
+            {
+                if (!written.Contains(corner.Longhand))
+                {
+                    continue;
+                }
+                if (poseReadings.Exists(posed => SameLayer(posed, own)
+                    && StyleArbitraryLonghands.Of(posed.Property).Contains(corner.Longhand)))
+                {
+                    touched = true;
+                    continue;
+                }
+                var unit = style.Unit == UnityEngine.UIElements.LengthUnit.Percent ? "%" : "px";
+                var value = style.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+                left.Add(Spelled(own, corner.Prefix + "[" + value + unit + "]"));
+            }
+            return touched ? left.ToArray() : null;
+        }
+
+        private static bool SameLayer(Reading a, Reading z) => a.Important == z.Important && a.VariantSet == z.VariantSet;
+
+        // Whether any token can be a spacing or radius utility: the Motion paths ask it of every pose on every render, and
         // build the readings only where it holds.
         private static bool MayHoldSpacing(string[] tokens)
         {
@@ -198,6 +295,7 @@ namespace Velvet
             var variantsLength = VariantsLength(core);
             var payload = variantsLength == 0 ? core : core.Substring(variantsLength);
             return StyleArbitraryValueResolver.StartsWithSpacingPrefix(payload)
+                || StyleArbitraryValueResolver.StartsWithRadiusPrefix(payload)
                 || StyleLogicalUtilities.SortPropertiesOf(payload) != null;
         }
 
@@ -317,8 +415,8 @@ namespace Velvet
                 return true;
             }
             if (StyleArbitraryValueResolver.IsInlineResolved(payload)
-                && StyleArbitraryValueResolver.TryParse(payload, out var style)
-                && StyleArbitraryValueResolver.IsSpacingProperty(style.Property))
+                && StyleArbitraryValueResolver.TryParseLayer(payload, out var style)
+                && StyleArbitraryValueResolver.IsSpacingOrRadiusProperty(style.Property))
             {
                 reading = new Reading
                 {
@@ -391,9 +489,11 @@ namespace Velvet
         private static bool SameSlot(Reading a, Reading z)
             => a.Property == z.Property && a.Important == z.Important && a.VariantSet == z.VariantSet;
 
-        // Whether an inline reading in the same variants and importance writes some of what candidate does
-        // without candidate containing all of it: where candidate contains it the inline one is the narrower
-        // utility and an inline value beating a class is already the order Tailwind gives.
+        // Whether an inline reading in the same variants and importance writes some of what candidate does and
+        // Tailwind emits candidate after it, which an inline value beating a class would reverse. Either
+        // candidate does not contain all of what the inline reading writes, so it is the narrower utility; or it
+        // does and is emitted later all the same, as a physical radius side or corner is after the logical one
+        // over the corners it contains.
         private static bool IsNarrowerThanAnInlineNeighbour(Reading candidate, List<Reading> readings, List<int>? dropped)
             => readings.Exists(other => !other.Backed && Narrows(candidate, other)
                 && (dropped == null || !dropped.Contains(other.Index)));
@@ -407,12 +507,15 @@ namespace Velvet
             }
             var written = StyleArbitraryLonghands.Of(candidate.Property);
             var otherWritten = StyleArbitraryLonghands.Of(other.Property);
-            return written.Overlaps(otherWritten) && written.Union(otherWritten) != written;
+            // MUTANT_SURVIVES(equivalent, boundary): two properties that share a longhand are both ranked, and no two ranked properties share a rank, so the comparison is never zero here.
+            return written.Overlaps(otherWritten) && (written.Union(otherWritten) != written || CompareCascade(candidate.Property, other.Property) > 0);
         }
 
-        private static string Inlined(Reading candidate)
+        private static string Inlined(Reading candidate) => Spelled(candidate, candidate.InlineForm);
+
+        private static string Spelled(Reading candidate, string form)
         {
-            var core = candidate.Variants + candidate.InlineForm;
+            var core = candidate.Variants + form;
             if (!candidate.Important)
             {
                 return core;

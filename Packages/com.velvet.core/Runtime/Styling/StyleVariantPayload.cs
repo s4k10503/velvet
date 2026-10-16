@@ -146,7 +146,7 @@ namespace Velvet
             // nth-2:), and two that hold at once order by the place StyleRuleOrder gave the rule's declaration.
             var key = StyleLayerPriority.WithRule(effectivePriority, declaration);
             if (StyleArbitraryValueResolver.IsInlineResolved(core)
-                && StyleArbitraryValueResolver.TryParse(core, out var style))
+                && StyleArbitraryValueResolver.TryParseLayer(core, out var style))
             {
                 if (on)
                 {
