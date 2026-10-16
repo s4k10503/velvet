@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
-"""Refuses a package asset committed without its `.meta`, and a `.meta` committed without its asset.
+"""Refuses an asset committed without its `.meta`, and a `.meta` committed without its asset.
+
+The roots read are `Assets` and the package, the two tracked folders the project imports. Each root
+itself carries no `.meta`; everything beneath it does.
 
 Only what git tracks is read, files and the directories holding them alike. A directory holding no
-tracked file is not part of the package as anyone else receives it, so its `.meta` is reported as an
+tracked file is not part of the project as anyone else receives it, so its `.meta` is reported as an
 orphan rather than its absence excused.
 
-A path with any component that starts with `.` or ends with `~` is out of scope, and so is a `.meta`
-naming one.
+A path with any component below its root that starts with `.` or ends with `~` is out of scope, and
+so is a `.meta` naming one.
 """
 
 import argparse
 import subprocess
 import sys
 
-PACKAGE = "Packages/com.velvet.core"
+ROOTS = ("Assets", "Packages/com.velvet.core")
 META = ".meta"
 
 
-def tracked(project):
-    listed = subprocess.run(["git", "-C", str(project), "ls-files", "-z", "--", PACKAGE],
+def tracked(project, root):
+    listed = subprocess.run(["git", "-C", str(project), "ls-files", "-z", "--", root],
                             capture_output=True, text=True, check=True)
     return [name for name in listed.stdout.split("\0") if name]
 
 
 def in_scope_prefix(parts):
-    """The leading components of a package-relative path that come before any `.` or `~` one."""
+    """The leading components of a root-relative path that come before any `.` or `~` one."""
     for index, part in enumerate(parts):
         if part.startswith(".") or part.endswith("~"):
             return parts[:index]
@@ -35,19 +38,20 @@ def findings(project):
     """Returns (missing, orphaned): assets lacking a `.meta`, and `.meta` files lacking an asset."""
     metas = set()
     assets = set()
-    prefix = PACKAGE + "/"
-    for name in tracked(project):
-        relative = name[len(prefix):]
-        is_meta = relative.endswith(META)
-        parts = (relative[:-len(META)] if is_meta else relative).split("/")
-        scoped = in_scope_prefix(parts)
-        if is_meta:
-            if scoped == parts:
-                metas.add(name[:-len(META)])
-            continue
-        # A directory holding only out-of-scope entries is still on disk, so it still needs a `.meta`.
-        for depth in range(1, len(scoped) + 1):
-            assets.add(prefix + "/".join(scoped[:depth]))
+    for root in ROOTS:
+        prefix = root + "/"
+        for name in tracked(project, root):
+            relative = name[len(prefix):]
+            is_meta = relative.endswith(META)
+            parts = (relative[:-len(META)] if is_meta else relative).split("/")
+            scoped = in_scope_prefix(parts)
+            if is_meta:
+                if scoped == parts:
+                    metas.add(name[:-len(META)])
+                continue
+            # A directory holding only out-of-scope entries is still on disk, so it still needs a `.meta`.
+            for depth in range(1, len(scoped) + 1):
+                assets.add(prefix + "/".join(scoped[:depth]))
     return sorted(assets - metas), sorted(metas - assets)
 
 

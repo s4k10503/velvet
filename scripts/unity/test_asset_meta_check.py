@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Holds `package_meta_check.py` against what it has to tell apart: a file from a directory, a
+"""Holds `asset_meta_check.py` against what it has to tell apart: a file from a directory, a
 tracked `.meta` from an untracked one, a directory holding tracked files from one holding none, a
-path Unity imports from one under a `~` or `.` component at any depth, and the package from the
-rest of the repository.
+path in scope from one under a `~` or `.` component at any depth, and a root, which
+needs no `.meta`, from what lies beneath it or outside both roots.
 
-Run: python3 scripts/unity/test_package_meta_check.py
+Run: python3 scripts/unity/test_asset_meta_check.py
 """
 
 import shutil
@@ -16,12 +16,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import package_meta_check  # noqa: E402
+import asset_meta_check  # noqa: E402
 
-ROOT = package_meta_check.PACKAGE + "/"
+ROOT = "Packages/com.velvet.core/"
 
 
-class PackageMetaCheckTests(unittest.TestCase):
+class AssetMetaCheckTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.directory, True)
@@ -40,7 +40,7 @@ class PackageMetaCheckTests(unittest.TestCase):
         # Arrange
         project = self.repository_holding([ROOT + "package.json"])
         # Act
-        missing, _ = package_meta_check.findings(project)
+        missing, _ = asset_meta_check.findings(project)
         # Assert
         self.assertEqual([ROOT + "package.json"], missing)
 
@@ -48,7 +48,7 @@ class PackageMetaCheckTests(unittest.TestCase):
         # Arrange
         project = self.repository_holding([ROOT + "Runtime/A.cs", ROOT + "Runtime/A.cs.meta"])
         # Act
-        missing, _ = package_meta_check.findings(project)
+        missing, _ = asset_meta_check.findings(project)
         # Assert
         self.assertEqual([ROOT + "Runtime"], missing)
 
@@ -60,7 +60,7 @@ class PackageMetaCheckTests(unittest.TestCase):
             ROOT + "Runtime/Hooks/A.cs", ROOT + "Runtime/Hooks/A.cs.meta",
         ])
         # Act
-        found = package_meta_check.findings(project)
+        found = asset_meta_check.findings(project)
         # Assert
         self.assertEqual(([], []), found)
 
@@ -68,7 +68,7 @@ class PackageMetaCheckTests(unittest.TestCase):
         # Arrange
         project = self.repository_holding([ROOT + "Gone.cs.meta"])
         # Act
-        _, orphaned = package_meta_check.findings(project)
+        _, orphaned = asset_meta_check.findings(project)
         # Assert
         self.assertEqual([ROOT + "Gone.cs"], orphaned)
 
@@ -76,7 +76,7 @@ class PackageMetaCheckTests(unittest.TestCase):
         # Arrange
         project = self.repository_holding([ROOT + "Empty.meta"], untracked=[ROOT + "Empty/A.cs"])
         # Act
-        _, orphaned = package_meta_check.findings(project)
+        _, orphaned = asset_meta_check.findings(project)
         # Assert
         self.assertEqual([ROOT + "Empty"], orphaned)
 
@@ -84,7 +84,7 @@ class PackageMetaCheckTests(unittest.TestCase):
         # Arrange
         project = self.repository_holding([ROOT + "README.md"], untracked=[ROOT + "README.md.meta"])
         # Act
-        missing, _ = package_meta_check.findings(project)
+        missing, _ = asset_meta_check.findings(project)
         # Assert
         self.assertEqual([ROOT + "README.md"], missing)
 
@@ -94,7 +94,7 @@ class PackageMetaCheckTests(unittest.TestCase):
             ROOT + "Runtime.meta", ROOT + "Runtime/Notes~/a.md", ROOT + "Runtime/Notes~.meta",
         ])
         # Act
-        found = package_meta_check.findings(project)
+        found = asset_meta_check.findings(project)
         # Assert
         self.assertEqual(([], []), found)
 
@@ -104,15 +104,36 @@ class PackageMetaCheckTests(unittest.TestCase):
             ROOT + "Runtime.meta", ROOT + "Runtime/.gitkeep", ROOT + "Runtime/.hidden/a.cs",
         ])
         # Act
-        found = package_meta_check.findings(project)
+        found = asset_meta_check.findings(project)
         # Assert
         self.assertEqual(([], []), found)
 
-    def test_Given_AFileOutsideThePackageWithoutAMeta_When_Checked_Then_NothingIsReported(self):
+    def test_Given_AFileUnderAssetsWithoutAMeta_When_Checked_Then_ItIsReportedMissing(self):
         # Arrange
-        project = self.repository_holding(["Assets/Scene.unity", "scripts/x.py"])
+        project = self.repository_holding(["Assets/Scene.unity"])
         # Act
-        found = package_meta_check.findings(project)
+        missing, _ = asset_meta_check.findings(project)
+        # Assert
+        self.assertEqual(["Assets/Scene.unity"], missing)
+
+    def test_Given_AssetsWithEveryFileAndDirectoryMetaButNoneForItself_When_Checked_Then_NothingIsReported(self):
+        # Arrange
+        project = self.repository_holding([
+            "Assets/Scene.unity", "Assets/Scene.unity.meta",
+            "Assets/UI Toolkit.meta", "Assets/UI Toolkit/Panel.asset", "Assets/UI Toolkit/Panel.asset.meta",
+        ])
+        # Act
+        found = asset_meta_check.findings(project)
+        # Assert
+        self.assertEqual(([], []), found)
+
+    def test_Given_FilesOutsideBothRootsWithoutAMeta_When_Checked_Then_NothingIsReported(self):
+        # Arrange
+        project = self.repository_holding([
+            "Packages/manifest.json", "ProjectSettings/ProjectSettings.asset", "scripts/x.py",
+        ])
+        # Act
+        found = asset_meta_check.findings(project)
         # Assert
         self.assertEqual(([], []), found)
 
