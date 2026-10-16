@@ -8060,7 +8060,7 @@ class ShardCeilingTests(unittest.TestCase):
         mutant, setup = 561, 201 + 486 + 12 + 900
         largest = max(count for count in range(1, 40)
                       if all(self.fits("mutation-shard", "EditMode", mutant, setup, arm=arm, count=count)
-                             for arm in ("reach", "failed", "small")))
+                             for arm in ("reach", "failed", "small")), default=0)
 
         # Act
         stated = mutation_check.SHARD_CEILING["EditMode"]
@@ -8581,6 +8581,7 @@ class ILReadingSurvivorTests(ILReadingBase):
         self.assertEqual([scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
                           if name == "baseline-il.xml"], [ONLY_READERS])
 
+    # GREEN_ON_BASE(characterization): drop the `held["failed"]` term of the control's check in `mutation_check.py` and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
     def test_Given_TheFixturesReadingILRedAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
         # Arrange — their failure on a mutant would not be the mutation's.
         self.campaign.il_control = "red"
@@ -8591,6 +8592,7 @@ class ILReadingSurvivorTests(ILReadingBase):
         # Assert
         self.assertEqual(self.own(), [[]])
 
+    # GREEN_ON_BASE(characterization): drop the `held["total"] != il_cases` term of the control's check and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
     def test_Given_AControlThatRanOtherCasesThanTheBaselineHolds_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
         # Arrange — a filter that selected nothing proves nothing about these fixtures.
         self.campaign.il_control = "short"
@@ -8679,6 +8681,7 @@ class ILReadingSurvivorTests(ILReadingBase):
         # Assert
         self.assertEqual(self.ran(), "fixtures reading IL 1")
 
+    # GREEN_ON_BASE(characterization): let the survivor-only test beside `CALL_REMOVING` pass an inconclusive reading and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
     def test_Given_ASessionSurvivorThatWasInconclusive_When_ItsOwnLaunchRuns_Then_ItTakesTheWholeSuite(self):
         # Arrange — the session's inconclusive case may be any fixture's, not only those reading IL.
         self.campaign.outcome = "inconclusive"
@@ -8689,6 +8692,7 @@ class ILReadingSurvivorTests(ILReadingBase):
         # Assert
         self.assertEqual(self.own(), [[]])
 
+    # GREEN_ON_BASE(characterization): delete the `if scope:` return of `il_only_classes` and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
     def test_Given_AScopeTheCallerChose_When_ASurvivorsOwnLaunchRuns_Then_NoLaunchIsNarrowedToTheFixturesReadingIL(self):
         # Act
         self.campaign.run("--max", "1", "--filter", "N.Elsewhere")
@@ -8770,6 +8774,7 @@ class ILReadingCallRemovalTests(ILReadingBase):
 
     campaign_class = CallRemovingCampaign
 
+    # GREEN_ON_BASE(characterization): delete the `CALL_REMOVING` test on the survivor path and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
     def test_Given_ASurvivorThatRemovedACall_When_ItsAssemblyIsReadAsIL_Then_ItsOwnLaunchIsTheWholeSuite(self):
         # Act
         self.campaign.run("--max", "1")
@@ -8782,6 +8787,7 @@ class ILReadingCallRemovalUncoveredTests(ILReadingBase):
     campaign_class = CallRemovingCampaign
     reach_from = 1
 
+    # GREEN_ON_BASE(characterization): delete the `CALL_REMOVING` test on the uncovered path and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
     def test_Given_AnUncoveredMutantThatRemovedACall_When_ItsAssemblyIsReadAsIL_Then_ItsOwnLaunchIsTheWholeSuite(self):
         # Arrange
         self.campaign.reach = {"N.C.A": {99}}
