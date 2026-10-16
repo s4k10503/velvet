@@ -11,24 +11,27 @@ namespace Velvet
     {
         private readonly VisualElement _element;
         private readonly Func<ArbitraryProperty, bool> _drivenByRunningPlay;
+        private readonly Func<ArbitraryProperty, bool> _drivenByLivePlay;
         private readonly HashSet<string> _swapped = new(StringComparer.Ordinal);
         private readonly HashSet<ArbitraryProperty> _inlineBySwap = new();
         private readonly HashSet<ArbitraryProperty> _importantInlineBySwap = new();
 
-        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay)
+        private MotionSlotContext(VisualElement element, Func<ArbitraryProperty, bool> drivenByRunningPlay,
+            Func<ArbitraryProperty, bool> drivenByLivePlay)
         {
             _element = element;
             _drivenByRunningPlay = drivenByRunningPlay;
+            _drivenByLivePlay = drivenByLivePlay;
         }
 
         public static MotionSlotContext? Read(VisualElement element, string[]? fromClasses, string[]? toClasses,
-            Func<ArbitraryProperty, bool> drivenByRunningPlay)
+            Func<ArbitraryProperty, bool> drivenByRunningPlay, Func<ArbitraryProperty, bool>? drivenByLivePlay = null)
         {
             if (element.panel == null)
             {
                 return null;
             }
-            var context = new MotionSlotContext(element, drivenByRunningPlay);
+            var context = new MotionSlotContext(element, drivenByRunningPlay, drivenByLivePlay ?? drivenByRunningPlay);
             context.NoteSwapped(fromClasses);
             context.NoteSwapped(toClasses);
             return context;
@@ -101,9 +104,9 @@ namespace Velvet
             => StyleArbitraryValueResolver.HasImportantInlineOutside(_element,
                 StyleArbitraryLonghands.Of(slot), _importantInlineBySwap);
 
-        public bool DrivenByRunningPlay(ArbitraryProperty slot) => _drivenByRunningPlay(slot);
-
-        public bool NativeTransitionRunning(ArbitraryProperty slot) => HasRunningNativeTransition(slot);
+        // Unlike the running-play predicate, a held play does not count: it rests at its start and the next play
+        // takes that from StartFromHeld, in the held play's own unit.
+        public bool DrivenByLivePlay(ArbitraryProperty slot) => _drivenByLivePlay(slot);
 
         public bool TryReadCurrent(ArbitraryProperty slot, LengthUnit unit, out ArbitraryStyle value)
         {

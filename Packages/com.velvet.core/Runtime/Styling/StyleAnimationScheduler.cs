@@ -692,7 +692,7 @@ namespace Velvet
             var restingTranslate = element.style.translate.value;
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
                 restingTranslate.x.value, restingTranslate.y.value,
-                MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot)));
+                MotionSlotContext.Read(element, fromClasses, toClasses, slot => DrivenByRunningPlay(element, slot), slot => DrivenByLivePlay(element, slot)));
             plan = StartFromHeld(element, plan, fromClasses, toClasses);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
@@ -860,7 +860,7 @@ namespace Velvet
             var restingTranslate = element.style.translate.value;
             var plan = MotionSpringClassParser.Resolve(planFrom, planTo,
                 restingTranslate.x.value, restingTranslate.y.value,
-                MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot)));
+                MotionSlotContext.Read(element, planFrom, planTo, slot => DrivenByRunningPlay(element, slot), slot => DrivenByLivePlay(element, slot)));
             plan = StartFromHeld(element, plan, planFrom, planTo);
             // A bezier's invalid configuration (see ValidateBezierParameters) degrades exactly like its empty plan:
             // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
@@ -1342,6 +1342,9 @@ namespace Velvet
         private bool DrivenByRunningPlay(VisualElement element, ArbitraryProperty slot)
             => Drives(_pendingEnters, element, slot) || Drives(_pendingExits, element, slot)
                 || Drives(_held, element, slot);
+
+        private bool DrivenByLivePlay(VisualElement element, ArbitraryProperty slot)
+            => Drives(_pendingEnters, element, slot) || Drives(_pendingExits, element, slot);
 
         private static bool Drives(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
             ArbitraryProperty slot)

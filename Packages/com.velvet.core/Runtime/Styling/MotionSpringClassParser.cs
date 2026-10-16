@@ -281,10 +281,10 @@ namespace Velvet
             return from.HeldUnread(axis) ? null : (identity, toValue ?? identity);
         }
 
-        // A slot a running play or a native transition is moving starts from the value on screen; the swapped-out
-        // class value is where that slot rests, not where it is.
+        // A slot a running play is moving starts from the value on screen; the swapped-out class value is where
+        // that slot rests, not where it is.
         private static bool HoldsExplicitStart(MotionSlotContext? context, bool swapped, ArbitraryProperty slot)
-            => context == null || (swapped && !context.DrivenByRunningPlay(slot) && !context.NativeTransitionRunning(slot));
+            => context == null || (swapped && !context.DrivenByLivePlay(slot));
 
         private readonly struct SideScan
         {
