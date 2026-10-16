@@ -266,7 +266,7 @@ namespace Velvet
             {
                 if (StyleVariantClass.TryParse(rest, out var kind, out var name, out var payload))
                 {
-                    values.Add((StyleLayerPriority.ForVariant(kind), name ?? string.Empty));
+                    values.Add((StyleLayerPriority.ForVariant(kind, name), ValueOf(kind, name)));
                 }
                 else if (StyleHasVariantClass.TryParse(rest, out var hasKind, out var className, out payload))
                 {
@@ -295,6 +295,11 @@ namespace Velvet
                 rest = payload ?? string.Empty;
             }
         }
+
+        // What a variant's rules of one rank are compared by: a container query's place among the others, else the
+        // relational name as written.
+        private static string ValueOf(StyleVariantKind kind, string? name)
+            => kind == StyleVariantKind.Container ? StyleContainerQuery.OrderKeyOf(name) : name ?? string.Empty;
 
         // has-[.x] before has-[:checked] before has-[:focus]: the arguments as written, compared as strings.
 #pragma warning disable CS8524 // no discard arm: a new has- kind has to state its argument

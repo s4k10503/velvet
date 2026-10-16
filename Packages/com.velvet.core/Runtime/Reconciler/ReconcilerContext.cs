@@ -414,6 +414,7 @@ namespace Velvet
         public Dictionary<VisualElement, StyleGestureClassManipulator> GestureManipulators { get; } = new();
         public Dictionary<VisualElement, StyleVariantManipulator> VariantManipulators { get; } = new();
         public Dictionary<VisualElement, StyleConditionalVariantManipulator> ConditionalVariantManipulators { get; } = new();
+        public Dictionary<VisualElement, StyleContainerVariantManipulator> ContainerVariantManipulators { get; } = new();
         public Dictionary<VisualElement, StyleRelationalVariantManipulator> RelationalVariantManipulators { get; } = new();
 
         // The RelationalSourceSets hooking each relational source element (see RelationalSourceSet).
@@ -735,7 +736,7 @@ namespace Velvet
             {
                 if (!_stackedVariantManipulators.TryGetValue(key, out var m))
                 {
-                    var innerPriority = StyleLayerPriority.ForVariant(innerKind);
+                    var innerPriority = StyleLayerPriority.ForVariant(innerKind, innerName);
                     var priority = StyleLayerPriority.Stack(outerPriority, innerPriority);
                     m = new StyleStackedVariantManipulator(this, innerKind, innerName,
                         new string?[] { leafPayload }, priority, declaration);

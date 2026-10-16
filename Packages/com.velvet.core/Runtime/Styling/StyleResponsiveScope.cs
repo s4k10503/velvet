@@ -4,33 +4,76 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Resolves which element's width drives an element's responsive (sm:/md:/...) breakpoints — the CSS
-    // container-query analog. An element marked with the MarkerClass becomes a "responsive root"
-    // (container-type: inline-size): its descendants' breakpoints evaluate against ITS width instead of the
-    // panel root's. Resolution walks up from the target to the nearest marked ancestor; with no marked
-    // ancestor it returns the panel root, or for a portal host's panel the root ViewportRoot names.
+    // Resolves which element's width answers an element's width-driven variants, which are two separate
+    // questions with separate answers:
     //
-    // Mechanism mirrors group-/peer- relational sources: the marker is a plain utility class that lands on the
+    // - sm:/md:/…/2xl: ask the VIEWPORT: the panel root, or for a portal host's panel the root ViewportRoot
+    //   names, unless an ancestor carries VelvetResponsive.ViewportClass, which stands in for the panel
+    //   (ResolveWidthSource).
+    // - @md:/@max-lg/main:/… ask a CONTAINER: the nearest ancestor marked @container, or for a named query the
+    //   nearest one marked @container/<name>, and nothing when there is none (ResolveContainer).
+    //
+    // Mechanism mirrors group-/peer- relational sources: a marker is a plain utility class that lands on the
     // element's class list (it is not a variant, so the patcher adds it verbatim), found by an ancestor class
     // walk — no ReconcilerContext tracking, userData, or extra manipulator needed.
     //
-    // A responsive manipulator resolves its width source when it attaches, and again whenever a reconcile
-    // toggles MarkerClass on any element (ScopesChanged): the walk finds the nearest marked ancestor at that
-    // moment, so a descendant attached before the toggle re-points just as one attached after it would.
+    // A width-driven manipulator resolves its source when it attaches, and again whenever a reconcile toggles
+    // a marker on any element (ScopesChanged): the walk finds the nearest marked ancestor at that moment, so a
+    // descendant attached before the toggle re-points just as one attached after it would.
     internal static class StyleResponsiveScope
     {
-        // The class that marks an element as a responsive scope. Spelled like the CSS container-query
-        // at-rule so it is unambiguous (an app would not use it as an incidental layout class) and reads as the
-        // container-query behavior it provides.
-        internal const string MarkerClass = VelvetResponsive.ContainerClass;
+        // The class that marks an element as a container for @-prefixed variants, named or not. Spelled like
+        // the CSS container-query at-rule so it is unambiguous (an app would not use it as an incidental
+        // layout class) and reads as the container-query behavior it provides.
+        internal const string ContainerClass = VelvetResponsive.ContainerClass;
 
-        // The element whose width should drive responsive breakpoints for descendants of target: the nearest
-        // ancestor carrying MarkerClass, or ViewportRoot(panelRoot) when none is marked.
+        // `@container/<name>`: the container a `@md/<name>:` variant asks for.
+        private const string NamedContainerPrefix = ContainerClass + "/";
+
+        internal const string ViewportClass = VelvetResponsive.ViewportClass;
+
+        // The element whose width should drive sm:/md:/… for descendants of target: the nearest ancestor
+        // carrying ViewportClass, or ViewportRoot(panelRoot) when none is marked.
         // panelRoot is typically panel.visualTree; passing it in keeps this independent of how the caller
         // obtained the panel (AttachToPanelEvent.destinationPanel vs target.panel). Reuses the shared ancestor
         // class walk so this resolution and the group-/peer- relational resolution stay one implementation.
         internal static VisualElement? ResolveWidthSource(VisualElement target, VisualElement? panelRoot)
-            => StyleRelationalVariantManipulator.FindAncestorWithClass(target, MarkerClass) ?? ViewportRoot(panelRoot);
+            => StyleRelationalVariantManipulator.FindAncestorWithClass(target, ViewportClass) ?? ViewportRoot(panelRoot);
+
+        // The container a query named name asks for, looking up from target's parent: the nearest ancestor
+        // marked with the matching container class, or for an unnamed query the nearest marked with any. Null
+        // when there is none, in which case the query matches nothing.
+        internal static VisualElement? ResolveContainer(VisualElement target, string name)
+        {
+            if (name.Length > 0)
+            {
+                return StyleRelationalVariantManipulator.FindAncestorWithClass(target, NamedContainerPrefix + name);
+            }
+
+            for (var ancestor = target.parent; ancestor != null; ancestor = ancestor.parent)
+            {
+                if (IsContainer(ancestor))
+                {
+                    return ancestor;
+                }
+            }
+            return null;
+        }
+
+        private static bool IsContainer(VisualElement element)
+        {
+            foreach (var cls in element.GetClasses())
+            {
+                if (IsContainerClass(cls))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsContainerClass(string cls)
+            => cls == ContainerClass || cls.StartsWith(NamedContainerPrefix, StringComparison.Ordinal);
 
         // A framework host panel — a layer or world-space portal's — keyed by its panel root to the root of the
         // panel its portal was declared on, which PanelHostFactory records when it creates the host.
@@ -53,7 +96,7 @@ namespace Velvet
         // agree with the one above.
         internal static event Action? ScopesChanged;
 
-        // Points source at target's width source as target's ancestors now stand. A target off a panel is
+        // Points source at target's viewport source as target's ancestors now stand. A target off a panel is
         // left alone: its source was unhooked when it detached, and it resolves again when it attaches.
         internal static void Rebind(VisualElement? target, ResponsiveWidthSource? source)
         {
@@ -64,13 +107,29 @@ namespace Velvet
             source?.Hook(ResolveWidthSource(target, target.panel.visualTree));
         }
 
-        // Raised by the class diff, which is where a className gains or loses the marker.
+        // Raised by the class diff, which is where a className gains or loses a marker, or swaps one container
+        // name for another.
         internal static void OnClassesChanged(string[] oldClasses, string[] newClasses)
         {
-            if ((Array.IndexOf(oldClasses, MarkerClass) >= 0) != (Array.IndexOf(newClasses, MarkerClass) >= 0))
+            if (!MarkersKept(oldClasses, newClasses) || !MarkersKept(newClasses, oldClasses))
             {
                 ScopesChanged?.Invoke();
             }
         }
+
+        // Whether every marker class in from is also in other.
+        private static bool MarkersKept(string[] from, string[] other)
+        {
+            foreach (var cls in from)
+            {
+                if (IsMarker(cls) && Array.IndexOf(other, cls) < 0)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool IsMarker(string cls) => cls == ViewportClass || IsContainerClass(cls);
     }
 }

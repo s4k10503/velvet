@@ -349,10 +349,10 @@ namespace Velvet
         }
     }
 
-    // Tracks the panel root's width and reports each geometry change to a callback. Owns the
-    // RegisterCallback/UnregisterCallback pair for the root's GeometryChangedEvent in one place, so the
-    // responsive (sm:/md:/...) breakpoint evaluation shared by the conditional and stacked variant
-    // manipulators cannot let its hook/unhook drift apart. The callback is captured once at construction; the
+    // Tracks the width of one element — the viewport root or a container — and reports each geometry change to a
+    // callback. Owns the RegisterCallback/UnregisterCallback pair for its GeometryChangedEvent in one place, so
+    // the responsive (sm:/md:/...) and container (@md:/...) evaluation shared by the conditional, container and
+    // stacked variant manipulators cannot let its hook/unhook drift apart. The callback is captured once at construction; the
     // root is captured per Hook so one instance is reused across panel attach/detach without reallocating.
     internal sealed class ResponsiveWidthSource
     {
@@ -363,6 +363,10 @@ namespace Velvet
 
         // The tracked root's resolved width, or 0 when unhooked.
         public float Width => _root?.resolvedStyle.width ?? 0f;
+
+        // Whether the tracked root's width meets query. Nothing hooked meets none: a container query with no
+        // container matches nothing, and Width's 0 would pass a ceiling.
+        public bool Satisfies(StyleContainerQuery query) => _root != null && query.Matches(Width);
 
         public void Hook(VisualElement? root)
         {

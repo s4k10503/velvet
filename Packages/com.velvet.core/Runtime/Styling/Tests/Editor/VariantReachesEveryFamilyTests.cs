@@ -87,6 +87,9 @@ namespace Velvet.Tests
             Variants =
             {
                 ("md:", (fixture, host) => fixture.ResolveAt(WidePanel, host)),
+                // 768px: between the narrow and the wide panel, and the group root that is the container fills
+                // the host.
+                ("@3xl:", (fixture, host) => fixture.ResolveContainerAt(WidePanel, host)),
                 ("dark:", (fixture, host) => VelvetTheme.IsDark = true),
                 ("hover:", (fixture, host) => Hover(host)),
                 ("group-hover:", (fixture, host) => Hover(host)),
@@ -279,7 +282,7 @@ namespace Velvet.Tests
                 // the spacing and paint families need an element with children, the text families need a text
                 // element, and a relational payload needs a group ancestor. All three are rendered for every
                 // family so the choice stays out of the declarations.
-                using var mounted = V.Mount(host, V.Div(className: "group", children: new VNode?[]
+                using var mounted = V.Mount(host, V.Div(className: "group @container", children: new VNode?[]
                 {
                     V.Div(className: className,
                         children: new VNode?[] { V.Label(text: "a"), V.Label(text: "b") }),
@@ -369,6 +372,21 @@ namespace Velvet.Tests
             {
                 using var evt = EventBase<GeometryChangedEvent>.GetPooled();
                 tree.SimulateEvent(evt);
+            }
+        }
+
+        // Sets the panel width, lays out, then fires the geometry event the container variants re-read their
+        // container's width from: the mounted group root, which fills the host.
+        private void ResolveContainerAt(float width, VisualElement host)
+        {
+            _window.position = new Rect(0, 0, width, 600);
+            ForcePanelUpdate(host.panel);
+            var container = host[0];
+            // Same skip as the tree above: nothing registered on the container means no query is listening.
+            if (CallbackRegistry.GetValue(container) != null)
+            {
+                using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+                container.SimulateEvent(evt);
             }
         }
 

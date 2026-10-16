@@ -244,6 +244,7 @@ namespace Velvet
             DetachManipulator(element, _ctx.GestureManipulators);
             DetachManipulator(element, _ctx.VariantManipulators);
             DetachManipulator(element, _ctx.ConditionalVariantManipulators);
+            DetachManipulator(element, _ctx.ContainerVariantManipulators);
             DetachManipulator(element, _ctx.RelationalVariantManipulators);
             // has-[:checked]: / has-[:focus]: own an event manipulator (descendant-event-driven); detach it.
             DetachManipulator(element, _ctx.HasVariantManipulators);

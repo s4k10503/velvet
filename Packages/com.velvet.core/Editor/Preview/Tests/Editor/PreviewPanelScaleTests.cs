@@ -217,7 +217,7 @@ namespace Velvet.Tests
             Choose(_settings);
 
             // Assert
-            Assert.That(Field<VisualElement>("_canvas").ClassListContains(VelvetResponsive.ContainerClass), Is.True);
+            Assert.That(Field<VisualElement>("_canvas").ClassListContains(VelvetResponsive.ViewportClass), Is.True);
         }
 
         [Test]

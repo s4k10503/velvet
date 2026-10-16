@@ -3,8 +3,9 @@
 Velvet's utility classes are Tailwind-inspired, and so is its **variant** syntax — the
 `hover:`, `dark:`, `sm:`, `group-hover:`, … prefixes that apply a utility only in a given
 state, theme, breakpoint, or relation. This page is the reference for the full variant set
-and for **container queries** (`@container`), the CSS `container-type: inline-size`
-equivalent that re-points responsive breakpoints at a specific element's width.
+and for **container queries** (`@container` with the `@sm:`…`@7xl:`, `@min-*:` and `@max-*:`
+variants), Tailwind v4's `container-type: inline-size` equivalent: a variant that responds to
+a specific element's width rather than to the viewport's.
 
 A variant token has the shape `<variant>:<payload>`, where the payload is an ordinary
 utility — a USS class (`hover:bg-blue-500`) or an arbitrary value (`active:w-[200px]`). USS
@@ -48,7 +49,8 @@ worth knowing, both when several variants name one such utility:
 |---|---|---|
 | **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` · `disabled:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did; for `disabled:`, whether it or any ancestor is disabled, which is what USS `:disabled` matches; `focus-visible:` also reads the last input to any panel, see [focus.md](focus.md#focus-visible-styling-and-state)) |
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
-| **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
+| **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The viewport's width, never a container's — see below |
+| **Container** | `@sm:` … `@7xl:` · `@min-*:` · `@max-*:` · `@md/name:` | The width of the nearest `@container` ancestor, or of the nearest `@container/name` for a named variant — see [Container queries](#container-queries--container) |
 | **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` · `group-disabled:` | A marked ancestor's (`group`) state; `group-disabled:` reads it on the same terms as `disabled:` above |
 | **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` · `peer-disabled:` | A marked previous-sibling's (`peer`) state; `peer-checked:` and `peer-disabled:` read it on the same terms as `checked:` and `disabled:` above |
 | **Structural** | `first:` · `last:` · `only:` · `odd:` · `even:` · `nth-N:` · `nth-last-N:` | The element's place among its parent's children. The element a tree is mounted into and a portal's target are parents too, and the children of theirs this tree did not render count as siblings |
@@ -62,6 +64,9 @@ V.Div(className: "bg-neutral-50 dark:bg-neutral-900", ...);
 
 // Responsive: full-width below md, a fixed column from md up.
 V.Div(className: "w-full md:w-[320px]", ...);
+
+// Container: the same, answering the width of the @container around it rather than the window's.
+V.Div(className: "w-full @md:w-[320px]", ...);
 ```
 
 ### Theme: the `dark:` variant, and the token set beside it
@@ -176,7 +181,7 @@ before `data-[state=open]:`, `group-hover:` before `group-hover/card:`, `[&:firs
 | | Specificity | Layer |
 |---|---|---|
 | 1 | (0,1,0) | The base utility |
-| 2 | (0,1,0) | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` |
+| 2 | (0,1,0) | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` < container queries — every `@max-*:` < every `@sm:` … `@7xl:` and `@min-*:` |
 | 3 | (0,1,0) | Theme — `dark:` |
 | 4 | (0,1,0) | `[&>*]:` — the container's rule, on each child |
 | 5 | (0,2,0) | Relational — the `group-*` states < the `peer-*` states |
@@ -213,10 +218,12 @@ declaration order with or without the bang.
 ### Responsive breakpoints
 
 The responsive prefixes activate at Tailwind's default **min-widths** — `sm` 640, `md` 768,
-`lg` 1024, `xl` 1280, `2xl` 1536 (reference px). They are evaluated against a single resolved
-**width source**: by default the panel root, so an unscoped tree behaves exactly like a
-panel-width media query. The `@container` marker below changes which element supplies that
-width.
+`lg` 1024, `xl` 1280, `2xl` 1536 (reference px). They measure the **viewport**: the panel root, so a
+tree behaves exactly like a panel-width media query, or for a layer or world-space portal's children
+the panel the portal was declared on. Nothing a component writes changes that, an `@container` ancestor
+included: a component that answers its own width writes the `@`-prefixed [container
+variants](#container-queries--container) instead, and one element can carry both (`sm:p-2 @md:p-4`). Only tooling
+that simulates a viewport re-points them, [as below](#simulating-a-viewport-velvet-viewport).
 
 ### Relational variants (`group-` / `peer-`)
 
@@ -245,8 +252,9 @@ V.Div(className: "group/sidebar ...",
 Variants **stack** like Tailwind's, and the order does not matter — `dark:hover:bg-red`
 applies `bg-red` only when the theme is dark **and** the element is hovered, identical to
 `hover:dark:bg-red`. A stacked leaf may itself still be a variant (`dark:hover:focus:…`),
-nesting another gate. Stacking composes any of the families above (state / theme / responsive
-/ relational), so `md:hover:`, `group-hover:dark:`, and similar combinations are all valid.
+nesting another gate. Stacking composes any of the families above (state / theme / responsive /
+container / relational), so `md:hover:`, `@md:hover:`, `group-hover:dark:`, and similar combinations
+are all valid.
 
 ```csharp
 // Underline on hover, but only in dark mode and only from md up.
@@ -515,49 +523,84 @@ only an element's own class pass records.
 
 ## Container queries — `@container`
 
-By default every responsive breakpoint (`sm:`/`md:`/…) is measured against the **panel root**
-width — for a layer or world-space portal's children, the root of the panel the portal was declared
-on ([portals.md](portals.md#the-shared-boundary-semantics)). A container query re-points that measurement at a specific element, so the same
-breakpoints respond to **that element's** width instead — the CSS `container-type:
-inline-size` equivalent. This lets a component be responsive to the space it is *given* rather
-than to the whole window, so the same component can sit in a narrow sidebar and a wide main
-column and lay out correctly in each.
-
-Mark an element as a responsive scope with the `@container` class. Its descendants' responsive
-breakpoints then resolve against its width. Resolution walks up from each descendant to the
-nearest `@container` ancestor; with none marked it falls back to the panel root, so adding
-`@container` is purely additive — unscoped subtrees keep the original panel-width behavior
-exactly.
+Mark an element a **query container** with the `@container` class, and its descendants can respond to
+*its* width through the `@`-prefixed variants, as in Tailwind v4. That lets a component be responsive to
+the space it is *given* rather than to the whole window, so the same component can sit in a narrow
+sidebar and a wide main column and lay out correctly in each. The unprefixed `sm:`…`2xl:` are a separate
+family and always measure the viewport, with or without a container around them.
 
 ```csharp
-// This card is a responsive container. Inside it, md: means "the CARD is >= 768px wide",
-// not "the window is >= 768px wide".
+// This card is a container. Inside it, @md: means "the CARD is >= 448px wide", while md: still
+// means "the window is >= 768px wide".
 V.Div(className: "@container w-full",
     children: new[]
     {
-        V.Div(className: "flex flex-col md:flex-row gap-4", children: ...),
+        V.Div(className: "flex flex-col @md:flex-row gap-4", children: ...),
     });
 ```
 
 Reference the marker from code via `VelvetResponsive.ContainerClass` (its value is the literal
-`"@container"`) rather than hardcoding the string — tooling such as the preview viewport
-switcher applies it this way.
+`"@container"`) rather than hardcoding the string.
 
-### When breakpoints resolve
+### The variants
 
-A descendant resolves its responsive **width source** — the nearest `@container` ancestor, or the
-panel root — when it attaches to the panel, and watches that element's width from then on. It
-resolves again whenever a render adds `@container` to an element's `className` or removes it, so
-toggling the marker re-points the descendants already attached, as a CSS container query does
-when an ancestor gains or loses `container-type`.
+| Variant | Applies while the container's width is |
+|---|---|
+| `@3xs:` `@2xs:` `@xs:` `@sm:` `@md:` `@lg:` `@xl:` `@2xl:` `@3xl:` `@4xl:` `@5xl:` `@6xl:` `@7xl:` | at or above 256, 288, 320, 384, 448, 512, 576, 672, 768, 896, 1024, 1152 or 1280 px |
+| `@min-md:` | the same as `@md:`, for every name above |
+| `@max-md:` | below `@md:`'s width, for every name above |
+| `@min-[475px]:` · `@[475px]:` · `@max-[600px]:` | at or above, at or above, or below an arbitrary length |
 
-### `@container` vs. the panel-width default
+The names are Tailwind v4's `--container-*` scale, at 16 px to a rem. An arbitrary length reads in `px`, `rem`, the absolute
+units or a `calc()` that comes to one length. A bare number, a percentage, an `em` and a negative length are
+not recognised, and the token stays an ordinary class.
 
-| | Default (no marker) | `@container` scope |
-|---|---|---|
-| What `sm:`/`md:`/… measure | The panel root's width | The nearest `@container` ancestor's width |
-| Analogy | A CSS media query | A CSS container query (`container-type: inline-size`) |
-| When it binds | At descendant attach | At descendant attach, and again when a render toggles the marker |
+A container can be **named**, `@container/main`, and a variant can name the container it asks for with
+the same suffix: `@md/main:`, `@max-lg/main:`, `@min-[475px]/main:`. A named variant reads the nearest
+ancestor marked with that name; an unnamed one reads the nearest ancestor marked `@container` under any
+name, so a named container still answers the unnamed variants inside it.
+
+- A variant with no container to ask **matches nothing**, `@max-*:` included. Mark a container, or use `sm:`
+  for the viewport.
+- A container is never queried by its own variants: an element carrying `@container` and `@md:` asks the
+  container above it.
+- Marking an element a container does not contain its size, as `container-type: inline-size` does in CSS, so
+  give the container a width that does not depend on the content its variants change.
+- A floor holds from its width up and a ceiling below its width, so `@md:` and `@max-md:` are on
+  complementary sides of 448 px.
+- Variants stack with the rest like any other: `dark:@md:`, `@md:dark:` and `@md:hover:`, either way round.
+- Where a viewport variant and a container variant set the same property and both hold, the container
+  variant wins, however they are written. Between container variants a floor beats a ceiling, a larger
+  floor beats a smaller one, and a smaller ceiling beats a larger one. [Precedence order](#precedence-order)
+  has the ranks.
+- Tailwind's `@container-normal` is not recognised.
+
+### When container variants resolve
+
+A descendant resolves the container each of its variants asks for when it attaches to the panel, and
+watches that container's width from then on. It resolves again whenever a render adds `@container` to an
+element's `className`, removes it, or renames it (`@container/a` to `@container/b`), so toggling the
+marker re-points the descendants already attached.
+
+### Simulating a viewport: `velvet-viewport`
+
+Tooling that shows a story at a chosen device size has a marker of its own, `VelvetResponsive.ViewportClass`
+(`"velvet-viewport"`). An element carrying it stands in for the panel root: the `sm:`…`2xl:` variants of its
+descendants measure *its* width. It is how the preview window's Viewport addon works
+([preview-tooling.md](preview-tooling.md#viewport)); an application that wants a component to answer its own
+width marks it `@container` and writes container variants.
+
+### Migrating from `@container` re-pointing `sm:`…`2xl:`
+
+An earlier version of Velvet made `@container` re-point `sm:`…`2xl:` at the nearest marked ancestor, and had no
+`@`-prefixed variants. `md:` inside an `@container` now measures the window, so a tree written for that
+writes the container variants where it relied on the container's width. `@3xl:` (768 px), `@5xl:` (1024 px) and
+`@7xl:` (1280 px) sit at the widths `md:`, `lg:` and `xl:` did; for `sm:` (640 px) and `2xl:` (1536 px), which the
+scale has no name for, write `@min-[640px]:` or `@min-[1536px]:`. Or take the scale's own thresholds, which
+start lower: `@md:` is 448 px.
+
+An `@container` with no `@`-prefixed variant under it does nothing, and markup copied from Tailwind that writes
+`@md:p-4`, which used to leave an inert class, is now a container variant.
 
 See also [styling-flexbox-and-gap.md](styling-flexbox-and-gap.md) for the layout utilities the
 examples above compose with.
