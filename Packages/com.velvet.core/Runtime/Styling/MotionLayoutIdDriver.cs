@@ -40,7 +40,11 @@ namespace Velvet
         private static readonly List<VisualElement> s_ended = new();
         private static readonly List<VisualElement> s_none = new();
         // The owner of the transition suspension a member holds while another leads its id.
-        private static readonly object s_followOwner = new();
+        private static readonly object s_followOwner = new FollowOwner();
+
+        private sealed class FollowOwner : ICarryingOwner
+        {
+        }
         private static readonly StyleLonghandSet s_visibility = StyleLonghandSet.Of(StyleLonghand.Visibility);
         // The panel no member is on, for SyncFollows while the lead is not moving from a box it took from another holder.
         private static readonly VisualElement s_nowhere = new();
@@ -200,6 +204,7 @@ namespace Velvet
             if (!moves && projection == null && IsUnit(parentScale)) return;
             projection ??= CreateProjection(element, host, ctx);
             Share(projection, shared, crossfades, moves, fromBox.Look);
+            Hold(element, projection, layoutId, ctx);
             projection.From = from;
             projection.Moving = moves;
             projection.Progress = pending.Timing.Start();
@@ -239,6 +244,7 @@ namespace Velvet
             {
                 From = element.layout,
             };
+            LayoutIdLook.Settle(element, projection);
             ctx.LayoutIdProjections[element] = projection;
             return projection;
         }
@@ -296,6 +302,7 @@ namespace Velvet
             var layout = element.layout;
             if (element.hierarchy.parent is not { } parent || !IsFiniteRect(layout)) return projection.Scale;
 
+            MotionNativeTransitionGuard.Refresh(element);
             projection.ParentScale = ProjectedScale(parent, pass, ctx);
             var drawn = projection.Leader != null ? Followed(element, projection.Leader, ctx) : Drawn(projection, layout, projection.ParentScale);
             var delta = ComputeDelta(drawn, layout, TransformOrigin(element));
@@ -303,6 +310,7 @@ namespace Velvet
             Write(element, projection, delta.Translate);
             WriteOpacity(element, projection, Fade(element, projection, ctx), ctx);
             if (projection.Leader != null) LayoutIdPicking.Ignore(element, projection);
+            WriteLook(element, projection, ctx);
             return projection.Scale;
         }
 
@@ -318,6 +326,7 @@ namespace Velvet
         {
             var layoutId = ctx.ElementToLayoutId.GetValueOrDefault(element);
             if (projection.Leader != null) return Behind(ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader), layoutId, ctx);
+            if (projection is { Shared: true, Moving: true, Held: { } held }) return new LayoutIdFade(held.Opacity, 0f, 1f);
             if (projection.Crossfade && projection.Moving) return new LayoutIdFade(0f, CrossfadeIn(CrossfadeProgress(projection)), 1f);
             if (projection is not { Shared: true, Moving: true, FromLook: { } look }) return null;
             if (layoutId == null || ctx.LayoutIdMembers.GetValueOrDefault(layoutId)?.Count != 1) return null;
@@ -352,12 +361,40 @@ namespace Velvet
             }
         }
 
-        // Read before the projection takes its new tween. A move of the lead's own that interrupts its crossfade holds
-        // the opacities the crossfade had reached until that move lands, as Framer's stop() leaves the mixed values
-        // in place.
+        // Draws the element at the rotate and radii its id's lead mixes in from the box it took, and a member behind
+        // a crossfading lead at the lead's, as Framer draws every node of a shared animation with the lead's values.
+        private static void WriteLook(VisualElement element, LayoutIdProjection projection, ReconcilerContext ctx)
+        {
+            LayoutIdLook.Adopt(element, projection);
+            LayoutIdLook.Narrow(element, projection);
+            var rotate = float.NaN;
+            Length[]? radii = null;
+            if (projection.Leader != null)
+            {
+                var leading = ctx.LayoutIdProjections.GetValueOrDefault(projection.Leader);
+                rotate = LayoutIdLook.RotateOf(projection.Leader, leading);
+                radii = LayoutIdLook.RadiiOf(projection.Leader, leading);
+            }
+            else if (projection is { Shared: true, Moving: true, Held: { } held })
+            {
+                (rotate, radii) = (held.Rotate, held.Radii);
+            }
+            else if (projection is { Shared: true, Moving: true, FromLook: { } from })
+            {
+                var progress = CrossfadeProgress(projection);
+                rotate = Mathf.LerpUnclamped(from.Rotate, LayoutIdLook.OwnRotate(element, projection, s_passDt), progress);
+                radii = LayoutIdLook.Mix(from.Radii, LayoutIdLook.OwnRadii(element, projection, s_passDt), progress);
+            }
+            LayoutIdLook.WriteRotate(element, projection, rotate, s_passDt);
+            LayoutIdLook.WriteRadii(element, projection, radii, projection.Scale * projection.ParentScale, s_passDt);
+        }
+
+        // Read before the projection takes its new tween. A move of the lead's own that interrupts its shared move
+        // holds the values its crossfade and mix had reached until that move lands, as Framer's stop() leaves the
+        // mixed values in place.
         private static void Share(LayoutIdProjection projection, bool shared, bool crossfades, bool moves, LayoutIdLook? from)
         {
-            var carries = !shared && IsCrossfading(projection);
+            var carries = !shared && projection is { Shared: true, Moving: true };
             projection.FadeAt = carries ? CrossfadeProgress(projection) : float.NaN;
             // MUTANT_SURVIVES(equivalent): the look is read only while Shared is set, which a start reaching this line
             // leaves clear unless it is shared and has a tween.
@@ -366,7 +403,17 @@ namespace Velvet
             // read only with one moving, or by the frame that clears it and hides the other members.
             projection.Shared = (shared || carries) && moves;
             // Read only while the projection moves, which only a start with a tween sets.
-            projection.Crossfade = crossfades || carries;
+            projection.Crossfade = crossfades || carries && projection.Crossfade;
+        }
+
+        // Read after Share and before the projection takes its new tween: what an interrupted shared move had reached is
+        // what the lead and the members behind it are drawn with until the interrupting move lands, as Framer draws the
+        // animationValues its stop() left, however the lead's own values or the holder it took its box from change
+        // meanwhile (Given_ALeadMixingFromAHalfOpaqueHolder_When_ItsOwnOpacityChangesDuringAMoveThatInterruptedTheMix_Then_ItIsDrawnAtWhatTheMixHadReached).
+        private static void Hold(VisualElement element, LayoutIdProjection projection, string layoutId, ReconcilerContext ctx)
+        {
+            projection.Held = float.IsNaN(projection.FadeAt) ? null : LayoutIdLook.Read(element, projection);
+            if (projection is { Held: not null, FromLook: { } look }) projection.FromLook = look.Holding(PreviousOpacity(look, layoutId, ctx));
         }
 
         private static bool IsCrossfading(LayoutIdProjection? projection) => projection is { Crossfade: true, Moving: true };
@@ -407,7 +454,7 @@ namespace Velvet
                 if (!projection.WritesTranslate)
                 {
                     projection.WritesTranslate = true;
-                    MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Translate);
+                    MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Translate);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 var own = projection.OwnTranslate;
@@ -422,7 +469,7 @@ namespace Velvet
                 if (!projection.WritesScale)
                 {
                     projection.WritesScale = true;
-                    MotionNativeTransitionGuard.SuspendIfIntercepted(element, projection, MotionTransitionSlots.Scale);
+                    MotionNativeTransitionGuard.NarrowIfIntercepted(element, projection, MotionTransitionSlots.Scale);
                     StyleAnimateDriver.YieldSlots(element, projection, WrittenSlots(projection));
                 }
                 var own = projection.OwnScale;
@@ -434,9 +481,10 @@ namespace Velvet
         }
 
         // The slots a running animate-* loop leaves to the projection, which adds the loop's share to its own frame.
-        private static MotionTransitionSlots WrittenSlots(LayoutIdProjection projection)
+        internal static MotionTransitionSlots WrittenSlots(LayoutIdProjection projection)
             => (projection.WritesTranslate ? MotionTransitionSlots.Translate : MotionTransitionSlots.None)
-                | (projection.WritesScale ? MotionTransitionSlots.Scale : MotionTransitionSlots.None);
+                | (projection.WritesScale ? MotionTransitionSlots.Scale : MotionTransitionSlots.None)
+                | (projection.WritesRotate ? MotionTransitionSlots.Rotate : MotionTransitionSlots.None);
 
         // A slot that no longer holds the last value written here was written by someone else — the element's
         // own arbitrary-value class re-applied by a patch, a drag, another driver — and that value is the
@@ -544,14 +592,18 @@ namespace Velvet
         {
             if (!ctx.LayoutIdProjections.Remove(element, out var projection)) return;
             AdoptForeignWrites(element, projection);
+            LayoutIdLook.Adopt(element, projection);
             if (projection.WritesTranslate) element.style.translate = projection.OwnInlineTranslate;
             if (projection.WritesScale) element.style.scale = projection.OwnInlineScale;
-            StyleAnimateDriver.YieldSlots(element, projection, MotionTransitionSlots.None);
+            // A rotate that runs on past the move keeps the slot from a spin until it lands (LayoutIdLook.Hand).
+            var rotate = projection.WritesRotate ? MotionTransitionSlots.Rotate : MotionTransitionSlots.None;
+            StyleAnimateDriver.YieldSlots(element, projection, LayoutIdLook.RunsOn(projection) ? rotate : MotionTransitionSlots.None);
             // The loop's frame follows at once, rather than the element standing at its own value until its next tick.
-            StyleAnimateDriver.ReassertLoop(element, MotionTransitionSlots.None);
+            // The rotate slot still holds the projection's frame, handed back by LayoutIdLook.End.
+            StyleAnimateDriver.ReassertLoop(element, rotate);
             WriteOpacity(element, projection, null, ctx);
             LayoutIdPicking.Restore(projection);
-            MotionNativeTransitionGuard.Release(element, projection);
+            LayoutIdLook.End(element, projection, ctx.StyleAnimationScheduler.Clock);
         }
 
         private static Vector3 Pixels(Translate translate, Rect layout) => new(
@@ -600,6 +652,7 @@ namespace Velvet
             if (ctx.LayoutIdProjections.Remove(element, out var projection)) LayoutIdPicking.Restore(projection);
             LayoutIdPicking.Release(element, ctx);
             MotionOpacity.Forget(element);
+            LayoutIdLook.Forget(element);
             CancelPendingSettle(element, ctx);
         }
 
@@ -780,7 +833,7 @@ namespace Velvet
         {
             if (ctx.LayoutIdFollows.ContainsKey(element)) return;
             ctx.LayoutIdFollows[element] = element.style.visibility;
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, s_followOwner, MotionTransitionSlots.Visibility);
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, s_followOwner, MotionTransitionSlots.Visibility);
         }
 
         private static void Unfollow(VisualElement element, ReconcilerContext ctx)
@@ -942,7 +995,7 @@ namespace Velvet
         public EventCallback<GeometryChangedEvent> Callback { get; set; } = null!;
     }
 
-    internal sealed class LayoutIdProjection
+    internal sealed class LayoutIdProjection : ICarryingOwner
     {
         public LayoutIdProjection(VisualElement host, StyleTranslate ownInlineTranslate, StyleScale ownInlineScale,
             Vector3 ownTranslate, Vector3 ownScale)
@@ -989,6 +1042,29 @@ namespace Velvet
 
         // What the holder this lead took its box from looked like, while it moves from that box.
         public LayoutIdLook? FromLook;
+        // What the lead was drawn with as a move of its own interrupted its shared one, while it holds that (Hold).
+        public LayoutIdLook? Held;
+
+        public bool WritesRotate;
+        public StyleRotate OwnInlineRotate;
+        // The rotate the element had as the projection first wrote it.
+        public float StartRotate;
+        public float DrawnRotate;
+        public StyleRotate WrittenRotate;
+
+        public bool WritesRadii;
+        public StyleLength[] OwnInlineRadii = System.Array.Empty<StyleLength>();
+        // The corners whose inline value is the element's own rather than one CornerRadiusFit wrote.
+        public bool[] InlineRadii = System.Array.Empty<bool>();
+        // The radii the element had as the projection first wrote them.
+        public Length[] StartRadii = System.Array.Empty<Length>();
+        public Length[] DrawnRadii = System.Array.Empty<Length>();
+        public StyleLength[] WrittenRadii = System.Array.Empty<StyleLength>();
+        // How the own rotate and each corner's own radius are carried while the projection writes them
+        // (LayoutIdLook.OwnRotate, OwnRadii), and the unit each corner's is carried in.
+        public LayoutIdCarry RotateCarry = new();
+        public LayoutIdCarry[] RadiusCarries = { new(), new(), new(), new() };
+        public LengthUnit[] RadiusUnits = new LengthUnit[4];
 
         // Each element of a member's subtree whose picking it holds off while drawn over the lead (LayoutIdPicking).
         public HashSet<VisualElement>? Picking;
@@ -1083,6 +1159,104 @@ namespace Velvet
             var t = active / _timing.DurationSec;
             Value = 1f - _timing.Ease(t);
             return t >= 1f;
+        }
+    }
+
+    // One of a projection's own values carried towards what gives it now, as UI Toolkit carries it by a transition:
+    // from where it stands, on the timing a variant swap's held list gave the property, else the one UI Toolkit runs it
+    // by. MotionOpacity carries an element's own opacity under a crossfade with one too.
+    internal sealed class LayoutIdCarry
+    {
+        // Stands in for a zero duration, and is added to the time elapsed, so that a change with no transition lands
+        // in the pass that sees it.
+        private const float MinDurationSec = 1e-4f;
+
+        private float _from;
+        private float _elapsedSec;
+        private float _delaySec;
+        private float _durationSec;
+        private EasingMode _easing;
+        // The curve of a transition taken over from UI Toolkit (TakeOver), in place of _easing until the target changes.
+        private System.Func<float, float>? _curve;
+        private float _eased;
+        // Where a change back runs to, and how far the transition running now was shortened, which UI Toolkit keeps per
+        // transition to shorten one that reverses the transition it interrupts.
+        private float _reversingStart;
+        private float _shortening = 1f;
+        // The timing the list a variant swap holds inline gave the property; NaN duration while it holds none.
+        private float _heldDurationSec = float.NaN;
+        private float _heldDelaySec;
+        private EasingMode _heldEasing;
+        // The held list has named the property since it was written.
+        private bool _named;
+
+        public float Value { get; private set; }
+        public float Target { get; private set; }
+        public bool Landed => _elapsedSec >= _delaySec + _durationSec;
+
+        public void Land(float value)
+        {
+            Value = _from = Target = value;
+            _elapsedSec = _delaySec = _durationSec = 0f;
+        }
+
+        // Runs on from where UI Toolkit's transition of the property had got: its start and end, its curve, its eased
+        // progress and its shortening, with elapsedSec counted from the end of its delay, below zero while still inside it.
+        public void TakeOver((float From, float Target, float DurationSec, float ElapsedSec) run, System.Func<float, float> curve,
+            (float Start, float Shortening, float Eased) reversing)
+        {
+            (_from, Target, _durationSec, _elapsedSec, _delaySec, _curve) = (run.From, run.Target, run.DurationSec, run.ElapsedSec, 0f, curve);
+            (_reversingStart, _shortening, _eased) = reversing;
+        }
+
+        // Read as the swap writes the list, before the projection takes the property out of it: listed is whether the
+        // slot holds a swap's list (MotionNativeTransitionGuard.HoldsAForeignValue).
+        public void Hold(TransitionLists lists, bool listed, string property, string? shorthand)
+        {
+            if (!listed)
+            {
+                (_heldDurationSec, _named) = (float.NaN, false);
+            }
+            else if (StyleFilterTransitionDriver.TryFindTransition(lists, property, shorthand, out var durationMs, out var delayMs, out var easing))
+            {
+                (_heldDurationSec, _heldDelaySec, _heldEasing, _named) = (durationMs / 1000f, delayMs / 1000f, easing, true);
+            }
+            // A held list that has not named the property since it was written gives it no transition, as UI Toolkit runs
+            // the inline list; one that named it had it taken out by the projection after it was read here
+            // (Given_ALeadMixingRotateUnderAPoseTweenASpinTookRotateOutOf_When_TheSpinEndsAndItsRulesTurnIt_Then_TheTurnIsTakenAtOnce).
+            else if (!_named)
+            {
+                (_heldDurationSec, _heldDelaySec) = (0f, 0f);
+            }
+        }
+
+        // Carries the value towards target, starting over from where it stands whenever target changes, over dtSec more.
+        // A change back to what UI Toolkit would reverse to — where a fresh transition started, or the end of the one a
+        // reversal reversed — is shortened by how far the running one had got, as UI Toolkit shortens a reversing
+        // transition
+        // (Given_ALeadCrossfadingIn_When_ItsClassesFadeItOutAndBackMidway_Then_TheWayBackIsShortened).
+        public float Step(float target, float dtSec, VisualElement element, string property, string? shorthand)
+        {
+            if (target != Target)
+            {
+                var reverses = !Landed && Mathf.Approximately(target, _reversingStart);
+                _shortening = reverses ? Mathf.Clamp01(Mathf.Abs(1f - (1f - _eased) * _shortening)) : 1f;
+                _reversingStart = reverses ? Target : Value;
+                (_from, Target, _elapsedSec, _curve) = (Value, target, 0f, null);
+                // Before the held list, since a driver takes the property out of it, and one that started after the list
+                // was read here leaves it holding the timing it had.
+                (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
+                    : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
+                    : (_heldDurationSec, _heldDelaySec, _heldEasing);
+                _durationSec *= _shortening;
+                if (_delaySec < 0f) _delaySec *= _shortening;
+            }
+            _elapsedSec += dtSec;
+            var t = Mathf.Clamp01((_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec));
+            _eased = _curve?.Invoke(t) ?? UssEasing.Evaluate(_easing, t);
+            // Landed exactly, which the curve need not give at its end.
+            Value = t < 1f ? Mathf.LerpUnclamped(_from, Target, _eased) : Target;
+            return Value;
         }
     }
 }

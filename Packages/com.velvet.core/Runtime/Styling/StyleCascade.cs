@@ -1,4 +1,6 @@
 #nullable enable
+using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.UIElements;
 
@@ -21,6 +23,21 @@ namespace Velvet
         private static readonly PropertyInfo? s_scale = EngineMember.ComputedStyleScale.ResolveProperty();
         private static readonly PropertyInfo? s_translate = EngineMember.ComputedStyleTranslate.ResolveProperty();
 
+        private static readonly PropertyInfo? s_property = EngineMember.ComputedStyleTransitionProperty.ResolveProperty();
+        private static readonly PropertyInfo? s_duration = EngineMember.ComputedStyleTransitionDuration.ResolveProperty();
+        private static readonly PropertyInfo? s_delay = EngineMember.ComputedStyleTransitionDelay.ResolveProperty();
+        private static readonly PropertyInfo? s_curve = EngineMember.ComputedStyleTransitionTimingFunction.ResolveProperty();
+        // In LayoutIdLook's corner order.
+        private static readonly PropertyInfo?[] s_radii =
+        {
+            EngineMember.ComputedStyleBorderTopLeftRadius.ResolveProperty(),
+            EngineMember.ComputedStyleBorderTopRightRadius.ResolveProperty(),
+            EngineMember.ComputedStyleBorderBottomRightRadius.ResolveProperty(),
+            EngineMember.ComputedStyleBorderBottomLeftRadius.ResolveProperty(),
+        };
+        private static readonly bool s_readsTransitions = Array.TrueForAll(
+            new MemberInfo?[] { s_opacity, s_property, s_duration, s_delay, s_curve }, m => m != null);
+
         private static readonly object?[] s_args = new object?[2];
 
         // The cached ComputedStyle boxed, or null where it cannot be read. Members of it are read off the result
@@ -32,6 +49,91 @@ namespace Velvet
             s_args[1] = null;
             return s_tryGet.Invoke(null, s_args) is true ? s_args[1] : null;
         }
+
+        // The element's cascaded opacity and the transition it runs opacity by (Transition). NaN and no transition
+        // where the cached style cannot be read.
+        public static (float Opacity, float DurationSec, float DelaySec, EasingMode Easing) Opacity(VisualElement element)
+        {
+            if (Transitions(element) is not { } style) return (float.NaN, 0f, 0f, EasingMode.Ease);
+            var (durationSec, delaySec, easing) = Transition(element, style, "opacity", null);
+            return ((float)s_opacity!.GetValue(style), durationSec, delaySec, easing);
+        }
+
+        // The transition the element runs a property by (Lists). None where the cached style cannot be read or names no
+        // entry for the property, and none while a driver holds the element's transitions suspended
+        // (MotionNativeTransitionGuard.DriverSuspends), so that a value the driver writes is taken at once
+        // (Given_ALeadMixingRotateWhileABezierDrivesIt_When_HalfTheMoveHasPassed_Then_ItsOwnRotateIsTheBeziersAtOnce).
+        public static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, string property,
+            string? shorthand) =>
+            Transitions(element) is { } style ? Transition(element, style, property, shorthand) : (0f, 0f, EasingMode.Ease);
+
+        private static (float DurationSec, float DelaySec, EasingMode Easing) Transition(VisualElement element, object style,
+            string property, string? shorthand)
+        {
+            if (MotionNativeTransitionGuard.DriverSuspends(element)) return (0f, 0f, EasingMode.Ease);
+            return StyleFilterTransitionDriver.TryFindTransition(Lists(element, style), property, shorthand, out var durationMs,
+                out var delayMs, out var easing)
+                ? (durationMs / 1000f, delayMs / 1000f, easing)
+                : (0f, 0f, EasingMode.Ease);
+        }
+
+        // The rules' transition-property with the element's own inline duration, delay and curve lists wherever it holds
+        // them (MotionNativeTransitionGuard.OwnTiming), as UI Toolkit combines the two. Null where the cached style
+        // cannot be read.
+        public static TransitionLists? Lists(VisualElement element) =>
+            Transitions(element) is { } style ? Lists(element, style) : null;
+
+        private static TransitionLists Lists(VisualElement element, object style)
+        {
+            var (duration, delay, curve) = MotionNativeTransitionGuard.OwnTiming(element);
+            return new TransitionLists(s_property!.GetValue(style) as List<StylePropertyName>,
+                duration.keyword == StyleKeyword.Undefined ? duration.value : s_duration!.GetValue(style) as List<TimeValue>,
+                delay.keyword == StyleKeyword.Undefined ? delay.value : s_delay!.GetValue(style) as List<TimeValue>,
+                curve.keyword == StyleKeyword.Undefined ? curve.value : s_curve!.GetValue(style) as List<EasingFunction>);
+        }
+
+        private static object? Transitions(VisualElement element)
+        {
+            // MUTANT_SURVIVES(equivalent): on the editor this package declares, every member resolves and this returns nothing.
+            // Given_ALeadCrossfadingIn_When_AClassTakesItsOpacityToZeroOnATransition_Then_ItsOwnIsCarriedOnThatTransition
+            // fails where one does not.
+            if (!s_readsTransitions) return null;
+            return Of(element);
+        }
+
+        // The key UI Toolkit caches the element's matched rules under, which changes with them; null where it cannot be
+        // read. Read by an accessor compiled once, where FieldInfo.GetValue boxes both the style and the key on every pass
+        // that reads it (Given_ANarrowedLeadMidMove_When_ItsProjectionRefreshes_Then_NothingIsAllocated); IL2CPP, which
+        // compiles nothing at run time, reads it boxed, as ComponentPropsComparer's AOT arm does.
+        public static long? RulesHash(VisualElement element)
+        {
+            if (s_style == null || s_hash == null) return null;
+#if !ENABLE_IL2CPP
+            if (s_compiledHash != null) return s_compiledHash(element);
+#endif
+            return (long)s_hash.GetValue(s_style.GetValue(element));
+        }
+
+#if !ENABLE_IL2CPP
+        private static readonly Func<VisualElement, long>? s_compiledHash = CompileHash();
+
+        private static Func<VisualElement, long>? CompileHash()
+        {
+            if (s_style == null || s_hash == null) return null;
+            var element = System.Linq.Expressions.Expression.Parameter(typeof(VisualElement), "element");
+            var hash = System.Linq.Expressions.Expression.Field(System.Linq.Expressions.Expression.Field(element, s_style), s_hash);
+            return System.Linq.Expressions.Expression.Lambda<Func<VisualElement, long>>(hash, element).Compile();
+        }
+#endif
+
+        // A corner's radius as the rules declare it, in LayoutIdLook's corner order; null where the cached style cannot
+        // be read.
+        public static Length? Radius(VisualElement element, int corner) =>
+            s_radii[corner] is { } radius && Of(element) is { } style ? (Length)radius.GetValue(style) : null;
+
+        // The rotate the rules declare, in degrees; NaN where the cached style cannot be read.
+        public static float Rotate(VisualElement element) =>
+            Of(element) is { } style && TryReadRotate(style, out var rotate) ? rotate.angle.ToDegrees() : float.NaN;
 
         public static bool TryReadOpacity(object style, out float opacity)
         {

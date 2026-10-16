@@ -495,8 +495,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 - The element's own `translate-*` and `scale-*` compose with the tween — the tween's translate adds to
   the element's own, its scale multiplies it — and when the tween ends each slot it wrote holds what it
   held before the tween, or whatever something else wrote there while the tween ran, which the tween
-  composes with from its next frame on. A Motion that leaves its panel without being unmounted has
-  its tween ended on its panel's next frame.
+  composes with from its next frame on. While the tween runs, the transitions the element's classes
+  declare go on running for every property but the ones the tween writes, as Framer leaves the CSS
+  transitions of what a layout animation does not animate, and take a change of those classes as it comes.
+  A Motion that leaves its panel without being unmounted has its tween ended on its panel's next frame.
 - Works across a same-key type flip or a move to a different parent, not just an in-place resize:
   the id, not the physical element, is what's tracked. An element that leaves the tree hands its box on
   within one batch — the updates one scheduler drain commits together, such as the ordinary updates
@@ -509,17 +511,19 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   and no ancestor is crossfading already, the lead also crossfades with them, as Framer's default does:
   it fades in on circOut over the first half of its move while they fade out linearly between halfway
   and 95% of it. The fade is written as the element's inline opacity over the opacity its classes,
-  variants and drivers give it. While it is written, an element whose transitions cover opacity has them
-  suspended as a play's are (see [Driven channels](#driven-channels-spring-and-bezier)), element-wide
-  unless a variant tween holds the list, and Velvet carries a change of that opacity itself — a class
-  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — from where the
-  opacity stands, with the duration, delay and easing the element declares for it, running one that
-  outlasts the move on to its end. The others fade from
+  variants and drivers give it. While it is written, the element's transitions go on running for every
+  property but opacity and the others the tween writes, and Velvet carries a change of that opacity itself — a class
+  change, an `opacity-[x]` class, a variant swap such as an `AnimatePresence` exit — on the transition the
+  element declares for opacity, as UI Toolkit runs it: one already running when the fade starts runs on
+  from where it had got, inside its delay or past it, and a change back towards where a running one
+  started is shortened by how far that one had got. One that outlasts the move runs on to its end. The others fade from
   the opacity the holder the lead took its box from was drawn at, if that holder was itself moving from
   another's box, or else from its own opacity as it is now, and take no pointer while they are drawn. A
   lead alone under its id instead mixes its opacity from that holder's to its own over the move, written
-  the same way. A move of
-  the lead's own that interrupts the crossfade holds the opacities it had reached until that move lands.
+  the same way. The lead also mixes its rotate and border radius from that holder's to its own, a radius
+  not below zero and a pixel radius not mixing with a percent one, the lead's being taken, and the others
+  are drawn with the lead's. A move of the lead's own that interrupts its crossfade or its mix holds the
+  values they had reached until that move lands.
   The others are hidden again once the lead lands. When the lead leaves the tree, the holder of those
   left that took the id last leads in its place. When a holder inside a `V.AnimatePresence` child starts
   its exit, the latest holder that took the id before it and is not exiting takes the lead, as Framer's
@@ -541,7 +545,19 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   logged where the move settles rather than on every render.
 - **Each axis scales by its own factor.** A box whose width and height change by different factors
   starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
-  the stretch as for any change of size. The scale holds the element's transform origin still (its
+  the stretch as for any change of size. A scaled Motion's pixel border radius is divided by the scale
+  it is drawn at; a percent radius, which scales with the box, is left as it is. Where the two axes scale
+  differently Velvet deviates from Framer, which writes each corner's radius per axis (`x% y%`): a style
+  takes one length per corner, so the radius is divided by the geometric mean of the two scales and the
+  corner is drawn elliptical, its horizontal and vertical radii in the ratio of the two scales — 1:2 for a
+  lead laid out at 400×200 starting over a 100×100 holder's box. Radii Velvet fits at rest — those a
+  `rounded-*` class or its bracket form gives — that would overlap on a side are scaled down together, as CSS
+  scales them. A radius or rotate the Motion is given meanwhile is drawn as it is
+  given, on the transition it changes by, such as a variant swap's, and at once while a Spring or Bezier
+  play writes it; a running `animate-spin` turns it on as the loops below describe. One already running as the tween starts writing it runs on from
+  where it had got, and one still running as the tween lands runs on to its end, through any tween that
+  starts on the Motion meanwhile. The scale holds the
+  element's transform origin still (its
   centre unless an `origin-*` class or style moves it), and the translate places the element so that it
   starts over the old box.
 - Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
@@ -585,9 +601,10 @@ scaled or turned element is scaled and turned with it. `animate-spin` on an elem
 not carry it: CSS turns the content beneath the scale and leaves the squash axes where they are,
 while a single `rotate` and `scale` turn the squash axes with the element. An even scale is exact.
 
-A layoutId move on an element with a running `animate-bounce` or `animate-ping` composes with it as CSS composes a
-layout animation with a keyframe one: the move writes the element's translate or scale, and the bounce's lift or
-the ping's growth is added to its frame, so the element keeps bouncing or pinging while it moves.
+A layoutId move on an element with a running `animate-bounce`, `animate-ping` or `animate-spin` composes with it as
+CSS composes a layout animation with a keyframe one: the move writes the element's translate, scale or rotate, and
+the bounce's lift, the ping's growth or the spin's turn is added to its frame, so the element keeps bouncing, pinging
+or spinning while it moves.
 
 Each mode owns its style slot while it runs, as a CSS animation outranks an element's ordinary
 declarations: the gradient pair owns background position, size and repeat, `animate-hue` owns the
@@ -647,7 +664,8 @@ frame's worth:
   transitions naming no such property, `transition-filter` among them, are left running. The play
   completes once its slowest `PropertyOverrides` entry has run, whether or not a channel plays that entry's property, and an exit cancelled part-way
   reverses over the shortened timing UI Toolkit gives a reversed transition.
-- **A `layoutId` move**, and the opacity a crossfade hands back as it ends.
+- **A `layoutId` move**, the opacity a crossfade hands back as it ends, and the rotate and border radius a move
+  runs on past its landing.
 - **A `filter-*` transition**, including one UI Toolkit would animate itself on the default clock
   ([styling-filters.md](styling-filters.md#transitions)).
 - **The `animate-*` loops**, which show the phase of the distance since they started.

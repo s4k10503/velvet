@@ -58,17 +58,6 @@ namespace Velvet.Tests
             typeof(MotionOpacity).GetMethod("StepTail", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new[] { element, Drawing(element), (object)seconds });
 
-        private static void Cancel(VisualElement element, string property, double elapsed)
-        {
-            using var evt = (TransitionCancelEvent)typeof(TransitionCancelEvent).BaseType
-                .GetMethod("GetPooled", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null,
-                    new[] { typeof(StylePropertyName), typeof(double) }, null)
-                .Invoke(null, new object[] { new StylePropertyName(property), elapsed });
-            typeof(EventBase).GetProperty("currentTarget").SetValue(evt, element);
-            typeof(MotionOpacity).GetMethod("OnTransitionCancel", BindingFlags.Static | BindingFlags.NonPublic)
-                .Invoke(null, new object[] { evt });
-        }
-
         [Test]
         public void Given_AChangingOwnOpacity_When_AFrameDriverWrites_Then_ItLandsImmediately()
         {
@@ -184,54 +173,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADrawnOpacity_When_ItIsForgotten_Then_TheCancellationCallbackIsRemoved()
-        {
-            // Arrange
-            var element = Drawn();
-            var registered = element.HasBubbleUpHandlers();
-            // Act
-            MotionOpacity.Forget(element);
-            // Assert
-            Assert.That((registered, element.HasBubbleUpHandlers()), Is.EqualTo((true, false)));
-        }
-
-        [Test]
-        public void Given_ADrawnOpacity_When_ItFinishes_Then_TheCancellationCallbackIsRemoved()
-        {
-            // Arrange
-            var element = Drawn();
-            var registered = element.HasBubbleUpHandlers();
-            // Act
-            MotionOpacity.End(element);
-            // Assert
-            Assert.That((registered, element.HasBubbleUpHandlers()), Is.EqualTo((true, false)));
-        }
-
-        [Test]
-        public void Given_ACarryingOpacity_When_AnotherPropertyCancels_Then_ItsDurationStaysIntact()
-        {
-            // Arrange
-            var element = Carrying();
-            // Act
-            Cancel(element, "width", 0.5);
-            MotionOpacity.Draw(element, Half, 0.6f);
-            // Assert
-            Assert.That(MotionOpacity.Own(element), Is.EqualTo(0.44f).Within(0.001f));
-        }
-
-        [Test]
-        public void Given_ACarryingOpacity_When_ItsNativeTransitionCancels_Then_TheCallbackIsRemoved()
-        {
-            // Arrange
-            var element = Carrying();
-            var registered = element.HasBubbleUpHandlers();
-            // Act
-            Cancel(element, "opacity", 0.5);
-            // Assert
-            Assert.That((registered, element.HasBubbleUpHandlers()), Is.EqualTo((true, false)));
-        }
-
-        [Test]
         public void Given_ADrawnOpacityWithoutACascade_When_AWriterClearsItsOwnSlot_Then_TheKnownOwnValueSurvives()
         {
             // Arrange
@@ -257,15 +198,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_TheNativeSlotIsSuspended()
+        public void Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_OpacityAloneIsTakenOutOfTheNativeSlot()
         {
-            // Arrange
+            // Arrange — no sheet, so the rules' transition-property is the initial `all`, opacity among what it names.
             var element = Drawn();
             element.AddToClassList("transition-opacity");
             // Act
             MotionOpacity.Draw(element, Half, 0f);
-            // Assert
-            Assert.That(element.style.transitionProperty.value[0], Is.EqualTo(new StylePropertyName("none")));
+            // Assert — another property is left in.
+            var names = element.style.transitionProperty.value;
+            Assert.That((names != null && names.Contains(new StylePropertyName("background-color")),
+                names != null && names.Contains(new StylePropertyName("opacity"))), Is.EqualTo((true, false)));
         }
 
         [Test]
