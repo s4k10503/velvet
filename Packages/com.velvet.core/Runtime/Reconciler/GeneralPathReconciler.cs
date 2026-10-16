@@ -2389,26 +2389,29 @@ namespace Velvet
             GeneralCommitState commit, ReconcilerContext.PresenceBoundaryState state, string key, VNode node)
         {
             var index = state.Committed.FindIndex(entry => entry.key == key);
-            state.MotionElements.TryGetValue(key, out var motionElement);
-            state.ChildRoots.TryGetValue(key, out var roots);
-            state.ExitWaits.TryGetValue(key, out var wait);
-            var leavingMount = state.LeavingMounts.Contains(key);
+            var records = new[]
+            {
+                KeepRecord(state.MotionElements, key),
+                KeepRecord(state.ChildRoots, key),
+                KeepRecord(state.ExitWaits, key),
+                KeepRecord(state.LeavingMounts, key),
+            };
             (commit.PutBackRemovals ??= new List<Action>()).Add(() =>
             {
                 if (index >= 0)
                 {
                     state.Committed.Insert(Math.Min(index, state.Committed.Count), (key, node));
                 }
-                if (motionElement != null) state.MotionElements[key] = motionElement;
-                if (roots != null) state.ChildRoots[key] = roots;
-                if (wait != null) state.ExitWaits[key] = wait;
-                // MUTANT_SURVIVES(unreachable, line removed): not measured, and no case builds it. A key mounted leaving
-                // (MountChildLeaving) reaches RemoveGhostAtOnce through ExpandPresenceGhostEntry once its exits are
-                // gone, and only the retry of an aborted pass in that window reads this record, to decide where the
-                // Motion rests.
-                if (leavingMount) state.LeavingMounts.Add(key);
+                foreach (var record in records) record();
             });
         }
+
+        // Writes back what map held for key when this was taken, and nothing when it held none.
+        private static Action KeepRecord<T>(Dictionary<string, T> map, string key)
+            => map.TryGetValue(key, out var value) ? () => map[key] = value : static () => { };
+
+        private static Action KeepRecord(HashSet<string> set, string key)
+            => set.Contains(key) ? () => set.Add(key) : static () => { };
 
         // Whether removing key plays an exit at all: its anchor's, a descendant Motion's, or the removal of a
         // propagating presence inside it that still holds children, which is when Framer's inner presence
