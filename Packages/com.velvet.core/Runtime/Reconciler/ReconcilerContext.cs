@@ -1211,8 +1211,8 @@ namespace Velvet
         // DrainPendingPortalMounts.
         public HashSet<VisualElement> PendingZLayerTeardownChecks { get; } = new();
 
-        // Stacking parents whose children a pass reconciled, so whose placeholders may have moved; drained by
-        // FiberZLayerCoordinator.ResortLayers at the same post-pass point as the teardown checks above.
+        // Stacking parents a member was placed under or whose children a pass reconciled; drained by
+        // FiberZLayerCoordinator.ResortLayers at the end of each top-level pass, after the teardown checks above.
         public HashSet<VisualElement> PendingZLayerResorts { get; } = new();
 
         // FiberZLayerCoordinator's placeholder -> declared index, filled and cleared within one layer check.

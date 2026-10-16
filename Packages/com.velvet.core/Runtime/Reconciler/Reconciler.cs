@@ -299,6 +299,9 @@ namespace Velvet
             }
             finally
             {
+                // After the drain, which places the z-* members this pass deferred, and in this finally so a drain
+                // that throws still leaves no stacking parent pending into the next pass.
+                FiberZLayerCoordinator.ResortLayers(_ctx);
                 _ctx.PortalTargetsToRestyle.Clear();
                 // Always clear the queue at top-level boundary so partially drained passes do
                 // not leak placeholders into the next reconcile; an abort raised DURING the
