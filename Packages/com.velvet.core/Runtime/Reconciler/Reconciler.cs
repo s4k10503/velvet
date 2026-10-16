@@ -350,7 +350,8 @@ namespace Velvet
                 // any departure, so a slice yielding between the two would attach into that same
                 // create-before-remove order, with Pass2Reorder not having placed anything yet either.
                 // Which pass ends last is not this one's to know, so the call is unconditional and
-                // DrainRefAttaches asks each entry's own pass instead.
+                // DrainRefAttaches asks each entry's own pass instead. A pass whose caller commits layout work
+                // leaves the cleanups of the refs it replaces and its setups to that commit.
                 _ctx.DrainRefAttaches();
                 _ctx.RunPendingEnterCompletions();
             }
@@ -475,12 +476,12 @@ namespace Velvet
         void IReconcilerBridge.HoldRowLayoutEffects()
             => _ctx.HeldRowLayoutEffects.Push(new List<(ComponentFiber fiber, bool mountDoubleInvoke)>());
 
-        // The rows are placed, so the refs the range held attach now, ahead of the rows' layout effects as a pass's
-        // refs attach ahead of its own.
+        // The rows are placed, so their commits attach their elements' refs among their layout effects, as a
+        // pass's commit does. A setup no held row owns is left to the commit that ends the range render
+        // (CommitStrandedLayoutWorkForController).
         void IReconcilerBridge.CommitHeldRowLayoutEffects()
         {
             var held = _ctx.HeldRowLayoutEffects.Pop();
-            _ctx.DrainRefAttaches();
             _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
             FiberEffects.CommitHeldRowLayoutEffects(_ctx, held);
         }

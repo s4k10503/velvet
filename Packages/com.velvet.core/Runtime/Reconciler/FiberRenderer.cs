@@ -92,11 +92,11 @@ namespace Velvet
             fiber.IsInlineMounted = true;
             fiber.MountSlotStart = slotStart;
             RenderAndReconcile(fiber, deferReconcile: true);
-            // Layout effects setup runs AFTER the DOM mutations + ref attach are committed for
+            // Layout effects setup runs AFTER the DOM mutations are committed for
             // the entire subtree. Inline-mount
             // defers child CreateElement to the parent expansion, which happens AFTER MountInline
-            // returns, and the ref setups it queues run later still (ReconcilerContext.DrainRefAttaches),
-            // so running LayoutEffects here would observe
+            // returns, and the ref setups it queues attach in the layout commit
+            // (FiberRefPlacement), so running LayoutEffects here would observe
             // stale (null) refs. Push the fiber onto the deferred stack and let the top-level
             // reconcile entry drain it (LIFO = bottom-up) before its own layout-effect commit so the
             // root commits last.
